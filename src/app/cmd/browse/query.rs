@@ -442,6 +442,30 @@ mod tests {
     use crate::ports::outbound::query_executor::MockQueryExecutor;
     use crate::update::action::Action;
 
+    async fn run_effect(effect: Effect, executor: MockQueryExecutor) -> Action {
+        let cache = TtlCache::new(300);
+        let (tx, mut rx) = mpsc::channel(8);
+        let runner = test_fixtures::make_runner(
+            Arc::new(MockMetadataProvider::new()),
+            Arc::new(executor),
+            Arc::new(MockConnectionStore::new()),
+            cache,
+            tx,
+        );
+        let run = test_fixtures::run_one_effect(
+            &runner,
+            effect,
+            AppState::new("test".to_string()),
+            RefCell::new(CompletionEngine::new()),
+            &mut rx,
+            Some(Duration::from_millis(500)),
+        )
+        .await
+        .unwrap();
+
+        run.actions.into_iter().next().expect("action dispatched")
+    }
+
     mod explain_plan_text {
         use crate::domain::{QueryResult, QuerySource, sqlite_explain_query_plan_text_from_result};
 
@@ -776,54 +800,21 @@ mod tests {
                 assert_eq!(diagnostics[0].code, code);
             }
         }
-    }
-
-    mod execute_access_mode {
-        use super::*;
-        use crate::domain::DatabaseType;
-
-        async fn run_effect(effect: Effect, executor: MockQueryExecutor) -> Action {
-            let cache = TtlCache::new(300);
-            let (tx, mut rx) = mpsc::channel(8);
-            let runner = test_fixtures::make_runner(
-                Arc::new(MockMetadataProvider::new()),
-                Arc::new(executor),
-                Arc::new(MockConnectionStore::new()),
-                cache,
-                tx,
-            );
-            let run = test_fixtures::run_one_effect(
-                &runner,
-                effect,
-                AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
-                &mut rx,
-                Some(Duration::from_millis(500)),
-            )
-            .await
-            .unwrap();
-
-            run.actions.into_iter().next().expect("action dispatched")
-        }
 
         #[tokio::test]
-        async fn execute_adhoc_forwards_access_mode_and_masks_diagnostics() {
+        async fn execute_adhoc_masks_credentials_before_action() {
             let mut executor = MockQueryExecutor::new();
-            executor
-                .expect_execute_adhoc()
-                .once()
-                .withf(|_, _, access_mode| *access_mode == AccessMode::ReadOnly)
-                .returning(|_, _, _| {
-                    Ok(
-                        test_fixtures::sample_query_result().with_mysql_diagnostics(vec![
-                            DatabaseDiagnostic {
-                                level: DiagnosticLevel::Warning,
-                                code: 1001,
-                                message: "mysql://user:secret@host".to_string(),
-                            },
-                        ]),
-                    )
-                });
+            executor.expect_execute_adhoc().once().returning(|_, _, _| {
+                Ok(
+                    test_fixtures::sample_query_result().with_mysql_diagnostics(vec![
+                        DatabaseDiagnostic {
+                            level: DiagnosticLevel::Warning,
+                            code: 1001,
+                            message: "mysql://user:secret@host".to_string(),
+                        },
+                    ]),
+                )
+            });
 
             let action = run_effect(
                 Effect::ExecuteAdhoc {
@@ -837,9 +828,7 @@ mod tests {
             .await;
 
             match action {
-                Action::QueryCompleted {
-                    run_id: 1, result, ..
-                } => assert_eq!(
+                Action::QueryCompleted { result, .. } => assert_eq!(
                     result.mysql_diagnostics,
                     vec![DatabaseDiagnostic {
                         level: DiagnosticLevel::Warning,
@@ -849,6 +838,72 @@ mod tests {
                 ),
                 action => panic!("unexpected action: {action:?}"),
             }
+        }
+
+        #[tokio::test]
+        async fn execute_write_masks_credentials_before_action() {
+            let mut executor = MockQueryExecutor::new();
+            executor.expect_execute_write().once().returning(|_, _, _| {
+                Ok(WriteExecutionResult {
+                    affected_rows: 1,
+                    diagnostics: vec![DatabaseDiagnostic {
+                        level: DiagnosticLevel::Warning,
+                        code: 1265,
+                        message: "Data truncated password=secret".to_string(),
+                    }],
+                })
+            });
+
+            let action = run_effect(
+                Effect::ExecuteWrite {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 3,
+                    query: "INSERT INTO users VALUES (1)".to_string(),
+                    access_mode: AccessMode::ReadWrite,
+                },
+                executor,
+            )
+            .await;
+
+            match action {
+                Action::ExecuteWriteSucceeded { diagnostics, .. } => assert_eq!(
+                    diagnostics,
+                    vec![DatabaseDiagnostic {
+                        level: DiagnosticLevel::Warning,
+                        code: 1265,
+                        message: "Data truncated password=****".to_string(),
+                    }]
+                ),
+                action => panic!("unexpected action: {action:?}"),
+            }
+        }
+    }
+
+    mod execute_access_mode {
+        use super::*;
+        use crate::domain::DatabaseType;
+
+        #[tokio::test]
+        async fn execute_adhoc_forwards_access_mode() {
+            let mut executor = MockQueryExecutor::new();
+            executor
+                .expect_execute_adhoc()
+                .once()
+                .withf(|_, _, access_mode| *access_mode == AccessMode::ReadOnly)
+                .returning(|_, _, _| Ok(test_fixtures::sample_query_result()));
+
+            let action = run_effect(
+                Effect::ExecuteAdhoc {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 1,
+                    query: "SELECT 1".to_string(),
+                    access_mode: AccessMode::ReadOnly,
+                },
+                executor,
+            )
+            .await;
+
+            assert!(matches!(action, Action::QueryCompleted { run_id: 1, .. }));
         }
 
         #[tokio::test]
@@ -891,7 +946,7 @@ mod tests {
                         diagnostics: vec![DatabaseDiagnostic {
                             level: DiagnosticLevel::Warning,
                             code: 1265,
-                            message: "Data truncated password=secret".to_string(),
+                            message: "Data truncated".to_string(),
                         }],
                     })
                 });
@@ -918,7 +973,7 @@ mod tests {
                     vec![DatabaseDiagnostic {
                         level: DiagnosticLevel::Warning,
                         code: 1265,
-                        message: "Data truncated password=****".to_string(),
+                        message: "Data truncated".to_string(),
                     }]
                 ),
                 action => panic!("unexpected action: {action:?}"),
