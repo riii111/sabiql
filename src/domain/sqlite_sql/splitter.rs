@@ -250,17 +250,23 @@ fn is_dotted_identifier_suffix(sql: &str, keyword_start: usize) -> bool {
 }
 
 pub(super) fn top_level_keywords(sql: &str) -> Vec<String> {
-    scan_sqlite_keywords(sql, true)
+    scan_sqlite_keywords(sql, SqliteKeywordScanMode::TopLevel)
         .into_iter()
-        .filter_map(|(keyword, depth)| (depth == 0).then_some(keyword))
+        .map(|(keyword, _)| keyword)
         .collect()
 }
 
 pub(super) fn keywords_with_depth(sql: &str) -> Vec<(String, i32)> {
-    scan_sqlite_keywords(sql, false)
+    scan_sqlite_keywords(sql, SqliteKeywordScanMode::WithDepth)
 }
 
-fn scan_sqlite_keywords(sql: &str, include_quoted_identifiers: bool) -> Vec<(String, i32)> {
+#[derive(Clone, Copy)]
+enum SqliteKeywordScanMode {
+    TopLevel,
+    WithDepth,
+}
+
+fn scan_sqlite_keywords(sql: &str, mode: SqliteKeywordScanMode) -> Vec<(String, i32)> {
     let trimmed = sql.trim();
     let chars: Vec<(usize, char)> = trimmed.char_indices().collect();
     let mut tokens = Vec::new();
@@ -287,7 +293,7 @@ fn scan_sqlite_keywords(sql: &str, include_quoted_identifiers: bool) -> Vec<(Str
             continue;
         }
         if let Some(next) = skip_double_quoted_identifier(&chars, i, ch) {
-            if include_quoted_identifiers && depth == 0 {
+            if matches!(mode, SqliteKeywordScanMode::TopLevel) && depth == 0 {
                 let end_byte = chars.get(next).map_or(trimmed.len(), |(pos, _)| *pos);
                 tokens.push((trimmed[byte_pos..end_byte].to_string(), depth));
             }
@@ -295,7 +301,7 @@ fn scan_sqlite_keywords(sql: &str, include_quoted_identifiers: bool) -> Vec<(Str
             continue;
         }
         if let Some(next) = skip_sqlite_quoted_identifier(&chars, i, ch) {
-            if include_quoted_identifiers && depth == 0 {
+            if matches!(mode, SqliteKeywordScanMode::TopLevel) && depth == 0 {
                 let end_byte = chars.get(next).map_or(trimmed.len(), |(pos, _)| *pos);
                 tokens.push((trimmed[byte_pos..end_byte].to_string(), depth));
             }
@@ -319,11 +325,13 @@ fn scan_sqlite_keywords(sql: &str, include_quoted_identifiers: bool) -> Vec<(Str
                 end += 1;
             }
             let end_byte = chars.get(end).map_or(trimmed.len(), |(pos, _)| *pos);
-            tokens.push((trimmed[start..end_byte].to_ascii_uppercase(), depth));
+            if matches!(mode, SqliteKeywordScanMode::WithDepth) || depth == 0 {
+                tokens.push((trimmed[start..end_byte].to_ascii_uppercase(), depth));
+            }
             i = end;
             continue;
         }
-        if depth == 0 && ch == ',' {
+        if matches!(mode, SqliteKeywordScanMode::TopLevel) && depth == 0 && ch == ',' {
             tokens.push((",".to_string(), depth));
         }
         i += 1;
