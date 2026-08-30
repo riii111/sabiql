@@ -199,11 +199,7 @@ pub(super) fn reduce_prefetch(
                 }
             }
 
-            if effects.is_empty() {
-                DispatchResult::handled()
-            } else {
-                DispatchResult::handled_with(effects)
-            }
+            DispatchResult::handled_with(effects)
         }
 
         Action::PrefetchTableDetail {
