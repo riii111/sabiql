@@ -480,38 +480,41 @@ fn display_width_of_first_line(value: &str, escape_nul: bool) -> usize {
     }
 }
 
+fn display_grapheme_info(value: &str, escape_nul: bool) -> (&str, usize) {
+    if escape_nul && value == "\0" {
+        ("\\0", 2)
+    } else {
+        (value, UnicodeWidthStr::width(value))
+    }
+}
+
 fn truncate_display_text(value: &str, escape_nul: bool, max_width: usize) -> String {
     let first_line = value.split('\n').next().unwrap_or(value);
     let budget = max_width.saturating_sub(3);
-    let is_truncated = display_width_of_first_line(first_line, escape_nul) > max_width;
-    if is_truncated && max_width < 3 {
-        return ".".repeat(max_width);
-    }
-
     let mut display = String::new();
     let mut display_width = 0usize;
-    let mut truncated_width = 0usize;
 
-    for grapheme in first_line.graphemes(true) {
-        let (width, is_nul) = if escape_nul && grapheme == "\0" {
-            (2, true)
-        } else {
-            (UnicodeWidthStr::width(grapheme), false)
-        };
-
+    for (offset, grapheme) in first_line.grapheme_indices(true) {
+        let (display_grapheme, width) = display_grapheme_info(grapheme, escape_nul);
         if display_width.saturating_add(width) > max_width {
-            break;
+            if max_width < 3 {
+                return ".".repeat(max_width);
+            }
+            display.clear();
+            let mut truncated_width = 0usize;
+            for grapheme in first_line[..offset].graphemes(true) {
+                let (display_grapheme, width) = display_grapheme_info(grapheme, escape_nul);
+                if truncated_width.saturating_add(width) <= budget {
+                    display.push_str(display_grapheme);
+                    truncated_width += width;
+                }
+            }
+            display.push_str("...");
+            return display;
         }
 
-        if !is_truncated || truncated_width.saturating_add(width) <= budget {
-            display.push_str(if is_nul { "\\0" } else { grapheme });
-            truncated_width = truncated_width.saturating_add(width);
-        }
+        display.push_str(display_grapheme);
         display_width += width;
-    }
-
-    if is_truncated {
-        display.push_str("...");
     }
 
     display
@@ -657,6 +660,7 @@ mod tests {
         #[case("日本a語", false, 6, "日a...")]
         #[case("ab\u{200b}cde", false, 4, "a\u{200b}...")]
         #[case("日\0abc", true, 6, "日a...")]
+        #[case("لاabc", false, 4, "ل...")]
         fn truncation_preserves_mixed_width_selection(
             #[case] value: &str,
             #[case] escape_nul: bool,
@@ -667,6 +671,13 @@ mod tests {
                 truncate_display_text(value, escape_nul, max_width),
                 expected
             );
+        }
+
+        #[test]
+        fn width_limited_display_stops_after_first_overflow() {
+            let value = format!("{}tail", "a".repeat(1024 * 1024));
+
+            assert_eq!(truncate_display_text(&value, false, 4), "a...");
         }
 
         #[test]
