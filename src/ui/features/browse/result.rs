@@ -485,7 +485,7 @@ fn truncate_display_text(value: &str, escape_nul: bool, max_width: usize) -> Str
     let budget = max_width.saturating_sub(3);
     let mut display = String::new();
     let mut display_width = 0usize;
-    let mut truncation_len = 0usize;
+    let mut display_prefix_len = 0usize;
 
     for grapheme in first_line.graphemes(true) {
         let (width, is_nul) = if escape_nul && grapheme == "\0" {
@@ -498,7 +498,24 @@ fn truncate_display_text(value: &str, escape_nul: bool, max_width: usize) -> Str
             if max_width < 3 {
                 return ".".repeat(max_width);
             }
-            display.truncate(truncation_len);
+            display.clear();
+            let mut truncated_width = 0usize;
+            for grapheme in first_line[..display_prefix_len].graphemes(true) {
+                let (width, is_nul) = if escape_nul && grapheme == "\0" {
+                    (2, true)
+                } else {
+                    (UnicodeWidthStr::width(grapheme), false)
+                };
+
+                if truncated_width.saturating_add(width) <= budget {
+                    if is_nul {
+                        display.push_str("\\0");
+                    } else {
+                        display.push_str(grapheme);
+                    }
+                    truncated_width += width;
+                }
+            }
             display.push_str("...");
             return display;
         }
@@ -509,9 +526,7 @@ fn truncate_display_text(value: &str, escape_nul: bool, max_width: usize) -> Str
             display.push_str(grapheme);
         }
         display_width += width;
-        if display_width <= budget {
-            truncation_len = display.len();
-        }
+        display_prefix_len += grapheme.len();
     }
 
     display
@@ -649,6 +664,24 @@ mod tests {
             let value = QueryValue::text("a\0bcdef");
 
             assert_eq!(query_value_display_at_width(&value, 6), "a\\0...");
+        }
+
+        #[rstest]
+        #[case("日abc", false, 4, "a...")]
+        #[case("👨‍👩‍👧‍👦abc", false, 4, "a...")]
+        #[case("日本a語", false, 6, "日a...")]
+        #[case("ab\u{200b}cde", false, 4, "a\u{200b}...")]
+        #[case("日\0abc", true, 6, "日a...")]
+        fn truncation_preserves_mixed_width_selection(
+            #[case] value: &str,
+            #[case] escape_nul: bool,
+            #[case] max_width: usize,
+            #[case] expected: &str,
+        ) {
+            assert_eq!(
+                truncate_display_text(value, escape_nul, max_width),
+                expected
+            );
         }
 
         #[test]
