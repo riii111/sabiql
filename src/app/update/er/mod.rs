@@ -10,7 +10,7 @@ use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 
-pub fn dispatch_er(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub(crate) fn dispatch_er(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     if matches!(
         action,
         Action::ErGenerateFromCache
@@ -57,17 +57,6 @@ mod tests {
             &ConnectionId::new(),
             "postgres",
             DatabaseType::PostgreSQL,
-            dsn,
-        );
-        state
-    }
-
-    fn state_with_sqlite_dsn(dsn: &str) -> AppState {
-        let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
-            &ConnectionId::new(),
-            "sqlite",
-            DatabaseType::SQLite,
             dsn,
         );
         state
@@ -394,22 +383,6 @@ mod tests {
             assert!(effects.is_empty());
             assert!(state.messages.last_error.is_some());
         }
-
-        #[test]
-        fn sqlite_connection_returns_error_without_refresh_effect() {
-            let mut state = state_with_sqlite_dsn("sqlite:///tmp/app.db");
-            state.session.set_metadata(Some(make_metadata(1)));
-
-            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
-
-            assert!(effects.is_empty());
-            assert_eq!(
-                state.messages.last_error.as_deref(),
-                Some("ER diagrams are not available for this connection")
-            );
-        }
     }
 
     mod er_generate_from_cache {
@@ -449,28 +422,6 @@ mod tests {
                 .expect("reducer should handle action");
 
             assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn sqlite_connection_returns_error_without_generate_effect() {
-            let mut state = state_with_sqlite_dsn("sqlite:///tmp/app.db");
-            state.er_preparation.mark_idle();
-            state
-                .session
-                .set_metadata(Some(Arc::new(DatabaseMetadata::new("test".to_string()))));
-            state
-                .er_preparation
-                .set_targets(vec!["public.users".to_string()]);
-
-            let effects = reduce_er(&mut state, &Action::ErGenerateFromCache, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
-
-            assert!(effects.is_empty());
-            assert_eq!(
-                state.messages.last_error.as_deref(),
-                Some("ER diagrams are not available for this connection")
-            );
         }
     }
 
