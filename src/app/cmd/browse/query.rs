@@ -55,26 +55,25 @@ fn utc_now_iso8601() -> String {
 }
 
 fn spawn_query_history_append(
-    query_history_store: &Arc<dyn QueryHistoryStore>,
-    project_name: &str,
-    scope: &QueryHistoryScope,
-    query: &str,
+    query_history_store: Arc<dyn QueryHistoryStore>,
+    project_name: String,
+    scope: QueryHistoryScope,
+    query: String,
     result_status: QueryResultStatus,
     affected_rows: Option<u64>,
 ) {
-    let store = Arc::clone(query_history_store);
     let entry = QueryHistoryEntry::new_with_database(
-        query.to_string(),
+        query,
         utc_now_iso8601(),
         scope.connection_id.clone(),
         scope.database.clone(),
         result_status,
         affected_rows,
     );
-    let project = project_name.to_string();
-    let scope = scope.clone();
     tokio::spawn(async move {
-        let _ = store.append(&project, &scope, &entry).await;
+        let _ = query_history_store
+            .append(&project_name, &scope, &entry)
+            .await;
     });
 }
 
@@ -217,7 +216,6 @@ pub async fn run(
             let history_store = Arc::clone(query_history_store);
             let project = state.runtime.project_name().to_string();
             let history_scope = state.session.query_history_scope();
-            let query_for_history = query.clone();
             query_tasks
                 .spawn(async move {
                     let result = executor.execute_adhoc(&dsn, &query, access_mode).await;
@@ -225,16 +223,16 @@ pub async fn run(
                         Ok(result) => {
                             let mut result = result;
                             mask_mysql_diagnostics(&mut result.mysql_diagnostics);
-                            if let Some(scope) = &history_scope {
+                            if let Some(scope) = history_scope {
                                 let rows = result
                                     .command_tag
                                     .as_ref()
                                     .and_then(CommandTag::affected_rows);
                                 spawn_query_history_append(
-                                    &history_store,
-                                    &project,
+                                    history_store,
+                                    project,
                                     scope,
-                                    &query_for_history,
+                                    query,
                                     QueryResultStatus::Success,
                                     rows,
                                 );
@@ -248,12 +246,12 @@ pub async fn run(
                             .ok();
                         }
                         Err(e) => {
-                            if let Some(scope) = &history_scope {
+                            if let Some(scope) = history_scope {
                                 spawn_query_history_append(
-                                    &history_store,
-                                    &project,
+                                    history_store,
+                                    project,
                                     scope,
-                                    &query_for_history,
+                                    query,
                                     QueryResultStatus::Failed,
                                     None,
                                 );
@@ -282,7 +280,6 @@ pub async fn run(
             let history_store = Arc::clone(query_history_store);
             let project = state.runtime.project_name().to_string();
             let history_scope = state.session.query_history_scope();
-            let query_for_history = query.clone();
 
             query_tasks
                 .spawn(async move {
@@ -290,12 +287,12 @@ pub async fn run(
                         Ok(result) => {
                             let mut result = result;
                             mask_mysql_diagnostics(&mut result.diagnostics);
-                            if let Some(scope) = &history_scope {
+                            if let Some(scope) = history_scope {
                                 spawn_query_history_append(
-                                    &history_store,
-                                    &project,
+                                    history_store,
+                                    project,
                                     scope,
-                                    &query_for_history,
+                                    query,
                                     QueryResultStatus::Success,
                                     Some(result.affected_rows as u64),
                                 );
@@ -310,12 +307,12 @@ pub async fn run(
                             .ok();
                         }
                         Err(e) => {
-                            if let Some(scope) = &history_scope {
+                            if let Some(scope) = history_scope {
                                 spawn_query_history_append(
-                                    &history_store,
-                                    &project,
+                                    history_store,
+                                    project,
                                     scope,
-                                    &query_for_history,
+                                    query,
                                     QueryResultStatus::Failed,
                                     None,
                                 );
