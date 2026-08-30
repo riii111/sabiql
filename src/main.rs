@@ -5,7 +5,7 @@
 
 use std::cell::RefCell;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use clap::Parser;
 use color_eyre::eyre::Result;
@@ -21,7 +21,6 @@ mod tests;
 #[path = "tests/render_snapshots/mod.rs"]
 mod render_snapshots;
 
-use sabiql_app::cmd::cache::TtlCache;
 use sabiql_app::cmd::cli_sqlite::{activate_cli_sqlite_connection, resolve_cli_sqlite_target};
 use sabiql_app::cmd::completion_engine::CompletionEngine;
 use sabiql_app::cmd::effect::Effect;
@@ -126,7 +125,6 @@ async fn main() -> Result<()> {
     let (action_tx, mut action_rx) = mpsc::channel::<Action>(256);
 
     let adapter_registry = Arc::new(DbAdapterRegistry::new());
-    let metadata_cache = TtlCache::new(300);
     let completion_engine = RefCell::new(CompletionEngine::new());
     let connection_store = TomlConnectionStore::new()?;
     let settings_store = TomlSettingsStore::new()?;
@@ -162,7 +160,6 @@ async fn main() -> Result<()> {
             folder_opener: Arc::new(NativeFolderOpener),
         },
         Arc::clone(&settings_store) as _,
-        metadata_cache.clone(),
         action_tx.clone(),
     );
 
@@ -243,9 +240,6 @@ async fn main() -> Result<()> {
         runtime.process_action(Action::TryConnect).await?;
     }
 
-    let cache_cleanup_interval = Duration::from_secs(150);
-    let mut last_cache_cleanup = Instant::now();
-
     loop {
         let now = Instant::now();
         let deadline = next_animation_deadline(&runtime.state, now);
@@ -277,11 +271,6 @@ async fn main() -> Result<()> {
         {
             runtime.state.sql_modal.consume_completion_debounce();
             runtime.process_action(Action::CompletionRequest).await?;
-        }
-
-        if last_cache_cleanup.elapsed() >= cache_cleanup_interval {
-            metadata_cache.cleanup_expired().await;
-            last_cache_cleanup = Instant::now();
         }
 
         if runtime.state.should_quit {

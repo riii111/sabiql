@@ -3,13 +3,11 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use crate::cmd::cache::TtlCache;
 use crate::cmd::effect::Effect;
 use crate::cmd::runner::ConnectionDeps;
 use crate::cmd::sqlite_path_validate::{
     canonicalize_sqlite_database_path, validate_sqlite_database_path,
 };
-use crate::domain::DatabaseMetadata;
 use crate::domain::SqlitePathError;
 use crate::domain::connection::{
     ConnectionConfig, ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType,
@@ -90,7 +88,6 @@ pub(crate) async fn run(
     connection: &ConnectionDeps,
     connection_task: &ConnectionTaskOwner,
     metadata_provider: &Arc<dyn MetadataProvider>,
-    metadata_cache: &TtlCache<String, Arc<DatabaseMetadata>>,
     state: &AppState,
 ) {
     match effect {
@@ -154,6 +151,7 @@ pub(crate) async fn run(
                                         target,
                                         run_id,
                                         mysql_lower_case_table_names: None,
+                                        metadata: None,
                                     })
                                     .ok();
                                 }
@@ -198,6 +196,7 @@ pub(crate) async fn run(
                                             mysql_lower_case_table_names: Some(
                                                 probe_result.lower_case_table_names,
                                             ),
+                                            metadata: None,
                                         })
                                         .await
                                         .ok();
@@ -233,7 +232,6 @@ pub(crate) async fn run(
             }
 
             let target = ConnectionTarget::from_profile(&profile, dsn);
-            let cache = metadata_cache.clone();
             let provider = Arc::clone(metadata_provider);
             let dsn = target.dsn.clone();
             connection_task
@@ -247,17 +245,16 @@ pub(crate) async fn run(
                             .expect("connection store save task panicked");
                             match save_result {
                                 Some(Ok(())) => {
-                                    cache.set(dsn.clone(), Arc::new(metadata)).await;
                                     tx.send(Action::ConnectionSaveCompleted {
                                         target,
                                         run_id,
                                         mysql_lower_case_table_names: None,
+                                        metadata: Some(Arc::new(metadata)),
                                     })
                                     .await
                                     .ok();
                                 }
                                 Some(Err(e)) => {
-                                    cache.invalidate(&dsn).await;
                                     tx.send(Action::ConnectionSaveFailed {
                                         error: e.into(),
                                         database_type,
@@ -442,7 +439,6 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::mpsc;
 
-    use crate::cmd::cache::TtlCache;
     use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::effect::Effect;
     use crate::cmd::test_fixtures::{self, NoopRenderer};
@@ -551,7 +547,6 @@ mod tests {
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(store),
-                TtlCache::new(300),
                 tx,
                 Arc::new(MySqlDsnBuilder),
                 Arc::new(probe),
@@ -609,7 +604,6 @@ mod tests {
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(store),
-                TtlCache::new(300),
                 tx,
                 Arc::new(MySqlDsnBuilder),
                 Arc::new(probe),
@@ -666,7 +660,6 @@ mod tests {
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(store),
-                TtlCache::new(300),
                 tx,
                 Arc::new(MySqlDsnBuilder),
                 Arc::new(probe),
@@ -700,7 +693,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn postgres_metadata_cache_is_not_published_when_save_is_cancelled() {
+        async fn postgres_validated_metadata_is_not_sent_when_save_is_cancelled() {
             let dsn = "postgres://localhost/app".to_string();
             let run_guard = test_fixtures::active_connection_save_guard(1);
             let guard_for_provider = Arc::clone(&run_guard);
@@ -716,14 +709,11 @@ mod tests {
 
             let mut store = MockConnectionStore::new();
             store.expect_save().never();
-            let cache = TtlCache::new(300);
-            let observed_cache = cache.clone();
             let (tx, mut rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner_with_dsn(
                 Arc::new(provider),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(store),
-                cache,
                 tx,
                 Arc::new(PostgresDsnBuilder),
             );
@@ -750,11 +740,10 @@ mod tests {
                     .await
                     .is_err()
             );
-            assert!(observed_cache.get(&dsn).await.is_none());
         }
 
         #[tokio::test]
-        async fn postgres_metadata_cache_is_published_after_save_succeeds() {
+        async fn postgres_validated_metadata_is_carried_by_save_action() {
             let dsn = "postgres://localhost/app".to_string();
             let mut provider = MockMetadataProvider::new();
             provider
@@ -765,14 +754,11 @@ mod tests {
 
             let mut store = MockConnectionStore::new();
             store.expect_save().once().returning(|_| Ok(()));
-            let cache = TtlCache::new(300);
-            let observed_cache = cache.clone();
             let (tx, mut rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner_with_dsn(
                 Arc::new(provider),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(store),
-                cache,
                 tx,
                 Arc::new(PostgresDsnBuilder),
             );
@@ -796,20 +782,16 @@ mod tests {
 
             assert!(matches!(
                 run.actions.into_iter().next(),
-                Some(Action::ConnectionSaveCompleted { run_id: 1, .. })
+                Some(Action::ConnectionSaveCompleted {
+                    run_id: 1,
+                    metadata: Some(metadata),
+                    ..
+                }) if metadata.database_name == "app"
             ));
-            assert_eq!(
-                observed_cache
-                    .get(&dsn)
-                    .await
-                    .expect("successful save should publish metadata")
-                    .database_name,
-                "app"
-            );
         }
 
         #[tokio::test]
-        async fn postgres_store_failure_invalidates_metadata_cache() {
+        async fn postgres_store_failure_does_not_emit_save_completion() {
             let dsn = "postgres://localhost/app".to_string();
             let mut provider = MockMetadataProvider::new();
             provider
@@ -824,14 +806,11 @@ mod tests {
                     "save failed",
                 ))))
             });
-            let cache = TtlCache::new(300);
-            let observed_cache = cache.clone();
             let (tx, mut rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner_with_dsn(
                 Arc::new(provider),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(store),
-                cache,
                 tx,
                 Arc::new(PostgresDsnBuilder),
             );
@@ -861,7 +840,6 @@ mod tests {
                     ..
                 })
             ));
-            assert!(observed_cache.get(&dsn).await.is_none());
         }
 
         #[test]
@@ -909,13 +887,11 @@ mod tests {
                 Ok(())
             });
 
-            let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner_with_dsn(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(mock_store),
-                cache,
                 tx,
                 Arc::new(SqliteDsnBuilder),
             );
@@ -969,7 +945,6 @@ mod tests {
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(store),
-                TtlCache::new(300),
                 tx,
                 Arc::new(SqliteDsnBuilder),
             );
@@ -1015,13 +990,11 @@ mod tests {
             let mut mock_store = MockConnectionStore::new();
             mock_store.expect_save().never();
 
-            let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner_with_dsn(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(mock_store),
-                cache,
                 tx,
                 Arc::new(SqliteDsnBuilder),
             );
@@ -1070,13 +1043,11 @@ mod tests {
             let mut mock_store = MockConnectionStore::new();
             mock_store.expect_delete().once().returning(|_| Ok(()));
 
-            let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(mock_store),
-                cache,
                 tx,
             );
 
@@ -1107,13 +1078,11 @@ mod tests {
                 .once()
                 .returning(|_| Err(ConnectionStoreError::NotFound("id".to_string())));
 
-            let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(mock_store),
-                cache,
                 tx,
             );
 
@@ -1151,13 +1120,11 @@ mod tests {
                 ))))
             });
 
-            let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(mock_store),
-                cache,
                 tx,
             );
 
@@ -1184,7 +1151,6 @@ mod tests {
             let mut mock_store = MockConnectionStore::new();
             mock_store.expect_load_all().once().returning(|| Ok(vec![]));
 
-            let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
             let runner = EffectRunner::new(
                 Arc::new(MockMetadataProvider::new()),
@@ -1211,7 +1177,6 @@ mod tests {
                     folder_opener: Arc::new(test_fixtures::NoopFolderOpener),
                 },
                 Arc::new(test_fixtures::NoopSettingsStore),
-                cache,
                 tx,
             );
 
@@ -1259,7 +1224,6 @@ mod tests {
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
-                TtlCache::new(60),
                 action_tx,
                 Arc::new(FakeDsnBuilder),
             )

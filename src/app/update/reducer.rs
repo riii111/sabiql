@@ -1662,11 +1662,10 @@ mod tests {
             assert!(matches!(effects[0], Effect::Sequence(_)));
 
             if let Effect::Sequence(seq) = &effects[0] {
-                assert_eq!(seq.len(), 4);
+                assert_eq!(seq.len(), 3);
                 assert!(matches!(seq[0], Effect::CancelMetadataTasks));
-                assert!(matches!(seq[1], Effect::CacheInvalidate { .. }));
-                assert!(matches!(seq[2], Effect::ClearCompletionEngineCache));
-                assert!(matches!(seq[3], Effect::FetchMetadata { .. }));
+                assert!(matches!(seq[1], Effect::ClearCompletionEngineCache));
+                assert!(matches!(seq[2], Effect::FetchMetadata { .. }));
             }
         }
 
@@ -2058,6 +2057,7 @@ mod tests {
 
     mod connection_setup_transitions {
         use super::*;
+        use crate::domain::DatabaseMetadata;
         use crate::model::shared::confirm_dialog::ConfirmIntent;
 
         #[test]
@@ -2089,6 +2089,7 @@ mod tests {
                     },
                     run_id,
                     mysql_lower_case_table_names: None,
+                    metadata: Some(Arc::new(DatabaseMetadata::new("validated".to_string()))),
                 },
                 now,
                 &AppServices::stub(),
@@ -2627,6 +2628,7 @@ mod tests {
                     },
                     run_id,
                     mysql_lower_case_table_names: None,
+                    metadata: Some(Arc::new(DatabaseMetadata::new("validated".to_string()))),
                 },
                 now,
                 &AppServices::stub(),

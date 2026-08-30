@@ -420,7 +420,6 @@ mod tests {
 
     use tokio::sync::mpsc;
 
-    use crate::cmd::cache::TtlCache;
     use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::effect::Effect;
     use crate::cmd::test_fixtures;
@@ -433,13 +432,11 @@ mod tests {
     use crate::update::action::Action;
 
     async fn run_effect(effect: Effect, executor: MockQueryExecutor) -> Action {
-        let cache = TtlCache::new(300);
         let (tx, mut rx) = mpsc::channel(8);
         let runner = test_fixtures::make_runner(
             Arc::new(MockMetadataProvider::new()),
             Arc::new(executor),
             Arc::new(MockConnectionStore::new()),
-            cache,
             tx,
         );
         let run = test_fixtures::run_one_effect(
@@ -1065,7 +1062,6 @@ mod tests {
 
         use tokio::sync::mpsc;
 
-        use crate::cmd::cache::TtlCache;
         use crate::cmd::completion_engine::CompletionEngine;
         use crate::cmd::effect::Effect;
         use crate::cmd::test_fixtures;
@@ -1097,13 +1093,11 @@ mod tests {
 
         #[tokio::test]
         async fn dispatches_success() {
-            let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
-                cache,
                 tx,
             );
             let run = test_fixtures::run_one_effect(
@@ -1141,13 +1135,11 @@ mod tests {
 
         #[tokio::test]
         async fn dispatches_failure_when_exporter_fails() {
-            let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner_with_cached_result_exporter(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
-                cache,
                 tx,
                 Arc::new(FailingCachedResultExporter),
             );
@@ -1181,7 +1173,6 @@ mod tests {
 
         use tokio::sync::mpsc;
 
-        use crate::cmd::cache::TtlCache;
         use crate::cmd::completion_engine::CompletionEngine;
         use crate::cmd::effect::Effect;
         use crate::cmd::test_fixtures;
@@ -1201,13 +1192,11 @@ mod tests {
                 .once()
                 .returning(|_, _, _, _, _| Ok(test_fixtures::sample_query_result()));
 
-            let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(mock_executor),
                 Arc::new(MockConnectionStore::new()),
-                cache,
                 tx,
             );
 
@@ -1248,13 +1237,11 @@ mod tests {
                     Err(DbOperationError::QueryFailed("syntax error".to_string()))
                 });
 
-            let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(mock_executor),
                 Arc::new(MockConnectionStore::new()),
-                cache,
                 tx,
             );
 

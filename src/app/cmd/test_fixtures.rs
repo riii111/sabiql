@@ -7,7 +7,6 @@ use std::time::{Duration, Instant};
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
-use crate::cmd::cache::TtlCache;
 use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::effect::Effect;
 use crate::cmd::runner::{ConnectionDeps, EffectRunner, ErDeps, QueryDeps, UtilityDeps};
@@ -274,14 +273,12 @@ pub fn make_runner(
     metadata_provider: Arc<dyn MetadataProvider>,
     query_executor: Arc<dyn QueryExecutor>,
     connection_store: Arc<dyn ConnectionStore>,
-    cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
 ) -> EffectRunner {
     make_runner_with_dsn_and_cached_result_exporter_and_probe(
         metadata_provider,
         query_executor,
         connection_store,
-        cache,
         action_tx,
         Arc::new(NoopDsnBuilder),
         Arc::new(NoopMySqlConnectionProbe),
@@ -293,7 +290,6 @@ pub fn make_runner_with_cached_result_exporter(
     metadata_provider: Arc<dyn MetadataProvider>,
     query_executor: Arc<dyn QueryExecutor>,
     connection_store: Arc<dyn ConnectionStore>,
-    cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
     cached_result_exporter: Arc<dyn CachedResultExporter>,
 ) -> EffectRunner {
@@ -301,7 +297,6 @@ pub fn make_runner_with_cached_result_exporter(
         metadata_provider,
         query_executor,
         connection_store,
-        cache,
         action_tx,
         Arc::new(NoopDsnBuilder),
         Arc::new(NoopMySqlConnectionProbe),
@@ -313,7 +308,6 @@ pub fn make_runner_with_dsn(
     metadata_provider: Arc<dyn MetadataProvider>,
     query_executor: Arc<dyn QueryExecutor>,
     connection_store: Arc<dyn ConnectionStore>,
-    cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
     dsn_builder: Arc<dyn DsnBuilder>,
 ) -> EffectRunner {
@@ -321,7 +315,6 @@ pub fn make_runner_with_dsn(
         metadata_provider,
         query_executor,
         connection_store,
-        cache,
         action_tx,
         dsn_builder,
         Arc::new(NoopMySqlConnectionProbe),
@@ -332,7 +325,6 @@ pub fn make_runner_with_dsn_and_probe(
     metadata_provider: Arc<dyn MetadataProvider>,
     query_executor: Arc<dyn QueryExecutor>,
     connection_store: Arc<dyn ConnectionStore>,
-    cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
     dsn_builder: Arc<dyn DsnBuilder>,
     mysql_connection_probe: Arc<dyn MySqlConnectionProbe>,
@@ -341,7 +333,6 @@ pub fn make_runner_with_dsn_and_probe(
         metadata_provider,
         query_executor,
         connection_store,
-        cache,
         action_tx,
         dsn_builder,
         mysql_connection_probe,
@@ -353,7 +344,6 @@ fn make_runner_with_dsn_and_cached_result_exporter_and_probe(
     metadata_provider: Arc<dyn MetadataProvider>,
     query_executor: Arc<dyn QueryExecutor>,
     connection_store: Arc<dyn ConnectionStore>,
-    cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
     dsn_builder: Arc<dyn DsnBuilder>,
     mysql_connection_probe: Arc<dyn MySqlConnectionProbe>,
@@ -384,7 +374,6 @@ fn make_runner_with_dsn_and_cached_result_exporter_and_probe(
             folder_opener: Arc::new(NoopFolderOpener),
         },
         Arc::new(NoopSettingsStore),
-        cache,
         action_tx,
     )
 }
