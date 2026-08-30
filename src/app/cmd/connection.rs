@@ -1139,9 +1139,7 @@ mod tests {
 
     mod load_connections {
         use super::*;
-        use crate::cmd::runner::{
-            ConnectionDeps, EffectRunner, ErDeps, QueryDeps, SettingsDeps, UtilityDeps,
-        };
+        use crate::cmd::runner::{ConnectionDeps, EffectRunner, ErDeps, QueryDeps, UtilityDeps};
 
         #[tokio::test]
         async fn error_returns_empty_connections_list() {
@@ -1212,9 +1210,7 @@ mod tests {
                     clipboard: Arc::new(test_fixtures::NoopClipboardWriter),
                     folder_opener: Arc::new(test_fixtures::NoopFolderOpener),
                 },
-                SettingsDeps {
-                    settings_store: Arc::new(test_fixtures::NoopSettingsStore),
-                },
+                Arc::new(test_fixtures::NoopSettingsStore),
                 cache,
                 tx,
             );

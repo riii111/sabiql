@@ -26,9 +26,7 @@ use sabiql_app::cmd::cli_sqlite::{activate_cli_sqlite_connection, resolve_cli_sq
 use sabiql_app::cmd::completion_engine::CompletionEngine;
 use sabiql_app::cmd::effect::Effect;
 use sabiql_app::cmd::render_schedule::next_animation_deadline;
-use sabiql_app::cmd::runner::{
-    ConnectionDeps, EffectRunner, ErDeps, QueryDeps, SettingsDeps, UtilityDeps,
-};
+use sabiql_app::cmd::runner::{ConnectionDeps, EffectRunner, ErDeps, QueryDeps, UtilityDeps};
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::input_mode::InputMode;
 use sabiql_app::ports::outbound::{
@@ -163,9 +161,7 @@ async fn main() -> Result<()> {
             clipboard: Arc::new(ArboardClipboard),
             folder_opener: Arc::new(NativeFolderOpener),
         },
-        SettingsDeps {
-            settings_store: Arc::clone(&settings_store) as _,
-        },
+        Arc::clone(&settings_store) as _,
         metadata_cache.clone(),
         action_tx.clone(),
     );
