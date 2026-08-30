@@ -85,21 +85,17 @@ pub(super) fn mysql_connection_completion_effects(state: &mut AppState, dsn: &st
     termination_effects(&state.query, effects)
 }
 
-pub(super) fn save_current_cache(state: &AppState) -> ConnectionCache {
-    state.session.to_cache(
-        state.ui.explorer_selected(),
-        state.ui.inspector_tab(),
-        state.query.current_result().cloned(),
-        state.query.pagination.clone(),
-    )
-}
-
 pub(super) fn save_current_connection_cache(state: &mut AppState) {
     let Some(current_id) = state.session.active_connection_id().cloned() else {
         return;
     };
 
-    let cache = save_current_cache(state);
+    let cache = state.session.to_cache(
+        state.ui.explorer_selected(),
+        state.ui.inspector_tab(),
+        state.query.current_result().cloned(),
+        state.query.pagination.clone(),
+    );
     state.connection_caches.save(&current_id, cache);
 }
 
