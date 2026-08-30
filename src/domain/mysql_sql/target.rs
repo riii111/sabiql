@@ -79,24 +79,45 @@ pub(super) fn identifier_at(
         index += 1;
     }
     let first_token = tokens.get(index)?;
-    let first = match &first_token.kind {
-        TokenKind::Word(_) => first_token.text.clone(),
-        TokenKind::Identifier(identifier) => identifier.clone(),
-        _ => return None,
-    };
+    let first = identifier_text(first_token)?;
     if matches!(
         tokens.get(index + 1).map(|token| &token.kind),
         Some(TokenKind::Symbol('.'))
     ) {
         let second_token = tokens.get(index + 2)?;
-        let second = match &second_token.kind {
-            TokenKind::Word(_) => second_token.text.clone(),
-            TokenKind::Identifier(identifier) => identifier.clone(),
-            _ => return None,
-        };
-        return Some((second, Some(first), index + 3));
+        let second = identifier_text(second_token)?;
+        let next = index + 3;
+        if has_unexpected_identifier_boundary(tokens, next) {
+            return None;
+        }
+        return Some((second, Some(first), next));
     }
-    Some((first, None, index + 1))
+    let next = index + 1;
+    if has_unexpected_identifier_boundary(tokens, next) {
+        return None;
+    }
+    Some((first, None, next))
+}
+
+fn has_unexpected_identifier_boundary(tokens: &[Token], index: usize) -> bool {
+    tokens.get(index).is_some_and(|token| match &token.kind {
+        TokenKind::Symbol(symbol) => !matches!(*symbol, '(' | ';'),
+        _ => false,
+    })
+}
+
+fn identifier_text(token: &Token) -> Option<String> {
+    match &token.kind {
+        TokenKind::Word(_) => Some(token.text.clone()),
+        TokenKind::Identifier(identifier)
+            if identifier
+                .chars()
+                .all(|character| character != '\0' && character <= '\u{FFFF}') =>
+        {
+            Some(identifier.clone())
+        }
+        _ => None,
+    }
 }
 
 pub(super) fn skip_mysql_modifiers(

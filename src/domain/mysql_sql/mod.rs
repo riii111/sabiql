@@ -266,11 +266,17 @@ fn mysql_target_key(
         1 | 2 => database.to_lowercase(),
         _ => return None,
     };
-    Some(format!(
-        "{}:{}",
-        database,
-        statement.target.as_deref()?.to_ascii_uppercase()
-    ))
+    let target = statement.target.as_deref()?;
+    let target = match lower_case_table_names {
+        0 => target.to_string(),
+        1 | 2 => target.to_lowercase(),
+        _ => return None,
+    };
+    Some(format!("{database}:{target}"))
+}
+
+fn mysql_names_equal(left: &str, right: &str) -> bool {
+    left.to_uppercase() == right.to_uppercase()
 }
 
 fn validate_mysql_submission_state(
@@ -303,7 +309,7 @@ fn validate_mysql_submission_state(
                     .target
                     .as_deref()
                     .ok_or_else(|| "MySQL SAVEPOINT name is ambiguous".to_string())?;
-                savepoints.retain(|current| !current.eq_ignore_ascii_case(name));
+                savepoints.retain(|current| !mysql_names_equal(current, name));
                 savepoints.push(name.to_string());
             }
             MySqlStatementKind::RollbackToSavepoint => {
@@ -318,7 +324,7 @@ fn validate_mysql_submission_state(
                     .ok_or_else(|| "MySQL SAVEPOINT name is ambiguous".to_string())?;
                 let Some(index) = savepoints
                     .iter()
-                    .position(|current| current.eq_ignore_ascii_case(name))
+                    .position(|current| mysql_names_equal(current, name))
                 else {
                     return Err("MySQL ROLLBACK TO SAVEPOINT name is unknown".to_string());
                 };
@@ -336,7 +342,7 @@ fn validate_mysql_submission_state(
                     .ok_or_else(|| "MySQL SAVEPOINT name is ambiguous".to_string())?;
                 let Some(index) = savepoints
                     .iter()
-                    .position(|current| current.eq_ignore_ascii_case(name))
+                    .position(|current| mysql_names_equal(current, name))
                 else {
                     return Err("MySQL RELEASE SAVEPOINT name is unknown".to_string());
                 };
@@ -560,6 +566,88 @@ mod behavior_tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn preserves_utf8_unquoted_and_backtick_targets() {
+        let cases = [
+            ("UPDATE café SET value = 1", None, "café"),
+            ("UPDATE 1é SET value = 1", None, "1é"),
+            ("UPDATE 1abc SET value = 1", None, "1abc"),
+            ("UPDATE 1_foo SET value = 1", None, "1_foo"),
+            ("UPDATE 1$foo SET value = 1", None, "1$foo"),
+            ("UPDATE 1$é SET value = 1", None, "1$é"),
+            (
+                "UPDATE 1abc.éléments SET value = 1",
+                Some("1abc"),
+                "éléments",
+            ),
+            ("UPDATE 1$foo.café SET value = 1", Some("1$foo"), "café"),
+            ("UPDATE 1_foo.items SET value = 1", Some("1_foo"), "items"),
+            (
+                "UPDATE café.éléments SET value = 1",
+                Some("café"),
+                "éléments",
+            ),
+            ("UPDATE $items SET value = 1", None, "$items"),
+            (
+                r"UPDATE `café`.`éléments` SET value = 1",
+                Some("café"),
+                "éléments",
+            ),
+        ];
+
+        for (sql, expected_database, expected_target) in cases {
+            let statement = classify_mysql_statement(sql).expect(sql);
+            assert_eq!(
+                statement.target_database.as_deref(),
+                expected_database,
+                "{sql}"
+            );
+            assert_eq!(statement.target(), Some(expected_target), "{sql}");
+        }
+
+        assert!(classify_mysql_statement("UPDATE 123 SET value = 1").is_err());
+    }
+
+    #[test]
+    fn rejects_mysql_numeric_literals_as_mutation_targets() {
+        for sql in [
+            "UPDATE 1e3 SET value = 1",
+            "UPDATE 1e+3 SET value = 1",
+            "UPDATE 1e-3 SET value = 1",
+            "UPDATE 0x01AF SET value = 1",
+            "UPDATE 0b01 SET value = 1",
+        ] {
+            assert!(classify_mysql_statement(sql).is_err(), "{sql}");
+        }
+    }
+
+    #[test]
+    fn preserves_utf8_targets_around_comments_and_executable_comments() {
+        for sql in [
+            "UPDATE /* ignored café */ café SET value = 1",
+            "UPDATE café -- ignored comment\n SET value = 1",
+            "/*!80000 UPDATE café SET value = 1 */",
+            "CREATE TABLE café (id INT) /*!40100 DEFAULT CHARSET=utf8mb4 */",
+            "DROP TABLE café /*!80000 RESTRICT */",
+        ] {
+            let statement = classify_mysql_statement(sql).expect(sql);
+            assert_eq!(statement.target(), Some("café"), "{sql}");
+        }
+
+        for sql in [
+            "UPDATE café--x\n SET value = 1",
+            "UPDATE 1e+foo SET value = 1",
+        ] {
+            assert!(classify_mysql_statement(sql).is_err(), "{sql}");
+        }
+    }
+
+    #[test]
+    fn rejects_non_bmp_backtick_targets_fail_closed() {
+        assert!(classify_mysql_statement("UPDATE `caf😀` SET value = 1").is_err());
+        assert!(classify_mysql_statement("UPDATE caf😀 SET value = 1").is_err());
     }
 
     #[test]
@@ -1027,6 +1115,88 @@ mod behavior_tests {
                 1,
             )
             .is_err()
+        );
+    }
+
+    #[test]
+    fn qualified_utf8_mysql_mutations_follow_selected_database_case_rules() {
+        let exact = classify_mysql_multi_statement_with_lower_case_table_names(
+            "UPDATE äpp.éléments SET value = 1",
+            Some("äpp"),
+            0,
+        )
+        .unwrap();
+        assert_eq!(exact[0].target_database.as_deref(), Some("äpp"));
+        assert_eq!(exact[0].target(), Some("éléments"));
+
+        for lower_case_table_names in [1, 2] {
+            let statements = classify_mysql_multi_statement_with_lower_case_table_names(
+                "UPDATE ÄPP.éléments SET value = 1",
+                Some("äpp"),
+                lower_case_table_names,
+            )
+            .unwrap();
+            assert_eq!(statements[0].target_database.as_deref(), Some("ÄPP"));
+            assert_eq!(statements[0].target(), Some("éléments"));
+        }
+
+        assert!(
+            classify_mysql_multi_statement_with_lower_case_table_names(
+                "UPDATE ÄPP.éléments SET value = 1",
+                Some("äpp"),
+                0,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn temporary_mysql_table_keys_follow_unicode_table_case_rules() {
+        assert!(
+            classify_mysql_multi_statement_with_lower_case_table_names(
+                "CREATE TEMPORARY TABLE café (id INT); DROP TEMPORARY TABLE CAFÉ",
+                Some("app"),
+                0,
+            )
+            .is_err()
+        );
+
+        for lower_case_table_names in [1, 2] {
+            assert!(
+                classify_mysql_multi_statement_with_lower_case_table_names(
+                    "CREATE TEMPORARY TABLE café (id INT); DROP TEMPORARY TABLE CAFÉ",
+                    Some("app"),
+                    lower_case_table_names,
+                )
+                .is_ok()
+            );
+        }
+
+        assert!(
+            classify_mysql_multi_statement_with_lower_case_table_names(
+                "CREATE TEMPORARY TABLE items (id INT); CREATE TEMPORARY TABLE ITEMS (id INT); DROP TEMPORARY TABLE items; DROP TEMPORARY TABLE ITEMS",
+                Some("app"),
+                0,
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn unicode_savepoints_are_case_insensitive_in_transactions() {
+        assert!(
+            classify_mysql_multi_statement(
+                "START TRANSACTION; SAVEPOINT café; ROLLBACK TO SAVEPOINT CAFÉ; COMMIT",
+                Some("app"),
+            )
+            .is_ok()
+        );
+        assert!(
+            classify_mysql_multi_statement(
+                "START TRANSACTION; SAVEPOINT ς; ROLLBACK TO SAVEPOINT σ; COMMIT",
+                Some("app"),
+            )
+            .is_ok()
         );
     }
 
