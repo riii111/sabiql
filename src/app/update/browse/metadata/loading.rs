@@ -146,7 +146,7 @@ pub(super) fn reduce_loading(
                 return DispatchResult::handled();
             }
             if let Some(dsn) = state.session.dsn().map(String::from) {
-                state.sql_modal.reset_prefetch();
+                state.table_prefetch.reset_prefetch();
                 state.er_preparation.reset();
                 state.ui.reset_er_picker_request();
                 state.messages.clear();

@@ -12,11 +12,12 @@ fn er_waiting_progress() {
         "public.comments".to_string(),
         "public.posts".to_string(),
     ]);
-    state.er_preparation.on_table_cached("public.users");
     state
-        .er_preparation
-        .queue_pending_table("public.comments".to_string());
-    state.er_preparation.start_fetching("public.posts");
+        .table_prefetch
+        .queue_table_prefetch("public.comments".to_string());
+    state
+        .table_prefetch
+        .start_table_prefetch("public.posts".to_string());
 
     let output = render_to_string(&mut terminal, &mut state);
 

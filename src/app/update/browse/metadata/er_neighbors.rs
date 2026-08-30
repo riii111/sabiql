@@ -9,7 +9,7 @@ use crate::update::helpers::reject_pending_mysql_connection_probe;
 use super::check_er_completion;
 
 pub(super) fn expand_prefetch_with_fk_neighbors(state: &AppState, run_id: u64) -> Vec<Effect> {
-    if !state.sql_modal.is_current_prefetch_run(run_id) {
+    if !state.table_prefetch.is_current_prefetch_run(run_id) {
         return vec![];
     }
     let seed_tables = state.er_preparation.seed_tables().to_vec();
@@ -35,7 +35,7 @@ pub(super) fn reduce_er_neighbors(
             if reject_pending_mysql_connection_probe(state) {
                 return DispatchResult::handled();
             }
-            if !state.sql_modal.is_current_prefetch_run(*run_id) {
+            if !state.table_prefetch.is_current_prefetch_run(*run_id) {
                 return DispatchResult::handled();
             }
             state.er_preparation.mark_fk_expanded();
@@ -46,12 +46,9 @@ pub(super) fn reduce_er_neighbors(
             }
 
             for qualified_name in tables {
-                let is_new_pending = state
-                    .er_preparation
+                state
+                    .table_prefetch
                     .queue_pending_table(qualified_name.clone());
-                if is_new_pending {
-                    state.sql_modal.queue_table_prefetch(qualified_name.clone());
-                }
             }
             DispatchResult::handled_with(vec![Effect::SchedulePrefetchQueueProcessing {
                 run_id: *run_id,

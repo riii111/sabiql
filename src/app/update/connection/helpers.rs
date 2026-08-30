@@ -9,7 +9,7 @@ use crate::update::query_context::termination_effects;
 fn reset_connection_scoped_state(state: &mut AppState) {
     state.query_history_picker.reset();
     state.sql_modal.reset_completion();
-    state.sql_modal.reset_prefetch();
+    state.table_prefetch.reset_prefetch();
     state.explain.reset_for_connection_change();
     state.er_preparation.reset();
     state.ui.reset_er_picker_request();
@@ -114,7 +114,7 @@ pub(super) fn cancel_connection_task_effects(state: &mut AppState) -> Vec<Effect
             });
     state.session.clear_mysql_connection_probe();
     if had_pending_probe {
-        state.sql_modal.reset_prefetch();
+        state.table_prefetch.reset_prefetch();
         state.er_preparation.reset();
     }
 

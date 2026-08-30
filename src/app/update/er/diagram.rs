@@ -23,7 +23,7 @@ pub(super) fn reduce_diagram_lifecycle(
             }
             state.er_preparation.mark_idle();
             // Reset so next ErOpenDiagram re-evaluates target_tables from scratch.
-            state.sql_modal.invalidate_prefetch();
+            state.table_prefetch.invalidate_prefetch();
             state.messages.set_success_at(
                 format!(
                     "✓ Opened {path} ({table_count}/{total_tables} tables) — Stale? Press r to reload"
@@ -63,7 +63,7 @@ pub(super) fn reduce_diagram_lifecycle(
                 return DispatchResult::handled();
             }
 
-            state.sql_modal.invalidate_prefetch();
+            state.table_prefetch.invalidate_prefetch();
             let run_id = state.er_preparation.start_waiting_run();
             state
                 .messages

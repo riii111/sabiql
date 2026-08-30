@@ -50,7 +50,7 @@ pub async fn run(
             };
 
             if !missing.is_empty() {
-                if let Some(run_id) = state.sql_modal.active_prefetch_run_id() {
+                if let Some(run_id) = state.table_prefetch.active_prefetch_run_id() {
                     for action in missing.into_iter().filter_map(|qualified_name| {
                         qualified_name.split_once('.').map(|(schema, table)| {
                             Action::PrefetchTableDetail {

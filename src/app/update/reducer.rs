@@ -1782,16 +1782,16 @@ mod tests {
             state
                 .session
                 .set_metadata(Some(Arc::new(DatabaseMetadata::new("test".to_string()))));
-            let _ = state.sql_modal.begin_er_prefetch();
+            let _ = state.table_prefetch.begin_er_prefetch();
             state
-                .er_preparation
-                .queue_pending_table("public.users".to_string());
+                .table_prefetch
+                .queue_table_prefetch("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
 
             assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
-            assert!(state.sql_modal.active_prefetch_run_id().is_none());
+            assert!(state.table_prefetch.active_prefetch_run_id().is_none());
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
         }
@@ -1803,12 +1803,12 @@ mod tests {
             state
                 .session
                 .set_metadata(Some(Arc::new(DatabaseMetadata::new("test".to_string()))));
-            let _ = state.sql_modal.begin_er_prefetch();
+            let _ = state.table_prefetch.begin_er_prefetch();
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
 
-            assert!(state.sql_modal.active_prefetch_run_id().is_none());
+            assert!(state.table_prefetch.active_prefetch_run_id().is_none());
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
         }
@@ -1833,7 +1833,7 @@ mod tests {
         fn no_metadata_returns_error() {
             let mut state = create_test_state();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let _ = state.sql_modal.begin_er_prefetch();
+            let _ = state.table_prefetch.begin_er_prefetch();
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
@@ -1879,9 +1879,9 @@ mod tests {
         fn emits_cache_effect() {
             let mut state = create_test_state();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let run_id = state.sql_modal.begin_er_prefetch();
+            let run_id = state.table_prefetch.begin_er_prefetch();
             state
-                .sql_modal
+                .table_prefetch
                 .start_table_prefetch("public.users".to_string());
             let now = Instant::now();
 
@@ -1903,16 +1903,16 @@ mod tests {
                 effects[0],
                 Effect::CacheTableInCompletionEngine { .. }
             ));
-            assert!(!state.sql_modal.is_table_prefetching("public.users"));
+            assert!(!state.table_prefetch.is_table_prefetching("public.users"));
         }
 
         #[test]
         fn with_queue_returns_process_effect() {
             let mut state = create_test_state();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let run_id = state.sql_modal.begin_er_prefetch();
+            let run_id = state.table_prefetch.begin_er_prefetch();
             state
-                .sql_modal
+                .table_prefetch
                 .queue_table_prefetch("public.orders".to_string());
             let now = Instant::now();
 
@@ -2889,6 +2889,7 @@ mod tests {
         use super::*;
         use crate::domain::DatabaseMetadata;
         use crate::model::er_state::ErStatus;
+        use crate::model::table_prefetch::FailedPrefetchEntry;
 
         fn state_with_metadata() -> AppState {
             let mut state = create_test_state();
@@ -3084,7 +3085,7 @@ mod tests {
         fn target_tables_survive_er_open() {
             let mut state = state_with_metadata();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let _ = state.sql_modal.begin_er_prefetch();
+            let _ = state.table_prefetch.begin_er_prefetch();
             state
                 .er_preparation
                 .set_targets(vec!["public.users".to_string()]);
@@ -3133,8 +3134,8 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(state.sql_modal.is_prefetch_queued("public.users"));
-            assert!(state.sql_modal.is_prefetch_queued("public.posts"));
+            assert!(state.table_prefetch.is_prefetch_queued("public.users"));
+            assert!(state.table_prefetch.is_prefetch_queued("public.posts"));
             assert!(state.er_preparation.fk_expanded());
         }
 
@@ -3142,7 +3143,7 @@ mod tests {
         fn prefetch_complete_dispatches_er_generate() {
             let mut state = state_with_metadata();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let run_id = state.sql_modal.begin_er_prefetch();
+            let run_id = state.table_prefetch.begin_er_prefetch();
             state.er_preparation.mark_waiting_for_test();
             state
                 .er_preparation
@@ -3173,17 +3174,21 @@ mod tests {
         fn prefetch_complete_with_failures_does_not_auto_open() {
             let mut state = state_with_metadata();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let run_id = state.sql_modal.begin_er_prefetch();
+            let now = Instant::now();
+            let run_id = state.table_prefetch.begin_er_prefetch();
             state.er_preparation.mark_waiting_for_test();
             state
                 .er_preparation
                 .begin_all_prefetch(["public.posts".to_string(), "public.users".to_string()]);
             state.er_preparation.mark_fk_expanded();
-            state
-                .er_preparation
-                .on_table_failed("public.posts", "timeout".to_string());
-            let now = Instant::now();
-
+            state.table_prefetch.fail_table_prefetch(
+                "public.posts".to_string(),
+                FailedPrefetchEntry {
+                    failed_at: now,
+                    error: "timeout".to_string(),
+                    retry_count: 3,
+                },
+            );
             let effects = reduce(
                 &mut state,
                 Action::TableDetailAlreadyCached {
