@@ -189,25 +189,6 @@ jobs:
           make install
           PATH="$HOME/.local/sqlite-minimum/bin:$PATH" sqlite3 --version
           PATH="$HOME/.local/sqlite-minimum/bin:$PATH" cargo nextest run -p sabiql-infra
-      - name: Reject SQLite 3.41.0
-        run: |
-          curl --fail --location --retry 3 \
-            https://www.sqlite.org/2023/sqlite-autoconf-3410000.tar.gz \
-            --output sqlite-autoconf-3410000.tar.gz
-          echo "49f77ac53fd9aa5d7395f2499cb816410e5621984a121b858ccca05310b05c70  sqlite-autoconf-3410000.tar.gz" | sha256sum --check --status
-          tar -xzf sqlite-autoconf-3410000.tar.gz
-          cd sqlite-autoconf-3410000
-          ./configure --prefix="$HOME/.local/sqlite-below-minimum"
-          make -j2
-          make install
-          export PATH="$HOME/.local/sqlite-below-minimum/bin:$PATH"
-          sqlite3 --version
-          SABIQL_EXPECT_SQLITE_SAFE_MODE_REJECTION=1 cargo test -p sabiql-infra \
-            adapters::sqlite::metadata::catalog::tests::metadata::rejects_sqlite_before_safe_mode_minimum_at_connection \
-            -- --exact
-          cargo test -p sabiql-app \
-            model::connection::error::tests::error_info::from_db_operation_error_classifies_sqlite_safe_mode_requirement \
-            -- --exact
       - name: Test system SQLite
         run: |
           sqlite3 --version

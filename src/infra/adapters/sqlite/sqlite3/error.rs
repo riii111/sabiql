@@ -1,4 +1,4 @@
-use crate::app::ports::outbound::{DatabaseCli, DbOperationError};
+use crate::app::ports::outbound::{DatabaseCli, DbOperationError, SqliteCompatibilityKind};
 
 pub(in crate::adapters::sqlite) fn classify_cli_spawn_error(
     error: std::io::Error,
@@ -24,6 +24,10 @@ pub(in crate::adapters::sqlite) fn classify_query_error(stderr: &str) -> DbOpera
 
 fn classify_by_stderr(details: &str) -> DbOperationError {
     let lower = details.to_ascii_lowercase();
+
+    if is_safe_mode_unavailable(&lower) {
+        return safe_mode_required_error(details);
+    }
 
     // Keep table-list fallback in SqliteAdapter::list_tables working.
     if lower.contains("pragma_table_list") {
@@ -53,6 +57,22 @@ fn classify_by_stderr(details: &str) -> DbOperationError {
     DbOperationError::QueryFailed(details.to_string())
 }
 
+fn is_safe_mode_unavailable(lower: &str) -> bool {
+    lower.contains("unknown option: -safe")
+        || lower.contains("unknown option: --safe")
+        || lower.contains("unrecognized option: '-safe'")
+        || lower.contains("unrecognized option: '--safe'")
+}
+
+fn safe_mode_required_error(details: &str) -> DbOperationError {
+    DbOperationError::UnsupportedOperationWithSqliteKind {
+        kind: SqliteCompatibilityKind::SafeMode,
+        details: format!(
+            "sqlite3 3.41.1 or later is required for safe SQLite execution ({details})"
+        ),
+    }
+}
+
 fn is_locked(lower: &str) -> bool {
     lower.contains("database is locked")
         || lower.contains("database table is locked")
@@ -78,6 +98,7 @@ mod tests {
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum ClassifiedKind {
+        SafeMode,
         PermissionDenied,
         ForeignKeyViolation,
         UniqueViolation,
@@ -89,6 +110,10 @@ mod tests {
 
     fn classified_kind(error: &DbOperationError) -> ClassifiedKind {
         match error {
+            DbOperationError::UnsupportedOperationWithSqliteKind {
+                kind: SqliteCompatibilityKind::SafeMode,
+                ..
+            } => ClassifiedKind::SafeMode,
             DbOperationError::PermissionDenied(_) => ClassifiedKind::PermissionDenied,
             DbOperationError::ForeignKeyViolation(_) => ClassifiedKind::ForeignKeyViolation,
             DbOperationError::UniqueViolation(_) => ClassifiedKind::UniqueViolation,
@@ -103,6 +128,11 @@ mod tests {
         use super::*;
 
         #[rstest]
+        #[case(
+            "sqlite3: Error: unknown option: -safe\nUse -help for a list of options.",
+            ClassifiedKind::SafeMode
+        )]
+        #[case("sqlite3: unrecognized option: '--safe'", ClassifiedKind::SafeMode)]
         #[case("Error: database is locked", ClassifiedKind::LockTimeout)]
         #[case(
             "Runtime error: database is locked (SQLITE_BUSY)",

@@ -1,4 +1,4 @@
-use crate::app::ports::outbound::{DbOperationError, MetadataProvider, SqliteCompatibilityKind};
+use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
 use crate::domain::{Schema, SqlitePathError, TableKind, TableKindInfo};
 
 use super::super::super::sqlite3::metadata::RawTable;
@@ -40,26 +40,6 @@ mod metadata {
     }
 
     #[tokio::test]
-    async fn rejects_sqlite_before_safe_mode_minimum_at_connection() {
-        let (_dir, dsn) = test_support::make_sqlite_db("");
-        let adapter = SqliteAdapter::new();
-        let expects_rejection =
-            std::env::var_os("SABIQL_EXPECT_SQLITE_SAFE_MODE_REJECTION").is_some();
-
-        match adapter.fetch_metadata(&dsn).await {
-            Err(DbOperationError::UnsupportedOperationWithSqliteKind {
-                kind: SqliteCompatibilityKind::SafeMode,
-                details,
-            }) if expects_rejection => {
-                assert!(details.contains("3.41.1"));
-                assert!(!details.contains("SQLITE_SAFE_MODE_REQUIRED"));
-            }
-            Ok(_) if !expects_rejection => {}
-            result => panic!("unexpected SQLite safe mode connection result: {result:?}"),
-        }
-    }
-
-    #[tokio::test]
     async fn missing_database_file_returns_error_without_creating_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("missing.db");
@@ -77,13 +57,13 @@ mod metadata {
     }
 
     #[tokio::test]
-    async fn lists_user_tables_in_main_schema() {
+    async fn lists_user_tables_in_main_schema_with_one_process() {
         let (_dir, dsn) = test_support::make_sqlite_db(
             r"
         CREATE TABLE users(id INTEGER PRIMARY KEY AUTOINCREMENT);
         ",
         );
-        let adapter = SqliteAdapter::new();
+        let (adapter, process_counter) = SqliteAdapter::with_process_counter(&dsn);
 
         let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
         let table_names: Vec<_> = metadata
@@ -96,6 +76,7 @@ mod metadata {
         assert_eq!(table_names, vec!["users"]);
         assert_eq!(metadata.table_summaries[0].qualified_name(), "main.users");
         assert!(metadata.table_summaries[0].row_count_estimate.is_none());
+        assert_eq!(process_counter.count(), 1);
     }
 
     #[tokio::test]

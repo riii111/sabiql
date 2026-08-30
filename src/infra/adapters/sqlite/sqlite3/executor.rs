@@ -8,13 +8,11 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::adapters::csv_export::CsvOutputError;
-use crate::app::ports::outbound::{DbOperationError, ExportIoSource, SqliteCompatibilityKind};
+use crate::app::ports::outbound::{DbOperationError, ExportIoSource};
 
 use super::super::path_validation;
 use super::error::{classify_cli_spawn_error, classify_query_error};
 const BUSY_TIMEOUT_MS: u64 = 5_000;
-
-const SQLITE_SAFE_MODE_MIN_VERSION: SqliteVersion = SqliteVersion::new(3, 41, 1);
 
 #[derive(Debug, Clone)]
 pub(in crate::adapters::sqlite) struct SqliteCli {
@@ -25,13 +23,6 @@ struct SqliteOutput {
     status: ExitStatus,
     stdout: String,
     stderr: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct SqliteVersion {
-    major: u16,
-    minor: u16,
-    patch: u16,
 }
 
 #[cfg(any(windows, test))]
@@ -56,37 +47,6 @@ impl SqliteCli {
             stdout => stdout,
         };
         serde_json::from_str(stdout).map_err(DbOperationError::from)
-    }
-
-    pub(in crate::adapters::sqlite) async fn ensure_safe_mode_supported(
-        &self,
-    ) -> Result<(), DbOperationError> {
-        let mut cmd = Command::new("sqlite3");
-        Self::apply_initialization_file(&mut cmd);
-        let output = cmd
-            .arg("--safe")
-            .arg("--version")
-            .output()
-            .await
-            .map_err(classify_cli_spawn_error)?;
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let version = SqliteVersion::parse(&stdout).ok_or_else(|| {
-            safe_mode_required_error("could not determine the installed sqlite3 version")
-        })?;
-
-        if output.status.success() && version >= SQLITE_SAFE_MODE_MIN_VERSION {
-            return Ok(());
-        }
-
-        let details = if output.status.success() {
-            format!(
-                "found sqlite3 {}.{}.{}",
-                version.major, version.minor, version.patch
-            )
-        } else {
-            "sqlite3 --version failed".to_string()
-        };
-        Err(safe_mode_required_error(&details))
     }
 
     pub(in crate::adapters::sqlite) async fn execute_csv(
@@ -440,36 +400,6 @@ impl WindowsCsvNewlineNormalizer {
     }
 }
 
-impl SqliteVersion {
-    const fn new(major: u16, minor: u16, patch: u16) -> Self {
-        Self {
-            major,
-            minor,
-            patch,
-        }
-    }
-
-    fn parse(output: &str) -> Option<Self> {
-        let mut components = output.split_whitespace().next()?.split('.');
-        let major = components.next()?.parse().ok()?;
-        let minor = components.next()?.parse().ok()?;
-        let patch = components.next()?.parse().ok()?;
-        components
-            .next()
-            .is_none()
-            .then_some(Self::new(major, minor, patch))
-    }
-}
-
-fn safe_mode_required_error(details: &str) -> DbOperationError {
-    DbOperationError::UnsupportedOperationWithSqliteKind {
-        kind: SqliteCompatibilityKind::SafeMode,
-        details: format!(
-            "sqlite3 3.41.1 or later is required for safe SQLite execution ({details})"
-        ),
-    }
-}
-
 async fn write_sql_to_stdin(
     stdin: Option<tokio::process::ChildStdin>,
     sql: &str,
@@ -809,40 +739,6 @@ esac
 
     mod dsn_validation {
         use super::*;
-
-        #[rstest::rstest]
-        #[case("3.41.1 2023-03-10 12:13:52", Some(SqliteVersion::new(3, 41, 1)))]
-        #[case("3.40.1", Some(SqliteVersion::new(3, 40, 1)))]
-        #[case("3.41", None)]
-        #[case("sqlite 3.41.1", None)]
-        fn parses_sqlite_cli_version(
-            #[case] output: &str,
-            #[case] expected: Option<SqliteVersion>,
-        ) {
-            assert_eq!(SqliteVersion::parse(output), expected);
-        }
-
-        #[test]
-        fn safe_mode_requires_sqlite_3_41_1_or_later() {
-            assert!(SqliteVersion::new(3, 41, 0) < SQLITE_SAFE_MODE_MIN_VERSION);
-            assert!(SqliteVersion::new(3, 41, 1) >= SQLITE_SAFE_MODE_MIN_VERSION);
-        }
-
-        #[test]
-        fn safe_mode_required_error_keeps_details_without_marker() {
-            let error = safe_mode_required_error("found sqlite3 3.41.0");
-
-            assert!(matches!(
-                &error,
-                DbOperationError::UnsupportedOperationWithSqliteKind {
-                    kind: SqliteCompatibilityKind::SafeMode,
-                    details,
-                    } if details == "sqlite3 3.41.1 or later is required for safe SQLite execution (found sqlite3 3.41.0)"
-            ));
-            assert_eq!(error.summary(), "Unsupported operation");
-            assert_eq!(error.hint(), "Use a supported operation for this database");
-            assert!(!error.user_message().contains("SQLITE_SAFE_MODE_REQUIRED"));
-        }
 
         #[test]
         fn empty_initialization_file_uses_platform_null_device() {
