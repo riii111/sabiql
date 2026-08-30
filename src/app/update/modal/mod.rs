@@ -12,7 +12,11 @@ use crate::model::app_state::AppState;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn dispatch_modal(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub(crate) fn dispatch_modal(
+    state: &mut AppState,
+    action: &Action,
+    now: Instant,
+) -> DispatchResult {
     base::reduce_base_lifecycle(state, action, now)
         .or_else(|| settings::reduce_settings(state, action, now))
         .or_else(|| help::reduce_help(state, action, now))

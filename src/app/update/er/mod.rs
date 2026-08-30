@@ -10,7 +10,7 @@ use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 
-pub fn dispatch_er(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub(crate) fn dispatch_er(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     if matches!(
         action,
         Action::ErGenerateFromCache
