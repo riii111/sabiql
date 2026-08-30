@@ -4129,6 +4129,64 @@ mod tests {
             assert!(e.has_cached_table("public.t2"));
             assert!(e.has_cached_table("public.t3"));
         }
+
+        #[test]
+        fn expanding_cache_preserves_entries_and_uses_new_capacity() {
+            let mut e = CompletionEngine::new_with_capacity(2);
+
+            e.cache_table_detail(
+                "public.t1".to_string(),
+                create_table("public", "t1", &["id"]),
+            );
+            e.cache_table_detail(
+                "public.t2".to_string(),
+                create_table("public", "t2", &["id"]),
+            );
+
+            e.resize_cache(5);
+
+            for name in ["t3", "t4", "t5", "t6"] {
+                e.cache_table_detail(
+                    format!("public.{name}"),
+                    create_table("public", name, &["id"]),
+                );
+            }
+
+            assert_eq!(e.table_details_iter().count(), 5);
+            assert!(!e.has_cached_table("public.t1"));
+            for name in ["t2", "t3", "t4", "t5", "t6"] {
+                assert!(e.has_cached_table(&format!("public.{name}")));
+            }
+        }
+
+        #[test]
+        fn shrinking_cache_evicts_least_recently_used_entries() {
+            let mut e = CompletionEngine::new_with_capacity(3);
+
+            for name in ["t1", "t2", "t3"] {
+                e.cache_table_detail(
+                    format!("public.{name}"),
+                    create_table("public", name, &["id"]),
+                );
+            }
+
+            e.resize_cache(2);
+
+            assert_eq!(e.table_details_iter().count(), 2);
+            assert!(!e.has_cached_table("public.t1"));
+            assert!(e.has_cached_table("public.t2"));
+            assert!(e.has_cached_table("public.t3"));
+
+            e.cache_table_detail(
+                "public.t4".to_string(),
+                create_table("public", "t4", &["id"]),
+            );
+
+            assert_eq!(e.table_details_iter().count(), 2);
+            assert!(!e.has_cached_table("public.t2"));
+            assert!(e.has_cached_table("public.t3"));
+            assert!(e.has_cached_table("public.t4"));
+        }
     }
 
     mod statement_scope {
