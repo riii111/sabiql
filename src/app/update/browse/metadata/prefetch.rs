@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
@@ -186,15 +187,22 @@ pub(super) fn reduce_prefetch(
             const MAX_CONCURRENT_PREFETCH: usize = 4;
             let current_in_flight = state.table_prefetch.prefetch_in_flight_count();
             let available_slots = MAX_CONCURRENT_PREFETCH.saturating_sub(current_in_flight);
+            let batch_size = available_slots.min(state.table_prefetch.pending_prefetch_count());
+            let mut processed_tables = HashSet::with_capacity(batch_size);
 
-            let queued_tables: Vec<String> = (0..available_slots)
-                .filter_map(|_| state.table_prefetch.take_next_prefetch())
-                .collect();
             let mut effects = Vec::new();
-            for qualified_name in queued_tables {
-                if let Some((schema, table)) = qualified_name.split_once('.') {
-                    effects.extend(prefetch_table_detail(state, *run_id, schema, table, now));
+            for _ in 0..batch_size {
+                let Some(qualified_name) = state.table_prefetch.take_next_prefetch() else {
+                    break;
+                };
+                if !processed_tables.insert(qualified_name.clone()) {
+                    state.table_prefetch.defer_table_prefetch(qualified_name);
+                    break;
                 }
+                let Some((schema, table)) = qualified_name.split_once('.') else {
+                    continue;
+                };
+                effects.extend(prefetch_table_detail(state, *run_id, schema, table, now));
             }
 
             DispatchResult::handled_with(effects)

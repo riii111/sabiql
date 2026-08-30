@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use crate::model::shared::async_run::AsyncRun;
 
-pub const MAX_PREFETCH_RETRIES: u32 = 3;
+pub(crate) const MAX_PREFETCH_RETRIES: u32 = 3;
 
 #[derive(Debug, Clone)]
 pub struct FailedPrefetchEntry {

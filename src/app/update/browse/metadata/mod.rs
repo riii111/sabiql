@@ -686,6 +686,46 @@ mod tests {
         }
 
         #[test]
+        fn process_queue_keeps_later_table_owned_after_terminal_failure() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let run_id = state.table_prefetch.begin_er_prefetch();
+            state.er_preparation.mark_waiting_for_test();
+            state.er_preparation.mark_fk_expanded();
+            let failed = "public.users".to_string();
+            let remaining = "public.posts".to_string();
+            state.table_prefetch.fail_table_prefetch(
+                failed.clone(),
+                FailedPrefetchEntry {
+                    failed_at: Instant::now(),
+                    error: "timeout".to_string(),
+                    retry_count: MAX_PREFETCH_RETRIES,
+                },
+            );
+            state.table_prefetch.queue_table_prefetch(failed);
+            state.table_prefetch.queue_table_prefetch(remaining.clone());
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::ProcessPrefetchQueue { run_id },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(state.table_prefetch.is_table_prefetching(&remaining));
+            assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
+            assert!(
+                !effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::WriteErFailureLog { .. }))
+            );
+            assert!(!effects.iter().any(|effect| matches!(
+                effect,
+                Effect::DispatchActions(actions)
+                    if actions.iter().any(|action| matches!(action, Action::ErGenerateFromCache))
+            )));
+        }
+
+        #[test]
         fn expired_backoff_proceeds_normally() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.table_prefetch.begin_er_prefetch();

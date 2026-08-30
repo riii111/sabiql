@@ -1157,7 +1157,7 @@ mod tests {
         }
     }
 
-    mod sql_modal_lifecycle {
+    mod table_prefetch_lifecycle {
         use super::*;
 
         #[test]
