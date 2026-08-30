@@ -189,6 +189,12 @@ mod classifier {
     use super::super::*;
 
     #[test]
+    fn splits_mysql_comments_quotes_and_backticks() {
+        let sql = "SELECT 'a;\\'b'; # comment;\n SELECT `semi;colon` /* ; */";
+        assert_eq!(split_mysql_statements(sql).unwrap().len(), 2);
+    }
+
+    #[test]
     fn classified_statement_preserves_its_private_classifier_invariant() {
         let statement = classify_mysql_statement("DROP TABLE users").unwrap();
 
@@ -1027,7 +1033,7 @@ mod transaction {
     }
 
     #[test]
-    fn transaction_modifiers_are_rejected() {
+    fn modifiers_are_rejected() {
         for sql in [
             "START TRANSACTION READ ONLY",
             "COMMIT AND CHAIN",
