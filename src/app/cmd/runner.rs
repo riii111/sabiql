@@ -60,17 +60,13 @@ pub struct UtilityDeps {
     pub folder_opener: Arc<dyn FolderOpener>,
 }
 
-pub struct SettingsDeps {
-    pub settings_store: Arc<dyn SettingsStore>,
-}
-
 pub struct EffectRunner {
     metadata_provider: Arc<dyn MetadataProvider>,
     connection: ConnectionDeps,
     query: QueryDeps,
     er: ErDeps,
     utility: UtilityDeps,
-    settings: SettingsDeps,
+    settings_store: Arc<dyn SettingsStore>,
     metadata_cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
     query_tasks: QueryTaskRegistry,
@@ -88,7 +84,7 @@ impl EffectRunner {
         query: QueryDeps,
         er: ErDeps,
         utility: UtilityDeps,
-        settings: SettingsDeps,
+        settings_store: Arc<dyn SettingsStore>,
         metadata_cache: TtlCache<String, Arc<DatabaseMetadata>>,
         action_tx: mpsc::Sender<Action>,
     ) -> Self {
@@ -98,7 +94,7 @@ impl EffectRunner {
             query,
             er,
             utility,
-            settings,
+            settings_store,
             metadata_cache,
             action_tx,
             query_tasks: QueryTaskRegistry::default(),
@@ -352,7 +348,7 @@ impl EffectRunner {
             }
 
             e @ Effect::SaveSettings { .. } => {
-                cmd_settings::run(e, &self.action_tx, &self.settings.settings_store).await;
+                cmd_settings::run(e, &self.action_tx, &self.settings_store).await;
                 Ok(vec![])
             }
 
