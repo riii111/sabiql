@@ -570,6 +570,13 @@ mod tests {
             ("UPDATE 1$foo SET value = 1", None, "1$foo"),
             ("UPDATE 1$é SET value = 1", None, "1$é"),
             (
+                "UPDATE 1abc.éléments SET value = 1",
+                Some("1abc"),
+                "éléments",
+            ),
+            ("UPDATE 1$foo.café SET value = 1", Some("1$foo"), "café"),
+            ("UPDATE 1_foo.items SET value = 1", Some("1_foo"), "items"),
+            (
                 "UPDATE café.éléments SET value = 1",
                 Some("café"),
                 "éléments",

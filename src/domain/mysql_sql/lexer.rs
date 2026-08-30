@@ -138,24 +138,29 @@ pub(super) fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MySqlLexError
             let start = index;
             index += 1;
             while index < bytes.len()
-                && (bytes[index].is_ascii_alphanumeric()
-                    || matches!(bytes[index], b'.' | b'_' | b'$'))
+                && (bytes[index].is_ascii_alphanumeric() || matches!(bytes[index], b'_' | b'$'))
             {
                 index += 1;
             }
-            let has_dot = sql[start..index].contains('.');
-            if !has_dot {
-                while let Some(character) = sql[index..].chars().next()
-                    && is_mysql_unquoted_identifier_char(character)
+            while let Some(character) = sql[index..].chars().next()
+                && is_mysql_unquoted_identifier_char(character)
+            {
+                index += character.len_utf8();
+            }
+            let is_digit_only = sql[start..index].bytes().all(|byte| byte.is_ascii_digit());
+            if is_digit_only && bytes.get(index) == Some(&b'.') {
+                while index < bytes.len()
+                    && (bytes[index].is_ascii_alphanumeric()
+                        || matches!(bytes[index], b'.' | b'_' | b'$'))
                 {
-                    index += character.len_utf8();
+                    index += 1;
                 }
             }
             let text = sql[start..index].to_string();
-            let kind = if !has_dot && text.chars().any(|character| !character.is_ascii_digit()) {
-                TokenKind::Word(text.to_ascii_uppercase())
-            } else {
+            let kind = if is_digit_only {
                 TokenKind::Number
+            } else {
+                TokenKind::Word(text.to_ascii_uppercase())
             };
             tokens.push(Token { kind, depth, text });
             continue;
