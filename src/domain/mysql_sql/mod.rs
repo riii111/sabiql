@@ -494,7 +494,7 @@ fn consume_required_ascii_whitespace(text: &str, index: &mut usize) -> Option<()
 mod tests {
     use super::*;
 
-    include!("tests.rs");
+    include!("mysql_sql_tests.rs");
 
     #[test]
     fn splits_mysql_comments_quotes_and_backticks() {
