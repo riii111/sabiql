@@ -21,18 +21,21 @@ impl SlotSource {
 pub struct CompareSlot {
     pub plan: ExplainPlan,
     pub database_type: DatabaseType,
-    pub query_snippet: String,
     pub full_query: String,
     pub source: SlotSource,
 }
 
 #[derive(Debug, Clone, Default)]
+enum ExplainSurface {
+    #[default]
+    Empty,
+    Current,
+    Error(String),
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct ExplainContext {
-    pub(crate) plan_text: Option<String>,
-    pub(crate) plan_query_snippet: Option<String>,
-    pub(crate) error: Option<String>,
-    pub(crate) is_analyze: bool,
-    pub(crate) execution_time_ms: u64,
+    surface: ExplainSurface,
     pub(crate) scroll_offset: usize,
 
     pub(crate) left: Option<CompareSlot>,
@@ -45,27 +48,31 @@ pub struct ExplainContext {
 
 impl ExplainContext {
     pub fn plan_text(&self) -> Option<&str> {
-        self.plan_text.as_deref()
+        self.current_plan().map(|plan| plan.raw_text.as_str())
     }
 
     pub fn plan_query_snippet(&self) -> Option<&str> {
-        self.plan_query_snippet.as_deref()
+        self.current_slot()
+            .map(|slot| slot.full_query.lines().next().unwrap_or(""))
     }
 
     pub fn current_plan(&self) -> Option<&ExplainPlan> {
-        self.right.as_ref().map(|slot| &slot.plan)
+        self.current_slot().map(|slot| &slot.plan)
     }
 
     pub fn error(&self) -> Option<&str> {
-        self.error.as_deref()
+        match &self.surface {
+            ExplainSurface::Error(error) => Some(error),
+            ExplainSurface::Empty | ExplainSurface::Current => None,
+        }
     }
 
     pub fn is_analyze(&self) -> bool {
-        self.is_analyze
+        self.current_plan().is_some_and(|plan| plan.is_analyze)
     }
 
     pub fn execution_time_ms(&self) -> u64 {
-        self.execution_time_ms
+        self.current_plan().map_or(0, |plan| plan.execution_time_ms)
     }
 
     pub fn scroll_offset(&self) -> usize {
@@ -104,13 +111,9 @@ impl ExplainContext {
                 explain_plan::parse_mysql_tree_explain_text(&text, is_analyze, execution_time_ms)
             }
         };
-        let snippet = query.lines().next().unwrap_or("").to_string();
-        let plan_snippet = snippet.clone();
-
         let new_slot = CompareSlot {
             plan: parsed,
             database_type,
-            query_snippet: snippet,
             full_query: query.to_string(),
             source: SlotSource::AutoLatest,
         };
@@ -122,18 +125,13 @@ impl ExplainContext {
         });
         self.right = Some(new_slot);
 
-        self.plan_text = Some(text);
-        self.plan_query_snippet = Some(plan_snippet);
-        self.error = None;
-        self.is_analyze = is_analyze;
-        self.execution_time_ms = execution_time_ms;
+        self.surface = ExplainSurface::Current;
         self.scroll_offset = 0;
         self.compare_scroll_offset = 0;
     }
 
     pub fn set_error(&mut self, error: String) {
-        self.error = Some(error);
-        self.plan_text = None;
+        self.surface = ExplainSurface::Error(error);
         self.scroll_offset = 0;
     }
 
@@ -164,13 +162,9 @@ impl ExplainContext {
     }
 
     pub fn line_count(&self) -> usize {
-        if let Some(ref text) = self.plan_text {
-            text.lines().count()
-        } else if let Some(ref err) = self.error {
-            err.lines().count()
-        } else {
-            0
-        }
+        self.plan_text()
+            .or_else(|| self.error())
+            .map_or(0, |text| text.lines().count())
     }
 
     // blank + verdict + blank + reasons(3) + blank + separator + blank + slot header + detail + thin_sep
@@ -201,6 +195,13 @@ impl ExplainContext {
             .compare_viewport_height
             .map_or_else(|| Self::modal_inner_height(terminal_height), |h| h as usize);
         self.compare_line_count().saturating_sub(viewport)
+    }
+
+    fn current_slot(&self) -> Option<&CompareSlot> {
+        match &self.surface {
+            ExplainSurface::Current => self.right.as_ref(),
+            ExplainSurface::Empty | ExplainSurface::Error(_) => None,
+        }
     }
 }
 
@@ -250,7 +251,13 @@ mod tests {
         assert!(ctx.left().is_none());
         assert!(ctx.right().is_some());
         assert_eq!(ctx.right().unwrap().plan.total_cost, Some(100.0));
-        assert_eq!(ctx.right().unwrap().query_snippet, "SELECT * FROM users");
+        assert_eq!(
+            ctx.plan_text(),
+            Some("Seq Scan  (cost=0.00..100.00 rows=10 width=32)")
+        );
+        assert_eq!(ctx.plan_query_snippet(), Some("SELECT * FROM users"));
+        assert!(!ctx.is_analyze());
+        assert_eq!(ctx.execution_time_ms(), 42);
         assert_eq!(ctx.right().unwrap().source, SlotSource::AutoLatest);
     }
 
@@ -340,6 +347,7 @@ mod tests {
 
         assert!(ctx.plan_text().is_none());
         assert!(ctx.error().is_none());
+        assert!(ctx.current_plan().is_none());
         assert_eq!(ctx.scroll_offset(), 0);
         assert_eq!(ctx.compare_scroll_offset(), 0);
         assert!(ctx.left().is_some());
@@ -390,11 +398,13 @@ mod tests {
 
         ctx.set_error("some error".to_string());
 
+        assert!(ctx.plan_text().is_none());
+        assert!(ctx.current_plan().is_none());
         assert!(ctx.right().is_some());
     }
 
     #[test]
-    fn set_plan_stores_query_snippet_first_line_only() {
+    fn current_surface_derives_query_snippet_from_full_query_first_line() {
         let mut ctx = ExplainContext::default();
 
         ctx.set_plan(
@@ -405,7 +415,7 @@ mod tests {
             "SELECT *\nFROM users\nWHERE id = 1",
         );
 
-        assert_eq!(ctx.right().unwrap().query_snippet, "SELECT *");
+        assert_eq!(ctx.plan_query_snippet(), Some("SELECT *"));
     }
 
     #[test]

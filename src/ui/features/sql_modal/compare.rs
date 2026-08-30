@@ -452,7 +452,6 @@ mod tests {
                 execution_time_ms: 250,
             },
             database_type: DatabaseType::PostgreSQL,
-            query_snippet: "SELECT 1".to_string(),
             full_query: "SELECT 1".to_string(),
             source: label,
         }

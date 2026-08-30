@@ -108,7 +108,7 @@ mod tests {
             let effects = reduce_at_boundary(&mut state, Action::ExplainRequest);
 
             assert!(effects.is_empty());
-            assert!(state.explain.error.is_none());
+            assert!(state.explain.error().is_none());
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
         }
 
@@ -284,7 +284,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(
-                state.explain.error.as_deref(),
+                state.explain.error(),
                 Some(
                     "MySQL EXPLAIN supports SELECT, TABLE, INSERT, REPLACE, UPDATE, or DELETE statements",
                 )
@@ -305,7 +305,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(
-                state.explain.error.as_deref(),
+                state.explain.error(),
                 Some("MySQL EXPLAIN does not support MySQL client commands")
             );
         }
@@ -324,7 +324,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(
-                state.explain.error.as_deref(),
+                state.explain.error(),
                 Some("MySQL EXPLAIN does not support multiple statements")
             );
         }
@@ -343,7 +343,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(
-                state.explain.error.as_deref(),
+                state.explain.error(),
                 Some(
                     "EXPLAIN QUERY PLAN supports SELECT, INSERT, UPDATE, DELETE, or REPLACE statements"
                 )
@@ -365,7 +365,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(
-                state.explain.error.as_deref(),
+                state.explain.error(),
                 Some(
                     "EXPLAIN QUERY PLAN is added automatically; enter a supported query without EXPLAIN"
                 )
@@ -384,7 +384,7 @@ mod tests {
             let effects = reduce_at_boundary(&mut state, Action::ExplainAnalyzeRequest);
 
             assert!(effects.is_empty());
-            assert!(state.explain.error.is_none());
+            assert!(state.explain.error().is_none());
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
             assert!(!matches!(
                 state.sql_modal.status(),
@@ -408,7 +408,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(
-                state.explain.error.as_deref(),
+                state.explain.error(),
                 Some("EXPLAIN does not support multiple statements")
             );
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
@@ -494,7 +494,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(
-                state.explain.error.as_deref(),
+                state.explain.error(),
                 Some("EXPLAIN ANALYZE does not support multiple statements")
             );
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
@@ -509,7 +509,7 @@ mod tests {
             let effects = reduce_at_boundary(&mut state, Action::ExplainAnalyzeRequest);
 
             assert!(effects.is_empty());
-            assert!(state.explain.error.is_none());
+            assert!(state.explain.error().is_none());
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
         }
 
@@ -608,7 +608,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(
-                state.explain.error.as_deref(),
+                state.explain.error(),
                 Some(
                     "MySQL EXPLAIN ANALYZE only supports side-effect-free SELECT or TABLE statements"
                 )
@@ -782,15 +782,8 @@ mod tests {
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
 
-            assert!(state.explain.error.is_some());
-            assert!(
-                state
-                    .explain
-                    .error
-                    .as_deref()
-                    .unwrap()
-                    .contains("Read-only")
-            );
+            assert!(state.explain.error().is_some());
+            assert!(state.explain.error().unwrap().contains("Read-only"));
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
             assert!(state.confirm_dialog.intent().is_none());
         }
@@ -810,7 +803,7 @@ mod tests {
                     .into_effects()
                     .expect("reducer should handle action");
 
-            assert!(state.explain.error.is_none());
+            assert!(state.explain.error().is_none());
             assert_eq!(effects.len(), 1);
             assert!(matches!(
                 &effects[0],
@@ -868,14 +861,7 @@ mod tests {
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
 
-            assert!(
-                state
-                    .explain
-                    .error
-                    .as_deref()
-                    .unwrap()
-                    .contains("Read-only")
-            );
+            assert!(state.explain.error().unwrap().contains("Read-only"));
         }
     }
 
@@ -1015,7 +1001,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.plan_text.as_deref(), Some("Seq Scan"));
+            assert_eq!(state.explain.plan_text(), Some("Seq Scan"));
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
             assert!(!state.query.is_running());
@@ -1083,11 +1069,8 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.plan_text.as_deref(), Some("Original"));
-            assert_eq!(
-                state.explain.plan_query_snippet.as_deref(),
-                Some("SELECT old")
-            );
+            assert_eq!(state.explain.plan_text(), Some("Original"));
+            assert_eq!(state.explain.plan_query_snippet(), Some("SELECT old"));
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
         }
 
@@ -1161,7 +1144,7 @@ mod tests {
             );
 
             assert_eq!(
-                state.explain.error.as_deref(),
+                state.explain.error(),
                 Some("Query failed: syntax error. Review the database error details and SQL.")
             );
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
@@ -1196,8 +1179,8 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.plan_text.as_deref(), Some("Original"));
-            assert_eq!(state.explain.error, None);
+            assert_eq!(state.explain.plan_text(), Some("Original"));
+            assert_eq!(state.explain.error(), None);
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
         }
 
