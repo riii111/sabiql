@@ -262,11 +262,17 @@ fn mysql_target_key(
         1 | 2 => database.to_lowercase(),
         _ => return None,
     };
-    Some(format!(
-        "{}:{}",
-        database,
-        statement.target.as_deref()?.to_ascii_uppercase()
-    ))
+    let target = statement.target.as_deref()?;
+    let target = match lower_case_table_names {
+        0 => target.to_ascii_uppercase(),
+        1 | 2 => target.to_lowercase(),
+        _ => return None,
+    };
+    Some(format!("{database}:{target}"))
+}
+
+fn mysql_names_equal(left: &str, right: &str) -> bool {
+    left.eq_ignore_ascii_case(right) || left.to_lowercase() == right.to_lowercase()
 }
 
 fn validate_mysql_submission_state(
@@ -299,7 +305,7 @@ fn validate_mysql_submission_state(
                     .target
                     .as_deref()
                     .ok_or_else(|| "MySQL SAVEPOINT name is ambiguous".to_string())?;
-                savepoints.retain(|current| !current.eq_ignore_ascii_case(name));
+                savepoints.retain(|current| !mysql_names_equal(current, name));
                 savepoints.push(name.to_string());
             }
             MySqlStatementKind::RollbackToSavepoint => {
@@ -314,7 +320,7 @@ fn validate_mysql_submission_state(
                     .ok_or_else(|| "MySQL SAVEPOINT name is ambiguous".to_string())?;
                 let Some(index) = savepoints
                     .iter()
-                    .position(|current| current.eq_ignore_ascii_case(name))
+                    .position(|current| mysql_names_equal(current, name))
                 else {
                     return Err("MySQL ROLLBACK TO SAVEPOINT name is unknown".to_string());
                 };
@@ -332,7 +338,7 @@ fn validate_mysql_submission_state(
                     .ok_or_else(|| "MySQL SAVEPOINT name is ambiguous".to_string())?;
                 let Some(index) = savepoints
                     .iter()
-                    .position(|current| current.eq_ignore_ascii_case(name))
+                    .position(|current| mysql_names_equal(current, name))
                 else {
                     return Err("MySQL RELEASE SAVEPOINT name is unknown".to_string());
                 };
@@ -580,6 +586,8 @@ mod tests {
             );
             assert_eq!(statement.target(), Some(expected_target), "{sql}");
         }
+
+        assert!(classify_mysql_statement("UPDATE 123 SET value = 1").is_err());
     }
 
     #[test]
@@ -587,6 +595,7 @@ mod tests {
         for sql in [
             "UPDATE /* ignored café */ café SET value = 1",
             "UPDATE café -- ignored comment\n SET value = 1",
+            "UPDATE café--x\n SET value = 1",
             "CREATE TABLE café (id INT) /*!40100 DEFAULT CHARSET=utf8mb4 */",
             "DROP TABLE café /*!80000 RESTRICT */",
         ] {
@@ -1098,6 +1107,40 @@ mod tests {
                 0,
             )
             .is_err()
+        );
+    }
+
+    #[test]
+    fn temporary_mysql_table_keys_follow_unicode_table_case_rules() {
+        assert!(
+            classify_mysql_multi_statement_with_lower_case_table_names(
+                "CREATE TEMPORARY TABLE café (id INT); DROP TEMPORARY TABLE CAFÉ",
+                Some("app"),
+                0,
+            )
+            .is_err()
+        );
+
+        for lower_case_table_names in [1, 2] {
+            assert!(
+                classify_mysql_multi_statement_with_lower_case_table_names(
+                    "CREATE TEMPORARY TABLE café (id INT); DROP TEMPORARY TABLE CAFÉ",
+                    Some("app"),
+                    lower_case_table_names,
+                )
+                .is_ok()
+            );
+        }
+    }
+
+    #[test]
+    fn unicode_savepoints_are_case_insensitive_in_transactions() {
+        assert!(
+            classify_mysql_multi_statement(
+                "START TRANSACTION; SAVEPOINT café; ROLLBACK TO SAVEPOINT CAFÉ; COMMIT",
+                Some("app"),
+            )
+            .is_ok()
         );
     }
 

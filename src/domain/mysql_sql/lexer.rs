@@ -142,8 +142,21 @@ pub(super) fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MySqlLexError
             {
                 index += 1;
             }
+            let kind = if !sql[start..index].contains('.')
+                && sql[index..].chars().next().is_some_and(|character| {
+                    !character.is_ascii() && is_mysql_unquoted_identifier_char(character)
+                }) {
+                while let Some(character) = sql[index..].chars().next()
+                    && is_mysql_unquoted_identifier_char(character)
+                {
+                    index += character.len_utf8();
+                }
+                TokenKind::Word(sql[start..index].to_ascii_uppercase())
+            } else {
+                TokenKind::Number
+            };
             tokens.push(Token {
-                kind: TokenKind::Number,
+                kind,
                 depth,
                 text: sql[start..index].to_string(),
             });
