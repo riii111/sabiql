@@ -250,82 +250,17 @@ fn is_dotted_identifier_suffix(sql: &str, keyword_start: usize) -> bool {
 }
 
 pub(super) fn top_level_keywords(sql: &str) -> Vec<String> {
-    let chars: Vec<(usize, char)> = sql.trim().char_indices().collect();
-    let mut tokens = Vec::new();
-    let mut i = 0;
-    let mut depth: i32 = 0;
-    let mut in_string = false;
-
-    while i < chars.len() {
-        let (byte_pos, ch) = chars[i];
-        if let Some(next) = skip_line_comment(&chars, i, ch) {
-            i = next;
-            continue;
-        }
-        if let Some(next) = skip_block_comment(&chars, i, ch) {
-            i = next;
-            continue;
-        }
-        if let Some(next) = advance_single_quote(&chars, i, ch, &mut in_string) {
-            i = next;
-            continue;
-        }
-        if in_string {
-            i += 1;
-            continue;
-        }
-        if let Some(next) = skip_double_quoted_identifier(&chars, i, ch) {
-            if depth == 0 {
-                let end_byte = chars
-                    .get(next)
-                    .map_or_else(|| sql.trim().len(), |(pos, _)| *pos);
-                tokens.push(sql.trim()[byte_pos..end_byte].to_string());
-            }
-            i = next;
-            continue;
-        }
-        if let Some(next) = skip_sqlite_quoted_identifier(&chars, i, ch) {
-            if depth == 0 {
-                let end_byte = chars
-                    .get(next)
-                    .map_or_else(|| sql.trim().len(), |(pos, _)| *pos);
-                tokens.push(sql.trim()[byte_pos..end_byte].to_string());
-            }
-            i = next;
-            continue;
-        }
-        if ch == '(' {
-            depth += 1;
-            i += 1;
-            continue;
-        }
-        if ch == ')' {
-            depth -= 1;
-            i += 1;
-            continue;
-        }
-        if depth == 0 && (ch.is_alphanumeric() || ch == '_') {
-            let start = byte_pos;
-            let mut end = i + 1;
-            while end < chars.len() && (chars[end].1.is_alphanumeric() || chars[end].1 == '_') {
-                end += 1;
-            }
-            let end_byte = chars
-                .get(end)
-                .map_or_else(|| sql.trim().len(), |(pos, _)| *pos);
-            tokens.push(sql.trim()[start..end_byte].to_ascii_uppercase());
-            i = end;
-            continue;
-        }
-        if depth == 0 && ch == ',' {
-            tokens.push(",".to_string());
-        }
-        i += 1;
-    }
-    tokens
+    scan_sqlite_keywords(sql, true)
+        .into_iter()
+        .filter_map(|(keyword, depth)| (depth == 0).then_some(keyword))
+        .collect()
 }
 
 pub(super) fn keywords_with_depth(sql: &str) -> Vec<(String, i32)> {
+    scan_sqlite_keywords(sql, false)
+}
+
+fn scan_sqlite_keywords(sql: &str, include_quoted_identifiers: bool) -> Vec<(String, i32)> {
     let trimmed = sql.trim();
     let chars: Vec<(usize, char)> = trimmed.char_indices().collect();
     let mut tokens = Vec::new();
@@ -352,10 +287,18 @@ pub(super) fn keywords_with_depth(sql: &str) -> Vec<(String, i32)> {
             continue;
         }
         if let Some(next) = skip_double_quoted_identifier(&chars, i, ch) {
+            if include_quoted_identifiers && depth == 0 {
+                let end_byte = chars.get(next).map_or(trimmed.len(), |(pos, _)| *pos);
+                tokens.push((trimmed[byte_pos..end_byte].to_string(), depth));
+            }
             i = next;
             continue;
         }
         if let Some(next) = skip_sqlite_quoted_identifier(&chars, i, ch) {
+            if include_quoted_identifiers && depth == 0 {
+                let end_byte = chars.get(next).map_or(trimmed.len(), |(pos, _)| *pos);
+                tokens.push((trimmed[byte_pos..end_byte].to_string(), depth));
+            }
             i = next;
             continue;
         }
@@ -379,6 +322,9 @@ pub(super) fn keywords_with_depth(sql: &str) -> Vec<(String, i32)> {
             tokens.push((trimmed[start..end_byte].to_ascii_uppercase(), depth));
             i = end;
             continue;
+        }
+        if depth == 0 && ch == ',' {
+            tokens.push((",".to_string(), depth));
         }
         i += 1;
     }
