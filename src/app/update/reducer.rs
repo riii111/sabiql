@@ -2682,7 +2682,19 @@ mod tests {
                     .explorer_selected,
                 5
             );
-            assert_eq!(effects.len(), 3);
+            assert!(matches!(
+                effects.as_slice(),
+                [
+                    Effect::CancelTrackedTasks,
+                    Effect::ClearCompletionEngineCache,
+                    Effect::FetchMetadata { .. }
+                ]
+            ));
+            assert!(
+                !effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::CancelSqliteDiagnostics))
+            );
         }
 
         #[test]
@@ -2732,16 +2744,61 @@ mod tests {
                 state.session.metadata().as_ref().unwrap().database_name,
                 "cached_db"
             );
-            assert_eq!(effects.len(), 3);
+            assert!(matches!(
+                effects.as_slice(),
+                [
+                    Effect::CancelTrackedTasks,
+                    Effect::ClearCompletionEngineCache,
+                    Effect::FetchEffectiveUser { .. }
+                ]
+            ));
             assert!(
-                effects
+                !effects
                     .iter()
-                    .any(|effect| matches!(effect, Effect::CancelTrackedTasks))
+                    .any(|effect| matches!(effect, Effect::CancelSqliteDiagnostics))
             );
+        }
+
+        #[test]
+        fn switch_mysql_connection_probes_after_tracked_task_cancellation() {
+            let mut state = create_test_state();
+            let conn_a = ConnectionId::new();
+
+            state.session.activate_connection_with_dsn(
+                &conn_a,
+                "conn-a",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/a",
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::Connected);
+            let target = ConnectionTarget {
+                id: ConnectionId::new(),
+                dsn: "mysql://localhost/other".to_string(),
+                name: "Other".to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some("other".to_string()),
+            };
+
+            let effects = reduce(
+                &mut state,
+                Action::SwitchConnection(target),
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(matches!(
+                effects.as_slice(),
+                [
+                    Effect::CancelTrackedTasks,
+                    Effect::ProbeMySqlConnection { .. }
+                ]
+            ));
             assert!(
-                effects
+                !effects
                     .iter()
-                    .any(|effect| matches!(effect, Effect::FetchEffectiveUser { .. }))
+                    .any(|effect| matches!(effect, Effect::CancelSqliteDiagnostics))
             );
         }
 

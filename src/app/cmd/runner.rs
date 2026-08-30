@@ -623,9 +623,48 @@ mod tests {
             }
         }
 
+        struct PendingDiagnosticsProvider {
+            started: Arc<tokio::sync::Notify>,
+            allow_action: Mutex<Option<oneshot::Receiver<()>>>,
+            dropped: Arc<std::sync::atomic::AtomicBool>,
+        }
+
+        impl Drop for PendingDiagnosticsProvider {
+            fn drop(&mut self) {
+                self.dropped
+                    .store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+        }
+
+        #[async_trait::async_trait]
+        impl SqliteDiagnosticsProvider for PendingDiagnosticsProvider {
+            async fn fetch_core_diagnostics(
+                &self,
+                _dsn: &str,
+            ) -> Result<
+                crate::domain::SqliteDiagnosticsSnapshot,
+                crate::ports::outbound::DbOperationError,
+            > {
+                let allow_action = self
+                    .allow_action
+                    .lock()
+                    .expect("diagnostics action lock poisoned")
+                    .take()
+                    .expect("diagnostics action receiver should be available");
+                self.started.notify_one();
+                allow_action.await.ok();
+                Ok(crate::domain::SqliteDiagnosticsSnapshot::default())
+            }
+
+            async fn fetch_quick_check(&self, _dsn: &str) -> crate::domain::DiagnosticField {
+                self.started.notify_one();
+                pending().await
+            }
+        }
+
         #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
         async fn cancel_tracked_tasks_aborts_all_groups_before_joining() {
-            let (tx, _rx) = mpsc::channel(8);
+            let (tx, mut rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
@@ -683,6 +722,28 @@ mod tests {
                 .await
                 .expect("connection task should start");
 
+            let diagnostics_started = Arc::new(tokio::sync::Notify::new());
+            let diagnostics_dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let (allow_diagnostics_action_tx, allow_diagnostics_action_rx) = oneshot::channel();
+            let diagnostics_provider = Arc::new(PendingDiagnosticsProvider {
+                started: Arc::clone(&diagnostics_started),
+                allow_action: Mutex::new(Some(allow_diagnostics_action_rx)),
+                dropped: Arc::clone(&diagnostics_dropped),
+            }) as Arc<dyn SqliteDiagnosticsProvider>;
+            sqlite_diagnostics::run(
+                Effect::FetchSqliteDiagnosticsCore {
+                    dsn: "sqlite:///tmp/app.db".to_string(),
+                    run_id: 1,
+                },
+                &runner.action_tx,
+                &diagnostics_provider,
+                &runner.sqlite_diagnostics_task,
+            )
+            .await;
+            timeout(Duration::from_secs(1), diagnostics_started.notified())
+                .await
+                .expect("SQLite diagnostics task should start");
+
             let cancel = runner.cancel_tracked_tasks();
             tokio::pin!(cancel);
             let connection_aborted = tokio::select! {
@@ -700,9 +761,22 @@ mod tests {
                 .is_ok();
             let cancellation_finished = timeout(Duration::from_secs(1), cancel).await.is_ok();
             assert!(connection_aborted, "connection task was not aborted first");
+            drop(diagnostics_provider);
+            assert!(
+                diagnostics_dropped.load(std::sync::atomic::Ordering::SeqCst),
+                "SQLite diagnostics task was not aborted"
+            );
             assert!(query_dropped, "query task was not aborted");
             assert!(table_dropped, "table detail task was not aborted");
             assert!(cancellation_finished, "cancellation did not finish");
+            assert!(
+                allow_diagnostics_action_tx.send(()).is_err(),
+                "SQLite diagnostics task was still awaiting a follow-up"
+            );
+            assert!(
+                rx.try_recv().is_err(),
+                "SQLite diagnostics task emitted a late action"
+            );
         }
     }
 
