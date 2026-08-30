@@ -4,7 +4,6 @@ use super::explain_context::ExplainContext;
 use super::runtime_state::RuntimeState;
 use crate::domain::connection::{ConnectionProfile, ServiceEntry};
 use crate::domain::{Column, DatabaseType, TableSummary, mysql_sql::mysql_export_plan};
-use crate::model::browse::cell_detail::CellDetailState;
 use crate::model::browse::inspector_view_model::InspectorViewModel;
 use crate::model::browse::json_detail::JsonDetailState;
 use crate::model::browse::query_execution::{QueryExecution, VisibleResultKind};
@@ -16,6 +15,7 @@ use crate::model::connection::error_state::ConnectionErrorState;
 use crate::model::connection::list::{self, ConnectionListItem};
 use crate::model::connection::setup::ConnectionSetupState;
 use crate::model::shared::confirm_dialog::ConfirmDialogState;
+use crate::model::shared::detail_view::ReadOnlyDetailState;
 use crate::model::shared::flash_timer::FlashTimerStore;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::message::MessageState;
@@ -57,7 +57,7 @@ pub struct AppState {
     pub connection_error: ConnectionErrorState,
     pub confirm_dialog: ConfirmDialogState,
     pub result_interaction: ResultInteraction,
-    pub cell_detail: CellDetailState,
+    pub cell_detail: ReadOnlyDetailState,
     pub json_detail: JsonDetailState,
     pub row_detail: RowDetailState,
     pub query_history_picker: QueryHistoryPickerState,
@@ -91,7 +91,7 @@ impl AppState {
             connection_error: ConnectionErrorState::default(),
             confirm_dialog: ConfirmDialogState::default(),
             result_interaction: ResultInteraction::default(),
-            cell_detail: CellDetailState::default(),
+            cell_detail: ReadOnlyDetailState::default(),
             json_detail: JsonDetailState::default(),
             row_detail: RowDetailState::default(),
             query_history_picker: QueryHistoryPickerState::default(),

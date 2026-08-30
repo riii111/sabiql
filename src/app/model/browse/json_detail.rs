@@ -10,8 +10,6 @@ pub enum JsonDetailMode {
     Searching,
 }
 
-pub type JsonSearchState = DetailSearchState;
-
 #[derive(Debug, Clone, Default)]
 pub struct JsonDetailState {
     detail: DetailContentState,
@@ -98,11 +96,11 @@ impl JsonDetailState {
         self.validation_error.as_deref()
     }
 
-    pub fn search(&self) -> &JsonSearchState {
+    pub fn search(&self) -> &DetailSearchState {
         &self.search
     }
 
-    pub fn search_mut(&mut self) -> &mut JsonSearchState {
+    pub fn search_mut(&mut self) -> &mut DetailSearchState {
         &mut self.search
     }
 

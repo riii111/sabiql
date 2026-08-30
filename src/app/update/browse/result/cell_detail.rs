@@ -3,8 +3,7 @@ use std::time::Instant;
 use crate::cmd::effect::Effect;
 use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
-use crate::model::browse::cell_detail::CellDetailState;
-use crate::model::shared::detail_view::DetailDisplayMode;
+use crate::model::shared::detail_view::{DetailDisplayMode, ReadOnlyDetailState};
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::preview_cell_text::{CellPresentationPolicy, format_for_cell_detail};
@@ -36,7 +35,7 @@ pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -
             } else {
                 DetailDisplayMode::RawText
             };
-            state.cell_detail = CellDetailState::open_with_display_mode(
+            state.cell_detail = ReadOnlyDetailState::open_with_display_mode(
                 row_idx,
                 col_idx,
                 column_name,

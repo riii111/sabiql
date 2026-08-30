@@ -1,4 +1,3 @@
-pub mod cell_detail;
 pub mod cell_edit;
 pub mod inspector_view_model;
 pub mod json_detail;
