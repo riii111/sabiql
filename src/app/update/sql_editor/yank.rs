@@ -19,7 +19,7 @@ pub(super) fn reduce_yank(state: &mut AppState, action: &Action, now: Instant) -
                 .active_engine_feature_profile()
                 .normalize_sql_modal_tab(state.sql_modal.active_tab());
             let content = match active_tab {
-                SqlModalTab::Plan => state.explain.plan_text.clone(),
+                SqlModalTab::Plan => state.explain.plan_text().map(str::to_owned),
                 SqlModalTab::Compare => match (&state.explain.left, &state.explain.right) {
                     (Some(l), Some(r)) => {
                         let result = compare_plans(&l.plan, &r.plan);

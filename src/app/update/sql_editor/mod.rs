@@ -1193,7 +1193,6 @@ mod tests {
                     execution_time_ms: ms,
                 },
                 database_type: DatabaseType::PostgreSQL,
-                query_snippet: "SELECT 1".to_string(),
                 full_query: "SELECT 1".to_string(),
                 source,
             }
@@ -1233,7 +1232,13 @@ mod tests {
             let mut state = sql_modal_state();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://test");
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
-            state.explain.plan_text = Some("Seq Scan on users".to_string());
+            state.explain.set_plan(
+                "Seq Scan on users".to_string(),
+                DatabaseType::PostgreSQL,
+                false,
+                0,
+                "SELECT 1",
+            );
 
             let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now())
                 .into_effects()
@@ -1250,7 +1255,6 @@ mod tests {
             let mut state = sql_modal_state();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://test");
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
-            state.explain.plan_text = None;
 
             let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now())
                 .into_effects()
@@ -1264,8 +1268,7 @@ mod tests {
             let mut state = sql_modal_state();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://test");
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
-            state.explain.plan_text = None;
-            state.explain.error = Some("syntax error".to_string());
+            state.explain.set_error("syntax error".to_string());
 
             let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now())
                 .into_effects()
@@ -1386,7 +1389,6 @@ mod tests {
                     execution_time_ms: 420,
                 },
                 database_type: DatabaseType::PostgreSQL,
-                query_snippet: "SELECT *".to_string(),
                 full_query: "SELECT * FROM users".to_string(),
                 source: SlotSource::AutoPrevious,
             });
@@ -1405,7 +1407,6 @@ mod tests {
                     execution_time_ms: 50,
                 },
                 database_type: DatabaseType::PostgreSQL,
-                query_snippet: "SELECT *".to_string(),
                 full_query: "SELECT * FROM users WHERE id=1".to_string(),
                 source: SlotSource::AutoLatest,
             });
