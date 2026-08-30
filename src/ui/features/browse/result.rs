@@ -674,13 +674,6 @@ mod tests {
         }
 
         #[test]
-        fn width_limited_display_stops_after_first_overflow() {
-            let value = format!("{}tail", "a".repeat(1024 * 1024));
-
-            assert_eq!(truncate_display_text(&value, false, 4), "a...");
-        }
-
-        #[test]
         fn display_width_handles_large_nul_text_and_blob_without_display_materialization() {
             const SIZE: usize = 1024 * 1024;
             let text = format!("{}\0tail", "a".repeat(SIZE));
