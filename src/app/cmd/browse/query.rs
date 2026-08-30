@@ -484,8 +484,6 @@ mod tests {
     }
 
     mod query_history_append {
-        use std::sync::atomic::{AtomicBool, Ordering};
-
         use tokio::sync::{Barrier, Mutex, oneshot};
 
         use super::*;
@@ -511,7 +509,7 @@ mod tests {
         struct RecordingQueryHistoryStore {
             calls: Arc<Mutex<Vec<HistoryCall>>>,
             append_barrier: Arc<Barrier>,
-            append_called: Arc<AtomicBool>,
+            append_started: Arc<Mutex<Option<oneshot::Sender<()>>>>,
             append_finished: Arc<Mutex<Option<oneshot::Sender<()>>>>,
         }
 
@@ -523,12 +521,15 @@ mod tests {
                 scope: &QueryHistoryScope,
                 entry: &QueryHistoryEntry,
             ) -> Result<(), QueryHistoryError> {
+                let signal = self.append_started.lock().await.take();
+                if let Some(signal) = signal {
+                    signal.send(()).ok();
+                }
                 self.calls.lock().await.push(HistoryCall {
                     project_name: project_name.to_string(),
                     scope: scope.clone(),
                     entry: entry.clone(),
                 });
-                self.append_called.store(true, Ordering::SeqCst);
                 self.append_barrier.wait().await;
                 let signal = self.append_finished.lock().await.take();
                 if let Some(signal) = signal {
@@ -546,16 +547,22 @@ mod tests {
             }
         }
 
-        fn history_store() -> (RecordingQueryHistoryStore, oneshot::Receiver<()>) {
-            let (signal_tx, signal_rx) = oneshot::channel();
+        fn history_store() -> (
+            RecordingQueryHistoryStore,
+            oneshot::Receiver<()>,
+            oneshot::Receiver<()>,
+        ) {
+            let (started_tx, started_rx) = oneshot::channel();
+            let (finished_tx, finished_rx) = oneshot::channel();
             (
                 RecordingQueryHistoryStore {
                     calls: Arc::new(Mutex::new(Vec::new())),
                     append_barrier: Arc::new(Barrier::new(2)),
-                    append_called: Arc::new(AtomicBool::new(false)),
-                    append_finished: Arc::new(Mutex::new(Some(signal_tx))),
+                    append_started: Arc::new(Mutex::new(Some(started_tx))),
+                    append_finished: Arc::new(Mutex::new(Some(finished_tx))),
                 },
-                signal_rx,
+                started_rx,
+                finished_rx,
             )
         }
 
@@ -576,7 +583,8 @@ mod tests {
             executor: MockQueryExecutor,
             state: AppState,
             store: RecordingQueryHistoryStore,
-            append_rx: oneshot::Receiver<()>,
+            append_started_rx: oneshot::Receiver<()>,
+            append_finished_rx: oneshot::Receiver<()>,
             expect_append: bool,
         ) -> (Action, Vec<HistoryCall>) {
             let (tx, mut rx) = mpsc::channel(8);
@@ -600,16 +608,22 @@ mod tests {
             let action =
                 test_fixtures::recv_action_with_timeout(&mut rx, Duration::from_secs(1)).await;
             if expect_append {
+                drop(append_started_rx);
                 let append_release = Arc::clone(&store.append_barrier);
                 tokio::time::timeout(Duration::from_secs(1), append_release.wait())
                     .await
                     .expect("history append should reach its release point");
-                tokio::time::timeout(Duration::from_secs(1), append_rx)
+                tokio::time::timeout(Duration::from_secs(1), append_finished_rx)
                     .await
                     .expect("history append should finish")
                     .expect("history append signal should be sent");
             } else {
-                assert!(!store.append_called.load(Ordering::SeqCst));
+                assert!(
+                    tokio::time::timeout(Duration::from_millis(1), append_started_rx)
+                        .await
+                        .is_err(),
+                    "history append should not be spawned"
+                );
             }
 
             let calls = store.calls.lock().await.clone();
@@ -634,13 +648,13 @@ mod tests {
             assert_eq!(call.entry.affected_rows, affected_rows);
         }
 
-        #[tokio::test]
+        #[tokio::test(start_paused = true)]
         async fn adhoc_success_appends_query_history_after_execution() {
             let mut executor = MockQueryExecutor::new();
             executor.expect_execute_adhoc().once().returning(|_, _, _| {
                 Ok(test_fixtures::sample_query_result().with_command_tag(CommandTag::Update(7)))
             });
-            let (store, append_rx) = history_store();
+            let (store, append_started_rx, append_rx) = history_store();
 
             let (action, calls) = run_with_history(
                 Effect::ExecuteAdhoc {
@@ -652,6 +666,7 @@ mod tests {
                 executor,
                 connected_state(),
                 store,
+                append_started_rx,
                 append_rx,
                 true,
             )
@@ -666,13 +681,13 @@ mod tests {
             );
         }
 
-        #[tokio::test]
+        #[tokio::test(start_paused = true)]
         async fn adhoc_failure_appends_failed_query_history() {
             let mut executor = MockQueryExecutor::new();
             executor.expect_execute_adhoc().once().returning(|_, _, _| {
                 Err(DbOperationError::QueryFailed("syntax error".to_string()))
             });
-            let (store, append_rx) = history_store();
+            let (store, append_started_rx, append_rx) = history_store();
 
             let (action, calls) = run_with_history(
                 Effect::ExecuteAdhoc {
@@ -684,6 +699,7 @@ mod tests {
                 executor,
                 connected_state(),
                 store,
+                append_started_rx,
                 append_rx,
                 true,
             )
@@ -693,7 +709,7 @@ mod tests {
             assert_history_call(&calls, "SELECT broken", QueryResultStatus::Failed, None);
         }
 
-        #[tokio::test]
+        #[tokio::test(start_paused = true)]
         async fn write_success_appends_affected_rows_to_query_history() {
             let mut executor = MockQueryExecutor::new();
             executor.expect_execute_write().once().returning(|_, _, _| {
@@ -702,7 +718,7 @@ mod tests {
                     diagnostics: Vec::new(),
                 })
             });
-            let (store, append_rx) = history_store();
+            let (store, append_started_rx, append_rx) = history_store();
 
             let (action, calls) = run_with_history(
                 Effect::ExecuteWrite {
@@ -714,6 +730,7 @@ mod tests {
                 executor,
                 connected_state(),
                 store,
+                append_started_rx,
                 append_rx,
                 true,
             )
@@ -735,13 +752,13 @@ mod tests {
             );
         }
 
-        #[tokio::test]
+        #[tokio::test(start_paused = true)]
         async fn write_failure_appends_failed_query_history() {
             let mut executor = MockQueryExecutor::new();
             executor.expect_execute_write().once().returning(|_, _, _| {
                 Err(DbOperationError::QueryFailed("write failed".to_string()))
             });
-            let (store, append_rx) = history_store();
+            let (store, append_started_rx, append_rx) = history_store();
 
             let (action, calls) = run_with_history(
                 Effect::ExecuteWrite {
@@ -753,6 +770,7 @@ mod tests {
                 executor,
                 connected_state(),
                 store,
+                append_started_rx,
                 append_rx,
                 true,
             )
@@ -770,14 +788,14 @@ mod tests {
             );
         }
 
-        #[tokio::test]
+        #[tokio::test(start_paused = true)]
         async fn history_disabled_does_not_spawn_append() {
             let mut executor = MockQueryExecutor::new();
             executor
                 .expect_execute_adhoc()
                 .once()
                 .returning(|_, _, _| Ok(test_fixtures::sample_query_result()));
-            let (store, append_rx) = history_store();
+            let (store, append_started_rx, append_rx) = history_store();
 
             let (action, calls) = run_with_history(
                 Effect::ExecuteAdhoc {
@@ -789,6 +807,7 @@ mod tests {
                 executor,
                 AppState::new("test".to_string()),
                 store,
+                append_started_rx,
                 append_rx,
                 false,
             )
@@ -798,7 +817,35 @@ mod tests {
             assert!(calls.is_empty());
         }
 
-        #[tokio::test]
+        #[tokio::test(start_paused = true)]
+        async fn adhoc_failure_history_disabled_does_not_spawn_append() {
+            let mut executor = MockQueryExecutor::new();
+            executor.expect_execute_adhoc().once().returning(|_, _, _| {
+                Err(DbOperationError::QueryFailed("syntax error".to_string()))
+            });
+            let (store, append_started_rx, append_rx) = history_store();
+
+            let (action, calls) = run_with_history(
+                Effect::ExecuteAdhoc {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 8,
+                    query: "SELECT broken".to_string(),
+                    access_mode: AccessMode::ReadOnly,
+                },
+                executor,
+                AppState::new("test".to_string()),
+                store,
+                append_started_rx,
+                append_rx,
+                false,
+            )
+            .await;
+
+            assert!(matches!(action, Action::QueryFailed { run_id: 8, .. }));
+            assert!(calls.is_empty());
+        }
+
+        #[tokio::test(start_paused = true)]
         async fn write_success_history_disabled_does_not_spawn_append() {
             let mut executor = MockQueryExecutor::new();
             executor.expect_execute_write().once().returning(|_, _, _| {
@@ -807,7 +854,7 @@ mod tests {
                     diagnostics: Vec::new(),
                 })
             });
-            let (store, append_rx) = history_store();
+            let (store, append_started_rx, append_rx) = history_store();
 
             let (action, calls) = run_with_history(
                 Effect::ExecuteWrite {
@@ -819,6 +866,7 @@ mod tests {
                 executor,
                 AppState::new("test".to_string()),
                 store,
+                append_started_rx,
                 append_rx,
                 false,
             )
@@ -835,13 +883,13 @@ mod tests {
             assert!(calls.is_empty());
         }
 
-        #[tokio::test]
+        #[tokio::test(start_paused = true)]
         async fn write_failure_history_disabled_does_not_spawn_append() {
             let mut executor = MockQueryExecutor::new();
             executor.expect_execute_write().once().returning(|_, _, _| {
                 Err(DbOperationError::QueryFailed("write failed".to_string()))
             });
-            let (store, append_rx) = history_store();
+            let (store, append_started_rx, append_rx) = history_store();
 
             let (action, calls) = run_with_history(
                 Effect::ExecuteWrite {
@@ -853,6 +901,7 @@ mod tests {
                 executor,
                 AppState::new("test".to_string()),
                 store,
+                append_started_rx,
                 append_rx,
                 false,
             )
