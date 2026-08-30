@@ -157,4 +157,68 @@ mod tests {
             "EXPLAIN QUERY PLANSELECT 1"
         ));
     }
+    mod write_queries {
+        use crate::sqlite_sql::build_sqlite_explain_query_plan_sql;
+
+        #[test]
+        fn wraps_select_with_query_plan() {
+            assert_eq!(
+                build_sqlite_explain_query_plan_sql("SELECT 1"),
+                Some("EXPLAIN QUERY PLAN SELECT 1".to_string())
+            );
+            assert_eq!(
+                build_sqlite_explain_query_plan_sql(
+                    "WITH cte AS (SELECT 1 AS n) SELECT * FROM cte"
+                ),
+                Some(
+                    "EXPLAIN QUERY PLAN WITH cte AS (SELECT 1 AS n) SELECT * FROM cte".to_string()
+                )
+            );
+        }
+
+        #[test]
+        fn wraps_dml_with_query_plan() {
+            assert_eq!(
+                build_sqlite_explain_query_plan_sql("DELETE FROM users"),
+                Some("EXPLAIN QUERY PLAN DELETE FROM users".to_string())
+            );
+            assert_eq!(
+                build_sqlite_explain_query_plan_sql("UPDATE users SET name = 'a' WHERE id = 1"),
+                Some("EXPLAIN QUERY PLAN UPDATE users SET name = 'a' WHERE id = 1".to_string())
+            );
+            assert_eq!(
+                build_sqlite_explain_query_plan_sql(
+                    "INSERT INTO users(name) SELECT name FROM old_users"
+                ),
+                Some(
+                    "EXPLAIN QUERY PLAN INSERT INTO users(name) SELECT name FROM old_users"
+                        .to_string()
+                )
+            );
+            assert_eq!(
+                build_sqlite_explain_query_plan_sql("REPLACE INTO users(id) VALUES (1)"),
+                Some("EXPLAIN QUERY PLAN REPLACE INTO users(id) VALUES (1)".to_string())
+            );
+        }
+
+        #[test]
+        fn rejects_prefixed_explain_and_analyze() {
+            assert_eq!(
+                build_sqlite_explain_query_plan_sql("EXPLAIN SELECT 1"),
+                None
+            );
+            assert_eq!(
+                build_sqlite_explain_query_plan_sql("CREATE TABLE users(id INTEGER)"),
+                None
+            );
+        }
+
+        #[test]
+        fn passes_through_existing_query_plan_prefix() {
+            assert_eq!(
+                build_sqlite_explain_query_plan_sql("EXPLAIN QUERY PLAN SELECT * FROM users"),
+                Some("EXPLAIN QUERY PLAN SELECT * FROM users".to_string())
+            );
+        }
+    }
 }

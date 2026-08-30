@@ -61,10 +61,10 @@ fn dispatch_enabled_action(
         .or_else(|| dispatch_result(state, &action, services, now))
         .or_else(|| dispatch_navigation(state, &action, services, now))
         .or_else(|| dispatch_sql_modal(state, &action, now))
-        .or_else(|| dispatch_explain(state, &action, now, services))
+        .or_else(|| dispatch_explain(state, &action, now))
         .or_else(|| dispatch_metadata(state, &action, now))
         .or_else(|| dispatch_er(state, &action, now))
-        .or_else(|| dispatch_query(state, &action, now, services))
+        .or_else(|| dispatch_query(state, &action, now))
         .into_effects()
     {
         return effects;

@@ -21,7 +21,6 @@ pub mod query_history;
 pub mod renderer;
 pub mod service_file;
 pub mod settings_store;
-pub mod sql_dialect;
 pub mod sqlite_diagnostics;
 pub mod sqlite_path_validator;
 
@@ -46,6 +45,5 @@ pub use query_history::{QueryHistoryError, QueryHistoryStore};
 pub use renderer::{CellDetailViewport, RenderError, RenderOutput, RenderResult, Renderer};
 pub use service_file::{PgServiceEntryReader, ServiceFileError};
 pub use settings_store::{AppSettings, SettingsStore, SettingsStoreError};
-pub use sql_dialect::SqlDialect;
 pub use sqlite_diagnostics::SqliteDiagnosticsProvider;
 pub use sqlite_path_validator::SqlitePathValidator;

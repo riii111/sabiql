@@ -7,7 +7,7 @@ use crate::model::shared::text_input::TextInputLike;
 use crate::model::sql_editor::modal::SqlModalStatus;
 use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::ports::outbound::AccessMode;
-use crate::services::AppServices;
+use crate::sql_builder::build_explain_sql;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
@@ -21,7 +21,6 @@ pub(super) fn reduce_request(
     state: &mut AppState,
     action: &Action,
     now: Instant,
-    services: &AppServices,
 ) -> DispatchResult {
     match action {
         Action::ExplainRequest => {
@@ -48,10 +47,7 @@ pub(super) fn reduce_request(
                 show_explain_error_on_plan(state, "EXPLAIN does not support multiple statements");
                 return DispatchResult::handled();
             }
-            let query = match services
-                .sql_dialect
-                .build_explain_sql(database_type, &content)
-            {
+            let query = match build_explain_sql(database_type, &content) {
                 Some(query) => query,
                 None if FeaturePolicy::new(&state.session.active_engine_feature_profile())
                     .is_enabled(FeatureRequirement::Explain) =>

@@ -10,6 +10,7 @@ pub mod foreign_key;
 pub mod index;
 pub mod metadata;
 pub mod mysql_sql;
+pub mod postgres_sql;
 pub mod query_history;
 pub mod query_result;
 pub mod rls;

@@ -166,7 +166,6 @@ mod tests {
     use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, QueryResult, QuerySource};
     use crate::model::browse::session::TableDetailState;
     use crate::ports::outbound::DbOperationError;
-    use crate::services::AppServices;
     use crate::test_support::table;
     use crate::update::browse::query::dispatch_query;
 
@@ -313,7 +312,6 @@ mod tests {
             &mut state,
             &Action::RevealPendingPreview { generation },
             Instant::now(),
-            &AppServices::stub(),
         );
         assert!(state.query.current_result().is_some());
         assert!(!state.query.has_pending_preview(generation));

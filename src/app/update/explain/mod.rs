@@ -8,18 +8,12 @@ mod tabs;
 use std::time::Instant;
 
 use crate::model::app_state::AppState;
-use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn dispatch_explain(
-    state: &mut AppState,
-    action: &Action,
-    now: Instant,
-    services: &AppServices,
-) -> DispatchResult {
-    request::reduce_request(state, action, now, services)
-        .or_else(|| analyze::reduce_analyze(state, action, now, services))
+pub fn dispatch_explain(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+    request::reduce_request(state, action, now)
+        .or_else(|| analyze::reduce_analyze(state, action, now))
         .or_else(|| output::reduce_output(state, action, now))
         .or_else(|| scroll::reduce_scroll(state, action, now))
         .or_else(|| tabs::reduce_tabs(state, action, now))
@@ -43,7 +37,7 @@ mod tests {
     use std::time::Instant;
 
     fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
-        dispatch_explain(state, action, now, &AppServices::stub())
+        dispatch_explain(state, action, now)
     }
 
     fn sql_modal_state() -> AppState {
@@ -124,13 +118,8 @@ mod tests {
             state.sql_modal.editor.set_content("SELECT 1".to_string());
             activate_sqlite_connection(&mut state);
 
-            let effects = dispatch_explain(
-                &mut state,
-                &Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(
@@ -154,13 +143,8 @@ mod tests {
                 .set_content("DELETE FROM users".to_string());
             activate_sqlite_connection(&mut state);
 
-            let effects = dispatch_explain(
-                &mut state,
-                &Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(
@@ -186,13 +170,8 @@ mod tests {
             state.sql_modal.editor.set_content("SELECT 1".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
 
-            let effects = dispatch_explain(
-                &mut state,
-                &Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
 
             assert!(matches!(
                 &effects[0],
@@ -228,13 +207,8 @@ mod tests {
                 .set_content("UPDATE users SET active = TRUE".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
 
-            let effects = dispatch_explain(
-                &mut state,
-                &Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
 
             assert!(matches!(
                 &effects[0],
@@ -257,13 +231,8 @@ mod tests {
                 .set_content("REPLACE INTO users (id, active) VALUES (1, TRUE)".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
 
-            let effects = dispatch_explain(
-                &mut state,
-                &Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
 
             assert!(matches!(
                 &effects[0],
@@ -286,13 +255,8 @@ mod tests {
                 .set_content("SELECT * FROM users FOR UPDATE".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
 
-            let effects = dispatch_explain(
-                &mut state,
-                &Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
 
             assert!(matches!(
                 &effects[0],
@@ -315,13 +279,8 @@ mod tests {
                 .set_content("CREATE TABLE users(id INT)".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
 
-            let effects = dispatch_explain(
-                &mut state,
-                &Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -341,13 +300,8 @@ mod tests {
                 .set_content("\\C /tmp/other.sock".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
 
-            let effects = dispatch_explain(
-                &mut state,
-                &Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -365,13 +319,8 @@ mod tests {
                 .set_content("SELECT 1; SELECT 2".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
 
-            let effects = dispatch_explain(
-                &mut state,
-                &Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -389,13 +338,8 @@ mod tests {
                 .set_content("CREATE TABLE users(id INTEGER)".to_string());
             activate_sqlite_connection(&mut state);
 
-            let effects = dispatch_explain(
-                &mut state,
-                &Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -416,13 +360,8 @@ mod tests {
                 .set_content("EXPLAIN SELECT 1".to_string());
             activate_sqlite_connection(&mut state);
 
-            let effects = dispatch_explain(
-                &mut state,
-                &Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -602,13 +541,9 @@ mod tests {
             state.sql_modal.editor.set_content("SELECT 1".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
 
-            let effects = dispatch_explain(
-                &mut state,
-                &Action::ExplainAnalyzeRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now())
+                    .unwrap();
 
             assert!(effects.is_empty());
             assert!(matches!(
@@ -619,13 +554,9 @@ mod tests {
                 } if query == "SELECT 1"
             ));
 
-            let effects = dispatch_explain(
-                &mut state,
-                &Action::ExplainAnalyzeConfirm,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_explain(&mut state, &Action::ExplainAnalyzeConfirm, Instant::now())
+                    .unwrap();
 
             assert!(matches!(
                 &effects[0],
@@ -648,13 +579,9 @@ mod tests {
                 .set_content("TABLE items".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
 
-            let effects = dispatch_explain(
-                &mut state,
-                &Action::ExplainAnalyzeRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now())
+                    .unwrap();
 
             assert!(effects.is_empty());
             assert!(matches!(
@@ -675,13 +602,9 @@ mod tests {
                 .set_content("UPDATE items SET value = 1".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
 
-            let effects = dispatch_explain(
-                &mut state,
-                &Action::ExplainAnalyzeRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now())
+                    .unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -905,13 +828,9 @@ mod tests {
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
             state.session.enable_read_only();
 
-            let effects = dispatch_explain(
-                &mut state,
-                &Action::ExplainAnalyzeRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now())
+                    .unwrap();
 
             assert!(effects.is_empty());
             assert!(matches!(
@@ -922,13 +841,9 @@ mod tests {
                 }
             ));
 
-            let effects = dispatch_explain(
-                &mut state,
-                &Action::ExplainAnalyzeConfirm,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_explain(&mut state, &Action::ExplainAnalyzeConfirm, Instant::now())
+                    .unwrap();
 
             assert!(matches!(
                 &effects[0],
@@ -1684,12 +1599,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Sql);
 
-            dispatch_explain(
-                &mut state,
-                &Action::SqlModalNextTab,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_explain(&mut state, &Action::SqlModalNextTab, Instant::now());
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
         }
@@ -1700,12 +1610,7 @@ mod tests {
             activate_sqlite_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Sql);
 
-            dispatch_explain(
-                &mut state,
-                &Action::SqlModalNextTab,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_explain(&mut state, &Action::SqlModalNextTab, Instant::now());
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
         }
@@ -1716,12 +1621,7 @@ mod tests {
             activate_sqlite_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
 
-            dispatch_explain(
-                &mut state,
-                &Action::SqlModalNextTab,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_explain(&mut state, &Action::SqlModalNextTab, Instant::now());
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
         }
@@ -1731,12 +1631,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
 
-            dispatch_explain(
-                &mut state,
-                &Action::SqlModalNextTab,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_explain(&mut state, &Action::SqlModalNextTab, Instant::now());
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
         }
@@ -1779,12 +1674,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Sql);
 
-            dispatch_explain(
-                &mut state,
-                &Action::SqlModalPrevTab,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_explain(&mut state, &Action::SqlModalPrevTab, Instant::now());
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
         }
@@ -1795,12 +1685,7 @@ mod tests {
             activate_sqlite_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Sql);
 
-            dispatch_explain(
-                &mut state,
-                &Action::SqlModalPrevTab,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_explain(&mut state, &Action::SqlModalPrevTab, Instant::now());
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
         }
@@ -1811,12 +1696,7 @@ mod tests {
             activate_sqlite_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
 
-            dispatch_explain(
-                &mut state,
-                &Action::SqlModalPrevTab,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_explain(&mut state, &Action::SqlModalPrevTab, Instant::now());
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
         }
@@ -1826,12 +1706,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
 
-            dispatch_explain(
-                &mut state,
-                &Action::SqlModalPrevTab,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_explain(&mut state, &Action::SqlModalPrevTab, Instant::now());
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
         }
