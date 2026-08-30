@@ -8,11 +8,11 @@ use crate::model::shared::key_sequence::KeySequenceState;
 use crate::model::shared::text_input::{TextInputEditing, TextInputLike};
 use crate::model::shared::ui_state::DEFAULT_JSON_DETAIL_EDITOR_VISIBLE_ROWS;
 use crate::policy::preview_cell_text::CellPresentationPolicy;
-use crate::ports::outbound::ClipboardError;
 use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{
-    EditGuardrailError, editable_preview_base, ensure_column_writable, find_text_matches,
+    EditGuardrailError, clipboard_unavailable, editable_preview_base, ensure_column_writable,
+    find_text_matches,
 };
 use std::time::Instant;
 
@@ -96,9 +96,7 @@ pub fn reduce_json(state: &mut AppState, action: &Action, now: Instant) -> Dispa
             DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                 content: json,
                 on_success: Some(Box::new(Action::JsonYankSuccess)),
-                on_failure: Some(Box::new(Action::CopyFailed(ClipboardError::Unavailable(
-                    "Clipboard unavailable".into(),
-                )))),
+                on_failure: Some(Box::new(clipboard_unavailable())),
             }])
         }
 

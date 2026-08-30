@@ -7,9 +7,9 @@ use crate::model::app_state::AppState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::text_input::TextInputLike;
 use crate::model::sql_editor::modal::SqlModalTab;
-use crate::ports::outbound::ClipboardError;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::clipboard_unavailable;
 
 pub(super) fn reduce_yank(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
@@ -67,9 +67,7 @@ pub(super) fn reduce_yank(state: &mut AppState, action: &Action, now: Instant) -
                     DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                         content: c,
                         on_success: Some(Box::new(Action::SqlModalYankSuccess)),
-                        on_failure: Some(Box::new(Action::CopyFailed(
-                            ClipboardError::Unavailable("Clipboard unavailable".into()),
-                        ))),
+                        on_failure: Some(Box::new(clipboard_unavailable())),
                     }])
                 }
                 _ => DispatchResult::handled(),
