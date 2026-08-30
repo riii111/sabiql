@@ -8,10 +8,9 @@ use crate::model::shared::detail_view::DetailDisplayMode;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::preview_cell_text::{CellPresentationPolicy, format_for_cell_detail};
-use crate::ports::outbound::ClipboardError;
 use crate::update::action::{Action, InputTarget, ModalKind, ScrollDirection, ScrollTarget};
 use crate::update::dispatch_result::DispatchResult;
-use crate::update::helpers::find_text_matches;
+use crate::update::helpers::{clipboard_unavailable, find_text_matches};
 
 pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
@@ -56,9 +55,7 @@ pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -
         Action::CellDetailYankAll => DispatchResult::handled_with(vec![Effect::CopyToClipboard {
             content: state.cell_detail.content().to_string(),
             on_success: Some(Box::new(Action::CellDetailYankSuccess)),
-            on_failure: Some(Box::new(Action::CopyFailed(ClipboardError::Unavailable(
-                "Clipboard unavailable".into(),
-            )))),
+            on_failure: Some(Box::new(clipboard_unavailable())),
         }]),
         Action::CellDetailYankSuccess => {
             state.flash_timers.set(FlashId::CellDetail, now);
