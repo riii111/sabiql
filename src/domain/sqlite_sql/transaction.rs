@@ -278,21 +278,18 @@ fn pragma_value(tail: &str) -> Option<String> {
             let next = pragma_quoted_value_end(&chars, i, ch)?;
             let content_start = chars.get(i + 1)?.0;
             let content_end = chars.get(next.checked_sub(1)?)?.0;
-            if let Some(part) = value[content_start..content_end]
-                .split(|ch: char| !ch.is_alphanumeric() && ch != '_')
-                .find(|part| !part.is_empty())
-            {
-                return Some(part.to_ascii_lowercase());
-            }
-            i = next;
-            continue;
+            return Some(value[content_start..content_end].to_ascii_lowercase());
         }
         if stop_at_close && ch == ')' {
             return None;
         }
-        if ch.is_alphanumeric() || ch == '_' {
+        let has_numeric_sign = matches!(ch, '+' | '-')
+            && chars
+                .get(i + 1)
+                .is_some_and(|(_, next)| next.is_ascii_digit());
+        if has_numeric_sign || ch.is_alphanumeric() || ch == '_' {
             let start = byte_pos;
-            let mut end = i + 1;
+            let mut end = if has_numeric_sign { i + 2 } else { i + 1 };
             while end < chars.len() && (chars[end].1.is_alphanumeric() || chars[end].1 == '_') {
                 end += 1;
             }
@@ -310,9 +307,13 @@ fn pragma_quoted_value_end(chars: &[(usize, char)], i: usize, ch: char) -> Optio
             let mut in_string = false;
             let mut cursor = i;
             while cursor < chars.len() {
-                cursor = advance_single_quote(chars, cursor, chars[cursor].1, &mut in_string)?;
-                if !in_string {
-                    return Some(cursor);
+                if chars[cursor].1 == '\'' {
+                    cursor = advance_single_quote(chars, cursor, chars[cursor].1, &mut in_string)?;
+                    if !in_string {
+                        return Some(cursor);
+                    }
+                } else {
+                    cursor += 1;
                 }
             }
             return None;
@@ -475,6 +476,18 @@ mod tests {
                 "PRAGMA \"main\".\"foreign_keys\"(/* comment */ OFF)",
                 Some("off"),
             ),
+        ] {
+            let pragma = parse_sqlite_pragma(sql).unwrap();
+            assert_eq!(pragma.value.as_deref(), expected, "{sql}");
+        }
+    }
+
+    #[test]
+    fn preserves_quoted_and_signed_pragma_values() {
+        for (sql, expected) in [
+            ("PRAGMA foreign_keys = /* comment */ '-1'", Some("-1")),
+            ("PRAGMA foreign_keys = -- comment\n' ON '", Some(" on ")),
+            ("PRAGMA foreign_keys(/* comment */ -1)", Some("-1")),
         ] {
             let pragma = parse_sqlite_pragma(sql).unwrap();
             assert_eq!(pragma.value.as_deref(), expected, "{sql}");

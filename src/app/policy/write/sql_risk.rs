@@ -1240,6 +1240,18 @@ mod tests {
             #[case::foreign_keys_unknown_double_quoted_value(
                 "PRAGMA foreign_keys(/* comment */ \"BANANA\")"
             )]
+            #[case::foreign_keys_quoted_negative_after_block_comment(
+                "PRAGMA foreign_keys = /* comment */ '-1'"
+            )]
+            #[case::foreign_keys_quoted_negative_call_after_line_comment(
+                "PRAGMA foreign_keys(\n-- comment\n'-1')"
+            )]
+            #[case::foreign_keys_quoted_spaced_on_after_block_comment(
+                "PRAGMA foreign_keys = /* comment */ ' ON '"
+            )]
+            #[case::foreign_keys_negative_after_block_comment(
+                "PRAGMA foreign_keys = /* comment */ -1"
+            )]
             #[case::quoted_schema_foreign_keys_off("PRAGMA \"main\".\"foreign_keys\" = OFF")]
             #[case::bracket_schema_journal_mode("PRAGMA [main].[journal_mode](WAL)")]
             #[case::journal_mode("PRAGMA journal_mode = WAL")]
