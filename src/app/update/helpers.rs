@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use unicode_casefold::UnicodeCaseFold;
 
 use crate::cmd::effect::Effect;
@@ -10,6 +8,7 @@ use crate::domain::connection::{
 use crate::domain::{QueryResult, QueryValue};
 use crate::model::app_state::AppState;
 use crate::model::connection::setup::{ConnectionField, ConnectionSetupState};
+use crate::policy::column::column_read_only_reason;
 use crate::policy::write::inline_cell_edit::InlineCellEditError;
 use crate::policy::write::write_guardrails::{
     PreviewWriteability, StableRowIdentity, TargetSummary, WriteOperation, WritePreview,
@@ -19,30 +18,26 @@ use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::services::AppServices;
 use crate::update::dispatch_result::DispatchResult;
 
-pub(crate) fn require_er_diagram_enabled(
-    state: &mut AppState,
-    now: Instant,
-) -> Option<DispatchResult> {
+pub(crate) fn require_er_diagram_enabled(state: &mut AppState) -> Option<DispatchResult> {
     let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
     if feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
         return None;
     }
 
-    state.messages.set_error_at(
-        "ER diagrams are not available for this connection".to_string(),
-        now,
-    );
+    state
+        .messages
+        .set_error("ER diagrams are not available for this connection".to_string());
     Some(DispatchResult::handled())
 }
 
-pub(crate) fn reject_pending_mysql_connection_probe(state: &mut AppState, now: Instant) -> bool {
+pub(crate) fn reject_pending_mysql_connection_probe(state: &mut AppState) -> bool {
     if state.session.pending_mysql_connection_probe().is_none() {
         return false;
     }
 
     state
         .messages
-        .set_error_at("Connection switch in progress".to_string(), now);
+        .set_error("Connection switch in progress".to_string());
     true
 }
 
@@ -50,6 +45,7 @@ pub(crate) fn metadata_reload_effects(state: &mut AppState, dsn: &str) -> Vec<Ef
     let run_id = state.session.begin_reload();
 
     vec![Effect::Sequence(vec![
+        Effect::CancelMetadataTasks,
         Effect::CacheInvalidate {
             dsn: dsn.to_string(),
         },
@@ -198,7 +194,7 @@ pub fn ensure_column_writable(
             .find(|column| column.name == column_name)
     }) && column.is_read_only()
     {
-        let reason = column.read_only_reason().unwrap_or("read-only");
+        let reason = column_read_only_reason(column).unwrap_or("read-only");
         return Err(EditGuardrailError::ReadOnlyColumn(format!(
             "{column_name} ({reason})"
         )));
@@ -305,12 +301,6 @@ pub fn deletion_refresh_target_bulk(
         let target_row = first_deleted_idx.min(remaining - 1);
         (current_page, Some(target_row))
     }
-}
-
-pub fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
-    s.char_indices()
-        .nth(char_idx)
-        .map_or(s.len(), |(byte_idx, _)| byte_idx)
 }
 
 pub fn find_text_matches(content: &str, query: &str) -> Vec<usize> {
@@ -994,18 +984,13 @@ mod tests {
 
         use super::*;
 
-        fn editable_state(database_type: DatabaseType) -> AppState {
+        fn sqlite_editable_state() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            let dsn = match database_type {
-                DatabaseType::PostgreSQL => "postgres://localhost/test",
-                DatabaseType::SQLite => "sqlite:///tmp/app.db",
-                DatabaseType::MySQL => "mysql://user@localhost/test",
-            };
             state.session.activate_connection_with_dsn(
                 &ConnectionId::from_string("test-connection"),
                 "test",
-                database_type,
-                dsn,
+                DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
             );
             state
                 .query
@@ -1036,7 +1021,7 @@ mod tests {
 
         #[test]
         fn sqlite_database_type_uses_schema_free_delete_preview() {
-            let state = editable_state(DatabaseType::SQLite);
+            let state = sqlite_editable_state();
 
             let result = build_bulk_delete_preview(&state, &AppServices::stub()).unwrap();
 
@@ -1048,7 +1033,7 @@ mod tests {
 
         #[test]
         fn sqlite_table_without_primary_key_cannot_build_delete_preview() {
-            let mut state = editable_state(DatabaseType::SQLite);
+            let mut state = sqlite_editable_state();
             let mut detail = state.session.table_detail().cloned().expect("table detail");
             detail.primary_key = None;
             state.session.set_table_detail_raw(Some(detail));
@@ -1061,7 +1046,7 @@ mod tests {
 
         #[test]
         fn sqlite_without_rowid_table_uses_primary_key_for_delete_preview() {
-            let mut state = editable_state(DatabaseType::SQLite);
+            let mut state = sqlite_editable_state();
             let mut detail = state.session.table_detail().cloned().expect("table detail");
             detail.kind_info.without_rowid = true;
             state.session.set_table_detail_raw(Some(detail));
@@ -1076,7 +1061,7 @@ mod tests {
 
         #[test]
         fn sqlite_database_type_rejects_null_primary_key_value() {
-            let mut state = editable_state(DatabaseType::SQLite);
+            let mut state = sqlite_editable_state();
             state
                 .query
                 .set_current_result(Arc::new(QueryResult::success_with_values(

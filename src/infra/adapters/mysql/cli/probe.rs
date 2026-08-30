@@ -8,12 +8,13 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::app::ports::outbound::{
-    ConnectionFailureKind, DbOperationError, MYSQL_CONNECT_TIMEOUT_ERRNOS,
-    MySqlConnectionProbeResult, UnsupportedOperationKind,
+    ConnectionFailureKind, DbOperationError, MySqlConnectionProbeResult, UnsupportedOperationKind,
 };
 
 use super::args::mysql_connection_args;
-use super::error::{clean_mysql_stderr, map_mysql_cli_spawn_error};
+use super::error::{
+    clean_mysql_stderr, is_mysql_connect_timeout_message, map_mysql_cli_spawn_error,
+};
 use super::sanitize_mysql_command_environment;
 
 const MYSQL_PROBE_TIMEOUT: Duration = Duration::from_secs(11);
@@ -198,7 +199,10 @@ fn classify_mysql_probe_failure(stderr: String) -> DbOperationError {
         .to_ascii_lowercase()
         .contains("can't connect to mysql server")
     {
-        DbOperationError::ConnectionFailed(stderr)
+        DbOperationError::ConnectionFailedWithKind {
+            kind: ConnectionFailureKind::ConnectionRefused,
+            details: stderr,
+        }
     } else {
         super::error::classify_mysql_query_failure(stderr.as_bytes())
     }
@@ -256,14 +260,6 @@ pub(super) fn mysql_tls_failure_kind(lowercase_details: &str) -> Option<Connecti
     }
 
     None
-}
-
-pub(super) fn is_mysql_connect_timeout_message(value: &str) -> bool {
-    let lower = value.to_ascii_lowercase();
-    lower.contains("can't connect to mysql server")
-        && MYSQL_CONNECT_TIMEOUT_ERRNOS
-            .iter()
-            .any(|errno| lower.contains(errno))
 }
 
 #[cfg(test)]
@@ -380,7 +376,10 @@ mod probe_tests {
                 "ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (111)"
                     .to_string()
             ),
-            DbOperationError::ConnectionFailed(_)
+            DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::ConnectionRefused,
+                ..
+            }
         ));
         assert!(matches!(
             classify_mysql_probe_failure(
@@ -418,13 +417,43 @@ mod probe_tests {
             classify_mysql_probe_failure(
                 "ERROR 1045 (28000): Access denied for user 'user'".to_string()
             ),
-            DbOperationError::ConnectionFailed(_)
+            DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::Auth,
+                ..
+            }
         ));
         assert!(matches!(
             classify_mysql_probe_failure(
                 "ERROR 1049 (42000): Unknown database 'missing'".to_string()
             ),
-            DbOperationError::ConnectionFailed(_)
+            DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::DatabaseNotFound,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn classifies_mysql_probe_unknown_host_errno_as_host_unreachable() {
+        assert!(matches!(
+            classify_mysql_probe_failure(
+                "ERROR 2005 (HY000): Unknown MySQL server host 'db.internal' (11001)".to_string()
+            ),
+            DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::HostUnreachable,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn classifies_mysql_probe_unknown_database_without_error_code_as_database_not_found() {
+        assert!(matches!(
+            classify_mysql_probe_failure("mysql: [ERROR] Unknown database 'missing'".to_string()),
+            DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::DatabaseNotFound,
+                ..
+            }
         ));
     }
 

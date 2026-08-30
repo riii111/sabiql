@@ -120,7 +120,7 @@ pub(super) fn reduce_editing(
                 .schedule_completion(now + Duration::from_millis(100));
             DispatchResult::handled()
         }
-        Action::SqlModalTab => {
+        Action::SqlModalInsertTab => {
             state.sql_modal.enter_editing();
             state.sql_modal.editor.insert_tab();
             state

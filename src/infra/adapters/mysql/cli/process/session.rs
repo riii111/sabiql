@@ -6,6 +6,7 @@ use crate::app::ports::outbound::{AccessMode, DbOperationError};
 
 use super::super::super::option_file::MySqlOptionFile;
 use super::super::args::{mysql_metadata_session_args, mysql_query_args};
+use super::super::policy::is_mysql_single_marker;
 use super::super::probe::validate_lower_case_table_names;
 use super::super::xml::{MySqlResultSet, parse_mysql_preview_xml, parse_mysql_xml};
 use super::{
@@ -83,12 +84,7 @@ impl MySqlMetadataSession {
         } else {
             parse_mysql_xml(&xml)?
         };
-        if result.columns.is_empty() && result.values.is_empty() {
-            result.columns = expected_columns
-                .iter()
-                .map(|column| (*column).to_string())
-                .collect();
-        }
+        normalize_empty_result_columns(&mut result, expected_columns);
         Ok(result)
     }
 
@@ -106,19 +102,14 @@ impl MySqlMetadataSession {
 
         let source_xml = read_one_mysql_resultset(&mut self.process).await?;
         let mut source_result = parse_mysql_xml(&source_xml)?;
-        if source_result.columns.is_empty() && source_result.values.is_empty() {
-            source_result.columns = expected_columns
-                .iter()
-                .map(|column| (*column).to_string())
-                .collect();
-        }
+        normalize_empty_result_columns(&mut source_result, expected_columns);
         let marker_xml = read_one_mysql_resultset(&mut self.process).await?;
         let marker_result = parse_mysql_xml(&marker_xml)?;
-        if marker_result.columns != [MYSQL_INSPECTOR_COMPLETION_MARKER_COLUMN]
-            || marker_result.values.len() != 1
-            || marker_result.values[0].len() != 1
-            || marker_result.values[0][0].as_str() != Some(marker.as_str())
-        {
+        if !is_mysql_single_marker(
+            &marker_result,
+            MYSQL_INSPECTOR_COMPLETION_MARKER_COLUMN,
+            &marker,
+        ) {
             return Err(DbOperationError::QueryFailed(
                 "mysql inspector completion marker did not match".to_string(),
             ));
@@ -143,11 +134,11 @@ impl MySqlMetadataSession {
                 "SELECT '{marker}' AS {MYSQL_PREVIEW_COMPLETION_MARKER_COLUMN}"
             ))
             .await?;
-        if marker_result.columns != [MYSQL_PREVIEW_COMPLETION_MARKER_COLUMN]
-            || marker_result.values.len() != 1
-            || marker_result.values[0].len() != 1
-            || marker_result.values[0][0].as_str() != Some(marker.as_str())
-        {
+        if !is_mysql_single_marker(
+            &marker_result,
+            MYSQL_PREVIEW_COMPLETION_MARKER_COLUMN,
+            &marker,
+        ) {
             return Err(DbOperationError::QueryFailed(
                 "mysql preview completion marker did not match".to_string(),
             ));
@@ -168,12 +159,17 @@ impl MySqlMetadataSession {
                 "mysql query exceeded the execution timeout".to_string(),
             )),
         };
-        self.cleanup().await;
+        cleanup_mysql_process(&mut self.process).await;
         result
     }
+}
 
-    async fn cleanup(&mut self) {
-        cleanup_mysql_process(&mut self.process).await;
+fn normalize_empty_result_columns(result: &mut MySqlResultSet, expected_columns: &[&str]) {
+    if result.columns.is_empty() && result.values.is_empty() {
+        result.columns = expected_columns
+            .iter()
+            .map(|column| (*column).to_string())
+            .collect();
     }
 }
 

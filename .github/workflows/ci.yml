@@ -151,6 +151,10 @@ jobs:
         env:
           CARGO_TARGET_DIR: ${{ runner.temp }}/sabiql-integration-cargo-target
         run: cargo nextest run -p sabiql --run-ignored ignored-only -E 'test(tests::adapter_postgres)' --show-progress=none
+      - name: Run PostgreSQL metadata provider lifecycle test
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/sabiql-integration-cargo-target
+        run: cargo nextest run -p sabiql-infra --run-ignored ignored-only -E 'test(provider_classifies_full_and_light_missing_relations_without_losing_empty_tables)' --show-progress=none
       - name: Run Oracle MySQL 8.4 integration tests (Tier 2)
         env:
           CARGO_TARGET_DIR: ${{ runner.temp }}/sabiql-integration-cargo-target

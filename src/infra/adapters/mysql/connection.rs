@@ -5,7 +5,7 @@ use async_trait::async_trait;
 
 use super::adapter::MySqlAdapter;
 use super::cli::check_mysql_cli_version;
-use super::dsn::parse_and_validate_mysql_dsn;
+use super::dsn::{map_mysql_tls_failure, parse_and_validate_mysql_dsn};
 use super::option_file::MySqlOptionFile;
 
 #[async_trait]
@@ -17,6 +17,6 @@ impl MySqlConnectionProbe for MySqlAdapter {
         let option_file = MySqlOptionFile::create(&target)?;
         let result = super::cli::probe_mysql_server(&option_file.path).await;
         drop(option_file);
-        result
+        result.map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))
     }
 }

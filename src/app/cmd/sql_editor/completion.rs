@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 
-use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
 use crate::cmd::completion_engine::{CompletionDatabaseScope, CompletionEngine};
@@ -14,7 +13,7 @@ pub async fn run(
     action_tx: &mpsc::Sender<Action>,
     state: &AppState,
     completion_engine: &RefCell<CompletionEngine>,
-) -> Result<()> {
+) {
     match effect {
         Effect::CacheTableInCompletionEngine {
             qualified_name,
@@ -23,22 +22,18 @@ pub async fn run(
             completion_engine
                 .borrow_mut()
                 .cache_table_detail(qualified_name, *table);
-            Ok(())
         }
 
         Effect::EvictTablesFromCompletionCache { tables } => {
             completion_engine.borrow_mut().evict_tables(&tables);
-            Ok(())
         }
 
         Effect::ClearCompletionEngineCache => {
             completion_engine.borrow_mut().clear_table_cache();
-            Ok(())
         }
 
         Effect::ResizeCompletionCache { capacity } => {
             completion_engine.borrow_mut().resize_cache(capacity);
-            Ok(())
         }
 
         Effect::TriggerCompletion => {
@@ -50,8 +45,7 @@ pub async fn run(
             let (prep, missing) = {
                 let engine = completion_engine.borrow();
                 let prep = engine.prepare_for_database(content, cursor, database_type);
-                let missing = engine
-                    .missing_tables_prepared(&prep, state.session.metadata().map(AsRef::as_ref));
+                let missing = engine.missing_tables_prepared(&prep, state.session.metadata());
                 (prep, missing)
             };
 
@@ -78,14 +72,12 @@ pub async fn run(
             let (candidates, token_len, visible) = {
                 let engine = completion_engine.borrow();
                 let token_len = CompletionEngine::current_token_len_prepared(&prep);
-                let recent_cols = state.sql_modal.completion().recent_columns_vec();
                 let candidates = engine.get_candidates_prepared_for_database(
                     content,
                     cursor,
                     &prep,
-                    state.session.metadata().map(AsRef::as_ref),
+                    state.session.metadata(),
                     state.session.table_detail(),
-                    &recent_cols,
                     CompletionDatabaseScope {
                         database_type,
                         active_database,
@@ -107,7 +99,6 @@ pub async fn run(
                 })
                 .await
                 .ok();
-            Ok(())
         }
 
         _ => unreachable!("completion::run called with non-completion effect"),
@@ -145,8 +136,7 @@ mod tests {
             &state,
             &RefCell::new(CompletionEngine::new()),
         )
-        .await
-        .expect("completion should run");
+        .await;
 
         assert!(matches!(
             action_rx.recv().await,

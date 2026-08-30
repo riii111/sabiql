@@ -23,11 +23,11 @@ fn clear_query_confirmation(state: &mut AppState) {
 pub fn reduce_connection_lifecycle(
     state: &mut AppState,
     action: &Action,
-    now: std::time::Instant,
+    _now: std::time::Instant,
     _services: &AppServices,
 ) -> DispatchResult {
     match action {
-        Action::TryConnect => DispatchResult::handled_with(try_connect(state, now)),
+        Action::TryConnect => DispatchResult::handled_with(try_connect(state)),
 
         Action::SwitchConnection(target) => {
             state.session.cancel_connection_save_and_disconnect();
@@ -41,10 +41,9 @@ pub fn reduce_connection_lifecycle(
             } = target;
 
             if *database_type == DatabaseType::MySQL && database.is_none() {
-                state.messages.set_error_at(
-                    "MySQL connection field `database` is required".to_string(),
-                    now,
-                );
+                state
+                    .messages
+                    .set_error("MySQL connection field `database` is required".to_string());
                 return DispatchResult::handled();
             }
 
@@ -59,10 +58,13 @@ pub fn reduce_connection_lifecycle(
                 state.query.reset_for_context_change();
                 return DispatchResult::handled_with(termination_effects(
                     &state.query,
-                    vec![Effect::ProbeMySqlConnection {
-                        target: target.clone(),
-                        run_id,
-                    }],
+                    vec![
+                        Effect::CancelSqliteDiagnostics,
+                        Effect::ProbeMySqlConnection {
+                            target: target.clone(),
+                            run_id,
+                        },
+                    ],
                 ));
             }
 
@@ -70,7 +72,10 @@ pub fn reduce_connection_lifecycle(
 
             if let Some(cached) = state.connection_caches.get(id).cloned() {
                 restore_cache(state, &cached, target);
-                let mut effects = vec![Effect::ClearCompletionEngineCache];
+                let mut effects = vec![
+                    Effect::CancelSqliteDiagnostics,
+                    Effect::ClearCompletionEngineCache,
+                ];
                 if state.session.effective_user().is_none() {
                     let run_id = state.session.begin_effective_user_fetch();
                     effects.push(Effect::FetchEffectiveUser {
@@ -81,11 +86,12 @@ pub fn reduce_connection_lifecycle(
                 DispatchResult::handled_with(termination_effects(&state.query, effects))
             } else {
                 // No cache: reset and fetch metadata
-                reset_for_new_connection(state, id, dsn, name, *database_type, database.as_deref());
+                reset_for_new_connection(state, target);
                 let run_id = state.session.begin_connecting(dsn);
                 DispatchResult::handled_with(termination_effects(
                     &state.query,
                     vec![
+                        Effect::CancelSqliteDiagnostics,
                         Effect::ClearCompletionEngineCache,
                         Effect::FetchMetadata {
                             dsn: dsn.clone(),
@@ -135,7 +141,7 @@ pub fn reduce_connection_lifecycle(
             }
 
             state.connection_caches.remove(id);
-            reset_for_new_connection(state, id, dsn, name, *database_type, database.as_deref());
+            reset_for_new_connection(state, target);
             state
                 .session
                 .set_mysql_lower_case_table_names(*lower_case_table_names);
@@ -175,13 +181,12 @@ pub fn reduce_connection_lifecycle(
             if state.session.dsn_matches(&target.dsn) {
                 state
                     .session
-                    .mark_table_detail_probe_failed(&target.dsn, message.clone());
-                state.session.mark_connection_failed(message);
+                    .mark_table_detail_probe_failed(&target.dsn, message);
+                state.session.mark_connection_failed();
             }
-            state.connection_error.set_connection_switch_error(
-                ConnectionErrorInfo::from_db_operation_error_with_dsn(error, &target.dsn),
-                target.database_type,
-            );
+            state
+                .connection_error
+                .set_connection_switch_error(ConnectionErrorInfo::from_db_operation_error(error));
             state.modal.replace_mode(InputMode::ConnectionError);
             DispatchResult::handled_with(table_detail_retry.into_iter().collect())
         }
@@ -190,7 +195,7 @@ pub fn reduce_connection_lifecycle(
     }
 }
 
-pub(super) fn try_connect(state: &mut AppState, now: std::time::Instant) -> Vec<Effect> {
+pub(super) fn try_connect(state: &mut AppState) -> Vec<Effect> {
     state.session.cancel_connection_save_and_disconnect();
     if state.session.connection_state().is_not_connected()
         && state.modal.active_mode() == InputMode::Normal
@@ -198,10 +203,9 @@ pub(super) fn try_connect(state: &mut AppState, now: std::time::Instant) -> Vec<
         if let Some(dsn) = state.session.dsn().map(str::to_string) {
             if state.session.active_database_type() == Some(DatabaseType::MySQL) {
                 if state.session.active_database().is_none() {
-                    state.messages.set_error_at(
-                        "MySQL connection field `database` is required".to_string(),
-                        now,
-                    );
+                    state
+                        .messages
+                        .set_error("MySQL connection field `database` is required".to_string());
                     return vec![];
                 }
                 let target = ConnectionTarget {
@@ -261,7 +265,7 @@ mod tests {
     use crate::model::shared::inspector_tab::InspectorTab;
     use crate::model::shared::ui_state::ResultNavMode;
     use crate::model::sql_editor::modal::SqlModalStatus;
-    use crate::ports::outbound::DbOperationError;
+    use crate::ports::outbound::{ConnectionFailureKind, DbOperationError};
     use crate::test_support::connection::{
         assert_explain_state_cleared, assert_sqlite_diagnostics_cleared,
     };
@@ -392,7 +396,10 @@ mod tests {
             state.session.set_connection_state(ConnectionState::Failed);
             state
                 .connection_error
-                .set_error(ConnectionErrorInfo::new("connection refused"));
+                .set_error(ConnectionErrorInfo::with_kind(
+                    ConnectionErrorKind::ConnectionRefused,
+                    "connection refused",
+                ));
 
             let retry_effects = reduce_connection_error(
                 &mut state,
@@ -823,7 +830,7 @@ mod tests {
         }
 
         fn seed_sqlite_diagnostics(state: &mut AppState) {
-            let run_id = state.sqlite_diagnostics.begin_fetch();
+            let run_id = state.sqlite_diagnostics.begin_core_fetch();
             state
                 .sqlite_diagnostics
                 .set_core_loaded(run_id, SqliteDiagnosticsSnapshot::default());
@@ -1115,7 +1122,7 @@ mod tests {
             assert!(
                 effects
                     .iter()
-                    .any(|effect| matches!(effect, Effect::CancelActiveTasks))
+                    .any(|effect| matches!(effect, Effect::CancelTrackedTasks))
             );
             assert!(
                 !effects
@@ -1648,7 +1655,7 @@ mod tests {
             assert!(state.connection_error.error_info().is_some());
             assert!(matches!(
                 error_effects.as_slice(),
-                [Effect::CancelActiveTasks]
+                [Effect::CancelTrackedTasks]
             ));
         }
 
@@ -1957,7 +1964,7 @@ mod tests {
                     _ => None,
                 })
                 .unwrap();
-            assert!(matches!(effects.first(), Some(Effect::CancelActiveTasks)));
+            assert!(matches!(effects.first(), Some(Effect::CancelTrackedTasks)));
             assert!(!state.query.is_running());
             assert!(!state.query.is_current_run(query_run_id));
 
@@ -2410,9 +2417,10 @@ mod tests {
                 &Action::MySqlConnectionProbeFailed {
                     target,
                     run_id,
-                    error: DbOperationError::ConnectionFailed(
-                        "ERROR 1045: Access denied for user 'user'".to_string(),
-                    ),
+                    error: DbOperationError::ConnectionFailedWithKind {
+                        kind: ConnectionFailureKind::Auth,
+                        details: "ERROR 1045: Access denied for user 'user'".to_string(),
+                    },
                 },
             );
 
@@ -2455,7 +2463,7 @@ mod tests {
             state
                 .connection_caches
                 .save(&target_id, ConnectionCache::default());
-            let _ = state.sql_modal.begin_prefetch();
+            let _ = state.sql_modal.begin_er_prefetch();
             state
                 .sql_modal
                 .queue_table_prefetch("public.users".to_string());
@@ -2463,7 +2471,7 @@ mod tests {
             let action = create_postgres_switch_action(&target_id, "cached_db");
             reduce(&mut state, &action);
 
-            assert!(!state.sql_modal.is_prefetch_started());
+            assert!(state.sql_modal.active_prefetch_run_id().is_none());
             assert!(!state.sql_modal.has_pending_prefetch());
         }
 
@@ -2471,7 +2479,7 @@ mod tests {
         fn switch_without_cache_resets_sql_prefetch() {
             let mut state = AppState::new("test".to_string());
             let new_id = ConnectionId::new();
-            let _ = state.sql_modal.begin_prefetch();
+            let _ = state.sql_modal.begin_er_prefetch();
             state
                 .sql_modal
                 .queue_table_prefetch("public.users".to_string());
@@ -2479,7 +2487,7 @@ mod tests {
             let action = create_postgres_switch_action(&new_id, "fresh_db");
             reduce(&mut state, &action);
 
-            assert!(!state.sql_modal.is_prefetch_started());
+            assert!(state.sql_modal.active_prefetch_run_id().is_none());
             assert!(!state.sql_modal.has_pending_prefetch());
         }
 

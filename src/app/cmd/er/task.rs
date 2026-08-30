@@ -1,11 +1,63 @@
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 
 use crate::domain::ErTableInfo;
 use crate::ports::outbound::ErDiagramExporter;
-use crate::update::action::{Action, ErDiagramError, ErDiagramFailure, ErDiagramInfo};
+use crate::update::action::{Action, ErDiagramInfo};
+
+#[derive(Default)]
+pub(crate) struct SmartErRefreshTaskOwner {
+    active: Mutex<Option<JoinHandle<()>>>,
+}
+
+impl SmartErRefreshTaskOwner {
+    pub(crate) async fn replace<F>(&self, task: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        self.cancel().await;
+        let task = tokio::spawn(task);
+        *self
+            .active
+            .lock()
+            .expect("Smart ER refresh task lock poisoned") = Some(task);
+    }
+
+    pub(crate) async fn cancel(&self) {
+        if let Some(task) = self.abort() {
+            let _ = task.await;
+        }
+    }
+
+    pub(crate) fn abort(&self) -> Option<JoinHandle<()>> {
+        let task = self
+            .active
+            .lock()
+            .expect("Smart ER refresh task lock poisoned")
+            .take();
+        if let Some(task) = &task {
+            task.abort();
+        }
+        task
+    }
+}
+
+impl Drop for SmartErRefreshTaskOwner {
+    fn drop(&mut self) {
+        if let Some(task) = self
+            .active
+            .get_mut()
+            .expect("Smart ER refresh task lock poisoned")
+            .take()
+        {
+            task.abort();
+        }
+    }
+}
 
 pub fn spawn_er_diagram_task(
     exporter: Arc<dyn ErDiagramExporter>,
@@ -37,18 +89,18 @@ pub fn spawn_er_diagram_task(
             }
             Ok(Err(e)) => {
                 let _ = tx
-                    .send(Action::ErDiagramFailed(ErDiagramFailure {
+                    .send(Action::ErDiagramFailed {
                         run_id,
-                        error: ErDiagramError::ExportFailed(e.to_string()),
-                    }))
+                        error: e.to_string(),
+                    })
                     .await;
             }
             Err(e) => {
                 let _ = tx
-                    .send(Action::ErDiagramFailed(ErDiagramFailure {
+                    .send(Action::ErDiagramFailed {
                         run_id,
-                        error: ErDiagramError::TaskPanicked(e.to_string()),
-                    }))
+                        error: format!("Task panicked: {e}"),
+                    })
                     .await;
             }
         }
@@ -58,6 +110,7 @@ pub fn spawn_er_diagram_task(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cmd::test_fixtures::recv_action_with_timeout;
     use crate::ports::outbound::ErExportResult;
     use std::path::Path;
     use std::time::Duration;
@@ -107,13 +160,6 @@ mod tests {
             }
         }
 
-        async fn receive_action(rx: &mut mpsc::Receiver<Action>) -> Action {
-            tokio::time::timeout(Duration::from_secs(1), rx.recv())
-                .await
-                .expect("timeout")
-                .expect("channel closed")
-        }
-
         #[tokio::test]
         async fn success_sends_opened_action() {
             let temp_dir = tempfile::tempdir().unwrap();
@@ -134,7 +180,7 @@ mod tests {
                 None,
             );
 
-            let action = receive_action(&mut rx).await;
+            let action = recv_action_with_timeout(&mut rx, Duration::from_secs(1)).await;
             match action {
                 Action::ErDiagramOpened(ErDiagramInfo {
                     run_id,
@@ -168,11 +214,11 @@ mod tests {
                 None,
             );
 
-            let action = receive_action(&mut rx).await;
+            let action = recv_action_with_timeout(&mut rx, Duration::from_secs(1)).await;
             match action {
-                Action::ErDiagramFailed(e) => {
-                    assert!(e.to_string().contains("export failed"));
-                    assert_eq!(e.run_id, 7);
+                Action::ErDiagramFailed { run_id, error } => {
+                    assert!(error.contains("export failed"));
+                    assert_eq!(run_id, 7);
                 }
                 _ => panic!("expected ErDiagramFailed, got {action:?}"),
             }
@@ -195,11 +241,11 @@ mod tests {
                 None,
             );
 
-            let action = receive_action(&mut rx).await;
+            let action = recv_action_with_timeout(&mut rx, Duration::from_secs(1)).await;
             match action {
-                Action::ErDiagramFailed(e) => {
-                    assert!(e.to_string().contains("Task panicked"));
-                    assert_eq!(e.run_id, 11);
+                Action::ErDiagramFailed { run_id, error } => {
+                    assert!(error.contains("Task panicked"));
+                    assert_eq!(run_id, 11);
                 }
                 _ => panic!("expected ErDiagramFailed, got {action:?}"),
             }

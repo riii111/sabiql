@@ -313,11 +313,9 @@ impl Footer {
                 let mut hints = Vec::new();
                 if feature_policy.is_enabled(FeatureRequirement::SqliteDiagnostics) {
                     hints.push(sqlite_diagnostics::SCROLL.as_hint());
-                }
-                if feature_policy.is_enabled(FeatureRequirement::SqliteDiagnostics)
-                    && state.sqlite_diagnostics.can_run_quick_check()
-                {
-                    hints.push(sqlite_diagnostics::RUN_QUICK_CHECK.as_hint());
+                    if state.sqlite_diagnostics.can_run_quick_check() {
+                        hints.push(sqlite_diagnostics::RUN_QUICK_CHECK.as_hint());
+                    }
                 }
                 hints.extend([
                     sqlite_diagnostics::HELP.as_hint(),
@@ -714,10 +712,12 @@ mod tests {
             DatabaseType::MySQL,
             "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
         );
-        state.connection_error.set_save_and_connect_error(
-            ConnectionErrorInfo::with_kind(ConnectionErrorKind::Timeout, "connection timed out"),
-            DatabaseType::MySQL,
-        );
+        state
+            .connection_error
+            .set_save_and_connect_error(ConnectionErrorInfo::with_kind(
+                ConnectionErrorKind::Timeout,
+                "connection timed out",
+            ));
         state.modal.set_mode(InputMode::ConnectionError);
 
         let hints = Footer::get_context_hints(&state);

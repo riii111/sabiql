@@ -1,13 +1,15 @@
 use std::path::Path;
-use std::process::{ExitStatus, Stdio};
+use std::process::Stdio;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::time::timeout;
 
-use crate::app::ports::outbound::DbOperationError;
-use crate::domain::{CommandTag, QueryResult, QuerySource, WriteExecutionResult};
+use crate::adapters::csv_export::CsvOutputError;
+use crate::app::ports::outbound::{DbOperationError, ExportIoSource};
+use crate::domain::{CommandTag, QueryResult, QuerySource, RefreshScope, WriteExecutionResult};
 
 use super::super::PostgresAdapter;
 use super::error::{classify_cli_spawn_error, classify_query_error};
@@ -17,13 +19,13 @@ async fn collect_csv_output(
     mut child: tokio::process::Child,
     path: &Path,
     timeout_duration: Duration,
-) -> Result<(ExitStatus, String), DbOperationError> {
+) -> Result<(), DbOperationError> {
     let stdout = child.stdout.take();
     let stderr_handle = child.stderr.take();
 
     let file = tokio::fs::File::create(path)
         .await
-        .map_err(|e| DbOperationError::QueryFailed(format!("Failed to create file: {e}")))?;
+        .map_err(|e| DbOperationError::ExportIo(ExportIoSource::new(e)))?;
     let mut writer = tokio::io::BufWriter::new(file);
 
     let result = timeout(timeout_duration, async {
@@ -36,31 +38,39 @@ async fn collect_csv_output(
                         if n == 0 {
                             break;
                         }
-                        writer.write_all(&buf[..n]).await?;
+                        writer
+                            .write_all(&buf[..n])
+                            .await
+                            .map_err(CsvOutputError::File)?;
                     }
-                    writer.flush().await?;
+                    writer.flush().await.map_err(CsvOutputError::File)?;
                 }
-                Ok::<_, std::io::Error>(())
+                Ok::<_, CsvOutputError>(())
             },
             async {
                 let mut buf = Vec::new();
                 if let Some(mut err) = stderr_handle {
                     err.read_to_end(&mut buf).await?;
                 }
-                Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
+                Ok::<_, CsvOutputError>(String::from_utf8_lossy(&buf).into_owned())
             },
-            child.wait(),
+            async { Ok::<_, CsvOutputError>(child.wait().await?) },
         )?;
 
-        Ok::<_, std::io::Error>((status, stderr))
+        Ok::<_, CsvOutputError>((status, stderr))
     })
     .await;
 
+    drop(writer);
     match result {
-        Ok(Ok(inner)) => Ok(inner),
+        Ok(Ok((status, _))) if status.success() => Ok(()),
+        Ok(Ok((status, stderr))) => {
+            let _ = tokio::fs::remove_file(path).await;
+            Err(classify_query_error(&stderr, status))
+        }
         Ok(Err(e)) => {
             let _ = tokio::fs::remove_file(path).await;
-            Err(DbOperationError::QueryFailed(e.to_string()))
+            Err(e.into_db_operation_error())
         }
         Err(e) => {
             let _ = tokio::fs::remove_file(path).await;
@@ -127,12 +137,6 @@ fn select_result_segment<'a>(segments: &[&'a str]) -> Option<&'a str> {
         .copied()
 }
 
-struct PsqlOutput {
-    status: ExitStatus,
-    stdout: String,
-    stderr: String,
-}
-
 impl PostgresAdapter {
     const PGOPTIONS_READ_ONLY: &str = "-c default_transaction_read_only=on";
 
@@ -142,7 +146,7 @@ impl PostgresAdapter {
         extra_args: &[&str],
         query: &str,
         read_only: bool,
-    ) -> Result<PsqlOutput, DbOperationError> {
+    ) -> Result<String, DbOperationError> {
         self.run_psql_args(dsn, extra_args, &["-c", query], read_only)
             .await
     }
@@ -153,21 +157,25 @@ impl PostgresAdapter {
         extra_args: &[&str],
         query_args: &[&str],
         read_only: bool,
-    ) -> Result<PsqlOutput, DbOperationError> {
+    ) -> Result<String, DbOperationError> {
+        let mut cmd = Self::build_psql_command(dsn, extra_args, query_args, read_only);
+
+        Self::collect_output(&mut cmd, self.timeout_secs).await
+    }
+
+    fn build_psql_command(
+        dsn: &str,
+        extra_args: &[&str],
+        query_args: &[&str],
+        read_only: bool,
+    ) -> Command {
         let mut cmd = Command::new("psql");
         if read_only {
             Self::apply_read_only_pgoptions(&mut cmd);
         }
         Self::apply_psql_base_args(&mut cmd, dsn);
-
-        for arg in extra_args {
-            cmd.arg(arg);
-        }
-        for arg in query_args {
-            cmd.arg(arg);
-        }
-
-        Self::collect_output(&mut cmd, self.timeout_secs).await
+        cmd.args(extra_args).args(query_args);
+        cmd
     }
 
     fn apply_read_only_pgoptions(cmd: &mut Command) {
@@ -192,7 +200,7 @@ impl PostgresAdapter {
     async fn collect_output(
         cmd: &mut Command,
         timeout_secs: u64,
-    ) -> Result<PsqlOutput, DbOperationError> {
+    ) -> Result<String, DbOperationError> {
         let mut child = cmd
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -232,28 +240,21 @@ impl PostgresAdapter {
         .map_err(|e| DbOperationError::QueryFailed(e.to_string()))?;
 
         let (status, stdout, stderr) = result;
-        Ok(PsqlOutput {
-            status,
-            stdout,
-            stderr,
-        })
+        if !status.success() {
+            return Err(classify_query_error(&stderr, status));
+        }
+        Ok(stdout)
     }
 
-    pub(in crate::adapters::postgres) async fn execute_query(
+    pub(in crate::adapters::postgres) async fn execute_raw_output(
         &self,
         dsn: &str,
         query: &str,
     ) -> Result<String, DbOperationError> {
-        let output = self.run_psql(dsn, &["-t", "-A"], query, false).await?;
-
-        if !output.status.success() {
-            return Err(classify_query_error(&output.stderr));
-        }
-
-        Ok(output.stdout)
+        self.run_psql(dsn, &["-t", "-A"], query, false).await
     }
 
-    pub(in crate::adapters::postgres) async fn execute_query_raw(
+    pub(in crate::adapters::postgres) async fn execute_query_result(
         &self,
         dsn: &str,
         query: &str,
@@ -289,11 +290,7 @@ impl PostgresAdapter {
 
         let elapsed = start.elapsed().as_millis() as u64;
 
-        if !output.status.success() {
-            return Err(classify_query_error(&output.stderr));
-        }
-
-        let stdout_trimmed = output.stdout.trim();
+        let stdout_trimmed = output.trim();
         if stdout_trimmed.is_empty() {
             return Ok(QueryResult::success(
                 query.to_string(),
@@ -334,11 +331,7 @@ impl PostgresAdapter {
 
         let elapsed = start.elapsed().as_millis() as u64;
 
-        if !output.status.success() {
-            return Err(classify_query_error(&output.stderr));
-        }
-
-        let segments = split_marker_segments(&output.stdout, &marker);
+        let segments = split_marker_segments(&output, &marker);
         // A mismatch implies a marker collision in data; guessing would
         // reintroduce silent result-set misattribution.
         if segments.len() != statements.len() {
@@ -413,29 +406,17 @@ impl PostgresAdapter {
         query: &str,
         read_only: bool,
     ) -> Result<WriteExecutionResult, DbOperationError> {
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "infra measures psql execution time at the I/O boundary"
-        )]
-        let start = Instant::now();
-
         let output = self.run_psql(dsn, &[], query, read_only).await?;
 
-        let elapsed = start.elapsed().as_millis() as u64;
-
-        if !output.status.success() {
-            return Err(classify_query_error(&output.stderr));
-        }
-
-        let affected_rows = Self::parse_affected_rows_with_source(&output.stdout).map_err(
-            |error: ParseCommandTagError| {
-                DbOperationError::CommandTagParseFailed(error.to_string())
+        let affected_rows = Self::parse_affected_rows_with_source(&output).map_err(
+            |error: ParseCommandTagError| DbOperationError::QueryFailedAfterChange {
+                source: Arc::new(DbOperationError::CommandTagParseFailed(error.to_string())),
+                refresh_scope: RefreshScope::Data,
             },
         )?;
 
         Ok(WriteExecutionResult {
             affected_rows,
-            execution_time_ms: elapsed,
             diagnostics: Vec::new(),
         })
     }
@@ -447,10 +428,7 @@ impl PostgresAdapter {
         read_only: bool,
     ) -> Result<usize, DbOperationError> {
         let output = self.run_psql(dsn, &["-t", "-A"], query, read_only).await?;
-        if !output.status.success() {
-            return Err(classify_query_error(&output.stderr));
-        }
-        output.stdout.trim().parse::<usize>().map_err(|e| {
+        output.trim().parse::<usize>().map_err(|e| {
             DbOperationError::QueryFailed(format!("Failed to parse COUNT result: {e}"))
         })
     }
@@ -462,12 +440,7 @@ impl PostgresAdapter {
         path: &std::path::Path,
         read_only: bool,
     ) -> Result<(), DbOperationError> {
-        let mut cmd = Command::new("psql");
-        if read_only {
-            Self::apply_read_only_pgoptions(&mut cmd);
-        }
-        Self::apply_psql_base_args(&mut cmd, dsn);
-        cmd.arg("--csv").arg("-c").arg(query);
+        let mut cmd = Self::build_psql_command(dsn, &["--csv"], &["-c", query], read_only);
 
         let child = cmd
             .stdout(Stdio::piped())
@@ -476,14 +449,7 @@ impl PostgresAdapter {
             .spawn()
             .map_err(classify_cli_spawn_error)?;
 
-        let result =
-            collect_csv_output(child, path, Duration::from_secs(self.timeout_secs * 10)).await?;
-
-        let (status, stderr) = result;
-        if !status.success() {
-            let _ = tokio::fs::remove_file(path).await;
-            return Err(classify_query_error(&stderr));
-        }
+        collect_csv_output(child, path, Duration::from_secs(self.timeout_secs * 10)).await?;
 
         Ok(())
     }
@@ -495,7 +461,7 @@ impl PostgresAdapter {
         table: &str,
     ) -> Result<Vec<String>, DbOperationError> {
         let query = Self::preview_pk_columns_query(schema, table);
-        let raw = self.execute_query(dsn, &query).await?;
+        let raw = self.execute_raw_output(dsn, &query).await?;
         let trimmed = raw.trim();
         if trimmed.is_empty() || trimmed == "null" {
             return Ok(vec![]);
@@ -660,126 +626,84 @@ mod tests {
     }
 
     mod csv_parsing {
+        use crate::app::ports::outbound::DbOperationError;
+        use crate::domain::QuerySource;
+
         #[test]
-        fn empty_csv_output_has_no_headers() {
-            let csv_data = "";
-            let mut reader = csv::ReaderBuilder::new()
-                .has_headers(false)
-                .from_reader(csv_data.as_bytes());
+        fn empty_csv_returns_empty_query_result() {
+            let result = super::super::PostgresAdapter::csv_result(
+                "SELECT * FROM users",
+                "",
+                17,
+                QuerySource::Preview,
+            )
+            .unwrap();
 
-            let records: Vec<_> = reader.records().collect();
-
-            assert_eq!(records.len(), 0);
+            assert!(result.columns.is_empty());
+            assert_eq!(result.data_row_count(), 0);
+            assert_eq!(result.row_count(), 0);
+            assert_eq!(result.execution_time_ms, 17);
+            assert_eq!(result.source, QuerySource::Preview);
         }
 
         #[test]
-        fn valid_csv_parses_headers_and_rows() {
-            let csv_data = "id,name\n1,alice\n2,bob";
-            let mut reader = csv::ReaderBuilder::new()
-                .has_headers(true)
-                .from_reader(csv_data.as_bytes());
+        fn standard_csv_returns_columns_and_text_rows() {
+            let result = super::super::PostgresAdapter::csv_result(
+                "SELECT id, name FROM users",
+                "id,name\n1,alice\n2,bob",
+                23,
+                QuerySource::Adhoc,
+            )
+            .unwrap();
 
-            let headers: Vec<String> = reader
-                .headers()
-                .unwrap()
-                .iter()
-                .map(ToString::to_string)
-                .collect();
-            let rows: Vec<_> = reader.records().collect();
-
-            assert_eq!(headers.len(), 2);
-            assert_eq!(headers[0], "id");
-            assert_eq!(headers[1], "name");
-            assert_eq!(rows.len(), 2);
+            assert_eq!(result.columns, ["id", "name"]);
+            assert_eq!(
+                result.display_row_at(0),
+                Some(vec!["1".into(), "alice".into()])
+            );
+            assert_eq!(
+                result.display_row_at(1),
+                Some(vec!["2".into(), "bob".into()])
+            );
+            assert_eq!(result.data_row_count(), 2);
+            assert_eq!(result.row_count(), 2);
+            assert_eq!(result.execution_time_ms, 23);
+            assert_eq!(result.source, QuerySource::Adhoc);
         }
 
         #[test]
-        fn csv_with_multibyte_characters_parses_correctly() {
-            let csv_data = "名前,年齢\n太郎,25\n花子,30";
-            let mut reader = csv::ReaderBuilder::new()
-                .has_headers(true)
-                .from_reader(csv_data.as_bytes());
+        fn quoted_multibyte_csv_preserves_fields_and_rows() {
+            let result = super::super::PostgresAdapter::csv_result(
+                "SELECT name, description FROM users",
+                "名前,説明\n太郎,\"hello, 世界\"\n花子,\"line1\nline2\"",
+                31,
+                QuerySource::Preview,
+            )
+            .unwrap();
 
-            let headers: Vec<String> = reader
-                .headers()
-                .unwrap()
-                .iter()
-                .map(ToString::to_string)
-                .collect();
-            let first_row = reader.records().next().unwrap().unwrap();
-
-            assert_eq!(headers[0], "名前");
-            assert_eq!(first_row.get(0), Some("太郎"));
+            assert_eq!(result.columns, ["名前", "説明"]);
+            assert_eq!(
+                result.display_row_at(0),
+                Some(vec!["太郎".into(), "hello, 世界".into()])
+            );
+            assert_eq!(
+                result.display_row_at(1),
+                Some(vec!["花子".into(), "line1\nline2".into()])
+            );
+            assert_eq!(result.data_row_count(), 2);
         }
 
         #[test]
-        fn csv_with_quoted_fields_parses_correctly() {
-            let csv_data = "id,description\n1,\"hello, world\"\n2,\"line1\nline2\"";
-            let mut reader = csv::ReaderBuilder::new()
-                .has_headers(true)
-                .from_reader(csv_data.as_bytes());
+        fn invalid_csv_returns_csv_parse_error() {
+            let error = super::super::PostgresAdapter::csv_result(
+                "SELECT id, name FROM users",
+                "id,name\n1,alice\n2,bob,extra",
+                41,
+                QuerySource::Adhoc,
+            )
+            .unwrap_err();
 
-            let rows: Vec<_> = reader.records().map(|r| r.unwrap()).collect();
-
-            assert_eq!(rows[0].get(1), Some("hello, world"));
-            assert_eq!(rows[1].get(1), Some("line1\nline2"));
-        }
-
-        #[test]
-        fn csv_with_empty_values_parses_correctly() {
-            let csv_data = "id,name,email\n1,,alice@example.com\n2,bob,";
-            let mut reader = csv::ReaderBuilder::new()
-                .has_headers(true)
-                .from_reader(csv_data.as_bytes());
-
-            let rows: Vec<_> = reader.records().map(|r| r.unwrap()).collect();
-
-            assert_eq!(rows[0].get(1), Some(""));
-            assert_eq!(rows[1].get(2), Some(""));
-        }
-
-        #[test]
-        fn invalid_csv_returns_error() {
-            let csv_data = "id,name\n1,alice\n2,bob,extra";
-            let mut reader = csv::ReaderBuilder::new()
-                .has_headers(true)
-                .flexible(false)
-                .from_reader(csv_data.as_bytes());
-
-            reader.headers().unwrap();
-            let results: Vec<_> = reader.records().collect();
-
-            assert!(results[1].is_err());
-        }
-
-        #[test]
-        fn non_csv_output_like_notice_parses_as_header() {
-            let non_csv = "NOTICE: some database notice\nNOTICE: another line";
-            let mut reader = csv::ReaderBuilder::new()
-                .has_headers(true)
-                .from_reader(non_csv.as_bytes());
-
-            let headers = reader.headers();
-
-            assert!(headers.is_ok());
-        }
-
-        #[test]
-        fn mixed_notice_and_csv_parses_first_line_as_header() {
-            let mixed = "id,name\n1,alice";
-            let mut reader = csv::ReaderBuilder::new()
-                .has_headers(true)
-                .from_reader(mixed.as_bytes());
-
-            let headers: Vec<String> = reader
-                .headers()
-                .unwrap()
-                .iter()
-                .map(ToString::to_string)
-                .collect();
-
-            assert_eq!(headers[0], "id");
-            assert_eq!(headers[1], "name");
+            assert!(matches!(error, DbOperationError::CsvParse(_)));
         }
     }
 
@@ -789,6 +713,8 @@ mod tests {
 
         use tempfile::tempdir;
         use tokio::process::Command;
+
+        use crate::app::ports::outbound::DbOperationError;
 
         use super::super::collect_csv_output;
 
@@ -807,17 +733,124 @@ mod tests {
                 .spawn()
                 .unwrap();
 
-            let (status, stderr) =
-                collect_csv_output(child, &path, std::time::Duration::from_secs(2))
-                    .await
-                    .unwrap();
+            collect_csv_output(child, &path, std::time::Duration::from_secs(2))
+                .await
+                .unwrap();
 
-            assert!(status.success());
-            assert!(stderr.len() > 128 * 1024);
             assert_eq!(
                 tokio::fs::read_to_string(path).await.unwrap(),
                 "id,name\n1,Alice\n"
             );
+        }
+
+        #[tokio::test]
+        async fn nonzero_exit_removes_partial_file_and_returns_classified_error() {
+            let dir = tempdir().unwrap();
+            let path = dir.path().join("export.csv");
+            let child = Command::new("sh")
+                .arg("-c")
+                .arg(
+                    "printf 'id,name\\n1,Alice\\n'; printf 'ERROR:  42501: permission denied\\n' >&2; exit 1",
+                )
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .kill_on_drop(true)
+                .spawn()
+                .unwrap();
+
+            let result = collect_csv_output(child, &path, std::time::Duration::from_secs(2)).await;
+
+            assert!(matches!(result, Err(DbOperationError::PermissionDenied(_))));
+            assert!(!path.exists());
+        }
+
+        #[tokio::test]
+        async fn nonzero_exit_without_stderr_reports_status_and_removes_file() {
+            let dir = tempdir().unwrap();
+            let path = dir.path().join("export.csv");
+            let child = Command::new("sh")
+                .arg("-c")
+                .arg("exit 7")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .kill_on_drop(true)
+                .spawn()
+                .unwrap();
+
+            let result = collect_csv_output(child, &path, std::time::Duration::from_secs(2)).await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailed(details))
+                    if details == "psql exited with status code 7"
+            ));
+            assert!(!path.exists());
+        }
+    }
+
+    #[cfg(unix)]
+    mod process_status {
+        use tokio::process::Command;
+
+        use crate::adapters::postgres::PostgresAdapter;
+        use crate::app::ports::outbound::DbOperationError;
+
+        #[tokio::test]
+        async fn nonzero_exit_without_stderr_reports_status() {
+            let mut command = Command::new("sh");
+            command.args(["-c", "exit 7"]);
+
+            let result = PostgresAdapter::collect_output(&mut command, 2).await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailed(details))
+                    if details == "psql exited with status code 7"
+            ));
+        }
+
+        #[tokio::test]
+        async fn nonzero_exit_with_stderr_keeps_existing_classification() {
+            let mut command = Command::new("sh");
+            command.args([
+                "-c",
+                "printf 'ERROR:  42501: permission denied\\n' >&2; exit 7",
+            ]);
+
+            let result = PostgresAdapter::collect_output(&mut command, 2).await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::PermissionDenied(details))
+                    if details == "ERROR:  42501: permission denied"
+            ));
+        }
+
+        #[tokio::test]
+        async fn zero_exit_keeps_empty_stdout_successful() {
+            let mut command = Command::new("sh");
+            command.args(["-c", "exit 0"]);
+
+            assert_eq!(
+                PostgresAdapter::collect_output(&mut command, 2)
+                    .await
+                    .unwrap(),
+                ""
+            );
+        }
+
+        #[tokio::test]
+        async fn signal_exit_reports_signal_status() {
+            let mut command = Command::new("sh");
+            command.args(["-c", "kill -TERM $$"]);
+
+            let result = PostgresAdapter::collect_output(&mut command, 2).await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailed(details))
+                    if details == "psql terminated by signal 15"
+            ));
         }
     }
 
@@ -863,7 +896,7 @@ mod tests {
         }
     }
 
-    mod execute_query_raw_command_tag {
+    mod execute_query_result_command_tag {
         use crate::adapters::postgres::PostgresAdapter;
         use crate::domain::CommandTag;
 

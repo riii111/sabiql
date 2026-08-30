@@ -1,4 +1,5 @@
 mod app_config_file;
+mod bulk_delete;
 
 pub mod cached_result_exporter;
 pub mod clipboard;

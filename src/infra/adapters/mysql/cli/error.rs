@@ -1,8 +1,27 @@
 use std::io::{self, Write};
 
-use crate::app::ports::outbound::{DatabaseCli, DbOperationError};
+use crate::app::ports::outbound::{ConnectionFailureKind, DatabaseCli, DbOperationError};
 
-use super::probe::{is_mysql_connect_timeout_message, mysql_tls_failure_kind};
+use super::probe::mysql_tls_failure_kind;
+
+const MYSQL_CONNECT_TIMEOUT_ERRNOS: [&str; 3] = ["(60)", "(110)", "(10060)"];
+
+fn mysql_server_error_code(lowercase_details: &str) -> Option<u32> {
+    let start = lowercase_details.find("error ")? + "error ".len();
+    let digits = &lowercase_details[start..];
+    let end = digits
+        .find(|character: char| !character.is_ascii_digit())
+        .unwrap_or(digits.len());
+    digits[..end].parse().ok()
+}
+
+pub(super) fn is_mysql_connect_timeout_message(value: &str) -> bool {
+    let lowercase = value.to_ascii_lowercase();
+    lowercase.contains("can't connect to mysql server")
+        && MYSQL_CONNECT_TIMEOUT_ERRNOS
+            .iter()
+            .any(|errno| lowercase.contains(errno))
+}
 
 pub(super) fn map_mysql_cli_spawn_error(error: io::Error) -> DbOperationError {
     if error.kind() == io::ErrorKind::NotFound {
@@ -81,11 +100,11 @@ pub(super) fn classify_mysql_query_failure_with_packet_limit(
     } else if lower.contains("command denied") {
         DbOperationError::PermissionDenied(details)
     } else if lower.contains("unknown database") {
-        DbOperationError::ConnectionFailed(details)
+        connection_failed_with_kind(ConnectionFailureKind::DatabaseNotFound, details)
     } else if lower.contains("doesn't exist") || lower.contains("does not exist") {
         DbOperationError::ObjectMissing(details)
     } else if lower.contains("access denied") || lower.contains("authentication") {
-        DbOperationError::ConnectionFailed(details)
+        connection_failed_with_kind(ConnectionFailureKind::Auth, details)
     } else if lower.contains("lost connection") || lower.contains("server has gone away") {
         DbOperationError::ConnectionLost(details)
     } else if lower.contains("lock wait timeout") || lower.contains("deadlock found") {
@@ -113,7 +132,11 @@ fn classify_mysql_server_error(
     Some(match error_code {
         1022 | 1062 => error(DbOperationError::UniqueViolation),
         1044 | 1142 | 1143 | 1227 => error(DbOperationError::PermissionDenied),
-        1045 | 1049 => error(DbOperationError::ConnectionFailed),
+        1045 => connection_failed_with_kind(ConnectionFailureKind::Auth, details.to_string()),
+        1049 => connection_failed_with_kind(
+            ConnectionFailureKind::DatabaseNotFound,
+            details.to_string(),
+        ),
         1051 | 1054 | 1109 | 1146 => error(DbOperationError::ObjectMissing),
         1205 | 1213 => error(DbOperationError::LockTimeout),
         1215 | 1216 | 1217 | 1451 | 1452 => error(DbOperationError::ForeignKeyViolation),
@@ -125,20 +148,20 @@ fn classify_mysql_server_error(
         {
             DbOperationError::Timeout(details.to_string())
         }
-        2003 => DbOperationError::ConnectionFailed(details.to_string()),
+        2003 => connection_failed_with_kind(
+            ConnectionFailureKind::ConnectionRefused,
+            details.to_string(),
+        ),
+        2005 => {
+            connection_failed_with_kind(ConnectionFailureKind::HostUnreachable, details.to_string())
+        }
         3024 => error(DbOperationError::Timeout),
         _ => return None,
     })
 }
 
-fn mysql_server_error_code(lowercase_details: &str) -> Option<u32> {
-    let marker = "error ";
-    let start = lowercase_details.find(marker)? + marker.len();
-    let digits = &lowercase_details[start..];
-    let end = digits
-        .find(|character: char| !character.is_ascii_digit())
-        .unwrap_or(digits.len());
-    digits[..end].parse().ok()
+fn connection_failed_with_kind(kind: ConnectionFailureKind, details: String) -> DbOperationError {
+    DbOperationError::ConnectionFailedWithKind { kind, details }
 }
 
 pub(super) fn clean_mysql_stderr(stderr: &[u8], fallback: &str) -> String {
@@ -153,7 +176,6 @@ pub(super) fn clean_mysql_stderr(stderr: &[u8], fallback: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::ports::outbound::ConnectionFailureKind;
 
     #[test]
     fn classifies_mysql_query_failures_by_server_error() {
@@ -161,7 +183,10 @@ mod tests {
             classify_mysql_query_failure(
                 b"ERROR 1045 (28000): Access denied for user 'app'@'localhost' (using password: YES)"
             ),
-            DbOperationError::ConnectionFailed(_)
+            DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::Auth,
+                ..
+            }
         ));
         assert!(matches!(
             classify_mysql_query_failure(
@@ -173,11 +198,17 @@ mod tests {
             classify_mysql_query_failure(
                 b"ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (111)"
             ),
-            DbOperationError::ConnectionFailed(_)
+            DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::ConnectionRefused,
+                ..
+            }
         ));
         assert!(matches!(
             classify_mysql_query_failure(b"ERROR 1049 (42000): schema selection failed"),
-            DbOperationError::ConnectionFailed(_)
+            DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::DatabaseNotFound,
+                ..
+            }
         ));
         assert!(matches!(
             classify_mysql_query_failure(b"ERROR 1054 (42S22): column lookup failed"),
@@ -260,6 +291,32 @@ mod tests {
     }
 
     #[test]
+    fn classifies_mysql_unknown_host_errno_as_host_unreachable() {
+        let details = "ERROR 2005 (HY000): Unknown MySQL server host 'db.internal' (11001)";
+
+        assert!(matches!(
+            classify_mysql_query_failure(details.as_bytes()),
+            DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::HostUnreachable,
+                details: actual_details,
+            } if actual_details == details
+        ));
+    }
+
+    #[test]
+    fn classifies_mysql_unknown_database_without_error_code_as_database_not_found() {
+        let details = "mysql: [ERROR] Unknown database 'missing'";
+
+        assert!(matches!(
+            classify_mysql_query_failure(details.as_bytes()),
+            DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::DatabaseNotFound,
+                details: actual_details,
+            } if actual_details == details
+        ));
+    }
+
+    #[test]
     fn preserves_mysql_query_timeout_code_and_message_in_timeout_details() {
         let details = "ERROR 3024 (HY000): Query execution was interrupted, maximum statement execution time exceeded";
 
@@ -286,6 +343,21 @@ mod tests {
 
         let error = classify_mysql_query_failure(b"ERROR 9999 (HY000): SSL connection error");
         assert!(matches!(error, DbOperationError::QueryFailed(_)));
+
+        let error = classify_mysql_query_failure(b"ERROR 9999 (HY000): Unknown database 'missing'");
+        assert!(matches!(error, DbOperationError::QueryFailed(_)));
+    }
+
+    #[test]
+    fn mysql_connect_timeout_classifier_preserves_errno_and_case_rules() {
+        for errno in MYSQL_CONNECT_TIMEOUT_ERRNOS {
+            assert!(is_mysql_connect_timeout_message(&format!(
+                "Can't connect to MySQL server (host) {errno}"
+            )));
+        }
+        assert!(!is_mysql_connect_timeout_message(
+            "Can't connect to MySQL server (host) (111)"
+        ));
     }
 
     #[test]

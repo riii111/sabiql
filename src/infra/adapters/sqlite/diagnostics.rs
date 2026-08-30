@@ -9,7 +9,7 @@ use super::SqliteAdapter;
 
 #[async_trait]
 impl SqliteDiagnosticsProvider for SqliteAdapter {
-    async fn fetch_diagnostics_core(
+    async fn fetch_core_diagnostics(
         &self,
         dsn: &str,
     ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {
@@ -274,12 +274,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fetch_diagnostics_core_reports_pragmas_without_quick_check() {
+    async fn fetch_core_diagnostics_reports_pragmas_without_quick_check() {
         let (_dir, dsn) =
             test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
         let adapter = SqliteAdapter::new();
 
-        let snapshot = adapter.fetch_diagnostics_core(&dsn).await.unwrap();
+        let snapshot = adapter.fetch_core_diagnostics(&dsn).await.unwrap();
 
         assert!(snapshot.db_file.is_ok());
         assert!(snapshot.sqlite_version.is_ok());

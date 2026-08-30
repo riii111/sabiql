@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::sync::Arc;
 
-use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
 use crate::cmd::cache::TtlCache;
@@ -25,8 +24,11 @@ pub async fn run(
     table_detail_tasks: &TableDetailTaskRegistry,
     metadata_tasks: &Arc<MetadataTaskRegistry>,
     completion_engine: &RefCell<CompletionEngine>,
-) -> Result<()> {
+) {
     match effect {
+        Effect::CancelMetadataTasks => {
+            metadata_tasks.cancel().await;
+        }
         Effect::FetchMetadata { dsn, run_id } => {
             fetch_metadata(
                 action_tx,
@@ -37,11 +39,10 @@ pub async fn run(
                 dsn,
                 run_id,
             )
-            .await
+            .await;
         }
         Effect::FetchEffectiveUser { dsn, run_id } => {
             fetch_effective_user(action_tx, metadata_provider, metadata_tasks, dsn, run_id);
-            Ok(())
         }
         Effect::FetchTableDetail {
             dsn,
@@ -59,10 +60,10 @@ pub async fn run(
                 generation,
                 run_id,
                 table_detail_tasks,
-            );
-            Ok(())
+            )
+            .await;
         }
-        Effect::PrefetchTableDetail {
+        Effect::PrefetchTableColumnsAndFks {
             dsn,
             run_id,
             schema,
@@ -78,14 +79,13 @@ pub async fn run(
                 schema,
                 table,
             )
-            .await
+            .await;
         }
-        Effect::ProcessPrefetchQueue { run_id } => {
+        Effect::SchedulePrefetchQueueProcessing { run_id } => {
             action_tx
                 .send(Action::ProcessPrefetchQueue { run_id })
                 .await
                 .ok();
-            Ok(())
         }
         Effect::DelayedProcessPrefetchQueue { run_id, delay_secs } => {
             let tx = action_tx.clone();
@@ -93,11 +93,9 @@ pub async fn run(
                 tokio::time::sleep(tokio::time::Duration::from_secs(delay_secs)).await;
                 tx.send(Action::ProcessPrefetchQueue { run_id }).await.ok();
             });
-            Ok(())
         }
         Effect::CacheInvalidate { dsn } => {
             metadata_cache.invalidate(&dsn).await;
-            Ok(())
         }
 
         _ => unreachable!("metadata::run called with non-metadata effect"),
@@ -112,7 +110,7 @@ async fn fetch_metadata(
     metadata_tasks: &Arc<MetadataTaskRegistry>,
     dsn: String,
     run_id: u64,
-) -> Result<()> {
+) {
     if let Some(path) = sqlite_path_from_dsn(&dsn)
         && let Err(error) =
             validate_sqlite_database_path(sqlite_path_validator, path.to_string()).await
@@ -125,7 +123,7 @@ async fn fetch_metadata(
             })
             .await
             .ok();
-        return Ok(());
+        return;
     }
 
     if let Some(cached) = metadata_cache.get(&dsn).await {
@@ -137,7 +135,7 @@ async fn fetch_metadata(
             })
             .await
             .ok();
-        return Ok(());
+        return;
     }
 
     let provider = Arc::clone(metadata_provider);
@@ -168,8 +166,6 @@ async fn fetch_metadata(
             }
         }
     });
-
-    Ok(())
 }
 
 fn fetch_effective_user(
@@ -194,7 +190,7 @@ fn fetch_effective_user(
     });
 }
 
-fn fetch_table_detail(
+async fn fetch_table_detail(
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
     dsn: String,
@@ -207,30 +203,32 @@ fn fetch_table_detail(
     let provider = Arc::clone(metadata_provider);
     let tx = action_tx.clone();
 
-    table_detail_tasks.spawn(async move {
-        match provider.fetch_table_detail(&dsn, &schema, &table).await {
-            Ok(detail) => {
-                tx.send(Action::TableDetailLoaded {
-                    dsn,
-                    run_id,
-                    detail: Box::new(detail),
-                    generation,
-                })
-                .await
-                .ok();
+    table_detail_tasks
+        .spawn(async move {
+            match provider.fetch_table_detail(&dsn, &schema, &table).await {
+                Ok(detail) => {
+                    tx.send(Action::TableDetailLoaded {
+                        dsn,
+                        run_id,
+                        detail: Box::new(detail),
+                        generation,
+                    })
+                    .await
+                    .ok();
+                }
+                Err(e) => {
+                    tx.send(Action::TableDetailFailed {
+                        dsn,
+                        run_id,
+                        error: e,
+                        generation,
+                    })
+                    .await
+                    .ok();
+                }
             }
-            Err(e) => {
-                tx.send(Action::TableDetailFailed {
-                    dsn,
-                    run_id,
-                    error: e,
-                    generation,
-                })
-                .await
-                .ok();
-            }
-        }
-    });
+        })
+        .await;
 }
 
 async fn prefetch_table_detail(
@@ -242,7 +240,7 @@ async fn prefetch_table_detail(
     run_id: u64,
     schema: String,
     table: String,
-) -> Result<()> {
+) {
     let qualified_name = format!("{schema}.{table}");
     let already_cached = completion_engine.borrow().has_cached_table(&qualified_name);
 
@@ -256,7 +254,7 @@ async fn prefetch_table_detail(
             })
             .await
             .ok();
-        return Ok(());
+        return;
     }
 
     let provider = Arc::clone(metadata_provider);
@@ -304,13 +302,10 @@ async fn prefetch_table_detail(
             }
         }
     });
-
-    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::cmd::test_fixtures::make_runner;
     use std::cell::RefCell;
     use std::sync::Arc;
 
@@ -320,28 +315,14 @@ mod tests {
     use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::effect::Effect;
     use crate::cmd::test_fixtures;
-    use std::time::Instant;
 
-    use crate::domain::DatabaseMetadata;
+    use crate::domain::{DatabaseMetadata, SqlitePathError};
     use crate::model::app_state::AppState;
+    use crate::ports::outbound::DbOperationError;
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
-    use crate::ports::outbound::{DbOperationError, RenderOutput, RenderResult, Renderer};
-    use crate::services::AppServices;
     use crate::update::action::Action;
-
-    struct NoopRenderer;
-    impl Renderer for NoopRenderer {
-        fn draw(
-            &mut self,
-            _state: &AppState,
-            _services: &AppServices,
-            _now: Instant,
-        ) -> RenderResult<RenderOutput> {
-            Ok(RenderOutput::default())
-        }
-    }
 
     mod fetch_metadata {
         use super::*;
@@ -368,28 +349,21 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::FetchMetadata {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 7,
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(200)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .run(
-                    vec![Effect::FetchMetadata {
-                        dsn: "dsn://test".to_string(),
-                        run_id: 7,
-                    }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action = tokio::time::timeout(std::time::Duration::from_millis(200), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -425,36 +399,31 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::FetchMetadata {
+                    dsn: dsn.clone(),
+                    run_id: 7,
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(200)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .run(
-                    vec![Effect::FetchMetadata {
-                        dsn: dsn.clone(),
-                        run_id: 7,
-                    }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action = tokio::time::timeout(std::time::Duration::from_millis(200), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
                     Action::MetadataFailed {
                         ref dsn,
                         run_id: 7,
-                        error: DbOperationError::ConnectionFailed(_),
-                    } if *dsn == expected_dsn
+                        error: DbOperationError::SqlitePath(SqlitePathError::FileNotFound(
+                            ref file_path,
+                        )),
+                    } if *dsn == expected_dsn && file_path == &path.display().to_string()
                 ),
                 "expected MetadataFailed, got {action:?}"
             );
@@ -488,28 +457,21 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::FetchMetadata {
+                    dsn: dsn.clone(),
+                    run_id: 7,
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .run(
-                    vec![Effect::FetchMetadata {
-                        dsn: dsn.clone(),
-                        run_id: 7,
-                    }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -541,28 +503,21 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::FetchMetadata {
+                    dsn: "dsn://miss".to_string(),
+                    run_id: 7,
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .run(
-                    vec![Effect::FetchMetadata {
-                        dsn: "dsn://miss".to_string(),
-                        run_id: 7,
-                    }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -595,28 +550,21 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::FetchMetadata {
+                    dsn: "dsn://err".to_string(),
+                    run_id: 7,
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .run(
-                    vec![Effect::FetchMetadata {
-                        dsn: "dsn://err".to_string(),
-                        run_id: 7,
-                    }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -643,7 +591,7 @@ mod tests {
                 });
 
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(mock_provider),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
@@ -651,28 +599,21 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::FetchEffectiveUser {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 7,
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .run(
-                    vec![Effect::FetchEffectiveUser {
-                        dsn: "dsn://test".to_string(),
-                        run_id: 7,
-                    }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(matches!(
                 action,
                 Action::EffectiveUserLoaded {
@@ -717,31 +658,24 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::FetchTableDetail {
+                    dsn: "dsn://test".to_string(),
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    generation: 1,
+                    run_id: 9,
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .run(
-                    vec![Effect::FetchTableDetail {
-                        dsn: "dsn://test".to_string(),
-                        schema: "public".to_string(),
-                        table: "users".to_string(),
-                        generation: 1,
-                        run_id: 9,
-                    }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -775,30 +709,23 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::PrefetchTableColumnsAndFks {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 3,
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .run(
-                    vec![Effect::PrefetchTableDetail {
-                        dsn: "dsn://test".to_string(),
-                        run_id: 3,
-                        schema: "public".to_string(),
-                        table: "users".to_string(),
-                    }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(action, Action::TableDetailCached { .. }),
                 "expected TableDetailCached, got {action:?}"
@@ -821,7 +748,7 @@ mod tests {
 
             assert!(cache.get(&"dsn://target".to_string()).await.is_some());
 
-            let (tx, _rx) = mpsc::channel(8);
+            let (tx, mut _rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
@@ -830,24 +757,84 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::CacheInvalidate {
+                    dsn: "dsn://target".to_string(),
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut _rx,
+                None,
+            )
+            .await
+            .unwrap();
 
-            runner
-                .run(
-                    vec![Effect::CacheInvalidate {
-                        dsn: "dsn://target".to_string(),
-                    }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
+            assert_eq!(run.state.runtime.project_name(), "test");
             assert!(cache.get(&"dsn://target".to_string()).await.is_none());
+        }
+
+        #[tokio::test]
+        async fn invalidate_forces_following_metadata_fetch() {
+            let mut mock_provider = MockMetadataProvider::new();
+            mock_provider
+                .expect_fetch_metadata()
+                .once()
+                .returning(|_| Ok(test_fixtures::sample_metadata()));
+
+            let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
+            cache
+                .set(
+                    "dsn://target".to_string(),
+                    Arc::new(DatabaseMetadata::new("old".to_string())),
+                )
+                .await;
+
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner(
+                Arc::new(mock_provider),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                cache.clone(),
+                tx,
+            );
+
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::Sequence(vec![
+                    Effect::CacheInvalidate {
+                        dsn: "dsn://target".to_string(),
+                    },
+                    Effect::FetchMetadata {
+                        dsn: "dsn://target".to_string(),
+                        run_id: 7,
+                    },
+                ]),
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
+
+            let action = run.actions.into_iter().next().expect("action dispatched");
+            assert!(matches!(
+                action,
+                Action::MetadataLoaded {
+                    ref dsn,
+                    run_id: 7,
+                    ref metadata,
+                } if dsn == "dsn://target" && metadata.database_name == "testdb"
+            ));
+            assert_eq!(
+                cache
+                    .get(&"dsn://target".to_string())
+                    .await
+                    .expect("fetched metadata should be cached")
+                    .database_name,
+                "testdb"
+            );
         }
     }
 }

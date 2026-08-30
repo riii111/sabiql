@@ -115,10 +115,10 @@ async fn main() -> Result<()> {
     }
 
     let cli_sqlite = match args.database {
-        Some(database) => Some(
-            resolve_cli_sqlite_target(&database, &FsSqlitePathValidator)
-                .map_err(|error| color_eyre::eyre::eyre!(error.to_string()))?,
-        ),
+        Some(database) => Some(resolve_cli_sqlite_target(
+            &database,
+            &FsSqlitePathValidator,
+        )?),
         None => None,
     };
 
@@ -226,8 +226,7 @@ async fn main() -> Result<()> {
     }
 
     if let Some(target) = cli_sqlite.as_ref() {
-        activate_cli_sqlite_connection(&mut state, target, &FsSqlitePathValidator)
-            .map_err(|error| color_eyre::eyre::eyre!(error.to_string()))?;
+        activate_cli_sqlite_connection(&mut state, target, &FsSqlitePathValidator)?;
     }
 
     let mut tui = TuiRunner::new()?;
@@ -257,7 +256,8 @@ async fn main() -> Result<()> {
         let deadline = next_animation_deadline(&runtime.state, now);
 
         tokio::select! {
-            Some(event) = runtime.tui.next_event() => {
+            event = runtime.tui.next_event() => {
+                let event = event?;
                 let action = handle_event(event, &runtime.state);
                 if !action.is_none() {
                     runtime.process_terminal_event_burst(action).await?;
@@ -330,7 +330,7 @@ impl Runtime {
         let mut tui_adapter = TuiAdapter::new(&mut self.tui);
         let pending = self
             .effect_runner
-            .run(
+            .execute_effects(
                 effects,
                 &mut tui_adapter,
                 &mut self.state,
@@ -361,12 +361,7 @@ impl Runtime {
             pending = next;
         }
         if depth >= MAX_DEPTH && !pending.is_empty() {
-            dispatch_overflow_fallback(
-                &mut self.state,
-                self.effect_runner.action_tx(),
-                pending,
-                Instant::now(),
-            );
+            dispatch_overflow_fallback(&mut self.state, self.effect_runner.action_tx(), pending);
             // Render immediately so the overflow error is visible before the next
             // event-loop pass; errors do not have an expiry wake-up anymore.
             self.run_effects(vec![Effect::Render]).await?;
@@ -395,7 +390,7 @@ impl Runtime {
         // end of the burst so N input events produce one draw, not N.
         let mut drained = 0;
         while drained < MAX_DRAIN {
-            let Some(event) = self.tui.try_next_event() else {
+            let Some(event) = self.tui.try_next_event()? else {
                 break;
             };
             drained += 1;
@@ -445,7 +440,6 @@ fn dispatch_overflow_fallback(
     state: &mut AppState,
     action_tx: &mpsc::Sender<Action>,
     pending: Vec<Action>,
-    now: Instant,
 ) {
     let deferred = pending.len();
     let mut dropped = 0usize;
@@ -463,7 +457,7 @@ fn dispatch_overflow_fallback(
             "Internal error: action dispatch depth exceeded ({MAX_DEPTH}); {deferred} actions deferred"
         )
     };
-    state.messages.set_error_at(message, now);
+    state.messages.set_error(message);
 }
 
 fn load_service_entries(state: &mut AppState, reader: &dyn PgServiceEntryReader) {
@@ -474,7 +468,7 @@ fn load_service_entries(state: &mut AppState, reader: &dyn PgServiceEntryReader)
         }
         Ok(_) | Err(ServiceFileError::NotFound(_)) => {}
         Err(e) => {
-            state.messages.set_error_at(e.to_string(), Instant::now());
+            state.messages.set_error(e.to_string());
         }
     }
 }

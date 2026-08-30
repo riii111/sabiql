@@ -30,6 +30,7 @@ mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
     use crate::domain::DatabaseType;
+    use crate::model::browse::query_execution::PostDeleteRowSelection;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::text_input::TextInputLike;
     use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
@@ -487,14 +488,18 @@ mod tests {
         }
 
         #[test]
-        fn emits_execute_explain_effect() {
-            let mut state = sql_modal_state();
+        fn delete_success_then_explain_then_preview_completion_clears_selection() {
+            let mut state = test_fixtures::state_after_delete_success();
+            state.modal.set_mode(InputMode::SqlModal);
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            activate_postgres_connection(&mut state);
+            let now = Instant::now();
 
-            let effects = reduce_explain(&mut state, &Action::ExplainRequest, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects = reduce(
+                &mut state,
+                Action::ExplainRequest,
+                now,
+                &AppServices::stub(),
+            );
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(
@@ -508,6 +513,13 @@ mod tests {
             ));
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
+            assert_eq!(
+                state.query.post_delete_row_selection(),
+                PostDeleteRowSelection::Keep
+            );
+            test_fixtures::complete_table_preview(&mut state, now);
+            assert!(state.result_interaction.selection().row().is_none());
+            assert!(state.result_interaction.selection().cell().is_none());
         }
     }
 

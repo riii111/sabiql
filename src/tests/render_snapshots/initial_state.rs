@@ -24,7 +24,7 @@ fn explorer_shows_not_connected_when_no_active_connection() {
 
 #[test]
 fn header_shows_effective_user_at_normal_width() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     state.session.activate_connection_with_dsn(
         &ConnectionId::new(),
         "test",
@@ -43,7 +43,7 @@ fn header_shows_effective_user_at_normal_width() {
 
 #[test]
 fn mysql_header_shows_effective_user_without_dsn_password() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     state.session.activate_connection_with_dsn(
         &ConnectionId::new(),
         "test",
@@ -63,7 +63,7 @@ fn mysql_header_shows_effective_user_without_dsn_password() {
 
 #[test]
 fn header_truncates_connection_name_at_narrow_width() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     state.session.activate_connection_with_dsn(
         &ConnectionId::new(),
         "very-long-connection-name-that-must-yield-space-to-the-user",
@@ -82,7 +82,7 @@ fn header_truncates_connection_name_at_narrow_width() {
 
 #[test]
 fn header_shows_read_only_badge_at_narrow_width() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     state.session.activate_connection_with_dsn(
         &ConnectionId::new(),
         "test",

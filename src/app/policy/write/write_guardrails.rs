@@ -46,7 +46,7 @@ impl StableRowIdentity {
 /// Callers must validate `preview_writeability` first. This function only
 /// resolves primary-key identity; it does not enforce whether
 /// the table itself is writable.
-pub fn stable_row_identity_for_table(table: &Table) -> Option<StableRowIdentity> {
+fn stable_row_identity_for_table(table: &Table) -> Option<StableRowIdentity> {
     if !table.has_primary_key() {
         return None;
     }
@@ -71,7 +71,7 @@ pub enum PreviewWriteability {
     MissingStableRowIdentity,
 }
 
-pub fn preview_writeability(table: &Table) -> PreviewWriteability {
+fn preview_writeability(table: &Table) -> PreviewWriteability {
     if table.kind_info.kind == TableKind::View {
         return PreviewWriteability::ReadOnly("view");
     }
@@ -187,7 +187,7 @@ pub struct AdhocRiskDecision {
     pub label: &'static str,
 }
 
-pub fn evaluate_sql_risk(kind: &StatementKind) -> AdhocRiskDecision {
+pub(super) fn evaluate_sql_risk(kind: &StatementKind) -> AdhocRiskDecision {
     let (risk_level, label) = match kind {
         StatementKind::Insert => (RiskLevel::Low, "INSERT"),
         StatementKind::Create => (RiskLevel::Low, "CREATE"),

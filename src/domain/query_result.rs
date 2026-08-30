@@ -1,9 +1,6 @@
 use std::borrow::Cow;
 
-use unicode_segmentation::UnicodeSegmentation;
-use unicode_width::UnicodeWidthStr;
-
-use super::{CommandTag, MySqlDiagnostic};
+use super::{CommandTag, DatabaseDiagnostic};
 
 const BLOB_PREVIEW_BYTES: usize = 8;
 
@@ -36,26 +33,6 @@ impl QueryValue {
             }
             Self::Text(value) | Self::SqlLiteral(value) => Cow::Borrowed(value),
             Self::Blob(bytes) => Cow::Owned(blob_display_value(bytes)),
-        }
-    }
-
-    #[must_use]
-    pub fn display_value_at_width(&self, max_width: usize) -> String {
-        match self {
-            Self::Null => truncate_display_text("NULL", false, max_width),
-            Self::Text(value) | Self::SqlLiteral(value) => {
-                truncate_display_text(value, true, max_width)
-            }
-            Self::Blob(bytes) => blob_display_value_at_width(bytes, max_width),
-        }
-    }
-
-    #[must_use]
-    pub fn display_width(&self) -> usize {
-        match self {
-            Self::Null => UnicodeWidthStr::width("NULL"),
-            Self::Text(value) | Self::SqlLiteral(value) => display_width_of_first_line(value, true),
-            Self::Blob(bytes) => blob_display_width(bytes),
         }
     }
 
@@ -120,102 +97,6 @@ fn blob_display_value(bytes: &[u8]) -> String {
     display
 }
 
-fn display_width_of_first_line(value: &str, escape_nul: bool) -> usize {
-    let first_line = value.split('\n').next().unwrap_or(value);
-    if escape_nul {
-        first_line
-            .split('\0')
-            .map(UnicodeWidthStr::width)
-            .sum::<usize>()
-            + first_line.matches('\0').count() * 2
-    } else {
-        UnicodeWidthStr::width(first_line)
-    }
-}
-
-fn truncate_display_text(value: &str, escape_nul: bool, max_width: usize) -> String {
-    let first_line = value.split('\n').next().unwrap_or(value);
-    let budget = max_width.saturating_sub(3);
-    let mut display = String::new();
-    let mut truncated = String::new();
-    let mut display_width = 0usize;
-    let mut truncated_width = 0usize;
-
-    for grapheme in first_line.graphemes(true) {
-        let (width, is_nul) = if escape_nul && grapheme == "\0" {
-            (2, true)
-        } else {
-            (UnicodeWidthStr::width(grapheme), false)
-        };
-
-        if display_width.saturating_add(width) > max_width {
-            if max_width < 3 {
-                return ".".repeat(max_width);
-            }
-            truncated.push_str("...");
-            return truncated;
-        }
-
-        if is_nul {
-            display.push_str("\\0");
-            if truncated_width.saturating_add(width) <= budget {
-                truncated.push_str("\\0");
-                truncated_width += width;
-            }
-        } else {
-            display.push_str(grapheme);
-            if truncated_width.saturating_add(width) <= budget {
-                truncated.push_str(grapheme);
-                truncated_width += width;
-            }
-        }
-        display_width += width;
-    }
-
-    display
-}
-
-fn blob_display_value_at_width(bytes: &[u8], max_width: usize) -> String {
-    let mut display = blob_display_value(bytes);
-    if display_width(&display) <= max_width {
-        return display;
-    }
-    if max_width < 3 {
-        return ".".repeat(max_width);
-    }
-
-    display.truncate(max_width - 3);
-    display.push_str("...");
-    display
-}
-
-fn display_width(value: &str) -> usize {
-    UnicodeWidthStr::width(value)
-}
-
-fn blob_display_width(bytes: &[u8]) -> usize {
-    let mut width = UnicodeWidthStr::width("BLOB (")
-        + decimal_display_width(bytes.len())
-        + UnicodeWidthStr::width(" bytes)");
-    let preview_bytes = bytes.len().min(BLOB_PREVIEW_BYTES);
-    if preview_bytes > 0 {
-        width += 1 + preview_bytes * 2 + preview_bytes.saturating_sub(1);
-        if bytes.len() > BLOB_PREVIEW_BYTES {
-            width += UnicodeWidthStr::width(" ...");
-        }
-    }
-    width
-}
-
-fn decimal_display_width(mut value: usize) -> usize {
-    let mut width = 1;
-    while value >= 10 {
-        value /= 10;
-        width += 1;
-    }
-    width
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QuerySource {
     Preview,
@@ -268,7 +149,7 @@ pub struct QueryResult {
     pub error: Option<String>,
     pub command_tag: Option<CommandTag>,
     pub refresh_scope: RefreshScope,
-    pub mysql_diagnostics: Vec<MySqlDiagnostic>,
+    pub mysql_diagnostics: Vec<DatabaseDiagnostic>,
     rows: Vec<Vec<String>>,
     values: Vec<Vec<QueryValue>>,
     explicit_row_identity: Option<ExplicitRowIdentity>,
@@ -371,7 +252,7 @@ impl QueryResult {
     }
 
     #[must_use]
-    pub fn with_mysql_diagnostics(mut self, diagnostics: Vec<MySqlDiagnostic>) -> Self {
+    pub fn with_mysql_diagnostics(mut self, diagnostics: Vec<DatabaseDiagnostic>) -> Self {
         self.mysql_diagnostics = diagnostics;
         self
     }
@@ -468,15 +349,6 @@ impl QueryResult {
     }
 
     #[must_use]
-    pub fn row_count_display(&self) -> String {
-        if self.row_count == 1 {
-            "1 row".to_string()
-        } else {
-            format!("{} rows", self.row_count)
-        }
-    }
-
-    #[must_use]
     pub fn value_at(&self, row: usize, col: usize) -> Option<&QueryValue> {
         self.values.get(row)?.get(col)
     }
@@ -494,38 +366,8 @@ impl QueryResult {
     }
 
     #[must_use]
-    pub fn display_value_at_width(
-        &self,
-        row: usize,
-        col: usize,
-        max_width: usize,
-    ) -> Option<String> {
-        if self.typed_values {
-            self.value_at(row, col)
-                .map(|value| value.display_value_at_width(max_width))
-        } else {
-            self.rows
-                .get(row)?
-                .get(col)
-                .map(|value| truncate_display_text(value, false, max_width))
-        }
-    }
-
-    #[must_use]
     pub fn display_value_at(&self, row: usize, col: usize) -> Option<String> {
         self.display_value_ref_at(row, col).map(Cow::into_owned)
-    }
-
-    #[must_use]
-    pub fn display_width_at(&self, row: usize, col: usize) -> Option<usize> {
-        if self.typed_values {
-            self.value_at(row, col).map(QueryValue::display_width)
-        } else {
-            self.rows
-                .get(row)?
-                .get(col)
-                .map(|value| display_width_of_first_line(value, false))
-        }
     }
 
     #[must_use]
@@ -543,7 +385,6 @@ impl QueryResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rstest::rstest;
 
     mod success {
         use super::*;
@@ -605,7 +446,7 @@ mod tests {
 
     mod builder {
         use super::*;
-        use crate::MySqlDiagnosticLevel;
+        use crate::DiagnosticLevel;
 
         #[test]
         fn with_command_tag_sets_tag() {
@@ -625,8 +466,8 @@ mod tests {
                 0,
                 QuerySource::Adhoc,
             )
-            .with_mysql_diagnostics(vec![MySqlDiagnostic {
-                level: MySqlDiagnosticLevel::Warning,
+            .with_mysql_diagnostics(vec![DatabaseDiagnostic {
+                level: DiagnosticLevel::Warning,
                 code: 1062,
                 message: "duplicate".to_string(),
             }]);
@@ -700,22 +541,6 @@ mod tests {
         }
     }
 
-    mod row_count_display {
-        use super::*;
-
-        #[rstest]
-        #[case(0, "0 rows")]
-        #[case(1, "1 row")]
-        #[case(5, "5 rows")]
-        fn formats_row_count_display(#[case] count: usize, #[case] expected: &str) {
-            let result =
-                QueryResult::success("SELECT".to_string(), vec![], vec![], 0, QuerySource::Adhoc)
-                    .with_row_count(count);
-
-            assert_eq!(result.row_count_display(), expected);
-        }
-    }
-
     mod nul_text {
         use super::*;
 
@@ -723,37 +548,5 @@ mod tests {
         fn display_value_escapes_embedded_nul_byte() {
             assert_eq!(QueryValue::text("a\0bc").display_value(), "a\\0bc");
         }
-
-        #[test]
-        fn width_limited_display_avoids_materializing_the_full_nul_text() {
-            let value = QueryValue::text("a\0bcdef");
-
-            assert_eq!(value.display_value_at_width(6), "a\\0...");
-        }
-
-        #[test]
-        fn display_width_handles_large_nul_text_and_blob_without_display_materialization() {
-            const SIZE: usize = 1024 * 1024;
-            let text = format!("{}\0tail", "a".repeat(SIZE));
-            let blob = vec![0xAB; SIZE];
-            let result = QueryResult::success_with_values(
-                "SELECT body, payload".to_string(),
-                vec!["body".to_string(), "payload".to_string()],
-                vec![vec![QueryValue::text(text), QueryValue::Blob(blob)]],
-                0,
-                QuerySource::Adhoc,
-            );
-
-            assert_eq!(result.display_width_at(0, 0), Some(SIZE + 6));
-            assert_eq!(
-                result.display_width_at(0, 1),
-                Some("BLOB (1048576 bytes) AB AB AB AB AB AB AB AB ...".len())
-            );
-        }
-    }
-
-    #[test]
-    fn display_width_counts_zwj_emoji_as_one_sequence() {
-        assert_eq!(QueryValue::text("👨‍👩‍👧‍👦").display_width(), 2);
     }
 }

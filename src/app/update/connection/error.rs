@@ -6,6 +6,7 @@ use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::ConnectionTarget;
 use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
+use crate::update::connection::helpers::cancel_connection_task_effects;
 use crate::update::dispatch_result::DispatchResult;
 
 pub(super) fn reduce_connection_error(
@@ -14,22 +15,16 @@ pub(super) fn reduce_connection_error(
     now: Instant,
 ) -> DispatchResult {
     match action {
-        Action::ShowConnectionError(info) => {
-            state.connection_error.set_error(info.clone());
-            state.modal.replace_mode(InputMode::ConnectionError);
-            DispatchResult::handled()
-        }
         Action::CloseConnectionError => {
             if state.session.pending_mysql_connection_probe().is_some() {
-                state.session.clear_mysql_connection_probe();
                 state.connection_error.clear();
             } else {
-                state.connection_error.details_expanded = false;
-                state.connection_error.scroll_offset = 0;
+                state.connection_error.reset_view();
                 state.connection_error.clear_copied_feedback();
             }
+            let cancel_effects = cancel_connection_task_effects(state);
             state.modal.set_mode(InputMode::Normal);
-            DispatchResult::handled()
+            DispatchResult::handled_with(cancel_effects)
         }
         Action::ToggleConnectionErrorDetails => {
             state.connection_error.toggle_details();
@@ -79,9 +74,10 @@ pub(super) fn reduce_connection_error(
             }
             state.connection_error.clear();
             state.session.cancel_connection_save();
+            let cancel_effects = cancel_connection_task_effects(state);
             state.session.mark_disconnected();
             state.modal.replace_mode(InputMode::ConnectionSetup);
-            DispatchResult::handled()
+            DispatchResult::handled_with(cancel_effects)
         }
         Action::RetryConnection => {
             if state.connection_error.is_save_and_connect_failure() {
@@ -200,10 +196,10 @@ mod tests {
 
             reduce_connection_error(&mut state, &action, now);
             reduce_connection_error(&mut state, &action, now);
-            assert_eq!(state.connection_error.scroll_offset, 2);
+            assert_eq!(state.connection_error.scroll_offset(), 2);
 
             reduce_connection_error(&mut state, &action, now);
-            assert_eq!(state.connection_error.scroll_offset, 2);
+            assert_eq!(state.connection_error.scroll_offset(), 2);
         }
     }
 
@@ -340,7 +336,10 @@ mod tests {
         );
         state
             .connection_error
-            .set_error(ConnectionErrorInfo::new("connection refused"));
+            .set_error(ConnectionErrorInfo::with_kind(
+                ConnectionErrorKind::ConnectionRefused,
+                "connection refused",
+            ));
         state.modal.set_mode(InputMode::ConnectionError);
 
         reduce_connection_error(&mut state, &Action::CloseConnectionError, Instant::now());
@@ -372,7 +371,10 @@ mod tests {
             .begin_mysql_connection_probe(&id, "mysql-a", dsn, Some("a"));
         state
             .connection_error
-            .set_error(ConnectionErrorInfo::new("connection refused"));
+            .set_error(ConnectionErrorInfo::with_kind(
+                ConnectionErrorKind::ConnectionRefused,
+                "connection refused",
+            ));
         state.modal.set_mode(InputMode::ConnectionError);
 
         assert!(!state.session.has_pending_connection_switch());
@@ -407,7 +409,10 @@ mod tests {
         );
         state
             .connection_error
-            .set_error(ConnectionErrorInfo::new("connection refused"));
+            .set_error(ConnectionErrorInfo::with_kind(
+                ConnectionErrorKind::ConnectionRefused,
+                "connection refused",
+            ));
         state.modal.set_mode(InputMode::ConnectionError);
 
         reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());

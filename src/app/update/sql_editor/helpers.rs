@@ -11,7 +11,7 @@ pub(super) fn start_adhoc_if_connected(
     query: String,
     now: Instant,
 ) -> DispatchResult {
-    if reject_pending_mysql_connection_probe(state, now) {
+    if reject_pending_mysql_connection_probe(state) {
         return DispatchResult::handled();
     }
 
@@ -22,7 +22,7 @@ pub(super) fn start_adhoc_if_connected(
         return DispatchResult::handled();
     };
 
-    let run_id = state.query.begin_running(now);
+    let run_id = state.query.begin_non_preview_running(now);
     state.sql_modal.begin_adhoc_running();
     DispatchResult::handled_with(vec![Effect::ExecuteAdhoc {
         dsn,

@@ -1,8 +1,8 @@
-use std::fmt;
+use std::{fmt, sync::Arc};
 
 use url::Url;
 
-use crate::app::ports::outbound::{DbOperationError, DsnBuilder};
+use crate::app::ports::outbound::{ConnectionFailureKind, DbOperationError, DsnBuilder};
 use crate::domain::connection::{
     ConnectionProfile, MySqlConnectionConfig, MySqlSslMode, MySqlTransport,
 };
@@ -198,6 +198,35 @@ pub(super) fn parse_and_validate_mysql_dsn(dsn: &str) -> Result<MySqlDsn, DbOper
     Ok(target)
 }
 
+pub(super) fn map_mysql_tls_failure(
+    error: DbOperationError,
+    ssl_mode: MySqlSslMode,
+) -> DbOperationError {
+    match error {
+        DbOperationError::QueryFailedAfterChange {
+            source,
+            refresh_scope,
+        } => DbOperationError::QueryFailedAfterChange {
+            source: Arc::new(map_mysql_tls_failure((*source).clone(), ssl_mode)),
+            refresh_scope,
+        },
+        DbOperationError::ConnectionFailedWithKind {
+            kind: ConnectionFailureKind::TlsCertificateVerification,
+            details,
+        } => {
+            let kind = match ssl_mode {
+                MySqlSslMode::VerifyCa => ConnectionFailureKind::TlsCaVerification,
+                MySqlSslMode::VerifyIdentity => ConnectionFailureKind::TlsHostnameVerification,
+                MySqlSslMode::Disabled | MySqlSslMode::Preferred | MySqlSslMode::Required => {
+                    ConnectionFailureKind::TlsCertificateVerification
+                }
+            };
+            DbOperationError::ConnectionFailedWithKind { kind, details }
+        }
+        error => error,
+    }
+}
+
 pub(super) fn validate_mysql_values(target: &MySqlDsn) -> Result<(), DbOperationError> {
     let values = [
         Some(target.host.as_str()),
@@ -316,6 +345,7 @@ fn decode_url_component(value: &str) -> Result<String, DbOperationError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::RefreshScope;
 
     #[test]
     fn builds_and_parses_mysql_dsn_with_encoded_components() {
@@ -348,6 +378,100 @@ mod tests {
             DbOperationError::ConnectionFailed(details)
                 if details == "Invalid MySQL TLS mode" && !details.contains("secret")
         ));
+    }
+
+    #[test]
+    fn maps_ambiguous_tls_certificate_failures_from_the_parsed_ssl_mode() {
+        for (ssl_mode, expected_kind) in [
+            (
+                MySqlSslMode::Preferred,
+                ConnectionFailureKind::TlsCertificateVerification,
+            ),
+            (
+                MySqlSslMode::Required,
+                ConnectionFailureKind::TlsCertificateVerification,
+            ),
+            (
+                MySqlSslMode::VerifyCa,
+                ConnectionFailureKind::TlsCaVerification,
+            ),
+            (
+                MySqlSslMode::VerifyIdentity,
+                ConnectionFailureKind::TlsHostnameVerification,
+            ),
+        ] {
+            let error = map_mysql_tls_failure(
+                DbOperationError::ConnectionFailedWithKind {
+                    kind: ConnectionFailureKind::TlsCertificateVerification,
+                    details: "certificate verification failed".to_string(),
+                },
+                ssl_mode,
+            );
+
+            assert!(matches!(
+                error,
+                DbOperationError::ConnectionFailedWithKind { kind, .. } if kind == expected_kind
+            ));
+        }
+    }
+
+    #[test]
+    fn leaves_non_tls_and_untyped_failures_unchanged() {
+        let error = DbOperationError::ConnectionFailed("hostname mismatch".to_string());
+        assert!(matches!(
+            map_mysql_tls_failure(error, MySqlSslMode::VerifyIdentity),
+            DbOperationError::ConnectionFailed(details) if details == "hostname mismatch"
+        ));
+
+        let error = DbOperationError::ConnectionFailedWithKind {
+            kind: ConnectionFailureKind::TlsHandshake,
+            details: "handshake failure".to_string(),
+        };
+        assert!(matches!(
+            map_mysql_tls_failure(error, MySqlSslMode::VerifyCa),
+            DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::TlsHandshake,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn maps_wrapped_tls_failures_for_write_refreshes() {
+        for (ssl_mode, expected_kind) in [
+            (
+                MySqlSslMode::VerifyCa,
+                ConnectionFailureKind::TlsCaVerification,
+            ),
+            (
+                MySqlSslMode::VerifyIdentity,
+                ConnectionFailureKind::TlsHostnameVerification,
+            ),
+        ] {
+            let error = DbOperationError::QueryFailedAfterChange {
+                source: Arc::new(DbOperationError::ConnectionFailedWithKind {
+                    kind: ConnectionFailureKind::TlsCertificateVerification,
+                    details: "certificate verification failed".to_string(),
+                }),
+                refresh_scope: RefreshScope::Data,
+            };
+
+            let mapped = map_mysql_tls_failure(error, ssl_mode);
+            match mapped {
+                DbOperationError::QueryFailedAfterChange {
+                    source,
+                    refresh_scope,
+                } => {
+                    assert_eq!(refresh_scope, RefreshScope::Data);
+                    assert!(matches!(
+                        source.as_ref(),
+                        DbOperationError::ConnectionFailedWithKind { kind, .. }
+                            if *kind == expected_kind
+                    ));
+                }
+                _ => panic!("TLS failure wrapper was not preserved"),
+            }
+        }
     }
 
     #[test]

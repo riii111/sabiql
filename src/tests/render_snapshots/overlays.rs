@@ -7,11 +7,16 @@ use sabiql_app::model::shared::settings::KeymapPreset;
 use sabiql_app::model::sql_editor::modal::SqlModalStatus;
 use sabiql_app::policy::write::sql_risk::AcknowledgeReason;
 use sabiql_domain::query_history::{QueryHistoryEntry, QueryResultStatus};
-use sabiql_domain::{ConnectionId, MySqlDiagnostic, MySqlDiagnosticLevel, QueryResult};
+use sabiql_domain::{ConnectionId, DatabaseDiagnostic, DiagnosticLevel, QueryResult};
+
+const POSTGRES_SEQ_SCAN_PLAN: &str =
+    "Seq Scan on users  (cost=0.00..1000.00 rows=2550 width=36)\n  Filter: (id > 10)";
+const POSTGRES_INDEX_SCAN_PLAN: &str = "Index Scan using idx_users_id on users  (cost=0.28..8.30 rows=1 width=36)\n  Index Cond: (id > 10)";
+const POSTGRES_PLAN_QUERY: &str = "SELECT * FROM users WHERE id > 10";
 
 #[test]
 fn sql_modal_with_completion() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
@@ -28,7 +33,7 @@ fn sql_modal_with_completion() {
 
 #[test]
 fn sql_modal_completion_popup_with_scroll() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
@@ -104,7 +109,7 @@ fn sql_modal_completion_popup_with_scroll() {
 
 #[test]
 fn sql_modal_unknown_risk_acknowledge() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
@@ -126,7 +131,7 @@ fn sql_modal_unknown_risk_acknowledge() {
 
 #[test]
 fn sql_modal_high_risk_without_target_acknowledge() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
@@ -148,7 +153,7 @@ fn sql_modal_high_risk_without_target_acknowledge() {
 
 #[test]
 fn sql_modal_non_atomic_transaction_acknowledge() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
@@ -170,7 +175,7 @@ fn sql_modal_non_atomic_transaction_acknowledge() {
 
 #[test]
 fn sql_modal_analyze_unknown_risk_acknowledge() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
@@ -189,7 +194,7 @@ fn sql_modal_analyze_unknown_risk_acknowledge() {
 
 #[test]
 fn sql_modal_analyze_read_only_acknowledge() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
@@ -341,13 +346,13 @@ fn sql_modal_success_with_mysql_diagnostics() {
         row_count: 1,
         execution_time_ms: 15,
         mysql_diagnostics: vec![
-            MySqlDiagnostic {
-                level: MySqlDiagnosticLevel::Warning,
+            DatabaseDiagnostic {
+                level: DiagnosticLevel::Warning,
                 code: 1062,
                 message: "Duplicate entry '1' for key 'users.PRIMARY'".to_string(),
             },
-            MySqlDiagnostic {
-                level: MySqlDiagnosticLevel::Note,
+            DatabaseDiagnostic {
+                level: DiagnosticLevel::Note,
                 code: 1050,
                 message: "Table 'users' already exists".to_string(),
             },
@@ -362,8 +367,8 @@ fn sql_modal_success_with_mysql_diagnostics() {
             QuerySource::Adhoc,
         )
         .with_command_tag(CommandTag::Insert(1))
-        .with_mysql_diagnostics(vec![MySqlDiagnostic {
-            level: MySqlDiagnosticLevel::Warning,
+        .with_mysql_diagnostics(vec![DatabaseDiagnostic {
+            level: DiagnosticLevel::Warning,
             code: 1062,
             message: "Duplicate entry '1' for key 'users.PRIMARY'".to_string(),
         }]),
@@ -514,7 +519,7 @@ fn sql_modal_confirming_high_unmatched() {
 
 #[test]
 fn help_overlay() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::Help);
@@ -526,7 +531,7 @@ fn help_overlay() {
 
 #[test]
 fn help_overlay_filtered_current_result() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.ui.set_focused_pane(FocusedPane::Result);
@@ -546,7 +551,7 @@ fn help_overlay_filtered_current_result() {
 
 #[test]
 fn help_overlay_long_key_rows() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::Help);
@@ -559,7 +564,7 @@ fn help_overlay_long_key_rows() {
 
 #[test]
 fn help_overlay_narrow_horizontal_scroll() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal_sized(50, 24);
 
     state.modal.set_mode(InputMode::Help);
@@ -575,7 +580,7 @@ fn help_overlay_narrow_horizontal_scroll() {
 
 #[test]
 fn command_palette_overlay() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::CommandPalette);
@@ -587,7 +592,7 @@ fn command_palette_overlay() {
 
 #[test]
 fn settings_overlay() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.settings.open(state.ui.theme_id());
@@ -600,7 +605,7 @@ fn settings_overlay() {
 
 #[test]
 fn settings_overlay_keymap() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.settings.open(state.ui.theme_id());
@@ -614,7 +619,7 @@ fn settings_overlay_keymap() {
 
 #[test]
 fn settings_overlay_er_diagram() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.settings.open(state.ui.theme_id());
@@ -629,7 +634,7 @@ fn settings_overlay_er_diagram() {
 
 #[test]
 fn settings_overlay_er_diagram_custom_browser() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state
@@ -647,7 +652,7 @@ fn settings_overlay_er_diagram_custom_browser() {
 
 #[test]
 fn table_picker_overlay() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::TablePicker);
@@ -683,7 +688,7 @@ fn mysql_table_picker_shows_table_names_without_database() {
 
 #[test]
 fn command_line_input() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::CommandLine);
@@ -800,7 +805,7 @@ fn sql_modal_plan_tab_with_plan_text() {
         DatabaseType::PostgreSQL,
         false,
         42,
-        "SELECT * FROM users WHERE id > 10",
+        POSTGRES_PLAN_QUERY,
     );
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -867,21 +872,19 @@ fn sql_modal_compare_tab_with_verdict() {
     state.modal.set_mode(InputMode::SqlModal);
     // First EXPLAIN with high cost
     state.explain.set_plan(
-        "Seq Scan on users  (cost=0.00..1000.00 rows=2550 width=36)\n  Filter: (id > 10)"
-            .to_string(),
+        POSTGRES_SEQ_SCAN_PLAN.to_string(),
         DatabaseType::PostgreSQL,
         false,
         100,
-        "SELECT * FROM users WHERE id > 10",
+        POSTGRES_PLAN_QUERY,
     );
     // Second EXPLAIN with low cost (Improved) — auto-advances first to left
     state.explain.set_plan(
-        "Index Scan using idx_users_id on users  (cost=0.28..8.30 rows=1 width=36)\n  Index Cond: (id > 10)"
-            .to_string(),
+        POSTGRES_INDEX_SCAN_PLAN.to_string(),
         DatabaseType::PostgreSQL,
         false,
         5,
-        "SELECT * FROM users WHERE id > 10",
+        POSTGRES_PLAN_QUERY,
     );
     state.sql_modal.set_active_tab(SqlModalTab::Compare);
 
@@ -928,21 +931,19 @@ fn sql_modal_compare_tab_narrow_stacked() {
     state.modal.set_mode(InputMode::SqlModal);
     // First EXPLAIN
     state.explain.set_plan(
-        "Seq Scan on users  (cost=0.00..1000.00 rows=2550 width=36)\n  Filter: (id > 10)"
-            .to_string(),
+        POSTGRES_SEQ_SCAN_PLAN.to_string(),
         DatabaseType::PostgreSQL,
         false,
         100,
-        "SELECT * FROM users WHERE id > 10",
+        POSTGRES_PLAN_QUERY,
     );
     // Second EXPLAIN — auto-advances first to left
     state.explain.set_plan(
-        "Index Scan using idx_users_id on users  (cost=0.28..8.30 rows=1 width=36)\n  Index Cond: (id > 10)"
-            .to_string(),
+        POSTGRES_INDEX_SCAN_PLAN.to_string(),
         DatabaseType::PostgreSQL,
         false,
         5,
-        "SELECT * FROM users WHERE id > 10",
+        POSTGRES_PLAN_QUERY,
     );
     state.sql_modal.set_active_tab(SqlModalTab::Compare);
 
@@ -1015,7 +1016,7 @@ fn sqlite_diagnostics_overlay_loading() {
     let mut state = sqlite_connected_state();
     let mut terminal = create_test_terminal();
 
-    state.sqlite_diagnostics.begin_fetch();
+    state.sqlite_diagnostics.begin_core_fetch();
     state.modal.set_mode(InputMode::SqliteDiagnostics);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -1030,8 +1031,8 @@ fn sqlite_diagnostics_overlay_loaded() {
     let mut state = sqlite_connected_state();
     let mut terminal = create_test_terminal();
 
-    let run_id = state.sqlite_diagnostics.begin_fetch();
-    state.sqlite_diagnostics.set_loaded(
+    let run_id = state.sqlite_diagnostics.begin_core_fetch();
+    state.sqlite_diagnostics.set_core_loaded(
         run_id,
         SqliteDiagnosticsSnapshot {
             db_file: DiagnosticField::ok("/tmp/app.db"),
@@ -1061,8 +1062,8 @@ fn sqlite_diagnostics_overlay_partial_failure() {
     let mut state = sqlite_connected_state();
     let mut terminal = create_test_terminal();
 
-    let run_id = state.sqlite_diagnostics.begin_fetch();
-    state.sqlite_diagnostics.set_loaded(
+    let run_id = state.sqlite_diagnostics.begin_core_fetch();
+    state.sqlite_diagnostics.set_core_loaded(
         run_id,
         SqliteDiagnosticsSnapshot {
             db_file: DiagnosticField::ok("/tmp/app.db"),
@@ -1090,7 +1091,7 @@ fn sqlite_diagnostics_overlay_quick_check_pending() {
     let mut state = sqlite_connected_state();
     let mut terminal = create_test_terminal();
 
-    let run_id = state.sqlite_diagnostics.begin_fetch();
+    let run_id = state.sqlite_diagnostics.begin_core_fetch();
     state.sqlite_diagnostics.set_core_loaded(
         run_id,
         SqliteDiagnosticsSnapshot {
@@ -1122,7 +1123,7 @@ fn sqlite_diagnostics_overlay_quick_check_not_run() {
     let mut state = sqlite_connected_state();
     let mut terminal = create_test_terminal();
 
-    let run_id = state.sqlite_diagnostics.begin_fetch();
+    let run_id = state.sqlite_diagnostics.begin_core_fetch();
     state.sqlite_diagnostics.set_core_loaded(
         run_id,
         SqliteDiagnosticsSnapshot {
@@ -1153,8 +1154,8 @@ fn sqlite_diagnostics_overlay_wrapped_scroll() {
     let mut state = sqlite_connected_state();
     let mut terminal = create_test_terminal_sized(50, 24);
 
-    let run_id = state.sqlite_diagnostics.begin_fetch();
-    state.sqlite_diagnostics.set_loaded(
+    let run_id = state.sqlite_diagnostics.begin_core_fetch();
+    state.sqlite_diagnostics.set_core_loaded(
         run_id,
         SqliteDiagnosticsSnapshot {
             db_file: DiagnosticField::ok(

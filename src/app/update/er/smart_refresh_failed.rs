@@ -9,7 +9,7 @@ use crate::update::dispatch_result::DispatchResult;
 pub(super) fn reduce_smart_refresh_failed(
     state: &mut AppState,
     action: &Action,
-    now: Instant,
+    _now: Instant,
 ) -> DispatchResult {
     match action {
         Action::SmartErRefreshFailed(SmartErRefreshError {
@@ -22,29 +22,32 @@ pub(super) fn reduce_smart_refresh_failed(
                 return DispatchResult::handled();
             }
 
+            let mut effects = Vec::new();
+
             if let Some(md) = new_metadata {
                 state.session.set_metadata(Some(Arc::clone(md)));
+                effects.push(Effect::CacheInvalidate { dsn: dsn.clone() });
             }
 
             let Some(metadata) = &state.session.metadata() else {
                 state.er_preparation.mark_idle();
                 state
                     .messages
-                    .set_error_at("Metadata not loaded yet".to_string(), now);
-                return DispatchResult::handled();
+                    .set_error("Metadata not loaded yet".to_string());
+                return DispatchResult::handled_with(effects);
             };
             state
                 .er_preparation
                 .invalidate_refresh_signatures(metadata.table_summaries.len());
 
-            state.messages.set_error_at(
-                format!("Smart refresh failed ({error}), falling back to full refresh"),
-                now,
-            );
-            DispatchResult::handled_with(vec![
+            state.messages.set_error(format!(
+                "Smart refresh failed ({error}), falling back to full refresh"
+            ));
+            effects.extend([
                 Effect::ClearCompletionEngineCache,
-                Effect::DispatchActions(vec![Action::StartPrefetchAll]),
-            ])
+                Effect::DispatchActions(vec![Action::StartErPrefetchAll]),
+            ]);
+            DispatchResult::handled_with(effects)
         }
         _ => DispatchResult::pass(),
     }

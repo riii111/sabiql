@@ -1,5 +1,3 @@
-use std::collections::VecDeque;
-
 use crate::domain::DatabaseType;
 use crate::domain::explain_plan::{self, ExplainPlan};
 use crate::model::sql_editor::modal::sql_modal_visible_rows;
@@ -28,8 +26,6 @@ pub struct CompareSlot {
     pub source: SlotSource,
 }
 
-const MAX_EXPLAIN_HISTORY: usize = 10;
-
 #[derive(Debug, Clone, Default)]
 pub struct ExplainContext {
     pub(crate) plan_text: Option<String>,
@@ -42,8 +38,6 @@ pub struct ExplainContext {
     pub(crate) left: Option<CompareSlot>,
     pub(crate) right: Option<CompareSlot>,
     pub(crate) compare_scroll_offset: usize,
-
-    pub(crate) history: VecDeque<CompareSlot>,
 
     pub(crate) compare_viewport_height: Option<u16>,
     pub(crate) confirm_scroll_offset: usize,
@@ -86,10 +80,6 @@ impl ExplainContext {
         self.left.is_some() && self.right.is_some()
     }
 
-    pub fn history(&self) -> &VecDeque<CompareSlot> {
-        &self.history
-    }
-
     pub fn compare_scroll_offset(&self) -> usize {
         self.compare_scroll_offset
     }
@@ -130,9 +120,7 @@ impl ExplainContext {
             s.source = SlotSource::AutoPrevious;
             s
         });
-        self.history.push_front(new_slot);
-        self.history.truncate(MAX_EXPLAIN_HISTORY);
-        self.right = self.history.front().cloned();
+        self.right = Some(new_slot);
 
         self.plan_text = Some(text);
         self.plan_query_snippet = Some(plan_snippet);
@@ -153,10 +141,6 @@ impl ExplainContext {
         self.compare_viewport_height = Some(height);
     }
 
-    pub fn scroll_confirm_to(&mut self, offset: usize) {
-        self.confirm_scroll_offset = offset;
-    }
-
     pub fn scroll_plan_to(&mut self, offset: usize) {
         self.scroll_offset = offset;
     }
@@ -168,13 +152,11 @@ impl ExplainContext {
     pub fn reset_for_new_run(&mut self) {
         let left = self.left.take();
         let right = self.right.take();
-        let history = std::mem::take(&mut self.history);
 
         *self = Self::default();
 
         self.left = left;
         self.right = right;
-        self.history = history;
     }
 
     pub fn reset_for_connection_change(&mut self) {
@@ -251,7 +233,6 @@ mod tests {
         assert!(ctx.error().is_none());
         assert!(ctx.left().is_none());
         assert!(ctx.right().is_none());
-        assert!(ctx.history().is_empty());
     }
 
     #[test]
@@ -336,37 +317,7 @@ mod tests {
     }
 
     #[test]
-    fn history_stores_all_explains() {
-        let mut ctx = ExplainContext::default();
-        ctx.set_plan(
-            "A  (cost=0.00..10.00 rows=1 width=32)".to_string(),
-            DatabaseType::PostgreSQL,
-            false,
-            0,
-            "A",
-        );
-        ctx.set_plan(
-            "B  (cost=0.00..20.00 rows=2 width=32)".to_string(),
-            DatabaseType::PostgreSQL,
-            false,
-            0,
-            "B",
-        );
-        ctx.set_plan(
-            "C  (cost=0.00..30.00 rows=3 width=32)".to_string(),
-            DatabaseType::PostgreSQL,
-            false,
-            0,
-            "C",
-        );
-
-        assert_eq!(ctx.history().len(), 3);
-        assert_eq!(ctx.history()[0].query_snippet, "C");
-        assert_eq!(ctx.history()[2].query_snippet, "A");
-    }
-
-    #[test]
-    fn reset_preserves_compare_state_and_history() {
+    fn reset_preserves_compare_state() {
         let mut ctx = ExplainContext::default();
         ctx.set_plan(
             "A  (cost=0.00..100.00 rows=10 width=32)".to_string(),
@@ -393,11 +344,10 @@ mod tests {
         assert_eq!(ctx.compare_scroll_offset(), 0);
         assert!(ctx.left().is_some());
         assert!(ctx.right().is_some());
-        assert_eq!(ctx.history().len(), 2);
     }
 
     #[test]
-    fn connection_change_reset_clears_plan_compare_and_history() {
+    fn connection_change_reset_clears_plan_and_compare() {
         let mut ctx = ExplainContext::default();
         ctx.set_plan(
             "A  (cost=0.00..100.00 rows=10 width=32)".to_string(),
@@ -418,7 +368,6 @@ mod tests {
         assert!(ctx.error().is_some());
         assert!(ctx.left().is_some());
         assert!(ctx.right().is_some());
-        assert!(!ctx.history().is_empty());
 
         ctx.reset_for_connection_change();
 
@@ -426,7 +375,6 @@ mod tests {
         assert!(ctx.error().is_none());
         assert!(ctx.left().is_none());
         assert!(ctx.right().is_none());
-        assert!(ctx.history().is_empty());
     }
 
     #[test]
@@ -443,22 +391,6 @@ mod tests {
         ctx.set_error("some error".to_string());
 
         assert!(ctx.right().is_some());
-    }
-
-    #[test]
-    fn history_truncates_at_max() {
-        let mut ctx = ExplainContext::default();
-        for i in 0..15 {
-            ctx.set_plan(
-                format!("Scan  (cost=0.00..{i}.00 rows=1 width=32)"),
-                DatabaseType::PostgreSQL,
-                false,
-                0,
-                &format!("Q{i}"),
-            );
-        }
-
-        assert_eq!(ctx.history().len(), MAX_EXPLAIN_HISTORY);
     }
 
     #[test]

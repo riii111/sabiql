@@ -5,7 +5,6 @@ pub fn assert_explain_state_cleared(state: &AppState) {
     assert!(state.explain.error().is_none());
     assert!(state.explain.left().is_none());
     assert!(state.explain.right().is_none());
-    assert!(state.explain.history().is_empty());
 }
 
 pub fn assert_sqlite_diagnostics_cleared(state: &AppState) {

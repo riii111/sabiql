@@ -1,7 +1,5 @@
-use crate::app::ports::outbound::{
-    DbOperationError, MetadataProvider, SQLITE_SAFE_MODE_REQUIRED_MARKER,
-};
-use crate::domain::{Schema, TableKind, TableKindInfo};
+use crate::app::ports::outbound::{DbOperationError, MetadataProvider, SqliteCompatibilityKind};
+use crate::domain::{Schema, SqlitePathError, TableKind, TableKindInfo};
 
 use super::super::super::sqlite3::metadata::RawTable;
 use super::super::SqliteAdapter;
@@ -9,13 +7,10 @@ use super::kind_info_for_raw_table;
 
 #[test]
 fn legacy_list_row_uses_sql_for_storage() {
-    let table = RawTable {
-        name: "settings".to_string(),
-        sql: Some("CREATE TABLE settings(id INTEGER PRIMARY KEY) WITHOUT ROWID;".to_string()),
-        r#type: String::new(),
-        wr: 0,
-        strict: 0,
-    };
+    let table: RawTable = serde_json::from_str(
+        r#"{"name":"settings","sql":"CREATE TABLE settings(id INTEGER PRIMARY KEY) WITHOUT ROWID;"}"#,
+    )
+    .unwrap();
 
     let kind_info = kind_info_for_raw_table(&table);
 
@@ -52,8 +47,12 @@ mod metadata {
             std::env::var_os("SABIQL_EXPECT_SQLITE_SAFE_MODE_REJECTION").is_some();
 
         match adapter.fetch_metadata(&dsn).await {
-            Err(DbOperationError::UnsupportedOperation(details)) if expects_rejection => {
-                assert!(details.contains(SQLITE_SAFE_MODE_REQUIRED_MARKER));
+            Err(DbOperationError::UnsupportedOperationWithSqliteKind {
+                kind: SqliteCompatibilityKind::SafeMode,
+                details,
+            }) if expects_rejection => {
+                assert!(details.contains("3.41.1"));
+                assert!(!details.contains("SQLITE_SAFE_MODE_REQUIRED"));
             }
             Ok(_) if !expects_rejection => {}
             result => panic!("unexpected SQLite safe mode connection result: {result:?}"),
@@ -71,8 +70,8 @@ mod metadata {
 
         assert!(matches!(
             result,
-            Err(DbOperationError::ConnectionFailed(details))
-                if details.contains("SQLite database file not found")
+            Err(DbOperationError::SqlitePath(SqlitePathError::FileNotFound(file_path)))
+                if file_path == path.display().to_string()
         ));
         assert!(!path.exists());
     }

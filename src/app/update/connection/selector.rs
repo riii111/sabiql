@@ -98,7 +98,7 @@ pub(super) fn reduce_connection_selector(
             })
         }
         Action::ConnectionDeleteFailed(e) => {
-            state.messages.set_error_at(e.to_string(), now);
+            state.messages.set_error(e.to_string());
             DispatchResult::handled()
         }
 
@@ -561,7 +561,7 @@ mod tests {
                 "SELECT * FROM users",
             );
             state.explain.set_error("stale error".to_string());
-            let diagnostics_run_id = state.sqlite_diagnostics.begin_fetch();
+            let diagnostics_run_id = state.sqlite_diagnostics.begin_core_fetch();
             state
                 .sqlite_diagnostics
                 .set_core_loaded(diagnostics_run_id, SqliteDiagnosticsSnapshot::default());
@@ -644,10 +644,6 @@ mod tests {
                 vec![profile],
                 vec![ServiceEntry {
                     service_name: "mydb".to_string(),
-                    host: None,
-                    dbname: None,
-                    port: None,
-                    user: None,
                 }],
             );
             state.modal.set_mode(InputMode::Normal);

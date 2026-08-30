@@ -57,12 +57,12 @@ fn confirm_dialog() {
 
 #[test]
 fn confirm_dialog_update_preview() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     let _ = state
         .session
-        .set_table_detail(fixtures::sample_table_detail(), 0);
+        .set_table_detail(fixtures::sample_postgres_table_detail(), 0);
     state.modal.set_mode(InputMode::ConfirmDialog);
     state.confirm_dialog.open(
         "Confirm UPDATE: users",
@@ -80,12 +80,12 @@ fn confirm_dialog_update_preview() {
 
 #[test]
 fn confirm_dialog_update_preview_rich() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     let _ = state
         .session
-        .set_table_detail(fixtures::sample_table_detail(), 0);
+        .set_table_detail(fixtures::sample_postgres_table_detail(), 0);
 
     let sql = "UPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';"
         .to_string();
@@ -118,12 +118,12 @@ fn confirm_dialog_update_preview_rich() {
 
 #[test]
 fn confirm_dialog_delete_preview_low_risk() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     let _ = state
         .session
-        .set_table_detail(fixtures::sample_table_detail(), 0);
+        .set_table_detail(fixtures::sample_postgres_table_detail(), 0);
 
     let sql = "DELETE FROM \"public\".\"users\"\nWHERE \"id\" = '3';".to_string();
     state.result_interaction.set_write_preview(WritePreview {
@@ -151,12 +151,12 @@ fn confirm_dialog_delete_preview_low_risk() {
 
 #[test]
 fn confirm_dialog_update_preview_long_json() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     let _ = state
         .session
-        .set_table_detail(fixtures::sample_table_detail(), 0);
+        .set_table_detail(fixtures::sample_postgres_table_detail(), 0);
 
     let long_before = r#"{"industries": ["tech", "finance", "healthcare"], "company_size": "enterprise", "preferences": {"notifications": true, "theme": "dark"}}"#;
     let long_after = r#"{"industries": ["tech", "retail"], "company_size": "startup", "preferences": {"notifications": false, "theme": "light", "language": "ja"}}"#;
@@ -189,12 +189,12 @@ fn confirm_dialog_update_preview_long_json() {
 
 #[test]
 fn confirm_dialog_update_preview_json_key_order_normalized() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     let _ = state
         .session
-        .set_table_detail(fixtures::sample_table_detail(), 0);
+        .set_table_detail(fixtures::sample_postgres_table_detail(), 0);
 
     // Snapshot uses pre-normalized jsonb strings; normalization behavior is covered in
     // preview_cell_text policy tests.
@@ -235,12 +235,12 @@ fn confirm_dialog_update_preview_json_key_order_normalized() {
 
 #[test]
 fn confirm_dialog_update_preview_scrollable() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     let _ = state
         .session
-        .set_table_detail(fixtures::sample_table_detail(), 0);
+        .set_table_detail(fixtures::sample_postgres_table_detail(), 0);
 
     let sql = "UPDATE \"public\".\"users\"\nSET \"a\" = '1', \"b\" = '2', \"c\" = '3', \"d\" = '4', \"e\" = '5'\nWHERE \"id\" = '1';".to_string();
     state
@@ -293,12 +293,12 @@ fn confirm_dialog_update_preview_scrollable() {
 
 #[test]
 fn confirm_dialog_update_preview_narrow_terminal() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal_sized(40, 12);
 
     let _ = state
         .session
-        .set_table_detail(fixtures::sample_table_detail(), 0);
+        .set_table_detail(fixtures::sample_postgres_table_detail(), 0);
 
     let long_before = r#"{"industries": ["tech", "finance"], "company_size": "enterprise"}"#;
     let long_after = r#"{"industries": ["tech"], "company_size": "startup"}"#;
@@ -331,12 +331,12 @@ fn confirm_dialog_update_preview_narrow_terminal() {
 
 #[test]
 fn confirm_dialog_update_preview_multi_column() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     let _ = state
         .session
-        .set_table_detail(fixtures::sample_table_detail(), 0);
+        .set_table_detail(fixtures::sample_postgres_table_detail(), 0);
 
     let sql = "UPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com', \"name\" = 'New Name'\nWHERE \"id\" = '2';".to_string();
     state
@@ -368,12 +368,12 @@ fn confirm_dialog_update_preview_multi_column() {
 
 #[test]
 fn confirm_dialog_update_preview_json_structured_diff_with_ellipsis() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     let _ = state
         .session
-        .set_table_detail(fixtures::sample_table_detail(), 0);
+        .set_table_detail(fixtures::sample_postgres_table_detail(), 0);
 
     // Large nested JSON where only one deep value changes, forcing ellipsis
     let before = r#"{"alpha": 1, "beta": 2, "gamma": 3, "delta": 4, "epsilon": 5, "zeta": {"nested_a": "unchanged", "nested_b": "old_value", "nested_c": "unchanged"}, "eta": 7, "theta": 8}"#;
@@ -410,12 +410,12 @@ fn confirm_dialog_update_preview_json_structured_diff_with_ellipsis() {
 
 #[test]
 fn confirm_dialog_update_preview_json_and_string_mixed() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     let _ = state
         .session
-        .set_table_detail(fixtures::sample_table_detail(), 0);
+        .set_table_detail(fixtures::sample_postgres_table_detail(), 0);
 
     let json_before = r#"{"status": "active", "role": "admin"}"#;
     let json_after = r#"{"status": "inactive", "role": "admin"}"#;

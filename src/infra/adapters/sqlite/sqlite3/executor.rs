@@ -7,9 +7,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::time::timeout;
 
-use crate::app::ports::outbound::{
-    DatabaseCli, DbOperationError, SQLITE_SAFE_MODE_REQUIRED_MARKER,
-};
+use crate::adapters::csv_export::CsvOutputError;
+use crate::app::ports::outbound::{DbOperationError, ExportIoSource, SqliteCompatibilityKind};
 
 use super::super::path_validation;
 use super::error::{classify_cli_spawn_error, classify_query_error};
@@ -46,16 +45,13 @@ impl SqliteCli {
         Self { timeout_secs: 30 }
     }
 
-    pub(in crate::adapters::sqlite) async fn execute_json<T: DeserializeOwned>(
+    pub(in crate::adapters::sqlite) async fn execute_json_read_only<T: DeserializeOwned>(
         &self,
         path: &str,
         sql: &str,
     ) -> Result<T, DbOperationError> {
-        let output = self.run(path, &["-json"], sql, true).await?;
-        if !output.status.success() {
-            return Err(classify_query_error(&output.stderr));
-        }
-        let stdout = match output.stdout.trim() {
+        let stdout = self.execute_text(path, &["-json"], sql, true).await?;
+        let stdout = match stdout.trim() {
             "" => "[]",
             stdout => stdout,
         };
@@ -65,14 +61,14 @@ impl SqliteCli {
     pub(in crate::adapters::sqlite) async fn ensure_safe_mode_supported(
         &self,
     ) -> Result<(), DbOperationError> {
-        let mut cmd = self.command();
+        let mut cmd = Command::new("sqlite3");
         Self::apply_initialization_file(&mut cmd);
         let output = cmd
             .arg("--safe")
             .arg("--version")
             .output()
             .await
-            .map_err(|error| classify_cli_spawn_error(DatabaseCli::Sqlite3, error))?;
+            .map_err(classify_cli_spawn_error)?;
         let stdout = String::from_utf8_lossy(&output.stdout);
         let version = SqliteVersion::parse(&stdout).ok_or_else(|| {
             safe_mode_required_error("could not determine the installed sqlite3 version")
@@ -99,18 +95,13 @@ impl SqliteCli {
         sql: &str,
         read_only: bool,
     ) -> Result<String, DbOperationError> {
-        let output = self
-            .run(
-                path,
-                &["-batch", "-bail", "-csv", "-header"],
-                sql,
-                read_only,
-            )
-            .await?;
-        if !output.status.success() {
-            return Err(classify_query_error(&output.stderr));
-        }
-        Ok(output.stdout)
+        self.execute_text(
+            path,
+            &["-batch", "-bail", "-csv", "-header"],
+            sql,
+            read_only,
+        )
+        .await
     }
 
     pub(in crate::adapters::sqlite) async fn execute_quote(
@@ -119,18 +110,13 @@ impl SqliteCli {
         sql: &str,
         read_only: bool,
     ) -> Result<String, DbOperationError> {
-        let output = self
-            .run(
-                path,
-                &["-batch", "-bail", "-quote", "-header"],
-                sql,
-                read_only,
-            )
-            .await?;
-        if !output.status.success() {
-            return Err(classify_query_error(&output.stderr));
-        }
-        Ok(output.stdout)
+        self.execute_text(
+            path,
+            &["-batch", "-bail", "-quote", "-header"],
+            sql,
+            read_only,
+        )
+        .await
     }
 
     pub(in crate::adapters::sqlite) async fn execute_quote_with_explain_off(
@@ -139,21 +125,30 @@ impl SqliteCli {
         sql: &str,
         read_only: bool,
     ) -> Result<String, DbOperationError> {
-        let output = self
-            .run(
-                path,
-                &[
-                    "-batch",
-                    "-bail",
-                    "-quote",
-                    "-header",
-                    "-cmd",
-                    ".explain off",
-                ],
-                sql,
-                read_only,
-            )
-            .await?;
+        self.execute_text(
+            path,
+            &[
+                "-batch",
+                "-bail",
+                "-quote",
+                "-header",
+                "-cmd",
+                ".explain off",
+            ],
+            sql,
+            read_only,
+        )
+        .await
+    }
+
+    async fn execute_text(
+        &self,
+        path: &str,
+        args: &[&str],
+        sql: &str,
+        read_only: bool,
+    ) -> Result<String, DbOperationError> {
+        let output = self.run(path, args, sql, read_only).await?;
         if !output.status.success() {
             return Err(classify_query_error(&output.stderr));
         }
@@ -167,8 +162,15 @@ impl SqliteCli {
         output_path: &std::path::Path,
         read_only: bool,
     ) -> Result<(), DbOperationError> {
-        self.export_csv_with_command("sqlite3", path, sql, output_path, read_only)
-            .await
+        self.export_csv_with_command(
+            "sqlite3",
+            path,
+            sql,
+            output_path,
+            read_only,
+            Duration::from_secs(self.timeout_secs * 10),
+        )
+        .await
     }
 
     async fn export_csv_with_command(
@@ -178,20 +180,15 @@ impl SqliteCli {
         sql: &str,
         output_path: &std::path::Path,
         read_only: bool,
+        timeout_duration: Duration,
     ) -> Result<(), DbOperationError> {
-        Self::ensure_database_path(path)?;
+        let mut cmd = Self::build_command(
+            command,
+            path,
+            &["-batch", "-bail", "-csv", "-header", "-newline", "\n"],
+            read_only,
+        )?;
         let sql = sqlite_session_sql(sql, read_only);
-        let mut cmd = self.command_with_program(command);
-        #[cfg(test)]
-        super::tests::configure_command(path, &mut cmd);
-        Self::apply_session_options(&mut cmd, read_only);
-        cmd.arg("-batch")
-            .arg("-bail")
-            .arg("-csv")
-            .arg("-header")
-            .arg("-newline")
-            .arg("\n");
-        cmd.arg(sqlite_database_uri(path, read_only));
 
         let mut child = cmd
             .stdin(Stdio::piped())
@@ -199,20 +196,24 @@ impl SqliteCli {
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
-            .map_err(|error| classify_cli_spawn_error(DatabaseCli::Sqlite3, error))?;
+            .map_err(classify_cli_spawn_error)?;
 
         let stdin = child.stdin.take();
         let stdout = child.stdout.take();
         let mut stderr_handle = child.stderr.take();
 
-        let file = tokio::fs::File::create(output_path)
-            .await
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        let file = match tokio::fs::File::create(output_path).await {
+            Ok(file) => file,
+            Err(error) => {
+                kill_and_wait(&mut child).await;
+                return Err(DbOperationError::ExportIo(ExportIoSource::new(error)));
+            }
+        };
         let mut writer = tokio::io::BufWriter::new(file);
 
-        let result = timeout(Duration::from_secs(self.timeout_secs * 10), async {
+        let result = timeout(timeout_duration, async {
             let (stdin_result, stdout_result, stderr_result) = tokio::join!(
-                write_sql_to_stdin(stdin, &sql),
+                async { Ok::<_, CsvOutputError>(write_sql_to_stdin(stdin, &sql).await?) },
                 async {
                     if let Some(mut stdout) = stdout {
                         let mut buf = [0u8; 8192];
@@ -229,25 +230,34 @@ impl SqliteCli {
                             {
                                 let output =
                                     newline_normalizer.normalize(&buf[..n], &mut normalized_buf);
-                                writer.write_all(output).await?;
+                                writer
+                                    .write_all(output)
+                                    .await
+                                    .map_err(CsvOutputError::File)?;
                             }
                             #[cfg(not(windows))]
-                            writer.write_all(&buf[..n]).await?;
+                            writer
+                                .write_all(&buf[..n])
+                                .await
+                                .map_err(CsvOutputError::File)?;
                         }
                         #[cfg(windows)]
                         if let Some(trailing_carriage_return) = newline_normalizer.finish() {
-                            writer.write_all(&[trailing_carriage_return]).await?;
+                            writer
+                                .write_all(&[trailing_carriage_return])
+                                .await
+                                .map_err(CsvOutputError::File)?;
                         }
-                        writer.flush().await?;
+                        writer.flush().await.map_err(CsvOutputError::File)?;
                     }
-                    Ok::<_, std::io::Error>(())
+                    Ok::<_, CsvOutputError>(())
                 },
                 async {
                     let mut buf = Vec::new();
                     if let Some(ref mut stderr) = stderr_handle {
                         stderr.read_to_end(&mut buf).await?;
                     }
-                    Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
+                    Ok::<_, CsvOutputError>(String::from_utf8_lossy(&buf).into_owned())
                 }
             );
 
@@ -255,7 +265,7 @@ impl SqliteCli {
             stdout_result?;
             let stderr = stderr_result?;
             let status = child.wait().await?;
-            Ok::<_, std::io::Error>((status, stderr))
+            Ok::<_, CsvOutputError>((status, stderr))
         })
         .await;
 
@@ -263,11 +273,13 @@ impl SqliteCli {
             Ok(inner) => match inner {
                 Ok(values) => values,
                 Err(error) => {
+                    kill_and_wait(&mut child).await;
                     let _ = tokio::fs::remove_file(output_path).await;
-                    return Err(DbOperationError::QueryFailed(error.to_string()));
+                    return Err(error.into_db_operation_error());
                 }
             },
             Err(error) => {
+                kill_and_wait(&mut child).await;
                 let _ = tokio::fs::remove_file(output_path).await;
                 return Err(DbOperationError::Timeout(error.to_string()));
             }
@@ -288,22 +300,29 @@ impl SqliteCli {
         sql: &str,
         read_only: bool,
     ) -> Result<SqliteOutput, DbOperationError> {
-        Self::ensure_database_path(path)?;
+        let mut cmd = Self::build_command("sqlite3", path, args, read_only)?;
         let sql = sqlite_session_sql(sql, read_only);
-        let mut cmd = self.command();
+        Self::collect_output(&mut cmd, self.timeout_secs, &sql).await
+    }
+
+    fn build_command(
+        program: &str,
+        path: &str,
+        args: &[&str],
+        read_only: bool,
+    ) -> Result<Command, DbOperationError> {
+        Self::ensure_database_path(path)?;
+        let mut cmd = Command::new(program);
         #[cfg(test)]
         super::tests::configure_command(path, &mut cmd);
         Self::apply_session_options(&mut cmd, read_only);
-        for arg in args {
-            cmd.arg(arg);
-        }
-        cmd.arg(sqlite_database_uri(path, read_only));
-        Self::collect_output(&mut cmd, self.timeout_secs, &sql).await
+        cmd.args(args).arg(sqlite_database_uri(path, read_only));
+        Ok(cmd)
     }
 
     fn ensure_database_path(path: &str) -> Result<(), DbOperationError> {
         path_validation::validate_sqlite_database_path(Path::new(path))
-            .map_err(|error| DbOperationError::ConnectionFailed(error.to_string()))
+            .map_err(DbOperationError::SqlitePath)
     }
 
     fn apply_session_options(cmd: &mut Command, read_only: bool) {
@@ -319,14 +338,6 @@ impl SqliteCli {
         cmd.arg("-init").arg(sqlite_empty_init_file());
     }
 
-    fn command(&self) -> Command {
-        self.command_with_program("sqlite3")
-    }
-
-    fn command_with_program(&self, program: &str) -> Command {
-        Command::new(program)
-    }
-
     async fn collect_output(
         cmd: &mut Command,
         timeout_secs: u64,
@@ -338,7 +349,7 @@ impl SqliteCli {
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
-            .map_err(|error| classify_cli_spawn_error(DatabaseCli::Sqlite3, error))?;
+            .map_err(classify_cli_spawn_error)?;
 
         let stdin = child.stdin.take();
         let mut stdout_handle = child.stdout.take();
@@ -369,9 +380,19 @@ impl SqliteCli {
             let status = child.wait().await?;
             Ok::<_, std::io::Error>((status, stdout, stderr))
         })
-        .await
-        .map_err(|error| DbOperationError::Timeout(error.to_string()))?
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        .await;
+
+        let result = match result {
+            Ok(Ok(result)) => result,
+            Ok(Err(error)) => {
+                kill_and_wait(&mut child).await;
+                return Err(DbOperationError::QueryFailed(error.to_string()));
+            }
+            Err(error) => {
+                kill_and_wait(&mut child).await;
+                return Err(DbOperationError::Timeout(error.to_string()));
+            }
+        };
 
         let (status, stdout, stderr) = result;
         Ok(SqliteOutput {
@@ -380,6 +401,11 @@ impl SqliteCli {
             stderr,
         })
     }
+}
+
+async fn kill_and_wait(child: &mut tokio::process::Child) {
+    let _ = child.start_kill();
+    let _ = child.wait().await;
 }
 
 #[cfg(any(windows, test))]
@@ -436,9 +462,12 @@ impl SqliteVersion {
 }
 
 fn safe_mode_required_error(details: &str) -> DbOperationError {
-    DbOperationError::UnsupportedOperation(format!(
-        "{SQLITE_SAFE_MODE_REQUIRED_MARKER}: sqlite3 3.41.1 or later is required for safe SQLite execution ({details})"
-    ))
+    DbOperationError::UnsupportedOperationWithSqliteKind {
+        kind: SqliteCompatibilityKind::SafeMode,
+        details: format!(
+            "sqlite3 3.41.1 or later is required for safe SQLite execution ({details})"
+        ),
+    }
 }
 
 async fn write_sql_to_stdin(
@@ -512,16 +541,10 @@ mod tests {
 
     use crate::adapters::csv_export::export_to_path;
     use crate::adapters::sqlite::SqliteAdapter;
+    use crate::adapters::test_support;
     use crate::app::ports::outbound::{AccessMode, QueryExecutor};
-    use crate::domain::QueryResult;
 
     use super::*;
-
-    fn display_row(result: &QueryResult, row: usize) -> Vec<String> {
-        result
-            .display_row_at(row)
-            .expect("test result should contain the requested row")
-    }
 
     #[test]
     fn windows_csv_newline_normalizer_handles_chunk_boundaries() {
@@ -564,8 +587,6 @@ mod tests {
     }
 
     mod export {
-        use crate::adapters::test_support;
-
         use super::*;
 
         #[tokio::test]
@@ -584,6 +605,7 @@ mod tests {
                         "SELECT id FROM users",
                         &temporary_path,
                         true,
+                        Duration::from_secs(30),
                     )
                     .await
             })
@@ -601,6 +623,187 @@ mod tests {
                     .to_string_lossy()
                     .contains(".export.csv")
             }));
+        }
+    }
+
+    #[cfg(unix)]
+    mod process_lifecycle {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+
+        use tempfile::TempDir;
+
+        use super::*;
+
+        fn fake_sqlite() -> (TempDir, PathBuf, PathBuf) {
+            let directory = tempfile::tempdir().unwrap();
+            let program = directory.path().join("sqlite3");
+            let pid_file = directory.path().join("pid");
+            let script = r#"#!/bin/sh
+printf '%s\n' "$$" > "$SABIQL_FAKE_SQLITE_PID"
+case "$SABIQL_FAKE_SQLITE_MODE" in
+  normal)
+    printf 'value\n1\n'
+    ;;
+  error)
+    printf 'fake sqlite error\n' >&2
+    exit 1
+    ;;
+  timeout)
+    while :; do :; done
+    ;;
+esac
+"#;
+            fs::write(&program, script).unwrap();
+            let mut permissions = fs::metadata(&program).unwrap().permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&program, permissions).unwrap();
+            (directory, program, pid_file)
+        }
+
+        fn assert_process_reaped(pid_file: &Path) {
+            let mut pid = None;
+            for _ in 0..200 {
+                if let Ok(value) = fs::read_to_string(pid_file)
+                    && let Ok(value) = value.trim().parse::<libc::pid_t>()
+                {
+                    pid = Some(value);
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            let Some(pid) = pid else {
+                panic!("fake sqlite process did not start: {}", pid_file.display());
+            };
+
+            for _ in 0..200 {
+                if unsafe { libc::kill(pid, 0) } == -1 {
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            panic!("fake sqlite process {pid} is still running or unreaped");
+        }
+
+        fn command_environment(
+            directory: &TempDir,
+            mode: &str,
+            pid_file: &Path,
+        ) -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+            vec![
+                (
+                    std::ffi::OsString::from("PATH"),
+                    directory.path().as_os_str().to_owned(),
+                ),
+                (
+                    std::ffi::OsString::from("SABIQL_FAKE_SQLITE_MODE"),
+                    std::ffi::OsString::from(mode),
+                ),
+                (
+                    std::ffi::OsString::from("SABIQL_FAKE_SQLITE_PID"),
+                    pid_file.as_os_str().to_owned(),
+                ),
+            ]
+        }
+
+        #[tokio::test]
+        async fn collect_reaps_fake_sqlite_before_returning() {
+            for mode in ["normal", "error", "timeout"] {
+                let (_database_dir, dsn) = test_support::make_sqlite_db("");
+                let (fake_dir, _program, pid_file) = fake_sqlite();
+                let (mut adapter, _command_context) = SqliteAdapter::with_test_environment(
+                    &dsn,
+                    command_environment(&fake_dir, mode, &pid_file),
+                );
+                adapter.cli.timeout_secs = if mode == "timeout" { 1 } else { 30 };
+
+                let result = adapter
+                    .cli
+                    .execute_csv(
+                        SqliteAdapter::path_from_dsn(&dsn).unwrap(),
+                        "SELECT 1",
+                        true,
+                    )
+                    .await;
+
+                match mode {
+                    "normal" => assert_eq!(result.unwrap(), "value\n1\n"),
+                    "error" => assert!(
+                        matches!(
+                            &result,
+                            Err(DbOperationError::QueryFailed(details))
+                                if details == "fake sqlite error"
+                        ),
+                        "result={result:?}"
+                    ),
+                    "timeout" => assert!(matches!(result, Err(DbOperationError::Timeout(_)))),
+                    _ => unreachable!(),
+                }
+                assert_process_reaped(&pid_file);
+            }
+        }
+
+        #[tokio::test]
+        async fn export_reaps_fake_sqlite_before_temporary_cleanup_and_returning() {
+            for mode in ["normal", "error", "timeout"] {
+                let (_database_dir, dsn) = test_support::make_sqlite_db("");
+                let (fake_dir, program, pid_file) = fake_sqlite();
+                let (adapter, _command_context) = SqliteAdapter::with_test_environment(
+                    &dsn,
+                    command_environment(&fake_dir, mode, &pid_file),
+                );
+                let output_dir = tempfile::tempdir().unwrap();
+                let final_path = output_dir.path().join("export.csv");
+                let database_path = SqliteAdapter::path_from_dsn(&dsn).unwrap().to_string();
+                let program = program.to_str().unwrap().to_string();
+                let timeout_duration = if mode == "timeout" {
+                    Duration::from_secs(1)
+                } else {
+                    Duration::from_secs(30)
+                };
+
+                let result = export_to_path(final_path.clone(), |temporary_path| async move {
+                    adapter
+                        .cli
+                        .export_csv_with_command(
+                            &program,
+                            &database_path,
+                            "SELECT 1",
+                            &temporary_path,
+                            true,
+                            timeout_duration,
+                        )
+                        .await
+                })
+                .await;
+
+                match mode {
+                    "normal" => {
+                        assert_eq!(result.unwrap(), final_path);
+                        assert_eq!(fs::read_to_string(&final_path).unwrap(), "value\n1\n");
+                        assert_eq!(output_dir.path().read_dir().unwrap().count(), 1);
+                    }
+                    "error" => {
+                        assert!(
+                            matches!(
+                                &result,
+                                Err(DbOperationError::QueryFailed(details))
+                                    if details == "fake sqlite error"
+                            ),
+                            "result={result:?}"
+                        );
+                        assert!(!final_path.exists());
+                        assert_eq!(output_dir.path().read_dir().unwrap().count(), 0);
+                    }
+                    "timeout" => {
+                        assert!(matches!(result, Err(DbOperationError::Timeout(_))));
+                        assert!(!final_path.exists());
+                        assert_eq!(output_dir.path().read_dir().unwrap().count(), 0);
+                    }
+                    _ => unreachable!(),
+                }
+                assert_process_reaped(&pid_file);
+            }
         }
     }
 
@@ -623,6 +826,22 @@ mod tests {
         fn safe_mode_requires_sqlite_3_41_1_or_later() {
             assert!(SqliteVersion::new(3, 41, 0) < SQLITE_SAFE_MODE_MIN_VERSION);
             assert!(SqliteVersion::new(3, 41, 1) >= SQLITE_SAFE_MODE_MIN_VERSION);
+        }
+
+        #[test]
+        fn safe_mode_required_error_keeps_details_without_marker() {
+            let error = safe_mode_required_error("found sqlite3 3.41.0");
+
+            assert!(matches!(
+                &error,
+                DbOperationError::UnsupportedOperationWithSqliteKind {
+                    kind: SqliteCompatibilityKind::SafeMode,
+                    details,
+                    } if details == "sqlite3 3.41.1 or later is required for safe SQLite execution (found sqlite3 3.41.0)"
+            ));
+            assert_eq!(error.summary(), "Unsupported operation");
+            assert_eq!(error.hint(), "Use a supported operation for this database");
+            assert!(!error.user_message().contains("SQLITE_SAFE_MODE_REQUIRED"));
         }
 
         #[test]
@@ -743,13 +962,12 @@ mod tests {
                 .await;
 
             let result = result.unwrap();
-            assert_eq!(display_row(&result, 0), vec!["1".to_string()]);
+            assert_eq!(test_support::display_row(&result, 0), vec!["1".to_string()]);
         }
 
         #[cfg(not(windows))]
         mod initialization_isolation {
             use crate::adapters::sqlite::sqlite3::tests::TestCommandContext;
-            use crate::adapters::test_support;
             use crate::app::ports::outbound::{MetadataProvider, SqliteDiagnosticsProvider};
 
             use super::*;
@@ -833,13 +1051,19 @@ mod tests {
                     .execute_preview(&dsn, "main", "users", 10, 0)
                     .await
                     .unwrap();
-                let diagnostics = adapter.fetch_diagnostics_core(&dsn).await.unwrap();
+                let diagnostics = adapter.fetch_core_diagnostics(&dsn).await.unwrap();
 
                 assert_eq!(write.affected_rows, 1);
-                assert_eq!(display_row(&result, 0), vec!["Grace".to_string()]);
+                assert_eq!(
+                    test_support::display_row(&result, 0),
+                    vec!["Grace".to_string()]
+                );
                 assert_eq!(metadata.table_summaries.len(), 1);
                 assert_eq!(
-                    (display_row(&preview, 0), display_row(&preview, 1)),
+                    (
+                        test_support::display_row(&preview, 0),
+                        test_support::display_row(&preview, 1),
+                    ),
                     (
                         vec!["1".to_string(), "Ada".to_string()],
                         vec!["2".to_string(), "Grace".to_string()]

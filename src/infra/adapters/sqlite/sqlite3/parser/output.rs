@@ -5,17 +5,15 @@ use crate::domain::{QueryResult, QuerySource, QueryValue};
 
 use crate::adapters::sqlite::sql;
 
-use super::lexer::{sqlite_probe_columns, sqlite_result_probe_columns};
+use super::statement_plan::{sqlite_probe_columns, sqlite_result_probe_columns};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct QuotedRecord {
-    offset: usize,
     values: Vec<QueryValue>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SplitSegment {
-    offset: usize,
     text: String,
 }
 
@@ -39,7 +37,6 @@ fn split_outside_sqlite_quotes(
             }
             byte if byte == delimiter && !in_quote => {
                 segments.push(SplitSegment {
-                    offset: start,
                     text: input[start..i].to_string(),
                 });
                 start = i + 1;
@@ -54,7 +51,6 @@ fn split_outside_sqlite_quotes(
         ));
     }
     segments.push(SplitSegment {
-        offset: start,
         text: input[start..].to_string(),
     });
     Ok(segments)
@@ -64,7 +60,6 @@ fn split_quoted_records(stdout: &str) -> Result<Vec<SplitSegment>, DbOperationEr
     let mut records = split_outside_sqlite_quotes(stdout, b'\n')?
         .into_iter()
         .map(|segment| SplitSegment {
-            offset: segment.offset,
             text: segment.text.trim_end_matches('\r').to_string(),
         })
         .collect::<Vec<_>>();
@@ -282,11 +277,11 @@ pub(in crate::adapters::sqlite::sqlite3) fn parse_quoted_value(
 }
 
 fn parse_quoted_records(
-    stdout: &str,
+    raw_records: &[SplitSegment],
     source: QuerySource,
 ) -> Result<Vec<QuotedRecord>, DbOperationError> {
-    split_quoted_records(stdout)?
-        .into_iter()
+    raw_records
+        .iter()
         .enumerate()
         .map(|(index, segment)| {
             let decode_preview_transport = source == QuerySource::Preview && index > 0;
@@ -294,10 +289,7 @@ fn parse_quoted_records(
                 .into_iter()
                 .map(|field| parse_quoted_value(&field, source, decode_preview_transport))
                 .collect::<Result<Vec<_>, _>>()
-                .map(|values| QuotedRecord {
-                    offset: segment.offset,
-                    values,
-                })
+                .map(|values| QuotedRecord { values })
         })
         .collect()
 }
@@ -319,7 +311,8 @@ pub(in crate::adapters::sqlite) fn quoted_to_query_result(
         ));
     }
 
-    let mut records = parse_quoted_records(stdout, source)?;
+    let raw_records = split_quoted_records(stdout)?;
+    let mut records = parse_quoted_records(&raw_records, source)?;
     let Some(header) = records.first() else {
         return Ok(QueryResult::success(
             query.to_string(),
@@ -350,7 +343,7 @@ pub(in crate::adapters::sqlite) fn last_sqlite_result_set(
 ) -> Result<Option<String>, DbOperationError> {
     let (stmt_col, marker_col) = sqlite_result_probe_columns(marker);
     let raw_records = split_quoted_records(stdout)?;
-    let records = parse_quoted_records(stdout, QuerySource::Adhoc)?;
+    let records = parse_quoted_records(&raw_records, QuerySource::Adhoc)?;
 
     let mut last_result = None;
     let mut result_start = 0;
@@ -407,7 +400,7 @@ pub(in crate::adapters::sqlite) fn strip_sqlite_probes(
 
     let (stmt_col, changes_col) = sqlite_probe_columns(marker);
     let raw_records = split_quoted_records(stdout)?;
-    let records = parse_quoted_records(stdout, QuerySource::Adhoc)?;
+    let records = parse_quoted_records(&raw_records, QuerySource::Adhoc)?;
 
     let mut changes = HashMap::new();
     let mut kept = Vec::new();

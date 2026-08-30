@@ -13,15 +13,18 @@ use quick_xml::escape::unescape;
 use quick_xml::events::Event;
 use tokio::io::{AsyncRead, BufReader, ReadBuf};
 
-use super::super::{dsn::MySqlDsn, option_file::MySqlOptionFile};
+use super::super::{
+    dsn::{MySqlDsn, map_mysql_tls_failure},
+    option_file::MySqlOptionFile,
+};
 use super::error::{classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error};
 #[cfg(not(unix))]
 use super::pipe::MySqlExportPipeSource;
 use super::policy::mysql_metadata_fallback_kind;
+use super::process::metadata::mysql_metadata_columns_with_diagnostics;
 use super::process::{
     MYSQL_QUERY_TIMEOUT, MySqlProcess, configure_mysql_session, finish_mysql_session,
-    mysql_metadata_columns, run_mysql_process_with_timeout, validate_mysql_session_exit,
-    write_mysql_statement,
+    run_mysql_process_with_timeout, validate_mysql_session_exit, write_mysql_statement,
 };
 #[cfg(unix)]
 use super::pty::MySqlExportPtySource;
@@ -261,7 +264,7 @@ impl<R> MySqlXmlFieldLimitReader<R> {
         }
     }
 
-    fn process(&mut self, bytes: &[u8]) -> usize {
+    fn process_chunk(&mut self, bytes: &[u8]) -> usize {
         for (index, &byte) in bytes.iter().enumerate() {
             if !self.process_byte(byte) {
                 return index;
@@ -301,7 +304,7 @@ where
                 if bytes_read == 0 {
                     return Poll::Ready(Ok(()));
                 }
-                let bytes_allowed = self.process(&chunk[..bytes_read]);
+                let bytes_allowed = self.process_chunk(&chunk[..bytes_read]);
                 if bytes_allowed < bytes_read {
                     self.limit_error_pending = true;
                 }
@@ -349,13 +352,14 @@ pub(in crate::adapters::mysql) async fn export_mysql_csv_to_file(
 ) -> Result<(), DbOperationError> {
     let option_file = MySqlOptionFile::create(&target)?;
     let mut process = MySqlProcess::spawn_with_program(OsStr::new("mysql"), &option_file.path)?;
-    run_mysql_process_with_timeout(
+    let result = run_mysql_process_with_timeout(
         MYSQL_EXPORT_TIMEOUT,
         &mut process,
         RefreshScope::None,
         async |process| run_mysql_export_process(process, &option_file.path, query, path).await,
     )
-    .await
+    .await;
+    result.map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))
 }
 
 pub(super) async fn run_mysql_export_process(
@@ -376,14 +380,15 @@ pub(super) async fn run_mysql_export_process(
                 "MySQL empty CSV result has no supported metadata fallback".to_string(),
             )
         })?;
-        let columns = mysql_metadata_columns(
+        let columns = mysql_metadata_columns_with_diagnostics(
             process,
             option_file,
             query,
             fallback_kind,
             AccessMode::ReadOnly,
         )
-        .await?;
+        .await?
+        .0;
         csv_writer.write_record(columns.iter()).await?;
     }
 
@@ -405,7 +410,7 @@ pub(super) async fn stream_mysql_resultset_to_csv(
             error_output: Vec::new(),
             error_buffer: Vec::new(),
             pending: Vec::new(),
-            frame_scanner: super::xml::MySqlResultsetFrameScanner::default(),
+            frame_scanner: super::xml::MySqlResultSetFrameScanner::default(),
             started: false,
         };
         let source = MySqlXmlFieldLimitReader::new(source);

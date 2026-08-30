@@ -9,7 +9,7 @@ use super::super::{
         MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, MySqlResultSet,
         validate_mysql_multi_query_with_lower_case_table_names,
     },
-    dsn::parse_and_validate_mysql_dsn,
+    dsn::{map_mysql_tls_failure, parse_and_validate_mysql_dsn},
     option_file::MySqlOptionFile,
     sql::{
         PREVIEW_COLUMN_METADATA_RESULT_COLUMNS, build_preview_query, preview_columns_query,
@@ -77,7 +77,10 @@ async fn execute_preview_with_program(
         execute_preview_with_session(&mut session, database, schema, table, limit, offset),
     )
     .await;
-    session.resolve_timed_result(result).await
+    session
+        .resolve_timed_result(result)
+        .await
+        .map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))
 }
 
 async fn execute_preview_with_session(
@@ -390,8 +393,9 @@ mod tests {
     #[cfg(unix)]
     use std::path::PathBuf;
 
+    use super::super::super::metadata_test_support::column;
+    use super::super::test_support::result;
     use super::*;
-    use crate::domain::ColumnAttributes;
 
     fn convert_preview_values(
         result: &MySqlResultSet,
@@ -482,28 +486,6 @@ done
             !std::path::Path::new(option).exists(),
             "option file remains"
         );
-    }
-
-    fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MySqlResultSet {
-        MySqlResultSet {
-            columns: columns.iter().map(|value| (*value).to_string()).collect(),
-            values,
-        }
-    }
-
-    fn column(name: &str, data_type: &str) -> Column {
-        Column {
-            name: name.to_string(),
-            data_type: data_type.to_string(),
-            default: None,
-            attributes: ColumnAttributes::empty(),
-            comment: None,
-            ordinal_position: 1,
-            character_set_name: None,
-            collation_name: None,
-            generation_expression: None,
-            generation_kind: None,
-        }
     }
 
     fn binary_charset_column(name: &str, data_type: &str) -> Column {

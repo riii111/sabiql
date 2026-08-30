@@ -50,13 +50,13 @@ pub enum Effect {
         run_id: u64,
     },
     // Only caches in completion_engine, does NOT update state.table_detail
-    PrefetchTableDetail {
+    PrefetchTableColumnsAndFks {
         dsn: String,
         run_id: u64,
         schema: String,
         table: String,
     },
-    ProcessPrefetchQueue {
+    SchedulePrefetchQueueProcessing {
         run_id: u64,
     },
     DelayedProcessPrefetchQueue {
@@ -96,7 +96,10 @@ pub enum Effect {
         query: String,
         access_mode: AccessMode,
     },
-    CancelActiveTasks,
+    CancelConnectionTask,
+    CancelMetadataTasks,
+    CancelSqliteDiagnostics,
+    CancelTrackedTasks,
     CountRowsForExport {
         dsn: String,
         run_id: u64,

@@ -24,7 +24,7 @@ fn ensure_cell_visible(state: &mut AppState) {
     }
 }
 
-pub fn reduce_selection(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub fn reduce_selection(state: &mut AppState, action: &Action, _now: Instant) -> DispatchResult {
     match action {
         Action::ResultActivateCell => {
             let rows = result_row_count(state);
@@ -65,17 +65,15 @@ pub fn reduce_selection(state: &mut AppState, action: &Action, now: Instant) -> 
         }
         Action::StageRowForDelete => {
             if state.session.is_read_only() {
-                state.messages.set_error_at(
-                    "Read-only mode: delete operations are disabled".to_string(),
-                    now,
-                );
+                state
+                    .messages
+                    .set_error("Read-only mode: delete operations are disabled".to_string());
                 return DispatchResult::handled();
             }
             if let Some(reason) = state.visible_preview_target_read_only_reason() {
-                state.messages.set_error_at(
-                    EditGuardrailError::ReadOnlyPreviewTarget(reason).to_string(),
-                    now,
-                );
+                state
+                    .messages
+                    .set_error(EditGuardrailError::ReadOnlyPreviewTarget(reason).to_string());
                 return DispatchResult::handled();
             }
             if let Some(row_idx) = state.result_interaction.selection().row() {

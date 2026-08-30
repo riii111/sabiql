@@ -21,6 +21,7 @@ ratatui.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 unicode-casefold.workspace = true
+unicode-segmentation.workspace = true
 unicode-width.workspace = true
 sabiql-app.workspace = true
 sabiql-domain.workspace = true

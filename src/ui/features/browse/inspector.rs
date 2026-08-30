@@ -8,9 +8,8 @@ use ratatui::widgets::{Cell, Paragraph, Row, Table as RatatuiTable, Wrap};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::browse::inspector_view_model::{
-    InspectorColumnRow, InspectorEmptyState, InspectorForeignKeyRow, InspectorIndexRow,
-    InspectorInfoRow, InspectorLoadState, InspectorRlsRow, InspectorSection, InspectorTriggerRow,
-    InspectorViewModel,
+    InspectorColumnRow, InspectorForeignKeyRow, InspectorIndexRow, InspectorInfoRow,
+    InspectorLoadState, InspectorRlsRow, InspectorSection, InspectorTriggerRow, InspectorViewModel,
 };
 use crate::app::model::shared::engine_feature_profile::InspectorInfoField;
 use crate::app::model::shared::flash_timer::{FlashId, FlashTimerStore};
@@ -20,6 +19,7 @@ use crate::app::model::shared::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
     widths_fingerprint,
 };
+use crate::app::policy::column::column_generation_kind_label;
 use crate::app::services::AppServices;
 use crate::domain::DatabaseType;
 use crate::primitives::atoms::{apply_yank_flash, panel_block};
@@ -138,16 +138,15 @@ impl Inspector {
                 );
                 return ViewportPlan::default();
             }
-            InspectorLoadState::Success => {}
+            InspectorLoadState::Loaded => {}
         }
 
         if let Some(empty_state) = view_model.empty_state() {
-            let style = if matches!(empty_state, InspectorEmptyState::NoTableSelected) {
-                Style::default().fg(theme.semantic.text.placeholder)
-            } else {
-                Style::default().fg(theme.semantic.text.primary)
-            };
-            frame.render_widget(Paragraph::new(empty_state.message()).style(style), inner);
+            frame.render_widget(
+                Paragraph::new(empty_state.message())
+                    .style(Style::default().fg(theme.semantic.text.primary)),
+                inner,
+            );
             return ViewportPlan::default();
         }
 
@@ -267,11 +266,7 @@ impl Inspector {
     ) {
         let lines: Vec<Line> = rows
             .iter()
-            .map(|row| match row {
-                InspectorInfoRow::Field { field, value } => {
-                    Self::render_info_field(*field, value.as_deref(), theme)
-                }
-            })
+            .map(|row| Self::render_info_field(row.field, row.value.as_deref(), theme))
             .collect();
 
         let total_lines = lines.len();
@@ -856,8 +851,10 @@ fn column_row_cells(row: &InspectorColumnRow, options: ColumnDisplayOptions) -> 
 
 fn generation_display(row: &InspectorColumnRow) -> String {
     match (row.generation_kind, row.generation_expression.as_deref()) {
-        (Some(kind), Some(expression)) => format!("{}: {expression}", kind.label()),
-        (Some(kind), None) => kind.label().to_string(),
+        (Some(kind), Some(expression)) => {
+            format!("{}: {expression}", column_generation_kind_label(kind))
+        }
+        (Some(kind), None) => column_generation_kind_label(kind).to_string(),
         (None, Some(expression)) => expression.to_string(),
         (None, None) => String::new(),
     }
@@ -895,13 +892,6 @@ fn foreign_key_row_cells(row: &InspectorForeignKeyRow) -> Vec<String> {
 
 fn trigger_row_cells(row: &InspectorTriggerRow, database_type: DatabaseType) -> Vec<String> {
     let mut cells = Vec::new();
-    if database_type == DatabaseType::MySQL {
-        cells.push(
-            row.action_order
-                .map(|order| order.to_string())
-                .unwrap_or_default(),
-        );
-    }
     cells.extend([
         row.name.clone(),
         row.timing.clone(),

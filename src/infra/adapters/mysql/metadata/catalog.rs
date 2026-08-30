@@ -10,7 +10,7 @@ use crate::domain::{
 
 use super::super::{
     cli::{MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, MySqlResultSet},
-    dsn::MySqlDsn,
+    dsn::{MySqlDsn, map_mysql_tls_failure},
     option_file::MySqlOptionFile,
     sql::{
         COLUMN_METADATA_BASE_RESULT_COLUMNS, COLUMN_METADATA_RESULT_COLUMNS,
@@ -19,12 +19,10 @@ use super::super::{
     },
 };
 
-#[derive(Debug, Clone)]
-enum MySqlColumnUnique {
-    None,
-    SingleColumnIndex,
-}
-
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "MySQL catalog flags are independent column attributes"
+)]
 #[derive(Debug, Clone)]
 pub(super) struct MySqlColumnMetadata {
     name: String,
@@ -38,7 +36,7 @@ pub(super) struct MySqlColumnMetadata {
     comment: Option<String>,
     pub(super) ordinal_position: i32,
     primary_key_position: Option<i32>,
-    unique: MySqlColumnUnique,
+    unique: bool,
     invisible: bool,
     generated: bool,
 }
@@ -81,18 +79,17 @@ impl MySqlTableMetadata {
     }
 }
 
-#[derive(Debug, Clone)]
-pub(super) struct MySqlMetadataSnapshot {
-    pub(super) tables: Vec<MySqlTableMetadata>,
-}
-
 pub(super) async fn fetch_metadata_snapshot(
     target: &MySqlDsn,
     database: &str,
-) -> Result<MySqlMetadataSnapshot, DbOperationError> {
+) -> Result<Vec<MySqlTableMetadata>, DbOperationError> {
     let (lower_case_table_names, result) =
         execute_metadata_query(target, TABLES_QUERY, TABLES_RESULT_COLUMNS).await?;
     metadata_snapshot_from_result(database, None, &result, lower_case_table_names)
+}
+
+fn mysql_table_not_found(schema: &str, table: &str) -> DbOperationError {
+    DbOperationError::ObjectMissing(format!("MySQL table not found: {schema}.{table}"))
 }
 
 pub(super) fn find_table(
@@ -108,9 +105,7 @@ pub(super) fn find_table(
                 && candidate.name == table
         })
         .cloned()
-        .ok_or_else(|| {
-            DbOperationError::ObjectMissing(format!("MySQL table not found: {schema}.{table}"))
-        })
+        .ok_or_else(|| mysql_table_not_found(schema, table))
 }
 
 pub(super) fn parse_columns_for_table(
@@ -120,9 +115,7 @@ pub(super) fn parse_columns_for_table(
 ) -> Result<Vec<MySqlColumnMetadata>, DbOperationError> {
     let columns = parse_column_metadata(result)?;
     if columns.is_empty() {
-        return Err(DbOperationError::ObjectMissing(format!(
-            "MySQL table not found: {schema}.{table}"
-        )));
+        return Err(mysql_table_not_found(schema, table));
     }
     Ok(columns)
 }
@@ -152,9 +145,7 @@ pub(super) fn parse_preview_columns_for_table(
         })
         .collect::<Result<Vec<_>, _>>()?;
     if columns.is_empty() {
-        return Err(DbOperationError::ObjectMissing(format!(
-            "MySQL table not found: {schema}.{table}"
-        )));
+        return Err(mysql_table_not_found(schema, table));
     }
     Ok(columns)
 }
@@ -209,7 +200,10 @@ pub(super) async fn execute_metadata_queries_in_session_with_program(
         Ok((lower_case_table_names, results))
     })
     .await;
-    session.resolve_timed_result(result).await
+    session
+        .resolve_timed_result(result)
+        .await
+        .map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))
 }
 
 pub(super) fn selected_database(target: &MySqlDsn) -> Result<&str, DbOperationError> {
@@ -250,7 +244,7 @@ pub(super) fn metadata_snapshot_from_result(
     requested_schema: Option<&str>,
     result: &MySqlResultSet,
     lower_case_table_names: u8,
-) -> Result<MySqlMetadataSnapshot, DbOperationError> {
+) -> Result<Vec<MySqlTableMetadata>, DbOperationError> {
     if let Some(schema) = requested_schema {
         validate_selected_schema_name(database, schema, lower_case_table_names)?;
     }
@@ -263,7 +257,7 @@ pub(super) fn metadata_snapshot_from_result(
             "MySQL metadata is limited to the selected database".to_string(),
         ));
     }
-    Ok(MySqlMetadataSnapshot { tables })
+    Ok(tables)
 }
 
 fn parse_table_metadata(
@@ -355,7 +349,7 @@ pub(super) fn parse_column_metadata_row(
         primary_key_position: optional_text(&row[7], "PRIMARY_KEY_POSITION")?
             .map(|value| parse_positive_i32_text(value, "PRIMARY_KEY_POSITION"))
             .transpose()?,
-        unique: MySqlColumnUnique::None,
+        unique: false,
         invisible: extra
             .split_ascii_whitespace()
             .any(|word| word.eq_ignore_ascii_case("INVISIBLE")),
@@ -479,19 +473,17 @@ pub(super) fn foreign_keys_from_metadata(
 
 pub(super) fn column_from_metadata(metadata: &MySqlColumnMetadata) -> Column {
     let primary_key = metadata.primary_key_position.is_some();
-    let attributes = ColumnAttributes::from_parts(
-        metadata.nullable,
-        primary_key,
-        matches!(metadata.unique, MySqlColumnUnique::SingleColumnIndex),
-    ) | if metadata.invisible {
-        ColumnAttributes::HIDDEN | ColumnAttributes::READ_ONLY
-    } else {
-        ColumnAttributes::empty()
-    } | if metadata.generated {
-        ColumnAttributes::GENERATED | ColumnAttributes::READ_ONLY
-    } else {
-        ColumnAttributes::empty()
-    };
+    let attributes = ColumnAttributes::from_parts(metadata.nullable, primary_key, metadata.unique)
+        | if metadata.invisible {
+            ColumnAttributes::HIDDEN | ColumnAttributes::READ_ONLY
+        } else {
+            ColumnAttributes::empty()
+        }
+        | if metadata.generated {
+            ColumnAttributes::GENERATED | ColumnAttributes::READ_ONLY
+        } else {
+            ColumnAttributes::empty()
+        };
     Column {
         name: metadata.name.clone(),
         data_type: metadata.data_type.clone(),
@@ -527,11 +519,7 @@ pub(super) fn mark_single_column_unique(
     unique_columns: &HashSet<String>,
 ) {
     for column in columns {
-        column.unique = if unique_columns.contains(&column.name) {
-            MySqlColumnUnique::SingleColumnIndex
-        } else {
-            MySqlColumnUnique::None
-        };
+        column.unique = unique_columns.contains(&column.name);
     }
 }
 
@@ -663,14 +651,8 @@ pub(super) fn metadata_shape_error(field: &str) -> DbOperationError {
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_support::result;
     use super::*;
-
-    fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MySqlResultSet {
-        MySqlResultSet {
-            columns: columns.iter().map(|value| (*value).to_string()).collect(),
-            values,
-        }
-    }
 
     #[test]
     fn optional_nonempty_string_preserves_catalog_value_boundaries() {
@@ -738,7 +720,7 @@ mod tests {
 
     #[test]
     fn metadata_snapshot_uses_server_schema() {
-        let snapshot = metadata_snapshot_from_result(
+        let tables = metadata_snapshot_from_result(
             "app",
             Some("app"),
             &result(
@@ -759,19 +741,16 @@ mod tests {
         )
         .unwrap();
 
-        let summary = table_summary(snapshot.tables[0].clone());
+        let summary = table_summary(tables[0].clone());
         assert_eq!(summary.name, "users");
         assert_eq!(summary.schema, "app");
-        assert_eq!(snapshot.tables[0].engine.as_deref(), Some("InnoDB"));
-        assert_eq!(snapshot.tables[0].row_format.as_deref(), Some("Dynamic"));
+        assert_eq!(tables[0].engine.as_deref(), Some("InnoDB"));
+        assert_eq!(tables[0].row_format.as_deref(), Some("Dynamic"));
         assert_eq!(
-            snapshot.tables[0].table_collation.as_deref(),
+            tables[0].table_collation.as_deref(),
             Some("utf8mb4_0900_ai_ci")
         );
-        assert_eq!(
-            snapshot.tables[0].create_options.as_deref(),
-            Some("partitioned")
-        );
+        assert_eq!(tables[0].create_options.as_deref(), Some("partitioned"));
     }
 
     #[test]
@@ -789,7 +768,7 @@ mod tests {
     #[test]
     fn metadata_accepts_database_case_difference_for_server_modes_one_and_two() {
         for lower_case_table_names in [1, 2] {
-            let snapshot = metadata_snapshot_from_result(
+            let tables = metadata_snapshot_from_result(
                 "app",
                 Some("APP"),
                 &tables_result("APP"),
@@ -797,10 +776,10 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(snapshot.tables[0].schema, "APP");
-            assert_eq!(table_summary(snapshot.tables[0].clone()).schema, "APP");
+            assert_eq!(tables[0].schema, "APP");
+            assert_eq!(table_summary(tables[0].clone()).schema, "APP");
 
-            let unicode_snapshot = metadata_snapshot_from_result(
+            let unicode_tables = metadata_snapshot_from_result(
                 "äpp",
                 Some("ÄPP"),
                 &tables_result("ÄPP"),
@@ -808,11 +787,8 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(unicode_snapshot.tables[0].schema, "ÄPP");
-            assert_eq!(
-                table_summary(unicode_snapshot.tables[0].clone()).schema,
-                "ÄPP"
-            );
+            assert_eq!(unicode_tables[0].schema, "ÄPP");
+            assert_eq!(table_summary(unicode_tables[0].clone()).schema, "ÄPP");
         }
     }
 

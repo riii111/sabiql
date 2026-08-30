@@ -16,7 +16,7 @@ pub(super) fn reduce_sqlite_diagnostics(
             let Some(dsn) = state.session.dsn().map(String::from) else {
                 return DispatchResult::handled();
             };
-            let run_id = state.sqlite_diagnostics.begin_fetch();
+            let run_id = state.sqlite_diagnostics.begin_core_fetch();
             state.modal.set_mode(InputMode::SqliteDiagnostics);
             DispatchResult::handled_with(vec![Effect::FetchSqliteDiagnosticsCore { dsn, run_id }])
         }
@@ -35,7 +35,7 @@ pub(super) fn reduce_sqlite_diagnostics(
         Action::CloseModal(ModalKind::SqliteDiagnostics) => {
             state.sqlite_diagnostics.clear();
             state.modal.set_mode(InputMode::Normal);
-            DispatchResult::handled()
+            DispatchResult::handled_with(vec![Effect::CancelSqliteDiagnostics])
         }
         Action::SqliteDiagnosticsCoreLoaded {
             dsn,
@@ -118,7 +118,7 @@ mod tests {
     fn run_quick_check_starts_read_only_effect_for_loaded_snapshot() {
         let mut state = AppState::new("test".to_string());
         test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
-        let run_id = state.sqlite_diagnostics.begin_fetch();
+        let run_id = state.sqlite_diagnostics.begin_core_fetch();
         state.sqlite_diagnostics.set_core_loaded(
             run_id,
             SqliteDiagnosticsSnapshot {
@@ -163,7 +163,7 @@ mod tests {
             DatabaseType::PostgreSQL,
             "postgres://localhost/db",
         );
-        let run_id = state.sqlite_diagnostics.begin_fetch();
+        let run_id = state.sqlite_diagnostics.begin_core_fetch();
         state.sqlite_diagnostics.set_core_loaded(
             run_id,
             SqliteDiagnosticsSnapshot {
@@ -201,10 +201,28 @@ mod tests {
     }
 
     #[test]
+    fn close_cancels_diagnostics_task_after_clearing_modal_state() {
+        let mut state = AppState::new("test".to_string());
+        test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
+        state.modal.set_mode(InputMode::SqliteDiagnostics);
+        state.sqlite_diagnostics.begin_core_fetch();
+
+        let effects =
+            reduce_at_boundary(&mut state, Action::CloseModal(ModalKind::SqliteDiagnostics));
+
+        assert_eq!(state.input_mode(), InputMode::Normal);
+        assert!(state.sqlite_diagnostics.snapshot().is_none());
+        assert!(matches!(
+            effects.as_slice(),
+            [Effect::CancelSqliteDiagnostics]
+        ));
+    }
+
+    #[test]
     fn quick_check_loaded_ignores_stale_run_id() {
         let mut state = AppState::new("test".to_string());
         test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
-        let run_id = state.sqlite_diagnostics.begin_fetch();
+        let run_id = state.sqlite_diagnostics.begin_core_fetch();
         state.sqlite_diagnostics.set_core_loaded(
             run_id,
             SqliteDiagnosticsSnapshot {

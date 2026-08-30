@@ -7,6 +7,7 @@ use crate::domain::{
 use super::super::super::PostgresAdapter;
 
 pub(in crate::adapters::postgres) type TableDetailCombined = (
+    bool,
     Vec<Column>,
     Vec<Index>,
     Vec<ForeignKey>,
@@ -394,6 +395,7 @@ impl PostgresAdapter {
         #[derive(serde::Deserialize)]
         #[serde(deny_unknown_fields)]
         struct CombinedDetail {
+            exists: bool,
             columns: serde_json::Value,
             indexes: serde_json::Value,
             foreign_keys: serde_json::Value,
@@ -411,12 +413,20 @@ impl PostgresAdapter {
         let triggers = Self::parse_triggers(&combined.triggers.to_string())?;
         let table_info = Self::parse_table_info(&combined.table_info.to_string())?;
 
-        Ok((columns, indexes, foreign_keys, rls, triggers, table_info))
+        Ok((
+            combined.exists,
+            columns,
+            indexes,
+            foreign_keys,
+            rls,
+            triggers,
+            table_info,
+        ))
     }
 
     pub(in crate::adapters::postgres) fn parse_table_columns_and_fks(
         json: &str,
-    ) -> Result<(Vec<Column>, Vec<ForeignKey>), DbOperationError> {
+    ) -> Result<(bool, Vec<Column>, Vec<ForeignKey>), DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
             return Err(DbOperationError::EmptyResponse(
                 "table_columns_and_fks".to_string(),
@@ -426,6 +436,7 @@ impl PostgresAdapter {
         #[derive(serde::Deserialize)]
         #[serde(deny_unknown_fields)]
         struct LightDetail {
+            exists: bool,
             columns: serde_json::Value,
             foreign_keys: serde_json::Value,
         }
@@ -435,7 +446,7 @@ impl PostgresAdapter {
         let columns = Self::parse_columns(&light.columns.to_string())?;
         let foreign_keys = Self::parse_foreign_keys(&light.foreign_keys.to_string())?;
 
-        Ok((columns, foreign_keys))
+        Ok((light.exists, columns, foreign_keys))
     }
 }
 
@@ -641,6 +652,7 @@ mod tests {
     mod json_parse_errors {
         use super::*;
         use crate::domain::IndexType;
+        use rstest::rstest;
 
         #[test]
         fn parse_tables_with_malformed_json_returns_error() {
@@ -781,18 +793,13 @@ mod tests {
             assert!(indexes[5].has_expression());
         }
 
-        #[test]
-        fn parse_empty_string_returns_empty_vec() {
-            assert!(PostgresAdapter::parse_tables("").unwrap().is_empty());
-            assert!(PostgresAdapter::parse_columns("").unwrap().is_empty());
-            assert!(PostgresAdapter::parse_indexes("").unwrap().is_empty());
-        }
-
-        #[test]
-        fn parse_null_string_returns_empty_vec() {
-            assert!(PostgresAdapter::parse_tables("null").unwrap().is_empty());
-            assert!(PostgresAdapter::parse_columns("null").unwrap().is_empty());
-            assert!(PostgresAdapter::parse_indexes("null").unwrap().is_empty());
+        #[rstest]
+        #[case::empty_json("")]
+        #[case::null_json("null")]
+        fn empty_or_null_input_returns_empty_metadata_vecs(#[case] input: &str) {
+            assert!(PostgresAdapter::parse_tables(input).unwrap().is_empty());
+            assert!(PostgresAdapter::parse_columns(input).unwrap().is_empty());
+            assert!(PostgresAdapter::parse_indexes(input).unwrap().is_empty());
         }
     }
 
@@ -1265,6 +1272,7 @@ mod tests {
         use super::*;
 
         fn build_combined_json(
+            exists: bool,
             columns: &str,
             indexes: &str,
             fks: &str,
@@ -1274,6 +1282,7 @@ mod tests {
         ) -> String {
             format!(
                 r#"{{
+                    "exists": {exists},
                     "columns": {columns},
                     "indexes": {indexes},
                     "foreign_keys": {fks},
@@ -1287,6 +1296,7 @@ mod tests {
         #[test]
         fn valid_combined_json_parses_all_categories() {
             let json = build_combined_json(
+                true,
                 r#"[{"name":"id","data_type":"integer","nullable":false,"default":null,"is_primary_key":true,"is_unique":false,"comment":null,"ordinal_position":1}]"#,
                 "null",
                 "null",
@@ -1295,9 +1305,10 @@ mod tests {
                 r#"{"owner":"postgres","comment":null,"row_count_estimate":42}"#,
             );
 
-            let (columns, indexes, fks, rls, triggers, table_info) =
+            let (exists, columns, indexes, fks, rls, triggers, table_info) =
                 PostgresAdapter::parse_table_detail_combined(&json).unwrap();
 
+            assert!(exists);
             assert_eq!(columns.len(), 1);
             assert_eq!(columns[0].name, "id");
             assert!(indexes.is_empty());
@@ -1310,12 +1321,29 @@ mod tests {
         }
 
         #[test]
-        fn all_null_sub_values_parse_to_empty_defaults() {
-            let json = build_combined_json("null", "null", "null", "null", "null", "null");
+        fn existing_zero_column_table_keeps_empty_metadata_distinct_from_missing() {
+            let json = build_combined_json(true, "null", "null", "null", "null", "null", "null");
 
-            let (columns, indexes, fks, rls, triggers, table_info) =
+            let (exists, columns, indexes, fks, rls, triggers, table_info) =
                 PostgresAdapter::parse_table_detail_combined(&json).unwrap();
 
+            assert!(exists);
+            assert!(columns.is_empty());
+            assert!(indexes.is_empty());
+            assert!(fks.is_empty());
+            assert!(rls.is_none());
+            assert!(triggers.is_empty());
+            assert!(table_info.owner.is_none());
+        }
+
+        #[test]
+        fn missing_relation_preserves_false_existence_bit() {
+            let json = build_combined_json(false, "null", "null", "null", "null", "null", "null");
+
+            let (exists, columns, indexes, fks, rls, triggers, table_info) =
+                PostgresAdapter::parse_table_detail_combined(&json).unwrap();
+
+            assert!(!exists);
             assert!(columns.is_empty());
             assert!(indexes.is_empty());
             assert!(fks.is_empty());
@@ -1333,7 +1361,7 @@ mod tests {
 
         #[test]
         fn unknown_key_returns_invalid_json_error() {
-            let json = build_combined_json("null", "null", "null", "null", "null", "null")
+            let json = build_combined_json(true, "null", "null", "null", "null", "null", "null")
                 .replace('}', r#","extra_key": null}"#);
             let result = PostgresAdapter::parse_table_detail_combined(&json);
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
@@ -1355,19 +1383,22 @@ mod tests {
     mod table_columns_and_fks_parsing {
         use super::*;
 
-        fn build_light_json(columns: &str, fks: &str) -> String {
-            format!(r#"{{"columns": {columns}, "foreign_keys": {fks}}}"#)
+        fn build_light_json(exists: bool, columns: &str, fks: &str) -> String {
+            format!(r#"{{"exists": {exists}, "columns": {columns}, "foreign_keys": {fks}}}"#)
         }
 
         #[test]
         fn valid_light_json_parses_columns_and_fks() {
             let json = build_light_json(
+                true,
                 r#"[{"name":"id","data_type":"integer","nullable":false,"default":null,"is_primary_key":true,"is_unique":false,"comment":null,"ordinal_position":1}]"#,
                 r#"[{"name":"fk_1","from_schema":"public","from_table":"orders","from_columns":["user_id"],"to_schema":"public","to_table":"users","to_columns":["id"],"on_delete":"c","on_update":"a"}]"#,
             );
 
-            let (columns, fks) = PostgresAdapter::parse_table_columns_and_fks(&json).unwrap();
+            let (exists, columns, fks) =
+                PostgresAdapter::parse_table_columns_and_fks(&json).unwrap();
 
+            assert!(exists);
             assert_eq!(columns.len(), 1);
             assert_eq!(columns[0].name, "id");
             assert_eq!(fks.len(), 1);
@@ -1376,24 +1407,38 @@ mod tests {
 
         #[test]
         fn null_sub_values_parse_to_empty() {
-            let json = build_light_json("null", "null");
+            let json = build_light_json(true, "null", "null");
 
-            let (columns, fks) = PostgresAdapter::parse_table_columns_and_fks(&json).unwrap();
+            let (exists, columns, fks) =
+                PostgresAdapter::parse_table_columns_and_fks(&json).unwrap();
 
+            assert!(exists);
+            assert!(columns.is_empty());
+            assert!(fks.is_empty());
+        }
+
+        #[test]
+        fn missing_relation_preserves_false_existence_bit() {
+            let json = build_light_json(false, "null", "null");
+
+            let (exists, columns, fks) =
+                PostgresAdapter::parse_table_columns_and_fks(&json).unwrap();
+
+            assert!(!exists);
             assert!(columns.is_empty());
             assert!(fks.is_empty());
         }
 
         #[test]
         fn missing_key_returns_error() {
-            let json = r#"{"columns": null}"#;
+            let json = r#"{"exists": true, "columns": null}"#;
             let result = PostgresAdapter::parse_table_columns_and_fks(json);
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
         fn unknown_key_returns_error() {
-            let json = r#"{"columns": null, "foreign_keys": null, "extra": null}"#;
+            let json = r#"{"exists": true, "columns": null, "foreign_keys": null, "extra": null}"#;
             let result = PostgresAdapter::parse_table_columns_and_fks(json);
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }

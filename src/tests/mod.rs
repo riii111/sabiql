@@ -230,8 +230,6 @@ fn disabled_message_contains_version_and_upgrade_guidance() {
 }
 
 mod dispatch_overflow_fallback {
-    use std::time::Instant;
-
     use sabiql_app::model::app_state::AppState;
     use sabiql_app::update::action::Action;
     use tokio::sync::mpsc;
@@ -243,12 +241,7 @@ mod dispatch_overflow_fallback {
         let mut state = AppState::new("test".to_string());
         let (tx, mut rx) = mpsc::channel(8);
 
-        dispatch_overflow_fallback(
-            &mut state,
-            &tx,
-            vec![Action::Render, Action::Render],
-            Instant::now(),
-        );
+        dispatch_overflow_fallback(&mut state, &tx, vec![Action::Render, Action::Render]);
 
         assert!(rx.try_recv().is_ok());
         assert!(rx.try_recv().is_ok());
@@ -265,7 +258,6 @@ mod dispatch_overflow_fallback {
             &mut state,
             &tx,
             vec![Action::Render, Action::Render, Action::Render],
-            Instant::now(),
         );
 
         let error = state.messages.last_error().unwrap();

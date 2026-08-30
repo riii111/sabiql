@@ -1,5 +1,5 @@
 use crate::cmd::effect::Effect;
-use crate::domain::connection::{ConnectionId, DatabaseType};
+use crate::domain::connection::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::connection::cache::ConnectionCache;
 use crate::model::shared::inspector_tab::InspectorTab;
@@ -27,22 +27,19 @@ fn reconcile_connection_state(state: &mut AppState, inspector_tab: InspectorTab)
     state.sql_modal.set_active_tab(sql_modal_tab);
 }
 
-pub(super) fn reset_for_new_connection(
-    state: &mut AppState,
-    id: &ConnectionId,
-    dsn: &str,
-    name: &str,
-    database_type: DatabaseType,
-    database: Option<&str>,
-) {
+pub(super) fn reset_for_new_connection(state: &mut AppState, target: &ConnectionTarget) {
     let inspector_tab = state.ui.inspector_tab();
     let sql_modal_tab = state.sql_modal.active_tab();
-    reset_active_connection_state_inner(state);
+    reset_state_before_connection_reconciliation(state);
     state.ui.set_inspector_tab(inspector_tab);
     state.sql_modal.set_active_tab(sql_modal_tab);
-    state
-        .session
-        .activate_connection_with_target(id, name, database_type, dsn, database);
+    state.session.activate_connection_with_target(
+        &target.id,
+        &target.name,
+        target.database_type,
+        &target.dsn,
+        target.database.as_deref(),
+    );
     reconcile_connection_state(state, inspector_tab);
 }
 
@@ -106,13 +103,39 @@ pub(super) fn save_current_connection_cache(state: &mut AppState) {
     state.connection_caches.save(&current_id, cache);
 }
 
+pub(super) fn cancel_connection_task_effects(state: &mut AppState) -> Vec<Effect> {
+    let had_pending_probe = state.session.pending_mysql_connection_probe().is_some();
+    let table_detail_retry =
+        state
+            .session
+            .retry_table_detail_after_probe_failure()
+            .map(|(dsn, generation, run_id)| Effect::FetchTableDetail {
+                dsn,
+                schema: state.query.pagination.schema().to_string(),
+                table: state.query.pagination.table().to_string(),
+                generation,
+                run_id,
+            });
+    state.session.clear_mysql_connection_probe();
+    if had_pending_probe {
+        state.sql_modal.reset_prefetch();
+        state.er_preparation.reset();
+    }
+
+    let mut effects = vec![Effect::CancelConnectionTask];
+    if let Some(table_detail_retry) = table_detail_retry {
+        effects.push(table_detail_retry);
+    }
+    effects
+}
+
 pub(super) fn reset_active_connection_state(state: &mut AppState) {
     let inspector_tab = state.ui.inspector_tab();
-    reset_active_connection_state_inner(state);
+    reset_state_before_connection_reconciliation(state);
     reconcile_connection_state(state, inspector_tab);
 }
 
-fn reset_active_connection_state_inner(state: &mut AppState) {
+fn reset_state_before_connection_reconciliation(state: &mut AppState) {
     state.session.reset(&mut state.query);
     state.result_interaction.reset_view();
     state.ui.set_explorer_selection(None);

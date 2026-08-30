@@ -3,8 +3,8 @@ use std::time::Instant;
 use crate::adapters::csv_export::export_to_downloads;
 use crate::app::ports::outbound::{AccessMode, DbOperationError, QueryExecutor};
 use crate::domain::{
-    MySqlDiagnostic, MySqlDiagnosticLevel, QueryResult, QuerySource, WriteDiagnostic,
-    WriteDiagnosticLevel, WriteExecutionResult, mysql_sql::mysql_tree_explain_query_kind,
+    CommandTag, QueryResult, QuerySource, WriteExecutionResult,
+    mysql_sql::mysql_tree_explain_query_kind,
 };
 use async_trait::async_trait;
 
@@ -14,7 +14,7 @@ use super::cli::{
     validate_mysql_export_query, validate_mysql_multi_query,
     validate_mysql_multi_query_with_lower_case_table_names,
 };
-use super::dsn::{MySqlDsn, parse_and_validate_mysql_dsn};
+use super::dsn::{MySqlDsn, map_mysql_tls_failure, parse_and_validate_mysql_dsn};
 use super::metadata;
 use super::option_file::MySqlOptionFile;
 
@@ -32,7 +32,7 @@ async fn execute_adhoc_with_target(
         let option_file = MySqlOptionFile::create(target)?;
         let result = run_mysql_single_statement(&option_file.path, query, access_mode).await;
         drop(option_file);
-        let execution = result?;
+        let execution = result.map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))?;
         let result_set = execution.result_set.ok_or_else(|| {
             DbOperationError::QueryFailed("MySQL TREE EXPLAIN returned no resultset".to_string())
         })?;
@@ -48,7 +48,8 @@ async fn execute_adhoc_with_target(
 
     let option_file = MySqlOptionFile::create(target)?;
     let lower_case_table_names = probe_mysql_server(&option_file.path)
-        .await?
+        .await
+        .map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))?
         .lower_case_table_names;
     let statements = validate_mysql_multi_query_with_lower_case_table_names(
         query,
@@ -64,7 +65,7 @@ async fn execute_adhoc_with_target(
     let start = Instant::now();
     let result = run_mysql_adhoc(&option_file.path, &statements, access_mode).await;
     drop(option_file);
-    let execution = result?;
+    let execution = result.map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))?;
     let elapsed = start.elapsed().as_millis() as u64;
     let mut result = match execution.result_set {
         Some(result_set) => QueryResult::success_with_values(
@@ -83,11 +84,35 @@ async fn execute_adhoc_with_target(
         ),
     };
     if let Some(tag) = execution.command_tag {
-        result = result.with_command_tag(tag);
+        result = with_mysql_command_tag(result, tag)?;
     }
     Ok(result
         .with_mysql_diagnostics(execution.diagnostics)
         .with_refresh_scope(execution.refresh_scope))
+}
+
+fn with_mysql_command_tag(
+    mut result: QueryResult,
+    tag: CommandTag,
+) -> Result<QueryResult, DbOperationError> {
+    if result.data_row_count() == 0 {
+        let affected_rows = match &tag {
+            CommandTag::Insert(rows)
+            | CommandTag::Affected(rows)
+            | CommandTag::Update(rows)
+            | CommandTag::Delete(rows) => Some(*rows),
+            _ => None,
+        };
+        if let Some(affected_rows) = affected_rows {
+            let row_count = usize::try_from(affected_rows).map_err(|_| {
+                DbOperationError::CommandTagParseFailed(
+                    "MySQL affected row count does not fit in usize".to_string(),
+                )
+            })?;
+            result = result.with_row_count(row_count);
+        }
+    }
+    Ok(result.with_command_tag(tag))
 }
 
 #[async_trait]
@@ -158,15 +183,10 @@ impl QueryExecutor for MySqlAdapter {
         let statements =
             validate_mysql_multi_query(query, target.database.as_deref(), access_mode)?;
 
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "infra measures mysql execution time at the I/O boundary"
-        )]
-        let start = Instant::now();
         let option_file = MySqlOptionFile::create(&target)?;
         let result = run_mysql_adhoc(&option_file.path, &statements, access_mode).await;
         drop(option_file);
-        let execution = result?;
+        let execution = result.map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))?;
         let affected_rows = execution
             .command_tag
             .and_then(|tag| tag.affected_rows())
@@ -183,12 +203,7 @@ impl QueryExecutor for MySqlAdapter {
 
         Ok(WriteExecutionResult {
             affected_rows,
-            execution_time_ms: start.elapsed().as_millis() as u64,
-            diagnostics: execution
-                .diagnostics
-                .into_iter()
-                .map(write_diagnostic_from_mysql)
-                .collect(),
+            diagnostics: execution.diagnostics,
         })
     }
 
@@ -214,17 +229,6 @@ impl QueryExecutor for MySqlAdapter {
             export_mysql_csv_to_file(target, &query, path).await
         })
         .await
-    }
-}
-
-fn write_diagnostic_from_mysql(diagnostic: MySqlDiagnostic) -> WriteDiagnostic {
-    WriteDiagnostic {
-        level: match diagnostic.level {
-            MySqlDiagnosticLevel::Warning => WriteDiagnosticLevel::Warning,
-            MySqlDiagnosticLevel::Note => WriteDiagnosticLevel::Note,
-        },
-        code: diagnostic.code,
-        message: diagnostic.message,
     }
 }
 
@@ -286,5 +290,38 @@ mod tests {
             Err(DbOperationError::QueryFailed(details))
                 if details == "MySQL row count was not an integer"
         ));
+    }
+
+    #[test]
+    fn uses_affected_rows_for_a_dml_result_without_payload_rows() {
+        let result =
+            with_mysql_command_tag(count_result(Vec::new()), CommandTag::Update(3)).unwrap();
+
+        assert_eq!(result.row_count(), 3);
+        assert_eq!(result.data_row_count(), 0);
+        assert_eq!(result.command_tag, Some(CommandTag::Update(3)));
+    }
+
+    #[test]
+    fn keeps_payload_row_count_for_a_dml_result() {
+        let result = with_mysql_command_tag(
+            count_result(vec![vec![QueryValue::text("row")]]),
+            CommandTag::Update(3),
+        )
+        .unwrap();
+
+        assert_eq!(result.row_count(), 1);
+        assert_eq!(result.data_row_count(), 1);
+    }
+
+    #[test]
+    fn keeps_empty_row_count_for_non_dml_command_tags() {
+        let result = with_mysql_command_tag(
+            count_result(Vec::new()),
+            CommandTag::Create("TABLE".to_string()),
+        )
+        .unwrap();
+
+        assert_eq!(result.row_count(), 0);
     }
 }

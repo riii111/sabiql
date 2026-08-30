@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{
-    MySqlDiagnostic, RefreshScope,
+    DatabaseDiagnostic, RefreshScope,
     mysql_sql::{
         MySqlStatement, MySqlStatementKind, has_top_level_user_variable_into_clause,
         mysql_statement_is_data_modifying, mysql_statement_is_schema_modifying,
@@ -15,9 +15,9 @@ use crate::domain::{
 };
 
 use super::super::policy::{
-    MySqlExecutionResult, mysql_command_tag, mysql_metadata_fallback_has_unsupported_session_state,
-    mysql_possible_refresh_scope, mysql_refresh_scope, mysql_row_count_marker,
-    query_failed_after_change,
+    MySqlExecutionResult, is_mysql_single_marker, mysql_command_tag,
+    mysql_metadata_fallback_has_unsupported_session_state, mysql_possible_refresh_scope,
+    mysql_refresh_scope, mysql_row_count_marker, query_failed_after_change,
 };
 use super::super::xml::MySqlResultSet;
 use super::metadata::mysql_metadata_columns_with_diagnostics;
@@ -71,7 +71,7 @@ pub(super) async fn run_mysql_adhoc_with_program_and_statements(
 struct MySqlStatementExecution {
     result_set: Option<MySqlResultSet>,
     refresh_scope: RefreshScope,
-    diagnostics: Vec<MySqlDiagnostic>,
+    diagnostics: Vec<DatabaseDiagnostic>,
 }
 
 pub(super) async fn fill_mysql_empty_result_columns(
@@ -81,7 +81,7 @@ pub(super) async fn fill_mysql_empty_result_columns(
     query: &str,
     kind: &MySqlStatementKind,
     access_mode: AccessMode,
-    diagnostics: &mut Vec<MySqlDiagnostic>,
+    diagnostics: &mut Vec<DatabaseDiagnostic>,
 ) -> Result<MySqlResultSet, DbOperationError> {
     if !result.columns.is_empty() || !result.values.is_empty() {
         return Ok(result);
@@ -182,7 +182,7 @@ async fn fill_mysql_last_result_columns(
     last_result_statement: Option<&MySqlStatement>,
     access_mode: AccessMode,
     refresh_scope: RefreshScope,
-    diagnostics: &mut Vec<MySqlDiagnostic>,
+    diagnostics: &mut Vec<DatabaseDiagnostic>,
 ) -> Result<(), DbOperationError> {
     let Some(result) = last_result_set.take() else {
         return Ok(());
@@ -289,11 +289,7 @@ async fn run_mysql_adhoc_process(
             last_result_set.as_ref(),
         ))
     } else {
-        if marker_result.columns != ["__sabiql_marker"]
-            || marker_result.values.len() != 1
-            || marker_result.values[0].len() != 1
-            || marker_result.values[0][0].as_str() != Some(marker.as_str())
-        {
+        if !is_mysql_single_marker(&marker_result, "__sabiql_marker", &marker) {
             return Err(query_failed_after_change(
                 DbOperationError::QueryFailed(
                     "mysql adhoc completion marker did not match".to_string(),

@@ -16,7 +16,7 @@ use super::super::sql::{
 };
 use super::super::{
     cli::{MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, MySqlResultSet},
-    dsn::parse_and_validate_mysql_dsn,
+    dsn::{map_mysql_tls_failure, parse_and_validate_mysql_dsn},
     option_file::MySqlOptionFile,
 };
 use super::catalog::{
@@ -27,6 +27,10 @@ use super::catalog::{
     parse_unique_column_metadata, primary_key_names, required_text, selected_database,
 };
 
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "MySQL index metadata flags are independent index attributes"
+)]
 #[derive(Debug, Clone)]
 struct MySqlIndexMetadata {
     name: String,
@@ -37,35 +41,17 @@ struct MySqlIndexMetadata {
     sub_part: Option<i32>,
     expression: Option<String>,
     descending: bool,
-    visibility: MySqlIndexVisibility,
+    invisible: bool,
     primary: bool,
 }
 
-#[derive(Debug, Clone, Copy)]
-enum MySqlIndexVisibility {
-    Visible,
-    Invisible,
-}
-
-impl MySqlIndexVisibility {
-    const fn is_invisible(self) -> bool {
-        matches!(self, Self::Invisible)
-    }
-}
-
-pub(super) async fn fetch_table_detail_in_session(
+pub(super) async fn fetch_table_detail(
     dsn: &str,
     schema: &str,
     table: &str,
 ) -> Result<Table, DbOperationError> {
-    fetch_table_detail_in_session_with_program(
-        dsn,
-        schema,
-        table,
-        OsStr::new("mysql"),
-        MYSQL_QUERY_TIMEOUT,
-    )
-    .await
+    fetch_table_detail_with_program(dsn, schema, table, OsStr::new("mysql"), MYSQL_QUERY_TIMEOUT)
+        .await
 }
 
 pub(super) async fn fetch_table_columns_and_fks(
@@ -125,7 +111,7 @@ async fn fetch_table_columns_and_fks_with_program(
     ))
 }
 
-async fn fetch_table_detail_in_session_with_program(
+async fn fetch_table_detail_with_program(
     dsn: &str,
     schema: &str,
     table: &str,
@@ -141,7 +127,10 @@ async fn fetch_table_detail_in_session_with_program(
         fetch_table_detail_with_session(&mut session, database, schema, table),
     )
     .await;
-    session.resolve_timed_result(result).await
+    session
+        .resolve_timed_result(result)
+        .await
+        .map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))
 }
 
 async fn fetch_table_detail_with_session(
@@ -222,7 +211,7 @@ fn table_metadata_from_result(
     lower_case_table_names: u8,
 ) -> Result<MySqlTableMetadata, DbOperationError> {
     metadata_snapshot_from_result(database, Some(schema), result, lower_case_table_names)
-        .and_then(|snapshot| find_table(schema, table, &snapshot.tables, lower_case_table_names))
+        .and_then(|tables| find_table(schema, table, &tables, lower_case_table_names))
 }
 
 fn table_from_columns_and_foreign_keys(
@@ -293,11 +282,7 @@ fn parse_trigger_metadata(result: &MySqlResultSet) -> Result<Vec<Trigger>, DbOpe
 }
 
 fn parse_source_ddl(result: &MySqlResultSet, kind: TableKind) -> Result<String, DbOperationError> {
-    let expected_columns = if kind == TableKind::View {
-        ["View", "Create View"]
-    } else {
-        ["Table", "Create Table"]
-    };
+    let expected_columns = show_create_result_columns(kind);
     if result.columns.len() < 2
         || result.columns[0] != expected_columns[0]
         || result.columns[1] != expected_columns[1]
@@ -342,11 +327,7 @@ fn parse_index_metadata(
                     ));
                 }
             };
-            let visibility = if parse_boolean_flag(&row[8], "IS_VISIBLE")? {
-                MySqlIndexVisibility::Visible
-            } else {
-                MySqlIndexVisibility::Invisible
-            };
+            let invisible = !parse_boolean_flag(&row[8], "IS_VISIBLE")?;
             let (column_name, expression) = match (column_name, expression) {
                 (Some(column_name), None) => (column_name.to_string(), None),
                 (None, Some(expression)) => {
@@ -374,7 +355,7 @@ fn parse_index_metadata(
                 sub_part,
                 expression,
                 descending,
-                visibility,
+                invisible,
                 primary: parse_boolean_flag(&row[9], "IS_PRIMARY")?,
             })
         })
@@ -405,7 +386,7 @@ fn indexes_from_metadata(mut raw: Vec<MySqlIndexMetadata>) -> Vec<Index> {
             if column.descending {
                 index.attributes = index.attributes | IndexAttributes::DESCENDING;
             }
-            if column.visibility.is_invisible() {
+            if column.invisible {
                 index.attributes = index.attributes | IndexAttributes::INVISIBLE;
             }
             continue;
@@ -417,7 +398,7 @@ fn indexes_from_metadata(mut raw: Vec<MySqlIndexMetadata>) -> Vec<Index> {
         if column.descending {
             attributes = attributes | IndexAttributes::DESCENDING;
         }
-        if column.visibility.is_invisible() {
+        if column.invisible {
             attributes = attributes | IndexAttributes::INVISIBLE;
         }
         indexes.push(Index {
@@ -476,6 +457,7 @@ mod session_tests {
 
     use tempfile::TempDir;
 
+    use super::super::test_support::assert_process_stopped;
     use super::*;
 
     fn fake_metadata_cli(mode: &str) -> (TempDir, std::path::PathBuf, std::path::PathBuf) {
@@ -577,25 +559,6 @@ done
         (directory, program, transcript)
     }
 
-    fn assert_process_stopped(transcript: &std::path::Path) {
-        for _ in 0..200 {
-            let pid = std::fs::read_to_string(transcript)
-                .unwrap()
-                .lines()
-                .find_map(|line| line.strip_prefix("process=")?.parse::<libc::pid_t>().ok());
-            if let Some(pid) = pid
-                && unsafe { libc::kill(pid, 0) } == -1
-            {
-                return;
-            }
-            std::thread::sleep(Duration::from_millis(5));
-        }
-        panic!(
-            "fake mysql process is alive or did not start: {}",
-            std::fs::read_to_string(transcript).unwrap()
-        );
-    }
-
     fn assert_option_file_removed(transcript: &std::path::Path) {
         let transcript_text = std::fs::read_to_string(transcript).unwrap();
         assert!(transcript_text.contains("option-exists=yes"));
@@ -613,7 +576,7 @@ done
     async fn inspector_detail_orchestration_uses_one_process_for_table_and_view() {
         for (mode, schema, table) in [("table", "app", "items"), ("view", "app", "items_view")] {
             let (_directory, program, transcript) = fake_metadata_cli(mode);
-            let detail = fetch_table_detail_in_session_with_program(
+            let detail = fetch_table_detail_with_program(
                 "mysql://user:password@localhost:3306/app",
                 schema,
                 table,
@@ -703,7 +666,7 @@ done
     #[tokio::test]
     async fn inspector_detail_rejects_a_mismatched_completion_marker() {
         let (_directory, program, transcript) = fake_metadata_cli("completion-marker-failure");
-        let error = fetch_table_detail_in_session_with_program(
+        let error = fetch_table_detail_with_program(
             "mysql://user:password@localhost:3306/app",
             "app",
             "items",
@@ -765,7 +728,7 @@ done
     #[tokio::test]
     async fn inspector_detail_read_only_setup_failure_never_sends_metadata_sql() {
         let (_directory, program, transcript) = fake_metadata_cli("read-only-failure");
-        let result = fetch_table_detail_in_session_with_program(
+        let result = fetch_table_detail_with_program(
             "mysql://user:password@localhost:3306/app",
             "app",
             "items",
@@ -786,7 +749,7 @@ done
     async fn inspector_detail_orchestration_rejects_empty_and_malformed_shapes_without_partial_table()
      {
         let (_directory, program, transcript) = fake_metadata_cli("empty");
-        let error = fetch_table_detail_in_session_with_program(
+        let error = fetch_table_detail_with_program(
             "mysql://user:password@localhost:3306/app",
             "app",
             "items",
@@ -800,7 +763,7 @@ done
         assert_option_file_removed(&transcript);
 
         let (_directory, program, transcript) = fake_metadata_cli("malformed");
-        let error = fetch_table_detail_in_session_with_program(
+        let error = fetch_table_detail_with_program(
             "mysql://user:password@localhost:3306/app",
             "app",
             "items",
@@ -822,7 +785,7 @@ done
         ] {
             let (directory, program, transcript) = fake_metadata_cli(mode);
             let task = tokio::spawn(async move {
-                fetch_table_detail_in_session_with_program(
+                fetch_table_detail_with_program(
                     "mysql://user:password@localhost:3306/app",
                     "app",
                     "items",
@@ -857,7 +820,7 @@ done
     async fn inspector_detail_orchestration_cleans_up_after_cancellation() {
         let (_directory, program, transcript) = fake_metadata_cli("timeout");
         let task = tokio::spawn(async move {
-            fetch_table_detail_in_session_with_program(
+            fetch_table_detail_with_program(
                 "mysql://user:password@localhost:3306/app",
                 "app",
                 "items",
@@ -897,15 +860,9 @@ done
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_support::result;
     use super::*;
     use crate::domain::QueryValue;
-
-    fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MySqlResultSet {
-        MySqlResultSet {
-            columns: columns.iter().map(|value| (*value).to_string()).collect(),
-            values,
-        }
-    }
 
     #[test]
     fn trigger_metadata_preserves_action_order_context_and_definition() {

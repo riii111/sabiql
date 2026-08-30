@@ -44,9 +44,9 @@ impl DiagnosticFieldKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DiagnosticDisplayRow {
+pub struct DiagnosticDisplayRow<'a> {
     pub kind: DiagnosticFieldKind,
-    pub value: String,
+    pub field: &'a DiagnosticField,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -59,7 +59,7 @@ pub struct SqliteDiagnosticsState {
 }
 
 impl SqliteDiagnosticsState {
-    pub fn begin_fetch(&mut self) -> u64 {
+    pub fn begin_core_fetch(&mut self) -> u64 {
         self.next_run_id = self.next_run_id.wrapping_add(1);
         let run_id = self.next_run_id;
         self.load_state = LoadState::LoadingCore { run_id };
@@ -150,16 +150,6 @@ impl SqliteDiagnosticsState {
         }
     }
 
-    pub fn set_loaded(&mut self, run_id: u64, snapshot: SqliteDiagnosticsSnapshot) {
-        if self.is_current_run(run_id) || matches!(self.load_state, LoadState::Idle) {
-            self.load_state = LoadState::Loaded {
-                run_id,
-                snapshot: Box::new(snapshot),
-                quick_check_running: false,
-            };
-        }
-    }
-
     pub fn snapshot(&self) -> Option<&SqliteDiagnosticsSnapshot> {
         match &self.load_state {
             LoadState::Loaded { snapshot, .. } => Some(snapshot),
@@ -206,45 +196,33 @@ impl SqliteDiagnosticsState {
     }
 }
 
-pub fn display_rows(snapshot: &SqliteDiagnosticsSnapshot) -> Vec<DiagnosticDisplayRow> {
+pub fn display_rows(snapshot: &SqliteDiagnosticsSnapshot) -> Vec<DiagnosticDisplayRow<'_>> {
     [
-        (DiagnosticFieldKind::DbFile, snapshot.db_file.display()),
-        (
-            DiagnosticFieldKind::SqliteVersion,
-            snapshot.sqlite_version.display(),
-        ),
+        (DiagnosticFieldKind::DbFile, &snapshot.db_file),
+        (DiagnosticFieldKind::SqliteVersion, &snapshot.sqlite_version),
         (
             DiagnosticFieldKind::FeatureSummary,
-            snapshot.feature_summary.display(),
+            &snapshot.feature_summary,
         ),
-        (
-            DiagnosticFieldKind::ForeignKeys,
-            snapshot.foreign_keys.display(),
-        ),
-        (
-            DiagnosticFieldKind::JournalMode,
-            snapshot.journal_mode.display(),
-        ),
-        (
-            DiagnosticFieldKind::QueryOnly,
-            snapshot.query_only.display(),
-        ),
-        (
-            DiagnosticFieldKind::BusyTimeout,
-            snapshot.busy_timeout.display(),
-        ),
-        (
-            DiagnosticFieldKind::DatabaseList,
-            snapshot.database_list.display(),
-        ),
-        (
-            DiagnosticFieldKind::QuickCheck,
-            snapshot.quick_check.display(),
-        ),
+        (DiagnosticFieldKind::ForeignKeys, &snapshot.foreign_keys),
+        (DiagnosticFieldKind::JournalMode, &snapshot.journal_mode),
+        (DiagnosticFieldKind::QueryOnly, &snapshot.query_only),
+        (DiagnosticFieldKind::BusyTimeout, &snapshot.busy_timeout),
+        (DiagnosticFieldKind::DatabaseList, &snapshot.database_list),
+        (DiagnosticFieldKind::QuickCheck, &snapshot.quick_check),
     ]
     .into_iter()
-    .map(|(kind, value)| DiagnosticDisplayRow { kind, value })
+    .map(|(kind, field)| DiagnosticDisplayRow { kind, field })
     .collect()
+}
+
+pub fn display_field(field: &DiagnosticField) -> String {
+    match field {
+        DiagnosticField::Ok(value) => value.clone(),
+        DiagnosticField::Err(error) => format!("(failed: {error})"),
+        DiagnosticField::Pending => String::new(),
+        DiagnosticField::Unavailable => "(unavailable)".to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -252,11 +230,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn begin_fetch_assigns_monotonic_run_id() {
+    fn begin_core_fetch_assigns_monotonic_run_id() {
         let mut state = SqliteDiagnosticsState::default();
 
-        let first = state.begin_fetch();
-        let second = state.begin_fetch();
+        let first = state.begin_core_fetch();
+        let second = state.begin_core_fetch();
 
         assert_eq!(first, 1);
         assert_eq!(second, 2);
@@ -264,10 +242,22 @@ mod tests {
     }
 
     #[test]
+    fn display_field_formats_each_state() {
+        for (field, expected) in [
+            (DiagnosticField::ok("value"), "value"),
+            (DiagnosticField::err("timeout"), "(failed: timeout)"),
+            (DiagnosticField::Pending, ""),
+            (DiagnosticField::Unavailable, "(unavailable)"),
+        ] {
+            assert_eq!(display_field(&field), expected);
+        }
+    }
+
+    #[test]
     fn stale_run_does_not_replace_loaded_snapshot() {
         let mut state = SqliteDiagnosticsState::default();
-        let run_id = state.begin_fetch();
-        state.set_loaded(
+        let run_id = state.begin_core_fetch();
+        state.set_core_loaded(
             run_id,
             SqliteDiagnosticsSnapshot {
                 sqlite_version: DiagnosticField::ok("3.45.0"),
@@ -275,7 +265,7 @@ mod tests {
             },
         );
 
-        state.set_loaded(
+        state.set_core_loaded(
             run_id + 1,
             SqliteDiagnosticsSnapshot {
                 sqlite_version: DiagnosticField::ok("9.9.9"),
@@ -292,7 +282,7 @@ mod tests {
     #[test]
     fn core_loaded_leaves_quick_check_idle() {
         let mut state = SqliteDiagnosticsState::default();
-        let run_id = state.begin_fetch();
+        let run_id = state.begin_core_fetch();
         state.set_core_loaded(
             run_id,
             SqliteDiagnosticsSnapshot {
@@ -310,7 +300,7 @@ mod tests {
     #[test]
     fn begin_quick_check_marks_loaded_snapshot_running() {
         let mut state = SqliteDiagnosticsState::default();
-        let run_id = state.begin_fetch();
+        let run_id = state.begin_core_fetch();
         state.set_core_loaded(run_id, SqliteDiagnosticsSnapshot::default());
 
         let quick_check_run_id = state.begin_quick_check();
@@ -322,7 +312,7 @@ mod tests {
     #[test]
     fn loading_core_cannot_run_quick_check() {
         let mut state = SqliteDiagnosticsState::default();
-        state.begin_fetch();
+        state.begin_core_fetch();
 
         let quick_check_run_id = state.begin_quick_check();
 
@@ -333,7 +323,7 @@ mod tests {
     #[test]
     fn quick_check_loaded_clears_running_flag() {
         let mut state = SqliteDiagnosticsState::default();
-        let run_id = state.begin_fetch();
+        let run_id = state.begin_core_fetch();
         state.set_core_loaded(run_id, SqliteDiagnosticsSnapshot::default());
         state.begin_quick_check();
         state.set_quick_check_loaded(run_id, DiagnosticField::ok("ok"));

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{
-    CommandTag, MySqlDiagnostic, QueryValue, RefreshScope,
+    CommandTag, DatabaseDiagnostic, QueryValue, RefreshScope,
     mysql_sql::{
         MySqlStatement, MySqlStatementKind, classify_mysql_multi_statement,
         classify_mysql_multi_statement_with_lower_case_table_names,
@@ -16,6 +16,7 @@ use super::probe::validate_sql_mode;
 use super::xml::MySqlResultSet;
 
 pub(super) const MYSQL_SESSION_MARKER_COLUMN: &str = "__sabiql_session_marker";
+pub(super) const MYSQL_SESSION_SQL_MODE_COLUMN: &str = "__sabiql_sql_mode";
 
 #[derive(Debug, Clone, Copy)]
 pub(super) enum MySqlMetadataFallbackKind {
@@ -30,7 +31,7 @@ pub(in crate::adapters::mysql) struct MySqlExecutionResult {
     pub(in crate::adapters::mysql) result_set: Option<MySqlResultSet>,
     pub(in crate::adapters::mysql) command_tag: Option<CommandTag>,
     pub(in crate::adapters::mysql) refresh_scope: RefreshScope,
-    pub(in crate::adapters::mysql) diagnostics: Vec<MySqlDiagnostic>,
+    pub(in crate::adapters::mysql) diagnostics: Vec<DatabaseDiagnostic>,
 }
 
 pub(in crate::adapters::mysql) fn validate_mysql_multi_query(
@@ -361,11 +362,7 @@ pub(super) fn validate_mysql_session_marker(
     result: &MySqlResultSet,
     marker: &str,
 ) -> Result<(), DbOperationError> {
-    if result.columns != [MYSQL_SESSION_MARKER_COLUMN]
-        || result.values.len() != 1
-        || result.values[0].len() != 1
-        || result.values[0][0].as_str() != Some(marker)
-    {
+    if !is_mysql_single_marker(result, MYSQL_SESSION_MARKER_COLUMN, marker) {
         return Err(DbOperationError::QueryFailed(
             "mysql read-only session marker did not match".to_string(),
         ));
@@ -373,11 +370,17 @@ pub(super) fn validate_mysql_session_marker(
     Ok(())
 }
 
+pub(super) fn is_mysql_single_marker(result: &MySqlResultSet, column: &str, marker: &str) -> bool {
+    result.columns == [column]
+        && result.values.len() == 1
+        && matches!(result.values[0].as_slice(), [value] if value.as_str() == Some(marker))
+}
+
 pub(super) fn validate_mysql_session(
     result: &MySqlResultSet,
     marker: &str,
 ) -> Result<(), DbOperationError> {
-    if result.columns != [MYSQL_SESSION_MARKER_COLUMN, "__sabiql_sql_mode"]
+    if result.columns != [MYSQL_SESSION_MARKER_COLUMN, MYSQL_SESSION_SQL_MODE_COLUMN]
         || result.values.len() != 1
         || result.values[0].len() != 2
         || result.values[0][0].as_str() != Some(marker)
@@ -396,9 +399,7 @@ pub(super) fn query_failed_after_change(
     error: DbOperationError,
     refresh_scope: RefreshScope,
 ) -> DbOperationError {
-    if refresh_scope == RefreshScope::None
-        || matches!(&error, DbOperationError::QueryFailedAfterChange { .. })
-    {
+    if refresh_scope == RefreshScope::None || error.post_change_refresh_scope().is_some() {
         error
     } else {
         DbOperationError::QueryFailedAfterChange {
@@ -626,6 +627,68 @@ mod tests {
     }
 
     #[test]
+    fn one_column_one_row_marker_requires_exact_shape_and_value() {
+        let make_result = |columns: &[&str], values: Vec<Vec<QueryValue>>| MySqlResultSet {
+            columns: columns.iter().map(|column| (*column).to_string()).collect(),
+            values,
+        };
+        let marker_value = || QueryValue::Text("marker".to_string());
+
+        assert!(is_mysql_single_marker(
+            &make_result(&["marker_column"], vec![vec![marker_value()]]),
+            "marker_column",
+            "marker",
+        ));
+        assert!(!is_mysql_single_marker(
+            &make_result(&[], vec![vec![marker_value()]]),
+            "marker_column",
+            "marker",
+        ));
+        assert!(!is_mysql_single_marker(
+            &make_result(
+                &["marker_column", "extra"],
+                vec![vec![marker_value(), marker_value()]],
+            ),
+            "marker_column",
+            "marker",
+        ));
+        assert!(!is_mysql_single_marker(
+            &make_result(&["marker_column"], vec![]),
+            "marker_column",
+            "marker",
+        ));
+        assert!(!is_mysql_single_marker(
+            &make_result(
+                &["marker_column"],
+                vec![vec![marker_value()], vec![marker_value()]],
+            ),
+            "marker_column",
+            "marker",
+        ));
+        assert!(!is_mysql_single_marker(
+            &make_result(&["marker_column"], vec![vec![]]),
+            "marker_column",
+            "marker",
+        ));
+        assert!(!is_mysql_single_marker(
+            &make_result(
+                &["marker_column"],
+                vec![vec![marker_value(), marker_value()]]
+            ),
+            "marker_column",
+            "marker",
+        ));
+        assert!(!is_mysql_single_marker(
+            &make_result(
+                &["marker_column"],
+                vec![vec![QueryValue::Text("other".to_string())]],
+            ),
+            "marker_column",
+            "marker",
+        ));
+    }
+
+    #[test]
     fn metadata_only_select_rejects_known_side_effects() {
         for query in [
             "SELECT value FROM items FOR UPDATE",
@@ -733,6 +796,18 @@ mod tests {
             error,
             DbOperationError::ForeignKeyViolation(details) if details == "foreign key failed"
         ));
+    }
+
+    #[test]
+    fn change_failure_is_not_wrapped_again() {
+        let error = DbOperationError::QueryFailedAfterChange {
+            source: Arc::new(DbOperationError::QueryFailed("failed".to_string())),
+            refresh_scope: RefreshScope::Data,
+        };
+
+        let error = query_failed_after_change(error, RefreshScope::Metadata);
+
+        assert_eq!(error.post_change_refresh_scope(), Some(RefreshScope::Data));
     }
 
     #[test]

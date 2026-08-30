@@ -8,11 +8,11 @@ use crate::update::action::{Action, CursorMove, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 
-pub(super) fn reduce_mode(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub(super) fn reduce_mode(state: &mut AppState, action: &Action, _now: Instant) -> DispatchResult {
     match action {
         // Modal open/submit
         Action::OpenModal(ModalKind::SqlModal) => {
-            if reject_pending_mysql_connection_probe(state, now) {
+            if reject_pending_mysql_connection_probe(state) {
                 return DispatchResult::handled();
             }
             state.modal.set_mode(InputMode::SqlModal);

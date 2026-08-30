@@ -13,6 +13,40 @@ mod preview;
 mod signature;
 mod table_detail;
 
+#[cfg(test)]
+mod test_support {
+    use crate::domain::QueryValue;
+
+    use super::MySqlResultSet;
+
+    #[cfg(unix)]
+    pub(super) fn assert_process_stopped(transcript: &std::path::Path) {
+        for _ in 0..200 {
+            let pid = std::fs::read_to_string(transcript)
+                .unwrap()
+                .lines()
+                .find_map(|line| line.strip_prefix("process=")?.parse::<libc::pid_t>().ok());
+            if let Some(pid) = pid
+                && unsafe { libc::kill(pid, 0) } == -1
+            {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        panic!(
+            "fake mysql process is alive or did not start: {}",
+            std::fs::read_to_string(transcript).unwrap()
+        );
+    }
+
+    pub(super) fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MySqlResultSet {
+        MySqlResultSet {
+            columns: columns.iter().map(|value| (*value).to_string()).collect(),
+            values,
+        }
+    }
+}
+
 pub(super) use preview::{convert_preview_values_with_binary_charset, execute_preview};
 
 #[async_trait]
@@ -20,14 +54,10 @@ impl MetadataProvider for MySqlAdapter {
     async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
         let target = parse_and_validate_mysql_dsn(dsn)?;
         let database = catalog::selected_database(&target)?;
-        let snapshot = catalog::fetch_metadata_snapshot(&target, database).await?;
+        let tables = catalog::fetch_metadata_snapshot(&target, database).await?;
         let mut metadata = DatabaseMetadata::new(database.to_string());
         metadata.schemas = vec![Schema::new(database.to_string())];
-        metadata.table_summaries = snapshot
-            .tables
-            .into_iter()
-            .map(catalog::table_summary)
-            .collect();
+        metadata.table_summaries = tables.into_iter().map(catalog::table_summary).collect();
         Ok(metadata)
     }
 
@@ -48,7 +78,7 @@ impl MetadataProvider for MySqlAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
-        table_detail::fetch_table_detail_in_session(dsn, schema, table).await
+        table_detail::fetch_table_detail(dsn, schema, table).await
     }
 
     async fn fetch_table_columns_and_fks(

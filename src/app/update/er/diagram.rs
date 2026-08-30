@@ -4,7 +4,7 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::update::action::{Action, ErDiagramInfo};
 use crate::update::dispatch_result::DispatchResult;
-use crate::update::helpers::require_er_diagram_enabled;
+use crate::update::helpers::{reject_pending_mysql_connection_probe, require_er_diagram_enabled};
 
 pub(super) fn reduce_diagram_lifecycle(
     state: &mut AppState,
@@ -32,20 +32,23 @@ pub(super) fn reduce_diagram_lifecycle(
             );
             DispatchResult::handled()
         }
-        Action::ErDiagramFailed(failure) => {
-            if !state.er_preparation.is_current_run(failure.run_id) {
+        Action::ErDiagramFailed { run_id, error } => {
+            if !state.er_preparation.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
             state.er_preparation.mark_idle();
-            state.messages.set_error_at(failure.error.to_string(), now);
+            state.messages.set_error(error.clone());
             DispatchResult::handled()
         }
         Action::ErLogWriteFailed(error) => {
-            state.messages.set_error_at(error.to_string(), now);
+            state.messages.set_error(error.clone());
             DispatchResult::handled()
         }
         Action::ErOpenDiagram => {
-            if let Some(result) = require_er_diagram_enabled(state, now) {
+            if reject_pending_mysql_connection_probe(state) {
+                return DispatchResult::handled();
+            }
+            if let Some(result) = require_er_diagram_enabled(state) {
                 return result;
             }
             if state.er_preparation.is_busy() {
@@ -53,15 +56,13 @@ pub(super) fn reduce_diagram_lifecycle(
             }
 
             let Some(dsn) = state.session.dsn().map(String::from) else {
-                state
-                    .messages
-                    .set_error_at("No active connection".to_string(), now);
+                state.messages.set_error("No active connection".to_string());
                 return DispatchResult::handled();
             };
             if state.session.metadata().is_none() {
                 state
                     .messages
-                    .set_error_at("Metadata not loaded yet".to_string(), now);
+                    .set_error("Metadata not loaded yet".to_string());
                 return DispatchResult::handled();
             }
 
@@ -74,7 +75,7 @@ pub(super) fn reduce_diagram_lifecycle(
             DispatchResult::handled_with(vec![Effect::SmartErRefresh { dsn, run_id }])
         }
         Action::ErGenerateFromCache => {
-            if let Some(result) = require_er_diagram_enabled(state, now) {
+            if let Some(result) = require_er_diagram_enabled(state) {
                 return result;
             }
             if !state.er_preparation.can_generate_from_cache() {

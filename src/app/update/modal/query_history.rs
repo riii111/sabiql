@@ -11,7 +11,7 @@ use crate::update::helpers::reject_pending_mysql_connection_probe;
 pub(super) fn reduce_query_history_picker(
     state: &mut AppState,
     action: &Action,
-    now: Instant,
+    _now: Instant,
 ) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::QueryHistoryPicker) => {
@@ -67,10 +67,9 @@ pub(super) fn reduce_query_history_picker(
             if state.session.query_history_scope().as_ref() != Some(scope) {
                 return DispatchResult::handled();
             }
-            state.messages.set_error_at(e.to_string(), now);
+            state.messages.set_error(e.to_string());
             DispatchResult::handled()
         }
-        Action::QueryHistoryAppendFailed(_) => DispatchResult::handled(),
         Action::TextInput {
             target: InputTarget::QueryHistoryFilter,
             ch: c,
@@ -134,7 +133,7 @@ pub(super) fn reduce_query_history_picker(
             DispatchResult::handled()
         }
         Action::QueryHistoryConfirmSelection => {
-            if reject_pending_mysql_connection_probe(state, now) {
+            if reject_pending_mysql_connection_probe(state) {
                 return DispatchResult::handled();
             }
             let grouped = state.query_history_picker.grouped_filtered_entries();

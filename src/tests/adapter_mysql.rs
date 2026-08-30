@@ -17,7 +17,8 @@ mod connection {
     };
     use sabiql_app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
     use sabiql_app::ports::outbound::{
-        AccessMode, DbOperationError, DsnBuilder, MySqlConnectionProbe, QueryExecutor,
+        AccessMode, ConnectionFailureKind, DbOperationError, DsnBuilder, MySqlConnectionProbe,
+        QueryExecutor,
     };
     use sabiql_domain::QueryValue;
     use sabiql_domain::connection::{
@@ -179,7 +180,7 @@ mod connection {
         let adapter = MySqlAdapter::new();
         let dsn = adapter.build_dsn(&profile);
         let error = adapter.probe(&dsn).await.unwrap_err();
-        let error_info = ConnectionErrorInfo::from_db_operation_error_with_dsn(&error, &dsn);
+        let error_info = ConnectionErrorInfo::from_db_operation_error(&error);
         assert_eq!(
             error_info.kind,
             ConnectionErrorKind::AuthFailed,
@@ -203,8 +204,8 @@ mod connection {
         let dsn = adapter.build_dsn(&profile);
         let error = adapter.probe(&dsn).await.unwrap_err();
         assert_eq!(
-            ConnectionErrorInfo::from_db_operation_error_with_dsn(&error, &dsn).kind,
-            ConnectionErrorKind::MySqlCaVerificationFailed
+            ConnectionErrorInfo::from_db_operation_error(&error).kind,
+            ConnectionErrorKind::MySqlConnectionFailure(ConnectionFailureKind::TlsCaVerification)
         );
     }
 
@@ -218,10 +219,12 @@ mod connection {
         let adapter = MySqlAdapter::new();
         let dsn = adapter.build_dsn(&profile);
         let error = adapter.probe(&dsn).await.unwrap_err();
-        let error_info = ConnectionErrorInfo::from_db_operation_error_with_dsn(&error, &dsn);
+        let error_info = ConnectionErrorInfo::from_db_operation_error(&error);
         assert_eq!(
             error_info.kind,
-            ConnectionErrorKind::MySqlHostnameVerificationFailed,
+            ConnectionErrorKind::MySqlConnectionFailure(
+                ConnectionFailureKind::TlsHostnameVerification
+            ),
             "masked connection error details: {}",
             error_info.masked_details()
         );
@@ -239,11 +242,7 @@ mod connection {
         let permission_dsn = adapter.build_dsn(&permission_profile);
         let permission_error = adapter.probe(&permission_dsn).await.unwrap_err();
         assert_eq!(
-            ConnectionErrorInfo::from_db_operation_error_with_dsn(
-                &permission_error,
-                &permission_dsn
-            )
-            .kind,
+            ConnectionErrorInfo::from_db_operation_error(&permission_error).kind,
             ConnectionErrorKind::PermissionDenied
         );
 
@@ -255,8 +254,7 @@ mod connection {
         let missing_dsn = adapter.build_dsn(&missing_profile);
         let missing_error = adapter.probe(&missing_dsn).await.unwrap_err();
         assert_eq!(
-            ConnectionErrorInfo::from_db_operation_error_with_dsn(&missing_error, &missing_dsn)
-                .kind,
+            ConnectionErrorInfo::from_db_operation_error(&missing_error).kind,
             ConnectionErrorKind::DatabaseNotFound
         );
 
@@ -265,8 +263,7 @@ mod connection {
         let auth_profile = mysql_profile("mysql-authentication", auth_config);
         let auth_dsn = adapter.build_dsn(&auth_profile);
         let auth_error = adapter.probe(&auth_dsn).await.unwrap_err();
-        let auth_info =
-            ConnectionErrorInfo::from_db_operation_error_with_dsn(&auth_error, &auth_dsn);
+        let auth_info = ConnectionErrorInfo::from_db_operation_error(&auth_error);
         assert_eq!(
             auth_info.kind,
             ConnectionErrorKind::AuthFailed,
@@ -317,7 +314,7 @@ mod metadata_fetch {
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
-    async fn loads_mysql_table_catalog_and_preserves_view_details() {
+    async fn loads_mysql_table_catalog() {
         with_mysql_test_db(|db| {
             Box::pin(async move {
                 let metadata = db
@@ -345,6 +342,17 @@ mod metadata_fetch {
                         table.kind_info
                     ));
                 }
+                Ok(())
+            })
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn loads_mysql_table_detail_and_preserves_attributes() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
                 let detail = db
                     .adapter()
                     .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_FIXTURE_TABLE)
@@ -446,26 +454,6 @@ mod metadata_fetch {
                     || second_trigger.security_context.as_deref() != Some("sabiql@%")
                 {
                     return Err(format!("unexpected MySQL triggers: {:?}", detail.triggers));
-                }
-
-                let view_detail = db
-                    .adapter()
-                    .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_VIEW)
-                    .await
-                    .map_err(|error| format!("{error:?}"))?;
-                if view_detail.source_ddl().is_none()
-                    || !view_detail
-                        .source_ddl()
-                        .is_some_and(|ddl| ddl.contains("CREATE") && ddl.contains(MYSQL_VIEW))
-                    || db
-                        .adapter()
-                        .generate_ddl(sabiql_domain::DatabaseType::MySQL, &view_detail)
-                        != view_detail.source_ddl().unwrap()
-                {
-                    return Err(format!(
-                        "unexpected MySQL view DDL: {:?}",
-                        view_detail.source_ddl()
-                    ));
                 }
 
                 let composite = db
@@ -582,6 +570,36 @@ mod metadata_fetch {
                 {
                     return Err(format!(
                         "unexpected MySQL table signature: {child_signature:?}"
+                    ));
+                }
+                Ok(())
+            })
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn loads_mysql_view_detail() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
+                let view_detail = db
+                    .adapter()
+                    .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_VIEW)
+                    .await
+                    .map_err(|error| format!("{error:?}"))?;
+                if view_detail.source_ddl().is_none()
+                    || !view_detail
+                        .source_ddl()
+                        .is_some_and(|ddl| ddl.contains("CREATE") && ddl.contains(MYSQL_VIEW))
+                    || db
+                        .adapter()
+                        .generate_ddl(sabiql_domain::DatabaseType::MySQL, &view_detail)
+                        != view_detail.source_ddl().unwrap()
+                {
+                    return Err(format!(
+                        "unexpected MySQL view DDL: {:?}",
+                        view_detail.source_ddl()
                     ));
                 }
                 Ok(())
@@ -2086,12 +2104,12 @@ mod query_execution {
                 || result.columns != ["2"]
                 || result.values() != [[QueryValue::Text("2".to_string())]]
                 || !result.mysql_diagnostics.iter().any(|diagnostic| {
-                    diagnostic.level == sabiql_domain::MySqlDiagnosticLevel::Warning
+                    diagnostic.level == sabiql_domain::DiagnosticLevel::Warning
                         && diagnostic.code == 1062
                         && diagnostic.message.contains("Duplicate entry")
                 })
                 || !result.mysql_diagnostics.iter().any(|diagnostic| {
-                    diagnostic.level == sabiql_domain::MySqlDiagnosticLevel::Note
+                    diagnostic.level == sabiql_domain::DiagnosticLevel::Note
                         && diagnostic.code == 1050
                         && diagnostic.message.contains("already exists")
                 })
@@ -2122,7 +2140,7 @@ mod query_execution {
                     || result.values().is_empty()
                     || result.columns != ["EXPLAIN"]
                     || !result.mysql_diagnostics.iter().any(|diagnostic| {
-                        diagnostic.level == sabiql_domain::MySqlDiagnosticLevel::Warning
+                        diagnostic.level == sabiql_domain::DiagnosticLevel::Warning
                             && diagnostic.code == 1292
                             && diagnostic
                                 .message

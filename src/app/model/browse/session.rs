@@ -30,7 +30,7 @@ enum ConnectionSaveState {
 }
 
 impl ConnectionSaveGuard {
-    pub(crate) fn start(&self, run_id: u64) {
+    pub(crate) fn arm_save(&self, run_id: u64) {
         *self.state.lock().expect("connection save guard poisoned") =
             ConnectionSaveState::Active(run_id);
     }
@@ -48,7 +48,7 @@ impl ConnectionSaveGuard {
         true
     }
 
-    pub(crate) fn start_save(&self, run_id: u64) -> bool {
+    pub(crate) fn begin_persistence(&self, run_id: u64) -> bool {
         let mut state = self.state.lock().expect("connection save guard poisoned");
         if *state != ConnectionSaveState::Claimed(run_id) {
             return false;
@@ -153,6 +153,7 @@ pub struct BrowseSession {
     // -- lifecycle-gated --
     metadata: Option<Arc<DatabaseMetadata>>,
     metadata_run: AsyncRun,
+    metadata_detail_generation: Option<u64>,
     effective_user: Option<String>,
     effective_user_run: AsyncRun,
     table_detail_run: AsyncRun,
@@ -181,6 +182,7 @@ impl Default for BrowseSession {
             selection_generation: 0,
             metadata: None,
             metadata_run: AsyncRun::default(),
+            metadata_detail_generation: None,
             effective_user: None,
             effective_user_run: AsyncRun::default(),
             table_detail_run: AsyncRun::default(),
@@ -218,6 +220,7 @@ impl BrowseSession {
     pub fn set_table_detail(&mut self, detail: Table, generation: u64) -> bool {
         if generation == self.selection_generation {
             self.table_detail_state = TableDetailState::Loaded(Box::new(detail));
+            self.table_detail_run.clear_active();
             true
         } else {
             false
@@ -246,18 +249,25 @@ impl BrowseSession {
         self.table_detail_run.is_current(run_id)
     }
 
-    pub fn is_current_table_selection(&self, schema: &str, table: &str, generation: u64) -> bool {
-        generation == self.selection_generation
-            && self.selected_table_key.as_deref() == Some(&format!("{schema}.{table}"))
-    }
-
     pub fn mark_table_detail_failed(&mut self, generation: u64, error: String) -> bool {
         if generation == self.selection_generation && self.selected_table_key.is_some() {
             self.table_detail_state = TableDetailState::Error(error);
+            self.table_detail_run.clear_active();
             true
         } else {
             false
         }
+    }
+
+    pub fn mark_metadata_detail_failed(&mut self, error: String) -> bool {
+        let metadata_detail_generation = self.metadata_detail_generation.take();
+        if metadata_detail_generation != Some(self.selection_generation)
+            || !matches!(&self.table_detail_state, TableDetailState::Loading)
+        {
+            return false;
+        }
+
+        self.mark_table_detail_failed(self.selection_generation, error)
     }
 
     pub fn mark_table_detail_probe_failed(&mut self, dsn: &str, error: String) -> bool {
@@ -316,7 +326,7 @@ impl BrowseSession {
     #[must_use]
     pub fn begin_connection_save(&mut self) -> u64 {
         let run_id = self.connection_save_run.begin();
-        self.connection_save_guard.start(run_id);
+        self.connection_save_guard.arm_save(run_id);
         run_id
     }
 
@@ -357,7 +367,7 @@ impl BrowseSession {
                     run_id,
                     generation: self.selection_generation,
                 });
-        self.cancel_metadata_for_mysql_connection_probe();
+        self.invalidate_inflight_state_for_mysql_probe();
         self.connection_generation = self.connection_generation.wrapping_add(1);
         let run_id = self.mysql_connection_probe_run.begin();
         self.pending_mysql_connection_probe = Some(PendingMySqlConnectionProbe {
@@ -375,7 +385,7 @@ impl BrowseSession {
         self.connection_generation = self.connection_generation.wrapping_add(1);
     }
 
-    fn cancel_metadata_for_mysql_connection_probe(&mut self) {
+    fn invalidate_inflight_state_for_mysql_probe(&mut self) {
         self.metadata_run.clear_active();
         self.effective_user_run.clear_active();
         self.table_detail_run.clear_active();
@@ -503,6 +513,7 @@ impl BrowseSession {
         self.metadata_state = MetadataState::Loaded;
         self.metadata = Some(metadata);
         self.metadata_run.clear_active();
+        self.metadata_detail_generation = None;
         self.effective_user = None;
         self.effective_user_run.clear_active();
     }
@@ -512,14 +523,15 @@ impl BrowseSession {
         self.metadata_state = MetadataState::NotLoaded;
         self.metadata = None;
         self.metadata_run.clear_active();
+        self.metadata_detail_generation = None;
         self.effective_user = None;
         self.effective_user_run.clear_active();
     }
 
     // On reload failure (already Connected), keeps Connected to preserve
     // the current browse session while surfacing the error.
-    pub fn mark_connection_failed(&mut self, error: String) {
-        self.metadata_state = MetadataState::Error(error);
+    pub fn mark_connection_failed(&mut self) {
+        self.metadata_state = MetadataState::Error;
         self.is_reloading = false;
         self.metadata_run.clear_active();
         if !self.connection_state.is_connected() {
@@ -533,6 +545,9 @@ impl BrowseSession {
     pub fn begin_metadata_refresh(&mut self) -> u64 {
         self.clear_mysql_connection_probe();
         self.metadata_state = MetadataState::Loading;
+        self.metadata_detail_generation =
+            matches!(&self.table_detail_state, TableDetailState::Loading)
+                .then_some(self.selection_generation);
         self.begin_metadata_run()
     }
 
@@ -550,6 +565,11 @@ impl BrowseSession {
     #[must_use]
     pub fn begin_reload(&mut self) -> u64 {
         self.is_reloading = true;
+        if self.metadata_detail_generation != Some(self.selection_generation)
+            || !matches!(&self.table_detail_state, TableDetailState::Loading)
+        {
+            self.metadata_detail_generation = None;
+        }
         self.begin_metadata_run()
     }
 
@@ -643,6 +663,7 @@ impl BrowseSession {
         self.connection_state = ConnectionState::Connected;
         self.metadata_state = MetadataState::Loaded;
         self.selection_generation = 0;
+        self.metadata_detail_generation = None;
         self.is_reloading = false;
         self.metadata_run.clear_active();
         self.effective_user_run.clear_active();
@@ -678,6 +699,7 @@ impl BrowseSession {
         self.connection_state = ConnectionState::default();
         self.metadata_state = MetadataState::default();
         self.metadata_run.clear_active();
+        self.metadata_detail_generation = None;
         self.effective_user = None;
         self.effective_user_run.clear_active();
         self.table_detail_run.clear_active();
@@ -698,8 +720,8 @@ impl BrowseSession {
         &self.metadata_state
     }
 
-    pub fn metadata(&self) -> Option<&Arc<DatabaseMetadata>> {
-        self.metadata.as_ref()
+    pub fn metadata(&self) -> Option<&DatabaseMetadata> {
+        self.metadata.as_deref()
     }
 
     pub fn database_name(&self) -> Option<&str> {
@@ -818,11 +840,10 @@ impl BrowseSession {
         self.is_reloading
     }
 
-    pub fn tables(&self) -> Vec<&TableSummary> {
+    pub fn tables(&self) -> &[TableSummary] {
         self.metadata
             .as_ref()
-            .map(|m| m.table_summaries.iter().collect())
-            .unwrap_or_default()
+            .map_or(&[], |metadata| metadata.table_summaries.as_slice())
     }
 
     pub fn is_service_connection(&self) -> bool {
@@ -1056,12 +1077,30 @@ mod tests {
             let mut session = BrowseSession::default();
             let mut query = QueryExecution::default();
             let generation = session.select_table("public", "users", &mut query);
+            let run_id = session.begin_table_detail_run();
 
             assert!(session.mark_table_detail_failed(generation, "boom".to_string()));
             assert!(matches!(
                 session.table_detail_state(),
                 TableDetailState::Error(error) if error == "boom"
             ));
+            assert!(!session.is_current_table_detail_run(run_id));
+            assert_eq!(session.begin_table_detail_run(), run_id + 1);
+        }
+
+        #[test]
+        fn accepting_success_clears_active_run_and_preserves_detail() {
+            let mut session = BrowseSession::default();
+            let mut query = QueryExecution::default();
+            let generation = session.select_table("public", "users", &mut query);
+            let run_id = session.begin_table_detail_run();
+
+            assert!(session.set_table_detail(make_table_detail(), generation));
+
+            assert!(!session.is_current_table_detail_run(run_id));
+            assert_eq!(session.selection_generation(), generation);
+            assert!(session.table_detail().is_some());
+            assert_eq!(session.begin_table_detail_run(), run_id + 1);
         }
 
         #[test]
@@ -1167,6 +1206,42 @@ mod tests {
             assert!(matches!(
                 session.table_detail_state(),
                 TableDetailState::Error(error) if error == "connection refused"
+            ));
+        }
+
+        #[test]
+        fn mysql_probe_does_not_snapshot_terminal_detail_run() {
+            let mut session = BrowseSession::default();
+            let id = ConnectionId::from_string("mysql-current");
+            let current_dsn = "mysql://current";
+            session.activate_connection_with_target(
+                &id,
+                "mysql-current",
+                DatabaseType::MySQL,
+                current_dsn,
+                Some("app"),
+            );
+            let mut query = QueryExecution::default();
+            let generation = session.select_table("public", "users", &mut query);
+            let run_id = session.begin_table_detail_run();
+            assert!(session.set_table_detail(make_table_detail(), generation));
+
+            let _ = session.begin_mysql_connection_probe(
+                &id,
+                "mysql-target",
+                "mysql://target",
+                Some("app"),
+            );
+
+            assert!(!session.is_current_table_detail_run(run_id));
+            assert!(
+                session
+                    .pending_mysql_connection_probe()
+                    .is_some_and(|pending| pending.table_detail.is_none())
+            );
+            assert!(matches!(
+                session.table_detail_state(),
+                TableDetailState::Loaded(_)
             ));
         }
 
@@ -1404,13 +1479,10 @@ mod tests {
             let mut session = BrowseSession::default();
             session.set_connection_state(ConnectionState::Connecting);
 
-            session.mark_connection_failed("timeout".to_string());
+            session.mark_connection_failed();
 
             assert!(session.connection_state().is_failed());
-            assert_eq!(
-                session.metadata_state(),
-                &MetadataState::Error("timeout".to_string())
-            );
+            assert_eq!(session.metadata_state(), &MetadataState::Error);
             assert!(!session.is_reloading());
         }
 
@@ -1421,13 +1493,10 @@ mod tests {
             let _ = session.begin_reload();
             session.mark_effective_user_loaded(Some("postgres".to_string()));
 
-            session.mark_connection_failed("reload timeout".to_string());
+            session.mark_connection_failed();
 
             assert!(session.connection_state().is_connected());
-            assert_eq!(
-                session.metadata_state(),
-                &MetadataState::Error("reload timeout".to_string())
-            );
+            assert_eq!(session.metadata_state(), &MetadataState::Error);
             assert!(!session.is_reloading());
             assert_eq!(session.effective_user(), Some("postgres"));
         }

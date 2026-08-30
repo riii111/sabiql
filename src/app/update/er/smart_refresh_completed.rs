@@ -33,7 +33,7 @@ pub(super) fn reduce_smart_refresh_completed(
                 .er_preparation
                 .apply_refresh_metadata(new_signatures.clone(), new_metadata.table_summaries.len());
 
-            let mut effects: Vec<Effect> = Vec::new();
+            let mut effects = vec![Effect::CacheInvalidate { dsn: dsn.clone() }];
 
             if !removed_tables.is_empty() {
                 effects.push(Effect::EvictTablesFromCompletionCache {
@@ -70,9 +70,9 @@ pub(super) fn reduce_smart_refresh_completed(
                     format!("Refreshing {} table(s) for ER diagram...", refetch.len()),
                     now,
                 );
-                effects.push(Effect::DispatchActions(vec![Action::StartPrefetchScoped {
-                    tables: refetch,
-                }]));
+                effects.push(Effect::DispatchActions(vec![
+                    Action::StartErPrefetchScoped { tables: refetch },
+                ]));
             }
 
             DispatchResult::handled_with(effects)

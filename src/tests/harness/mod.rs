@@ -172,7 +172,7 @@ fn buffer_to_string(buffer: &Buffer) -> String {
     result
 }
 
-pub fn connected_state() -> AppState {
+pub fn postgres_connected_state() -> AppState {
     let mut state = create_test_state();
     state
         .session
@@ -181,7 +181,7 @@ pub fn connected_state() -> AppState {
 }
 
 pub fn explorer_selected_state() -> AppState {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     state.ui.set_explorer_selection(Some(0));
     state
 }
@@ -190,7 +190,7 @@ pub fn table_detail_loaded_state() -> AppState {
     let mut state = explorer_selected_state();
     let _ = state
         .session
-        .set_table_detail(fixtures::sample_table_detail(), 0);
+        .set_table_detail(fixtures::sample_postgres_table_detail(), 0);
     state
 }
 

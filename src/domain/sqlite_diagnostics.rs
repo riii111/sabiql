@@ -30,15 +30,6 @@ impl DiagnosticField {
         }
     }
 
-    pub fn display(&self) -> String {
-        match self {
-            Self::Ok(value) => value.clone(),
-            Self::Err(error) => format!("(failed: {error})"),
-            Self::Pending => String::new(),
-            Self::Unavailable => "(unavailable)".to_string(),
-        }
-    }
-
     pub fn is_ok(&self) -> bool {
         matches!(self, Self::Ok(_))
     }
@@ -93,14 +84,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn diagnostic_field_display_formats_error() {
-        let field = DiagnosticField::err("timeout");
-
-        assert_eq!(field.display(), "(failed: timeout)");
-        assert!(!field.is_ok());
-    }
-
-    #[test]
     fn diagnostic_field_rejects_invalid_public_construction() {
         let field = DiagnosticField::ok("value");
 
@@ -117,7 +100,6 @@ mod tests {
         assert!(!field.is_err());
         assert!(field.ok_value().is_none());
         assert!(field.err_message().is_none());
-        assert_eq!(field.display(), "");
     }
 
     #[test]

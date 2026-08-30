@@ -120,16 +120,10 @@ pub struct DeleteRefreshTarget {
 
 #[derive(Debug, Clone)]
 pub(crate) struct PendingPreview {
-    result: Arc<QueryResult>,
-    generation: u64,
-    target_page: Option<usize>,
-    highlight: bool,
-}
-
-impl PendingPreview {
-    pub(crate) fn into_parts(self) -> (Arc<QueryResult>, Option<usize>, bool) {
-        (self.result, self.target_page, self.highlight)
-    }
+    pub(crate) result: Arc<QueryResult>,
+    pub(crate) generation: u64,
+    pub(crate) target_page: Option<usize>,
+    pub(crate) highlight: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -153,6 +147,13 @@ impl QueryExecution {
         self.start_time = Some(now);
         self.pending_preview = None;
         self.run.begin()
+    }
+
+    #[must_use]
+    pub fn begin_non_preview_running(&mut self, now: Instant) -> u64 {
+        let run_id = self.begin_running(now);
+        self.post_delete_row_selection = PostDeleteRowSelection::Keep;
+        run_id
     }
 
     pub fn mark_idle(&mut self) {

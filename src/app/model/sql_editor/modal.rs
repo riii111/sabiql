@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::Instant;
 
-use crate::domain::{CommandTag, MySqlDiagnostic};
+use crate::domain::{CommandTag, DatabaseDiagnostic};
 use crate::model::shared::async_run::AsyncRun;
 use crate::model::shared::multi_line_input::MultiLineInputState;
 use crate::model::shared::text_input::{TextInputLike, TextInputState};
@@ -47,7 +47,7 @@ pub struct AdhocSuccessSnapshot {
     pub command_tag: Option<CommandTag>,
     pub row_count: usize,
     pub execution_time_ms: u64,
-    pub mysql_diagnostics: Vec<MySqlDiagnostic>,
+    pub mysql_diagnostics: Vec<DatabaseDiagnostic>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -89,7 +89,6 @@ pub struct SqlModalContext {
     prefetch_queue: VecDeque<String>,
     prefetching_tables: HashSet<String>,
     failed_prefetch_tables: HashMap<String, FailedPrefetchEntry>,
-    pub(crate) prefetch_started: bool,
     prefetch_tracks_er: bool,
     pub(crate) prefetch_run: AsyncRun,
     active_tab: SqlModalTab,
@@ -107,7 +106,6 @@ impl SqlModalContext {
     // ── Prefetch lifecycle ──────────────────────────────────────────
 
     pub fn reset_prefetch(&mut self) {
-        self.prefetch_started = false;
         self.prefetch_queue.clear();
         self.prefetching_tables.clear();
         self.failed_prefetch_tables.clear();
@@ -116,12 +114,11 @@ impl SqlModalContext {
     }
 
     #[must_use]
-    pub fn begin_prefetch(&mut self) -> u64 {
+    pub fn begin_er_prefetch(&mut self) -> u64 {
         if self.prefetch_run.active_id().is_some() && !self.prefetch_tracks_er {
             // Responses from the replaced completion run are stale and will be discarded.
             self.prefetching_tables.clear();
         }
-        self.prefetch_started = true;
         self.prefetch_tracks_er = true;
         self.prefetch_queue.clear();
         self.failed_prefetch_tables.clear();
@@ -130,7 +127,6 @@ impl SqlModalContext {
 
     #[must_use]
     pub fn begin_completion_prefetch(&mut self) -> u64 {
-        self.prefetch_started = true;
         self.prefetch_tracks_er = false;
         self.prefetch_queue.clear();
         self.failed_prefetch_tables.clear();
@@ -142,14 +138,9 @@ impl SqlModalContext {
     }
 
     pub fn invalidate_prefetch(&mut self) {
-        self.prefetch_started = false;
         self.prefetch_tracks_er = false;
         self.prefetching_tables.clear();
         self.prefetch_run.clear_active();
-    }
-
-    pub fn is_prefetch_started(&self) -> bool {
-        self.prefetch_started
     }
 
     pub fn has_pending_prefetch(&self) -> bool {
@@ -281,20 +272,6 @@ impl SqlModalContext {
 
     pub fn status(&self) -> &SqlModalStatus {
         &self.status
-    }
-
-    pub fn last_adhoc_error(&self) -> Option<&str> {
-        match &self.status {
-            SqlModalStatus::Error(error) => Some(error),
-            _ => None,
-        }
-    }
-
-    pub fn last_adhoc_success(&self) -> Option<&AdhocSuccessSnapshot> {
-        match &self.status {
-            SqlModalStatus::Success(snapshot) => Some(snapshot),
-            _ => None,
-        }
     }
 
     pub fn active_tab(&self) -> SqlModalTab {
@@ -502,7 +479,7 @@ mod tests {
             assert_eq!(ctx.editor.cursor(), 0);
             assert_eq!(ctx.status, SqlModalStatus::Normal);
             assert!(!ctx.completion.visible);
-            assert!(!ctx.is_prefetch_started());
+            assert!(ctx.active_prefetch_run_id().is_none());
         }
 
         #[test]
@@ -531,7 +508,7 @@ mod tests {
         #[test]
         fn reset_clears_all_state() {
             let mut ctx = SqlModalContext::default();
-            let _ = ctx.begin_prefetch();
+            let _ = ctx.begin_er_prefetch();
             ctx.queue_table_prefetch("public.users".to_string());
             ctx.start_table_prefetch("public.posts".to_string());
             ctx.fail_table_prefetch(
@@ -545,7 +522,7 @@ mod tests {
 
             ctx.reset_prefetch();
 
-            assert!(!ctx.is_prefetch_started());
+            assert!(ctx.active_prefetch_run_id().is_none());
             assert!(!ctx.has_pending_prefetch());
             assert_eq!(ctx.prefetch_in_flight_count(), 0);
             assert!(ctx.failed_prefetch("public.failed").is_none());
@@ -779,26 +756,20 @@ mod tests {
             };
             ctx.finish_adhoc_success(snapshot.clone());
             assert!(matches!(
-                &ctx.status,
+                ctx.status(),
                 SqlModalStatus::Success(payload) if payload == &snapshot
             ));
-            assert!(ctx.last_adhoc_success().is_some());
-            assert!(ctx.last_adhoc_error().is_none());
 
             ctx.finish_adhoc_error("syntax error".to_string());
 
             assert!(matches!(
-                &ctx.status,
+                ctx.status(),
                 SqlModalStatus::Error(error) if error == "syntax error"
             ));
-            assert!(ctx.last_adhoc_success().is_none());
-            assert_eq!(ctx.last_adhoc_error(), Some("syntax error"));
 
             ctx.enter_normal();
 
-            assert_eq!(ctx.status, SqlModalStatus::Normal);
-            assert!(ctx.last_adhoc_success().is_none());
-            assert!(ctx.last_adhoc_error().is_none());
+            assert_eq!(ctx.status(), &SqlModalStatus::Normal);
         }
     }
 

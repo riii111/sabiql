@@ -1,7 +1,6 @@
 use std::time::Instant;
 
-use crate::cmd::effect::Effect;
-use crate::domain::{RefreshScope, WriteDiagnostic};
+use crate::domain::{DatabaseDiagnostic, DiagnosticLevel, RefreshScope};
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::{DeleteRefreshTarget, PostDeleteRowSelection};
 use crate::model::shared::confirm_dialog::ConfirmIntent;
@@ -16,7 +15,6 @@ use crate::policy::write::write_guardrails::{
     ColumnDiff, RiskLevel, TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
 };
 use crate::policy::write::write_update::escape_preview_value;
-use crate::ports::outbound::{AccessMode, DbOperationError};
 use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::browse::query::{
@@ -179,7 +177,7 @@ pub fn reduce_write(
 ) -> DispatchResult {
     match action {
         Action::SubmitCellEditWrite => {
-            if reject_pending_mysql_connection_probe(state, now) {
+            if reject_pending_mysql_connection_probe(state) {
                 return DispatchResult::handled();
             }
             if !state.result_interaction.staged_delete_rows().is_empty() {
@@ -191,56 +189,28 @@ pub fn reduce_write(
                             result.target_row,
                             staged_count,
                         );
-                        return open_write_preview_confirm(state, &result.preview, now);
+                        return open_write_preview_confirm(state, &result.preview);
                     }
                     Err(err) => {
-                        state.messages.set_error_at(err.to_string(), now);
+                        state.messages.set_error(err.to_string());
                         return DispatchResult::handled();
                     }
                 }
             }
 
             if state.query.is_running() {
-                state.messages.set_error_at(
-                    EditGuardrailError::WriteUnavailableWhileQueryRunning.to_string(),
-                    now,
-                );
+                state
+                    .messages
+                    .set_error(EditGuardrailError::WriteUnavailableWhileQueryRunning.to_string());
                 return DispatchResult::handled();
             }
 
             match build_update_preview(state, services) {
-                Ok(preview) => open_write_preview_confirm(state, &preview, now),
+                Ok(preview) => open_write_preview_confirm(state, &preview),
                 Err(err) => {
-                    state.messages.set_error_at(err.to_string(), now);
+                    state.messages.set_error(err.to_string());
                     DispatchResult::handled()
                 }
-            }
-        }
-
-        Action::ExecuteWrite(query) => {
-            if reject_pending_mysql_connection_probe(state, now) {
-                return DispatchResult::handled();
-            }
-            if state.session.is_read_only() {
-                state.messages.set_error_at(
-                    "Read-only mode: write operations are disabled".to_string(),
-                    now,
-                );
-                return DispatchResult::handled();
-            }
-            if let Some(dsn) = state.session.dsn().map(String::from) {
-                let run_id = state.query.begin_running(now);
-                DispatchResult::handled_with(vec![Effect::ExecuteWrite {
-                    dsn,
-                    run_id,
-                    query: query.clone(),
-                    access_mode: AccessMode::from_read_only(state.session.is_read_only()),
-                }])
-            } else {
-                state
-                    .messages
-                    .set_error_at("No active connection".to_string(), now);
-                DispatchResult::handled()
             }
         }
 
@@ -271,13 +241,10 @@ pub fn reduce_write(
                             now,
                         );
                     } else {
-                        state.messages.set_error_at(
-                            write_message_with_diagnostics(
-                                format!("UPDATE expected 1 row, but affected {affected_rows} rows"),
-                                diagnostics,
-                            ),
-                            now,
-                        );
+                        state.messages.set_error(write_message_with_diagnostics(
+                            format!("UPDATE expected 1 row, but affected {affected_rows} rows"),
+                            diagnostics,
+                        ));
                     }
 
                     state.result_interaction.clear_cell_edit();
@@ -313,19 +280,16 @@ pub fn reduce_write(
                             now,
                         );
                     } else {
-                        state.messages.set_error_at(
-                            write_message_with_diagnostics(
-                                format!(
-                                    "DELETE expected {} {}, but affected {} {}",
-                                    expected,
-                                    row_word(expected),
-                                    affected_rows,
-                                    row_word(*affected_rows),
-                                ),
-                                diagnostics,
+                        state.messages.set_error(write_message_with_diagnostics(
+                            format!(
+                                "DELETE expected {} {}, but affected {} {}",
+                                expected,
+                                row_word(expected),
+                                affected_rows,
+                                row_word(*affected_rows),
                             ),
-                            now,
-                        );
+                            diagnostics,
+                        ));
                     }
                     state.result_interaction.clear_cell_edit();
                     state.result_interaction.clear_staged_deletes();
@@ -354,13 +318,12 @@ pub fn reduce_write(
             }
 
             state.query.mark_idle();
-            let refresh_scope = match error {
-                DbOperationError::QueryFailedAfterChange { refresh_scope, .. } => *refresh_scope,
-                _ => RefreshScope::None,
-            };
+            let refresh_scope = error
+                .post_change_refresh_scope()
+                .unwrap_or(RefreshScope::None);
             let operation = state.result_interaction.complete_write_failure();
             state.query.clear_delete_refresh_target();
-            state.messages.set_error_at(error.user_message(), now);
+            state.messages.set_error(error.user_message());
             if refresh_scope == RefreshScope::None {
                 state.modal.set_mode(match operation {
                     WriteOperation::Update => InputMode::CellEdit,
@@ -379,29 +342,32 @@ pub fn reduce_write(
     }
 }
 
-fn write_message_with_diagnostics(message: String, diagnostics: &[WriteDiagnostic]) -> String {
+fn write_message_with_diagnostics(message: String, diagnostics: &[DatabaseDiagnostic]) -> String {
     if diagnostics.is_empty() {
         return message;
     }
 
     let details = diagnostics
         .iter()
-        .map(WriteDiagnostic::display_message)
+        .map(write_diagnostic_message)
         .collect::<Vec<_>>()
         .join("; ");
     format!("{message}; {details}")
 }
 
-fn open_write_preview_confirm(
-    state: &mut AppState,
-    preview: &WritePreview,
-    now: Instant,
-) -> DispatchResult {
+fn write_diagnostic_message(diagnostic: &DatabaseDiagnostic) -> String {
+    let level = match diagnostic.level {
+        DiagnosticLevel::Warning => "Warning",
+        DiagnosticLevel::Note => "Note",
+    };
+    format!("{level} (Code {}): {}", diagnostic.code, diagnostic.message)
+}
+
+fn open_write_preview_confirm(state: &mut AppState, preview: &WritePreview) -> DispatchResult {
     if state.session.is_read_only() {
-        state.messages.set_error_at(
-            "Read-only mode: write operations are disabled".to_string(),
-            now,
-        );
+        state
+            .messages
+            .set_error("Read-only mode: write operations are disabled".to_string());
         return DispatchResult::handled();
     }
     state.result_interaction.set_write_preview(preview.clone());
@@ -444,12 +410,13 @@ fn open_write_preview_confirm(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cmd::effect::Effect;
     use crate::test_support;
     use crate::update::test_fixtures;
 
     use crate::domain::connection::ConnectionId;
     use crate::domain::{
-        ColumnAttributes, DatabaseType, QueryResult, QuerySource, QueryValue, WriteDiagnosticLevel,
+        ColumnAttributes, DatabaseType, DiagnosticLevel, QueryResult, QuerySource, QueryValue,
     };
     use crate::model::browse::query_execution::{
         DeleteRefreshTarget, PREVIEW_PAGE_SIZE, PostDeleteRowSelection,
@@ -470,7 +437,7 @@ mod tests {
     fn write_succeeded_action_with_diagnostics(
         state: &mut AppState,
         affected_rows: usize,
-        diagnostics: Vec<WriteDiagnostic>,
+        diagnostics: Vec<DatabaseDiagnostic>,
     ) -> Action {
         let dsn = state
             .session
@@ -1418,8 +1385,8 @@ mod tests {
             let action = write_succeeded_action_with_diagnostics(
                 &mut state,
                 1,
-                vec![WriteDiagnostic {
-                    level: WriteDiagnosticLevel::Warning,
+                vec![DatabaseDiagnostic {
+                    level: DiagnosticLevel::Warning,
                     code: 1265,
                     message: "Data truncated".to_string(),
                 }],
@@ -1466,6 +1433,7 @@ mod tests {
         #[test]
         fn execute_write_failure_after_metadata_change_refreshes_and_discards_draft() {
             let mut state = editable_state();
+            let er_run_id = state.er_preparation.start_waiting_run();
             let action = write_failed_action(
                 &mut state,
                 DbOperationError::QueryFailedAfterChange {
@@ -1483,6 +1451,7 @@ mod tests {
             assert!(!state.result_interaction.cell_edit().is_active());
             assert!(state.session.table_detail().is_none());
             assert!(!state.query.is_running());
+            assert!(!state.er_preparation.is_current_run(er_run_id));
             assert!(
                 effects
                     .iter()
@@ -1572,7 +1541,7 @@ mod tests {
             state.modal.set_mode(InputMode::Normal);
             let preview = delete_preview();
 
-            let effects = open_write_preview_confirm(&mut state, &preview, Instant::now())
+            let effects = open_write_preview_confirm(&mut state, &preview)
                 .into_effects()
                 .expect("write preview should be handled");
 
@@ -1592,7 +1561,7 @@ mod tests {
             state.query.set_delete_refresh_target(0, Some(2), 3);
             let preview = delete_preview();
 
-            let effects = open_write_preview_confirm(&mut state, &preview, Instant::now())
+            let effects = open_write_preview_confirm(&mut state, &preview)
                 .into_effects()
                 .expect("write preview should be handled");
 

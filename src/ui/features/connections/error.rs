@@ -15,10 +15,6 @@ pub struct ConnectionError;
 
 impl ConnectionError {
     pub fn render(frame: &mut Frame, state: &AppState, now: Instant, theme: &ThemePalette) {
-        Self::render_at(frame, state, now, theme);
-    }
-
-    pub fn render_at(frame: &mut Frame, state: &AppState, now: Instant, theme: &ThemePalette) {
         let error_state = &state.connection_error;
         let Some(error_info) = error_state.error_info() else {
             return;
@@ -99,7 +95,7 @@ impl ConnectionError {
             Span::styled(hint, Style::default().fg(theme.semantic.text.secondary)),
         ];
         if state.session.is_service_connection()
-            && state.connection_error.target_database_type().is_none()
+            && !state.connection_error.has_destination()
             && let Some(path) = state.runtime.service_file_path()
         {
             spans.push(Span::styled(

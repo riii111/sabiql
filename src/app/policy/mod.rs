@@ -1,3 +1,4 @@
+pub mod column;
 pub mod feature_policy;
 pub mod json;
 pub(crate) mod password_masking;

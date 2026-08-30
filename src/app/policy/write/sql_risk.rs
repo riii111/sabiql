@@ -7,6 +7,10 @@ use crate::domain::{
         has_mysql_read_only_side_effect, split_mysql_statements,
         statement_contains_unsupported_mysql_control,
     },
+    sql_lex::{
+        advance_single_quote, skip_block_comment, skip_double_quoted_identifier, skip_line_comment,
+        skip_sqlite_quoted_identifier,
+    },
     sqlite_sql::{
         SqliteStatementClassification, SqliteTransactionPolicy, parse_sqlite_pragma,
         split_sqlite_statements, sqlite_statement_classification,
@@ -14,10 +18,8 @@ use crate::domain::{
     },
 };
 use crate::policy::sql::statement_classifier::{
-    StatementKind, advance_single_quote, classify, collect_top_level_tokens, drop_subtype,
-    extract_target_name, first_keyword, skip_block_comment, skip_dollar_quoted_string,
-    skip_double_quoted_identifier, skip_line_comment, skip_sqlite_quoted_identifier,
-    statement_after_leading_ctes,
+    StatementKind, classify, collect_top_level_tokens, drop_subtype, extract_target_name,
+    first_keyword, skip_dollar_quoted_string, statement_after_leading_ctes,
 };
 
 // Why the statement cannot be confirmed via typed target name.
@@ -120,7 +122,7 @@ fn mysql_statement_risk(statement: &MySqlStatement) -> SqlRiskDecision {
     }
 }
 
-pub fn mysql_statement_label(kind: &MySqlStatementKind) -> &'static str {
+fn mysql_statement_label(kind: &MySqlStatementKind) -> &'static str {
     match kind {
         MySqlStatementKind::Select => "SELECT",
         MySqlStatementKind::Table => "TABLE",
@@ -152,13 +154,6 @@ pub fn mysql_statement_label(kind: &MySqlStatementKind) -> &'static str {
         MySqlStatementKind::RollbackToSavepoint => "ROLLBACK TO SAVEPOINT",
         MySqlStatementKind::ReleaseSavepoint => "RELEASE SAVEPOINT",
     }
-}
-
-pub fn evaluate_mysql_multi_statement(
-    sql: &str,
-    selected_database: Option<&str>,
-) -> MultiStatementDecision<MySqlStatement> {
-    evaluate_mysql_multi_statement_with_lower_case_table_names(sql, selected_database, 0)
 }
 
 pub fn evaluate_mysql_multi_statement_with_lower_case_table_names(
@@ -282,11 +277,6 @@ fn contains_cli_meta_command(database_type: DatabaseType, sql: &str) -> bool {
     }
 
     false
-}
-
-pub fn split_statements(sql: &str) -> Vec<String> {
-    split_statements_for_database(DatabaseType::PostgreSQL, sql)
-        .expect("PostgreSQL statement splitting is infallible")
 }
 
 pub fn split_statements_for_database(
@@ -419,11 +409,6 @@ fn high_acknowledge(kind: &StatementKind) -> SqlRiskDecision {
     }
 }
 
-pub fn evaluate_sql_risk(kind: &StatementKind, sql: &str) -> SqlRiskDecision {
-    evaluate_sql_risk_for_database(DatabaseType::PostgreSQL, kind, sql)
-        .expect("PostgreSQL SQL risk evaluation is supported")
-}
-
 pub fn evaluate_sql_risk_for_database(
     database_type: DatabaseType,
     kind: &StatementKind,
@@ -524,10 +509,6 @@ pub fn evaluate_mysql_explain_analyze_target(sql: &str) -> Option<SqlRiskDecisio
     Some(risk)
 }
 
-pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
-    evaluate_multi_statement_for_database(DatabaseType::PostgreSQL, sql)
-}
-
 pub fn evaluate_multi_statement_for_database(
     database_type: DatabaseType,
     sql: &str,
@@ -541,7 +522,11 @@ pub fn evaluate_multi_statement_for_database_with_context(
     sql: &str,
 ) -> MultiStatementDecision {
     if database_type == DatabaseType::MySQL {
-        return match evaluate_mysql_multi_statement(sql, selected_database) {
+        return match evaluate_mysql_multi_statement_with_lower_case_table_names(
+            sql,
+            selected_database,
+            0,
+        ) {
             MultiStatementDecision::Allow { statements, risk } => MultiStatementDecision::Allow {
                 statements: statements
                     .into_iter()
@@ -585,9 +570,11 @@ pub fn evaluate_multi_statement_for_database_with_context(
         decisions.push(decision);
     }
 
-    let has_table_name_input = decisions
+    let table_name_input_count = decisions
         .iter()
-        .any(|d| matches!(d.confirmation, ConfirmationType::TableNameInput { .. }));
+        .filter(|d| matches!(d.confirmation, ConfirmationType::TableNameInput { .. }))
+        .count();
+    let has_table_name_input = table_name_input_count > 0;
     let ack_reasons: Vec<&AcknowledgeReason> = decisions
         .iter()
         .filter_map(|d| match &d.confirmation {
@@ -629,6 +616,7 @@ pub fn evaluate_multi_statement_for_database_with_context(
     if (has_table_name_input && has_acknowledge)
         || mixed_ack_reasons
         || has_non_transaction_acknowledge
+        || table_name_input_count > 1
         || (transaction_policy.requires_acknowledgement() && has_table_name_input)
     {
         return MultiStatementDecision::Block {
@@ -905,6 +893,20 @@ fn evaluate_sqlite_specific_risk(sql: &str) -> Option<SqlRiskDecision> {
 mod tests {
     use super::*;
     use rstest::rstest;
+
+    fn split_statements(sql: &str) -> Vec<String> {
+        split_statements_for_database(DatabaseType::PostgreSQL, sql)
+            .expect("PostgreSQL statement splitting is infallible")
+    }
+
+    fn evaluate_sql_risk(kind: &StatementKind, sql: &str) -> SqlRiskDecision {
+        evaluate_sql_risk_for_database(DatabaseType::PostgreSQL, kind, sql)
+            .expect("PostgreSQL SQL risk evaluation is supported")
+    }
+
+    fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
+        evaluate_multi_statement_for_database(DatabaseType::PostgreSQL, sql)
+    }
 
     mod split_statements_tests {
         use super::*;
@@ -1464,17 +1466,36 @@ mod tests {
             }
 
             #[test]
-            fn multiple_high_uses_first_target() {
+            fn multiple_high_targets_are_blocked() {
                 let result = evaluate_multi_statement("DROP TABLE a; DROP TABLE b");
+                assert!(matches!(
+                    result,
+                    MultiStatementDecision::Block { reason }
+                        if reason == "Statements require different confirmations; run them separately"
+                ));
+            }
+
+            #[rstest]
+            #[case::postgres(DatabaseType::PostgreSQL)]
+            #[case::sqlite(DatabaseType::SQLite)]
+            fn high_and_medium_risk_use_single_target_confirmation(
+                #[case] database_type: DatabaseType,
+            ) {
+                let result = evaluate_multi_statement_for_database(
+                    database_type,
+                    "DROP TABLE users; UPDATE items SET value = 1 WHERE id = 1",
+                );
+
                 match result {
                     MultiStatementDecision::Allow { risk, .. } => {
                         assert_eq!(risk.risk_level, RiskLevel::High);
+                        assert!(!risk.read_only_allowed);
                         assert!(matches!(
                             risk.confirmation,
                             ConfirmationType::TableNameInput {
                                 ref target,
                                 label: "DROP",
-                            } if target == "a"
+                            } if target == "users"
                         ));
                     }
                     _ => panic!("expected Allow"),
@@ -1909,29 +1930,16 @@ mod tests {
                 use super::*;
 
                 #[test]
-                fn sqlite_multiple_high_drops_use_first_confirmation() {
+                fn sqlite_multiple_high_drops_are_blocked() {
                     let result = evaluate_multi_statement_for_database(
                         DatabaseType::SQLite,
                         "DROP INDEX my_index; DROP VIEW my_view",
                     );
-                    match result {
-                        MultiStatementDecision::Allow { statements, risk } => {
-                            assert_eq!(
-                                statements,
-                                vec!["DROP INDEX my_index", "DROP VIEW my_view"]
-                            );
-                            assert_eq!(risk.risk_level, RiskLevel::High);
-                            assert!(!risk.read_only_allowed);
-                            assert!(matches!(
-                                risk.confirmation,
-                                ConfirmationType::TableNameInput {
-                                    ref target,
-                                    label: "DROP INDEX",
-                                } if target == "my_index"
-                            ));
-                        }
-                        _ => panic!("expected Allow"),
-                    }
+                    assert!(matches!(
+                        result,
+                        MultiStatementDecision::Block { reason }
+                            if reason == "Statements require different confirmations; run them separately"
+                    ));
                 }
 
                 #[test]
@@ -2046,6 +2054,15 @@ mod mysql_tests {
             }
             MultiStatementDecision::Block { reason } => panic!("unexpected block: {reason}"),
         }
+    }
+
+    #[test]
+    fn multiple_destructive_targets_are_blocked() {
+        assert!(matches!(
+            mysql("DROP TABLE a; DROP TABLE b"),
+            MultiStatementDecision::Block { reason }
+                if reason == "MySQL statements require separate destructive confirmations"
+        ));
     }
 
     #[test]

@@ -20,12 +20,7 @@ pub(super) fn reduce_confirm_dialog(
             direction,
             amount: ScrollAmount::Line,
         } => {
-            let max_scroll = state.confirm_dialog.max_scroll() as usize;
-            state.confirm_dialog.preview_scroll = direction.clamp_vertical_offset(
-                state.confirm_dialog.preview_scroll as usize,
-                max_scroll,
-                1,
-            ) as u16;
+            state.confirm_dialog.scroll_preview(*direction);
             DispatchResult::handled()
         }
         Action::ConfirmDialogConfirm => {
@@ -35,7 +30,7 @@ pub(super) fn reduce_confirm_dialog(
             match intent {
                 Some(ConfirmIntent::QuitNoConnection) => {
                     state.should_quit = true;
-                    DispatchResult::handled_with(vec![Effect::CancelActiveTasks])
+                    DispatchResult::handled_with(vec![Effect::CancelTrackedTasks])
                 }
                 Some(ConfirmIntent::DeleteConnection(id)) => {
                     DispatchResult::handled_with(vec![Effect::DeleteConnection { id }])
@@ -49,13 +44,13 @@ pub(super) fn reduce_confirm_dialog(
                     sql,
                     blocked: false,
                 }) => {
-                    if reject_pending_mysql_connection_probe(state, now) {
+                    if reject_pending_mysql_connection_probe(state) {
                         state.result_interaction.clear_write_preview();
                         state.query.clear_delete_refresh_target();
                         return DispatchResult::handled();
                     }
                     if let Some(dsn) = state.session.dsn().map(String::from) {
-                        let run_id = state.query.begin_running(now);
+                        let run_id = state.query.begin_non_preview_running(now);
                         DispatchResult::handled_with(vec![Effect::ExecuteWrite {
                             dsn,
                             run_id,
@@ -65,9 +60,7 @@ pub(super) fn reduce_confirm_dialog(
                     } else {
                         state.result_interaction.clear_write_preview();
                         state.query.clear_delete_refresh_target();
-                        state
-                            .messages
-                            .set_error_at("No active connection".to_string(), now);
+                        state.messages.set_error("No active connection".to_string());
                         DispatchResult::handled()
                     }
                 }
@@ -82,12 +75,12 @@ pub(super) fn reduce_confirm_dialog(
                     file_name,
                     row_count,
                 }) => {
-                    if reject_pending_mysql_connection_probe(state, now) {
+                    if reject_pending_mysql_connection_probe(state) {
                         return DispatchResult::handled();
                     }
-                    if state.session.dsn() == Some(dsn.as_str())
-                        && state.query.is_current_run(run_id)
-                    {
+                    if state.is_stale_query_run(&dsn, run_id) {
+                        DispatchResult::handled()
+                    } else {
                         DispatchResult::handled_with(vec![Effect::ExportCsv {
                             dsn,
                             run_id,
@@ -95,8 +88,6 @@ pub(super) fn reduce_confirm_dialog(
                             file_name,
                             row_count,
                         }])
-                    } else {
-                        DispatchResult::handled()
                     }
                 }
                 Some(ConfirmIntent::CsvExportCached {
@@ -106,12 +97,12 @@ pub(super) fn reduce_confirm_dialog(
                     row_count,
                     snapshot,
                 }) => {
-                    if reject_pending_mysql_connection_probe(state, now) {
+                    if reject_pending_mysql_connection_probe(state) {
                         return DispatchResult::handled();
                     }
-                    if state.session.dsn() == Some(dsn.as_str())
-                        && state.query.is_current_run(run_id)
-                    {
+                    if state.is_stale_query_run(&dsn, run_id) {
+                        DispatchResult::handled()
+                    } else {
                         DispatchResult::handled_with(vec![Effect::ExportCsvFromCache {
                             dsn,
                             run_id,
@@ -120,8 +111,6 @@ pub(super) fn reduce_confirm_dialog(
                             values: snapshot.values,
                             row_count,
                         }])
-                    } else {
-                        DispatchResult::handled()
                     }
                 }
                 None => DispatchResult::handled(),
@@ -133,9 +122,7 @@ pub(super) fn reduce_confirm_dialog(
                 Some(
                     ConfirmIntent::CsvExportRerunnable { dsn, run_id, .. }
                     | ConfirmIntent::CsvExportCached { dsn, run_id, .. },
-                ) => {
-                    state.session.dsn() == Some(dsn.as_str()) && state.query.is_current_run(*run_id)
-                }
+                ) => !state.is_stale_query_run(dsn, *run_id),
                 _ => false,
             };
             state.result_interaction.clear_write_preview();

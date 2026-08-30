@@ -8,16 +8,14 @@ use tokio::time::timeout;
 use uuid::Uuid;
 
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
-use crate::domain::{MySqlDiagnostic, QueryValue};
+use crate::domain::{DatabaseDiagnostic, QueryValue};
 
 use super::super::args::mysql_metadata_args;
 use super::super::error::{
     classify_mysql_query_failure, has_mysql_cli_error, is_mysql_batch_diagnostic,
     map_mysql_cli_spawn_error,
 };
-use super::super::policy::{
-    MYSQL_SESSION_MARKER_COLUMN, MySqlMetadataFallbackKind, mysql_metadata_select_query,
-};
+use super::super::policy::{MySqlMetadataFallbackKind, mysql_metadata_select_query};
 use super::super::probe::{run_mysql_command_with_timeout, validate_sql_mode};
 use super::super::sanitize_mysql_command_environment;
 use super::{
@@ -25,27 +23,13 @@ use super::{
     read_one_mysql_resultset_with_diagnostics, write_mysql_statement,
 };
 
-pub(in crate::adapters::mysql) async fn mysql_metadata_columns(
+pub(in crate::adapters::mysql::cli) async fn mysql_metadata_columns_with_diagnostics(
     process: &mut MySqlProcess,
     option_file: &std::path::Path,
     query: &str,
     kind: MySqlMetadataFallbackKind,
     access_mode: AccessMode,
-) -> Result<Vec<String>, DbOperationError> {
-    Ok(
-        mysql_metadata_columns_with_diagnostics(process, option_file, query, kind, access_mode)
-            .await?
-            .0,
-    )
-}
-
-pub(super) async fn mysql_metadata_columns_with_diagnostics(
-    process: &mut MySqlProcess,
-    option_file: &std::path::Path,
-    query: &str,
-    kind: MySqlMetadataFallbackKind,
-    access_mode: AccessMode,
-) -> Result<(Vec<String>, Vec<MySqlDiagnostic>), DbOperationError> {
+) -> Result<(Vec<String>, Vec<DatabaseDiagnostic>), DbOperationError> {
     let query = match kind {
         MySqlMetadataFallbackKind::Select | MySqlMetadataFallbackKind::Table => {
             return mysql_metadata_select_columns_with_diagnostics(process, query).await;
@@ -55,7 +39,13 @@ pub(super) async fn mysql_metadata_columns_with_diagnostics(
         }
     };
     Ok((
-        mysql_metadata_columns_external(option_file, &query, access_mode).await?,
+        mysql_metadata_columns_external_with_program(
+            OsStr::new("mysql"),
+            option_file,
+            &query,
+            access_mode,
+        )
+        .await?,
         Vec::new(),
     ))
 }
@@ -63,7 +53,7 @@ pub(super) async fn mysql_metadata_columns_with_diagnostics(
 async fn mysql_metadata_select_columns_with_diagnostics(
     process: &mut MySqlProcess,
     query: &str,
-) -> Result<(Vec<String>, Vec<MySqlDiagnostic>), DbOperationError> {
+) -> Result<(Vec<String>, Vec<DatabaseDiagnostic>), DbOperationError> {
     let suffix = Uuid::new_v4().simple().to_string();
     let source_alias = format!("__sabiql_metadata_source_{suffix}");
     let marker_alias = format!("__sabiql_metadata_marker_{suffix}");
@@ -100,20 +90,6 @@ async fn mysql_metadata_select_columns_with_diagnostics(
     Ok((result.columns, diagnostics))
 }
 
-async fn mysql_metadata_columns_external(
-    option_file: &std::path::Path,
-    query: &str,
-    access_mode: AccessMode,
-) -> Result<Vec<String>, DbOperationError> {
-    mysql_metadata_columns_external_with_program(
-        OsStr::new("mysql"),
-        option_file,
-        query,
-        access_mode,
-    )
-    .await
-}
-
 pub(super) async fn mysql_metadata_columns_external_with_program(
     program: &OsStr,
     option_file: &std::path::Path,
@@ -121,7 +97,13 @@ pub(super) async fn mysql_metadata_columns_external_with_program(
     access_mode: AccessMode,
 ) -> Result<Vec<String>, DbOperationError> {
     if access_mode.is_read_only() {
-        return run_mysql_metadata_query_with_read_only_session(program, option_file, query).await;
+        return run_mysql_metadata_query_with_read_only_session_with_timeout(
+            program,
+            option_file,
+            query,
+            MYSQL_QUERY_TIMEOUT,
+        )
+        .await;
     }
 
     let mut args = mysql_metadata_args(option_file);
@@ -227,20 +209,6 @@ async fn cleanup_mysql_metadata_process(process: &mut MySqlMetadataProcess) {
     let _ = finish_mysql_pipe(&mut process.stdout, &mut process.stderr, &mut process.child).await;
 }
 
-async fn run_mysql_metadata_query_with_read_only_session(
-    program: &OsStr,
-    option_file: &std::path::Path,
-    query: &str,
-) -> Result<Vec<String>, DbOperationError> {
-    run_mysql_metadata_query_with_read_only_session_with_timeout(
-        program,
-        option_file,
-        query,
-        MYSQL_QUERY_TIMEOUT,
-    )
-    .await
-}
-
 pub(super) async fn run_mysql_metadata_query_with_read_only_session_with_timeout(
     program: &OsStr,
     option_file: &std::path::Path,
@@ -280,9 +248,7 @@ async fn run_mysql_metadata_query_with_read_only_session_process(
         .write_statement(super::MYSQL_READ_ONLY_STATEMENT)
         .await?;
     process
-        .write_statement(&format!(
-            "SELECT '{session_marker}' AS {MYSQL_SESSION_MARKER_COLUMN}, @@SESSION.sql_mode AS __sabiql_sql_mode"
-        ))
+        .write_statement(&super::mysql_session_probe_query(&session_marker))
         .await?;
     let session_output = process.read_until_marker(&session_marker).await?;
     validate_metadata_session_probe(&session_output, &session_marker)?;

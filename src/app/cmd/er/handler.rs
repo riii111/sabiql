@@ -13,8 +13,7 @@ use crate::domain::{DatabaseMetadata, ErTableInfo, TableSignatureSnapshot};
 use crate::model::app_state::AppState;
 use crate::ports::outbound::{ConfigWriter, ErDiagramExporter, ErLogWriter, MetadataProvider};
 use crate::update::action::{
-    Action, ErDiagramError, ErDiagramFailure, ErLogError, SmartErRefreshError,
-    SmartErRefreshFetched, SmartErRefreshResult,
+    Action, SmartErRefreshError, SmartErRefreshFetched, SmartErRefreshResult,
 };
 
 struct GenerateErDiagramRequest {
@@ -28,7 +27,6 @@ struct GenerateErDiagramRequest {
 pub async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
-    metadata_provider: &Arc<dyn MetadataProvider>,
     er_exporter: &Arc<dyn ErDiagramExporter>,
     config_writer: &Arc<dyn ConfigWriter>,
     er_log_writer: &Arc<dyn ErLogWriter>,
@@ -71,10 +69,6 @@ pub async fn run(
             )
             .await
         }
-        Effect::SmartErRefresh { dsn, run_id } => {
-            handle_smart_refresh(action_tx, metadata_provider, dsn, run_id);
-            Ok(())
-        }
         Effect::SmartErRefreshCacheAndDiff {
             dsn,
             run_id,
@@ -97,6 +91,57 @@ pub async fn run(
     }
 }
 
+pub fn smart_refresh_task(
+    action_tx: mpsc::Sender<Action>,
+    metadata_provider: Arc<dyn MetadataProvider>,
+    dsn: String,
+    run_id: u64,
+) -> impl Future<Output = ()> + Send + 'static {
+    let tx = action_tx;
+
+    async move {
+        let new_metadata = match metadata_provider.fetch_metadata(&dsn).await {
+            Ok(m) => m,
+            Err(e) => {
+                tx.send(Action::SmartErRefreshFailed(SmartErRefreshError {
+                    dsn,
+                    run_id,
+                    error: e,
+                    new_metadata: None,
+                }))
+                .await
+                .ok();
+                return;
+            }
+        };
+
+        let signature_snapshot = match metadata_provider.fetch_table_signatures(&dsn).await {
+            Ok(s) => s,
+            Err(e) => {
+                let new_metadata = Arc::new(new_metadata);
+                tx.send(Action::SmartErRefreshFailed(SmartErRefreshError {
+                    dsn,
+                    run_id,
+                    error: e,
+                    new_metadata: Some(Arc::clone(&new_metadata)),
+                }))
+                .await
+                .ok();
+                return;
+            }
+        };
+
+        tx.send(Action::SmartErRefreshFetched(SmartErRefreshFetched {
+            dsn,
+            run_id,
+            new_metadata: Arc::new(new_metadata),
+            signature_snapshot: Arc::new(signature_snapshot),
+        }))
+        .await
+        .ok();
+    }
+}
+
 async fn handle_generate_diagram(
     action_tx: &mpsc::Sender<Action>,
     er_exporter: &Arc<dyn ErDiagramExporter>,
@@ -114,10 +159,10 @@ async fn handle_generate_diagram(
     let all_tables = collect_cached_er_tables(completion_engine);
     if all_tables.is_empty() {
         action_tx
-            .send(Action::ErDiagramFailed(ErDiagramFailure {
+            .send(Action::ErDiagramFailed {
                 run_id,
-                error: ErDiagramError::NoData("No table data loaded yet".to_string()),
-            }))
+                error: "No table data loaded yet".to_string(),
+            })
             .await
             .ok();
         return Ok(());
@@ -133,12 +178,10 @@ async fn handle_generate_diagram(
 
     if tables.is_empty() {
         action_tx
-            .send(Action::ErDiagramFailed(ErDiagramFailure {
+            .send(Action::ErDiagramFailed {
                 run_id,
-                error: ErDiagramError::NoData(
-                    "Selected tables not found in cached data".to_string(),
-                ),
-            }))
+                error: "Selected tables not found in cached data".to_string(),
+            })
             .await
             .ok();
         return Ok(());
@@ -191,71 +234,19 @@ async fn handle_write_failure_log(
             let tx = action_tx.clone();
             tokio::task::spawn_blocking(move || {
                 if let Err(e) = writer.write_er_failure_log(failed_tables, cache_dir) {
-                    tx.blocking_send(Action::ErLogWriteFailed(ErLogError::Io(e.to_string())))
+                    tx.blocking_send(Action::ErLogWriteFailed(e.to_string()))
                         .ok();
                 }
             });
         }
         Err(e) => {
             action_tx
-                .send(Action::ErLogWriteFailed(ErLogError::Config(e.to_string())))
+                .send(Action::ErLogWriteFailed(e.to_string()))
                 .await
                 .ok();
         }
     }
     Ok(())
-}
-
-fn handle_smart_refresh(
-    action_tx: &mpsc::Sender<Action>,
-    metadata_provider: &Arc<dyn MetadataProvider>,
-    dsn: String,
-    run_id: u64,
-) {
-    let provider = Arc::clone(metadata_provider);
-    let tx = action_tx.clone();
-
-    tokio::spawn(async move {
-        let new_metadata = match provider.fetch_metadata(&dsn).await {
-            Ok(m) => m,
-            Err(e) => {
-                tx.send(Action::SmartErRefreshFailed(SmartErRefreshError {
-                    dsn,
-                    run_id,
-                    error: e,
-                    new_metadata: None,
-                }))
-                .await
-                .ok();
-                return;
-            }
-        };
-
-        let signature_snapshot = match provider.fetch_table_signatures(&dsn).await {
-            Ok(s) => s,
-            Err(e) => {
-                let new_metadata = Arc::new(new_metadata);
-                tx.send(Action::SmartErRefreshFailed(SmartErRefreshError {
-                    dsn,
-                    run_id,
-                    error: e,
-                    new_metadata: Some(Arc::clone(&new_metadata)),
-                }))
-                .await
-                .ok();
-                return;
-            }
-        };
-
-        tx.send(Action::SmartErRefreshFetched(SmartErRefreshFetched {
-            dsn,
-            run_id,
-            new_metadata: Arc::new(new_metadata),
-            signature_snapshot: Arc::new(signature_snapshot),
-        }))
-        .await
-        .ok();
-    });
 }
 
 async fn handle_smart_refresh_cache_and_diff(
@@ -267,17 +258,20 @@ async fn handle_smart_refresh_cache_and_diff(
     new_metadata: Arc<DatabaseMetadata>,
     signature_snapshot: Arc<TableSignatureSnapshot>,
 ) -> Result<()> {
-    if !state.session.dsn_matches(&dsn) || !state.er_preparation.is_current_run(run_id) {
+    if state.session.pending_mysql_connection_probe().is_some()
+        || !state.session.dsn_matches(&dsn)
+        || !state.er_preparation.is_current_run(run_id)
+    {
         return Ok(());
     }
 
     let TableSignatureSnapshot {
         signatures,
-        table_details,
+        prefetched_table_details,
     } = Arc::unwrap_or_clone(signature_snapshot);
     {
         let mut engine = completion_engine.borrow_mut();
-        for detail in table_details {
+        for detail in prefetched_table_details {
             engine.cache_table_detail(detail.qualified_name(), detail);
         }
     }
@@ -370,10 +364,8 @@ fn collect_cached_table_names(completion_engine: &RefCell<CompletionEngine>) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{
-        Column, ColumnAttributes, ConnectionId, DatabaseType, Table, TableKindInfo, TableSignature,
-        TableStorageAttributes,
-    };
+    use crate::domain::{ConnectionId, DatabaseType, TableSignature};
+    use crate::test_support::table;
 
     fn state_with_mysql_dsn(dsn: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
@@ -387,43 +379,13 @@ mod tests {
         state
     }
 
-    fn light_table_detail() -> Table {
-        Table {
-            schema: "app".to_string(),
-            name: "items".to_string(),
-            owner: None,
-            columns: vec![Column {
-                name: "id".to_string(),
-                data_type: "int".to_string(),
-                default: None,
-                attributes: ColumnAttributes::from_parts(false, true, false),
-                comment: None,
-                ordinal_position: 1,
-                character_set_name: None,
-                collation_name: None,
-                generation_expression: None,
-                generation_kind: None,
-            }],
-            primary_key: Some(vec!["id".to_string()]),
-            foreign_keys: Vec::new(),
-            indexes: Vec::new(),
-            rls: None,
-            triggers: Vec::new(),
-            row_count_estimate: None,
-            comment: None,
-            source_ddl: None,
-            storage_attributes: TableStorageAttributes::default(),
-            kind_info: TableKindInfo::default(),
-        }
-    }
-
     #[tokio::test]
     async fn signature_details_seed_empty_completion_cache_before_diff() {
         let dsn = "mysql://user:password@localhost:3306/app";
         let state = state_with_mysql_dsn(dsn);
         let completion_engine = RefCell::new(CompletionEngine::new());
         let (action_tx, mut action_rx) = mpsc::channel(1);
-        let table = light_table_detail();
+        let table = table::minimal("app", "items");
 
         handle_smart_refresh_cache_and_diff(
             &action_tx,
@@ -438,7 +400,7 @@ mod tests {
                     name: "items".to_string(),
                     signature: "signature".to_string(),
                 }],
-                table_details: vec![table],
+                prefetched_table_details: vec![table],
             }),
         )
         .await
@@ -450,5 +412,37 @@ mod tests {
         };
         assert!(result.added_tables.is_empty());
         assert!(result.missing_in_cache.is_empty());
+    }
+
+    #[tokio::test]
+    async fn pending_mysql_probe_drops_smart_refresh_cache_diff() {
+        let dsn = "mysql://user:password@localhost:3306/app";
+        let mut state = state_with_mysql_dsn(dsn);
+        let _ = state.session.begin_mysql_connection_probe(
+            &ConnectionId::from_string("mysql-target"),
+            "mysql-target",
+            "mysql://localhost/target",
+            Some("target"),
+        );
+        let completion_engine = RefCell::new(CompletionEngine::new());
+        let (action_tx, mut action_rx) = mpsc::channel(1);
+
+        handle_smart_refresh_cache_and_diff(
+            &action_tx,
+            &state,
+            &completion_engine,
+            dsn.to_string(),
+            1,
+            Arc::new(DatabaseMetadata::new("app".to_string())),
+            Arc::new(TableSignatureSnapshot {
+                signatures: vec![],
+                prefetched_table_details: vec![table::minimal("app", "items")],
+            }),
+        )
+        .await
+        .unwrap();
+
+        assert!(!completion_engine.borrow().has_cached_table("app.items"));
+        assert!(action_rx.try_recv().is_err());
     }
 }

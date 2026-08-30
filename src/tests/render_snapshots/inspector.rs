@@ -11,7 +11,7 @@ fn inspector_columns_narrow_pane_keeps_horizontal_scroll() {
     // Split-pane terminal: the comment column alone exceeds the pane width
     let mut terminal = create_test_terminal_sized(110, 40);
 
-    let mut table = fixtures::sample_table_detail();
+    let mut table = fixtures::sample_postgres_table_detail();
     table.columns[0].comment = Some(
         "Primary key, generated from the tenant sequence and never reused after deletion"
             .to_string(),
@@ -30,7 +30,7 @@ fn inspector_columns_narrow_pane_caps_wide_comment() {
     let mut state = harness::explorer_selected_state();
     let mut terminal = create_test_terminal_sized(110, 40);
 
-    let mut table = fixtures::sample_table_detail();
+    let mut table = fixtures::sample_postgres_table_detail();
     table.columns[0].comment = Some(
         "Primary key, generated from the tenant sequence and never reused after deletion"
             .to_string(),
@@ -54,7 +54,7 @@ fn inspector_columns_narrow_pane_right_edge_truncates_cjk_comment() {
 
     // CJK renders two cells per char; the comment must end with an ellipsis
     // instead of being clipped mid-text at the pane border
-    let mut table = fixtures::sample_table_detail();
+    let mut table = fixtures::sample_postgres_table_detail();
     table.columns[0].comment = Some(
         "ステータス（PENDING:判断待ち、APPROVED:承認済み、REJECTED:却下済み、CANCELED:取消済み）"
             .to_string(),
@@ -74,7 +74,7 @@ fn inspector_columns_marks_read_only_generated_columns() {
     let mut state = harness::explorer_selected_state();
     let mut terminal = create_test_terminal();
 
-    let mut table = fixtures::sample_table_detail();
+    let mut table = fixtures::sample_postgres_table_detail();
     table.columns[1].attributes =
         ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED | ColumnAttributes::NULLABLE;
     let _ = state.session.set_table_detail(table, 0);
@@ -91,7 +91,7 @@ fn inspector_columns_shows_mysql_column_metadata() {
     let mut state = harness::explorer_selected_state();
     let mut terminal = create_test_terminal();
 
-    let mut table = fixtures::sample_table_detail();
+    let mut table = fixtures::sample_postgres_table_detail();
     table.columns[1].character_set_name = Some("utf8mb4".to_string());
     table.columns[1].collation_name = Some("utf8mb4_bin".to_string());
     table.columns[2].attributes =
@@ -131,7 +131,7 @@ fn inspector_indexes_tab_for_mysql_hides_unsupported_partial_column() {
     let mut state = harness::explorer_selected_state();
     let mut terminal = create_test_terminal();
 
-    let mut table = fixtures::sample_table_detail();
+    let mut table = fixtures::sample_postgres_table_detail();
     table.indexes = vec![Index {
         name: "idx_users_email_lower".to_string(),
         columns: vec!["lower(email)".to_string()],
@@ -161,7 +161,7 @@ fn inspector_indexes_tab_for_sqlite_hides_unknown_type() {
     let mut state = harness::explorer_selected_state();
     let mut terminal = create_test_terminal();
 
-    let mut table = fixtures::sample_table_detail();
+    let mut table = fixtures::sample_postgres_table_detail();
     for index in &mut table.indexes {
         index.index_type = IndexType::Unknown;
     }
@@ -185,7 +185,7 @@ fn inspector_indexes_tab_shows_sqlite_partial_index_definition() {
     let mut state = harness::explorer_selected_state();
     let mut terminal = create_test_terminal();
 
-    let mut table = fixtures::sample_table_detail();
+    let mut table = fixtures::sample_postgres_table_detail();
     table.indexes = vec![Index {
         name: "idx_users_email_active".to_string(),
         columns: vec!["email".to_string()],
@@ -216,7 +216,7 @@ fn inspector_indexes_tab_shows_sqlite_descending_index_definition() {
     let mut state = harness::explorer_selected_state();
     let mut terminal = create_test_terminal();
 
-    let mut table = fixtures::sample_table_detail();
+    let mut table = fixtures::sample_postgres_table_detail();
     table.indexes = vec![Index {
         name: "idx_users_name_desc".to_string(),
         columns: vec!["name".to_string()],
@@ -244,7 +244,7 @@ fn inspector_indexes_tab_shows_sqlite_collation_index_definition() {
     let mut state = harness::explorer_selected_state();
     let mut terminal = create_test_terminal();
 
-    let mut table = fixtures::sample_table_detail();
+    let mut table = fixtures::sample_postgres_table_detail();
     table.indexes = vec![Index {
         name: "idx_users_name_nocase".to_string(),
         columns: vec!["name".to_string()],
@@ -274,7 +274,7 @@ fn inspector_indexes_tab_shows_sqlite_partial_expression_details() {
     let mut state = harness::explorer_selected_state();
     let mut terminal = create_test_terminal();
 
-    let mut table = fixtures::sample_table_detail();
+    let mut table = fixtures::sample_postgres_table_detail();
     table.indexes = vec![Index {
         name: "idx_users_email_lower".to_string(),
         columns: vec!["<expression>".to_string()],
@@ -319,7 +319,7 @@ fn inspector_foreign_keys_tab_with_data() {
 fn inspector_foreign_keys_tab_marks_unresolved_reference() {
     let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
-    let mut table = fixtures::sample_table_detail();
+    let mut table = fixtures::sample_postgres_table_detail();
     table.foreign_keys.push(ForeignKey {
         name: "fk_users_missing_org".to_string(),
         from_schema: "public".to_string(),
@@ -360,7 +360,7 @@ fn inspector_triggers_tab_empty() {
     let mut state = harness::explorer_selected_state();
     let mut terminal = create_test_terminal();
 
-    let mut table = fixtures::sample_table_detail();
+    let mut table = fixtures::sample_postgres_table_detail();
     table.triggers = vec![];
     let _ = state.session.set_table_detail(table, 0);
     state.ui.set_inspector_tab(InspectorTab::Triggers);
@@ -389,7 +389,7 @@ fn inspector_info_tab_with_no_metadata() {
     let mut state = harness::explorer_selected_state();
     let mut terminal = create_test_terminal();
 
-    let mut table = fixtures::sample_table_detail();
+    let mut table = fixtures::sample_postgres_table_detail();
     table.owner = None;
     table.comment = None;
     table.row_count_estimate = None;
@@ -407,7 +407,7 @@ fn inspector_info_tab_for_sqlite_hides_postgres_only_fields() {
     let mut state = harness::explorer_selected_state();
     let mut terminal = create_test_terminal();
 
-    let mut table = fixtures::sample_table_detail();
+    let mut table = fixtures::sample_postgres_table_detail();
     table.owner = Some("postgres".to_string());
     table.comment = Some("SQLite should hide this comment".to_string());
     table.rls = None;
@@ -434,7 +434,7 @@ fn inspector_info_tab_for_mysql_hides_schema_field() {
 
     let _ = state
         .session
-        .set_table_detail(fixtures::sample_table_detail(), 0);
+        .set_table_detail(fixtures::sample_postgres_table_detail(), 0);
     state.session.activate_connection_with_dsn(
         &ConnectionId::from_string("mysql-test"),
         "app",
@@ -454,7 +454,7 @@ fn inspector_info_tab_for_mysql_shows_storage_attributes() {
     let mut state = harness::explorer_selected_state();
     let mut terminal = create_test_terminal();
 
-    let mut table = fixtures::sample_table_detail();
+    let mut table = fixtures::sample_postgres_table_detail();
     table.storage_attributes = TableStorageAttributes {
         engine: Some("InnoDB".to_string()),
         row_format: Some("Compressed".to_string()),
@@ -490,7 +490,7 @@ fn inspector_ddl_tab_uses_source_ddl() {
     let mut services = AppServices::stub();
     services.ddl_generator = Arc::new(SourceDdlGenerator);
 
-    let mut table = fixtures::sample_table_detail();
+    let mut table = fixtures::sample_postgres_table_detail();
     table.source_ddl = Some(
         "CREATE VIRTUAL TABLE users USING fts5(name, email);\n-- source ddl is not rebuilt"
             .to_string(),
@@ -513,7 +513,7 @@ fn inspector_info_tab_for_sqlite_shows_table_kind_fields() {
     let mut state = harness::explorer_selected_state();
     let mut terminal = create_test_terminal();
 
-    let mut table = fixtures::sample_table_detail();
+    let mut table = fixtures::sample_postgres_table_detail();
     table.schema = "main".to_string();
     table.name = "notes_fts".to_string();
     table.owner = None;
@@ -545,7 +545,7 @@ fn inspector_info_tab_for_sqlite_shows_view_kind() {
     let mut state = harness::explorer_selected_state();
     let mut terminal = create_test_terminal();
 
-    let mut table = fixtures::sample_table_detail();
+    let mut table = fixtures::sample_postgres_table_detail();
     table.schema = "main".to_string();
     table.name = "active_users".to_string();
     table.owner = None;

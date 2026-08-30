@@ -1,5 +1,3 @@
-use std::fmt::Write as _;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Column {
     pub name: String,
@@ -18,15 +16,6 @@ pub struct Column {
 pub enum ColumnGenerationKind {
     Virtual,
     Stored,
-}
-
-impl ColumnGenerationKind {
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Virtual => "VIRTUAL",
-            Self::Stored => "STORED",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -96,50 +85,12 @@ impl Column {
     pub const fn is_generated(&self) -> bool {
         self.attributes.contains(ColumnAttributes::GENERATED)
     }
-
-    pub const fn read_only_reason(&self) -> Option<&'static str> {
-        if self.is_generated() {
-            Some("generated")
-        } else if self.is_hidden() {
-            Some("hidden")
-        } else if self.is_read_only() {
-            Some("read-only")
-        } else {
-            None
-        }
-    }
-
-    pub fn type_display(&self) -> String {
-        let mut display = self.data_type.clone();
-        if !self.is_nullable() {
-            display.push_str(" NOT NULL");
-        }
-        if let Some(default) = &self.default {
-            let _ = write!(display, " DEFAULT {default}");
-        }
-        display
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use rstest::rstest;
-
-    fn make_column(nullable: bool, default: Option<&str>) -> Column {
-        Column {
-            name: "col".to_string(),
-            data_type: "integer".to_string(),
-            default: default.map(ToString::to_string),
-            attributes: ColumnAttributes::from_parts(nullable, false, false),
-            comment: None,
-            ordinal_position: 1,
-            character_set_name: None,
-            collation_name: None,
-            generation_expression: None,
-            generation_kind: None,
-        }
-    }
 
     mod attributes {
         use super::*;
@@ -179,63 +130,6 @@ mod tests {
             let attributes = ColumnAttributes::NULLABLE | ColumnAttributes::PRIMARY_KEY;
 
             assert_eq!(attributes, ColumnAttributes::from_parts(true, true, false));
-        }
-
-        #[rstest]
-        #[case(true, false, false, Some("read-only"))]
-        #[case(true, true, false, Some("hidden"))]
-        #[case(true, false, true, Some("generated"))]
-        #[case(true, true, true, Some("generated"))]
-        #[case(false, false, false, None)]
-        fn metadata_flags_report_read_only_reason(
-            #[case] read_only: bool,
-            #[case] hidden: bool,
-            #[case] generated: bool,
-            #[case] expected: Option<&str>,
-        ) {
-            let mut attributes = ColumnAttributes::from_parts(true, false, false);
-            if read_only {
-                attributes = attributes | ColumnAttributes::READ_ONLY;
-            }
-            if hidden {
-                attributes = attributes | ColumnAttributes::HIDDEN;
-            }
-            if generated {
-                attributes = attributes | ColumnAttributes::GENERATED;
-            }
-            let column = Column {
-                name: "col".to_string(),
-                data_type: "text".to_string(),
-                default: None,
-                attributes,
-                comment: None,
-                ordinal_position: 1,
-                character_set_name: None,
-                collation_name: None,
-                generation_expression: None,
-                generation_kind: None,
-            };
-
-            assert_eq!(column.read_only_reason(), expected);
-        }
-    }
-
-    mod type_display {
-        use super::*;
-
-        #[rstest]
-        #[case(true, None, "integer")]
-        #[case(false, None, "integer NOT NULL")]
-        #[case(true, Some("0"), "integer DEFAULT 0")]
-        #[case(false, Some("now()"), "integer NOT NULL DEFAULT now()")]
-        fn formats_sql_type(
-            #[case] nullable: bool,
-            #[case] default: Option<&str>,
-            #[case] expected: &str,
-        ) {
-            let column = make_column(nullable, default);
-
-            assert_eq!(column.type_display(), expected);
         }
     }
 }

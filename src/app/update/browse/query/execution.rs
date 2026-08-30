@@ -4,7 +4,9 @@ use std::time::{Duration, Instant};
 use crate::cmd::effect::Effect;
 use crate::domain::{QueryResult, QuerySource, RefreshScope};
 use crate::model::app_state::AppState;
-use crate::model::browse::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
+use crate::model::browse::query_execution::{
+    PREVIEW_PAGE_SIZE, PendingPreview, PostDeleteRowSelection,
+};
 use crate::model::shared::help::HelpOrigin;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::AdhocSuccessSnapshot;
@@ -28,12 +30,11 @@ pub fn reduce_execution(
 ) -> DispatchResult {
     match action {
         Action::QueryCompleted {
-            dsn,
             run_id,
             result,
             context,
         } => {
-            if state.is_stale_query_run(dsn, *run_id) {
+            if !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
             if let QueryCompletionContext::Preview { generation, .. } = context
@@ -97,19 +98,18 @@ pub fn reduce_execution(
             DispatchResult::handled_with(try_adhoc_refresh(state, result, now))
         }
         Action::QueryFailed {
-            dsn,
             run_id,
             error,
             context,
         } => {
-            if state.is_stale_query_run(dsn, *run_id) {
+            if !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
             let is_preview = matches!(context, QueryFailureContext::Preview { .. });
             if is_preview && matches!(error, DbOperationError::PreviewSizeExceeded(_)) {
                 state.query.mark_idle();
-                state.messages.set_error_at(error.user_message(), now);
+                state.messages.set_error(error.user_message());
                 return DispatchResult::handled();
             }
 
@@ -118,19 +118,9 @@ pub fn reduce_execution(
                 && state.session.selected_table_key().is_some()
                 && !state.session.is_table_detail_terminal(*generation)
             {
-                let preview_query = state.query.pagination.qualified_name();
+                let result = Arc::new(preview_error_result(state, error));
                 state.query.mark_idle();
-                state.query.defer_preview(
-                    Arc::new(QueryResult::error(
-                        preview_query,
-                        error.result_message(),
-                        0,
-                        QuerySource::Preview,
-                    )),
-                    *generation,
-                    None,
-                    false,
-                );
+                state.query.defer_preview(result, *generation, None, false);
                 return DispatchResult::handled();
             }
 
@@ -141,28 +131,22 @@ pub fn reduce_execution(
             ) {
                 state.query.mark_idle();
                 if is_preview {
+                    let result = Arc::new(preview_error_result(state, error));
                     state.result_interaction.reset_view();
                     state
                         .query
                         .set_post_delete_selection(PostDeleteRowSelection::Keep);
                     state.query.clear_delete_refresh_target();
-                    let preview_query = state.query.pagination.qualified_name();
-                    state.query.set_current_result(Arc::new(QueryResult::error(
-                        preview_query,
-                        error.result_message(),
-                        0,
-                        QuerySource::Preview,
-                    )));
+                    state.query.set_current_result(result);
                 } else {
                     let user_message = error.user_message();
-                    state.messages.set_error_at(user_message.clone(), now);
+                    state.messages.set_error(user_message.clone());
                     state.sql_modal.finish_adhoc_error(user_message);
                 }
             }
-            let refresh_scope = match error {
-                DbOperationError::QueryFailedAfterChange { refresh_scope, .. } => *refresh_scope,
-                _ => RefreshScope::None,
-            };
+            let refresh_scope = error
+                .post_change_refresh_scope()
+                .unwrap_or(RefreshScope::None);
             let effects = if is_preview {
                 vec![]
             } else {
@@ -179,7 +163,12 @@ pub fn reduce_execution(
             let Some(pending) = state.query.take_pending_preview(*generation) else {
                 return DispatchResult::handled();
             };
-            let (result, target_page, highlight) = pending.into_parts();
+            let PendingPreview {
+                result,
+                generation: _,
+                target_page,
+                highlight,
+            } = pending;
             if result.is_error() && !highlight {
                 state.query.clear_delete_refresh_target();
             }
@@ -195,8 +184,10 @@ pub fn reduce_execution(
 
             DispatchResult::handled_with(match follow_up {
                 Action::Quit => {
+                    state.session.cancel_connection_save_and_disconnect();
+                    state.session.clear_mysql_connection_probe();
                     state.should_quit = true;
-                    vec![Effect::CancelActiveTasks]
+                    vec![Effect::CancelTrackedTasks]
                 }
                 Action::ToggleModal(ModalKind::Help) => {
                     state.ui.help_mut().open(HelpOrigin::CommandLine);
@@ -225,7 +216,7 @@ pub fn reduce_execution(
             table,
             generation,
         }) => {
-            if reject_pending_mysql_connection_probe(state, now) {
+            if reject_pending_mysql_connection_probe(state) {
                 return DispatchResult::handled();
             }
             if state.session.dsn().is_none() {
@@ -244,11 +235,11 @@ pub fn reduce_execution(
         }
 
         Action::ExecuteAdhoc(query) => {
-            if reject_pending_mysql_connection_probe(state, now) {
+            if reject_pending_mysql_connection_probe(state) {
                 return DispatchResult::handled();
             }
             if let Some(dsn) = state.session.dsn().map(String::from) {
-                let run_id = state.query.begin_running(now);
+                let run_id = state.query.begin_non_preview_running(now);
                 DispatchResult::handled_with(vec![Effect::ExecuteAdhoc {
                     dsn,
                     run_id,
@@ -280,9 +271,11 @@ pub(super) fn refresh_effects_for_scope(
 
     if refresh_scope == RefreshScope::Metadata {
         state.sql_modal.reset_prefetch();
+        state.er_preparation.invalidate_run();
         state.session.set_table_detail_raw(None);
         let run_id = state.session.begin_metadata_refresh();
 
+        effects.push(Effect::CancelMetadataTasks);
         effects.push(Effect::CacheInvalidate { dsn: dsn.clone() });
         effects.push(Effect::ClearCompletionEngineCache);
         effects.push(Effect::FetchMetadata { dsn, run_id });
@@ -302,6 +295,15 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult, now: Instant) -
         return vec![];
     }
     refresh_effects_for_scope(state, result.refresh_scope, now)
+}
+
+fn preview_error_result(state: &AppState, error: &DbOperationError) -> QueryResult {
+    QueryResult::error(
+        state.query.pagination.qualified_name(),
+        error.result_message(),
+        0,
+        QuerySource::Preview,
+    )
 }
 
 fn reset_view_for_new_result(state: &mut AppState, now: Instant) {
@@ -388,15 +390,19 @@ mod tests {
     use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::runner::EffectRunner;
     use crate::cmd::test_fixtures;
-    use crate::domain::{ConnectionId, DatabaseType};
+    use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType};
+    use crate::model::er_state::ErStatus;
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
     use crate::ports::outbound::{DbOperationError, RenderOutput, RenderResult, Renderer};
+    use crate::update::action::SmartErRefreshResult;
     use crate::update::browse::metadata::dispatch_metadata;
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
+    use crate::update::er::dispatch_er;
     use crate::update::reducer::reduce;
+    use crate::update::test_fixtures as update_test_fixtures;
     use tokio::sync::mpsc;
 
     #[derive(Debug, PartialEq)]
@@ -440,7 +446,7 @@ mod tests {
         completion_engine: &std::cell::RefCell<CompletionEngine>,
     ) -> Vec<Action> {
         let pending = runner
-            .run(
+            .execute_effects(
                 effects,
                 renderer,
                 state,
@@ -497,14 +503,14 @@ mod tests {
 
         let inspector_action = if inspector_failed {
             Action::TableDetailFailed {
-                dsn: "postgres://localhost/test".to_string(),
+                dsn: active_dsn(&state),
                 run_id: detail_run_id,
                 error: DbOperationError::QueryFailed("inspector failed".to_string()),
                 generation,
             }
         } else {
             Action::TableDetailLoaded {
-                dsn: "postgres://localhost/test".to_string(),
+                dsn: active_dsn(&state),
                 run_id: detail_run_id,
                 detail: Box::new(users_table_detail()),
                 generation,
@@ -566,7 +572,6 @@ mod tests {
     ) -> Action {
         let run_id = begin_query_run(state);
         Action::QueryFailed {
-            dsn: state.session.dsn().unwrap_or_default().to_string(),
             run_id,
             error,
             context: match source {
@@ -578,11 +583,16 @@ mod tests {
 
     fn state_with_selected_table(database_type: DatabaseType) -> (AppState, u64, u64) {
         let mut state = AppState::new("test".to_string());
+        let dsn = match database_type {
+            DatabaseType::PostgreSQL => "postgres://localhost/test",
+            DatabaseType::MySQL => "mysql://localhost/test",
+            DatabaseType::SQLite => "sqlite:///tmp/test.db",
+        };
         state.session.activate_connection_with_dsn(
             &ConnectionId::new(),
             "test",
             database_type,
-            "postgres://localhost/test",
+            dsn,
         );
         let generation = state
             .session
@@ -599,6 +609,14 @@ mod tests {
             let mut state = create_test_state();
             state.modal.push_mode(InputMode::CommandLine);
             state.command_line_input.set_content("q".to_string());
+            let save_run_id = state.session.begin_connection_save();
+            let probe_id = ConnectionId::from_string("pending-probe");
+            let _ = state.session.begin_mysql_connection_probe(
+                &probe_id,
+                "mysql",
+                "mysql://localhost/app",
+                Some("app"),
+            );
 
             let effects = dispatch_query(
                 &mut state,
@@ -610,7 +628,9 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.should_quit);
-            assert!(matches!(effects.as_slice(), [Effect::CancelActiveTasks]));
+            assert!(!state.session.is_current_connection_save(save_run_id));
+            assert!(state.session.pending_mysql_connection_probe().is_none());
+            assert!(matches!(effects.as_slice(), [Effect::CancelTrackedTasks]));
         }
 
         #[test]
@@ -774,6 +794,28 @@ mod tests {
             assert!(!state.query.pagination.reached_end());
             assert_eq!(state.query.pagination.schema(), "public");
             assert_eq!(state.query.pagination.table(), "users");
+        }
+
+        #[test]
+        fn delete_success_then_adhoc_then_preview_completion_clears_selection() {
+            let mut state = update_test_fixtures::state_after_delete_success();
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::ExecuteAdhoc("SELECT 1".to_string()),
+                now,
+                &AppServices::stub(),
+            );
+
+            assert!(matches!(effects.as_slice(), [Effect::ExecuteAdhoc { .. }]));
+            assert_eq!(
+                state.query.post_delete_row_selection(),
+                PostDeleteRowSelection::Keep
+            );
+            update_test_fixtures::complete_table_preview(&mut state, now);
+            assert!(state.result_interaction.selection().row().is_none());
+            assert!(state.result_interaction.selection().cell().is_none());
         }
 
         #[test]
@@ -977,11 +1019,12 @@ mod tests {
         ) {
             let (mut state, generation, detail_run_id) = state_with_selected_table(database_type);
             let now = Instant::now();
+            let dsn = active_dsn(&state);
 
             let inspector_effects = dispatch_metadata(
                 &mut state,
                 &Action::TableDetailLoaded {
-                    dsn: "postgres://localhost/test".to_string(),
+                    dsn,
                     run_id: detail_run_id,
                     detail: Box::new(users_table_detail()),
                     generation,
@@ -1267,7 +1310,6 @@ mod tests {
             dispatch_query(
                 &mut state,
                 &Action::QueryCompleted {
-                    dsn: "postgres://localhost/test".to_string(),
                     run_id: old_run_id,
                     result: adhoc_result(),
                     context: QueryCompletionContext::Adhoc,
@@ -1276,6 +1318,33 @@ mod tests {
                 &AppServices::stub(),
             );
 
+            assert!(state.query.current_result().is_none());
+            assert!(state.query.is_running());
+        }
+
+        #[test]
+        fn same_dsn_reconnect_rejects_previous_query_completion_by_run_id() {
+            let mut state = create_test_state();
+            let stale_run_id = begin_query_run(&mut state);
+
+            state.session.reset(&mut state.query);
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "postgres",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
+            let current_run_id = begin_query_run(&mut state);
+
+            let action = Action::QueryCompleted {
+                run_id: stale_run_id,
+                result: adhoc_result(),
+                context: QueryCompletionContext::Adhoc,
+            };
+            assert!(!format!("{action:?}").contains("dsn:"));
+            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+
+            assert!(stale_run_id < current_run_id);
             assert!(state.query.current_result().is_none());
             assert!(state.query.is_running());
         }
@@ -1291,7 +1360,6 @@ mod tests {
             dispatch_query(
                 &mut state,
                 &Action::QueryCompleted {
-                    dsn: "postgres://localhost/test".to_string(),
                     run_id: stale_run_id,
                     result: adhoc_result(),
                     context: QueryCompletionContext::Adhoc,
@@ -1308,6 +1376,7 @@ mod tests {
     mod query_failed {
         use super::*;
         use crate::model::shared::ui_state::ResultNavMode;
+        use crate::model::sql_editor::modal::SqlModalStatus;
 
         #[test]
         fn resets_result_selection_and_offsets() {
@@ -1470,12 +1539,10 @@ mod tests {
                 effect,
                 Effect::ExecutePreview { table, .. } if table == "users"
             )));
-            assert!(
-                state
-                    .sql_modal
-                    .last_adhoc_error()
-                    .is_some_and(|message| message.contains("later statement failed"))
-            );
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::Error(message) if message.contains("later statement failed")
+            ));
         }
 
         #[test]
@@ -1520,6 +1587,7 @@ mod tests {
             let effects =
                 dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
+            assert!(matches!(effects[0], Effect::CancelMetadataTasks));
             assert!(
                 effects
                     .iter()
@@ -1554,10 +1622,10 @@ mod tests {
 
             dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
-            assert_eq!(
-                state.sql_modal.last_adhoc_error(),
-                Some("previous adhoc error")
-            );
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::Error(message) if message == "previous adhoc error"
+            ));
             let result = state.query.current_result().expect("result");
             assert_eq!(result.source, QuerySource::Preview);
             assert!(result.is_error());
@@ -1616,6 +1684,7 @@ mod tests {
             let effects =
                 dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
+            assert!(matches!(effects[0], Effect::CancelMetadataTasks));
             assert!(
                 effects
                     .iter()
@@ -1639,9 +1708,44 @@ mod tests {
         }
 
         #[test]
+        fn ddl_metadata_refresh_invalidates_er_run_for_each_database() {
+            for (database_type, dsn) in [
+                (DatabaseType::PostgreSQL, "postgres://localhost/test"),
+                (DatabaseType::MySQL, "mysql://localhost/test"),
+                (DatabaseType::SQLite, "sqlite:///tmp/test.db"),
+            ] {
+                let mut state = AppState::new("test_project".to_string());
+                state.session.activate_connection_with_dsn(
+                    &ConnectionId::new(),
+                    "test",
+                    database_type,
+                    dsn,
+                );
+                state.query.pagination.reset_for_table("public", "users");
+                let er_run_id = state.er_preparation.start_waiting_run();
+                let action = query_completed_action(
+                    &mut state,
+                    adhoc_result_with_tag(CommandTag::Create("TABLE".to_string())),
+                    0,
+                    None,
+                );
+
+                let effects =
+                    dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub())
+                        .unwrap();
+
+                assert!(!state.er_preparation.is_current_run(er_run_id));
+                assert!(effects.iter().any(|effect| matches!(
+                    effect,
+                    Effect::FetchMetadata { dsn: effect_dsn, .. } if effect_dsn == dsn
+                )));
+            }
+        }
+
+        #[test]
         fn ddl_resets_prefetch_state_and_clears_table_detail() {
             let mut state = state_with_table("public", "users");
-            let _ = state.sql_modal.begin_prefetch();
+            let _ = state.sql_modal.begin_er_prefetch();
             state
                 .sql_modal
                 .queue_table_prefetch("public.users".to_string());
@@ -1657,9 +1761,52 @@ mod tests {
 
             dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
-            assert!(!state.sql_modal.is_prefetch_started());
+            assert!(state.sql_modal.active_prefetch_run_id().is_none());
             assert!(!state.sql_modal.has_pending_prefetch());
             assert!(state.session.table_detail().is_none());
+        }
+
+        #[test]
+        fn ddl_metadata_refresh_rejects_old_er_completion() {
+            let mut state = state_with_table("public", "users");
+            let old_metadata = Arc::new(DatabaseMetadata::new("old".to_string()));
+            state.session.set_metadata(Some(Arc::clone(&old_metadata)));
+            let old_er_run_id = state.er_preparation.start_waiting_run();
+            let action = query_completed_action(
+                &mut state,
+                adhoc_result_with_tag(CommandTag::Create("TABLE".to_string())),
+                0,
+                None,
+            );
+
+            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+
+            let dsn = active_dsn(&state);
+            let effects = dispatch_er(
+                &mut state,
+                &Action::SmartErRefreshCompleted(SmartErRefreshResult {
+                    dsn,
+                    run_id: old_er_run_id,
+                    new_metadata: Arc::new(DatabaseMetadata::new("new".to_string())),
+                    stale_tables: vec![],
+                    added_tables: vec![],
+                    removed_tables: vec![],
+                    missing_in_cache: vec![],
+                    new_signatures: std::collections::HashMap::new(),
+                }),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state
+                    .session
+                    .metadata()
+                    .map(|metadata| metadata.database_name.as_str()),
+                Some("old")
+            );
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
         }
 
         #[test]
@@ -1725,7 +1872,7 @@ mod tests {
 
     mod adhoc_refresh_integration {
         use super::*;
-        use crate::domain::{CommandTag, DatabaseMetadata, TableSummary};
+        use crate::domain::{CommandTag, TableSummary};
         use crate::model::sql_editor::modal::SqlModalStatus;
 
         fn make_metadata(tables: Vec<(&str, &str)>) -> Arc<DatabaseMetadata> {
@@ -1779,7 +1926,7 @@ mod tests {
             let effects =
                 dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
-            assert!(!state.sql_modal.is_prefetch_started());
+            assert!(state.sql_modal.active_prefetch_run_id().is_none());
             assert!(
                 effects
                     .iter()
@@ -1875,19 +2022,19 @@ mod tests {
 
             dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
-            let saved_tag = state
-                .sql_modal
-                .last_adhoc_success()
-                .and_then(|s| s.command_tag.clone());
+            let saved_tag = match state.sql_modal.status() {
+                SqlModalStatus::Success(snapshot) => snapshot.command_tag.clone(),
+                _ => panic!("expected adhoc success status"),
+            };
             assert!(matches!(saved_tag, Some(CommandTag::Alter(_))));
 
             let action = query_completed_action(&mut state, preview_result(5), 0, Some(0));
             dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
-            let tag_after = state
-                .sql_modal
-                .last_adhoc_success()
-                .and_then(|s| s.command_tag.clone());
+            let tag_after = match state.sql_modal.status() {
+                SqlModalStatus::Success(snapshot) => snapshot.command_tag.clone(),
+                _ => panic!("expected adhoc success status after preview"),
+            };
             assert!(matches!(tag_after, Some(CommandTag::Alter(_))));
         }
     }

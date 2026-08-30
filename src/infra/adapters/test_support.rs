@@ -1,6 +1,6 @@
 use std::process::Command;
 
-use sabiql_domain::{Table, TableKindInfo, TableStorageAttributes};
+use sabiql_domain::{QueryResult, Table, TableKindInfo, TableStorageAttributes};
 
 #[must_use]
 pub(super) fn minimal_table(schema: impl Into<String>, name: impl Into<String>) -> Table {
@@ -20,6 +20,13 @@ pub(super) fn minimal_table(schema: impl Into<String>, name: impl Into<String>) 
         storage_attributes: TableStorageAttributes::default(),
         kind_info: TableKindInfo::default(),
     }
+}
+
+#[must_use]
+pub(super) fn display_row(result: &QueryResult, row: usize) -> Vec<String> {
+    result
+        .display_row_at(row)
+        .expect("test result should contain the requested row")
 }
 
 #[must_use]

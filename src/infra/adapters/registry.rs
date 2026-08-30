@@ -277,7 +277,7 @@ impl MySqlConnectionProbe for DbAdapterRegistry {
 
 #[async_trait]
 impl SqliteDiagnosticsProvider for DbAdapterRegistry {
-    async fn fetch_diagnostics_core(
+    async fn fetch_core_diagnostics(
         &self,
         dsn: &str,
     ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {
@@ -287,7 +287,7 @@ impl SqliteDiagnosticsProvider for DbAdapterRegistry {
                     "SQLite diagnostics are unavailable for non-SQLite connections".to_string(),
                 ))
             }
-            DatabaseType::SQLite => self.sqlite.fetch_diagnostics_core(dsn).await,
+            DatabaseType::SQLite => self.sqlite.fetch_core_diagnostics(dsn).await,
         }
     }
 
@@ -304,6 +304,8 @@ impl SqliteDiagnosticsProvider for DbAdapterRegistry {
 #[cfg(test)]
 mod tests {
     use crate::adapters::test_support;
+
+    use rstest::rstest;
 
     use super::*;
     use crate::domain::connection::SslMode;
@@ -478,12 +480,14 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn mysql_dsn_scheme_is_recognized() {
-        assert_eq!(
-            DbAdapterRegistry::db_type_from_dsn("mysql://localhost/db").unwrap(),
-            DatabaseType::MySQL
-        );
+    #[rstest]
+    #[case::sqlite_url("sqlite:///tmp/app.db", Some(DatabaseType::SQLite))]
+    #[case::mysql_url("mysql://localhost/db", Some(DatabaseType::MySQL))]
+    #[case::postgres_url("postgres://localhost/db", Some(DatabaseType::PostgreSQL))]
+    #[case::postgres_conninfo("host='localhost' dbname='db'", Some(DatabaseType::PostgreSQL))]
+    #[case::unsupported_scheme("redis://localhost", None)]
+    fn classifies_named_dsn_inputs(#[case] dsn: &str, #[case] expected: Option<DatabaseType>) {
+        assert_eq!(DbAdapterRegistry::db_type_from_dsn(dsn).ok(), expected);
     }
 
     #[tokio::test]
@@ -579,11 +583,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn postgres_dsn_is_rejected() {
+    async fn sqlite_diagnostics_rejects_postgres_dsn() {
         let registry = DbAdapterRegistry::new();
 
         let result = registry
-            .fetch_diagnostics_core("postgres://localhost/db")
+            .fetch_core_diagnostics("postgres://localhost/db")
             .await;
 
         assert!(matches!(result, Err(DbOperationError::ConnectionFailed(_))));

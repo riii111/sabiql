@@ -7,7 +7,6 @@ use crate::domain::connection::{
 use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
 use crate::model::app_state::AppState;
 use crate::model::browse::json_detail::JsonDetailMode;
-use crate::model::connection::error::ConnectionErrorInfo;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::Prefix;
@@ -23,7 +22,8 @@ use std::collections::HashMap;
 
 use crate::domain::SqliteDiagnosticsSnapshot;
 use crate::domain::{
-    DatabaseMetadata, DiagnosticField, QueryResult, Table, TableSignatureSnapshot, WriteDiagnostic,
+    DatabaseDiagnostic, DatabaseMetadata, DiagnosticField, QueryResult, Table,
+    TableSignatureSnapshot,
 };
 
 #[derive(Clone, thiserror::Error)]
@@ -54,31 +54,6 @@ impl fmt::Debug for ConnectionSaveError {
                 .finish(),
         }
     }
-}
-
-#[derive(Debug, Clone, thiserror::Error)]
-pub enum ErDiagramError {
-    #[error("{0}")]
-    NoData(String),
-    #[error("{0}")]
-    ExportFailed(String),
-    #[error("Task panicked: {0}")]
-    TaskPanicked(String),
-}
-
-#[derive(Debug, Clone, thiserror::Error)]
-#[error("{error}")]
-pub struct ErDiagramFailure {
-    pub run_id: u64,
-    pub error: ErDiagramError,
-}
-
-#[derive(Debug, Clone, thiserror::Error)]
-pub enum ErLogError {
-    #[error("{0}")]
-    Io(String),
-    #[error("{0}")]
-    Config(String),
 }
 
 pub use crate::model::shared::cursor::CursorMove;
@@ -411,7 +386,6 @@ pub enum Action {
     SwitchConnection(ConnectionTarget),
     ConnectionsLoaded(ConnectionsLoadedPayload),
     ConfirmConnectionSelection,
-    StartEditConnection(ConnectionId),
     ConnectionSetupNextField,
     ConnectionSetupPrevField,
     ConnectionSetupToggleDropdown,
@@ -443,7 +417,6 @@ pub enum Action {
     },
     ConnectionEditLoaded(Box<ConnectionProfile>),
     ConnectionEditLoadFailed(ConnectionStoreError),
-    ShowConnectionError(ConnectionErrorInfo),
     CloseConnectionError,
     ToggleConnectionErrorDetails,
     CopyConnectionError,
@@ -482,7 +455,6 @@ pub enum Action {
     SettingsSaveFailed(SettingsStoreError),
 
     // Database structure
-    LoadMetadata,
     ReloadMetadata,
     MetadataLoaded {
         dsn: String,
@@ -536,8 +508,8 @@ pub enum Action {
         schema: String,
         table: String,
     },
-    StartPrefetchAll,
-    StartPrefetchScoped {
+    StartErPrefetchAll,
+    StartErPrefetchScoped {
         tables: Vec<String>,
     },
     StartCompletionPrefetch {
@@ -563,7 +535,7 @@ pub enum Action {
     SqlModalYank,
     SqlModalYankSuccess,
     SqlModalNewLine,
-    SqlModalTab,
+    SqlModalInsertTab,
     SqlModalSubmit,
     SqlModalClear,
     SqlModalCancelConfirm,
@@ -612,15 +584,12 @@ pub enum Action {
     // Query results
     ExecutePreview(TableTarget),
     ExecuteAdhoc(String),
-    ExecuteWrite(String),
     QueryCompleted {
-        dsn: String,
         run_id: u64,
         result: Arc<QueryResult>,
         context: QueryCompletionContext,
     },
     QueryFailed {
-        dsn: String,
         run_id: u64,
         error: DbOperationError,
         context: QueryFailureContext,
@@ -632,7 +601,7 @@ pub enum Action {
         dsn: String,
         run_id: u64,
         affected_rows: usize,
-        diagnostics: Vec<WriteDiagnostic>,
+        diagnostics: Vec<DatabaseDiagnostic>,
     },
     ExecuteWriteFailed {
         dsn: String,
@@ -661,7 +630,6 @@ pub enum Action {
     StageRowForDelete,
     UnstageLastStagedRow,
     ClearStagedDeletes,
-    RequestDeleteActiveRow,
     ResultEnterCellEdit,
     ResultOpenCellDetail,
     ResultCancelCellEdit,
@@ -675,7 +643,6 @@ pub enum Action {
     // Query history
     QueryHistoryLoaded(QueryHistoryScope, Vec<QueryHistoryEntry>),
     QueryHistoryLoadFailed(QueryHistoryScope, QueryHistoryError),
-    QueryHistoryAppendFailed(QueryHistoryError),
     QueryHistoryConfirmSelection,
 
     // CSV export
@@ -686,13 +653,6 @@ pub enum Action {
         row_count: Option<usize>,
         export_query: String,
         file_name: String,
-    },
-    ExecuteCsvExport {
-        dsn: String,
-        run_id: u64,
-        export_query: String,
-        file_name: String,
-        row_count: Option<usize>,
     },
     CsvExportSucceeded {
         dsn: String,
@@ -742,8 +702,11 @@ pub enum Action {
     SmartErRefreshCompleted(SmartErRefreshResult),
     SmartErRefreshFailed(SmartErRefreshError),
     ErDiagramOpened(ErDiagramInfo),
-    ErDiagramFailed(ErDiagramFailure),
-    ErLogWriteFailed(ErLogError),
+    ErDiagramFailed {
+        run_id: u64,
+        error: String,
+    },
+    ErLogWriteFailed(String),
 }
 
 impl Action {
@@ -773,7 +736,7 @@ impl Action {
             | Self::SmartErRefreshCompleted(_)
             | Self::SmartErRefreshFailed(_)
             | Self::ErDiagramOpened(_)
-            | Self::ErDiagramFailed(_)
+            | Self::ErDiagramFailed { .. }
             | Self::ErLogWriteFailed(_)
             | Self::TextInput {
                 target: InputTarget::ErFilter,

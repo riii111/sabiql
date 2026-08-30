@@ -5,6 +5,7 @@ use crate::domain::{
 use crate::model::browse::session::TableDetailState;
 use crate::model::shared::engine_feature_profile::{EngineFeatureProfile, InspectorInfoField};
 use crate::model::shared::inspector_tab::InspectorTab;
+use crate::policy::column::column_read_only_reason;
 use crate::policy::table_kind::{inspector_flags_label, inspector_kind_label};
 use crate::ports::outbound::DdlGenerator;
 
@@ -24,7 +25,7 @@ pub struct InspectorViewModel {
 pub enum InspectorLoadState {
     NoTableSelected,
     Loading,
-    Success,
+    Loaded,
     Error(String),
 }
 
@@ -61,11 +62,9 @@ pub enum InspectorSection {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum InspectorInfoRow {
-    Field {
-        field: InspectorInfoField,
-        value: Option<String>,
-    },
+pub struct InspectorInfoRow {
+    pub field: InspectorInfoField,
+    pub value: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -131,7 +130,6 @@ pub enum InspectorRlsRow {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InspectorEmptyState {
-    NoTableSelected,
     NoColumns,
     NoIndexes,
     NoForeignKeys,
@@ -155,17 +153,15 @@ impl InspectorViewModel {
         let (load_state, table) = match table_detail_state {
             TableDetailState::NotSelected => (InspectorLoadState::NoTableSelected, None),
             TableDetailState::Loading => (InspectorLoadState::Loading, None),
-            TableDetailState::Loaded(table) => (InspectorLoadState::Success, Some(table.as_ref())),
+            TableDetailState::Loaded(table) => (InspectorLoadState::Loaded, Some(table.as_ref())),
             TableDetailState::Error(error) => (InspectorLoadState::Error(error.clone()), None),
         };
         let Some(table) = table else {
-            let empty_state = matches!(&load_state, InspectorLoadState::NoTableSelected)
-                .then_some(InspectorEmptyState::NoTableSelected);
             return Self {
                 active_tab,
                 load_state,
                 section: None,
-                empty_state,
+                empty_state: None,
                 unavailable_reason: None,
                 mysql_trigger_details: false,
             };
@@ -181,7 +177,7 @@ impl InspectorViewModel {
                         .filter_map(|field| {
                             let value = info_value(field, table);
                             (value.is_some() || !field.omit_when_empty())
-                                .then_some(InspectorInfoRow::Field { field, value })
+                                .then_some(InspectorInfoRow { field, value })
                         })
                         .collect(),
                 },
@@ -192,7 +188,7 @@ impl InspectorViewModel {
                 let show_read_only = table
                     .columns
                     .iter()
-                    .any(|column| column.read_only_reason().is_some());
+                    .any(|column| column_read_only_reason(column).is_some());
                 let rows: Vec<InspectorColumnRow> = table
                     .columns
                     .iter()
@@ -201,7 +197,7 @@ impl InspectorViewModel {
                         data_type: column.data_type.clone(),
                         nullable: column.is_nullable(),
                         primary_key: column.is_primary_key(),
-                        read_only_reason: column.read_only_reason().map(ToString::to_string),
+                        read_only_reason: column_read_only_reason(column).map(ToString::to_string),
                         default: column.default.clone(),
                         comment: column.comment.clone(),
                         character_set_name: column.character_set_name.clone(),
@@ -418,7 +414,6 @@ impl InspectorSection {
 impl InspectorEmptyState {
     pub fn message(self) -> &'static str {
         match self {
-            Self::NoTableSelected => "(select a table)",
             Self::NoColumns => "No columns",
             Self::NoIndexes => "No indexes",
             Self::NoForeignKeys => "No foreign keys",
@@ -629,7 +624,7 @@ mod tests {
     }
 
     #[test]
-    fn no_table_exposes_empty_state_without_display_rows() {
+    fn no_table_exposes_load_state_without_display_rows() {
         let model = InspectorViewModel::build_with_detail_state(
             &EngineFeatureProfile::postgres_like(),
             InspectorTab::Info,
@@ -639,10 +634,8 @@ mod tests {
         );
 
         assert_eq!(model.row_count(), 0);
-        assert_eq!(
-            model.empty_state(),
-            Some(InspectorEmptyState::NoTableSelected)
-        );
+        assert_eq!(model.load_state(), &InspectorLoadState::NoTableSelected);
+        assert_eq!(model.empty_state(), None);
         assert_eq!(model.unavailable_reason(), None);
     }
 
@@ -693,15 +686,15 @@ mod tests {
             Some(InspectorSection::Info { rows }) => assert_eq!(
                 rows,
                 &[
-                    InspectorInfoRow::Field {
+                    InspectorInfoRow {
                         field: InspectorInfoField::Comment,
                         value: Some("Users".to_string()),
                     },
-                    InspectorInfoRow::Field {
+                    InspectorInfoRow {
                         field: InspectorInfoField::RowCount,
                         value: Some("~3".to_string()),
                     },
-                    InspectorInfoRow::Field {
+                    InspectorInfoRow {
                         field: InspectorInfoField::TableName,
                         value: Some("users".to_string()),
                     },
@@ -732,9 +725,7 @@ mod tests {
         match model.section() {
             Some(InspectorSection::Info { rows }) => assert_eq!(
                 rows.iter()
-                    .map(|row| match row {
-                        InspectorInfoRow::Field { field, value } => (*field, value.as_deref()),
-                    })
+                    .map(|row| (row.field, row.value.as_deref()))
                     .collect::<Vec<_>>(),
                 vec![
                     (InspectorInfoField::Comment, Some("Users")),
@@ -843,7 +834,7 @@ mod tests {
             Some(InspectorSection::Info { rows }) => assert!(!rows.iter().any(|row| {
                 matches!(
                     row,
-                    InspectorInfoRow::Field {
+                    InspectorInfoRow {
                         field: InspectorInfoField::Schema,
                         ..
                     }

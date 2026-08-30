@@ -1,4 +1,4 @@
-use crate::app::ports::outbound::{DbOperationError, SQLITE_TABLE_LIST_REQUIRED_MARKER};
+use crate::app::ports::outbound::{DbOperationError, SqliteCompatibilityKind};
 
 use super::literal::{quote_ident, quote_literal};
 
@@ -71,10 +71,12 @@ pub(in crate::adapters::sqlite) fn has_virtual_tables_query() -> &'static str {
 }
 
 pub(in crate::adapters::sqlite) fn table_list_required_error() -> DbOperationError {
-    DbOperationError::UnsupportedOperation(format!(
-        "{SQLITE_TABLE_LIST_REQUIRED_MARKER}: This database contains virtual tables (such as FTS or RTree). \
-         Upgrade sqlite3 to version 3.41.1 or later to browse it safely."
-    ))
+    DbOperationError::UnsupportedOperationWithSqliteKind {
+        kind: SqliteCompatibilityKind::TableList,
+        details: "This database contains virtual tables (such as FTS or RTree). \
+                  Upgrade sqlite3 to version 3.41.1 or later to browse it safely."
+            .to_string(),
+    }
 }
 
 pub(in crate::adapters::sqlite) fn is_table_list_unavailable(error: &str) -> bool {
@@ -84,18 +86,12 @@ pub(in crate::adapters::sqlite) fn is_table_list_unavailable(error: &str) -> boo
 pub(in crate::adapters::sqlite) fn preview_metadata_query(table: &str) -> String {
     let table = quote_literal(table);
     let columns = metadata_columns_json(&table);
+    let table_kind = table_kind_json(&table);
     format!(
         r"
         SELECT json_object(
             'columns', json({columns}),
-            'table', json((
-                SELECT json_object('type', tl.type, 'wr', tl.wr, 'strict', tl.strict, 'sql', m.sql)
-                FROM pragma_table_list() AS tl
-                LEFT JOIN sqlite_master AS m
-                  ON m.type IN ('table', 'view') AND m.name = tl.name
-                WHERE tl.schema = 'main' AND tl.name = {table} COLLATE NOCASE
-                LIMIT 1
-            ))
+            'table', {table_kind}
         ) AS payload
         "
     )
@@ -137,6 +133,7 @@ pub(in crate::adapters::sqlite) fn table_signatures_query() -> String {
 }
 
 fn table_metadata_json(table_expr: &str, row_count: &str, include_full_detail: bool) -> String {
+    let table_kind = table_kind_json(table_expr);
     let columns = metadata_columns_json(table_expr);
     let indexes = metadata_indexes_json(table_expr, include_full_detail);
     let foreign_keys = metadata_foreign_keys_json(table_expr);
@@ -158,14 +155,7 @@ fn table_metadata_json(table_expr: &str, row_count: &str, include_full_detail: b
     };
     format!(
         r#"json_object(
-            'table', json((
-                SELECT json_object('type', tl.type, 'wr', tl.wr, 'strict', tl.strict, 'sql', m.sql)
-                FROM pragma_table_list() AS tl
-                LEFT JOIN sqlite_master AS m
-                  ON m.type IN ('table', 'view') AND m.name = tl.name
-                WHERE tl.schema = 'main' AND tl.name = {table_expr} COLLATE NOCASE
-                LIMIT 1
-            )),
+            'table', {table_kind},
             'columns', json({columns}),
             'indexes', json({indexes}),
             'foreign_keys', json({foreign_keys}),
@@ -185,6 +175,17 @@ fn table_metadata_json(table_expr: &str, row_count: &str, include_full_detail: b
             {source_ddl}
         )"#,
         referenced_columns = metadata_columns_json("r.name"),
+    )
+}
+
+fn table_kind_json(table_expr: &str) -> String {
+    format!(
+        r"json((
+            SELECT json_object('type', tl.type, 'wr', tl.wr, 'strict', tl.strict, 'sql', m.sql)
+            FROM pragma_table_list() AS tl
+            LEFT JOIN sqlite_master AS m ON m.type IN ('table', 'view') AND m.name = tl.name
+            WHERE tl.schema = 'main' AND tl.name = {table_expr} COLLATE NOCASE LIMIT 1
+        ))"
     )
 }
 
@@ -304,11 +305,20 @@ mod tests {
         }
 
         #[test]
-        fn table_list_required_error_includes_marker_and_upgrade_guidance() {
+        fn table_list_required_error_keeps_upgrade_guidance_without_marker() {
             let error = table_list_required_error();
             let message = error.user_message();
-            assert!(message.contains(SQLITE_TABLE_LIST_REQUIRED_MARKER));
+            assert_eq!(error.summary(), "Unsupported operation");
+            assert_eq!(error.hint(), "Use a supported operation for this database");
             assert!(message.contains("3.41.1"));
+            assert!(!message.contains("SQLITE_TABLE_LIST_REQUIRED"));
+            assert!(matches!(
+                error,
+                DbOperationError::UnsupportedOperationWithSqliteKind {
+                    kind: SqliteCompatibilityKind::TableList,
+                    ..
+                }
+            ));
         }
 
         #[test]

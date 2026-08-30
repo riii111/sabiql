@@ -1,5 +1,3 @@
-use std::fmt;
-
 mod classifier;
 mod export;
 mod lexer;
@@ -65,20 +63,11 @@ impl MySqlStatement {
     pub fn target(&self) -> Option<&str> {
         self.target.as_deref()
     }
-
-    pub fn target_database(&self) -> Option<&str> {
-        self.target_database.as_deref()
-    }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
 pub struct MySqlLexError(pub String);
-
-impl fmt::Display for MySqlLexError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
 
 pub fn split_mysql_statements(sql: &str) -> Result<Vec<String>, MySqlLexError> {
     lexer::split_mysql_statements(sql)
@@ -110,7 +99,7 @@ pub fn classify_mysql_statement(sql: &str) -> Result<MySqlStatement, MySqlLexErr
     })
 }
 
-pub fn has_top_level_into_clause(sql: &str) -> Result<bool, MySqlLexError> {
+fn has_top_level_into_clause(sql: &str) -> Result<bool, MySqlLexError> {
     side_effect::has_top_level_into_clause(sql)
 }
 
@@ -126,7 +115,7 @@ pub fn mysql_statement_reads_session_diagnostics(sql: &str) -> Result<bool, MySq
     side_effect::mysql_statement_reads_session_diagnostics(sql)
 }
 
-pub fn target_is_selected_database_with_lower_case_table_names(
+fn target_is_selected_database_with_lower_case_table_names(
     statement: &MySqlStatement,
     selected_database: Option<&str>,
     lower_case_table_names: u8,
@@ -517,7 +506,7 @@ mod tests {
             &MySqlStatementKind::DropTable { temporary: false }
         );
         assert_eq!(statement.target(), Some("users"));
-        assert_eq!(statement.target_database(), None);
+        assert_eq!(statement.target_database.as_deref(), None);
         assert!(validate_mysql_statements(&[statement], Some("app")).is_ok());
     }
 
@@ -1010,7 +999,7 @@ mod tests {
                     lower_case_table_names,
                 )
                 .unwrap_or_else(|error| panic!("{sql}: {error}"));
-                assert_eq!(statements[0].target_database(), Some("APP"));
+                assert_eq!(statements[0].target_database.as_deref(), Some("APP"));
                 assert_eq!(statements[0].target(), Some("items"));
             }
         }
@@ -1043,7 +1032,7 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(statements[0].target_database(), Some("ÄPP"));
+            assert_eq!(statements[0].target_database.as_deref(), Some("ÄPP"));
             assert_eq!(statements[0].target(), Some("items"));
         }
 

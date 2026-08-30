@@ -8,7 +8,7 @@ use crate::update::dispatch_result::DispatchResult;
 pub(super) fn reduce_table_detail(
     state: &mut AppState,
     action: &Action,
-    now: Instant,
+    _now: Instant,
 ) -> DispatchResult {
     match action {
         Action::TableDetailLoaded {
@@ -46,7 +46,7 @@ pub(super) fn reduce_table_detail(
                 .session
                 .mark_table_detail_failed(*generation, message.clone())
             {
-                state.messages.set_error_at(message, now);
+                state.messages.set_error(message);
                 return DispatchResult::handled_with(reveal_pending_preview(state, *generation));
             }
             DispatchResult::handled()
@@ -55,7 +55,7 @@ pub(super) fn reduce_table_detail(
     }
 }
 
-fn reveal_pending_preview(state: &AppState, generation: u64) -> Vec<Effect> {
+pub(super) fn reveal_pending_preview(state: &AppState, generation: u64) -> Vec<Effect> {
     if state.query.has_pending_preview(generation) {
         vec![Effect::DispatchActions(vec![
             Action::RevealPendingPreview { generation },

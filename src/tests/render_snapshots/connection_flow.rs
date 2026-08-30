@@ -449,15 +449,19 @@ fn render_service_error_without_service_file_hint(save_and_connect: bool) -> Str
         .runtime
         .set_service_file_path(Some(std::path::PathBuf::from("/etc/pg_service.conf")));
     if save_and_connect {
-        state.connection_error.set_save_and_connect_error(
-            ConnectionErrorInfo::new("mysql save failed"),
-            DatabaseType::MySQL,
-        );
+        state
+            .connection_error
+            .set_save_and_connect_error(ConnectionErrorInfo::with_kind(
+                ConnectionErrorKind::Unknown,
+                "mysql save failed",
+            ));
     } else {
-        state.connection_error.set_connection_switch_error(
-            ConnectionErrorInfo::new("mysql switch failed"),
-            DatabaseType::MySQL,
-        );
+        state
+            .connection_error
+            .set_connection_switch_error(ConnectionErrorInfo::with_kind(
+                ConnectionErrorKind::Unknown,
+                "mysql switch failed",
+            ));
     }
     state.modal.set_mode(InputMode::ConnectionError);
 
@@ -522,7 +526,7 @@ fn connection_error_expanded() {
         ConnectionErrorKind::Timeout,
         "psql: error: connection to server at \"192.168.1.100\", port 5432 failed: timeout expired",
     ));
-    state.connection_error.expand_details();
+    state.connection_error.toggle_details();
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -539,7 +543,7 @@ fn connection_error_expanded_with_tabs() {
         ConnectionErrorKind::Unknown,
         "psql: error: connection to server at \"localhost\" (127.0.0.1), port 5433 failed: Connection refused\n\tIs the server running on that host and accepting TCP/IP connections?",
     ));
-    state.connection_error.expand_details();
+    state.connection_error.toggle_details();
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -563,7 +567,7 @@ fn connection_error_expanded_long_details_capped() {
             ConnectionErrorKind::Unknown,
             &long_details,
         ));
-    state.connection_error.expand_details();
+    state.connection_error.toggle_details();
 
     let output = render_to_string(&mut terminal, &mut state);
 

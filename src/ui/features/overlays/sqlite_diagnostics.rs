@@ -5,8 +5,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
-use crate::app::model::sqlite::diagnostics::{DiagnosticFieldKind, display_rows};
-use crate::domain::SqliteDiagnosticsSnapshot;
+use crate::app::model::sqlite::diagnostics::{DiagnosticFieldKind, display_field, display_rows};
+use crate::domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::primitives::utils::text_utils::wrapped_line_count;
 use crate::theme::ThemePalette;
@@ -113,16 +113,17 @@ pub fn build_render_lines(
 
     let mut lines = vec![Line::raw("")];
     for row in display_rows(snapshot) {
+        let field_value = display_field(row.field);
         let value = if row.kind == DiagnosticFieldKind::QuickCheck {
-            quick_check_override.unwrap_or(&row.value)
+            quick_check_override.unwrap_or(&field_value)
         } else {
-            &row.value
+            &field_value
         };
         let value_style =
             if row.kind == DiagnosticFieldKind::QuickCheck && quick_check_override.is_some() {
                 Style::default().fg(theme.semantic.status.warning)
             } else {
-                field_style(row.kind, snapshot, theme)
+                field_style(row.kind, row.field, snapshot, theme)
             };
         append_field_lines(
             &mut lines,
@@ -182,21 +183,10 @@ fn append_field_lines(
 
 fn field_style(
     kind: DiagnosticFieldKind,
+    field: &DiagnosticField,
     snapshot: &SqliteDiagnosticsSnapshot,
     theme: &ThemePalette,
 ) -> Style {
-    let field = match kind {
-        DiagnosticFieldKind::DbFile => &snapshot.db_file,
-        DiagnosticFieldKind::SqliteVersion => &snapshot.sqlite_version,
-        DiagnosticFieldKind::FeatureSummary => &snapshot.feature_summary,
-        DiagnosticFieldKind::ForeignKeys => &snapshot.foreign_keys,
-        DiagnosticFieldKind::JournalMode => &snapshot.journal_mode,
-        DiagnosticFieldKind::QueryOnly => &snapshot.query_only,
-        DiagnosticFieldKind::BusyTimeout => &snapshot.busy_timeout,
-        DiagnosticFieldKind::DatabaseList => &snapshot.database_list,
-        DiagnosticFieldKind::QuickCheck => &snapshot.quick_check,
-    };
-
     if field.is_ok() {
         if kind == DiagnosticFieldKind::QuickCheck
             && snapshot.quick_check_is_ok().is_some_and(|is_ok| !is_ok)
@@ -220,7 +210,6 @@ fn field_style(
 mod tests {
     use super::*;
     use crate::app::model::shared::theme_id::ThemeId;
-    use crate::domain::DiagnosticField;
     use crate::theme::palette_for;
 
     #[test]
@@ -231,7 +220,12 @@ mod tests {
         };
         let theme = palette_for(ThemeId::Default);
 
-        let style = field_style(DiagnosticFieldKind::QuickCheck, &snapshot, theme);
+        let style = field_style(
+            DiagnosticFieldKind::QuickCheck,
+            &snapshot.quick_check,
+            &snapshot,
+            theme,
+        );
 
         assert_eq!(style.fg, Some(theme.semantic.status.error));
     }
@@ -244,7 +238,12 @@ mod tests {
         };
         let theme = palette_for(ThemeId::Default);
 
-        let style = field_style(DiagnosticFieldKind::QuickCheck, &snapshot, theme);
+        let style = field_style(
+            DiagnosticFieldKind::QuickCheck,
+            &snapshot.quick_check,
+            &snapshot,
+            theme,
+        );
 
         assert_eq!(style.fg, Some(theme.semantic.status.warning));
     }

@@ -24,7 +24,7 @@ impl QueryExecutor for PostgresAdapter {
             .await
             .unwrap_or_default();
         let query = Self::build_preview_query(schema, table, &order_columns, limit, offset);
-        self.execute_query_raw(dsn, &query, QuerySource::Preview, true)
+        self.execute_query_result(dsn, &query, QuerySource::Preview, true)
             .await
     }
 
@@ -34,7 +34,7 @@ impl QueryExecutor for PostgresAdapter {
         query: &str,
         access_mode: AccessMode,
     ) -> Result<QueryResult, DbOperationError> {
-        self.execute_query_raw(dsn, query, QuerySource::Adhoc, access_mode.is_read_only())
+        self.execute_query_result(dsn, query, QuerySource::Adhoc, access_mode.is_read_only())
             .await
     }
 

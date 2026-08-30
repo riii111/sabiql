@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::domain::connection::{
     ConnectionConfig, ConnectionId, ConnectionName, ConnectionProfile, ConnectionProfileError,
     DatabaseType, MySqlConnectionConfig, MySqlSslMode, MySqlTransport, PostgresConnectionConfig,
-    SqliteConnectionConfig, SslMode,
+    SqliteConnectionConfig, SqliteConnectionConfigError, SslMode,
 };
 
 pub const CURRENT_VERSION: u32 = 3;
@@ -226,7 +226,7 @@ impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
 fn required_sqlite_path(value: Option<&String>) -> Result<String, ConnectionProfileError> {
     value
         .cloned()
-        .ok_or(ConnectionProfileError::EmptySqlitePath)
+        .ok_or_else(|| SqliteConnectionConfigError::EmptyPath.into())
 }
 
 fn required_postgres_field(
@@ -394,7 +394,9 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(ConnectionProfileError::EmptySqlitePath)
+            Err(ConnectionProfileError::SqliteConfig(
+                SqliteConnectionConfigError::EmptyPath
+            ))
         ));
     }
 
@@ -406,7 +408,9 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(ConnectionProfileError::EmptySqlitePath)
+            Err(ConnectionProfileError::SqliteConfig(
+                SqliteConnectionConfigError::EmptyPath
+            ))
         ));
     }
 
@@ -418,7 +422,9 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(ConnectionProfileError::InvalidSqlitePath)
+            Err(ConnectionProfileError::SqliteConfig(
+                SqliteConnectionConfigError::UnsupportedPath
+            ))
         ));
     }
 
@@ -430,7 +436,9 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(ConnectionProfileError::UnsupportedSqliteInMemoryDatabase)
+            Err(ConnectionProfileError::SqliteConfig(
+                SqliteConnectionConfigError::UnsupportedInMemoryDatabase
+            ))
         ));
     }
 
@@ -442,7 +450,9 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(ConnectionProfileError::UnsupportedSqliteUriFilename)
+            Err(ConnectionProfileError::SqliteConfig(
+                SqliteConnectionConfigError::UnsupportedUriFilename
+            ))
         ));
     }
 

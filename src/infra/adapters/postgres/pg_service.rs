@@ -108,28 +108,7 @@ fn parse(content: &str) -> Vec<ServiceEntry> {
                 entries.push(entry);
             }
             let name = line[1..line.len() - 1].trim().to_string();
-            current = Some(ServiceEntry {
-                service_name: name,
-                host: None,
-                dbname: None,
-                port: None,
-                user: None,
-            });
-            continue;
-        }
-
-        if let Some(ref mut entry) = current
-            && let Some((key, value)) = line.split_once('=')
-        {
-            let key = key.trim();
-            let value = value.trim();
-            match key {
-                "host" | "hostaddr" => entry.host = Some(value.to_string()),
-                "dbname" => entry.dbname = Some(value.to_string()),
-                "port" => entry.port = value.parse().ok(),
-                "user" => entry.user = Some(value.to_string()),
-                _ => {}
-            }
+            current = Some(ServiceEntry { service_name: name });
         }
     }
 
@@ -164,7 +143,7 @@ mod tests {
     }
 
     #[test]
-    fn single_section_parsed() {
+    fn single_section_returns_service_name() {
         let content = "\
 [mydb]
 host=localhost
@@ -175,10 +154,6 @@ user=admin
         let entries = parse(content);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].service_name, "mydb");
-        assert_eq!(entries[0].host, Some("localhost".to_string()));
-        assert_eq!(entries[0].port, Some(5432));
-        assert_eq!(entries[0].dbname, Some("mydb".to_string()));
-        assert_eq!(entries[0].user, Some("admin".to_string()));
     }
 
     #[test]
@@ -195,10 +170,13 @@ port=5433
 ";
         let entries = parse(content);
         assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].service_name, "dev");
-        assert_eq!(entries[0].host, Some("dev.example.com".to_string()));
-        assert_eq!(entries[1].service_name, "prod");
-        assert_eq!(entries[1].port, Some(5433));
+        assert_eq!(
+            entries
+                .iter()
+                .map(|entry| entry.service_name.as_str())
+                .collect::<Vec<_>>(),
+            ["dev", "prod"]
+        );
     }
 
     #[test]
@@ -216,8 +194,6 @@ port=5432
         let entries = parse(content);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].service_name, "mydb");
-        assert_eq!(entries[0].host, Some("localhost".to_string()));
-        assert_eq!(entries[0].port, Some(5432));
     }
 
     #[test]
@@ -230,23 +206,11 @@ port=5432
 ";
         let entries = parse(content);
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].host, Some("localhost".to_string()));
-        assert_eq!(entries[0].port, Some(5432));
+        assert_eq!(entries[0].service_name, "mydb");
     }
 
     #[test]
-    fn invalid_port_stored_as_none() {
-        let content = "\
-[mydb]
-port=not_a_number
-";
-        let entries = parse(content);
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].port, None);
-    }
-
-    #[test]
-    fn duplicate_sections_last_wins() {
+    fn duplicate_sections_are_collapsed() {
         let content = "\
 [mydb]
 host=first.example.com
@@ -258,8 +222,7 @@ port=5433
 ";
         let entries = parse(content);
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].host, Some("second.example.com".to_string()));
-        assert_eq!(entries[0].port, Some(5433));
+        assert_eq!(entries[0].service_name, "mydb");
     }
 
     #[test]
@@ -270,10 +233,6 @@ port=5433
         let entries = parse(content);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].service_name, "empty");
-        assert_eq!(entries[0].host, None);
-        assert_eq!(entries[0].dbname, None);
-        assert_eq!(entries[0].port, None);
-        assert_eq!(entries[0].user, None);
     }
 
     #[test]
@@ -288,29 +247,6 @@ host=localhost
         let entries = parse(content);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].service_name, "mydb");
-        assert_eq!(entries[0].host, Some("localhost".to_string()));
-    }
-
-    #[test]
-    fn whitespace_around_keys_and_values_trimmed() {
-        let content = "\
-[mydb]
-  host  =  db.example.com
-  port  =  5432
-";
-        let entries = parse(content);
-        assert_eq!(entries[0].host, Some("db.example.com".to_string()));
-        assert_eq!(entries[0].port, Some(5432));
-    }
-
-    #[test]
-    fn hostaddr_maps_to_host() {
-        let content = "\
-[mydb]
-hostaddr=192.168.1.1
-";
-        let entries = parse(content);
-        assert_eq!(entries[0].host, Some("192.168.1.1".to_string()));
     }
 
     #[test]
@@ -324,8 +260,7 @@ application_name=myapp
 ";
         let entries = parse(content);
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].host, Some("localhost".to_string()));
-        assert_eq!(entries[0].dbname, None);
+        assert_eq!(entries[0].service_name, "mydb");
     }
 
     #[test]

@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
@@ -26,42 +25,45 @@ use crate::update::action::{
 };
 
 #[derive(Default)]
-pub(crate) struct MySqlConnectionProbeTaskOwner {
+pub(crate) struct ConnectionTaskOwner {
     active: std::sync::Mutex<Option<JoinHandle<()>>>,
 }
 
-impl MySqlConnectionProbeTaskOwner {
-    pub(crate) async fn spawn<F>(&self, task: F)
+impl ConnectionTaskOwner {
+    pub(crate) async fn replace<F>(&self, task: F)
     where
         F: std::future::Future<Output = ()> + Send + 'static,
     {
         self.cancel().await;
         let task = tokio::spawn(task);
-        *self
-            .active
-            .lock()
-            .expect("MySQL connection probe task lock poisoned") = Some(task);
+        *self.active.lock().expect("connection task lock poisoned") = Some(task);
     }
 
     pub(crate) async fn cancel(&self) {
-        let task = self
-            .active
-            .lock()
-            .expect("MySQL connection probe task lock poisoned")
-            .take();
-        if let Some(task) = task {
-            task.abort();
+        if let Some(task) = self.abort() {
             let _ = task.await;
         }
     }
+
+    pub(crate) fn abort(&self) -> Option<JoinHandle<()>> {
+        let task = self
+            .active
+            .lock()
+            .expect("connection task lock poisoned")
+            .take();
+        if let Some(task) = &task {
+            task.abort();
+        }
+        task
+    }
 }
 
-impl Drop for MySqlConnectionProbeTaskOwner {
+impl Drop for ConnectionTaskOwner {
     fn drop(&mut self) {
         if let Some(task) = self
             .active
             .get_mut()
-            .expect("MySQL connection probe task lock poisoned")
+            .expect("connection task lock poisoned")
             .take()
         {
             task.abort();
@@ -74,7 +76,7 @@ fn claim_and_save<T>(
     run_id: u64,
     save: impl FnOnce() -> T,
 ) -> Option<T> {
-    if !run_guard.claim(run_id) || !run_guard.start_save(run_id) {
+    if !run_guard.claim(run_id) || !run_guard.begin_persistence(run_id) {
         return None;
     }
     let result = save();
@@ -86,11 +88,11 @@ pub(crate) async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     connection: &ConnectionDeps,
-    mysql_connection_probe_task: &MySqlConnectionProbeTaskOwner,
+    connection_task: &ConnectionTaskOwner,
     metadata_provider: &Arc<dyn MetadataProvider>,
     metadata_cache: &TtlCache<String, Arc<DatabaseMetadata>>,
     state: &AppState,
-) -> Result<()> {
+) {
     match effect {
         Effect::SaveAndConnect {
             id,
@@ -113,7 +115,7 @@ pub(crate) async fn run(
                         })
                         .await
                         .ok();
-                    return Ok(());
+                    return;
                 }
             };
             let store = Arc::clone(&connection.connection_store);
@@ -136,35 +138,41 @@ pub(crate) async fn run(
                             })
                             .await
                             .ok();
-                        return Ok(());
+                        return;
                     }
                 };
                 let dsn = connection.dsn_builder.build_dsn(&profile);
                 let target = ConnectionTarget::from_profile(&profile, dsn);
                 let database_type = target.database_type;
 
-                tokio::task::spawn_blocking(move || {
-                    match claim_and_save(&run_guard, run_id, || store.save(&profile)) {
-                        Some(Ok(())) => {
-                            tx.blocking_send(Action::ConnectionSaveCompleted {
-                                target,
-                                run_id,
-                                mysql_lower_case_table_names: None,
-                            })
-                            .ok();
-                        }
-                        Some(Err(e)) => {
-                            tx.blocking_send(Action::ConnectionSaveFailed {
-                                error: e.into(),
-                                database_type,
-                                run_id,
-                            })
-                            .ok();
-                        }
-                        None => {}
-                    }
-                });
-                return Ok(());
+                connection_task
+                    .replace(async move {
+                        tokio::task::spawn_blocking(move || {
+                            match claim_and_save(&run_guard, run_id, || store.save(&profile)) {
+                                Some(Ok(())) => {
+                                    tx.blocking_send(Action::ConnectionSaveCompleted {
+                                        target,
+                                        run_id,
+                                        mysql_lower_case_table_names: None,
+                                    })
+                                    .ok();
+                                }
+                                Some(Err(e)) => {
+                                    tx.blocking_send(Action::ConnectionSaveFailed {
+                                        error: e.into(),
+                                        database_type,
+                                        run_id,
+                                    })
+                                    .ok();
+                                }
+                                None => {}
+                            }
+                        })
+                        .await
+                        .expect("connection store save task panicked");
+                    })
+                    .await;
+                return;
             }
 
             let dsn = connection.dsn_builder.build_dsn(&profile);
@@ -173,8 +181,8 @@ pub(crate) async fn run(
             if database_type == DatabaseType::MySQL {
                 let target = ConnectionTarget::from_profile(&profile, dsn);
                 let probe = Arc::clone(&connection.mysql_connection_probe);
-                mysql_connection_probe_task
-                    .spawn(async move {
+                connection_task
+                    .replace(async move {
                         match probe.probe(&target.dsn).await {
                             Ok(probe_result) => {
                                 let save_result = tokio::task::spawn_blocking(move || {
@@ -221,64 +229,65 @@ pub(crate) async fn run(
                         }
                     })
                     .await;
-                return Ok(());
+                return;
             }
 
             let target = ConnectionTarget::from_profile(&profile, dsn);
             let cache = metadata_cache.clone();
             let provider = Arc::clone(metadata_provider);
             let dsn = target.dsn.clone();
-            tokio::spawn(async move {
-                match provider.fetch_metadata(&dsn).await {
-                    Ok(metadata) => {
-                        cache.set(dsn.clone(), Arc::new(metadata)).await;
-                        let save_result = tokio::task::spawn_blocking(move || {
-                            claim_and_save(&run_guard, run_id, || store.save(&profile))
-                        })
-                        .await
-                        .expect("connection store save task panicked");
-                        match save_result {
-                            Some(Ok(())) => {
-                                tx.send(Action::ConnectionSaveCompleted {
-                                    target,
-                                    run_id,
-                                    mysql_lower_case_table_names: None,
-                                })
-                                .await
-                                .ok();
+            connection_task
+                .replace(async move {
+                    match provider.fetch_metadata(&dsn).await {
+                        Ok(metadata) => {
+                            let save_result = tokio::task::spawn_blocking(move || {
+                                claim_and_save(&run_guard, run_id, || store.save(&profile))
+                            })
+                            .await
+                            .expect("connection store save task panicked");
+                            match save_result {
+                                Some(Ok(())) => {
+                                    cache.set(dsn.clone(), Arc::new(metadata)).await;
+                                    tx.send(Action::ConnectionSaveCompleted {
+                                        target,
+                                        run_id,
+                                        mysql_lower_case_table_names: None,
+                                    })
+                                    .await
+                                    .ok();
+                                }
+                                Some(Err(e)) => {
+                                    cache.invalidate(&dsn).await;
+                                    tx.send(Action::ConnectionSaveFailed {
+                                        error: e.into(),
+                                        database_type,
+                                        run_id,
+                                    })
+                                    .await
+                                    .ok();
+                                }
+                                None => {}
                             }
-                            Some(Err(e)) => {
-                                cache.invalidate(&dsn).await;
-                                tx.send(Action::ConnectionSaveFailed {
-                                    error: e.into(),
-                                    database_type,
-                                    run_id,
-                                })
-                                .await
-                                .ok();
-                            }
-                            None => {}
+                        }
+                        Err(e) => {
+                            tx.send(Action::ConnectionSaveFailed {
+                                error: e.into(),
+                                database_type,
+                                run_id,
+                            })
+                            .await
+                            .ok();
                         }
                     }
-                    Err(e) => {
-                        tx.send(Action::ConnectionSaveFailed {
-                            error: e.into(),
-                            database_type,
-                            run_id,
-                        })
-                        .await
-                        .ok();
-                    }
-                }
-            });
-            Ok(())
+                })
+                .await;
         }
 
         Effect::ProbeMySqlConnection { target, run_id } => {
             let probe = Arc::clone(&connection.mysql_connection_probe);
             let tx = action_tx.clone();
-            mysql_connection_probe_task
-                .spawn(async move {
+            connection_task
+                .replace(async move {
                     match probe.probe(&target.dsn).await {
                         Ok(probe_result) => tx
                             .send(Action::MySqlConnectionProbeCompleted {
@@ -299,7 +308,6 @@ pub(crate) async fn run(
                     };
                 })
                 .await;
-            Ok(())
         }
 
         Effect::LoadConnectionForEdit { id } => {
@@ -321,7 +329,6 @@ pub(crate) async fn run(
                     tx.blocking_send(Action::ConnectionEditLoadFailed(e)).ok();
                 }
             });
-            Ok(())
         }
 
         Effect::LoadConnections => {
@@ -350,7 +357,6 @@ pub(crate) async fn run(
                 }))
                 .ok();
             });
-            Ok(())
         }
 
         Effect::DeleteConnection { id } => {
@@ -365,7 +371,6 @@ pub(crate) async fn run(
                     tx.blocking_send(Action::ConnectionDeleteFailed(e)).ok();
                 }
             });
-            Ok(())
         }
 
         Effect::SwitchConnection { connection_index } => {
@@ -378,7 +383,6 @@ pub(crate) async fn run(
                     .await
                     .ok();
             }
-            Ok(())
         }
 
         Effect::SwitchToService { service_index } => {
@@ -397,7 +401,6 @@ pub(crate) async fn run(
                     .await
                     .ok();
             }
-            Ok(())
         }
 
         _ => unreachable!("connection::run called with non-connection effect"),
@@ -437,44 +440,30 @@ async fn normalize_sqlite_profile(
 mod tests {
     use std::cell::RefCell;
     use std::sync::Arc;
-    use std::time::Instant;
-
     use tokio::sync::mpsc;
 
     use crate::cmd::cache::TtlCache;
     use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::effect::Effect;
-    use crate::cmd::test_fixtures;
+    use crate::cmd::test_fixtures::{self, NoopRenderer};
+    use crate::domain::DatabaseMetadata;
     use crate::domain::connection::{
         ConnectionConfig, ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType,
-        MySqlConnectionConfig, MySqlSslMode, SqliteConnectionConfig, SqlitePathError, SslMode,
+        MySqlConnectionConfig, MySqlSslMode, PostgresConnectionConfig, SqliteConnectionConfig,
+        SqlitePathError, SslMode,
     };
     use crate::model::app_state::AppState;
-    use crate::model::browse::session::ConnectionSaveGuard;
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::mysql_connection_probe::MockMySqlConnectionProbe;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
     use crate::ports::outbound::{
         ConnectionStoreError, DbOperationError, DsnBuilder, MySqlConnectionProbeResult,
-        RenderOutput, RenderResult, Renderer,
     };
     use crate::services::AppServices;
     use crate::update::action::{
         Action, ConnectionSaveError, ConnectionTarget, ConnectionsLoadedPayload,
     };
-
-    struct NoopRenderer;
-    impl Renderer for NoopRenderer {
-        fn draw(
-            &mut self,
-            _state: &AppState,
-            _services: &AppServices,
-            _now: Instant,
-        ) -> RenderResult<RenderOutput> {
-            Ok(RenderOutput::default())
-        }
-    }
 
     mod save_connection {
         use super::*;
@@ -504,6 +493,13 @@ mod tests {
             }
         }
 
+        struct PostgresDsnBuilder;
+        impl DsnBuilder for PostgresDsnBuilder {
+            fn build_dsn(&self, _profile: &ConnectionProfile) -> String {
+                "postgres://localhost/app".to_string()
+            }
+        }
+
         fn mysql_config(database: Option<&str>) -> ConnectionConfig {
             ConnectionConfig::MySQL(MySqlConnectionConfig::new(
                 "localhost",
@@ -515,10 +511,15 @@ mod tests {
             ))
         }
 
-        fn active_run_guard(run_id: u64) -> Arc<ConnectionSaveGuard> {
-            let guard = Arc::new(ConnectionSaveGuard::default());
-            guard.start(run_id);
-            guard
+        fn postgres_config() -> ConnectionConfig {
+            ConnectionConfig::PostgreSQL(PostgresConnectionConfig::new(
+                "localhost",
+                5432,
+                "app",
+                "user",
+                "secret",
+                SslMode::Prefer,
+            ))
         }
 
         #[tokio::test]
@@ -555,31 +556,24 @@ mod tests {
                 Arc::new(MySqlDsnBuilder),
                 Arc::new(probe),
             );
-            let mut renderer = NoopRenderer;
-            let mut state = AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::SaveAndConnect {
+                    id: None,
+                    name: "MySQL".to_string(),
+                    config: mysql_config(Some("app")),
+                    run_id: 1,
+                    run_guard: test_fixtures::active_connection_save_guard(1),
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .run(
-                    vec![Effect::SaveAndConnect {
-                        id: None,
-                        name: "MySQL".to_string(),
-                        config: mysql_config(Some("app")),
-                        run_id: 1,
-                        run_guard: active_run_guard(1),
-                    }],
-                    &mut renderer,
-                    &mut state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .unwrap()
-                .unwrap();
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(matches!(
                 action,
                 Action::ConnectionSaveCompleted {
@@ -620,31 +614,24 @@ mod tests {
                 Arc::new(MySqlDsnBuilder),
                 Arc::new(probe),
             );
-            let mut renderer = NoopRenderer;
-            let mut state = AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::SaveAndConnect {
+                    id: None,
+                    name: "MySQL".to_string(),
+                    config: mysql_config(None),
+                    run_id: 1,
+                    run_guard: test_fixtures::active_connection_save_guard(1),
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .run(
-                    vec![Effect::SaveAndConnect {
-                        id: None,
-                        name: "MySQL".to_string(),
-                        config: mysql_config(None),
-                        run_id: 1,
-                        run_guard: active_run_guard(1),
-                    }],
-                    &mut renderer,
-                    &mut state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .unwrap()
-                .unwrap();
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(matches!(
                 action,
                 Action::ConnectionSaveFailed {
@@ -658,7 +645,7 @@ mod tests {
         #[tokio::test]
         async fn mysql_profile_is_not_saved_when_run_is_cancelled_after_probe() {
             let dsn = "mysql://user:secret@localhost:3306/app?ssl-mode=REQUIRED";
-            let run_guard = active_run_guard(1);
+            let run_guard = test_fixtures::active_connection_save_guard(1);
             let guard_for_probe = Arc::clone(&run_guard);
             let mut probe = MockMySqlConnectionProbe::new();
             probe
@@ -689,7 +676,7 @@ mod tests {
             let ce = RefCell::new(CompletionEngine::new());
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::SaveAndConnect {
                         id: None,
                         name: "MySQL".to_string(),
@@ -712,25 +699,190 @@ mod tests {
             );
         }
 
+        #[tokio::test]
+        async fn postgres_metadata_cache_is_not_published_when_save_is_cancelled() {
+            let dsn = "postgres://localhost/app".to_string();
+            let run_guard = test_fixtures::active_connection_save_guard(1);
+            let guard_for_provider = Arc::clone(&run_guard);
+            let mut provider = MockMetadataProvider::new();
+            provider
+                .expect_fetch_metadata()
+                .with(eq(dsn.clone()))
+                .once()
+                .returning(move |_| {
+                    guard_for_provider.cancel();
+                    Ok(DatabaseMetadata::new("app".to_string()))
+                });
+
+            let mut store = MockConnectionStore::new();
+            store.expect_save().never();
+            let cache = TtlCache::new(300);
+            let observed_cache = cache.clone();
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner_with_dsn(
+                Arc::new(provider),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(store),
+                cache,
+                tx,
+                Arc::new(PostgresDsnBuilder),
+            );
+
+            runner
+                .execute_effects(
+                    vec![Effect::SaveAndConnect {
+                        id: None,
+                        name: "PostgreSQL".to_string(),
+                        config: postgres_config(),
+                        run_id: 1,
+                        run_guard,
+                    }],
+                    &mut NoopRenderer,
+                    &mut AppState::new("test".to_string()),
+                    &RefCell::new(CompletionEngine::new()),
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+                    .await
+                    .is_err()
+            );
+            assert!(observed_cache.get(&dsn).await.is_none());
+        }
+
+        #[tokio::test]
+        async fn postgres_metadata_cache_is_published_after_save_succeeds() {
+            let dsn = "postgres://localhost/app".to_string();
+            let mut provider = MockMetadataProvider::new();
+            provider
+                .expect_fetch_metadata()
+                .with(eq(dsn.clone()))
+                .once()
+                .returning(|_| Ok(DatabaseMetadata::new("app".to_string())));
+
+            let mut store = MockConnectionStore::new();
+            store.expect_save().once().returning(|_| Ok(()));
+            let cache = TtlCache::new(300);
+            let observed_cache = cache.clone();
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner_with_dsn(
+                Arc::new(provider),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(store),
+                cache,
+                tx,
+                Arc::new(PostgresDsnBuilder),
+            );
+
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::SaveAndConnect {
+                    id: None,
+                    name: "PostgreSQL".to_string(),
+                    config: postgres_config(),
+                    run_id: 1,
+                    run_guard: test_fixtures::active_connection_save_guard(1),
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
+
+            assert!(matches!(
+                run.actions.into_iter().next(),
+                Some(Action::ConnectionSaveCompleted { run_id: 1, .. })
+            ));
+            assert_eq!(
+                observed_cache
+                    .get(&dsn)
+                    .await
+                    .expect("successful save should publish metadata")
+                    .database_name,
+                "app"
+            );
+        }
+
+        #[tokio::test]
+        async fn postgres_store_failure_invalidates_metadata_cache() {
+            let dsn = "postgres://localhost/app".to_string();
+            let mut provider = MockMetadataProvider::new();
+            provider
+                .expect_fetch_metadata()
+                .with(eq(dsn.clone()))
+                .once()
+                .returning(|_| Ok(DatabaseMetadata::new("app".to_string())));
+
+            let mut store = MockConnectionStore::new();
+            store.expect_save().once().returning(|_| {
+                Err(ConnectionStoreError::Io(Arc::new(std::io::Error::other(
+                    "save failed",
+                ))))
+            });
+            let cache = TtlCache::new(300);
+            let observed_cache = cache.clone();
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner_with_dsn(
+                Arc::new(provider),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(store),
+                cache,
+                tx,
+                Arc::new(PostgresDsnBuilder),
+            );
+
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::SaveAndConnect {
+                    id: None,
+                    name: "PostgreSQL".to_string(),
+                    config: postgres_config(),
+                    run_id: 1,
+                    run_guard: test_fixtures::active_connection_save_guard(1),
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
+
+            assert!(matches!(
+                run.actions.into_iter().next(),
+                Some(Action::ConnectionSaveFailed {
+                    database_type: DatabaseType::PostgreSQL,
+                    run_id: 1,
+                    ..
+                })
+            ));
+            assert!(observed_cache.get(&dsn).await.is_none());
+        }
+
         #[test]
         fn cancel_after_claim_prevents_save_from_starting() {
-            let run_guard = active_run_guard(1);
+            let run_guard = test_fixtures::active_connection_save_guard(1);
 
             assert!(run_guard.claim(1));
 
             run_guard.cancel();
-            assert!(!run_guard.start_save(1));
+            assert!(!run_guard.begin_persistence(1));
         }
 
         #[test]
         fn finishing_cancelled_save_does_not_clear_new_run() {
-            let run_guard = active_run_guard(1);
+            let run_guard = test_fixtures::active_connection_save_guard(1);
 
             assert!(run_guard.claim(1));
-            assert!(run_guard.start_save(1));
+            assert!(run_guard.begin_persistence(1));
 
             run_guard.cancel();
-            run_guard.start(2);
+            run_guard.arm_save(2);
             run_guard.finish_save(1);
 
             assert!(run_guard.claim(2));
@@ -768,33 +920,26 @@ mod tests {
                 Arc::new(SqliteDsnBuilder),
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::SaveAndConnect {
+                    id: None,
+                    name: "Local".to_string(),
+                    config: ConnectionConfig::SQLite(
+                        SqliteConnectionConfig::new(input_path).unwrap(),
+                    ),
+                    run_id: 1,
+                    run_guard: test_fixtures::active_connection_save_guard(1),
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .run(
-                    vec![Effect::SaveAndConnect {
-                        id: None,
-                        name: "Local".to_string(),
-                        config: ConnectionConfig::SQLite(
-                            SqliteConnectionConfig::new(input_path).unwrap(),
-                        ),
-                        run_id: 1,
-                        run_guard: active_run_guard(1),
-                    }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -805,6 +950,59 @@ mod tests {
                     } if dsn == &expected_dsn
                 ),
                 "expected sqlite ConnectionSaveCompleted, got {action:?}"
+            );
+        }
+
+        #[tokio::test]
+        async fn sqlite_profile_is_not_saved_when_run_is_cancelled() {
+            let dir = tempdir().unwrap();
+            let path = dir.path().join("app.db");
+            fs::write(&path, b"").unwrap();
+            let path = path.to_str().unwrap().to_string();
+            let run_guard = test_fixtures::active_connection_save_guard(1);
+            run_guard.cancel();
+
+            let mut store = MockConnectionStore::new();
+            store.expect_save().never();
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner_with_dsn(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(store),
+                TtlCache::new(300),
+                tx,
+                Arc::new(SqliteDsnBuilder),
+            );
+            let mut renderer = NoopRenderer;
+            let mut state = AppState::new("test".to_string());
+            let completion_engine = RefCell::new(CompletionEngine::new());
+
+            runner
+                .execute_effects(
+                    vec![
+                        Effect::SaveAndConnect {
+                            id: None,
+                            name: "Local".to_string(),
+                            config: ConnectionConfig::SQLite(
+                                SqliteConnectionConfig::new(path).unwrap(),
+                            ),
+                            run_id: 1,
+                            run_guard,
+                        },
+                        Effect::CancelConnectionTask,
+                    ],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv())
+                    .await
+                    .is_err()
             );
         }
 
@@ -828,33 +1026,26 @@ mod tests {
                 Arc::new(SqliteDsnBuilder),
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::SaveAndConnect {
+                    id: None,
+                    name: "Local".to_string(),
+                    config: ConnectionConfig::SQLite(
+                        SqliteConnectionConfig::new(path_str).unwrap(),
+                    ),
+                    run_id: 1,
+                    run_guard: test_fixtures::active_connection_save_guard(1),
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .run(
-                    vec![Effect::SaveAndConnect {
-                        id: None,
-                        name: "Local".to_string(),
-                        config: ConnectionConfig::SQLite(
-                            SqliteConnectionConfig::new(path_str).unwrap(),
-                        ),
-                        run_id: 1,
-                        run_guard: active_run_guard(1),
-                    }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -890,25 +1081,18 @@ mod tests {
             );
 
             let id = ConnectionId::new();
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::DeleteConnection { id: id.clone() },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .run(
-                    vec![Effect::DeleteConnection { id: id.clone() }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(action, Action::ConnectionDeleted(_)),
                 "expected ConnectionDeleted, got {action:?}"
@@ -934,25 +1118,18 @@ mod tests {
             );
 
             let id = ConnectionId::new();
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::DeleteConnection { id },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .run(
-                    vec![Effect::DeleteConnection { id }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(action, Action::ConnectionDeleteFailed(_)),
                 "expected ConnectionDeleteFailed, got {action:?}"
@@ -986,25 +1163,18 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::LoadConnections,
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .run(
-                    vec![Effect::LoadConnections],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(action, Action::ConnectionsLoaded(ConnectionsLoadedPayload { ref profiles, .. }) if profiles.is_empty()),
                 "expected ConnectionsLoaded with empty profiles, got {action:?}"
@@ -1049,25 +1219,18 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::LoadConnections,
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .run(
-                    vec![Effect::LoadConnections],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -1125,11 +1288,10 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.set_connections(vec![profile]);
 
-            let ce = RefCell::new(CompletionEngine::new());
             let mut renderer = NoopRenderer;
-
+            let ce = RefCell::new(CompletionEngine::new());
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::SwitchConnection {
                         connection_index: 0,
                     }],
@@ -1165,12 +1327,10 @@ mod tests {
             let runner = make_runner_with_dsn_builder(tx);
 
             let mut state = AppState::new("test".to_string());
-
-            let ce = RefCell::new(CompletionEngine::new());
             let mut renderer = NoopRenderer;
-
+            let ce = RefCell::new(CompletionEngine::new());
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::SwitchConnection {
                         connection_index: 99,
                     }],

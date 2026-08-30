@@ -7,7 +7,12 @@ fn er_waiting_progress() {
     let mut terminal = create_test_terminal();
 
     let _ = state.er_preparation.start_waiting_run();
-    state.er_preparation.begin_full_prefetch(3);
+    state.er_preparation.begin_all_prefetch([
+        "public.users".to_string(),
+        "public.comments".to_string(),
+        "public.posts".to_string(),
+    ]);
+    state.er_preparation.on_table_cached("public.users");
     state
         .er_preparation
         .queue_pending_table("public.comments".to_string());
@@ -20,7 +25,7 @@ fn er_waiting_progress() {
 
 #[test]
 fn er_table_picker_modal() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::ErTablePicker);
@@ -32,7 +37,7 @@ fn er_table_picker_modal() {
 
 #[test]
 fn er_table_picker_filtered() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::ErTablePicker);
@@ -45,7 +50,7 @@ fn er_table_picker_filtered() {
 
 #[test]
 fn er_table_picker_single_select() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::ErTablePicker);
@@ -60,7 +65,7 @@ fn er_table_picker_single_select() {
 
 #[test]
 fn er_table_picker_multi_select() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::ErTablePicker);
@@ -75,7 +80,7 @@ fn er_table_picker_multi_select() {
 
 #[test]
 fn er_table_picker_all_selected() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::ErTablePicker);

@@ -57,10 +57,10 @@ async fn fetch_table_signatures_with_program(
         timeout,
     )
     .await?;
-    let snapshot =
+    let tables =
         metadata_snapshot_from_result(database, None, &results[0], lower_case_table_names)?;
     table_signatures_from_metadata(
-        &snapshot.tables,
+        &tables,
         database,
         lower_case_table_names,
         parse_signature_column_metadata(&results[1])?,
@@ -145,7 +145,7 @@ fn table_signatures_from_metadata(
     }
 
     let mut signatures = Vec::with_capacity(tables.len());
-    let mut table_details = Vec::with_capacity(tables.len());
+    let mut prefetched_table_details = Vec::with_capacity(tables.len());
     for table in tables {
         let key = (table.schema.clone(), table.name.clone());
         let mut columns = columns_by_table.remove(&key).ok_or_else(|| {
@@ -197,11 +197,11 @@ fn table_signatures_from_metadata(
             name: table.name.clone(),
             signature: table_signature(&detail),
         });
-        table_details.push(detail);
+        prefetched_table_details.push(detail);
     }
     Ok(TableSignatureSnapshot {
         signatures,
-        table_details,
+        prefetched_table_details,
     })
 }
 
@@ -355,15 +355,9 @@ fn parse_signature_unique_column_metadata(
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_support::result;
     use super::*;
     use crate::domain::{Column, ColumnAttributes, ForeignKey, QueryValue, TableStorageAttributes};
-
-    fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MySqlResultSet {
-        MySqlResultSet {
-            columns: columns.iter().map(|value| (*value).to_string()).collect(),
-            values,
-        }
-    }
 
     fn signature_table() -> Table {
         Table {
@@ -633,7 +627,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(signatures.signatures.len(), 2);
-        assert_eq!(signatures.table_details.len(), 2);
+        assert_eq!(signatures.prefetched_table_details.len(), 2);
         assert_eq!(signatures.signatures[0].qualified_name(), "App.child");
         assert!(signatures.signatures[0].signature.contains("id"));
         assert!(
@@ -641,7 +635,7 @@ mod tests {
                 .signature
                 .contains("fk_child_parent")
         );
-        let child = &signatures.table_details[0];
+        let child = &signatures.prefetched_table_details[0];
         assert_eq!(child.columns.len(), 2);
         assert!(child.columns[1].is_unique());
         assert_eq!(child.foreign_keys.len(), 1);
@@ -693,6 +687,7 @@ mod session_tests {
 
     use tempfile::TempDir;
 
+    use super::super::test_support::assert_process_stopped;
     use super::*;
 
     fn fake_signature_cli() -> (TempDir, std::path::PathBuf, std::path::PathBuf) {
@@ -746,25 +741,6 @@ done
         (directory, program, transcript)
     }
 
-    fn assert_process_stopped(transcript: &std::path::Path) {
-        for _ in 0..200 {
-            let pid = std::fs::read_to_string(transcript)
-                .unwrap()
-                .lines()
-                .find_map(|line| line.strip_prefix("process=")?.parse::<libc::pid_t>().ok());
-            if let Some(pid) = pid
-                && unsafe { libc::kill(pid, 0) } == -1
-            {
-                return;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        }
-        panic!(
-            "fake mysql process is alive or did not start: {}",
-            std::fs::read_to_string(transcript).unwrap()
-        );
-    }
-
     #[tokio::test]
     async fn signature_metadata_uses_one_process_and_four_metadata_queries() {
         let (_directory, program, transcript) = fake_signature_cli();
@@ -782,9 +758,9 @@ done
         });
 
         assert_eq!(snapshot.signatures.len(), 1);
-        assert_eq!(snapshot.table_details.len(), 1);
+        assert_eq!(snapshot.prefetched_table_details.len(), 1);
         assert_eq!(
-            snapshot.table_details[0]
+            snapshot.prefetched_table_details[0]
                 .storage_attributes
                 .engine
                 .as_deref(),

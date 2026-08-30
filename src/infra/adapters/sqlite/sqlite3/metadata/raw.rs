@@ -3,13 +3,8 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Deserialize)]
 pub(in crate::adapters::sqlite) struct RawTable {
     pub(in crate::adapters::sqlite) name: String,
-    pub(in crate::adapters::sqlite) sql: Option<String>,
-    #[serde(default)]
-    pub(in crate::adapters::sqlite) r#type: String,
-    #[serde(default)]
-    pub(in crate::adapters::sqlite) wr: i64,
-    #[serde(default)]
-    pub(in crate::adapters::sqlite) strict: i64,
+    #[serde(flatten)]
+    pub(in crate::adapters::sqlite) kind: RawTableKindInfo,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -63,7 +58,7 @@ pub(super) struct RawJsonPayload {
     pub(super) payload: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub(in crate::adapters::sqlite) struct RawTableKindInfo {
     #[serde(rename = "type", default)]
     pub(in crate::adapters::sqlite) r#type: String,

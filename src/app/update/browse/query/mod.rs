@@ -37,7 +37,7 @@ pub(super) fn preview_effect_for_current_table(
     target_page: usize,
     generation: u64,
 ) -> Option<Effect> {
-    if reject_pending_mysql_connection_probe(state, now) {
+    if reject_pending_mysql_connection_probe(state) {
         return None;
     }
     let dsn = state.session.dsn().map(String::from)?;
@@ -76,6 +76,14 @@ pub(super) mod tests {
         state
     }
 
+    pub fn active_dsn(state: &AppState) -> String {
+        state
+            .session
+            .dsn()
+            .expect("query test state must have an active connection")
+            .to_string()
+    }
+
     pub fn begin_query_run(state: &mut AppState) -> u64 {
         state.query.begin_running(Instant::now())
     }
@@ -88,7 +96,6 @@ pub(super) mod tests {
     ) -> Action {
         let run_id = begin_query_run(state);
         Action::QueryCompleted {
-            dsn: "postgres://localhost/test".to_string(),
             run_id,
             result,
             context: match target_page {
