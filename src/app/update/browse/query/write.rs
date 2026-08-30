@@ -15,7 +15,7 @@ use crate::policy::write::write_guardrails::{
     ColumnDiff, RiskLevel, TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
 };
 use crate::policy::write::write_update::escape_preview_value;
-use crate::services::AppServices;
+use crate::sql_builder::build_update_sql;
 use crate::update::action::Action;
 use crate::update::browse::query::{
     execution::refresh_effects_for_scope, preview_effect_for_current_table,
@@ -26,10 +26,7 @@ use crate::update::helpers::{
     reject_pending_mysql_connection_probe, reject_sqlite_null_pk,
 };
 
-fn build_update_preview(
-    state: &AppState,
-    services: &AppServices,
-) -> Result<WritePreview, EditGuardrailError> {
+fn build_update_preview(state: &AppState) -> Result<WritePreview, EditGuardrailError> {
     if !state.result_interaction.cell_edit().is_active() {
         return Err(EditGuardrailError::NoActiveCellEditSession);
     }
@@ -114,7 +111,7 @@ fn build_update_preview(
         return Err(EditGuardrailError::GuardrailBlocked(reason));
     }
 
-    let sql = services.sql_dialect.build_update_sql(
+    let sql = build_update_sql(
         state.session.active_database_type_or_default(),
         &target.schema,
         &target.table,
@@ -169,19 +166,14 @@ fn build_write_preview_fallback_message(preview: &WritePreview) -> String {
     lines.join("\n")
 }
 
-pub fn reduce_write(
-    state: &mut AppState,
-    action: &Action,
-    now: Instant,
-    services: &AppServices,
-) -> DispatchResult {
+pub fn reduce_write(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::SubmitCellEditWrite => {
             if reject_pending_mysql_connection_probe(state) {
                 return DispatchResult::handled();
             }
             if !state.result_interaction.staged_delete_rows().is_empty() {
-                match build_bulk_delete_preview(state, services) {
+                match build_bulk_delete_preview(state) {
                     Ok(result) => {
                         let staged_count = state.result_interaction.staged_delete_rows().len();
                         state.query.set_delete_refresh_target(
@@ -205,7 +197,7 @@ pub fn reduce_write(
                 return DispatchResult::handled();
             }
 
-            match build_update_preview(state, services) {
+            match build_update_preview(state) {
                 Ok(preview) => open_write_preview_confirm(state, &preview),
                 Err(err) => {
                     state.messages.set_error(err.to_string());
@@ -411,6 +403,7 @@ fn open_write_preview_confirm(state: &mut AppState, preview: &WritePreview) -> D
 mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
+    use crate::services::AppServices;
     use crate::test_support;
     use crate::update::test_fixtures;
 
@@ -793,7 +786,7 @@ mod tests {
 
             assert_eq!(
                 preview.sql,
-                "UPDATE \"users\" SET \"name\" = 'Bob' WHERE \"id\" = '1'"
+                "UPDATE \"users\"\nSET \"name\" = 'Bob'\nWHERE \"id\" = '1';"
             );
         }
 
@@ -816,7 +809,7 @@ mod tests {
 
             assert_eq!(
                 preview.sql,
-                "UPDATE \"users\" SET \"name\" = 'Bob' WHERE \"id\" = '1'"
+                "UPDATE \"users\"\nSET \"name\" = 'Bob'\nWHERE \"id\" = '1';"
             );
         }
 
@@ -1182,7 +1175,7 @@ mod tests {
             );
             assert_eq!(
                 preview.sql,
-                "UPDATE \"public\".\"composite_users\" SET \"name\" = 'Bob' WHERE \"first_id\" = '1' AND \"second_id\" = '2'"
+                "UPDATE \"public\".\"composite_users\"\nSET \"name\" = 'Bob'\nWHERE \"first_id\" = '1' AND \"second_id\" = '2';"
             );
         }
 

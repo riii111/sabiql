@@ -1464,7 +1464,7 @@ mod tests {
 
             assert_eq!(
                 preview.sql,
-                "UPDATE `public`.`users` SET `settings` = '{\"theme\":\"light\"}' WHERE `id` = '1'"
+                "UPDATE `public`.`users`\nSET `settings` = '{\"theme\":\"light\"}'\nWHERE `id` = '1';"
             );
             assert!(preview.diff[0].json_diff.is_some());
         }
@@ -1654,7 +1654,7 @@ mod tests {
 
             assert_eq!(
                 preview.sql,
-                "UPDATE `public`.`users` SET `settings` = '\"null\"' WHERE `id` = '1'"
+                "UPDATE `public`.`users`\nSET `settings` = '\"null\"'\nWHERE `id` = '1';"
             );
         }
     }

@@ -7,7 +7,6 @@ fn quote_literal(value: &str) -> String {
 }
 
 pub(in crate::adapters::postgres) mod ddl;
-pub(in crate::adapters::postgres) mod dialect;
 pub(in crate::adapters::postgres) mod query;
 
 #[cfg(test)]

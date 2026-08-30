@@ -168,7 +168,6 @@ async fn main() -> Result<()> {
 
     let services = AppServices {
         ddl_generator: Arc::clone(&adapter_registry) as _,
-        sql_dialect: Arc::clone(&adapter_registry) as _,
         dsn_builder: Arc::clone(&adapter_registry) as _,
     };
 

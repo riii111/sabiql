@@ -1,55 +1,71 @@
-use crate::domain::QueryValue;
+#[cfg(test)]
+mod legacy_explain_tests {
+    use crate::mysql_sql::{build_explain_analyze_sql, build_explain_sql};
 
-use crate::adapters::bulk_delete::rows_predicate;
+    #[test]
+    fn builds_tree_explain_for_supported_queries() {
+        for query in [
+            "SELECT * FROM users",
+            "TABLE users",
+            "INSERT INTO users VALUES (1)",
+            "REPLACE INTO users VALUES (1)",
+            "REPLACE users VALUES (1)",
+            "UPDATE users SET name = 'Ada' WHERE id = 1",
+            "DELETE FROM users WHERE id = 1",
+            "SELECT * FROM users FOR UPDATE",
+        ] {
+            assert_eq!(
+                build_explain_sql(query),
+                Some(format!("EXPLAIN FORMAT=TREE {query}")),
+                "{query}"
+            );
+        }
+    }
 
-use super::literal::{equality_predicate, quote_identifier, sql_literal};
+    #[test]
+    fn rejects_tree_explain_for_unsupported_input() {
+        for query in [
+            "CREATE TABLE users(id INT)",
+            "DROP TABLE users",
+            "REPLACE",
+            "REPLACE INTO",
+            "\\C /tmp/other.sock",
+            "SELECT 1; SELECT 2",
+        ] {
+            assert_eq!(build_explain_sql(query), None, "{query}");
+        }
+    }
 
-pub(super) fn build_update_sql(
-    schema: &str,
-    table: &str,
-    column: &str,
-    new_value: &QueryValue,
-    pk_pairs: &[(String, QueryValue)],
-) -> String {
-    let where_clause = pk_pairs
-        .iter()
-        .map(|(column, value)| equality_predicate(column, value))
-        .collect::<Vec<_>>()
-        .join(" AND ");
+    #[test]
+    fn builds_tree_explain_analyze_only_for_side_effect_free_reads() {
+        for query in ["SELECT * FROM users", "TABLE users"] {
+            assert_eq!(
+                build_explain_analyze_sql(query),
+                Some(format!("EXPLAIN ANALYZE FORMAT=TREE {query}")),
+                "{query}"
+            );
+        }
 
-    format!(
-        "UPDATE {}.{}\nSET {} = {}\nWHERE {};",
-        quote_identifier(schema),
-        quote_identifier(table),
-        quote_identifier(column),
-        sql_literal(new_value),
-        where_clause
-    )
-}
-
-pub(super) fn build_bulk_delete_sql(
-    schema: &str,
-    table: &str,
-    pk_pairs_per_row: &[Vec<(String, QueryValue)>],
-) -> String {
-    assert!(
-        !pk_pairs_per_row.is_empty(),
-        "pk_pairs_per_row must not be empty"
-    );
-
-    let where_clause = rows_predicate(pk_pairs_per_row, equality_predicate);
-
-    format!(
-        "DELETE FROM {}.{}\nWHERE {};",
-        quote_identifier(schema),
-        quote_identifier(table),
-        where_clause
-    )
+        for query in [
+            "UPDATE users SET name = 'Ada' WHERE id = 1",
+            "DELETE FROM users WHERE id = 1",
+            "INSERT INTO users VALUES (1)",
+            "REPLACE INTO users VALUES (1)",
+            "SELECT * FROM users FOR UPDATE",
+            "SELECT `GET_LOCK`('sabiql', 0)",
+            "SELECT `RELEASE_LOCK`('sabiql')",
+            "SELECT `RELEASE_ALL_LOCKS`()",
+            "SELECT 1; SELECT 2",
+        ] {
+            assert_eq!(build_explain_analyze_sql(query), None, "{query}");
+        }
+    }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
+mod legacy_grid_write_tests {
+    use crate::QueryValue;
+    use crate::mysql_sql::{build_bulk_delete_sql, build_update_sql};
 
     #[test]
     fn update_quotes_identifiers_and_mysql_string_escapes() {

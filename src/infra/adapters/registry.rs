@@ -1,10 +1,10 @@
 use crate::app::ports::outbound::{
     AccessMode, DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, MySqlConnectionProbe,
-    MySqlConnectionProbeResult, QueryExecutor, SqlDialect, SqliteDiagnosticsProvider,
+    MySqlConnectionProbeResult, QueryExecutor, SqliteDiagnosticsProvider,
 };
 use crate::domain::connection::{ConnectionProfile, DatabaseType};
 use crate::domain::{
-    DatabaseMetadata, DiagnosticField, QueryResult, QueryValue, SqliteDiagnosticsSnapshot, Table,
+    DatabaseMetadata, DiagnosticField, QueryResult, SqliteDiagnosticsSnapshot, Table,
     TableSignatureSnapshot, WriteExecutionResult,
 };
 use async_trait::async_trait;
@@ -61,14 +61,6 @@ impl DbAdapterRegistry {
     }
 
     fn ddl_generator(&self, database_type: DatabaseType) -> &dyn DdlGenerator {
-        match database_type {
-            DatabaseType::PostgreSQL => &self.postgres,
-            DatabaseType::SQLite => &self.sqlite,
-            DatabaseType::MySQL => &self.mysql,
-        }
-    }
-
-    fn sql_dialect(&self, database_type: DatabaseType) -> &dyn SqlDialect {
         match database_type {
             DatabaseType::PostgreSQL => &self.postgres,
             DatabaseType::SQLite => &self.sqlite,
@@ -211,56 +203,6 @@ impl DdlGenerator for DbAdapterRegistry {
     }
 }
 
-impl SqlDialect for DbAdapterRegistry {
-    fn build_explain_sql(&self, database_type: DatabaseType, query: &str) -> Option<String> {
-        self.sql_dialect(database_type)
-            .build_explain_sql(database_type, query)
-    }
-
-    fn build_explain_analyze_sql(
-        &self,
-        database_type: DatabaseType,
-        query: &str,
-    ) -> Option<String> {
-        self.sql_dialect(database_type)
-            .build_explain_analyze_sql(database_type, query)
-    }
-
-    fn build_update_sql(
-        &self,
-        database_type: DatabaseType,
-        schema: &str,
-        table: &str,
-        column: &str,
-        new_value: &QueryValue,
-        pk_pairs: &[(String, QueryValue)],
-    ) -> String {
-        self.sql_dialect(database_type).build_update_sql(
-            database_type,
-            schema,
-            table,
-            column,
-            new_value,
-            pk_pairs,
-        )
-    }
-
-    fn build_bulk_delete_sql(
-        &self,
-        database_type: DatabaseType,
-        schema: &str,
-        table: &str,
-        pk_pairs_per_row: &[Vec<(String, QueryValue)>],
-    ) -> String {
-        self.sql_dialect(database_type).build_bulk_delete_sql(
-            database_type,
-            schema,
-            table,
-            pk_pairs_per_row,
-        )
-    }
-}
-
 #[async_trait]
 impl MySqlConnectionProbe for DbAdapterRegistry {
     async fn probe(&self, dsn: &str) -> Result<MySqlConnectionProbeResult, DbOperationError> {
@@ -362,93 +304,7 @@ mod tests {
     }
 
     #[test]
-    fn postgres_sql_generation_keeps_schema_qualified_sql() {
-        let registry = DbAdapterRegistry::new();
-        let rows = vec![vec![("id".to_string(), QueryValue::text("1"))]];
-
-        let update_sql = registry.build_update_sql(
-            DatabaseType::PostgreSQL,
-            "public",
-            "users",
-            "name",
-            &QueryValue::text("Bob"),
-            &[("id".into(), QueryValue::text("1"))],
-        );
-        let delete_sql =
-            registry.build_bulk_delete_sql(DatabaseType::PostgreSQL, "public", "users", &rows);
-        let ddl = registry.generate_ddl(DatabaseType::PostgreSQL, &make_table());
-
-        assert_eq!(
-            update_sql,
-            "UPDATE \"public\".\"users\"\nSET \"name\" = 'Bob'\nWHERE \"id\" = '1';"
-        );
-        assert_eq!(
-            delete_sql,
-            "DELETE FROM \"public\".\"users\"\nWHERE \"id\" = '1';"
-        );
-        assert!(ddl.contains("CREATE TABLE \"main\".\"users\""));
-    }
-
-    #[test]
-    fn sqlite_sql_generation_omits_schema_qualification() {
-        let registry = DbAdapterRegistry::new();
-        let rows = vec![vec![("id".to_string(), QueryValue::text("1"))]];
-
-        let update_sql = registry.build_update_sql(
-            DatabaseType::SQLite,
-            "main",
-            "users",
-            "name",
-            &QueryValue::text("Bob"),
-            &[("id".into(), QueryValue::text("1"))],
-        );
-        let delete_sql =
-            registry.build_bulk_delete_sql(DatabaseType::SQLite, "main", "users", &rows);
-        let ddl = registry.generate_ddl(DatabaseType::SQLite, &make_table());
-
-        assert_eq!(
-            update_sql,
-            "UPDATE \"users\"\nSET \"name\" = 'Bob'\nWHERE \"id\" = '1';"
-        );
-        assert_eq!(delete_sql, "DELETE FROM \"users\"\nWHERE \"id\" = '1';");
-        assert!(ddl.contains("CREATE TABLE \"users\""));
-        assert!(!ddl.contains("\"main\".\"users\""));
-    }
-
-    #[test]
-    fn postgres_explain_generation_uses_postgres_dialect() {
-        let registry = DbAdapterRegistry::new();
-
-        assert_eq!(
-            registry.build_explain_sql(DatabaseType::PostgreSQL, "SELECT 1"),
-            Some("EXPLAIN SELECT 1".to_string())
-        );
-        assert_eq!(
-            registry.build_explain_analyze_sql(DatabaseType::PostgreSQL, "SELECT 1"),
-            Some("EXPLAIN ANALYZE SELECT 1".to_string())
-        );
-    }
-
-    #[test]
-    fn sqlite_explain_generation_uses_query_plan() {
-        let registry = DbAdapterRegistry::new();
-
-        assert_eq!(
-            registry.build_explain_sql(DatabaseType::SQLite, "SELECT 1"),
-            Some("EXPLAIN QUERY PLAN SELECT 1".to_string())
-        );
-        assert_eq!(
-            registry.build_explain_analyze_sql(DatabaseType::SQLite, "SELECT 1"),
-            None
-        );
-        assert_eq!(
-            registry.build_explain_sql(DatabaseType::SQLite, "DELETE FROM users"),
-            Some("EXPLAIN QUERY PLAN DELETE FROM users".to_string())
-        );
-    }
-
-    #[test]
-    fn mysql_registry_dispatches_ddl_and_dialect_to_mysql_adapter() {
+    fn mysql_registry_preserves_source_ddl() {
         let registry = DbAdapterRegistry::new();
         let source_ddl = "CREATE TABLE `users` (`id` INT)".to_string();
         let mut table = make_table();
@@ -457,14 +313,6 @@ mod tests {
         assert_eq!(
             registry.generate_ddl(DatabaseType::MySQL, &table),
             source_ddl
-        );
-        assert_eq!(
-            registry.build_explain_sql(DatabaseType::MySQL, "SELECT 1"),
-            Some("EXPLAIN FORMAT=TREE SELECT 1".to_string())
-        );
-        assert_eq!(
-            registry.build_explain_analyze_sql(DatabaseType::MySQL, "SELECT 1"),
-            Some("EXPLAIN ANALYZE FORMAT=TREE SELECT 1".to_string())
         );
     }
 

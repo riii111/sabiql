@@ -10,7 +10,7 @@ use crate::policy::write::sql_risk::{
     ConfirmationType, evaluate_mysql_explain_analyze_target, evaluate_sql_risk_for_database,
 };
 use crate::ports::outbound::AccessMode;
-use crate::services::AppServices;
+use crate::sql_builder::build_explain_analyze_sql;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
@@ -24,7 +24,6 @@ pub(super) fn reduce_analyze(
     state: &mut AppState,
     action: &Action,
     now: Instant,
-    services: &AppServices,
 ) -> DispatchResult {
     match action {
         Action::ExplainAnalyzeRequest => {
@@ -93,9 +92,7 @@ pub(super) fn reduce_analyze(
                         .begin_confirming_analyze_risk(content, reason);
                 }
                 ConfirmationType::Immediate => {
-                    let Some(explain_query) = services
-                        .sql_dialect
-                        .build_explain_analyze_sql(database_type, &content)
+                    let Some(explain_query) = build_explain_analyze_sql(database_type, &content)
                     else {
                         finish_explain_unsupported_analyze(state);
                         return DispatchResult::handled();
@@ -131,10 +128,7 @@ pub(super) fn reduce_analyze(
                     finish_explain_unsupported_analyze(state);
                     return DispatchResult::handled();
                 }
-                let Some(explain_query) = services
-                    .sql_dialect
-                    .build_explain_analyze_sql(database_type, &query)
-                else {
+                let Some(explain_query) = build_explain_analyze_sql(database_type, &query) else {
                     finish_explain_unsupported_analyze(state);
                     return DispatchResult::handled();
                 };

@@ -19,7 +19,7 @@ pub fn dispatch_query(
     services: &AppServices,
 ) -> DispatchResult {
     execution::reduce_execution(state, action, now, services)
-        .or_else(|| write::reduce_write(state, action, now, services))
+        .or_else(|| write::reduce_write(state, action, now))
         .or_else(|| pagination::reduce_pagination(state, action, now, services))
 }
 
