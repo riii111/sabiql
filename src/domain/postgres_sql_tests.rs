@@ -134,13 +134,13 @@ mod update_edge_cases {
             "public",
             "users",
             "path",
-            &QueryValue::text("C:\\Users\\test"),
+            &QueryValue::text("C:\\Users\\O'Reilly"),
             &[("id".into(), QueryValue::text("1"))],
         );
 
         assert_eq!(
             sql,
-            "UPDATE \"public\".\"users\"\nSET \"path\" = 'C:\\Users\\test'\nWHERE \"id\" = '1';"
+            "UPDATE \"public\".\"users\"\nSET \"path\" = E'C:\\\\Users\\\\O''Reilly'\nWHERE \"id\" = '1';"
         );
     }
 }

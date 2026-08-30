@@ -66,7 +66,12 @@ fn quote_ident(value: &str) -> String {
 }
 
 fn quote_literal(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "''"))
+    let escaped = value.replace('\\', "\\\\").replace('\'', "''");
+    if value.contains('\\') {
+        format!("E'{escaped}'")
+    } else {
+        format!("'{escaped}'")
+    }
 }
 
 fn sql_literal(value: &QueryValue) -> String {
