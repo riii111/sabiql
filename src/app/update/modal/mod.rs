@@ -12,7 +12,11 @@ use crate::model::app_state::AppState;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn dispatch_modal(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub(crate) fn dispatch_modal(
+    state: &mut AppState,
+    action: &Action,
+    now: Instant,
+) -> DispatchResult {
     base::reduce_base_lifecycle(state, action, now)
         .or_else(|| settings::reduce_settings(state, action, now))
         .or_else(|| help::reduce_help(state, action, now))
@@ -260,35 +264,6 @@ mod tests {
 
             assert_eq!(state.settings.custom_er_browser().content(), "Firefox");
             assert_eq!(state.kill_buffer(), Some("Firefox"));
-        }
-    }
-
-    mod er_picker {
-        use super::*;
-
-        #[test]
-        fn sqlite_connection_rejects_er_picker() {
-            let mut state = create_test_state();
-            state.session.activate_connection_with_dsn(
-                &ConnectionId::new(),
-                "sqlite",
-                DatabaseType::SQLite,
-                "sqlite://test.db",
-            );
-
-            let effects = super::dispatch_modal(
-                &mut state,
-                &Action::OpenModal(ModalKind::ErTablePicker),
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert_eq!(state.input_mode(), InputMode::Normal);
-            assert_eq!(
-                state.messages.last_error.as_deref(),
-                Some("ER diagrams are not available for this connection")
-            );
-            assert!(effects.is_empty());
         }
     }
 

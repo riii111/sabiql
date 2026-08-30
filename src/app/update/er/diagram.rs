@@ -4,7 +4,7 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::update::action::{Action, ErDiagramInfo};
 use crate::update::dispatch_result::DispatchResult;
-use crate::update::helpers::{reject_pending_mysql_connection_probe, require_er_diagram_enabled};
+use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 pub(super) fn reduce_diagram_lifecycle(
     state: &mut AppState,
@@ -48,9 +48,6 @@ pub(super) fn reduce_diagram_lifecycle(
             if reject_pending_mysql_connection_probe(state) {
                 return DispatchResult::handled();
             }
-            if let Some(result) = require_er_diagram_enabled(state) {
-                return result;
-            }
             if state.er_preparation.is_busy() {
                 return DispatchResult::handled();
             }
@@ -75,9 +72,6 @@ pub(super) fn reduce_diagram_lifecycle(
             DispatchResult::handled_with(vec![Effect::SmartErRefresh { dsn, run_id }])
         }
         Action::ErGenerateFromCache => {
-            if let Some(result) = require_er_diagram_enabled(state) {
-                return result;
-            }
             if !state.er_preparation.can_generate_from_cache() {
                 return DispatchResult::handled();
             }
