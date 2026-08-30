@@ -75,7 +75,10 @@ pub fn reduce_execution(
                     );
                 }
                 (QuerySource::Adhoc, false) => {
-                    reset_view_for_new_result(state, now);
+                    state.result_interaction.reset_view();
+                    state
+                        .query
+                        .set_result_highlight(now + Duration::from_millis(500));
                     state.sql_modal.finish_adhoc_success(AdhocSuccessSnapshot {
                         command_tag: result.command_tag.clone(),
                         row_count: result.row_count(),
@@ -304,13 +307,6 @@ fn preview_error_result(state: &AppState, error: &DbOperationError) -> QueryResu
         0,
         QuerySource::Preview,
     )
-}
-
-fn reset_view_for_new_result(state: &mut AppState, now: Instant) {
-    state.result_interaction.reset_view();
-    state
-        .query
-        .set_result_highlight(now + Duration::from_millis(500));
 }
 
 fn apply_preview_result(
