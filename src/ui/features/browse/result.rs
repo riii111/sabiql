@@ -483,9 +483,14 @@ fn display_width_of_first_line(value: &str, escape_nul: bool) -> usize {
 fn truncate_display_text(value: &str, escape_nul: bool, max_width: usize) -> String {
     let first_line = value.split('\n').next().unwrap_or(value);
     let budget = max_width.saturating_sub(3);
+    let is_truncated = display_width_of_first_line(first_line, escape_nul) > max_width;
+    if is_truncated && max_width < 3 {
+        return ".".repeat(max_width);
+    }
+
     let mut display = String::new();
     let mut display_width = 0usize;
-    let mut display_prefix_len = 0usize;
+    let mut truncated_width = 0usize;
 
     for grapheme in first_line.graphemes(true) {
         let (width, is_nul) = if escape_nul && grapheme == "\0" {
@@ -495,38 +500,18 @@ fn truncate_display_text(value: &str, escape_nul: bool, max_width: usize) -> Str
         };
 
         if display_width.saturating_add(width) > max_width {
-            if max_width < 3 {
-                return ".".repeat(max_width);
-            }
-            display.clear();
-            let mut truncated_width = 0usize;
-            for grapheme in first_line[..display_prefix_len].graphemes(true) {
-                let (width, is_nul) = if escape_nul && grapheme == "\0" {
-                    (2, true)
-                } else {
-                    (UnicodeWidthStr::width(grapheme), false)
-                };
-
-                if truncated_width.saturating_add(width) <= budget {
-                    if is_nul {
-                        display.push_str("\\0");
-                    } else {
-                        display.push_str(grapheme);
-                    }
-                    truncated_width += width;
-                }
-            }
-            display.push_str("...");
-            return display;
+            break;
         }
 
-        if is_nul {
-            display.push_str("\\0");
-        } else {
-            display.push_str(grapheme);
+        if !is_truncated || truncated_width.saturating_add(width) <= budget {
+            display.push_str(if is_nul { "\\0" } else { grapheme });
+            truncated_width = truncated_width.saturating_add(width);
         }
         display_width += width;
-        display_prefix_len += grapheme.len();
+    }
+
+    if is_truncated {
+        display.push_str("...");
     }
 
     display
