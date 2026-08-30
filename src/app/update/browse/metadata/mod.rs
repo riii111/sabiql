@@ -983,6 +983,7 @@ mod tests {
 
             assert!(state.query.pagination.table().is_empty());
             assert!(state.query.current_result().is_none());
+            assert_eq!(state.query.result_generation(), 2);
             assert!(state.session.table_detail().is_none());
             assert!(state.session.selected_table_key().is_none());
             assert_eq!(state.ui.explorer_selected(), 0);
