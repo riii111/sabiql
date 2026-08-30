@@ -833,7 +833,7 @@ fn sqlite_pragma_risk(sql: &str) -> Option<SqlRiskDecision> {
             | "incremental_vacuum"
             | "wal_checkpoint"
     ) || (pragma_name == "foreign_keys"
-        && (value.is_none() || matches!(value, Some("off" | "0" | "false"))));
+        && sqlite_foreign_keys_value_is_dangerous(value));
 
     Some(SqlRiskDecision {
         risk_level: if dangerous {
@@ -851,6 +851,12 @@ fn sqlite_pragma_risk(sql: &str) -> Option<SqlRiskDecision> {
         },
         read_only_allowed: false,
     })
+}
+
+fn sqlite_foreign_keys_value_is_dangerous(value: Option<&str>) -> bool {
+    value.is_none()
+        || matches!(value, Some("off" | "no" | "false"))
+        || value.is_some_and(|value| value.starts_with('0'))
 }
 
 fn evaluate_sqlite_specific_risk(sql: &str) -> Option<SqlRiskDecision> {
@@ -1216,6 +1222,13 @@ mod tests {
             #[case::foreign_keys_zero_after_line_comment("PRAGMA foreign_keys = -- comment\n0")]
             #[case::foreign_keys_false_after_block_comment(
                 "PRAGMA foreign_keys(/* comment */ false)"
+            )]
+            #[case::foreign_keys_no_after_block_comment("PRAGMA foreign_keys = /* comment */ NO")]
+            #[case::foreign_keys_zero_zero_after_line_comment(
+                "PRAGMA foreign_keys = -- comment\n00"
+            )]
+            #[case::foreign_keys_zero_exponent_after_block_comment(
+                "PRAGMA foreign_keys(/* comment */ 0e0)"
             )]
             #[case::quoted_schema_foreign_keys_off("PRAGMA \"main\".\"foreign_keys\" = OFF")]
             #[case::bracket_schema_journal_mode("PRAGMA [main].[journal_mode](WAL)")]
@@ -1646,6 +1659,28 @@ mod tests {
                 let result = evaluate_multi_statement_for_database(
                     DatabaseType::SQLite,
                     "PRAGMA foreign_keys = /* comment */ OFF; CREATE TABLE users(id INTEGER)",
+                );
+
+                match result {
+                    MultiStatementDecision::Allow { risk, .. } => {
+                        assert!(matches!(
+                            risk.confirmation,
+                            ConfirmationType::Acknowledge {
+                                reason: AcknowledgeReason::TargetNameUnavailable,
+                                ref label,
+                            } if label == "PRAGMA"
+                        ));
+                    }
+                    _ => panic!("expected Allow"),
+                }
+            }
+
+            #[test]
+            fn sqlite_foreign_keys_no_in_incompatible_transaction_preserves_high_risk_acknowledgement()
+             {
+                let result = evaluate_multi_statement_for_database(
+                    DatabaseType::SQLite,
+                    "PRAGMA foreign_keys = ON; PRAGMA foreign_keys = NO; PRAGMA foreign_keys;",
                 );
 
                 match result {
