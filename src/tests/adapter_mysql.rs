@@ -1747,7 +1747,7 @@ mod write_operations {
                         .and_then(|values| values.first())
                         .cloned()
                         .ok_or_else(|| "GIPK row identity value was not returned".to_string())?;
-                let update_sql = build_update_sql(
+                    let update_sql = build_update_sql(
                         DatabaseType::MySQL,
                         "sabiql_test",
                         &gipk_table,
@@ -1875,7 +1875,7 @@ mod write_operations {
                         .await
                         .map_err(|error| format!("failed to seed write fixture: {error:?}"))?;
 
-                let update_sql = build_update_sql(
+                    let update_sql = build_update_sql(
                         DatabaseType::MySQL,
                         "sabiql_test",
                         &table,
