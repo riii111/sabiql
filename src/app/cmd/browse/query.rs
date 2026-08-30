@@ -484,15 +484,17 @@ mod tests {
     }
 
     mod query_history_append {
-        use tokio::sync::{Mutex, oneshot};
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        use tokio::sync::{Barrier, Mutex, oneshot};
 
         use super::*;
         use crate::cmd::query_task::QueryTaskRegistry;
-        use crate::domain::DatabaseType;
         use crate::domain::connection::ConnectionId;
         use crate::domain::query_history::{
             QueryHistoryEntry, QueryHistoryScope, QueryResultStatus,
         };
+        use crate::domain::{CommandTag, DatabaseType};
         use crate::ports::outbound::{
             CachedResultExporter, DbOperationError, QueryExecutor, QueryHistoryError,
             QueryHistoryStore,
@@ -508,7 +510,9 @@ mod tests {
         #[derive(Clone)]
         struct RecordingQueryHistoryStore {
             calls: Arc<Mutex<Vec<HistoryCall>>>,
-            append_signal: Arc<Mutex<Option<oneshot::Sender<()>>>>,
+            append_barrier: Arc<Barrier>,
+            append_called: Arc<AtomicBool>,
+            append_finished: Arc<Mutex<Option<oneshot::Sender<()>>>>,
         }
 
         #[async_trait::async_trait]
@@ -524,7 +528,9 @@ mod tests {
                     scope: scope.clone(),
                     entry: entry.clone(),
                 });
-                let signal = self.append_signal.lock().await.take();
+                self.append_called.store(true, Ordering::SeqCst);
+                self.append_barrier.wait().await;
+                let signal = self.append_finished.lock().await.take();
                 if let Some(signal) = signal {
                     signal.send(()).ok();
                 }
@@ -545,20 +551,22 @@ mod tests {
             (
                 RecordingQueryHistoryStore {
                     calls: Arc::new(Mutex::new(Vec::new())),
-                    append_signal: Arc::new(Mutex::new(Some(signal_tx))),
+                    append_barrier: Arc::new(Barrier::new(2)),
+                    append_called: Arc::new(AtomicBool::new(false)),
+                    append_finished: Arc::new(Mutex::new(Some(signal_tx))),
                 },
                 signal_rx,
             )
         }
 
-        fn connected_state(database_type: DatabaseType, database: Option<&str>) -> AppState {
+        fn connected_state() -> AppState {
             let mut state = AppState::new("test".to_string());
             state.session.activate_connection_with_target(
                 &ConnectionId::from_string("connection"),
                 "connection",
-                database_type,
+                DatabaseType::MySQL,
                 "dsn://test",
-                database,
+                Some("analytics"),
             );
             state
         }
@@ -592,41 +600,57 @@ mod tests {
             let action =
                 test_fixtures::recv_action_with_timeout(&mut rx, Duration::from_secs(1)).await;
             if expect_append {
+                let append_release = Arc::clone(&store.append_barrier);
+                tokio::time::timeout(Duration::from_secs(1), append_release.wait())
+                    .await
+                    .expect("history append should reach its release point");
                 tokio::time::timeout(Duration::from_secs(1), append_rx)
                     .await
                     .expect("history append should finish")
                     .expect("history append signal should be sent");
             } else {
-                assert!(
-                    tokio::time::timeout(Duration::from_millis(100), append_rx)
-                        .await
-                        .is_err(),
-                    "history append should not be spawned"
-                );
+                assert!(!store.append_called.load(Ordering::SeqCst));
             }
 
             let calls = store.calls.lock().await.clone();
             (action, calls)
         }
 
+        fn assert_history_call(
+            calls: &[HistoryCall],
+            query: &str,
+            result_status: QueryResultStatus,
+            affected_rows: Option<u64>,
+        ) {
+            assert_eq!(calls.len(), 1);
+            let call = &calls[0];
+            assert_eq!(call.project_name, "test");
+            assert_eq!(call.scope.connection_id.as_str(), "connection");
+            assert_eq!(call.scope.database.as_deref(), Some("analytics"));
+            assert_eq!(call.entry.query, query);
+            assert_eq!(call.entry.connection_id.as_str(), "connection");
+            assert_eq!(call.entry.database.as_deref(), Some("analytics"));
+            assert_eq!(call.entry.result_status, result_status);
+            assert_eq!(call.entry.affected_rows, affected_rows);
+        }
+
         #[tokio::test]
         async fn adhoc_success_appends_query_history_after_execution() {
             let mut executor = MockQueryExecutor::new();
-            executor
-                .expect_execute_adhoc()
-                .once()
-                .returning(|_, _, _| Ok(test_fixtures::sample_query_result()));
+            executor.expect_execute_adhoc().once().returning(|_, _, _| {
+                Ok(test_fixtures::sample_query_result().with_command_tag(CommandTag::Update(7)))
+            });
             let (store, append_rx) = history_store();
 
             let (action, calls) = run_with_history(
                 Effect::ExecuteAdhoc {
                     dsn: "dsn://test".to_string(),
                     run_id: 1,
-                    query: "SELECT 1".to_string(),
+                    query: "UPDATE users SET active = true".to_string(),
                     access_mode: AccessMode::ReadOnly,
                 },
                 executor,
-                connected_state(DatabaseType::MySQL, Some("analytics")),
+                connected_state(),
                 store,
                 append_rx,
                 true,
@@ -634,13 +658,12 @@ mod tests {
             .await;
 
             assert!(matches!(action, Action::QueryCompleted { run_id: 1, .. }));
-            assert_eq!(calls.len(), 1);
-            assert_eq!(calls[0].project_name, "test");
-            assert_eq!(calls[0].scope.connection_id.as_str(), "connection");
-            assert_eq!(calls[0].scope.database.as_deref(), Some("analytics"));
-            assert_eq!(calls[0].entry.query, "SELECT 1");
-            assert_eq!(calls[0].entry.result_status, QueryResultStatus::Success);
-            assert_eq!(calls[0].entry.affected_rows, None);
+            assert_history_call(
+                &calls,
+                "UPDATE users SET active = true",
+                QueryResultStatus::Success,
+                Some(7),
+            );
         }
 
         #[tokio::test]
@@ -659,7 +682,7 @@ mod tests {
                     access_mode: AccessMode::ReadOnly,
                 },
                 executor,
-                connected_state(DatabaseType::PostgreSQL, None),
+                connected_state(),
                 store,
                 append_rx,
                 true,
@@ -667,10 +690,7 @@ mod tests {
             .await;
 
             assert!(matches!(action, Action::QueryFailed { run_id: 2, .. }));
-            assert_eq!(calls.len(), 1);
-            assert_eq!(calls[0].entry.query, "SELECT broken");
-            assert_eq!(calls[0].entry.result_status, QueryResultStatus::Failed);
-            assert_eq!(calls[0].entry.affected_rows, None);
+            assert_history_call(&calls, "SELECT broken", QueryResultStatus::Failed, None);
         }
 
         #[tokio::test]
@@ -692,7 +712,7 @@ mod tests {
                     access_mode: AccessMode::ReadWrite,
                 },
                 executor,
-                connected_state(DatabaseType::PostgreSQL, None),
+                connected_state(),
                 store,
                 append_rx,
                 true,
@@ -707,10 +727,12 @@ mod tests {
                     ..
                 }
             ));
-            assert_eq!(calls.len(), 1);
-            assert_eq!(calls[0].entry.query, "UPDATE users SET active = true");
-            assert_eq!(calls[0].entry.result_status, QueryResultStatus::Success);
-            assert_eq!(calls[0].entry.affected_rows, Some(7));
+            assert_history_call(
+                &calls,
+                "UPDATE users SET active = true",
+                QueryResultStatus::Success,
+                Some(7),
+            );
         }
 
         #[tokio::test]
@@ -729,7 +751,7 @@ mod tests {
                     access_mode: AccessMode::ReadWrite,
                 },
                 executor,
-                connected_state(DatabaseType::PostgreSQL, None),
+                connected_state(),
                 store,
                 append_rx,
                 true,
@@ -740,10 +762,12 @@ mod tests {
                 action,
                 Action::ExecuteWriteFailed { run_id: 4, .. }
             ));
-            assert_eq!(calls.len(), 1);
-            assert_eq!(calls[0].entry.query, "UPDATE users SET active = false");
-            assert_eq!(calls[0].entry.result_status, QueryResultStatus::Failed);
-            assert_eq!(calls[0].entry.affected_rows, None);
+            assert_history_call(
+                &calls,
+                "UPDATE users SET active = false",
+                QueryResultStatus::Failed,
+                None,
+            );
         }
 
         #[tokio::test]
@@ -771,6 +795,73 @@ mod tests {
             .await;
 
             assert!(matches!(action, Action::QueryCompleted { run_id: 5, .. }));
+            assert!(calls.is_empty());
+        }
+
+        #[tokio::test]
+        async fn write_success_history_disabled_does_not_spawn_append() {
+            let mut executor = MockQueryExecutor::new();
+            executor.expect_execute_write().once().returning(|_, _, _| {
+                Ok(WriteExecutionResult {
+                    affected_rows: 7,
+                    diagnostics: Vec::new(),
+                })
+            });
+            let (store, append_rx) = history_store();
+
+            let (action, calls) = run_with_history(
+                Effect::ExecuteWrite {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 6,
+                    query: "UPDATE users SET active = true".to_string(),
+                    access_mode: AccessMode::ReadWrite,
+                },
+                executor,
+                AppState::new("test".to_string()),
+                store,
+                append_rx,
+                false,
+            )
+            .await;
+
+            assert!(matches!(
+                action,
+                Action::ExecuteWriteSucceeded {
+                    run_id: 6,
+                    affected_rows: 7,
+                    ..
+                }
+            ));
+            assert!(calls.is_empty());
+        }
+
+        #[tokio::test]
+        async fn write_failure_history_disabled_does_not_spawn_append() {
+            let mut executor = MockQueryExecutor::new();
+            executor.expect_execute_write().once().returning(|_, _, _| {
+                Err(DbOperationError::QueryFailed("write failed".to_string()))
+            });
+            let (store, append_rx) = history_store();
+
+            let (action, calls) = run_with_history(
+                Effect::ExecuteWrite {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 7,
+                    query: "UPDATE users SET active = false".to_string(),
+                    access_mode: AccessMode::ReadWrite,
+                },
+                executor,
+                AppState::new("test".to_string()),
+                store,
+                append_rx,
+                false,
+            )
+            .await;
+
+            assert!(matches!(
+                action,
+                Action::ExecuteWriteFailed { run_id: 7, .. }
+            ));
             assert!(calls.is_empty());
         }
     }
