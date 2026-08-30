@@ -250,7 +250,7 @@ impl ResultPane {
 
         let header = Row::new(viewport_indices.iter().map(|&idx| {
             let col_name = result.columns.get(idx).map_or("", String::as_str);
-            Cell::from(col_name.to_string())
+            Cell::from(col_name)
         }))
         .style(
             Style::default()
@@ -484,9 +484,8 @@ fn truncate_display_text(value: &str, escape_nul: bool, max_width: usize) -> Str
     let first_line = value.split('\n').next().unwrap_or(value);
     let budget = max_width.saturating_sub(3);
     let mut display = String::new();
-    let mut truncated = String::new();
     let mut display_width = 0usize;
-    let mut truncated_width = 0usize;
+    let mut truncation_len = 0usize;
 
     for grapheme in first_line.graphemes(true) {
         let (width, is_nul) = if escape_nul && grapheme == "\0" {
@@ -499,24 +498,20 @@ fn truncate_display_text(value: &str, escape_nul: bool, max_width: usize) -> Str
             if max_width < 3 {
                 return ".".repeat(max_width);
             }
-            truncated.push_str("...");
-            return truncated;
+            display.truncate(truncation_len);
+            display.push_str("...");
+            return display;
         }
 
         if is_nul {
             display.push_str("\\0");
-            if truncated_width.saturating_add(width) <= budget {
-                truncated.push_str("\\0");
-                truncated_width += width;
-            }
         } else {
             display.push_str(grapheme);
-            if truncated_width.saturating_add(width) <= budget {
-                truncated.push_str(grapheme);
-                truncated_width += width;
-            }
         }
         display_width += width;
+        if display_width <= budget {
+            truncation_len = display.len();
+        }
     }
 
     display
