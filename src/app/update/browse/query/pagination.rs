@@ -537,6 +537,16 @@ mod tests {
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
             assert!(state.confirm_dialog.message().contains("unknown"));
+            let Some(ConfirmIntent::CsvExportRerunnable {
+                export_query,
+                file_name,
+                ..
+            }) = state.confirm_dialog.intent()
+            else {
+                panic!("expected rerunnable CSV export confirmation");
+            };
+            assert_eq!(export_query, "SELECT 1");
+            assert_eq!(file_name, "adhoc");
         }
 
         #[rstest]
