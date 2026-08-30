@@ -10,7 +10,6 @@ use crate::model::app_state::AppState;
 use crate::model::shared::confirm_dialog::{ConfirmIntent, CsvExportCacheSnapshot};
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::sql::sqlite_export::{SqliteExportPlan, sqlite_export_plan};
-use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::dispatch_result::DispatchResult;
@@ -155,12 +154,7 @@ fn dispatch_rerunnable_csv_export(
     }])
 }
 
-pub fn reduce_pagination(
-    state: &mut AppState,
-    action: &Action,
-    now: Instant,
-    _services: &AppServices,
-) -> DispatchResult {
+pub fn reduce_pagination(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::RequestCsvExport => {
             if reject_pending_mysql_connection_probe(state) {
@@ -371,6 +365,7 @@ mod tests {
     use super::*;
     use crate::domain::{QueryResult, QuerySource};
     use crate::ports::outbound::DbOperationError;
+    use crate::services::AppServices;
     use crate::update::test_fixtures;
     use std::sync::Arc;
 
@@ -439,13 +434,7 @@ mod tests {
             state.query.pagination.reset_for_table("public", "users");
             let now = Instant::now();
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::ResultNextPage,
-                now,
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects = dispatch_query(&mut state, &Action::ResultNextPage, now).unwrap();
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -468,13 +457,7 @@ mod tests {
             state.query.pagination.set_page_result(0, true);
             let now = Instant::now();
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::ResultNextPage,
-                now,
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects = dispatch_query(&mut state, &Action::ResultNextPage, now).unwrap();
 
             assert!(effects.is_empty());
         }
@@ -485,13 +468,7 @@ mod tests {
             state.query.set_current_result(adhoc_result());
             let now = Instant::now();
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::ResultNextPage,
-                now,
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects = dispatch_query(&mut state, &Action::ResultNextPage, now).unwrap();
 
             assert!(effects.is_empty());
         }
@@ -505,13 +482,7 @@ mod tests {
             let _ = state.query.begin_running(Instant::now());
             let now = Instant::now();
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::ResultNextPage,
-                now,
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects = dispatch_query(&mut state, &Action::ResultNextPage, now).unwrap();
 
             assert!(effects.is_empty());
         }
@@ -526,12 +497,7 @@ mod tests {
             state.result_interaction.activate_cell(2, 1);
             state.result_interaction.stage_row(2);
 
-            dispatch_query(
-                &mut state,
-                &Action::ResultNextPage,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_query(&mut state, &Action::ResultNextPage, Instant::now());
 
             assert_eq!(state.result_interaction.selection().row(), Some(2));
             assert_eq!(state.result_interaction.selection().cell(), Some(1));
@@ -548,12 +514,7 @@ mod tests {
             state.result_interaction.activate_cell(3, 1);
             state.result_interaction.stage_row(3);
 
-            dispatch_query(
-                &mut state,
-                &Action::ResultNextPage,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_query(&mut state, &Action::ResultNextPage, Instant::now());
 
             assert!(state.result_interaction.selection().row().is_none());
             assert!(state.result_interaction.selection().cell().is_none());
@@ -568,13 +529,8 @@ mod tests {
                 .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
             state.query.pagination.reset_for_table("public", "users");
 
-            let next_effects = dispatch_query(
-                &mut state,
-                &Action::ResultNextPage,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let next_effects =
+                dispatch_query(&mut state, &Action::ResultNextPage, Instant::now()).unwrap();
             assert!(matches!(
                 next_effects.first(),
                 Some(Effect::ExecutePreview { target_page: 1, .. })
@@ -582,31 +538,16 @@ mod tests {
 
             let next_result =
                 query_completed_action(&mut state, preview_result(PREVIEW_PAGE_SIZE), 0, Some(1));
-            dispatch_query(
-                &mut state,
-                &next_result,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_query(&mut state, &next_result, Instant::now());
 
             let empty_next_result =
                 query_completed_action(&mut state, preview_result(0), 0, Some(2));
-            dispatch_query(
-                &mut state,
-                &empty_next_result,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_query(&mut state, &empty_next_result, Instant::now());
             assert_eq!(state.query.pagination.current_page(), 1);
             assert!(state.query.pagination.reached_end());
 
-            let prev_effects = dispatch_query(
-                &mut state,
-                &Action::ResultPrevPage,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let prev_effects =
+                dispatch_query(&mut state, &Action::ResultPrevPage, Instant::now()).unwrap();
             assert!(matches!(
                 prev_effects.first(),
                 Some(Effect::ExecutePreview { target_page: 0, .. })
@@ -615,20 +556,10 @@ mod tests {
 
             let prev_result =
                 query_completed_action(&mut state, preview_result(PREVIEW_PAGE_SIZE), 0, Some(0));
-            dispatch_query(
-                &mut state,
-                &prev_result,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_query(&mut state, &prev_result, Instant::now());
 
-            let next_effects = dispatch_query(
-                &mut state,
-                &Action::ResultNextPage,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let next_effects =
+                dispatch_query(&mut state, &Action::ResultNextPage, Instant::now()).unwrap();
             assert!(matches!(
                 next_effects.first(),
                 Some(Effect::ExecutePreview { target_page: 1, .. })
@@ -649,13 +580,7 @@ mod tests {
             state.query.pagination.set_page_result(2, false);
             let now = Instant::now();
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::ResultPrevPage,
-                now,
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects = dispatch_query(&mut state, &Action::ResultPrevPage, now).unwrap();
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -680,13 +605,7 @@ mod tests {
             state.query.pagination.set_current_page(0);
             let now = Instant::now();
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::ResultPrevPage,
-                now,
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects = dispatch_query(&mut state, &Action::ResultPrevPage, now).unwrap();
 
             assert!(effects.is_empty());
         }
@@ -701,12 +620,7 @@ mod tests {
             state.result_interaction.activate_cell(1, 1);
             state.result_interaction.stage_row(1);
 
-            dispatch_query(
-                &mut state,
-                &Action::ResultPrevPage,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_query(&mut state, &Action::ResultPrevPage, Instant::now());
 
             assert_eq!(state.result_interaction.selection().row(), Some(1));
             assert_eq!(state.result_interaction.selection().cell(), Some(1));
@@ -759,13 +673,8 @@ mod tests {
             let mut state = create_test_state();
             state.query.set_current_result(adhoc_result());
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::RequestCsvExport,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -797,13 +706,8 @@ mod tests {
                     QuerySource::Adhoc,
                 )));
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::RequestCsvExport,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
             assert!(!state.query.is_running());
@@ -814,13 +718,8 @@ mod tests {
             let mut state = create_test_state();
             state.query.clear_current_result();
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::RequestCsvExport,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
         }
@@ -830,8 +729,7 @@ mod tests {
             let mut state = create_test_state();
             let action = csv_rows_counted_action(&mut state, Some(500), "SELECT 1", "test");
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::ExportCsv { .. }));
@@ -842,8 +740,7 @@ mod tests {
             let mut state = create_test_state();
             let action = csv_rows_counted_action(&mut state, Some(200_000), "SELECT 1", "test");
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
@@ -855,8 +752,7 @@ mod tests {
             let mut state = create_test_state();
             let action = csv_rows_counted_action(&mut state, None, "SELECT 1", "test");
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
@@ -868,8 +764,7 @@ mod tests {
             let mut state = create_test_state();
             let action = csv_succeeded_action(&mut state, "/tmp/export.csv", Some(42));
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::OpenFolder { .. }));
@@ -899,8 +794,7 @@ mod tests {
                 DbOperationError::QueryFailed("psql error".to_string()),
             );
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -925,7 +819,6 @@ mod tests {
                     file_name: "test".to_string(),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             )
             .unwrap();
 
@@ -944,13 +837,8 @@ mod tests {
                 QuerySource::Adhoc,
             )));
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::RequestCsvExport,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
         }
@@ -977,13 +865,8 @@ mod tests {
                         QuerySource::Adhoc,
                     )));
 
-                let effects = dispatch_query(
-                    &mut state,
-                    &Action::RequestCsvExport,
-                    Instant::now(),
-                    &AppServices::stub(),
-                )
-                .unwrap();
+                let effects =
+                    dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
 
                 assert!(effects.is_empty());
                 assert!(
@@ -1009,13 +892,8 @@ mod tests {
                         QuerySource::Adhoc,
                     )));
 
-                let effects = dispatch_query(
-                    &mut state,
-                    &Action::RequestCsvExport,
-                    Instant::now(),
-                    &AppServices::stub(),
-                )
-                .unwrap();
+                let effects =
+                    dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
 
                 assert_eq!(effects.len(), 1);
                 assert!(matches!(&effects[0], Effect::ExportCsvFromCache { .. }));
@@ -1034,13 +912,8 @@ mod tests {
                         QuerySource::Adhoc,
                     )));
 
-                let effects = dispatch_query(
-                    &mut state,
-                    &Action::RequestCsvExport,
-                    Instant::now(),
-                    &AppServices::stub(),
-                )
-                .unwrap();
+                let effects =
+                    dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
 
                 assert_eq!(effects.len(), 1);
                 assert!(matches!(&effects[0], Effect::CountRowsForExport { .. }));
@@ -1059,13 +932,8 @@ mod tests {
                     ),
                 ));
 
-                let effects = dispatch_query(
-                    &mut state,
-                    &Action::RequestCsvExport,
-                    Instant::now(),
-                    &AppServices::stub(),
-                )
-                .unwrap();
+                let effects =
+                    dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
 
                 let Effect::ExportCsvFromCache {
                     columns, values, ..
@@ -1104,13 +972,8 @@ mod tests {
             fn uses_count_only_for_mysql_select(#[case] query: &str, #[case] expects_count: bool) {
                 let mut state = mysql_state(query);
 
-                let effects = dispatch_query(
-                    &mut state,
-                    &Action::RequestCsvExport,
-                    Instant::now(),
-                    &AppServices::stub(),
-                )
-                .unwrap();
+                let effects =
+                    dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
 
                 assert_eq!(effects.len(), 1);
                 assert_eq!(
@@ -1154,13 +1017,8 @@ mod tests {
                         QuerySource::Preview,
                     )));
 
-                let effects = dispatch_query(
-                    &mut state,
-                    &Action::RequestCsvExport,
-                    Instant::now(),
-                    &AppServices::stub(),
-                )
-                .unwrap();
+                let effects =
+                    dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
 
                 let Effect::ExportCsvFromCache {
                     columns,
@@ -1195,13 +1053,8 @@ mod tests {
             ) {
                 let mut state = mysql_state(query);
 
-                let effects = dispatch_query(
-                    &mut state,
-                    &Action::RequestCsvExport,
-                    Instant::now(),
-                    &AppServices::stub(),
-                )
-                .unwrap();
+                let effects =
+                    dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
 
                 let Effect::CountRowsForExport { count_query, .. } = &effects[0] else {
                     panic!("expected CountRowsForExport effect");

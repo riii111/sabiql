@@ -403,7 +403,6 @@ fn open_write_preview_confirm(state: &mut AppState, preview: &WritePreview) -> D
 mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
-    use crate::services::AppServices;
     use crate::test_support;
     use crate::update::test_fixtures;
 
@@ -503,13 +502,8 @@ mod tests {
         }
 
         fn submit_write_preview(state: &mut AppState) -> WritePreview {
-            let effects = dispatch_query(
-                state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_query(state, &Action::SubmitCellEditWrite, Instant::now()).unwrap();
             assert!(effects.is_empty());
             state
                 .result_interaction
@@ -523,12 +517,7 @@ mod tests {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::Normal);
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = dispatch_query(&mut state, &Action::SubmitCellEditWrite, Instant::now());
             assert!(
                 effects
                     .into_effects()
@@ -554,13 +543,8 @@ mod tests {
             detail.primary_key = None;
             state.session.set_table_detail_raw(Some(detail));
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_query(&mut state, &Action::SubmitCellEditWrite, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -574,12 +558,7 @@ mod tests {
             let mut state = editable_state();
             let _ = state.query.begin_running(Instant::now());
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = dispatch_query(&mut state, &Action::SubmitCellEditWrite, Instant::now());
             assert!(
                 effects
                     .into_effects()
@@ -600,12 +579,7 @@ mod tests {
                 state.session.set_table_detail_raw(Some(detail));
             }
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = dispatch_query(&mut state, &Action::SubmitCellEditWrite, Instant::now());
             assert!(
                 effects
                     .into_effects()
@@ -644,12 +618,7 @@ mod tests {
                 .result_interaction
                 .begin_cell_edit(0, 1, draft.to_string());
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = dispatch_query(&mut state, &Action::SubmitCellEditWrite, Instant::now());
 
             assert!(
                 effects
@@ -669,12 +638,7 @@ mod tests {
                 state.session.set_table_detail_raw(Some(detail));
             }
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = dispatch_query(&mut state, &Action::SubmitCellEditWrite, Instant::now());
 
             assert!(
                 effects
@@ -719,13 +683,9 @@ mod tests {
             for (data_type, original, draft) in cases {
                 let mut state = mysql_editable_state(data_type, original, draft);
 
-                let effects = dispatch_query(
-                    &mut state,
-                    &Action::SubmitCellEditWrite,
-                    Instant::now(),
-                    &AppServices::stub(),
-                )
-                .unwrap();
+                let effects =
+                    dispatch_query(&mut state, &Action::SubmitCellEditWrite, Instant::now())
+                        .unwrap();
 
                 assert!(effects.is_empty(), "{data_type} should not send SQL");
                 assert_eq!(
@@ -966,12 +926,7 @@ mod tests {
                 .result_interaction
                 .replace_cell_edit_draft("1e999".to_string());
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = dispatch_query(&mut state, &Action::SubmitCellEditWrite, Instant::now());
 
             assert!(
                 effects
@@ -1014,12 +969,7 @@ mod tests {
                 .result_interaction
                 .replace_cell_edit_draft("Bob".to_string());
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = dispatch_query(&mut state, &Action::SubmitCellEditWrite, Instant::now());
 
             assert!(
                 effects
@@ -1072,13 +1022,8 @@ mod tests {
                 .result_interaction
                 .replace_cell_edit_draft(r#"{ "role": "admin" }"#.to_string());
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_query(&mut state, &Action::SubmitCellEditWrite, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -1285,8 +1230,7 @@ mod tests {
             state.query.pagination.set_current_page(2);
             let action = write_succeeded_action(&mut state, 1);
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.query.is_running());
@@ -1310,8 +1254,7 @@ mod tests {
             let mut state = editable_state();
             let action = write_succeeded_action(&mut state, 0);
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(effects.len(), 1);
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -1331,8 +1274,7 @@ mod tests {
             let mut state = editable_state();
             let action = write_succeeded_action(&mut state, 2);
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(effects.len(), 1);
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -1361,7 +1303,6 @@ mod tests {
                     diagnostics: Vec::new(),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             )
             .unwrap();
 
@@ -1385,7 +1326,7 @@ mod tests {
                 }],
             );
 
-            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(
                 state.messages.last_success.as_deref(),
@@ -1406,8 +1347,7 @@ mod tests {
                 },
             );
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(!state.result_interaction.cell_edit().is_active());
@@ -1437,8 +1377,7 @@ mod tests {
                 },
             );
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(!state.result_interaction.cell_edit().is_active());
@@ -1471,8 +1410,7 @@ mod tests {
                 DbOperationError::QueryFailed("before write".to_string()),
             );
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::CellEdit);
@@ -1496,7 +1434,6 @@ mod tests {
                     diagnostics: Vec::new(),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             )
             .unwrap();
 
@@ -1582,8 +1519,7 @@ mod tests {
             state.result_interaction.set_write_preview(delete_preview());
             let action = write_succeeded_action(&mut state, 1);
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(
@@ -1616,8 +1552,7 @@ mod tests {
             state.result_interaction.set_write_preview(delete_preview());
             let action = write_succeeded_action(&mut state, 0);
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(
@@ -1638,8 +1573,7 @@ mod tests {
                 DbOperationError::QueryFailed("boom".to_string()),
             );
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -1669,8 +1603,7 @@ mod tests {
                 },
             );
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.result_interaction.staged_delete_rows().is_empty());
@@ -1691,7 +1624,7 @@ mod tests {
                 .set_post_delete_selection(PostDeleteRowSelection::Select(1000));
             let action = query_completed_action(&mut state, preview_result(3), 1, Some(0));
 
-            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+            dispatch_query(&mut state, &action, Instant::now());
 
             assert_eq!(state.result_interaction.selection().row(), Some(2));
             assert_eq!(
@@ -1710,7 +1643,7 @@ mod tests {
                 .set_post_delete_selection(PostDeleteRowSelection::Clear);
             let action = query_completed_action(&mut state, preview_result(2), 1, Some(0));
 
-            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+            dispatch_query(&mut state, &action, Instant::now());
 
             assert_eq!(state.result_interaction.selection().row(), None);
             assert_eq!(

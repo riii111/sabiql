@@ -105,37 +105,5 @@ fn encode_bytes_as_sql_hex(bytes: &[u8]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn builds_update_sql_without_schema_and_preserves_nul_text() {
-        assert_eq!(
-            build_update_sql(
-                "users",
-                "name",
-                &QueryValue::text("a\0b"),
-                &[("id".into(), QueryValue::text("1"))],
-            ),
-            "UPDATE \"users\"\nSET \"name\" = CAST(X'610062' AS TEXT)\nWHERE \"id\" = '1';"
-        );
-    }
-
-    #[test]
-    fn builds_bulk_delete_sql_with_sqlite_predicates() {
-        assert_eq!(
-            build_bulk_delete_sql(
-                "users",
-                &[
-                    vec![("id".into(), QueryValue::Null)],
-                    vec![("id".into(), QueryValue::Blob(vec![0, 255]))],
-                ],
-            ),
-            "DELETE FROM \"users\"\nWHERE (\"id\" IS NULL) OR (\"id\" = X'00FF');"
-        );
-    }
-}
-
-#[cfg(test)]
-#[path = "write_legacy_tests.rs"]
-mod legacy_tests;
+#[path = "write_tests.rs"]
+mod tests;

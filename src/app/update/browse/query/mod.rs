@@ -7,20 +7,14 @@ use std::time::Instant;
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::PREVIEW_PAGE_SIZE;
-use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 
-pub fn dispatch_query(
-    state: &mut AppState,
-    action: &Action,
-    now: Instant,
-    services: &AppServices,
-) -> DispatchResult {
-    execution::reduce_execution(state, action, now, services)
+pub fn dispatch_query(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+    execution::reduce_execution(state, action, now)
         .or_else(|| write::reduce_write(state, action, now))
-        .or_else(|| pagination::reduce_pagination(state, action, now, services))
+        .or_else(|| pagination::reduce_pagination(state, action, now))
 }
 
 /// Builds the preview effect for the table currently held in pagination state,

@@ -1,5 +1,4 @@
-#[cfg(test)]
-mod legacy_explain_tests {
+mod explain {
     use crate::mysql_sql::{build_explain_analyze_sql, build_explain_sql};
 
     #[test]
@@ -62,8 +61,7 @@ mod legacy_explain_tests {
     }
 }
 
-#[cfg(test)]
-mod legacy_grid_write_tests {
+mod write {
     use crate::QueryValue;
     use crate::mysql_sql::{build_bulk_delete_sql, build_update_sql};
 
@@ -178,5 +176,11 @@ mod legacy_grid_write_tests {
         );
 
         assert_eq!(sql, "DELETE FROM `sabiql_test`.`items`\nWHERE `id` = 1;");
+    }
+
+    #[test]
+    #[should_panic(expected = "pk_pairs_per_row must not be empty")]
+    fn bulk_delete_rejects_empty_rows() {
+        let _ = build_bulk_delete_sql("sabiql_test", "items", &[]);
     }
 }

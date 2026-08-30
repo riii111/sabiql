@@ -11,7 +11,6 @@ use crate::model::shared::help::HelpOrigin;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::AdhocSuccessSnapshot;
 use crate::ports::outbound::{AccessMode, DbOperationError};
-use crate::services::AppServices;
 use crate::update::action::{
     Action, ModalKind, QueryCompletionContext, QueryFailureContext, TableTarget,
 };
@@ -22,12 +21,7 @@ use crate::update::input::command::{command_to_action, parse_command};
 
 use super::write;
 
-pub fn reduce_execution(
-    state: &mut AppState,
-    action: &Action,
-    now: Instant,
-    _services: &AppServices,
-) -> DispatchResult {
+pub fn reduce_execution(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::QueryCompleted {
             run_id,
@@ -392,6 +386,7 @@ mod tests {
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
     use crate::ports::outbound::{DbOperationError, RenderOutput, RenderResult, Renderer};
+    use crate::services::AppServices;
     use crate::update::action::SmartErRefreshResult;
     use crate::update::browse::metadata::dispatch_metadata;
     use crate::update::browse::query::dispatch_query;
@@ -614,13 +609,8 @@ mod tests {
                 Some("app"),
             );
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::CommandLineSubmit,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_query(&mut state, &Action::CommandLineSubmit, Instant::now()).unwrap();
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.should_quit);
@@ -638,12 +628,7 @@ mod tests {
                 .command_line_input
                 .set_content("unknown_cmd".to_string());
 
-            dispatch_query(
-                &mut state,
-                &Action::CommandLineSubmit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_query(&mut state, &Action::CommandLineSubmit, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert!(!state.should_quit);
@@ -667,13 +652,8 @@ mod tests {
             state.modal.push_mode(InputMode::CommandLine);
             state.command_line_input.set_content("write".to_string());
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::CommandLineSubmit,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_query(&mut state, &Action::CommandLineSubmit, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
@@ -686,13 +666,8 @@ mod tests {
             state.modal.push_mode(InputMode::CommandLine);
             state.command_line_input.set_content("erd".to_string());
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::CommandLineSubmit,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_query(&mut state, &Action::CommandLineSubmit, Instant::now()).unwrap();
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.command_line_input.content().is_empty());
@@ -714,13 +689,8 @@ mod tests {
             state.modal.push_mode(InputMode::CommandLine);
             state.command_line_input.set_content("settings".to_string());
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::CommandLineSubmit,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_query(&mut state, &Action::CommandLineSubmit, Instant::now()).unwrap();
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.command_line_input.content().is_empty());
@@ -739,13 +709,8 @@ mod tests {
             state.modal.push_mode(InputMode::CommandLine);
             state.command_line_input.set_content("palette".to_string());
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::CommandLineSubmit,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_query(&mut state, &Action::CommandLineSubmit, Instant::now()).unwrap();
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.command_line_input.content().is_empty());
@@ -783,7 +748,6 @@ mod tests {
                     generation: 1,
                 }),
                 now,
-                &AppServices::stub(),
             );
 
             assert_eq!(state.query.pagination.current_page(), 0);
@@ -832,7 +796,6 @@ mod tests {
                     generation: 1,
                 }),
                 Instant::now(),
-                &AppServices::stub(),
             )
             .into_effects()
             .expect("preview should be handled");
@@ -840,7 +803,6 @@ mod tests {
                 &mut state,
                 &Action::ExecuteAdhoc("SELECT 1".to_string()),
                 Instant::now(),
-                &AppServices::stub(),
             )
             .into_effects()
             .expect("adhoc should be handled");
@@ -862,7 +824,7 @@ mod tests {
             let now = Instant::now();
             let action = query_completed_action(&mut state, result, 1, Some(2));
 
-            dispatch_query(&mut state, &action, now, &AppServices::stub());
+            dispatch_query(&mut state, &action, now);
 
             assert_eq!(state.query.pagination.current_page(), 2);
             assert!(state.query.pagination.reached_end());
@@ -876,7 +838,7 @@ mod tests {
             let now = Instant::now();
             let action = query_completed_action(&mut state, result, 1, Some(0));
 
-            dispatch_query(&mut state, &action, now, &AppServices::stub());
+            dispatch_query(&mut state, &action, now);
 
             assert_eq!(state.query.pagination.current_page(), 0);
             assert!(!state.query.pagination.reached_end());
@@ -888,7 +850,7 @@ mod tests {
             state.session.set_selection_generation(1);
             let action = query_completed_action(&mut state, preview_result(0), 1, Some(0));
 
-            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+            dispatch_query(&mut state, &action, Instant::now());
 
             assert_eq!(state.query.pagination.current_page(), 0);
             assert!(state.query.pagination.reached_end());
@@ -901,20 +863,10 @@ mod tests {
             state.session.set_selection_generation(1);
             let first_page = preview_result(PREVIEW_PAGE_SIZE);
             let first_action = query_completed_action(&mut state, first_page, 1, Some(0));
-            dispatch_query(
-                &mut state,
-                &first_action,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_query(&mut state, &first_action, Instant::now());
 
             let next_action = query_completed_action(&mut state, preview_result(1), 1, Some(1));
-            dispatch_query(
-                &mut state,
-                &next_action,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_query(&mut state, &next_action, Instant::now());
 
             assert_eq!(state.query.pagination.current_page(), 1);
             assert!(state.query.pagination.reached_end());
@@ -928,20 +880,10 @@ mod tests {
             let last_page = preview_result(PREVIEW_PAGE_SIZE);
             let first_action =
                 query_completed_action(&mut state, Arc::clone(&last_page), 1, Some(0));
-            dispatch_query(
-                &mut state,
-                &first_action,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_query(&mut state, &first_action, Instant::now());
 
             let empty_action = query_completed_action(&mut state, preview_result(0), 1, Some(1));
-            dispatch_query(
-                &mut state,
-                &empty_action,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_query(&mut state, &empty_action, Instant::now());
 
             assert_eq!(state.query.pagination.current_page(), 0);
             assert!(state.query.pagination.reached_end());
@@ -969,19 +911,14 @@ mod tests {
                         1,
                         Some(page),
                     );
-                    dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+                    dispatch_query(&mut state, &action, Instant::now());
                     assert!(!state.query.pagination.reached_end());
                     assert!(state.query.pagination.can_next());
                 }
 
                 let empty_action =
                     query_completed_action(&mut state, preview_result(0), 1, Some(page_count));
-                dispatch_query(
-                    &mut state,
-                    &empty_action,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                dispatch_query(&mut state, &empty_action, Instant::now());
 
                 assert_eq!(state.query.pagination.current_page(), page_count - 1);
                 assert!(state.query.pagination.reached_end());
@@ -1001,7 +938,7 @@ mod tests {
             let now = Instant::now();
             let action = query_completed_action(&mut state, result, 0, None);
 
-            dispatch_query(&mut state, &action, now, &AppServices::stub());
+            dispatch_query(&mut state, &action, now);
 
             assert_eq!(state.query.pagination.current_page(), 3);
         }
@@ -1035,7 +972,7 @@ mod tests {
 
             let query_action =
                 query_completed_action(&mut state, preview_result(1), generation, Some(0));
-            dispatch_query(&mut state, &query_action, now, &AppServices::stub());
+            dispatch_query(&mut state, &query_action, now);
 
             assert!(state.query.current_result().is_some());
             assert!(!state.query.has_pending_preview(generation));
@@ -1067,21 +1004,11 @@ mod tests {
             let preview_action =
                 query_completed_action(&mut state, preview_result(1), generation, Some(0));
 
-            dispatch_query(
-                &mut state,
-                &preview_action,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_query(&mut state, &preview_action, Instant::now());
             assert!(state.query.has_pending_preview(generation));
 
             let adhoc_action = query_completed_action(&mut state, adhoc_result(), 0, None);
-            dispatch_query(
-                &mut state,
-                &adhoc_action,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_query(&mut state, &adhoc_action, Instant::now());
 
             assert_eq!(
                 state.query.current_result().map(|result| result.source),
@@ -1114,12 +1041,7 @@ mod tests {
                 state_with_selected_table(DatabaseType::PostgreSQL);
             let old_query_action =
                 query_completed_action(&mut state, preview_result(1), old_generation, Some(0));
-            dispatch_query(
-                &mut state,
-                &old_query_action,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_query(&mut state, &old_query_action, Instant::now());
             assert!(state.query.has_pending_preview(old_generation));
 
             let new_generation = state
@@ -1131,12 +1053,7 @@ mod tests {
             assert!(!state.query.has_pending_preview(old_generation));
             assert!(state.query.current_result().is_none());
 
-            dispatch_query(
-                &mut state,
-                &old_query_action,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_query(&mut state, &old_query_action, Instant::now());
             assert!(state.query.current_result().is_none());
 
             let stale_inspector_effects = dispatch_metadata(
@@ -1155,12 +1072,7 @@ mod tests {
 
             let new_query_action =
                 query_completed_action(&mut state, preview_result(1), new_generation, Some(0));
-            dispatch_query(
-                &mut state,
-                &new_query_action,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_query(&mut state, &new_query_action, Instant::now());
             assert!(state.query.current_result().is_none());
             assert!(state.query.has_pending_preview(new_generation));
 
@@ -1170,7 +1082,6 @@ mod tests {
                     generation: old_generation,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
             assert!(state.query.current_result().is_none());
             assert!(state.query.has_pending_preview(new_generation));
@@ -1194,7 +1105,6 @@ mod tests {
                     generation: new_generation,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
             assert!(state.query.current_result().is_some());
             assert!(!state.query.has_pending_preview(new_generation));
@@ -1211,7 +1121,7 @@ mod tests {
             let result = adhoc_result();
             let action = query_completed_action(&mut state, result, 0, None);
 
-            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+            dispatch_query(&mut state, &action, Instant::now());
 
             assert!(state.query.current_result().is_some());
             assert_eq!(
@@ -1234,7 +1144,7 @@ mod tests {
             let result = adhoc_error_result();
             let action = query_completed_action(&mut state, result, 0, None);
 
-            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+            dispatch_query(&mut state, &action, Instant::now());
 
             assert_eq!(
                 state.query.current_result().unwrap().source,
@@ -1274,7 +1184,7 @@ mod tests {
             state.query.set_current_result(Arc::clone(&result));
             let action = query_completed_action(&mut state, result, 0, Some(0));
 
-            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+            dispatch_query(&mut state, &action, Instant::now());
 
             assert_eq!(state.result_interaction.selection().row(), Some(1));
             assert_eq!(state.result_interaction.selection().cell(), Some(2));
@@ -1291,7 +1201,7 @@ mod tests {
             state.result_interaction.stage_row(0);
             let action = query_completed_action(&mut state, preview_result(1), 0, Some(0));
 
-            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+            dispatch_query(&mut state, &action, Instant::now());
 
             assert_eq!(state.result_interaction.selection().row(), None);
             assert!(state.result_interaction.staged_delete_rows().is_empty());
@@ -1311,7 +1221,6 @@ mod tests {
                     context: QueryCompletionContext::Adhoc,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(state.query.current_result().is_none());
@@ -1338,7 +1247,7 @@ mod tests {
                 context: QueryCompletionContext::Adhoc,
             };
             assert!(!format!("{action:?}").contains("dsn:"));
-            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+            dispatch_query(&mut state, &action, Instant::now());
 
             assert!(stale_run_id < current_run_id);
             assert!(state.query.current_result().is_none());
@@ -1361,7 +1270,6 @@ mod tests {
                     context: QueryCompletionContext::Adhoc,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(state.query.current_result().is_none());
@@ -1388,7 +1296,7 @@ mod tests {
                 QuerySource::Preview,
             );
 
-            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+            dispatch_query(&mut state, &action, Instant::now());
 
             assert_eq!(
                 state.result_interaction.selection().mode(),
@@ -1409,7 +1317,7 @@ mod tests {
                 QuerySource::Preview,
             );
 
-            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+            dispatch_query(&mut state, &action, Instant::now());
 
             let result = state.query.current_result().expect("result");
             assert!(result.is_error());
@@ -1437,7 +1345,7 @@ mod tests {
                 QuerySource::Preview,
             );
 
-            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+            dispatch_query(&mut state, &action, Instant::now());
 
             assert!(
                 state
@@ -1465,12 +1373,7 @@ mod tests {
                 QuerySource::Preview,
             );
 
-            dispatch_query(
-                &mut state,
-                &query_action,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_query(&mut state, &query_action, Instant::now());
 
             assert!(state.query.current_result().is_none());
             assert!(state.query.has_pending_preview(generation));
@@ -1504,7 +1407,6 @@ mod tests {
                 &mut state,
                 &Action::RevealPendingPreview { generation },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             let result = state.query.current_result().expect("released result");
@@ -1528,8 +1430,7 @@ mod tests {
                 QuerySource::Adhoc,
             );
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert!(effects.iter().any(|effect| matches!(
                 effect,
@@ -1556,8 +1457,7 @@ mod tests {
                 QuerySource::Adhoc,
             );
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert!(effects.iter().any(|effect| matches!(
                 effect,
@@ -1580,8 +1480,7 @@ mod tests {
                 QuerySource::Adhoc,
             );
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert!(matches!(effects[0], Effect::CancelMetadataTasks));
             assert!(
@@ -1616,7 +1515,7 @@ mod tests {
                 QuerySource::Preview,
             );
 
-            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+            dispatch_query(&mut state, &action, Instant::now());
 
             assert!(matches!(
                 state.sql_modal.status(),
@@ -1642,8 +1541,7 @@ mod tests {
                 None,
             );
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(effects.len(), 1);
             assert!(
@@ -1661,8 +1559,7 @@ mod tests {
                 None,
             );
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
         }
@@ -1677,8 +1574,7 @@ mod tests {
                 None,
             );
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert!(matches!(effects[0], Effect::CancelMetadataTasks));
             assert!(
@@ -1726,9 +1622,7 @@ mod tests {
                     None,
                 );
 
-                let effects =
-                    dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub())
-                        .unwrap();
+                let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
                 assert!(!state.er_preparation.is_current_run(er_run_id));
                 assert!(effects.iter().any(|effect| matches!(
@@ -1755,7 +1649,7 @@ mod tests {
                 None,
             );
 
-            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+            dispatch_query(&mut state, &action, Instant::now());
 
             assert!(state.sql_modal.active_prefetch_run_id().is_none());
             assert!(!state.sql_modal.has_pending_prefetch());
@@ -1775,7 +1669,7 @@ mod tests {
                 None,
             );
 
-            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+            dispatch_query(&mut state, &action, Instant::now());
 
             let dsn = active_dsn(&state);
             let effects = dispatch_er(
@@ -1812,9 +1706,7 @@ mod tests {
                 let action =
                     query_completed_action(&mut state, adhoc_result_with_tag(tag), 0, None);
 
-                let effects =
-                    dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub())
-                        .unwrap();
+                let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
                 assert!(effects.is_empty());
             }
@@ -1830,8 +1722,7 @@ mod tests {
                 None,
             );
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
         }
@@ -1841,8 +1732,7 @@ mod tests {
             let mut state = state_with_table("public", "users");
             let action = query_completed_action(&mut state, adhoc_error_result(), 0, None);
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
         }
@@ -1859,8 +1749,7 @@ mod tests {
             ));
             let action = query_completed_action(&mut state, result, 0, None);
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
         }
@@ -1894,15 +1783,14 @@ mod tests {
                 None,
             );
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::ExecutePreview { .. }));
 
             let new_preview = preview_result(5);
             let action = query_completed_action(&mut state, Arc::clone(&new_preview), 0, Some(0));
-            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+            dispatch_query(&mut state, &action, Instant::now());
 
             let stored = state.query.current_result().unwrap();
             assert_eq!(stored.source, QuerySource::Preview);
@@ -1919,8 +1807,7 @@ mod tests {
                 None,
             );
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert!(state.sql_modal.active_prefetch_run_id().is_none());
             assert!(
@@ -1958,8 +1845,7 @@ mod tests {
                 None,
             );
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert!(
                 effects
@@ -1992,8 +1878,7 @@ mod tests {
                 None,
             );
 
-            let effects =
-                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert!(
                 !effects
@@ -2016,7 +1901,7 @@ mod tests {
                 None,
             );
 
-            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+            dispatch_query(&mut state, &action, Instant::now());
 
             let saved_tag = match state.sql_modal.status() {
                 SqlModalStatus::Success(snapshot) => snapshot.command_tag.clone(),
@@ -2025,7 +1910,7 @@ mod tests {
             assert!(matches!(saved_tag, Some(CommandTag::Alter(_))));
 
             let action = query_completed_action(&mut state, preview_result(5), 0, Some(0));
-            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+            dispatch_query(&mut state, &action, Instant::now());
 
             let tag_after = match state.sql_modal.status() {
                 SqlModalStatus::Success(snapshot) => snapshot.command_tag.clone(),
