@@ -73,7 +73,6 @@ pub(super) fn reduce_confirm_dialog(
                     run_id,
                     export_query,
                     file_name,
-                    row_count,
                 }) => {
                     if reject_pending_mysql_connection_probe(state) {
                         return DispatchResult::handled();
@@ -86,7 +85,6 @@ pub(super) fn reduce_confirm_dialog(
                             run_id,
                             query: export_query,
                             file_name,
-                            row_count,
                         }])
                     }
                 }

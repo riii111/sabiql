@@ -207,14 +207,6 @@ impl QueryExecutor for MySqlAdapter {
         })
     }
 
-    async fn count_query_rows(&self, dsn: &str, query: &str) -> Result<usize, DbOperationError> {
-        let target = parse_and_validate_mysql_dsn(dsn)?;
-        validate_mysql_export_query(query, target.database.as_deref())?;
-
-        let result = execute_adhoc_with_target(&target, query, AccessMode::ReadOnly).await?;
-        parse_mysql_count_result(&result)
-    }
-
     async fn export_to_csv(
         &self,
         dsn: &str,
@@ -232,34 +224,15 @@ impl QueryExecutor for MySqlAdapter {
     }
 }
 
-fn parse_mysql_count_result(result: &QueryResult) -> Result<usize, DbOperationError> {
-    let value = match result.values() {
-        [row] => match row.as_slice() {
-            [value] => value.as_str(),
-            _ => None,
-        },
-        _ => None,
-    }
-    .ok_or_else(|| {
-        DbOperationError::QueryFailed(
-            "MySQL row count query returned an invalid result".to_string(),
-        )
-    })?;
-
-    value.parse::<usize>().map_err(|_| {
-        DbOperationError::QueryFailed("MySQL row count was not an integer".to_string())
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::domain::QueryValue;
 
-    fn count_result(values: Vec<Vec<QueryValue>>) -> QueryResult {
+    fn query_result(values: Vec<Vec<QueryValue>>) -> QueryResult {
         QueryResult::success_with_values(
-            "SELECT COUNT(*)".to_string(),
-            vec!["COUNT(*)".to_string()],
+            "SELECT id FROM users".to_string(),
+            vec!["id".to_string()],
             values,
             0,
             QuerySource::Adhoc,
@@ -267,35 +240,9 @@ mod tests {
     }
 
     #[test]
-    fn parses_a_single_integer_count_result() {
-        assert_eq!(
-            parse_mysql_count_result(&count_result(vec![vec![QueryValue::text("42")]])).unwrap(),
-            42
-        );
-    }
-
-    #[test]
-    fn rejects_an_empty_count_result() {
-        assert!(matches!(
-            parse_mysql_count_result(&count_result(Vec::new())),
-            Err(DbOperationError::QueryFailed(details))
-                if details == "MySQL row count query returned an invalid result"
-        ));
-    }
-
-    #[test]
-    fn rejects_a_non_integer_count_result() {
-        assert!(matches!(
-            parse_mysql_count_result(&count_result(vec![vec![QueryValue::text("unknown")]])),
-            Err(DbOperationError::QueryFailed(details))
-                if details == "MySQL row count was not an integer"
-        ));
-    }
-
-    #[test]
     fn uses_affected_rows_for_a_dml_result_without_payload_rows() {
         let result =
-            with_mysql_command_tag(count_result(Vec::new()), CommandTag::Update(3)).unwrap();
+            with_mysql_command_tag(query_result(Vec::new()), CommandTag::Update(3)).unwrap();
 
         assert_eq!(result.row_count(), 3);
         assert_eq!(result.data_row_count(), 0);
@@ -305,7 +252,7 @@ mod tests {
     #[test]
     fn keeps_payload_row_count_for_a_dml_result() {
         let result = with_mysql_command_tag(
-            count_result(vec![vec![QueryValue::text("row")]]),
+            query_result(vec![vec![QueryValue::text("row")]]),
             CommandTag::Update(3),
         )
         .unwrap();
@@ -317,7 +264,7 @@ mod tests {
     #[test]
     fn keeps_empty_row_count_for_non_dml_command_tags() {
         let result = with_mysql_command_tag(
-            count_result(Vec::new()),
+            query_result(Vec::new()),
             CommandTag::Create("TABLE".to_string()),
         )
         .unwrap();

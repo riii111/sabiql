@@ -297,7 +297,6 @@ impl EffectRunner {
             | Effect::ExecuteAdhoc { .. }
             | Effect::ExecuteExplain { .. }
             | Effect::ExecuteWrite { .. }
-            | Effect::CountRowsForExport { .. }
             | Effect::ExportCsv { .. }
             | Effect::ExportCsvFromCache { .. }) => {
                 cmd_browse::query::run(
@@ -914,14 +913,6 @@ mod tests {
                 _query: &str,
                 _access_mode: AccessMode,
             ) -> Result<WriteExecutionResult, DbOperationError> {
-                unreachable!("test only starts a preview")
-            }
-
-            async fn count_query_rows(
-                &self,
-                _dsn: &str,
-                _query: &str,
-            ) -> Result<usize, DbOperationError> {
                 unreachable!("test only starts a preview")
             }
 

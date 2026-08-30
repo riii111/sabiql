@@ -1,43 +1,6 @@
 use super::*;
 
 #[tokio::test]
-async fn count_query_rows_parses_count_result() {
-    let (_dir, dsn) = test_support::make_sqlite_db(
-        r"
-            CREATE TABLE users(id INTEGER PRIMARY KEY);
-            INSERT INTO users(id) VALUES (1), (2), (3);
-            ",
-    );
-    let adapter = SqliteAdapter::new();
-
-    let count = adapter
-        .count_query_rows(&dsn, "SELECT COUNT(*) FROM users")
-        .await
-        .unwrap();
-
-    assert_eq!(count, 3);
-}
-
-#[tokio::test]
-async fn count_query_rows_rejects_fsdir_before_execution() {
-    let (_dir, dsn) = test_support::make_sqlite_db("");
-    let adapter = SqliteAdapter::new();
-
-    let result = adapter
-        .count_query_rows(
-            &dsn,
-            "SELECT COUNT(*) FROM (SELECT * FROM fsdir('/tmp')) AS files",
-        )
-        .await;
-
-    assert!(matches!(
-        result,
-        Err(DbOperationError::UnsupportedOperation(details))
-            if details == "SQLite fsdir access is not supported in safe mode"
-    ));
-}
-
-#[tokio::test]
 async fn export_to_csv_writes_rows() {
     let (dir, dsn) = test_support::make_sqlite_db(
         r"
@@ -159,18 +122,6 @@ async fn export_to_csv_missing_table_returns_object_missing_and_removes_file() {
 
     assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
     assert!(!path.exists());
-}
-
-#[tokio::test]
-async fn count_query_rows_missing_table_returns_object_missing() {
-    let (_dir, dsn) = test_support::make_sqlite_db("");
-    let adapter = SqliteAdapter::new();
-
-    let result = adapter
-        .count_query_rows(&dsn, "SELECT COUNT(*) FROM missing")
-        .await;
-
-    assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
 }
 
 #[tokio::test]
