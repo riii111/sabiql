@@ -48,10 +48,6 @@ impl QueryExecutor for PostgresAdapter {
             .await
     }
 
-    async fn count_query_rows(&self, dsn: &str, query: &str) -> Result<usize, DbOperationError> {
-        self.count_rows(dsn, query, true).await
-    }
-
     async fn export_to_csv(
         &self,
         dsn: &str,

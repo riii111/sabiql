@@ -330,38 +330,11 @@ pub async fn run(
                 .await;
         }
 
-        Effect::CountRowsForExport {
-            dsn,
-            run_id,
-            count_query,
-            export_query,
-            file_name,
-        } => {
-            let executor = Arc::clone(query_executor);
-            let tx = action_tx.clone();
-
-            query_tasks
-                .spawn(async move {
-                    let row_count = executor.count_query_rows(&dsn, &count_query).await.ok();
-                    tx.send(Action::CsvExportRowsCounted {
-                        dsn,
-                        run_id,
-                        row_count,
-                        export_query,
-                        file_name,
-                    })
-                    .await
-                    .ok();
-                })
-                .await;
-        }
-
         Effect::ExportCsv {
             dsn,
             run_id,
             query,
             file_name,
-            row_count,
         } => {
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
@@ -378,7 +351,7 @@ pub async fn run(
                                 dsn,
                                 run_id,
                                 path: path.display().to_string(),
-                                row_count,
+                                row_count: None,
                             })
                             .await
                             .ok();

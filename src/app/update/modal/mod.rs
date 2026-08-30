@@ -507,7 +507,6 @@ mod tests {
                 run_id,
                 export_query: "SELECT 1".to_string(),
                 file_name: CSV_TEST_FILE.to_string(),
-                row_count: Some(200_000),
             }
         }
 
@@ -740,7 +739,20 @@ mod tests {
 
                 let effects = confirm_effects(&mut state);
                 assert_eq!(effects.len(), 1);
-                assert!(matches!(&effects[0], Effect::ExportCsv { .. }));
+                let Effect::ExportCsv {
+                    dsn,
+                    run_id: effect_run_id,
+                    query,
+                    file_name,
+                } = &effects[0]
+                else {
+                    panic!("expected rerunnable CSV export effect");
+                };
+
+                assert_eq!(dsn, CSV_TEST_DSN);
+                assert_eq!(*effect_run_id, run_id);
+                assert_eq!(query, "SELECT 1");
+                assert_eq!(file_name, CSV_TEST_FILE);
             }
 
             #[test]
@@ -769,7 +781,6 @@ mod tests {
                         run_id: 1,
                         export_query: "SELECT 1".to_string(),
                         file_name: "test.csv".to_string(),
-                        row_count: Some(200_000),
                     },
                 );
 

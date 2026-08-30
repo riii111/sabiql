@@ -453,21 +453,6 @@ pub(in crate::adapters::sqlite) fn strip_sqlite_probes(
     Ok((kept.join("\n"), changes))
 }
 
-fn first_csv_cell(stdout: &str) -> Result<String, DbOperationError> {
-    let mut reader = csv::ReaderBuilder::new()
-        .has_headers(true)
-        .from_reader(stdout.trim().as_bytes());
-    let mut records = reader.records();
-    let record = records
-        .next()
-        .transpose()?
-        .ok_or_else(|| DbOperationError::EmptyResponse(stdout.to_string()))?;
-    record
-        .get(0)
-        .map(ToString::to_string)
-        .ok_or_else(|| DbOperationError::EmptyResponse(stdout.to_string()))
-}
-
 fn last_csv_cell(stdout: &str) -> Result<String, DbOperationError> {
     let line = stdout
         .lines()
@@ -500,22 +485,6 @@ pub(in crate::adapters::sqlite) fn parse_affected_rows(
         })?
         .parse::<usize>()
         .map_err(|error| DbOperationError::CommandTagParseFailed(error.to_string()))
-}
-
-pub(in crate::adapters::sqlite) fn parse_count_result(
-    stdout: &str,
-) -> Result<usize, DbOperationError> {
-    first_csv_cell(stdout)
-        .map_err(|error| match error {
-            DbOperationError::EmptyResponse(_) => {
-                DbOperationError::QueryFailed("Failed to parse COUNT result".to_string())
-            }
-            other => other,
-        })?
-        .parse::<usize>()
-        .map_err(|error| {
-            DbOperationError::QueryFailed(format!("Failed to parse COUNT result: {error}"))
-        })
 }
 
 #[cfg(test)]
@@ -808,11 +777,6 @@ mod tests {
 
             assert_eq!(changes.get(&0), Some(&2));
             assert_eq!(filtered, "'id','name'\n1,'Alice'\n'value'\n42");
-        }
-
-        #[test]
-        fn parse_count_result_reads_first_result_cell() {
-            assert_eq!(parse_count_result("COUNT(*)\n42\n").unwrap(), 42);
         }
     }
 }

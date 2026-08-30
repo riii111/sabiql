@@ -180,10 +180,6 @@ impl QueryExecutor for DbAdapterRegistry {
             .await
     }
 
-    async fn count_query_rows(&self, dsn: &str, query: &str) -> Result<usize, DbOperationError> {
-        self.query_executor(dsn)?.count_query_rows(dsn, query).await
-    }
-
     async fn export_to_csv(
         &self,
         dsn: &str,

@@ -100,19 +100,11 @@ pub enum Effect {
     CancelMetadataTasks,
     CancelSqliteDiagnostics,
     CancelTrackedTasks,
-    CountRowsForExport {
-        dsn: String,
-        run_id: u64,
-        count_query: String,
-        export_query: String,
-        file_name: String,
-    },
     ExportCsv {
         dsn: String,
         run_id: u64,
         query: String,
         file_name: String,
-        row_count: Option<usize>,
     },
     ExportCsvFromCache {
         dsn: String,

@@ -421,18 +421,6 @@ impl PostgresAdapter {
         })
     }
 
-    pub(in crate::adapters::postgres) async fn count_rows(
-        &self,
-        dsn: &str,
-        query: &str,
-        read_only: bool,
-    ) -> Result<usize, DbOperationError> {
-        let output = self.run_psql(dsn, &["-t", "-A"], query, read_only).await?;
-        output.trim().parse::<usize>().map_err(|e| {
-            DbOperationError::QueryFailed(format!("Failed to parse COUNT result: {e}"))
-        })
-    }
-
     pub(in crate::adapters::postgres) async fn export_csv_to_file(
         &self,
         dsn: &str,

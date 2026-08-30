@@ -31,7 +31,6 @@ pub trait QueryExecutor: Send + Sync {
         query: &str,
         access_mode: AccessMode,
     ) -> Result<WriteExecutionResult, DbOperationError>;
-    async fn count_query_rows(&self, dsn: &str, query: &str) -> Result<usize, DbOperationError>;
     async fn export_to_csv(
         &self,
         dsn: &str,

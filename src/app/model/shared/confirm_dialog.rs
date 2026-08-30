@@ -20,7 +20,6 @@ pub enum ConfirmIntent {
         run_id: u64,
         export_query: String,
         file_name: String,
-        row_count: Option<usize>,
     },
     CsvExportCached {
         dsn: String,

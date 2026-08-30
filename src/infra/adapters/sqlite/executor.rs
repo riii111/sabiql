@@ -13,10 +13,10 @@ use crate::domain::{
 use super::sqlite3::parser::{
     SqliteStatementPlan, aggregate_sqlite_command_tag, append_changes_query_for_plan,
     command_tag_result, is_sqlite_rerunnable_export_query, last_sqlite_result_set,
-    parse_affected_rows, parse_count_result, quoted_to_query_result, reject_sqlite_fsdir,
-    sqlite_adhoc_execution_query_for_plan, sqlite_empty_result_sentinel,
-    sqlite_export_not_rerunnable_error, sqlite_probe_marker, sqlite_statement_plan,
-    sqlite_statement_tags, statement_counts_as_select_tag, strip_sqlite_probes,
+    parse_affected_rows, quoted_to_query_result, sqlite_adhoc_execution_query_for_plan,
+    sqlite_empty_result_sentinel, sqlite_export_not_rerunnable_error, sqlite_probe_marker,
+    sqlite_statement_plan, sqlite_statement_tags, statement_counts_as_select_tag,
+    strip_sqlite_probes,
 };
 use super::{SqliteAdapter, sql};
 
@@ -130,15 +130,6 @@ impl QueryExecutor for SqliteAdapter {
             affected_rows,
             diagnostics: Vec::new(),
         })
-    }
-
-    async fn count_query_rows(&self, dsn: &str, query: &str) -> Result<usize, DbOperationError> {
-        reject_sqlite_fsdir(query)?;
-        let stdout = self
-            .cli
-            .execute_csv(Self::path_from_dsn(dsn)?, query, true)
-            .await?;
-        parse_count_result(&stdout)
     }
 
     async fn export_to_csv(

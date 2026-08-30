@@ -2,10 +2,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-use crate::domain::{
-    DatabaseType, QuerySource, QueryValue,
-    mysql_sql::{MySqlExportPlan, mysql_export_plan},
-};
+use crate::domain::{DatabaseType, QuerySource, QueryValue, mysql_sql::mysql_export_plan};
 use crate::model::app_state::AppState;
 use crate::model::shared::confirm_dialog::{ConfirmIntent, CsvExportCacheSnapshot};
 use crate::model::shared::input_mode::InputMode;
@@ -73,85 +70,25 @@ fn dispatch_cached_csv_export(
     }
 }
 
-enum RerunnableCsvRowCount {
-    QueryDatabase,
-    Known(usize),
-}
-
-fn dispatch_counted_rerunnable_csv_export(
-    state: &mut AppState,
-    dsn: String,
-    run_id: u64,
-    export_query: String,
-    file_name: String,
-    row_count: Option<usize>,
-) -> DispatchResult {
-    let needs_confirm = match row_count {
-        Some(count) => count > LARGE_EXPORT_THRESHOLD,
-        None => true,
-    };
-    if needs_confirm {
-        let msg = match row_count {
-            Some(n) => format!("Export {n} rows to CSV? This may take a while."),
-            None => "Row count unknown. Export to CSV?".to_string(),
-        };
-        state.confirm_dialog.open(
-            "Confirm CSV Export",
-            msg,
-            ConfirmIntent::CsvExportRerunnable {
-                dsn,
-                run_id,
-                export_query,
-                file_name,
-                row_count,
-            },
-        );
-        state.modal.push_mode(InputMode::ConfirmDialog);
-        DispatchResult::handled()
-    } else {
-        DispatchResult::handled_with(vec![Effect::ExportCsv {
-            dsn,
-            run_id,
-            query: export_query,
-            file_name,
-            row_count,
-        }])
-    }
-}
-
 fn dispatch_rerunnable_csv_export(
     state: &mut AppState,
     dsn: String,
     run_id: u64,
     export_query: String,
     file_name: String,
-    row_count: RerunnableCsvRowCount,
-    count_query_statement: Option<String>,
 ) -> DispatchResult {
-    if let RerunnableCsvRowCount::Known(row_count) = row_count {
-        return dispatch_counted_rerunnable_csv_export(
-            state,
+    state.confirm_dialog.open(
+        "Confirm CSV Export",
+        "Row count unknown. Export to CSV?",
+        ConfirmIntent::CsvExportRerunnable {
             dsn,
             run_id,
             export_query,
             file_name,
-            Some(row_count),
-        );
-    }
-
-    let count_query = if let Some(statement) = count_query_statement {
-        format!("SELECT COUNT(*) FROM (\n{statement}\n) AS _export_count")
-    } else {
-        let stripped = export_query.trim_end().trim_end_matches(';').to_string();
-        format!("SELECT COUNT(*) FROM ({stripped}) AS _export_count")
-    };
-    DispatchResult::handled_with(vec![Effect::CountRowsForExport {
-        dsn,
-        run_id,
-        count_query,
-        export_query,
-        file_name,
-    }])
+        },
+    );
+    state.modal.push_mode(InputMode::ConfirmDialog);
+    DispatchResult::handled()
 }
 
 pub fn reduce_pagination(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
@@ -182,13 +119,7 @@ pub fn reduce_pagination(state: &mut AppState, action: &Action, now: Instant) ->
                     SqliteExportPlan::RerunnableQuery { query } => {
                         let run_id = state.query.begin_non_preview_running(now);
                         return dispatch_rerunnable_csv_export(
-                            state,
-                            dsn,
-                            run_id,
-                            query,
-                            file_name,
-                            RerunnableCsvRowCount::QueryDatabase,
-                            None,
+                            state, dsn, run_id, query, file_name,
                         );
                     }
                     SqliteExportPlan::CachedResult { row_count } => {
@@ -212,65 +143,17 @@ pub fn reduce_pagination(state: &mut AppState, action: &Action, now: Instant) ->
                     );
                 }
 
-                let Some(plan) = mysql_export_plan(&result.query) else {
+                if mysql_export_plan(&result.query).is_none() {
                     return DispatchResult::handled();
-                };
+                }
                 let export_query = result.query.clone();
-                let (row_count, count_query_statement) = match plan {
-                    MySqlExportPlan::CountRows { statement } => {
-                        (RerunnableCsvRowCount::QueryDatabase, Some(statement))
-                    }
-                    MySqlExportPlan::UseResultRowCount => {
-                        (RerunnableCsvRowCount::Known(row_count), None)
-                    }
-                };
                 let run_id = state.query.begin_non_preview_running(now);
-                return dispatch_rerunnable_csv_export(
-                    state,
-                    dsn,
-                    run_id,
-                    export_query,
-                    file_name,
-                    row_count,
-                    count_query_statement,
-                );
+                return dispatch_rerunnable_csv_export(state, dsn, run_id, export_query, file_name);
             }
 
             let export_query = result.query.clone();
             let run_id = state.query.begin_non_preview_running(now);
-            dispatch_rerunnable_csv_export(
-                state,
-                dsn,
-                run_id,
-                export_query,
-                file_name,
-                RerunnableCsvRowCount::QueryDatabase,
-                None,
-            )
-        }
-
-        Action::CsvExportRowsCounted {
-            dsn,
-            run_id,
-            row_count,
-            export_query,
-            file_name,
-        } => {
-            if reject_pending_mysql_connection_probe(state) {
-                return DispatchResult::handled();
-            }
-            if state.is_stale_query_run(dsn, *run_id) {
-                return DispatchResult::handled();
-            }
-
-            dispatch_counted_rerunnable_csv_export(
-                state,
-                dsn.clone(),
-                *run_id,
-                export_query.clone(),
-                file_name.clone(),
-                *row_count,
-            )
+            dispatch_rerunnable_csv_export(state, dsn, run_id, export_query, file_name)
         }
 
         Action::CsvExportSucceeded {
@@ -373,22 +256,6 @@ mod tests {
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
     use crate::update::reducer::reduce;
-
-    fn csv_rows_counted_action(
-        state: &mut AppState,
-        row_count: Option<usize>,
-        export_query: &str,
-        file_name: &str,
-    ) -> Action {
-        let run_id = begin_query_run(state);
-        Action::CsvExportRowsCounted {
-            dsn: "postgres://localhost/test".to_string(),
-            run_id,
-            row_count,
-            export_query: export_query.to_string(),
-            file_name: file_name.to_string(),
-        }
-    }
 
     fn csv_succeeded_action(state: &mut AppState, path: &str, row_count: Option<usize>) -> Action {
         let run_id = begin_query_run(state);
@@ -634,7 +501,7 @@ mod tests {
         use rstest::rstest;
 
         #[test]
-        fn delete_success_then_count_export_then_preview_completion_clears_selection() {
+        fn delete_success_then_csv_export_confirmation_then_preview_completion_clears_selection() {
             let mut state = test_fixtures::state_after_delete_success();
             state.query.set_current_result(preview_result(10));
             state.query.pagination.reset_for_table("public", "users");
@@ -647,18 +514,9 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(effects.len(), 1);
-            match &effects[0] {
-                Effect::CountRowsForExport {
-                    export_query,
-                    file_name,
-                    ..
-                } => {
-                    assert_eq!(export_query, "SELECT * FROM users");
-                    assert_eq!(file_name, "users");
-                }
-                other => panic!("expected CountRowsForExport, got {other:?}"),
-            }
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
+            assert!(state.confirm_dialog.message().contains("unknown"));
             assert_eq!(
                 state.query.post_delete_row_selection(),
                 PostDeleteRowSelection::Keep
@@ -676,18 +534,9 @@ mod tests {
             let effects =
                 dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
 
-            assert_eq!(effects.len(), 1);
-            match &effects[0] {
-                Effect::CountRowsForExport {
-                    export_query,
-                    file_name,
-                    ..
-                } => {
-                    assert_eq!(export_query, "SELECT 1");
-                    assert_eq!(file_name, "adhoc");
-                }
-                other => panic!("expected CountRowsForExport, got {other:?}"),
-            }
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
+            assert!(state.confirm_dialog.message().contains("unknown"));
         }
 
         #[rstest]
@@ -725,34 +574,33 @@ mod tests {
         }
 
         #[test]
-        fn rows_counted_below_threshold_emits_export_effect() {
+        fn rerunnable_export_always_confirms_even_when_result_is_small() {
             let mut state = create_test_state();
-            let action = csv_rows_counted_action(&mut state, Some(500), "SELECT 1", "test");
+            state.query.set_current_result(adhoc_result());
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
-
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(&effects[0], Effect::ExportCsv { .. }));
-        }
-
-        #[test]
-        fn rows_counted_above_threshold_opens_confirm_dialog() {
-            let mut state = create_test_state();
-            let action = csv_rows_counted_action(&mut state, Some(200_000), "SELECT 1", "test");
-
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects =
+                dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
-            assert!(state.confirm_dialog.title().contains("CSV Export"));
+            assert!(state.confirm_dialog.message().contains("unknown"));
         }
 
         #[test]
-        fn rows_counted_none_opens_confirm_dialog() {
+        fn rerunnable_export_always_confirms_even_when_result_is_large() {
             let mut state = create_test_state();
-            let action = csv_rows_counted_action(&mut state, None, "SELECT 1", "test");
+            let result = QueryResult::success(
+                "SELECT 1".to_string(),
+                vec!["value".to_string()],
+                vec![vec!["1".to_string()]],
+                0,
+                QuerySource::Adhoc,
+            )
+            .with_row_count(200_000);
+            state.query.set_current_result(Arc::new(result));
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects =
+                dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
@@ -801,30 +649,6 @@ mod tests {
                 state.messages.last_error.as_deref(),
                 Some("Query failed: psql error. Review the database error details and SQL.")
             );
-        }
-
-        #[test]
-        fn stale_rows_counted_does_not_open_confirm_or_export() {
-            let mut state = create_test_state();
-            let old_run_id = begin_query_run(&mut state);
-            let _ = begin_query_run(&mut state);
-
-            let effects = dispatch_query(
-                &mut state,
-                &Action::CsvExportRowsCounted {
-                    dsn: "postgres://localhost/test".to_string(),
-                    run_id: old_run_id,
-                    row_count: Some(200_000),
-                    export_query: "SELECT 1".to_string(),
-                    file_name: "test".to_string(),
-                },
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert!(effects.is_empty());
-            assert_ne!(state.input_mode(), InputMode::ConfirmDialog);
-            assert!(state.query.is_running());
         }
 
         #[test]
@@ -900,7 +724,7 @@ mod tests {
             }
 
             #[test]
-            fn select_still_uses_count_effect() {
+            fn select_always_asks_for_unknown_row_count() {
                 let mut state = sqlite_state();
                 state
                     .query
@@ -915,8 +739,9 @@ mod tests {
                 let effects =
                     dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
 
-                assert_eq!(effects.len(), 1);
-                assert!(matches!(&effects[0], Effect::CountRowsForExport { .. }));
+                assert!(effects.is_empty());
+                assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
+                assert!(state.confirm_dialog.message().contains("unknown"));
             }
 
             #[test]
@@ -965,31 +790,19 @@ mod tests {
             }
 
             #[rstest]
-            #[case::select("SELECT 1", true)]
-            #[case::table("TABLE users", false)]
-            #[case::show("SHOW TABLES", false)]
-            #[case::describe("DESCRIBE users", false)]
-            fn uses_count_only_for_mysql_select(#[case] query: &str, #[case] expects_count: bool) {
+            #[case::select("SELECT 1")]
+            #[case::table("TABLE users")]
+            #[case::show("SHOW TABLES")]
+            #[case::describe("DESCRIBE users")]
+            fn supported_rerunnable_queries_ask_for_unknown_row_count(#[case] query: &str) {
                 let mut state = mysql_state(query);
 
                 let effects =
                     dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
 
-                assert_eq!(effects.len(), 1);
-                assert_eq!(
-                    matches!(&effects[0], Effect::CountRowsForExport { .. }),
-                    expects_count
-                );
-                assert_eq!(
-                    matches!(
-                        &effects[0],
-                        Effect::ExportCsv {
-                            row_count: Some(1),
-                            ..
-                        }
-                    ),
-                    !expects_count
-                );
+                assert!(effects.is_empty());
+                assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
+                assert!(state.confirm_dialog.message().contains("unknown"));
             }
 
             #[test]
@@ -1032,37 +845,6 @@ mod tests {
                 assert_eq!(columns, &["payload", "text_value", "nullable", "text"]);
                 assert_eq!(cached_values, &values);
                 assert_eq!(*row_count, Some(1));
-            }
-
-            #[rstest]
-            #[case::semicolon_comment(
-                "SELECT id FROM users; -- trailing comment",
-                "SELECT id FROM users"
-            )]
-            #[case::dash_comment(
-                "SELECT id FROM users -- trailing comment",
-                "SELECT id FROM users -- trailing comment"
-            )]
-            #[case::hash_comment(
-                "SELECT id FROM users # trailing comment",
-                "SELECT id FROM users # trailing comment"
-            )]
-            fn count_query_wraps_mysql_statement_with_newlines(
-                #[case] query: &str,
-                #[case] normalized_statement: &str,
-            ) {
-                let mut state = mysql_state(query);
-
-                let effects =
-                    dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
-
-                let Effect::CountRowsForExport { count_query, .. } = &effects[0] else {
-                    panic!("expected CountRowsForExport effect");
-                };
-                assert_eq!(
-                    count_query,
-                    &format!("SELECT COUNT(*) FROM (\n{normalized_statement}\n) AS _export_count")
-                );
             }
         }
     }

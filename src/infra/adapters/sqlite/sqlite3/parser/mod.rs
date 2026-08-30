@@ -9,12 +9,11 @@ pub(in crate::adapters::sqlite) use command_tag::{
 };
 pub(in crate::adapters::sqlite) use lexer::{
     is_create_view_prefix, is_create_virtual_table_prefix, is_sqlite_rerunnable_export_query,
-    next_keyword_from, reject_sqlite_fsdir, skip_bracket_quoted, skip_quoted,
-    sqlite_export_not_rerunnable_error, virtual_table_module_name,
+    next_keyword_from, skip_bracket_quoted, skip_quoted, sqlite_export_not_rerunnable_error,
+    virtual_table_module_name,
 };
 pub(in crate::adapters::sqlite) use output::{
-    last_sqlite_result_set, parse_affected_rows, parse_count_result, quoted_to_query_result,
-    strip_sqlite_probes,
+    last_sqlite_result_set, parse_affected_rows, quoted_to_query_result, strip_sqlite_probes,
 };
 pub(in crate::adapters::sqlite) use statement_plan::{
     SqliteStatementPlan, append_changes_query_for_plan, sqlite_adhoc_execution_query_for_plan,
