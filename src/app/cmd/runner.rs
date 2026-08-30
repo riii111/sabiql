@@ -112,7 +112,7 @@ impl EffectRunner {
 
     async fn cancel_tracked_tasks(&self) {
         let connection_task = self.connection_task.abort();
-        let metadata_tasks = self.metadata_tasks.abort();
+        let metadata_task = self.metadata_tasks.abort();
         let smart_er_task = self.smart_er_refresh_task.abort();
         let sqlite_diagnostics_tasks = self.sqlite_diagnostics_task.abort();
         let (query_task, table_detail_task) =
@@ -126,7 +126,7 @@ impl EffectRunner {
         if let Some(task) = connection_task {
             let _ = task.await;
         }
-        for task in metadata_tasks
+        for task in metadata_task
             .into_iter()
             .chain(smart_er_task)
             .chain(sqlite_diagnostics_tasks)
