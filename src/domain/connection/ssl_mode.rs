@@ -26,18 +26,22 @@ impl SslMode {
             Self::VerifyFull,
         ]
     }
+
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Disable => "disable",
+            Self::Allow => "allow",
+            Self::Prefer => "prefer",
+            Self::Require => "require",
+            Self::VerifyCa => "verify-ca",
+            Self::VerifyFull => "verify-full",
+        }
+    }
 }
 
 impl fmt::Display for SslMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Disable => write!(f, "disable"),
-            Self::Allow => write!(f, "allow"),
-            Self::Prefer => write!(f, "prefer"),
-            Self::Require => write!(f, "require"),
-            Self::VerifyCa => write!(f, "verify-ca"),
-            Self::VerifyFull => write!(f, "verify-full"),
-        }
+        f.write_str(self.as_str())
     }
 }
 
