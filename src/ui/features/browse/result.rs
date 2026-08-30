@@ -250,7 +250,7 @@ impl ResultPane {
 
         let header = Row::new(viewport_indices.iter().map(|&idx| {
             let col_name = result.columns.get(idx).map_or("", String::as_str);
-            Cell::from(col_name.to_string())
+            Cell::from(col_name)
         }))
         .style(
             Style::default()
@@ -480,42 +480,40 @@ fn display_width_of_first_line(value: &str, escape_nul: bool) -> usize {
     }
 }
 
+fn display_grapheme_info(value: &str, escape_nul: bool) -> (&str, usize) {
+    if escape_nul && value == "\0" {
+        ("\\0", 2)
+    } else {
+        (value, UnicodeWidthStr::width(value))
+    }
+}
+
 fn truncate_display_text(value: &str, escape_nul: bool, max_width: usize) -> String {
     let first_line = value.split('\n').next().unwrap_or(value);
     let budget = max_width.saturating_sub(3);
     let mut display = String::new();
-    let mut truncated = String::new();
     let mut display_width = 0usize;
-    let mut truncated_width = 0usize;
 
-    for grapheme in first_line.graphemes(true) {
-        let (width, is_nul) = if escape_nul && grapheme == "\0" {
-            (2, true)
-        } else {
-            (UnicodeWidthStr::width(grapheme), false)
-        };
-
+    for (offset, grapheme) in first_line.grapheme_indices(true) {
+        let (display_grapheme, width) = display_grapheme_info(grapheme, escape_nul);
         if display_width.saturating_add(width) > max_width {
             if max_width < 3 {
                 return ".".repeat(max_width);
             }
-            truncated.push_str("...");
-            return truncated;
+            display.clear();
+            let mut truncated_width = 0usize;
+            for grapheme in first_line[..offset].graphemes(true) {
+                let (display_grapheme, width) = display_grapheme_info(grapheme, escape_nul);
+                if truncated_width.saturating_add(width) <= budget {
+                    display.push_str(display_grapheme);
+                    truncated_width += width;
+                }
+            }
+            display.push_str("...");
+            return display;
         }
 
-        if is_nul {
-            display.push_str("\\0");
-            if truncated_width.saturating_add(width) <= budget {
-                truncated.push_str("\\0");
-                truncated_width += width;
-            }
-        } else {
-            display.push_str(grapheme);
-            if truncated_width.saturating_add(width) <= budget {
-                truncated.push_str(grapheme);
-                truncated_width += width;
-            }
-        }
+        display.push_str(display_grapheme);
         display_width += width;
     }
 
@@ -654,6 +652,25 @@ mod tests {
             let value = QueryValue::text("a\0bcdef");
 
             assert_eq!(query_value_display_at_width(&value, 6), "a\\0...");
+        }
+
+        #[rstest]
+        #[case("日abc", false, 4, "a...")]
+        #[case("👨‍👩‍👧‍👦abc", false, 4, "a...")]
+        #[case("日本a語", false, 6, "日a...")]
+        #[case("ab\u{200b}cde", false, 4, "a\u{200b}...")]
+        #[case("日\0abc", true, 6, "日a...")]
+        #[case("لاabc", false, 4, "ل...")]
+        fn truncation_preserves_mixed_width_selection(
+            #[case] value: &str,
+            #[case] escape_nul: bool,
+            #[case] max_width: usize,
+            #[case] expected: &str,
+        ) {
+            assert_eq!(
+                truncate_display_text(value, escape_nul, max_width),
+                expected
+            );
         }
 
         #[test]

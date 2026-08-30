@@ -129,7 +129,6 @@ where
 pub struct CsvFileWriter {
     file: BufWriter<tokio::fs::File>,
     csv_writer: csv::Writer<Vec<u8>>,
-    bytes_since_flush: usize,
 }
 
 impl CsvFileWriter {
@@ -140,7 +139,6 @@ impl CsvFileWriter {
         Ok(Self {
             file: BufWriter::new(file),
             csv_writer: new_csv_writer(),
-            bytes_since_flush: 0,
         })
     }
 
@@ -153,8 +151,7 @@ impl CsvFileWriter {
         self.csv_writer
             .flush()
             .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-        self.bytes_since_flush = self.csv_writer.get_ref().len();
-        if self.bytes_since_flush >= CSV_FLUSH_THRESHOLD {
+        if self.csv_writer.get_ref().len() >= CSV_FLUSH_THRESHOLD {
             self.flush_buffer().await?;
         }
         Ok(())
@@ -188,7 +185,6 @@ impl CsvFileWriter {
             .flush()
             .await
             .map_err(|error| DbOperationError::ExportIo(ExportIoSource::new(error)))?;
-        self.bytes_since_flush = 0;
         Ok(())
     }
 }
@@ -249,7 +245,6 @@ mod tests {
         CsvFileWriter {
             file: BufWriter::new(file),
             csv_writer: new_csv_writer(),
-            bytes_since_flush: 0,
         }
     }
 
