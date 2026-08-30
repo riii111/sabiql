@@ -16,10 +16,10 @@ pub fn dispatch_explain(
     state: &mut AppState,
     action: &Action,
     now: Instant,
-    services: &AppServices,
+    _services: &AppServices,
 ) -> DispatchResult {
-    request::reduce_request(state, action, now, services)
-        .or_else(|| analyze::reduce_analyze(state, action, now, services))
+    request::reduce_request(state, action, now)
+        .or_else(|| analyze::reduce_analyze(state, action, now))
         .or_else(|| output::reduce_output(state, action, now))
         .or_else(|| scroll::reduce_scroll(state, action, now))
         .or_else(|| tabs::reduce_tabs(state, action, now))

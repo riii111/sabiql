@@ -26,7 +26,7 @@ pub fn reduce_execution(
     state: &mut AppState,
     action: &Action,
     now: Instant,
-    services: &AppServices,
+    _services: &AppServices,
 ) -> DispatchResult {
     match action {
         Action::QueryCompleted {
@@ -206,7 +206,7 @@ pub fn reduce_execution(
                     vec![Effect::DispatchActions(vec![Action::OpenModal(modal)])]
                 }
                 Action::SubmitCellEditWrite => {
-                    write::reduce_write(state, &Action::SubmitCellEditWrite, now, services)
+                    write::reduce_write(state, &Action::SubmitCellEditWrite, now)
                         .into_effects()
                         .unwrap_or_default()
                 }

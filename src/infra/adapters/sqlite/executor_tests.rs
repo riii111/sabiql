@@ -1,7 +1,7 @@
 use crate::adapters::test_support;
-use crate::app::ports::outbound::{AccessMode, SqlDialect};
+use crate::app::ports::outbound::AccessMode;
 use crate::domain::{
-    CommandTag, DatabaseType, QueryResult, QuerySource, QueryValue, SqlitePathError,
+    CommandTag, QueryResult, QuerySource, QueryValue, SqlitePathError,
     sqlite_explain_query_plan_text_from_result,
 };
 

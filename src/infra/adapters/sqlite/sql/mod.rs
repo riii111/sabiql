@@ -1,5 +1,4 @@
 mod ddl;
-mod dialect;
 mod literal;
 mod metadata;
 mod preview;

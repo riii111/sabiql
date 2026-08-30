@@ -15,7 +15,7 @@ use crate::policy::write::write_guardrails::{
     evaluate_guardrails, preview_writeability_for_result, stable_row_identity_for_preview,
 };
 use crate::ports::outbound::ClipboardError;
-use crate::services::AppServices;
+use crate::sql_builder::build_bulk_delete_sql;
 use crate::update::action::Action;
 
 pub(crate) fn reject_pending_mysql_connection_probe(state: &mut AppState) -> bool {
@@ -197,7 +197,6 @@ pub fn ensure_column_writable(
 
 pub fn build_bulk_delete_preview(
     state: &AppState,
-    services: &AppServices,
 ) -> Result<BulkDeletePreviewResult, EditGuardrailError> {
     if state.result_interaction.staged_delete_rows().is_empty() {
         return Err(EditGuardrailError::NoRowsStagedForDeletion);
@@ -235,7 +234,7 @@ pub fn build_bulk_delete_preview(
         predicate_pairs_per_row.push(identity_pairs);
     }
 
-    let sql = services.sql_dialect.build_bulk_delete_sql(
+    let sql = build_bulk_delete_sql(
         state.session.active_database_type_or_default(),
         state.query.pagination.schema(),
         state.query.pagination.table(),
@@ -1015,11 +1014,11 @@ mod tests {
         fn sqlite_database_type_uses_schema_free_delete_preview() {
             let state = sqlite_editable_state();
 
-            let result = build_bulk_delete_preview(&state, &AppServices::stub()).unwrap();
+            let result = build_bulk_delete_preview(&state).unwrap();
 
             assert_eq!(
                 result.preview.sql,
-                "DELETE FROM \"users\" WHERE \"id\" = '1'"
+                "DELETE FROM \"users\"\nWHERE \"id\" = '1';"
             );
         }
 
@@ -1031,7 +1030,7 @@ mod tests {
             state.session.set_table_detail_raw(Some(detail));
 
             assert!(matches!(
-                build_bulk_delete_preview(&state, &AppServices::stub()),
+                build_bulk_delete_preview(&state),
                 Err(EditGuardrailError::DeletionRequiresPrimaryKey)
             ));
         }
@@ -1043,11 +1042,11 @@ mod tests {
             detail.kind_info.without_rowid = true;
             state.session.set_table_detail_raw(Some(detail));
 
-            let result = build_bulk_delete_preview(&state, &AppServices::stub()).unwrap();
+            let result = build_bulk_delete_preview(&state).unwrap();
 
             assert_eq!(
                 result.preview.sql,
-                "DELETE FROM \"users\" WHERE \"id\" = '1'"
+                "DELETE FROM \"users\"\nWHERE \"id\" = '1';"
             );
         }
 
@@ -1064,7 +1063,7 @@ mod tests {
                     QuerySource::Preview,
                 )));
 
-            let result = build_bulk_delete_preview(&state, &AppServices::stub());
+            let result = build_bulk_delete_preview(&state);
 
             assert!(matches!(
                 result,
