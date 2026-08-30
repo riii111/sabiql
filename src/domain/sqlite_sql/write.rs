@@ -8,6 +8,7 @@ pub fn build_update_sql(
     new_value: &QueryValue,
     pk_pairs: &[(String, QueryValue)],
 ) -> String {
+    assert!(!pk_pairs.is_empty(), "pk_pairs must not be empty");
     let where_clause = pk_pairs
         .iter()
         .map(|(column, value)| equality_predicate(column, value))
@@ -28,8 +29,8 @@ pub fn build_bulk_delete_sql(
     pk_pairs_per_row: &[Vec<(String, QueryValue)>],
 ) -> String {
     assert!(
-        !pk_pairs_per_row.is_empty(),
-        "pk_pairs_per_row must not be empty"
+        !pk_pairs_per_row.is_empty() && pk_pairs_per_row.iter().all(|pairs| !pairs.is_empty()),
+        "pk_pairs_per_row must contain nonempty identity pairs"
     );
 
     let predicates = pk_pairs_per_row
@@ -187,6 +188,12 @@ mod tests {
                 "UPDATE \"users\"\nSET \"name\" = CAST(X'610062' AS TEXT)\nWHERE \"id\" = '1';"
             );
         }
+
+        #[test]
+        #[should_panic(expected = "pk_pairs must not be empty")]
+        fn update_rejects_empty_identity_pairs() {
+            let _ = build_update_sql("users", "name", &QueryValue::text("new"), &[]);
+        }
     }
 
     mod bulk_delete_sql {
@@ -293,9 +300,15 @@ mod tests {
         }
 
         #[test]
-        #[should_panic(expected = "pk_pairs_per_row must not be empty")]
+        #[should_panic(expected = "pk_pairs_per_row must contain nonempty identity pairs")]
         fn bulk_delete_rejects_empty_rows() {
             let _ = build_bulk_delete_sql("users", &[]);
+        }
+
+        #[test]
+        #[should_panic(expected = "pk_pairs_per_row must contain nonempty identity pairs")]
+        fn bulk_delete_rejects_empty_identity_pairs() {
+            let _ = build_bulk_delete_sql("users", &[vec![]]);
         }
     }
 }
