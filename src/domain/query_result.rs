@@ -150,7 +150,6 @@ pub struct QueryResult {
     pub command_tag: Option<CommandTag>,
     pub refresh_scope: RefreshScope,
     pub mysql_diagnostics: Vec<DatabaseDiagnostic>,
-    rows: Vec<Vec<String>>,
     values: Vec<Vec<QueryValue>>,
     explicit_row_identity: Option<ExplicitRowIdentity>,
     row_count: usize,
@@ -168,13 +167,12 @@ impl QueryResult {
     ) -> Self {
         let row_count = rows.len();
         let values = rows
-            .iter()
-            .map(|row| row.iter().cloned().map(QueryValue::Text).collect())
+            .into_iter()
+            .map(|row| row.into_iter().map(QueryValue::Text).collect())
             .collect();
         Self {
             query,
             columns,
-            rows,
             values,
             explicit_row_identity: None,
             row_count,
@@ -200,7 +198,6 @@ impl QueryResult {
         Self {
             query,
             columns,
-            rows: Vec::new(),
             values,
             explicit_row_identity: None,
             row_count,
@@ -224,7 +221,6 @@ impl QueryResult {
         Self {
             query,
             columns: Vec::new(),
-            rows: Vec::new(),
             values: Vec::new(),
             explicit_row_identity: None,
             row_count: 0,
@@ -284,28 +280,14 @@ impl QueryResult {
     #[must_use]
     pub fn without_empty_result_sentinel(mut self) -> Self {
         self.columns.pop();
-        if self.typed_values {
-            for values in &mut self.values {
-                let sentinel = values.pop();
-                if sentinel == Some(QueryValue::Null) {
-                    values.clear();
-                }
+        for values in &mut self.values {
+            let sentinel = values.pop();
+            if sentinel == Some(QueryValue::Null) {
+                values.clear();
             }
-            self.values
-                .retain(|values| values.len() == self.columns.len());
-        } else {
-            for (row, values) in self.rows.iter_mut().zip(&mut self.values) {
-                let sentinel = values.pop();
-                row.pop();
-                if sentinel == Some(QueryValue::Null) {
-                    values.clear();
-                    row.clear();
-                }
-            }
-            self.rows.retain(|row| row.len() == self.columns.len());
-            self.values
-                .retain(|values| values.len() == self.columns.len());
         }
+        self.values
+            .retain(|values| values.len() == self.columns.len());
         self.row_count = self.values.len();
         self
     }
@@ -341,11 +323,7 @@ impl QueryResult {
 
     #[must_use]
     pub fn data_row_count(&self) -> usize {
-        if self.typed_values {
-            self.values.len()
-        } else {
-            self.rows.len()
-        }
+        self.values.len()
     }
 
     #[must_use]
@@ -358,10 +336,8 @@ impl QueryResult {
         if self.typed_values {
             self.value_at(row, col).map(QueryValue::display_value_ref)
         } else {
-            self.rows
-                .get(row)?
-                .get(col)
-                .map(|value| Cow::Borrowed(value.as_str()))
+            self.value_at(row, col)
+                .and_then(|value| value.as_str().map(Cow::Borrowed))
         }
     }
 
@@ -377,7 +353,13 @@ impl QueryResult {
                 .get(row)
                 .map(|values| values.iter().map(QueryValue::display_value).collect())
         } else {
-            self.rows.get(row).cloned()
+            self.values.get(row).map(|values| {
+                values
+                    .iter()
+                    .filter_map(QueryValue::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
         }
     }
 }
@@ -481,7 +463,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn keeps_text_owned_only_by_typed_values() {
+        fn stores_typed_text_without_a_second_display_row_buffer() {
             let text = "a".repeat(4096);
             let result = QueryResult::success_with_values(
                 "SELECT body".to_string(),
@@ -492,7 +474,6 @@ mod tests {
             );
 
             assert_eq!(result.data_row_count(), 1);
-            assert!(result.rows.is_empty());
             assert_eq!(result.column_count(), 1);
             assert_eq!(
                 result.display_value_ref_at(0, 0).as_deref(),
