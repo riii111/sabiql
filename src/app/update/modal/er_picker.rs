@@ -7,7 +7,6 @@ use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::text_input::{TextInputEditing, TextInputState};
 use crate::update::action::{Action, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
-use crate::update::helpers::require_er_diagram_enabled;
 
 pub(super) fn reduce_er_picker(
     state: &mut AppState,
@@ -16,9 +15,6 @@ pub(super) fn reduce_er_picker(
 ) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::ErTablePicker) => {
-            if let Some(result) = require_er_diagram_enabled(state) {
-                return result;
-            }
             if state.session.metadata().is_none() {
                 state.ui.request_er_picker_after_metadata();
                 state
