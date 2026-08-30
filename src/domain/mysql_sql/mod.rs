@@ -555,6 +555,53 @@ mod tests {
     }
 
     #[test]
+    fn preserves_utf8_unquoted_and_backtick_targets() {
+        let cases = [
+            ("UPDATE café SET value = 1", None, "café"),
+            (
+                "UPDATE café.éléments SET value = 1",
+                Some("café"),
+                "éléments",
+            ),
+            ("UPDATE $items SET value = 1", None, "$items"),
+            (
+                r"UPDATE `café`.`éléments` SET value = 1",
+                Some("café"),
+                "éléments",
+            ),
+        ];
+
+        for (sql, expected_database, expected_target) in cases {
+            let statement = classify_mysql_statement(sql).expect(sql);
+            assert_eq!(
+                statement.target_database.as_deref(),
+                expected_database,
+                "{sql}"
+            );
+            assert_eq!(statement.target(), Some(expected_target), "{sql}");
+        }
+    }
+
+    #[test]
+    fn preserves_utf8_targets_around_comments_and_executable_comments() {
+        for sql in [
+            "UPDATE /* ignored café */ café SET value = 1",
+            "UPDATE café -- ignored comment\n SET value = 1",
+            "CREATE TABLE café (id INT) /*!40100 DEFAULT CHARSET=utf8mb4 */",
+            "DROP TABLE café /*!80000 RESTRICT */",
+        ] {
+            let statement = classify_mysql_statement(sql).expect(sql);
+            assert_eq!(statement.target(), Some("café"), "{sql}");
+        }
+    }
+
+    #[test]
+    fn rejects_non_bmp_backtick_targets_fail_closed() {
+        assert!(classify_mysql_statement("UPDATE `caf😀` SET value = 1").is_err());
+        assert!(classify_mysql_statement("UPDATE caf😀 SET value = 1").is_err());
+    }
+
+    #[test]
     fn classifies_documented_mysql_ddl_forms() {
         let cases = [
             (
@@ -1017,6 +1064,38 @@ mod tests {
                 "UPDATE other.items SET value = 1",
                 Some("app"),
                 1,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn qualified_utf8_mysql_mutations_follow_selected_database_case_rules() {
+        let exact = classify_mysql_multi_statement_with_lower_case_table_names(
+            "UPDATE äpp.éléments SET value = 1",
+            Some("äpp"),
+            0,
+        )
+        .unwrap();
+        assert_eq!(exact[0].target_database.as_deref(), Some("äpp"));
+        assert_eq!(exact[0].target(), Some("éléments"));
+
+        for lower_case_table_names in [1, 2] {
+            let statements = classify_mysql_multi_statement_with_lower_case_table_names(
+                "UPDATE ÄPP.éléments SET value = 1",
+                Some("äpp"),
+                lower_case_table_names,
+            )
+            .unwrap();
+            assert_eq!(statements[0].target_database.as_deref(), Some("ÄPP"));
+            assert_eq!(statements[0].target(), Some("éléments"));
+        }
+
+        assert!(
+            classify_mysql_multi_statement_with_lower_case_table_names(
+                "UPDATE ÄPP.éléments SET value = 1",
+                Some("äpp"),
+                0,
             )
             .is_err()
         );

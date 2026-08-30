@@ -2079,6 +2079,18 @@ mod mysql_tests {
     }
 
     #[test]
+    fn confirmation_preserves_utf8_target() {
+        let MultiStatementDecision::Allow { risk, .. } = mysql("UPDATE café SET value = 1") else {
+            panic!("expected Allow");
+        };
+
+        assert!(matches!(
+            risk.confirmation,
+            ConfirmationType::TableNameInput { ref target, .. } if target == "café"
+        ));
+    }
+
+    #[test]
     fn aligns_supported_mysql_ddl_risk_and_schema_classification() {
         let cases = [
             (

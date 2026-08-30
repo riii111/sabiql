@@ -79,24 +79,30 @@ pub(super) fn identifier_at(
         index += 1;
     }
     let first_token = tokens.get(index)?;
-    let first = match &first_token.kind {
-        TokenKind::Word(_) => first_token.text.clone(),
-        TokenKind::Identifier(identifier) => identifier.clone(),
-        _ => return None,
-    };
+    let first = identifier_text(first_token)?;
     if matches!(
         tokens.get(index + 1).map(|token| &token.kind),
         Some(TokenKind::Symbol('.'))
     ) {
         let second_token = tokens.get(index + 2)?;
-        let second = match &second_token.kind {
-            TokenKind::Word(_) => second_token.text.clone(),
-            TokenKind::Identifier(identifier) => identifier.clone(),
-            _ => return None,
-        };
+        let second = identifier_text(second_token)?;
         return Some((second, Some(first), index + 3));
     }
     Some((first, None, index + 1))
+}
+
+fn identifier_text(token: &Token) -> Option<String> {
+    match &token.kind {
+        TokenKind::Word(_) => Some(token.text.clone()),
+        TokenKind::Identifier(identifier)
+            if identifier
+                .chars()
+                .all(|character| character != '\0' && character <= '\u{FFFF}') =>
+        {
+            Some(identifier.clone())
+        }
+        _ => None,
+    }
 }
 
 pub(super) fn skip_mysql_modifiers(

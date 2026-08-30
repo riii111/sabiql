@@ -109,13 +109,17 @@ pub(super) fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MySqlLexError
             index = end;
             continue;
         }
-        if byte.is_ascii_alphabetic() || byte == b'_' || byte == b'$' {
+        let character = sql[index..]
+            .chars()
+            .next()
+            .expect("lexer index must remain on a UTF-8 boundary");
+        if is_mysql_unquoted_identifier_char(character) && !character.is_ascii_digit() {
             let start = index;
-            index += 1;
-            while index < bytes.len()
-                && (bytes[index].is_ascii_alphanumeric() || matches!(bytes[index], b'_' | b'$'))
+            index += character.len_utf8();
+            while let Some(character) = sql[index..].chars().next()
+                && is_mysql_unquoted_identifier_char(character)
             {
-                index += 1;
+                index += character.len_utf8();
             }
             let text = sql[start..index].to_string();
             tokens.push(Token {
@@ -124,6 +128,11 @@ pub(super) fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MySqlLexError
                 text,
             });
             continue;
+        }
+        if character.is_control() || !character.is_ascii() {
+            return Err(MySqlLexError(
+                "unsupported MySQL character in statement".to_string(),
+            ));
         }
         if byte.is_ascii_digit() {
             let start = index;
@@ -158,6 +167,10 @@ pub(super) fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MySqlLexError
         index += 1;
     }
     Ok(tokens)
+}
+
+fn is_mysql_unquoted_identifier_char(character: char) -> bool {
+    character.is_ascii_alphanumeric() || matches!(character, '_' | '$' | '\u{0080}'..='\u{FFFF}')
 }
 
 pub(super) fn split_mysql_statements(sql: &str) -> Result<Vec<String>, MySqlLexError> {
