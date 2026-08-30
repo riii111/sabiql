@@ -175,6 +175,10 @@ impl PostgresAdapter {
                 attributes: ColumnAttributes::from_parts(c.nullable, c.is_primary_key, c.is_unique),
                 comment: c.comment,
                 ordinal_position: c.ordinal_position,
+                character_set_name: None,
+                collation_name: None,
+                generation_expression: None,
+                generation_kind: None,
             })
             .collect())
     }
@@ -186,12 +190,18 @@ impl PostgresAdapter {
             return Ok(Vec::new());
         };
 
+        #[expect(
+            clippy::struct_excessive_bools,
+            reason = "PostgreSQL index flags are independent catalog fields"
+        )]
         #[derive(serde::Deserialize)]
         struct RawIndex {
             name: String,
             columns: Vec<String>,
             is_unique: bool,
             is_primary: bool,
+            is_partial: bool,
+            has_expression: bool,
             index_type: String,
             definition: Option<String>,
         }
@@ -200,15 +210,25 @@ impl PostgresAdapter {
 
         Ok(raw
             .into_iter()
-            .map(|i| Index {
-                name: i.name,
-                columns: i.columns,
-                attributes: IndexAttributes::from_parts(i.is_unique, i.is_primary),
-                index_type: match i.index_type.parse::<IndexType>() {
-                    Ok(index_type) => index_type,
-                    Err(never) => match never {},
-                },
-                definition: i.definition,
+            .map(|i| {
+                let mut attributes = IndexAttributes::from_parts(i.is_unique, i.is_primary);
+                if i.is_partial {
+                    attributes = attributes | IndexAttributes::PARTIAL;
+                }
+                if i.has_expression {
+                    attributes = attributes | IndexAttributes::EXPRESSION;
+                }
+
+                Index {
+                    name: i.name,
+                    columns: i.columns,
+                    attributes,
+                    index_type: match i.index_type.parse::<IndexType>() {
+                        Ok(index_type) => index_type,
+                        Err(never) => match never {},
+                    },
+                    definition: i.definition,
+                }
             })
             .collect())
     }
@@ -327,8 +347,8 @@ impl PostgresAdapter {
             name: String,
             timing: String,
             events: Vec<String>,
-            function_name: String,
-            security_definer: bool,
+            definition: String,
+            security_context: Option<String>,
         }
 
         let raw: Vec<RawTrigger> = serde_json::from_str(trimmed)?;
@@ -352,8 +372,10 @@ impl PostgresAdapter {
                     name: t.name,
                     timing,
                     events,
-                    function_name: t.function_name,
-                    security_definer: t.security_definer,
+                    action_order: None,
+                    definition: t.definition,
+                    security_context: t.security_context,
+                    creation_context: None,
                 })
             })
             .collect::<Result<Vec<_>, MetadataParseError>>()
@@ -654,6 +676,8 @@ mod tests {
                 "columns": ["id"],
                 "is_unique": false,
                 "is_primary": false,
+                "is_partial": false,
+                "has_expression": false,
                 "index_type": "ivfflat",
                 "definition": null
             }]"#;
@@ -664,6 +688,97 @@ mod tests {
                 result[0].index_type,
                 IndexType::Other("ivfflat".to_string())
             );
+        }
+
+        #[test]
+        fn parse_indexes_preserves_key_order_and_metadata_attributes() {
+            let json = r#"[
+                {
+                    "name": "users_pkey",
+                    "columns": ["id"],
+                    "is_unique": true,
+                    "is_primary": true,
+                    "is_partial": false,
+                    "has_expression": false,
+                    "index_type": "btree",
+                    "definition": "CREATE UNIQUE INDEX users_pkey ON users USING btree (id)"
+                },
+                {
+                    "name": "users_tenant_email_idx",
+                    "columns": ["tenant_id", "email"],
+                    "is_unique": false,
+                    "is_primary": false,
+                    "is_partial": false,
+                    "has_expression": false,
+                    "index_type": "btree",
+                    "definition": "CREATE INDEX users_tenant_email_idx ON users USING btree (tenant_id, email)"
+                },
+                {
+                    "name": "users_lower_email_idx",
+                    "columns": ["lower(email)"],
+                    "is_unique": false,
+                    "is_primary": false,
+                    "is_partial": false,
+                    "has_expression": true,
+                    "index_type": "btree",
+                    "definition": "CREATE INDEX users_lower_email_idx ON users USING btree (lower(email))"
+                },
+                {
+                    "name": "users_active_email_idx",
+                    "columns": ["email"],
+                    "is_unique": false,
+                    "is_primary": false,
+                    "is_partial": true,
+                    "has_expression": false,
+                    "index_type": "btree",
+                    "definition": "CREATE INDEX users_active_email_idx ON users USING btree (email) WHERE active"
+                },
+                {
+                    "name": "users_active_email_key",
+                    "columns": ["email"],
+                    "is_unique": true,
+                    "is_primary": false,
+                    "is_partial": true,
+                    "has_expression": false,
+                    "index_type": "btree",
+                    "definition": "CREATE UNIQUE INDEX users_active_email_key ON users USING btree (email) WHERE active"
+                },
+                {
+                    "name": "users_tenant_lower_email_idx",
+                    "columns": ["tenant_id", "lower(email)"],
+                    "is_unique": false,
+                    "is_primary": false,
+                    "is_partial": false,
+                    "has_expression": true,
+                    "index_type": "btree",
+                    "definition": "CREATE INDEX users_tenant_lower_email_idx ON users USING btree (tenant_id, lower(email))"
+                }
+            ]"#;
+
+            let indexes = PostgresAdapter::parse_indexes(json).unwrap();
+
+            assert_eq!(indexes[0].columns, ["id"]);
+            assert!(indexes[0].is_unique());
+            assert!(indexes[0].is_primary());
+
+            assert_eq!(indexes[1].columns, ["tenant_id", "email"]);
+            assert!(!indexes[1].has_expression());
+
+            assert_eq!(indexes[2].columns, ["lower(email)"]);
+            assert!(indexes[2].has_expression());
+            assert_eq!(
+                indexes[2].definition.as_deref(),
+                Some("CREATE INDEX users_lower_email_idx ON users USING btree (lower(email))")
+            );
+
+            assert!(indexes[3].is_partial());
+            assert!(!indexes[3].is_unique());
+
+            assert!(indexes[4].is_partial());
+            assert!(indexes[4].is_unique());
+
+            assert_eq!(indexes[5].columns, ["tenant_id", "lower(email)"]);
+            assert!(indexes[5].has_expression());
         }
 
         #[test]
@@ -763,8 +878,8 @@ mod tests {
                 "name": "audit_trigger",
                 "timing": "AFTER",
                 "events": ["INSERT", "UPDATE"],
-                "function_name": "audit_func",
-                "security_definer": true
+                "definition": "audit_func",
+                "security_context": "DEFINER"
             }]"#;
 
             let result = PostgresAdapter::parse_triggers(json).unwrap();
@@ -777,8 +892,8 @@ mod tests {
                 trigger.events,
                 vec![TriggerEvent::Insert, TriggerEvent::Update]
             );
-            assert_eq!(trigger.function_name, "audit_func");
-            assert!(trigger.security_definer);
+            assert_eq!(trigger.definition, "audit_func");
+            assert_eq!(trigger.security_context.as_deref(), Some("DEFINER"));
         }
 
         #[rstest]
@@ -792,7 +907,7 @@ mod tests {
             let json = format!(
                 r#"[{{
                     "name": "test", "timing": "{timing}", "events": ["INSERT"],
-                    "function_name": "func", "security_definer": false
+                    "definition": "func", "security_context": "INVOKER"
                 }}]"#
             );
 
@@ -806,8 +921,8 @@ mod tests {
                 "name": "test",
                 "timing": "UNKNOWN",
                 "events": ["INSERT"],
-                "function_name": "func",
-                "security_definer": false
+                "definition": "func",
+                "security_context": "INVOKER"
             }]"#;
 
             let result = PostgresAdapter::parse_triggers(json);
@@ -824,8 +939,8 @@ mod tests {
                 "name": "multi_event",
                 "timing": "BEFORE",
                 "events": ["INSERT", "DELETE", "UPDATE", "TRUNCATE"],
-                "function_name": "func",
-                "security_definer": false
+                "definition": "func",
+                "security_context": "INVOKER"
             }]"#;
 
             let result = PostgresAdapter::parse_triggers(json).unwrap();
@@ -854,17 +969,17 @@ mod tests {
         }
 
         #[test]
-        fn security_definer_false_stays_false() {
+        fn invoker_security_context_stays_invoker() {
             let json = r#"[{
                 "name": "test",
                 "timing": "AFTER",
                 "events": ["INSERT"],
-                "function_name": "func",
-                "security_definer": false
+                "definition": "func",
+                "security_context": "INVOKER"
             }]"#;
 
             let result = PostgresAdapter::parse_triggers(json).unwrap();
-            assert!(!result[0].security_definer);
+            assert_eq!(result[0].security_context.as_deref(), Some("INVOKER"));
         }
 
         #[test]
@@ -873,8 +988,8 @@ mod tests {
                 "name": "test",
                 "timing": "AFTER",
                 "events": ["INSERT", "MERGE"],
-                "function_name": "func",
-                "security_definer": false
+                "definition": "func",
+                "security_context": "INVOKER"
             }]"#;
 
             let result = PostgresAdapter::parse_triggers(json);

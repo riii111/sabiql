@@ -1,0 +1,55 @@
+---
+source: src/tests/render_snapshots/connection_flow.rs
+assertion_line: 104
+expression: output
+---
+test_project ▸ - ▸ -                                                                                                                     no dsn | localhost:5432/test
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
+│ Press 'r' to load metadata            │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                       ││(select a table)                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││          ╭ New Connection ────────────────────────────────────────────╮                                                  │
+│                                       ││          │                                                            │                                                  │
+│                                       ││          │  Type:       [ MySQL                    ▼ ]                │                                                  │
+│                                       ││          │  Name:       [                            ]                │                                                  │
+│                                       ││          │  Transport:  [ TCP                      ▼ ]                │                                                  │
+│                                       ││          │  Host:       [ localhost                  ]                │                                                  │
+│                                       ││          │  Port:       [ 3306                       ]                │                                                  │
+│                                       ││          │  Database:   [                            ]                │                                                  │
+│                                       ││          │  User:       [                            ]                │                                                  │
+│                                       │└──────────│  Password:   [ empty = no password        ]                │──────────────────────────────────────────────────┘
+│                                       │┌ [3] Resul│  SSL Mode:   [ PREFERRED                ▼ ]                │──────────────────────────────────────────────────┐
+│                                       ││(select a │  Cleartext:  [ enabled                  ▼ ]                │                                                  │
+│                                       ││          │  Server Key: [                            ]                │                                                  │
+│                                       ││          │  Cert Path:  [                            ]                │                                                  │
+│                                       ││          │  Key Path:   [                            ]                │                                                  │
+│                                       ││          │                                                            │                                                  │
+│                                       ││          │  Note: password is sent via mysql_clear_password           │                                                  │
+│                                       ││          │  TLS required: REQUIRED, VERIFY_CA, or VERIFY_IDENTITY     │                                                  │
+│                                       ││          │  Note: Connection info is stored locally in plain text     │                                                  │
+│                                       ││          │                                                            │                                                  │
+│                                       ││          ╰ Tab/⇧Tab: Field │ Enter: Toggle │ ^S: Connect │ Esc: Cancel╯                                                  │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+└───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+^S:Connect  Tab/⇧Tab:Field  Esc:Cancel

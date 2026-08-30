@@ -15,6 +15,7 @@ pub fn format_for_cell_detail(
         PreviewCellTextDisplayHandling::SqliteText
             | PreviewCellTextDisplayHandling::PostgreSqlJson
             | PreviewCellTextDisplayHandling::PostgreSqlJsonLikeText
+            | PreviewCellTextDisplayHandling::StructuredJson
     );
     if !should_pretty_print {
         return CellDetailDisplay {
@@ -57,6 +58,20 @@ mod tests {
     }
 
     #[test]
+    fn mysql_json_scalar_pretty_prints() {
+        let handling =
+            CellPresentationPolicy::new(DatabaseType::MySQL, "json", "42").display_handling();
+
+        assert_eq!(
+            format_for_cell_detail("42", handling),
+            CellDetailDisplay {
+                content: "42".to_string(),
+                formatted_json: true,
+            }
+        );
+    }
+
+    #[test]
     fn sqlite_text_json_value_pretty_prints() {
         let handling = CellPresentationPolicy::new(
             DatabaseType::SQLite,
@@ -84,7 +99,7 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_json_declared_type_stays_raw() {
+    fn sqlite_declared_json_type_stays_raw() {
         let handling =
             CellPresentationPolicy::new(DatabaseType::SQLite, "json", r#"{"b":2,"a":1}"#)
                 .display_handling();
@@ -99,7 +114,7 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_jsonb_declared_type_stays_raw() {
+    fn sqlite_declared_non_text_type_stays_raw() {
         let handling =
             CellPresentationPolicy::new(DatabaseType::SQLite, "jsonb", r#"{"b":2,"a":1}"#)
                 .display_handling();

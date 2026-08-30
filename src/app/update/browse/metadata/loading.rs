@@ -9,6 +9,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ModalKind};
 use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::{metadata_reload_effects, reject_pending_mysql_connection_probe};
 use crate::update::query_context::termination_effects;
 
 pub(super) fn reduce_loading(
@@ -82,12 +83,6 @@ pub(super) fn reduce_loading(
                 state.session.finish_reload();
             }
 
-            if state.modal.active_mode() == InputMode::SqlModal
-                && !state.sql_modal.is_prefetch_started()
-            {
-                effects.push(Effect::DispatchActions(vec![Action::StartPrefetchAll]));
-            }
-
             if state.ui.take_pending_er_picker() && state.modal.active_mode() == InputMode::Normal {
                 effects.push(Effect::DispatchActions(vec![Action::OpenModal(
                     ModalKind::ErTablePicker,
@@ -117,7 +112,7 @@ pub(super) fn reduce_loading(
                 return DispatchResult::handled();
             }
 
-            let error_info = ConnectionErrorInfo::from_db_operation_error(error);
+            let error_info = ConnectionErrorInfo::from_db_operation_error_with_dsn(error, dsn);
             state.connection_error.set_error(error_info);
             let was_connected = state.session.connection_state().is_connected();
             state.session.mark_connection_failed(error.masked_details());
@@ -139,6 +134,9 @@ pub(super) fn reduce_loading(
             })
         }
         Action::LoadMetadata => {
+            if reject_pending_mysql_connection_probe(state, now) {
+                return DispatchResult::handled();
+            }
             if let Some(dsn) = state.session.dsn().map(String::from) {
                 let run_id = state.session.begin_metadata_refresh();
                 DispatchResult::handled_with(vec![Effect::FetchMetadata { dsn, run_id }])
@@ -147,18 +145,16 @@ pub(super) fn reduce_loading(
             }
         }
         Action::ReloadMetadata => {
+            if reject_pending_mysql_connection_probe(state, now) {
+                return DispatchResult::handled();
+            }
             if let Some(dsn) = state.session.dsn().map(String::from) {
-                let run_id = state.session.begin_reload();
                 state.sql_modal.reset_prefetch();
                 state.er_preparation.reset();
                 state.ui.reset_er_picker_request();
                 state.messages.clear();
 
-                DispatchResult::handled_with(vec![Effect::Sequence(vec![
-                    Effect::CacheInvalidate { dsn: dsn.clone() },
-                    Effect::ClearCompletionEngineCache,
-                    Effect::FetchMetadata { dsn, run_id },
-                ])])
+                DispatchResult::handled_with(metadata_reload_effects(state, &dsn))
             } else {
                 DispatchResult::handled()
             }

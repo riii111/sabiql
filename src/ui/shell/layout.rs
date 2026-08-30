@@ -15,7 +15,7 @@ use crate::app::services::AppServices;
 use crate::features::browse::cell_detail::{CellDetail, CellDetailRenderMetrics};
 use crate::features::browse::explorer::Explorer;
 use crate::features::browse::inspector::Inspector;
-use crate::features::browse::jsonb_detail::JsonbDetail;
+use crate::features::browse::json_detail::JsonDetail;
 use crate::features::browse::result::ResultPane;
 use crate::features::browse::row_detail::RowDetail;
 use crate::features::connections::error::ConnectionError;
@@ -53,20 +53,6 @@ impl MainLayout {
             now,
             palette_for(state.ui.theme_id()),
         )
-    }
-
-    // `render_with_theme` exists only as a test seam for injected palettes.
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn render_with_theme(
-        frame: &mut Frame,
-        state: &AppState,
-        time_ms: Option<u128>,
-        services: &AppServices,
-        now: Instant,
-        theme: &ThemePalette,
-    ) -> RenderOutput {
-        Self::render_impl(frame, state, time_ms, services, now, theme)
     }
 
     fn render_impl(
@@ -123,9 +109,9 @@ impl MainLayout {
             None
         };
 
-        let jsonb_detail = match state.input_mode() {
-            InputMode::JsonbDetail | InputMode::JsonbEdit => {
-                JsonbDetail::render(frame, state, now, theme)
+        let json_detail = match state.input_mode() {
+            InputMode::JsonDetail | InputMode::JsonEdit => {
+                JsonDetail::render(frame, state, now, theme)
             }
             _ => None,
         };
@@ -181,7 +167,7 @@ impl MainLayout {
                 query_history: query_history_picker,
             },
             details: DetailLayout {
-                jsonb: jsonb_detail,
+                json: json_detail,
                 cell: cell_detail,
                 row: row_detail,
             },
@@ -245,6 +231,25 @@ impl MainLayout {
                     pane_height: result_area.height,
                 },
             }
+        }
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support {
+    use super::{AppServices, AppState, Frame, Instant, MainLayout, RenderOutput, ThemePalette};
+
+    impl MainLayout {
+        #[doc(hidden)]
+        pub fn render_with_theme(
+            frame: &mut Frame,
+            state: &AppState,
+            time_ms: Option<u128>,
+            services: &AppServices,
+            now: Instant,
+            theme: &ThemePalette,
+        ) -> RenderOutput {
+            Self::render_impl(frame, state, time_ms, services, now, theme)
         }
     }
 }

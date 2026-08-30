@@ -10,6 +10,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::explain_context::CompareSlot;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::update::input::keybindings::sql_modal_compare_explain;
+use crate::domain::DatabaseType;
 use crate::domain::explain_plan::{self, ComparisonVerdict};
 use crate::primitives::atoms::apply_yank_flash_masked;
 use crate::primitives::utils::text_utils::truncate_to_width_with;
@@ -339,14 +340,10 @@ fn render_stacked_slot(
             flash_mask,
             Line::from(Span::styled(format!(" {}", s.source.label()), active_style)),
         );
-        let time_secs = s.plan.execution_secs();
         push_chrome(
             lines,
             flash_mask,
-            Line::from(Span::styled(
-                format!("  {}  ({:.2}s)", mode_label(s.plan.is_analyze), time_secs),
-                badge_style,
-            )),
+            Line::from(Span::styled(slot_detail_text(Some(s)), badge_style)),
         );
         for line in s.plan.raw_text.lines() {
             push_content(
@@ -383,7 +380,15 @@ fn slot_detail_text(slot: Option<&CompareSlot>) -> String {
     match slot {
         Some(s) => {
             let time_secs = s.plan.execution_secs();
-            format!(" {}  ({:.2}s)", mode_label(s.plan.is_analyze), time_secs)
+            let summary = format!(" {}  ({:.2}s)", mode_label(s.plan.is_analyze), time_secs);
+            if s.database_type == DatabaseType::MySQL && s.plan.is_analyze {
+                format!(
+                    "{summary}  {}",
+                    super::explain::format_actual_metrics(Some(&s.plan))
+                )
+            } else {
+                summary
+            }
         }
         None => " Run EXPLAIN again".to_string(),
     }
@@ -438,10 +443,15 @@ mod tests {
                 raw_text: plan.to_string(),
                 top_node_type: Some("Seq Scan".to_string()),
                 total_cost: Some(10.0),
-                estimated_rows: Some(1),
+                estimated_rows: Some(1.0),
+                actual_start_ms: None,
+                actual_end_ms: None,
+                actual_rows: None,
+                loops: None,
                 is_analyze: false,
                 execution_time_ms: 250,
             },
+            database_type: DatabaseType::PostgreSQL,
             query_snippet: "SELECT 1".to_string(),
             full_query: "SELECT 1".to_string(),
             source: label,
@@ -502,5 +512,29 @@ mod tests {
 
         assert_eq!(lines.len(), flash_mask.len());
         assert!(flash_mask.iter().all(|&flash| !flash));
+    }
+
+    #[test]
+    fn mysql_analyze_slot_summary_shows_actual_metrics() {
+        let mut slot = sample_slot(SlotSource::AutoLatest, "plan");
+        slot.database_type = DatabaseType::MySQL;
+        slot.plan.is_analyze = true;
+        slot.plan.actual_start_ms = Some(0.01);
+        slot.plan.actual_end_ms = Some(0.5);
+        slot.plan.actual_rows = Some(95.0);
+        slot.plan.loops = Some(2);
+
+        let summary = slot_detail_text(Some(&slot));
+
+        assert!(summary.contains("Actual: time=0.010..0.500 ms rows=95 loops=2"));
+    }
+
+    #[test]
+    fn mysql_analyze_slot_summary_marks_missing_actual_metrics_unavailable() {
+        let mut slot = sample_slot(SlotSource::AutoLatest, "plan");
+        slot.database_type = DatabaseType::MySQL;
+        slot.plan.is_analyze = true;
+
+        assert!(slot_detail_text(Some(&slot)).contains("Actual: unavailable"));
     }
 }

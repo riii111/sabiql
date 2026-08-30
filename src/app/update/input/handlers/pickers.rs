@@ -83,7 +83,7 @@ pub fn handle_query_history_picker_keys(combo: KeyCombo) -> Action {
 }
 
 pub fn handle_er_table_picker_keys(combo: KeyCombo, state: &AppState) -> Action {
-    let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+    let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
     if let Some(action) = resolve_mode_with_policy(
         &combo,
         keybindings::er_picker_rows(state.settings.saved_keymap_preset()),

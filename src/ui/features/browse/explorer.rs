@@ -43,12 +43,17 @@ impl Explorer {
             state
                 .tables()
                 .into_iter()
-                .map(explorer_table_label)
+                .map(|summary| {
+                    explorer_table_label(summary, state.session.active_database_type_or_default())
+                })
                 .collect()
         } else {
             Vec::new()
         };
-        let max_name_width = max_explorer_table_label_width(state.tables());
+        let max_name_width = max_explorer_table_label_width(
+            state.tables(),
+            state.session.active_database_type_or_default(),
+        );
         let max_offset = scroll_max_offset(max_name_width, content_width);
         let h_offset = state.ui.explorer_horizontal_offset().min(max_offset);
 

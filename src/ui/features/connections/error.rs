@@ -99,6 +99,7 @@ impl ConnectionError {
             Span::styled(hint, Style::default().fg(theme.semantic.text.secondary)),
         ];
         if state.session.is_service_connection()
+            && state.connection_error.target_database_type().is_none()
             && let Some(path) = state.runtime.service_file_path()
         {
             spans.push(Span::styled(
@@ -172,12 +173,12 @@ impl ConnectionError {
             Style::default().fg(theme.semantic.text.muted),
         )];
 
-        if state.session.can_reenter_connection_setup() {
-            spans.push(key_chip("e", theme));
-            spans.push(Span::raw(" Re-enter  "));
-        } else {
+        if state.can_retry_connection_error() {
             spans.push(key_chip("r", theme));
             spans.push(Span::raw(" Retry  "));
+        } else {
+            spans.push(key_chip("e", theme));
+            spans.push(Span::raw(" Re-enter  "));
         }
 
         spans.extend([

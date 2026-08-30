@@ -15,6 +15,7 @@ pub mod er_exporter;
 pub mod er_log_writer;
 pub mod folder_opener;
 pub mod metadata;
+pub mod mysql_connection_probe;
 pub mod query_executor;
 pub mod query_history;
 pub mod renderer;
@@ -30,8 +31,8 @@ pub use clipboard::{ClipboardError, ClipboardWriter};
 pub use config_writer::{ConfigWriter, ConfigWriterError};
 pub use connection_store::{ConnectionStore, ConnectionStoreError};
 pub use db_operation_error::{
-    DatabaseCli, DbOperationError, SQLITE_SAFE_MODE_REQUIRED_MARKER,
-    SQLITE_TABLE_LIST_REQUIRED_MARKER,
+    ConnectionFailureKind, DatabaseCli, DbOperationError, MYSQL_CONNECT_TIMEOUT_ERRNOS,
+    SQLITE_SAFE_MODE_REQUIRED_MARKER, SQLITE_TABLE_LIST_REQUIRED_MARKER, UnsupportedOperationKind,
 };
 pub use ddl_generator::DdlGenerator;
 pub use dsn_builder::DsnBuilder;
@@ -39,6 +40,7 @@ pub use er_exporter::{ErDiagramExporter, ErExportError, ErExportResult};
 pub use er_log_writer::ErLogWriter;
 pub use folder_opener::{FolderOpenError, FolderOpener};
 pub use metadata::MetadataProvider;
+pub use mysql_connection_probe::{MySqlConnectionProbe, MySqlConnectionProbeResult};
 pub use query_executor::QueryExecutor;
 pub use query_history::{QueryHistoryError, QueryHistoryStore};
 pub use renderer::{CellDetailViewport, RenderError, RenderOutput, RenderResult, Renderer};

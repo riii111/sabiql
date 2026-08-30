@@ -6,6 +6,7 @@ use ratatui::widgets::Paragraph;
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::model::app_state::AppState;
+use crate::app::policy::table_kind::table_key_display_name;
 use crate::domain::MetadataState;
 use crate::primitives::utils::text_utils::truncate_to_width_with;
 use crate::theme::ThemePalette;
@@ -18,7 +19,16 @@ pub struct Header;
 impl Header {
     pub fn render(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
         let db_name = state.session.database_name().unwrap_or("-");
-        let table = state.session.selected_table_key().unwrap_or("-");
+        let table = state.session.selected_table_key().map_or_else(
+            || "-".to_string(),
+            |key| {
+                table_key_display_name(
+                    state.session.active_database_type_or_default(),
+                    state.session.database_name(),
+                    key,
+                )
+            },
+        );
 
         let sep_style = Style::default().fg(theme.semantic.text.muted);
         let item_style = Style::default().fg(theme.semantic.text.secondary);
@@ -37,7 +47,7 @@ impl Header {
         let left_items = vec![
             HeaderItem::new(state.runtime.project_name(), item_style, 2),
             HeaderItem::new(db_name, item_style, 1),
-            HeaderItem::new(table, Style::default().fg(theme.semantic.text.primary), 0),
+            HeaderItem::new(&table, Style::default().fg(theme.semantic.text.primary), 0),
         ];
 
         let mut right_items = vec![HeaderItem::new(

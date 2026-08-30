@@ -12,9 +12,11 @@ use crate::cmd::browse as cmd_browse;
 use crate::cmd::cache::TtlCache;
 use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::connection as cmd_connection;
+use crate::cmd::connection::MySqlConnectionProbeTaskOwner;
 use crate::cmd::effect::Effect;
 use crate::cmd::er::handler as cmd_er;
-use crate::cmd::query_task::QueryTaskRegistry;
+use crate::cmd::metadata_task::MetadataTaskRegistry;
+use crate::cmd::query_task::{QueryTaskRegistry, TableDetailTaskRegistry};
 use crate::cmd::settings as cmd_settings;
 use crate::cmd::sql_editor::completion as cmd_completion;
 use crate::cmd::sql_editor::query_history as cmd_query_history;
@@ -24,15 +26,16 @@ use crate::domain::DatabaseMetadata;
 use crate::model::app_state::AppState;
 use crate::ports::outbound::{
     CachedResultExporter, ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder,
-    ErDiagramExporter, ErLogWriter, FolderOpener, MetadataProvider, PgServiceEntryReader,
-    QueryExecutor, QueryHistoryStore, Renderer, SettingsStore, SqliteDiagnosticsProvider,
-    SqlitePathValidator,
+    ErDiagramExporter, ErLogWriter, FolderOpener, MetadataProvider, MySqlConnectionProbe,
+    PgServiceEntryReader, QueryExecutor, QueryHistoryStore, Renderer, SettingsStore,
+    SqliteDiagnosticsProvider, SqlitePathValidator,
 };
 use crate::services::AppServices;
 use crate::update::action::Action;
 
 pub struct ConnectionDeps {
     pub dsn_builder: Arc<dyn DsnBuilder>,
+    pub mysql_connection_probe: Arc<dyn MySqlConnectionProbe>,
     pub connection_store: Arc<dyn ConnectionStore>,
     pub pg_service_entry_reader: Option<Arc<dyn PgServiceEntryReader>>,
     pub sqlite_path_validator: Arc<dyn SqlitePathValidator>,
@@ -70,6 +73,9 @@ pub struct EffectRunner {
     metadata_cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
     query_tasks: QueryTaskRegistry,
+    table_detail_tasks: TableDetailTaskRegistry,
+    metadata_tasks: Arc<MetadataTaskRegistry>,
+    mysql_connection_probe_task: MySqlConnectionProbeTaskOwner,
 }
 
 impl EffectRunner {
@@ -93,11 +99,29 @@ impl EffectRunner {
             metadata_cache,
             action_tx,
             query_tasks: QueryTaskRegistry::default(),
+            table_detail_tasks: TableDetailTaskRegistry::default(),
+            metadata_tasks: Arc::new(MetadataTaskRegistry::default()),
+            mysql_connection_probe_task: MySqlConnectionProbeTaskOwner::default(),
         }
     }
 
     pub fn action_tx(&self) -> &mpsc::Sender<Action> {
         &self.action_tx
+    }
+
+    async fn cancel_metadata_tasks(&self) {
+        self.metadata_tasks.cancel().await;
+    }
+
+    async fn cancel_mysql_connection_probe(&self) {
+        self.mysql_connection_probe_task.cancel().await;
+    }
+
+    async fn cancel_active_tasks(&self) {
+        self.query_tasks.cancel();
+        self.table_detail_tasks.cancel();
+        self.cancel_metadata_tasks().await;
+        self.cancel_mysql_connection_probe().await;
     }
 
     pub async fn run<T: Renderer>(
@@ -168,15 +192,29 @@ impl EffectRunner {
             }
 
             e @ (Effect::SaveAndConnect { .. }
+            | Effect::ProbeMySqlConnection { .. }
             | Effect::LoadConnectionForEdit { .. }
             | Effect::LoadConnections
             | Effect::DeleteConnection { .. }
             | Effect::SwitchConnection { .. }
             | Effect::SwitchToService { .. }) => {
+                if matches!(
+                    &e,
+                    Effect::SaveAndConnect { .. }
+                        | Effect::ProbeMySqlConnection { .. }
+                        | Effect::SwitchConnection { .. }
+                        | Effect::SwitchToService { .. }
+                ) {
+                    self.cancel_metadata_tasks().await;
+                }
+                if matches!(&e, Effect::ProbeMySqlConnection { .. }) {
+                    self.table_detail_tasks.cancel();
+                }
                 cmd_connection::run(
                     e,
                     &self.action_tx,
                     &self.connection,
+                    &self.mysql_connection_probe_task,
                     &self.metadata_provider,
                     &self.metadata_cache,
                     state,
@@ -192,16 +230,25 @@ impl EffectRunner {
             | Effect::ProcessPrefetchQueue { .. }
             | Effect::DelayedProcessPrefetchQueue { .. }
             | Effect::CacheInvalidate { .. }) => {
+                if matches!(&e, Effect::FetchMetadata { .. }) {
+                    self.cancel_metadata_tasks().await;
+                }
                 cmd_browse::metadata::run(
                     e,
                     &self.action_tx,
                     &self.metadata_provider,
                     &self.metadata_cache,
                     &self.connection.sqlite_path_validator,
-                    state,
+                    &self.table_detail_tasks,
+                    &self.metadata_tasks,
                     completion_engine,
                 )
                 .await?;
+                Ok(vec![])
+            }
+
+            Effect::CancelActiveTasks => {
+                self.cancel_active_tasks().await;
                 Ok(vec![])
             }
 
@@ -209,7 +256,6 @@ impl EffectRunner {
             | Effect::ExecuteAdhoc { .. }
             | Effect::ExecuteExplain { .. }
             | Effect::ExecuteWrite { .. }
-            | Effect::CancelActiveQuery
             | Effect::CountRowsForExport { .. }
             | Effect::ExportCsv { .. }
             | Effect::ExportCsvFromCache { .. }) => {
@@ -229,7 +275,8 @@ impl EffectRunner {
             e @ (Effect::GenerateErDiagramFromCache { .. }
             | Effect::ExtractFkNeighbors { .. }
             | Effect::WriteErFailureLog { .. }
-            | Effect::SmartErRefresh { .. }) => {
+            | Effect::SmartErRefresh { .. }
+            | Effect::SmartErRefreshCacheAndDiff { .. }) => {
                 cmd_er::run(
                     e,
                     &self.action_tx,
@@ -276,14 +323,14 @@ impl EffectRunner {
 mod tests {
     use super::*;
     use crate::cmd::test_fixtures;
-    use crate::domain::{DatabaseMetadata, TableSummary};
+    use crate::domain::{DatabaseMetadata, TableSignatureSnapshot, TableSummary};
     use crate::model::shared::render_output::{
-        BrowseLayout, DetailLayout, ExplorerLayout, JsonbDetailLayout,
+        BrowseLayout, DetailLayout, ExplorerLayout, JsonDetailLayout,
     };
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
-    use crate::ports::outbound::{RenderOutput, RenderResult};
+    use crate::ports::outbound::{MySqlConnectionProbeResult, RenderOutput, RenderResult};
     use crate::services::AppServices;
     use tokio::sync::mpsc;
 
@@ -301,13 +348,13 @@ mod tests {
 
     mod render {
         use super::*;
-        use crate::model::browse::jsonb_detail::JsonbDetailState;
+        use crate::model::browse::json_detail::JsonDetailState;
 
         struct ExplorerWidthRenderer {
             explorer_content_width: usize,
         }
 
-        struct JsonbVisibleRowsRenderer {
+        struct JsonVisibleRowsRenderer {
             visible_rows: usize,
         }
 
@@ -331,7 +378,7 @@ mod tests {
             }
         }
 
-        impl Renderer for JsonbVisibleRowsRenderer {
+        impl Renderer for JsonVisibleRowsRenderer {
             fn draw(
                 &mut self,
                 _state: &AppState,
@@ -340,7 +387,7 @@ mod tests {
             ) -> RenderResult<RenderOutput> {
                 Ok(RenderOutput {
                     details: DetailLayout {
-                        jsonb: Some(JsonbDetailLayout {
+                        json: Some(JsonDetailLayout {
                             editor_visible_rows: self.visible_rows,
                         }),
                         ..DetailLayout::default()
@@ -421,7 +468,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn recomputes_jsonb_editor_scroll_when_visible_rows_change() {
+        async fn recomputes_json_editor_scroll_when_visible_rows_change() {
             let (tx, _rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
@@ -432,20 +479,20 @@ mod tests {
             );
 
             let state = &mut AppState::new("test".to_string());
-            state.jsonb_detail = JsonbDetailState::open_pretty(
+            state.json_detail = JsonDetailState::open_pretty(
                 0,
                 0,
                 "settings".to_string(),
                 "{}".to_string(),
                 "{\n  \"a\": 1,\n  \"b\": 2,\n  \"c\": 3\n}".to_string(),
             );
-            state.jsonb_detail.editor_mut().set_content_with_cursor(
+            state.json_detail.editor_mut().set_content_with_cursor(
                 "{\n  \"a\": 1,\n  \"b\": 2,\n  \"c\": 3\n}".to_string(),
                 29,
             );
 
             let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = JsonbVisibleRowsRenderer { visible_rows: 2 };
+            let mut renderer = JsonVisibleRowsRenderer { visible_rows: 2 };
 
             runner
                 .run(
@@ -458,9 +505,9 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(state.ui.jsonb_detail_editor_visible_rows(), 2);
-            assert_eq!(state.jsonb_detail.editor().cursor_to_position().0, 3);
-            assert_eq!(state.jsonb_detail.editor().scroll_row(), 2);
+            assert_eq!(state.ui.json_detail_editor_visible_rows(), 2);
+            assert_eq!(state.json_detail.editor().cursor_to_position().0, 3);
+            assert_eq!(state.json_detail.editor().scroll_row(), 2);
         }
     }
 
@@ -519,7 +566,7 @@ mod tests {
 
         use super::*;
         use crate::domain::connection::{ConnectionId, DatabaseType};
-        use crate::domain::{QueryResult, WriteExecutionResult};
+        use crate::domain::{QueryResult, Table, WriteExecutionResult};
         use crate::model::connection::cache::ConnectionCache;
         use crate::ports::outbound::{AccessMode, DbOperationError};
         use crate::update::action::ConnectionTarget;
@@ -595,6 +642,54 @@ mod tests {
             }
         }
 
+        struct PendingTableDetailProvider {
+            started: Mutex<Option<oneshot::Sender<()>>>,
+            dropped: Arc<AtomicBool>,
+        }
+
+        #[async_trait::async_trait]
+        impl MetadataProvider for PendingTableDetailProvider {
+            async fn fetch_metadata(
+                &self,
+                _dsn: &str,
+            ) -> Result<DatabaseMetadata, DbOperationError> {
+                unreachable!("test only starts table detail")
+            }
+
+            async fn fetch_table_detail(
+                &self,
+                _dsn: &str,
+                _schema: &str,
+                _table: &str,
+            ) -> Result<Table, DbOperationError> {
+                let _guard = DropSignal(Arc::clone(&self.dropped));
+                self.started
+                    .lock()
+                    .expect("started signal lock poisoned")
+                    .take()
+                    .expect("table detail should start once")
+                    .send(())
+                    .ok();
+                pending().await
+            }
+
+            async fn fetch_table_columns_and_fks(
+                &self,
+                _dsn: &str,
+                _schema: &str,
+                _table: &str,
+            ) -> Result<Table, DbOperationError> {
+                unreachable!("test only starts table detail")
+            }
+
+            async fn fetch_table_signatures(
+                &self,
+                _dsn: &str,
+            ) -> Result<TableSignatureSnapshot, DbOperationError> {
+                unreachable!("test only starts table detail")
+            }
+        }
+
         #[tokio::test]
         async fn connection_switch_drops_pending_query_task() {
             let (started_tx, started_rx) = oneshot::channel();
@@ -658,6 +753,7 @@ mod tests {
                     dsn: "sqlite:///tmp/target.db".to_string(),
                     name: "target".to_string(),
                     database_type: DatabaseType::SQLite,
+                    database: None,
                 }),
                 Instant::now(),
                 &AppServices::stub(),
@@ -681,6 +777,604 @@ mod tests {
             .await
             .expect("context termination should drop the pending query task");
             assert!(!state.query.is_current_run(run_id));
+        }
+
+        #[tokio::test]
+        async fn cancelling_context_drops_pending_table_detail_task() {
+            let (started_tx, started_rx) = oneshot::channel();
+            let dropped = Arc::new(AtomicBool::new(false));
+            let provider = PendingTableDetailProvider {
+                started: Mutex::new(Some(started_tx)),
+                dropped: Arc::clone(&dropped),
+            };
+            let (action_tx, _action_rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner(
+                Arc::new(provider),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                TtlCache::new(300),
+                action_tx,
+            );
+            let mut state = AppState::new("test".to_string());
+            let completion_engine = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![Effect::FetchTableDetail {
+                        dsn: "postgres://localhost/current".to_string(),
+                        schema: "public".to_string(),
+                        table: "users".to_string(),
+                        generation: 1,
+                        run_id: 1,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            timeout(Duration::from_secs(1), started_rx)
+                .await
+                .expect("pending table detail should start")
+                .expect("started signal should be sent");
+
+            let shutdown_effects = reduce(
+                &mut state,
+                Action::Quit,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(state.should_quit);
+            runner
+                .run(
+                    shutdown_effects,
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            timeout(Duration::from_secs(1), async {
+                while !dropped.load(Ordering::SeqCst) {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("context cancellation should drop the pending table detail task");
+        }
+    }
+
+    mod metadata_context_termination {
+        use std::future::pending;
+        use std::sync::Mutex;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        use tokio::sync::oneshot;
+        use tokio::time::{Duration, timeout};
+
+        use super::*;
+        use crate::domain::Table;
+        use crate::domain::connection::{ConnectionId, DatabaseType};
+        use crate::ports::outbound::DbOperationError;
+        use crate::update::action::ConnectionTarget;
+        use crate::update::reducer::reduce;
+
+        struct DropSignal(Arc<AtomicUsize>);
+
+        impl Drop for DropSignal {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        struct PendingMetadataProvider {
+            metadata_started: Mutex<Option<oneshot::Sender<()>>>,
+            effective_user_started: Mutex<Option<oneshot::Sender<()>>>,
+            dropped: Arc<AtomicUsize>,
+        }
+
+        #[async_trait::async_trait]
+        impl MetadataProvider for PendingMetadataProvider {
+            async fn fetch_metadata(
+                &self,
+                _dsn: &str,
+            ) -> Result<DatabaseMetadata, DbOperationError> {
+                let _guard = DropSignal(Arc::clone(&self.dropped));
+                self.metadata_started
+                    .lock()
+                    .expect("metadata started signal lock poisoned")
+                    .take()
+                    .expect("metadata should start once")
+                    .send(())
+                    .ok();
+                pending().await
+            }
+
+            async fn fetch_effective_user(
+                &self,
+                _dsn: &str,
+            ) -> Result<Option<String>, DbOperationError> {
+                let _guard = DropSignal(Arc::clone(&self.dropped));
+                self.effective_user_started
+                    .lock()
+                    .expect("effective user started signal lock poisoned")
+                    .take()
+                    .expect("effective user should start once")
+                    .send(())
+                    .ok();
+                pending().await
+            }
+
+            async fn fetch_table_detail(
+                &self,
+                _dsn: &str,
+                _schema: &str,
+                _table: &str,
+            ) -> Result<Table, DbOperationError> {
+                unreachable!("test only starts metadata tasks")
+            }
+
+            async fn fetch_table_columns_and_fks(
+                &self,
+                _dsn: &str,
+                _schema: &str,
+                _table: &str,
+            ) -> Result<Table, DbOperationError> {
+                unreachable!("test only starts metadata tasks")
+            }
+
+            async fn fetch_table_signatures(
+                &self,
+                _dsn: &str,
+            ) -> Result<TableSignatureSnapshot, DbOperationError> {
+                unreachable!("test only starts metadata tasks")
+            }
+        }
+
+        struct ProbeThatObservesDrop {
+            metadata_dropped: Arc<AtomicUsize>,
+            started: Mutex<Option<oneshot::Sender<bool>>>,
+        }
+
+        #[async_trait::async_trait]
+        impl MySqlConnectionProbe for ProbeThatObservesDrop {
+            async fn probe(
+                &self,
+                _dsn: &str,
+            ) -> Result<MySqlConnectionProbeResult, DbOperationError> {
+                self.started
+                    .lock()
+                    .expect("probe started signal lock poisoned")
+                    .take()
+                    .expect("probe should start once")
+                    .send(self.metadata_dropped.load(Ordering::SeqCst) > 0)
+                    .ok();
+                Ok(MySqlConnectionProbeResult {
+                    lower_case_table_names: 0,
+                })
+            }
+        }
+
+        #[tokio::test]
+        async fn drops_old_metadata_before_new_mysql_probe_starts() {
+            let (metadata_started_tx, metadata_started_rx) = oneshot::channel();
+            let (probe_started_tx, probe_started_rx) = oneshot::channel();
+            let dropped = Arc::new(AtomicUsize::new(0));
+            let metadata_provider = PendingMetadataProvider {
+                metadata_started: Mutex::new(Some(metadata_started_tx)),
+                effective_user_started: Mutex::new(None),
+                dropped: Arc::clone(&dropped),
+            };
+            let probe = ProbeThatObservesDrop {
+                metadata_dropped: Arc::clone(&dropped),
+                started: Mutex::new(Some(probe_started_tx)),
+            };
+            let (action_tx, _action_rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner_with_dsn_and_probe(
+                Arc::new(metadata_provider),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                TtlCache::new(300),
+                action_tx,
+                Arc::new(test_fixtures::NoopDsnBuilder),
+                Arc::new(probe),
+            );
+            let mut state = AppState::new("test".to_string());
+            let completion_engine = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![Effect::FetchMetadata {
+                        dsn: "postgres://localhost/old".to_string(),
+                        run_id: 1,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            metadata_started_rx.await.expect("metadata should start");
+
+            runner
+                .run(
+                    vec![Effect::ProbeMySqlConnection {
+                        target: ConnectionTarget {
+                            id: ConnectionId::new(),
+                            dsn: "mysql://localhost/new".to_string(),
+                            name: "new".to_string(),
+                            database_type: DatabaseType::MySQL,
+                            database: Some("new".to_string()),
+                        },
+                        run_id: 2,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert!(
+                probe_started_rx
+                    .await
+                    .expect("probe should start after cancellation")
+            );
+            assert_eq!(dropped.load(Ordering::SeqCst), 1);
+        }
+
+        #[tokio::test]
+        async fn quit_drops_effective_user_and_delayed_prefetch_tasks() {
+            let (effective_user_started_tx, effective_user_started_rx) = oneshot::channel();
+            let dropped = Arc::new(AtomicUsize::new(0));
+            let provider = PendingMetadataProvider {
+                metadata_started: Mutex::new(None),
+                effective_user_started: Mutex::new(Some(effective_user_started_tx)),
+                dropped: Arc::clone(&dropped),
+            };
+            let (action_tx, mut action_rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner(
+                Arc::new(provider),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                TtlCache::new(300),
+                action_tx,
+            );
+            let mut state = AppState::new("test".to_string());
+            let completion_engine = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![
+                        Effect::FetchEffectiveUser {
+                            dsn: "postgres://localhost/current".to_string(),
+                            run_id: 1,
+                        },
+                        Effect::DelayedProcessPrefetchQueue {
+                            run_id: 1,
+                            delay_secs: 60,
+                        },
+                    ],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            effective_user_started_rx
+                .await
+                .expect("effective user should start");
+
+            let shutdown_effects = reduce(
+                &mut state,
+                Action::Quit,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            runner
+                .run(
+                    shutdown_effects,
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(dropped.load(Ordering::SeqCst), 1);
+            assert!(
+                timeout(Duration::from_millis(100), action_rx.recv())
+                    .await
+                    .is_err()
+            );
+        }
+    }
+
+    mod mysql_connection_probe_lifecycle {
+        use std::future::pending;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        use tokio::sync::mpsc::UnboundedSender;
+        use tokio::time::{Duration, timeout};
+
+        use super::*;
+        use crate::domain::connection::{
+            ConnectionConfig, ConnectionId, DatabaseType, MySqlConnectionConfig, MySqlSslMode,
+        };
+        use crate::model::browse::session::ConnectionSaveGuard;
+        use crate::ports::outbound::DbOperationError;
+        use crate::update::action::ConnectionTarget;
+        use crate::update::reducer::reduce;
+
+        struct DropSignal(Arc<AtomicUsize>);
+
+        impl Drop for DropSignal {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        struct PendingMySqlConnectionProbe {
+            started: UnboundedSender<String>,
+            dropped: Arc<AtomicUsize>,
+        }
+
+        #[async_trait::async_trait]
+        impl MySqlConnectionProbe for PendingMySqlConnectionProbe {
+            async fn probe(
+                &self,
+                dsn: &str,
+            ) -> Result<MySqlConnectionProbeResult, DbOperationError> {
+                let _drop_signal = DropSignal(Arc::clone(&self.dropped));
+                self.started
+                    .send(dsn.to_string())
+                    .expect("probe receiver should stay alive");
+                pending().await
+            }
+        }
+
+        fn mysql_target(dsn: &str) -> ConnectionTarget {
+            ConnectionTarget {
+                id: ConnectionId::new(),
+                dsn: dsn.to_string(),
+                name: dsn.to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some("app".to_string()),
+            }
+        }
+
+        fn mysql_config() -> ConnectionConfig {
+            ConnectionConfig::MySQL(MySqlConnectionConfig::new(
+                "localhost",
+                3306,
+                Some("app".to_string()),
+                "user",
+                "secret",
+                MySqlSslMode::Required,
+            ))
+        }
+
+        fn active_run_guard(run_id: u64) -> Arc<ConnectionSaveGuard> {
+            let guard = Arc::new(ConnectionSaveGuard::default());
+            guard.start(run_id);
+            guard
+        }
+
+        #[tokio::test]
+        async fn replacing_probe_aborts_previous_task_before_starting_new_one() {
+            let (started_tx, mut started_rx) = mpsc::unbounded_channel();
+            let dropped = Arc::new(AtomicUsize::new(0));
+            let probe = PendingMySqlConnectionProbe {
+                started: started_tx,
+                dropped: Arc::clone(&dropped),
+            };
+            let (action_tx, _action_rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner_with_dsn_and_probe(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                TtlCache::new(300),
+                action_tx,
+                Arc::new(test_fixtures::NoopDsnBuilder),
+                Arc::new(probe),
+            );
+            let mut state = AppState::new("test".to_string());
+            let completion_engine = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![Effect::ProbeMySqlConnection {
+                        target: mysql_target("mysql://localhost/old"),
+                        run_id: 1,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                started_rx.recv().await.as_deref(),
+                Some("mysql://localhost/old")
+            );
+
+            runner
+                .run(
+                    vec![Effect::ProbeMySqlConnection {
+                        target: mysql_target("mysql://localhost/new"),
+                        run_id: 2,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(dropped.load(Ordering::SeqCst), 1);
+            assert_eq!(
+                started_rx.recv().await.as_deref(),
+                Some("mysql://localhost/new")
+            );
+
+            runner
+                .run(
+                    vec![Effect::CancelActiveTasks],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(dropped.load(Ordering::SeqCst), 2);
+        }
+
+        #[tokio::test]
+        async fn replacing_save_probe_aborts_previous_task_before_new_probe() {
+            let (started_tx, mut started_rx) = mpsc::unbounded_channel();
+            let dropped = Arc::new(AtomicUsize::new(0));
+            let probe = PendingMySqlConnectionProbe {
+                started: started_tx,
+                dropped: Arc::clone(&dropped),
+            };
+            let (action_tx, _action_rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner_with_dsn_and_probe(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                TtlCache::new(300),
+                action_tx,
+                Arc::new(test_fixtures::NoopDsnBuilder),
+                Arc::new(probe),
+            );
+            let mut state = AppState::new("test".to_string());
+            let completion_engine = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![Effect::SaveAndConnect {
+                        id: None,
+                        name: "old".to_string(),
+                        config: mysql_config(),
+                        run_id: 1,
+                        run_guard: active_run_guard(1),
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(started_rx.recv().await.as_deref(), Some(""));
+
+            runner
+                .run(
+                    vec![Effect::ProbeMySqlConnection {
+                        target: mysql_target("mysql://localhost/new"),
+                        run_id: 2,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(dropped.load(Ordering::SeqCst), 1);
+            assert_eq!(
+                started_rx.recv().await.as_deref(),
+                Some("mysql://localhost/new")
+            );
+
+            runner
+                .run(
+                    vec![Effect::CancelActiveTasks],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(dropped.load(Ordering::SeqCst), 2);
+        }
+
+        #[tokio::test]
+        async fn quitting_aborts_pending_mysql_probe_task() {
+            let (started_tx, mut started_rx) = mpsc::unbounded_channel();
+            let dropped = Arc::new(AtomicUsize::new(0));
+            let probe = PendingMySqlConnectionProbe {
+                started: started_tx,
+                dropped: Arc::clone(&dropped),
+            };
+            let (action_tx, _action_rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner_with_dsn_and_probe(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                TtlCache::new(300),
+                action_tx,
+                Arc::new(test_fixtures::NoopDsnBuilder),
+                Arc::new(probe),
+            );
+            let mut state = AppState::new("test".to_string());
+            let completion_engine = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![Effect::ProbeMySqlConnection {
+                        target: mysql_target("mysql://localhost/pending"),
+                        run_id: 1,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            timeout(Duration::from_secs(1), started_rx.recv())
+                .await
+                .expect("pending probe should start")
+                .expect("probe start signal should be sent");
+
+            let shutdown_effects = reduce(
+                &mut state,
+                Action::Quit,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(state.should_quit);
+            runner
+                .run(
+                    shutdown_effects,
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(dropped.load(Ordering::SeqCst), 1);
         }
     }
 }

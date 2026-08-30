@@ -3,11 +3,11 @@ use std::time::Instant;
 use super::explain_context::ExplainContext;
 use super::runtime_state::RuntimeState;
 use crate::domain::connection::{ConnectionProfile, ServiceEntry};
-use crate::domain::{DatabaseType, TableSummary};
+use crate::domain::{Column, DatabaseType, TableSummary, mysql_sql::mysql_export_plan};
 use crate::model::browse::cell_detail::CellDetailState;
 use crate::model::browse::inspector_view_model::InspectorViewModel;
-use crate::model::browse::jsonb_detail::JsonbDetailState;
-use crate::model::browse::query_execution::QueryExecution;
+use crate::model::browse::json_detail::JsonDetailState;
+use crate::model::browse::query_execution::{QueryExecution, VisibleResultKind};
 use crate::model::browse::result_interaction::ResultInteraction;
 use crate::model::browse::row_detail::RowDetailState;
 use crate::model::browse::session::BrowseSession;
@@ -33,7 +33,9 @@ use crate::policy::preview_cell_text::CellPresentationPolicy;
 use crate::policy::sql::result_query::is_rerunnable_select;
 use crate::policy::table_kind::max_explorer_table_label_width;
 use crate::policy::write::inline_cell_edit::supports_inline_edit;
-use crate::policy::write::write_guardrails::{PreviewWriteability, preview_writeability};
+use crate::policy::write::write_guardrails::{
+    PreviewWriteability, preview_writeability_for_result,
+};
 use crate::ports::outbound::DdlGenerator;
 
 pub struct AppState {
@@ -56,7 +58,7 @@ pub struct AppState {
     pub confirm_dialog: ConfirmDialogState,
     pub result_interaction: ResultInteraction,
     pub cell_detail: CellDetailState,
-    pub jsonb_detail: JsonbDetailState,
+    pub json_detail: JsonDetailState,
     pub row_detail: RowDetailState,
     pub query_history_picker: QueryHistoryPickerState,
     pub settings: SettingsState,
@@ -90,7 +92,7 @@ impl AppState {
             confirm_dialog: ConfirmDialogState::default(),
             result_interaction: ResultInteraction::default(),
             cell_detail: CellDetailState::default(),
-            jsonb_detail: JsonbDetailState::default(),
+            json_detail: JsonDetailState::default(),
             row_detail: RowDetailState::default(),
             query_history_picker: QueryHistoryPickerState::default(),
             settings: SettingsState::default(),
@@ -158,7 +160,10 @@ impl AppState {
             .set_explorer_pane_height(layout.explorer.pane_height);
         self.ui
             .set_explorer_content_width(layout.explorer.content_width);
-        let max_name_width = max_explorer_table_label_width(self.tables());
+        let max_name_width = max_explorer_table_label_width(
+            self.tables(),
+            self.session.active_database_type_or_default(),
+        );
         let max_offset = scroll_max_offset(max_name_width, self.ui.explorer_content_width());
         self.ui
             .set_explorer_horizontal_offset(self.ui.explorer_horizontal_offset().min(max_offset));
@@ -200,12 +205,12 @@ impl AppState {
     }
 
     fn apply_detail_layout(&mut self, layout: DetailLayout) {
-        if let Some(jsonb) = layout.jsonb {
+        if let Some(json) = layout.json {
             self.ui
-                .set_jsonb_detail_editor_visible_rows(jsonb.editor_visible_rows);
-            self.jsonb_detail
+                .set_json_detail_editor_visible_rows(json.editor_visible_rows);
+            self.json_detail
                 .editor_mut()
-                .update_scroll(jsonb.editor_visible_rows);
+                .update_scroll(json.editor_visible_rows);
         }
         if let Some(viewport) = layout.cell {
             self.cell_detail
@@ -244,17 +249,17 @@ impl AppState {
     }
 
     pub fn inspector_view_model(&self, ddl_generator: &dyn DdlGenerator) -> InspectorViewModel {
-        InspectorViewModel::build(
-            self.session.active_engine_feature_profile(),
+        InspectorViewModel::build_with_detail_state(
+            &self.session.active_engine_feature_profile(),
             self.ui.inspector_tab(),
-            self.session.table_detail(),
+            self.session.table_detail_state(),
             self.session.active_database_type_or_default(),
             ddl_generator,
         )
     }
 
-    pub fn jsonb_detail_editor_visible_rows(&self) -> usize {
-        self.ui.jsonb_detail_editor_visible_rows()
+    pub fn json_detail_editor_visible_rows(&self) -> usize {
+        self.ui.json_detail_editor_visible_rows()
     }
 
     pub fn row_detail_content_visible_rows(&self) -> usize {
@@ -350,6 +355,14 @@ impl AppState {
         self.ui.toggle_focus()
     }
 
+    pub fn can_retry_connection_error(&self) -> bool {
+        !self.connection_error.is_save_and_connect_failure()
+            && (self.session.has_pending_connection_switch()
+                || !self.session.can_reenter_connection_setup()
+                || (self.session.active_database_type() == Some(DatabaseType::MySQL)
+                    && self.connection_error.can_retry()))
+    }
+
     pub fn can_request_csv_export(&self) -> bool {
         let Some(result) = self.query.visible_result() else {
             return false;
@@ -357,10 +370,11 @@ impl AppState {
         if result.is_error() {
             return false;
         }
-        if self.session.active_database_type() == Some(DatabaseType::SQLite) {
-            return true;
+        match self.session.active_database_type() {
+            Some(DatabaseType::SQLite) => true,
+            Some(DatabaseType::MySQL) => mysql_export_plan(&result.query).is_some(),
+            _ => is_rerunnable_select(&result.query),
         }
-        is_rerunnable_select(&result.query)
     }
 
     pub fn visible_preview_target_read_only_reason(&self) -> Option<&'static str> {
@@ -371,7 +385,8 @@ impl AppState {
         if !self.query.pagination.matches_table(table_detail) {
             return None;
         }
-        match preview_writeability(table_detail) {
+        let result = self.query.visible_result()?;
+        match preview_writeability_for_result(table_detail, result) {
             PreviewWriteability::Writable => None,
             PreviewWriteability::ReadOnly(reason) => Some(reason),
             PreviewWriteability::MissingStableRowIdentity => Some("table without PRIMARY KEY"),
@@ -381,6 +396,20 @@ impl AppState {
     pub fn can_write_visible_preview(&self) -> bool {
         self.query.can_edit_visible_result()
             && self.visible_preview_target_read_only_reason().is_none()
+    }
+
+    pub fn visible_preview_column(&self, col_idx: usize) -> Option<&Column> {
+        if self.query.visible_result_kind() != VisibleResultKind::LivePreview {
+            return None;
+        }
+
+        let result = self.query.visible_result()?;
+        let column_name = result.columns.get(col_idx)?;
+        let table_detail = self.session.table_detail()?;
+        table_detail
+            .columns
+            .iter()
+            .find(|column| column.name == *column_name)
     }
 
     pub fn can_edit_selected_cell(&self) -> bool {
@@ -404,28 +433,26 @@ impl AppState {
             return false;
         };
 
-        if let Some(table_detail) = self.session.table_detail()
-            && let Some(column) = table_detail.columns.get(col_idx)
-        {
-            if table_detail
-                .primary_key
-                .as_ref()
-                .is_some_and(|pk| pk.iter().any(|name| name == &column.name))
-            {
-                return false;
-            }
-            if column.is_read_only() {
-                return false;
-            }
+        let Some(column) = self.visible_preview_column(col_idx) else {
+            return false;
+        };
+        let is_primary_key = column.is_primary_key()
+            || self
+                .session
+                .table_detail()
+                .and_then(|table| table.primary_key.as_ref())
+                .is_some_and(|primary_key| primary_key.iter().any(|name| name == &column.name));
+        if is_primary_key || column.is_read_only() {
+            return false;
+        }
 
-            let policy = CellPresentationPolicy::new(
-                self.session.active_database_type_or_default(),
-                column.data_type.as_str(),
-                value.as_str().unwrap_or_default(),
-            );
-            if policy.uses_jsonb_detail_modal() {
-                return true;
-            }
+        let policy = CellPresentationPolicy::new(
+            self.session.active_database_type_or_default(),
+            column.data_type.as_str(),
+            value.as_str().unwrap_or_default(),
+        );
+        if policy.uses_json_detail_modal() {
+            return true;
         }
 
         supports_inline_edit(self.session.active_database_type_or_default(), value)
@@ -435,6 +462,11 @@ impl AppState {
     /// connection and query run, and must be dropped without touching state.
     pub fn is_stale_query_run(&self, dsn: &str, run_id: u64) -> bool {
         !self.session.dsn_matches(dsn) || !self.query.is_current_run(run_id)
+    }
+
+    pub fn is_stale_explain_run(&self, dsn: &str, database_generation: u64, run_id: u64) -> bool {
+        self.is_stale_query_run(dsn, run_id)
+            || self.session.database_generation() != database_generation
     }
 }
 
@@ -447,10 +479,12 @@ mod tests {
 
     use super::*;
     use crate::domain::{
-        Column, ColumnAttributes, ConnectionId, DatabaseMetadata, DatabaseType, QueryResult,
-        QuerySource, QueryValue, Table, TableKind, TableKindInfo,
+        ColumnAttributes, ConnectionId, DatabaseMetadata, DatabaseType, QueryResult, QuerySource,
+        QueryValue, Table, TableKind, TableKindInfo,
     };
+    use crate::model::browse::inspector_view_model::{InspectorEmptyState, InspectorLoadState};
     use crate::model::browse::row_detail::RowDetailState;
+    use crate::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
     use crate::model::er_state::ErStatus;
     use crate::model::shared::focused_pane::FocusedPane;
     use crate::model::shared::render_output::{
@@ -458,6 +492,7 @@ mod tests {
     };
     use crate::model::shared::viewport::ViewportPlan;
     use crate::model::sql_editor::modal::FailedPrefetchEntry;
+    use crate::services::AppServices;
     use crate::update::action::Action;
     use crate::update::dispatch_metadata;
     use rstest::rstest;
@@ -498,6 +533,179 @@ mod tests {
         }
     }
 
+    mod connection_error_retry {
+        use super::*;
+
+        fn active_connection_state(database_type: DatabaseType, dsn: &str) -> AppState {
+            let mut state = make_state();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "database",
+                database_type,
+                dsn,
+            );
+            state
+        }
+
+        fn retryable_error() -> ConnectionErrorInfo {
+            ConnectionErrorInfo::with_kind(ConnectionErrorKind::Timeout, "connection timed out")
+        }
+
+        #[test]
+        fn allows_retry_for_active_mysql_retryable_error() {
+            let mut state = active_connection_state(
+                DatabaseType::MySQL,
+                "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+            );
+            state.connection_error.set_error(retryable_error());
+
+            assert!(state.can_retry_connection_error());
+        }
+
+        #[test]
+        fn hides_retry_for_non_mysql_retryable_error() {
+            let mut state =
+                active_connection_state(DatabaseType::PostgreSQL, "postgres://localhost/app");
+            state.connection_error.set_error(retryable_error());
+
+            assert!(!state.can_retry_connection_error());
+        }
+
+        #[test]
+        fn hides_retry_for_save_and_connect_failure() {
+            let mut state = active_connection_state(
+                DatabaseType::MySQL,
+                "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+            );
+            state
+                .connection_error
+                .set_save_and_connect_error(retryable_error(), DatabaseType::MySQL);
+
+            assert!(!state.can_retry_connection_error());
+        }
+
+        #[test]
+        fn keeps_retry_for_pending_connection_switch() {
+            let mut state = active_connection_state(
+                DatabaseType::MySQL,
+                "mysql://user@localhost:3306/old?ssl-mode=PREFERRED",
+            );
+            let target_id = ConnectionId::from_string("mysql-new");
+            let _ = state.session.begin_mysql_connection_probe(
+                &target_id,
+                "mysql-new",
+                "mysql://user@localhost:3306/new?ssl-mode=PREFERRED",
+                Some("new"),
+            );
+            state
+                .connection_error
+                .set_error(ConnectionErrorInfo::with_kind(
+                    ConnectionErrorKind::Unknown,
+                    "connection failed",
+                ));
+
+            assert!(state.can_retry_connection_error());
+        }
+    }
+
+    #[rstest]
+    fn inspector_view_model_exposes_not_selected_for_each_database_type(
+        #[values(DatabaseType::MySQL, DatabaseType::PostgreSQL, DatabaseType::SQLite)]
+        database_type: DatabaseType,
+    ) {
+        let mut state = make_state();
+        activate_database_connection(&mut state, database_type);
+
+        let services = AppServices::stub();
+        let view_model = state.inspector_view_model(services.ddl_generator.as_ref());
+
+        assert_eq!(
+            view_model.load_state(),
+            &InspectorLoadState::NoTableSelected
+        );
+        assert_eq!(
+            view_model.empty_state(),
+            Some(InspectorEmptyState::NoTableSelected)
+        );
+    }
+
+    #[rstest]
+    fn inspector_view_model_exposes_loading_for_each_database_type(
+        #[values(DatabaseType::MySQL, DatabaseType::PostgreSQL, DatabaseType::SQLite)]
+        database_type: DatabaseType,
+    ) {
+        let mut state = make_state();
+        activate_database_connection(&mut state, database_type);
+        let _ = state
+            .session
+            .select_table("public", "users", &mut state.query);
+
+        let services = AppServices::stub();
+        let view_model = state.inspector_view_model(services.ddl_generator.as_ref());
+
+        assert_eq!(view_model.load_state(), &InspectorLoadState::Loading);
+        assert_eq!(view_model.empty_state(), None);
+    }
+
+    #[rstest]
+    fn inspector_view_model_exposes_error_for_each_database_type(
+        #[values(DatabaseType::MySQL, DatabaseType::PostgreSQL, DatabaseType::SQLite)]
+        database_type: DatabaseType,
+    ) {
+        let mut state = make_state();
+        activate_database_connection(&mut state, database_type);
+        let _ = state
+            .session
+            .select_table("public", "users", &mut state.query);
+        assert!(state.session.mark_table_detail_failed(
+            state.session.selection_generation(),
+            "permission denied".to_string()
+        ));
+
+        let services = AppServices::stub();
+        let view_model = state.inspector_view_model(services.ddl_generator.as_ref());
+
+        assert_eq!(
+            view_model.load_state(),
+            &InspectorLoadState::Error("permission denied".to_string())
+        );
+        assert_eq!(view_model.empty_state(), None);
+    }
+
+    #[rstest]
+    fn inspector_view_model_exposes_loaded_for_each_database_type(
+        #[values(DatabaseType::MySQL, DatabaseType::PostgreSQL, DatabaseType::SQLite)]
+        database_type: DatabaseType,
+    ) {
+        let mut state = make_state();
+        activate_database_connection(&mut state, database_type);
+        let generation = state
+            .session
+            .select_table("public", "users", &mut state.query);
+        assert!(
+            state
+                .session
+                .set_table_detail(make_table_detail(), generation)
+        );
+
+        let services = AppServices::stub();
+        let view_model = state.inspector_view_model(services.ddl_generator.as_ref());
+
+        assert_eq!(view_model.load_state(), &InspectorLoadState::Success);
+        assert!(view_model.section().is_some());
+    }
+
+    fn activate_database_connection(state: &mut AppState, database_type: DatabaseType) {
+        let (name, dsn) = match database_type {
+            DatabaseType::MySQL => ("mysql", "mysql://localhost/test"),
+            DatabaseType::PostgreSQL => ("postgres", "postgres://localhost/test"),
+            DatabaseType::SQLite => ("sqlite", "sqlite:///tmp/app.db"),
+        };
+        state
+            .session
+            .activate_connection_with_dsn(&ConnectionId::new(), name, database_type, dsn);
+    }
+
     #[test]
     fn can_edit_selected_cell_allows_sqlite_numeric_literal() {
         let mut state = make_state();
@@ -531,6 +739,10 @@ mod tests {
                     attributes: ColumnAttributes::PRIMARY_KEY,
                     comment: None,
                     ordinal_position: 1,
+                    character_set_name: None,
+                    collation_name: None,
+                    generation_expression: None,
+                    generation_kind: None,
                 },
                 Column {
                     name: "score".to_string(),
@@ -539,6 +751,10 @@ mod tests {
                     attributes: ColumnAttributes::NULLABLE,
                     comment: None,
                     ordinal_position: 2,
+                    character_set_name: None,
+                    collation_name: None,
+                    generation_expression: None,
+                    generation_kind: None,
                 },
             ],
             primary_key: Some(vec!["id".to_string()]),
@@ -573,6 +789,10 @@ mod tests {
                     attributes: ColumnAttributes::PRIMARY_KEY,
                     comment: None,
                     ordinal_position: 1,
+                    character_set_name: None,
+                    collation_name: None,
+                    generation_expression: None,
+                    generation_kind: None,
                 },
                 Column {
                     name: "payload".to_string(),
@@ -581,6 +801,10 @@ mod tests {
                     attributes: ColumnAttributes::NULLABLE,
                     comment: None,
                     ordinal_position: 2,
+                    character_set_name: None,
+                    collation_name: None,
+                    generation_expression: None,
+                    generation_kind: None,
                 },
             ],
             primary_key: Some(vec!["id".to_string()]),
@@ -589,6 +813,149 @@ mod tests {
         state.result_interaction.activate_cell(0, 1);
 
         assert!(!state.can_edit_selected_cell());
+    }
+
+    #[test]
+    fn can_edit_selected_cell_maps_visible_column_by_name_after_hidden_primary_key() {
+        let mut state = make_state();
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "mysql",
+            DatabaseType::MySQL,
+            "mysql://localhost/test",
+        );
+        state.query.set_current_result(Arc::new(
+            QueryResult::success_with_values(
+                "SELECT `payload` FROM `sabiql_test`.`users`".to_string(),
+                vec!["payload".to_string()],
+                vec![vec![QueryValue::text("before")]],
+                10,
+                QuerySource::Preview,
+            )
+            .with_explicit_row_identity(
+                vec!["id".to_string()],
+                vec![vec![QueryValue::SqlLiteral("1".to_string())]],
+            ),
+        ));
+        state
+            .query
+            .pagination
+            .reset_for_table("sabiql_test", "users");
+        state.session.set_table_detail_raw(Some(Table {
+            schema: "sabiql_test".to_string(),
+            name: "users".to_string(),
+            columns: vec![
+                Column {
+                    name: "id".to_string(),
+                    data_type: "INT".to_string(),
+                    default: None,
+                    attributes: ColumnAttributes::PRIMARY_KEY
+                        | ColumnAttributes::HIDDEN
+                        | ColumnAttributes::READ_ONLY,
+                    comment: None,
+                    ordinal_position: 1,
+                    character_set_name: None,
+                    collation_name: None,
+                    generation_expression: None,
+                    generation_kind: None,
+                },
+                Column {
+                    name: "payload".to_string(),
+                    data_type: "TEXT".to_string(),
+                    default: None,
+                    attributes: ColumnAttributes::empty(),
+                    comment: None,
+                    ordinal_position: 2,
+                    character_set_name: None,
+                    collation_name: None,
+                    generation_expression: None,
+                    generation_kind: None,
+                },
+            ],
+            primary_key: Some(vec!["id".to_string()]),
+            ..test_support::table::minimal("", "")
+        }));
+        state.result_interaction.activate_cell(0, 0);
+
+        assert!(state.can_edit_selected_cell());
+    }
+
+    #[test]
+    fn can_edit_selected_cell_maps_visible_column_by_name_when_hidden_primary_key_is_between_columns()
+     {
+        let mut state = make_state();
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "mysql",
+            DatabaseType::MySQL,
+            "mysql://localhost/test",
+        );
+        state.query.set_current_result(Arc::new(
+            QueryResult::success_with_values(
+                "SELECT `name`, `payload` FROM `sabiql_test`.`users`".to_string(),
+                vec!["name".to_string(), "payload".to_string()],
+                vec![vec![QueryValue::text("Alice"), QueryValue::text("before")]],
+                10,
+                QuerySource::Preview,
+            )
+            .with_explicit_row_identity(
+                vec!["id".to_string()],
+                vec![vec![QueryValue::SqlLiteral("1".to_string())]],
+            ),
+        ));
+        state
+            .query
+            .pagination
+            .reset_for_table("sabiql_test", "users");
+        state.session.set_table_detail_raw(Some(Table {
+            schema: "sabiql_test".to_string(),
+            name: "users".to_string(),
+            columns: vec![
+                Column {
+                    name: "name".to_string(),
+                    data_type: "VARCHAR".to_string(),
+                    default: None,
+                    attributes: ColumnAttributes::empty(),
+                    comment: None,
+                    ordinal_position: 1,
+                    character_set_name: None,
+                    collation_name: None,
+                    generation_expression: None,
+                    generation_kind: None,
+                },
+                Column {
+                    name: "id".to_string(),
+                    data_type: "INT".to_string(),
+                    default: None,
+                    attributes: ColumnAttributes::PRIMARY_KEY
+                        | ColumnAttributes::HIDDEN
+                        | ColumnAttributes::READ_ONLY,
+                    comment: None,
+                    ordinal_position: 2,
+                    character_set_name: None,
+                    collation_name: None,
+                    generation_expression: None,
+                    generation_kind: None,
+                },
+                Column {
+                    name: "payload".to_string(),
+                    data_type: "TEXT".to_string(),
+                    default: None,
+                    attributes: ColumnAttributes::empty(),
+                    comment: None,
+                    ordinal_position: 3,
+                    character_set_name: None,
+                    collation_name: None,
+                    generation_expression: None,
+                    generation_kind: None,
+                },
+            ],
+            primary_key: Some(vec!["id".to_string()]),
+            ..test_support::table::minimal("", "")
+        }));
+        state.result_interaction.activate_cell(0, 1);
+
+        assert!(state.can_edit_selected_cell());
     }
 
     mod pane_geometry {
@@ -1054,6 +1421,32 @@ mod tests {
             state.query.set_current_result(Arc::new(result));
 
             assert!(!state.can_request_csv_export());
+        }
+
+        #[rstest]
+        #[case("SELECT id FROM users")]
+        #[case("TABLE users")]
+        #[case("SHOW TABLES")]
+        #[case("DESCRIBE users")]
+        fn mysql_csv_export_allows_supported_result_queries(#[case] query: &str) {
+            let mut state = make_state();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "mysql",
+                DatabaseType::MySQL,
+                "mysql://localhost/test",
+            );
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    query.to_string(),
+                    vec!["column".to_string()],
+                    vec![vec!["value".to_string()]],
+                    10,
+                    QuerySource::Adhoc,
+                )));
+
+            assert!(state.can_request_csv_export());
         }
 
         #[test]

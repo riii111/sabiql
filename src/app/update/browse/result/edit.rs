@@ -1,8 +1,7 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-#[cfg(test)]
-use crate::domain::ColumnAttributes;
+use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, InputTarget, ModalKind};
@@ -12,17 +11,26 @@ use crate::policy::preview_cell_text::CellPresentationPolicy;
 use crate::policy::write::inline_cell_edit::text_for_inline_edit;
 use crate::update::helpers::{EditGuardrailError, editable_preview_base, ensure_column_writable};
 
-fn cell_uses_jsonb_detail_modal(state: &AppState) -> bool {
+fn cell_uses_json_detail_modal(state: &AppState) -> bool {
     let Some(col_idx) = state.result_interaction.selection().cell() else {
         return false;
     };
-    let Some(td) = state.session.table_detail() else {
+    let Some(row_idx) = state.result_interaction.selection().row() else {
         return false;
     };
-    if !state.query.pagination.matches_table(td) {
+    let Some(result) = state.query.visible_result() else {
+        return false;
+    };
+    if matches!(result.value_at(row_idx, col_idx), Some(QueryValue::Null)) {
         return false;
     }
-    let Some(column) = td.columns.get(col_idx) else {
+    let Some(table_detail) = state.session.table_detail() else {
+        return false;
+    };
+    if !state.query.pagination.matches_table(table_detail) {
+        return false;
+    }
+    let Some(column) = state.visible_preview_column(col_idx) else {
         return false;
     };
     let policy = CellPresentationPolicy::new(
@@ -30,7 +38,7 @@ fn cell_uses_jsonb_detail_modal(state: &AppState) -> bool {
         column.data_type.as_str(),
         "",
     );
-    policy.uses_jsonb_detail_modal()
+    policy.uses_json_detail_modal()
 }
 
 fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), EditGuardrailError> {
@@ -80,10 +88,9 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
                 return DispatchResult::handled();
             }
 
-            // JSONB columns open the dedicated detail modal instead of inline edit
-            if cell_uses_jsonb_detail_modal(state) {
+            if cell_uses_json_detail_modal(state) {
                 return DispatchResult::handled_with(vec![Effect::DispatchActions(vec![
-                    Action::OpenModal(ModalKind::JsonbDetail),
+                    Action::OpenModal(ModalKind::JsonDetail),
                 ])]);
             }
 
@@ -159,8 +166,10 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::Column;
+    use crate::domain::ColumnAttributes;
+
     use super::*;
-    pub use crate::domain::Column;
     use crate::domain::connection::ConnectionId;
     use crate::domain::{DatabaseType, QueryResult, QuerySource, QueryValue, Table};
     use crate::update::action::{CursorMove, TextKillDirection};
@@ -453,12 +462,12 @@ mod tests {
         }
     }
 
-    mod jsonb_dispatch {
+    mod json_dispatch {
         use crate::test_support;
 
         use super::*;
 
-        fn state_with_jsonb_column() -> AppState {
+        fn state_with_json_column() -> AppState {
             let mut state = cell_edit_entry_guardrails::preview_state_with_selection();
             state.session.activate_connection_with_dsn(
                 &ConnectionId::new(),
@@ -478,9 +487,50 @@ mod tests {
             state
         }
 
+        fn state_with_hidden_primary_key_json_column() -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "database",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
+            state.query.set_current_result(Arc::new(
+                QueryResult::success(
+                    String::new(),
+                    vec!["settings".to_string()],
+                    vec![vec![r#"{"theme":"dark"}"#.to_string()]],
+                    1,
+                    QuerySource::Preview,
+                )
+                .with_explicit_row_identity(
+                    vec!["id".to_string()],
+                    vec![vec![QueryValue::text("1")]],
+                ),
+            ));
+            state.query.pagination.reset_for_table("public", "users");
+            state.session.set_table_detail_raw(Some(Table {
+                schema: "public".to_string(),
+                name: "users".to_string(),
+                columns: vec![
+                    Column {
+                        attributes: ColumnAttributes::PRIMARY_KEY
+                            | ColumnAttributes::HIDDEN
+                            | ColumnAttributes::READ_ONLY,
+                        ..test_support::column::test_nullable_column("id", "integer", 1)
+                    },
+                    test_support::column::test_nullable_column("settings", "jsonb", 2),
+                ],
+                primary_key: Some(vec!["id".to_string()]),
+                ..test_support::table::minimal("", "")
+            }));
+            state.result_interaction.activate_cell(0, 0);
+            state
+        }
+
         #[test]
-        fn jsonb_cell_returns_dispatch_to_open_jsonb_detail() {
-            let mut state = state_with_jsonb_column();
+        fn json_cell_returns_dispatch_to_open_json_detail() {
+            let mut state = state_with_json_column();
 
             let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
                 .into_effects()
@@ -489,13 +539,61 @@ mod tests {
             assert_eq!(effects.len(), 1);
             assert!(matches!(
                 &effects[0],
-                Effect::DispatchActions(actions) if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonbDetail)])
+                Effect::DispatchActions(actions) if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonDetail)])
             ));
         }
 
         #[test]
-        fn sqlite_jsonb_cell_opens_inline_edit() {
-            let mut state = state_with_jsonb_column();
+        fn json_cell_after_hidden_primary_key_dispatches_to_detail() {
+            let mut state = state_with_hidden_primary_key_json_column();
+
+            let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert!(matches!(
+                &effects[0],
+                Effect::DispatchActions(actions) if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonDetail)])
+            ));
+        }
+
+        #[test]
+        fn mysql_json_sql_null_uses_null_edit_reason() {
+            let mut state = state_with_json_column();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::from_string("mysql-test"),
+                "mysql",
+                DatabaseType::MySQL,
+                "mysql://localhost/test",
+            );
+            let mut table = state.session.table_detail().expect("table detail").clone();
+            table.columns[1].data_type = "json".to_string();
+            state.session.set_table_detail_raw(Some(table));
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    String::new(),
+                    vec!["id".to_string(), "name".to_string()],
+                    vec![vec![QueryValue::text("1"), QueryValue::Null]],
+                    1,
+                    QuerySource::Preview,
+                )));
+
+            let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert_eq!(
+                state.messages.last_error(),
+                Some("NULL cells are not editable inline yet")
+            );
+        }
+
+        #[test]
+        fn sqlite_json_cell_opens_inline_edit() {
+            let mut state = state_with_json_column();
             state.session.activate_connection_with_dsn(
                 &ConnectionId::from_string("sqlite-test"),
                 "sqlite",

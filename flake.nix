@@ -102,6 +102,7 @@
               pkgs.cargo-nextest
               pkgs.graphviz
               pkgs.lefthook
+              pkgs.mysql84
               pkgs.postgresql
               pkgs.sqlite
               pkgs.python3

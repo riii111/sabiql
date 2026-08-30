@@ -1,5 +1,5 @@
 pub(super) mod browse;
-pub(super) mod jsonb;
+pub(super) mod json;
 pub(super) mod sql;
 
 use crate::update::action::{

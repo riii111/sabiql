@@ -15,12 +15,11 @@ impl RowDetailState {
     pub fn open(columns: &[String], cells: &[String]) -> Self {
         let display_text = Self::display_text(columns, cells);
 
-        let mut obj = serde_json::Map::new();
-        for (col, cell) in columns.iter().zip(cells.iter()) {
-            obj.insert(col.clone(), infer_json_value(cell));
-        }
-        let json_text =
-            serde_json::to_string_pretty(&Value::Object(obj)).unwrap_or_else(|_| "{}".to_string());
+        let json_text = serde_json::to_string_pretty(&row_json(
+            columns,
+            cells.iter().map(|cell| infer_json_value(cell)),
+        ))
+        .unwrap_or_else(|_| "{}".to_string());
 
         Self {
             display_text,
@@ -37,13 +36,9 @@ impl RowDetailState {
             .map(QueryValue::display_value)
             .collect::<Vec<_>>();
         let display_text = Self::display_text(columns, &cells);
-        let object = columns
-            .iter()
-            .zip(values)
-            .map(|(column, value)| (column.clone(), sqlite_json_value(value)))
-            .collect();
-        let json_text = serde_json::to_string_pretty(&Value::Object(object))
-            .unwrap_or_else(|_| "{}".to_string());
+        let json_text =
+            serde_json::to_string_pretty(&row_json(columns, values.iter().map(sqlite_json_value)))
+                .unwrap_or_else(|_| "{}".to_string());
         Self {
             display_text,
             json_text,
@@ -158,6 +153,29 @@ fn sqlite_json_value(value: &QueryValue) -> Value {
     }
 }
 
+fn row_json<I>(columns: &[String], values: I) -> Value
+where
+    I: IntoIterator<Item = Value>,
+{
+    if columns
+        .iter()
+        .enumerate()
+        .any(|(index, column)| columns[..index].contains(column))
+    {
+        Value::Array(
+            columns
+                .iter()
+                .zip(values)
+                .map(|(column, value)| {
+                    Value::Object(std::iter::once((column.clone(), value)).collect())
+                })
+                .collect(),
+        )
+    } else {
+        Value::Object(columns.iter().cloned().zip(values).collect())
+    }
+}
+
 fn infer_json_value(cell: &str) -> Value {
     if cell.is_empty() {
         return Value::Null;
@@ -263,6 +281,19 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_columns_build_ordered_json_array() {
+        let state = RowDetailState::open(
+            &["x".to_string(), "x".to_string(), "name".to_string()],
+            &["1".to_string(), "2".to_string(), "alice".to_string()],
+        );
+
+        assert_eq!(
+            state.json_for_yank(),
+            "[\n  {\n    \"x\": 1\n  },\n  {\n    \"x\": 2\n  },\n  {\n    \"name\": \"alice\"\n  }\n]"
+        );
+    }
+
+    #[test]
     fn typed_values_preserve_sqlite_storage_classes_in_json() {
         let state = RowDetailState::open_with_values(
             &[
@@ -280,6 +311,29 @@ mod tests {
         assert_eq!(
             state.json_for_yank(),
             "{\n  \"blob\": \"X'ABCD'\",\n  \"empty\": \"\",\n  \"number_text\": \"42\"\n}"
+        );
+    }
+
+    #[test]
+    fn duplicate_typed_columns_preserve_values_in_order() {
+        let state = RowDetailState::open_with_values(
+            &[
+                "x".to_string(),
+                "x".to_string(),
+                "payload".to_string(),
+                "empty".to_string(),
+            ],
+            &[
+                QueryValue::Text("first".to_string()),
+                QueryValue::Blob(vec![0xAB]),
+                QueryValue::SqlLiteral(r#"{"ok":true}"#.to_string()),
+                QueryValue::Null,
+            ],
+        );
+
+        assert_eq!(
+            state.json_for_yank(),
+            "[\n  {\n    \"x\": \"first\"\n  },\n  {\n    \"x\": \"X'AB'\"\n  },\n  {\n    \"payload\": {\n      \"ok\": true\n    }\n  },\n  {\n    \"empty\": null\n  }\n]"
         );
     }
 

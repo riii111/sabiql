@@ -7,7 +7,7 @@ use sabiql_app::model::shared::settings::KeymapPreset;
 use sabiql_app::model::sql_editor::modal::SqlModalStatus;
 use sabiql_app::policy::write::sql_risk::AcknowledgeReason;
 use sabiql_domain::query_history::{QueryHistoryEntry, QueryResultStatus};
-use sabiql_domain::{ConnectionId, QueryResult};
+use sabiql_domain::{ConnectionId, MySqlDiagnostic, MySqlDiagnosticLevel, QueryResult};
 
 #[test]
 fn sql_modal_with_completion() {
@@ -188,6 +188,25 @@ fn sql_modal_analyze_unknown_risk_acknowledge() {
 }
 
 #[test]
+fn sql_modal_analyze_read_only_acknowledge() {
+    let mut state = connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state
+        .sql_modal
+        .set_status_for_test(SqlModalStatus::ConfirmingAnalyzeRisk {
+            query: "SELECT * FROM users".to_string(),
+            reason: AcknowledgeReason::AnalyzeExecution,
+        });
+    state.sql_modal.set_active_tab(SqlModalTab::Plan);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn sql_modal_cursor_at_head() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
@@ -287,6 +306,7 @@ fn sql_modal_success_select() {
         command_tag: None,
         row_count: 2,
         execution_time_ms: 15,
+        mysql_diagnostics: Vec::new(),
     });
     state
         .query
@@ -307,6 +327,54 @@ fn sql_modal_success_select() {
 }
 
 #[test]
+fn sql_modal_success_with_mysql_diagnostics() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state
+        .sql_modal
+        .editor_mut_for_input()
+        .set_content("INSERT IGNORE INTO users (id) VALUES (1)".to_string());
+    state.sql_modal.finish_adhoc_success(AdhocSuccessSnapshot {
+        command_tag: Some(CommandTag::Insert(1)),
+        row_count: 1,
+        execution_time_ms: 15,
+        mysql_diagnostics: vec![
+            MySqlDiagnostic {
+                level: MySqlDiagnosticLevel::Warning,
+                code: 1062,
+                message: "Duplicate entry '1' for key 'users.PRIMARY'".to_string(),
+            },
+            MySqlDiagnostic {
+                level: MySqlDiagnosticLevel::Note,
+                code: 1050,
+                message: "Table 'users' already exists".to_string(),
+            },
+        ],
+    });
+    state.query.set_current_result(Arc::new(
+        QueryResult::success(
+            "INSERT IGNORE INTO users (id) VALUES (1)".to_string(),
+            vec![],
+            vec![],
+            15,
+            QuerySource::Adhoc,
+        )
+        .with_command_tag(CommandTag::Insert(1))
+        .with_mysql_diagnostics(vec![MySqlDiagnostic {
+            level: MySqlDiagnosticLevel::Warning,
+            code: 1062,
+            message: "Duplicate entry '1' for key 'users.PRIMARY'".to_string(),
+        }]),
+    ));
+
+    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn sql_modal_success_dml_with_command_tag() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
@@ -320,6 +388,7 @@ fn sql_modal_success_dml_with_command_tag() {
         command_tag: Some(CommandTag::Delete(3)),
         row_count: 3,
         execution_time_ms: 12,
+        mysql_diagnostics: Vec::new(),
     });
     // DML: row_count carries affected rows, not result rows (executor's command-tag path)
     state.query.set_current_result(Arc::new(
@@ -353,6 +422,7 @@ fn sql_modal_success_ddl_create_table() {
         command_tag: Some(CommandTag::Create("TABLE".to_string())),
         row_count: 0,
         execution_time_ms: 45,
+        mysql_diagnostics: Vec::new(),
     });
     state.query.set_current_result(Arc::new(
         QueryResult::success(
@@ -589,6 +659,29 @@ fn table_picker_overlay() {
 }
 
 #[test]
+fn mysql_table_picker_shows_table_names_without_database() {
+    let mut state = create_test_state();
+    state.session.activate_connection_with_target(
+        &ConnectionId::from_string("mysql-test"),
+        "mysql",
+        DatabaseType::MySQL,
+        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+        Some("app"),
+    );
+    state
+        .session
+        .mark_connected(Arc::new(fixtures::sample_metadata()));
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::TablePicker);
+    state.ui.table_picker_mut().insert_filter_str("user");
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn command_line_input() {
     let mut state = connected_state();
     let mut terminal = create_test_terminal();
@@ -608,24 +701,27 @@ fn query_history_picker_with_entries() {
 
     state.modal.set_mode(InputMode::QueryHistoryPicker);
     state.query_history_picker.replace_entries(&[
-        QueryHistoryEntry::new(
+        QueryHistoryEntry::new_with_database(
             "SELECT * FROM users WHERE id = 1".to_string(),
             "2026-03-13T10:00:00Z".to_string(),
             ConnectionId::from_string("test-conn"),
+            None,
             QueryResultStatus::Success,
             None,
         ),
-        QueryHistoryEntry::new(
+        QueryHistoryEntry::new_with_database(
             "INSERT INTO orders (user_id, total) VALUES (1, 100)".to_string(),
             "2026-03-13T11:00:00Z".to_string(),
             ConnectionId::from_string("test-conn"),
+            None,
             QueryResultStatus::Success,
             Some(1),
         ),
-        QueryHistoryEntry::new(
+        QueryHistoryEntry::new_with_database(
             "SELECT count(*) FROM users".to_string(),
             "2026-03-13T12:00:00Z".to_string(),
             ConnectionId::from_string("test-conn"),
+            None,
             QueryResultStatus::Failed,
             None,
         ),
@@ -655,17 +751,19 @@ fn query_history_picker_filter_mode() {
 
     state.modal.set_mode(InputMode::QueryHistoryPicker);
     state.query_history_picker.replace_entries(&[
-        QueryHistoryEntry::new(
+        QueryHistoryEntry::new_with_database(
             "SELECT * FROM users".to_string(),
             "2026-03-13T10:00:00Z".to_string(),
             ConnectionId::from_string("test-conn"),
+            None,
             QueryResultStatus::Success,
             None,
         ),
-        QueryHistoryEntry::new(
+        QueryHistoryEntry::new_with_database(
             "SELECT * FROM orders".to_string(),
             "2026-03-13T11:00:00Z".to_string(),
             ConnectionId::from_string("test-conn"),
+            None,
             QueryResultStatus::Success,
             None,
         ),
@@ -699,6 +797,7 @@ fn sql_modal_plan_tab_with_plan_text() {
     state.sql_modal.set_active_tab(SqlModalTab::Plan);
     state.explain.set_plan(
         "Seq Scan on users  (cost=0.00..35.50 rows=2550 width=36)\n  Filter: (id > 10)".to_string(),
+        DatabaseType::PostgreSQL,
         false,
         42,
         "SELECT * FROM users WHERE id > 10",
@@ -747,6 +846,7 @@ fn sql_modal_compare_tab_right_only() {
     state.explain.set_plan(
         "Seq Scan on users  (cost=0.00..10.20 rows=10 width=3273)\n  Filter: email_verified"
             .to_string(),
+        DatabaseType::PostgreSQL,
         false,
         40,
         "SELECT * FROM users WHERE email_verified",
@@ -769,6 +869,7 @@ fn sql_modal_compare_tab_with_verdict() {
     state.explain.set_plan(
         "Seq Scan on users  (cost=0.00..1000.00 rows=2550 width=36)\n  Filter: (id > 10)"
             .to_string(),
+        DatabaseType::PostgreSQL,
         false,
         100,
         "SELECT * FROM users WHERE id > 10",
@@ -777,6 +878,7 @@ fn sql_modal_compare_tab_with_verdict() {
     state.explain.set_plan(
         "Index Scan using idx_users_id on users  (cost=0.28..8.30 rows=1 width=36)\n  Index Cond: (id > 10)"
             .to_string(),
+        DatabaseType::PostgreSQL,
         false,
         5,
         "SELECT * FROM users WHERE id > 10",
@@ -797,6 +899,7 @@ fn sql_modal_compare_tab_unavailable() {
     // First EXPLAIN with unparseable text
     state.explain.set_plan(
         "CREATE TABLE foo (id int)".to_string(),
+        DatabaseType::PostgreSQL,
         false,
         0,
         "CREATE TABLE foo",
@@ -804,6 +907,7 @@ fn sql_modal_compare_tab_unavailable() {
     // Second EXPLAIN with also unparseable text — auto-advances first to left
     state.explain.set_plan(
         "ALTER TABLE foo ADD COLUMN bar text".to_string(),
+        DatabaseType::PostgreSQL,
         false,
         0,
         "ALTER TABLE foo",
@@ -826,6 +930,7 @@ fn sql_modal_compare_tab_narrow_stacked() {
     state.explain.set_plan(
         "Seq Scan on users  (cost=0.00..1000.00 rows=2550 width=36)\n  Filter: (id > 10)"
             .to_string(),
+        DatabaseType::PostgreSQL,
         false,
         100,
         "SELECT * FROM users WHERE id > 10",
@@ -834,6 +939,7 @@ fn sql_modal_compare_tab_narrow_stacked() {
     state.explain.set_plan(
         "Index Scan using idx_users_id on users  (cost=0.28..8.30 rows=1 width=36)\n  Index Cond: (id > 10)"
             .to_string(),
+        DatabaseType::PostgreSQL,
         false,
         5,
         "SELECT * FROM users WHERE id > 10",
@@ -893,6 +999,7 @@ fn sqlite_sql_modal_plan_tab_labels_query_plan() {
     state.sql_modal.set_active_tab(SqlModalTab::Plan);
     state.explain.set_plan(
         "SEARCH users USING INDEX idx_users_name\n  - SCAN orders".to_string(),
+        DatabaseType::SQLite,
         false,
         42,
         "DELETE FROM users WHERE name = 'alice'",

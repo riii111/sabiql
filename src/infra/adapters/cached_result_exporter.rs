@@ -1,11 +1,8 @@
 use async_trait::async_trait;
 use sabiql_app::domain::QueryValue;
 use sabiql_app::ports::outbound::{CachedResultExporter, DbOperationError};
-use tokio::io::{AsyncWriteExt, BufWriter};
 
-use crate::adapters::csv_export::export_to_downloads;
-
-const CSV_FLUSH_THRESHOLD: usize = 64 * 1024;
+use crate::adapters::csv_export::{CsvFileWriter, export_to_downloads};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CsvCachedResultExporter;
@@ -45,77 +42,18 @@ async fn write_cached_result_csv(
     columns: Vec<String>,
     values: Vec<Vec<QueryValue>>,
 ) -> Result<(), DbOperationError> {
-    let file = tokio::fs::File::create(path)
-        .await
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    let mut file = BufWriter::new(file);
-    let mut csv_writer =
-        csv::WriterBuilder::new().from_writer(Vec::with_capacity(CSV_FLUSH_THRESHOLD));
-    let mut bytes_since_flush = 0;
-
-    csv_writer = write_csv_record(
-        csv_writer,
-        &mut file,
-        columns.iter(),
-        &mut bytes_since_flush,
-    )
-    .await?;
+    let mut file = CsvFileWriter::create(path).await?;
+    file.write_record(columns.iter()).await?;
     for row in &values {
-        csv_writer = write_csv_record(
-            csv_writer,
-            &mut file,
-            row.iter().map(cached_csv_cell),
-            &mut bytes_since_flush,
-        )
-        .await?;
+        file.write_record(row.iter().map(cached_csv_cell)).await?;
     }
-    let encoded = csv_writer
-        .into_inner()
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    file.write_all(&encoded)
-        .await
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    file.flush()
-        .await
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    Ok(())
-}
-
-async fn write_csv_record<I>(
-    mut csv_writer: csv::Writer<Vec<u8>>,
-    file: &mut BufWriter<tokio::fs::File>,
-    record: I,
-    bytes_since_flush: &mut usize,
-) -> Result<csv::Writer<Vec<u8>>, DbOperationError>
-where
-    I: IntoIterator,
-    I::Item: AsRef<[u8]>,
-{
-    csv_writer.write_record(record)?;
-    csv_writer
-        .flush()
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-
-    *bytes_since_flush = csv_writer.get_ref().len();
-    if *bytes_since_flush >= CSV_FLUSH_THRESHOLD {
-        let mut encoded = csv_writer
-            .into_inner()
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-        file.write_all(&encoded)
-            .await
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-        file.flush()
-            .await
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-        *bytes_since_flush = 0;
-        encoded.clear();
-        csv_writer = csv::WriterBuilder::new().from_writer(encoded);
-    }
-    Ok(csv_writer)
+    file.finish().await
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::adapters::csv_export::CSV_FLUSH_THRESHOLD;
+
     use super::*;
     use tempfile::tempdir;
 
@@ -130,6 +68,11 @@ mod tests {
         #[test]
         fn blob_is_uppercase_hex() {
             assert_eq!(cached_csv_cell(&QueryValue::Blob(vec![0xAB, 0xCD])), "ABCD");
+        }
+
+        #[test]
+        fn text_keeps_a_literal_hex_prefix() {
+            assert_eq!(cached_csv_cell(&QueryValue::text("0x00FFA1")), "0x00FFA1");
         }
 
         #[test]
@@ -220,6 +163,26 @@ mod tests {
             assert_eq!(
                 std::fs::read_to_string(path).unwrap(),
                 format!("data\n{big_value}\n")
+            );
+        }
+
+        #[tokio::test]
+        async fn preserves_cached_rows_larger_than_mysql_field_limit() {
+            let dir = tempdir().unwrap();
+            let path = dir.path().join("large_cached_export.csv");
+            let big_value = "x".repeat(16 * 1024 * 1024 + 1);
+
+            write_cached_result_csv(
+                path.clone(),
+                vec!["data".to_string()],
+                vec![vec![QueryValue::Text(big_value.clone())]],
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(
+                std::fs::metadata(path).unwrap().len(),
+                ("data\n".len() + big_value.len() + 1) as u64
             );
         }
 

@@ -28,7 +28,7 @@ pub fn reduce(
     now: Instant,
     services: &AppServices,
 ) -> Vec<Effect> {
-    let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+    let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
     if !feature_policy.is_enabled(action.feature_requirement_for_state(state)) {
         return vec![];
     }
@@ -82,7 +82,7 @@ fn reduce_inner(
         }
         Action::Quit => {
             state.should_quit = true;
-            vec![]
+            vec![Effect::CancelActiveTasks]
         }
         Action::Resize(w, h) => {
             state.ui.set_terminal_width(w);
@@ -106,7 +106,7 @@ fn reduce_inner(
                     .cloned();
                 if let Some(table) = table {
                     state.modal.set_mode(InputMode::Normal);
-                    return select_table(state, &table);
+                    return select_table(state, &table, now);
                 }
             } else if state.modal.active_mode() == InputMode::Normal {
                 if state.connection_error.error_info.is_some() {
@@ -122,7 +122,7 @@ fn reduce_inner(
                     .copied()
                     .cloned();
                 if let Some(table) = table {
-                    return select_table(state, &table);
+                    return select_table(state, &table, now);
                 }
             } else if state.modal.active_mode() == InputMode::CommandPalette {
                 use crate::update::input::palette::palette_action_for_index;
@@ -130,7 +130,7 @@ fn reduce_inner(
                 let cmd_action = palette_action_for_index(
                     state.ui.table_picker().selected(),
                     state.settings.saved_keymap_preset(),
-                    state.session.active_engine_feature_profile(),
+                    &state.session.active_engine_feature_profile(),
                 );
                 state.modal.set_mode(InputMode::Normal);
                 return reduce(state, cmd_action, now, services);
@@ -159,7 +159,7 @@ fn reduce_inner(
     }
 }
 
-fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
+fn select_table(state: &mut AppState, table: &TableSummary, now: Instant) -> Vec<Effect> {
     let generation = state
         .session
         .select_table(&table.schema, &table.name, &mut state.query);
@@ -178,6 +178,12 @@ fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
             generation,
             run_id,
         });
+    } else {
+        let message = "No active connection".to_string();
+        state
+            .session
+            .mark_table_detail_failed(generation, message.clone());
+        state.messages.set_error_at(message, now);
     }
     effects.push(Effect::DispatchActions(vec![Action::ExecutePreview(
         TableTarget {
@@ -195,10 +201,12 @@ mod tests {
 
     use super::*;
     use crate::domain::{ConnectionId, DatabaseType};
+    use crate::model::browse::session::TableDetailState;
     use crate::ports::outbound::DbOperationError;
     use crate::ports::outbound::connection_store::ConnectionStoreError;
     use crate::update::action::ModalKind;
-    use crate::update::action::{ConnectionSaveError, ConnectionTarget};
+    use crate::update::action::QueryCompletionContext;
+    use crate::update::action::{ConnectionSaveError, ConnectionTarget, SmartErRefreshError};
     use crate::update::action::{InputTarget, SelectMotion};
     use crate::update::test_fixtures;
     fn create_test_state() -> AppState {
@@ -210,14 +218,14 @@ mod tests {
         use rstest::rstest;
 
         #[test]
-        fn quit_sets_should_quit_and_returns_no_effects() {
+        fn quit_sets_should_quit_and_cancels_active_tasks() {
             let mut state = create_test_state();
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::Quit, now, &AppServices::stub());
 
             assert!(state.should_quit);
-            assert!(effects.is_empty());
+            assert!(matches!(effects.as_slice(), [Effect::CancelActiveTasks]));
         }
 
         #[test]
@@ -291,6 +299,21 @@ mod tests {
 
             assert_eq!(state.ui.explorer_selected(), 0);
         }
+
+        #[test]
+        fn selecting_table_without_connection_does_not_leave_inspector_loading() {
+            let mut state = create_test_state();
+            let now = Instant::now();
+            let table = TableSummary::new("public".to_string(), "users".to_string(), None, false);
+
+            let effects = select_table(&mut state, &table, now);
+
+            assert!(matches!(
+                state.session.table_detail_state(),
+                TableDetailState::Error(message) if message == "No active connection"
+            ));
+            assert!(matches!(effects.first(), Some(Effect::CancelActiveTasks)));
+        }
     }
 
     mod feature_policy_guard {
@@ -310,7 +333,7 @@ mod tests {
                 .set_success_at("existing message".to_string(), now);
             state.result_interaction.start_yank_operator();
             let er_status = state.er_preparation.status();
-            let jsonb_flash_active = state.flash_timers.is_active(FlashId::JsonbDetail, now);
+            let json_flash_active = state.flash_timers.is_active(FlashId::JsonDetail, now);
 
             let effects = reduce(state, action, now, &AppServices::stub());
 
@@ -321,8 +344,8 @@ mod tests {
             assert!(state.result_interaction.is_yank_operator_pending());
             assert_eq!(state.er_preparation.status(), er_status);
             assert_eq!(
-                state.flash_timers.is_active(FlashId::JsonbDetail, now),
-                jsonb_flash_active
+                state.flash_timers.is_active(FlashId::JsonDetail, now),
+                json_flash_active
             );
         }
 
@@ -335,6 +358,7 @@ mod tests {
             assert_unsupported_action_is_a_noop(
                 &mut state,
                 Action::ErDiagramOpened(ErDiagramInfo {
+                    run_id: 0,
                     path: "diagram.svg".to_string(),
                     table_count: 1,
                     total_tables: 1,
@@ -344,11 +368,11 @@ mod tests {
         }
 
         #[test]
-        fn unsupported_jsonb_and_analyze_actions_are_total_noops() {
-            let mut jsonb_state = create_test_state();
-            test_fixtures::activate_sqlite_connection(&mut jsonb_state, "sqlite://test.db");
-            assert_unsupported_action_is_a_noop(&mut jsonb_state, Action::JsonbYankSuccess);
-            assert_unsupported_action_is_a_noop(&mut jsonb_state, Action::JsonbEnterEdit);
+        fn unsupported_json_and_analyze_actions_are_total_noops() {
+            let mut json_state = create_test_state();
+            test_fixtures::activate_sqlite_connection(&mut json_state, "sqlite://test.db");
+            assert_unsupported_action_is_a_noop(&mut json_state, Action::JsonYankSuccess);
+            assert_unsupported_action_is_a_noop(&mut json_state, Action::JsonEnterEdit);
 
             let mut er_state = create_test_state();
             test_fixtures::activate_sqlite_connection(&mut er_state, "sqlite://test.db");
@@ -357,27 +381,27 @@ mod tests {
             assert_unsupported_action_is_a_noop(&mut er_state, Action::Paste("after".to_string()));
             assert_eq!(er_state.ui.er_picker().filter_input().content(), "before");
 
-            let mut jsonb_edit_state = create_test_state();
-            test_fixtures::activate_sqlite_connection(&mut jsonb_edit_state, "sqlite://test.db");
-            jsonb_edit_state.modal.set_mode(InputMode::JsonbEdit);
-            jsonb_edit_state
-                .jsonb_detail
+            let mut json_edit_state = create_test_state();
+            test_fixtures::activate_sqlite_connection(&mut json_edit_state, "sqlite://test.db");
+            json_edit_state.modal.set_mode(InputMode::JsonEdit);
+            json_edit_state
+                .json_detail
                 .editor_mut()
                 .set_content("before".to_string());
             assert_unsupported_action_is_a_noop(
-                &mut jsonb_edit_state,
+                &mut json_edit_state,
                 Action::Paste("after".to_string()),
             );
-            assert_eq!(jsonb_edit_state.jsonb_detail.editor().content(), "before");
+            assert_eq!(json_edit_state.json_detail.editor().content(), "before");
 
-            let mut jsonb_detail_state = create_test_state();
-            test_fixtures::activate_sqlite_connection(&mut jsonb_detail_state, "sqlite://test.db");
-            jsonb_detail_state.modal.set_mode(InputMode::JsonbDetail);
+            let mut json_detail_state = create_test_state();
+            test_fixtures::activate_sqlite_connection(&mut json_detail_state, "sqlite://test.db");
+            json_detail_state.modal.set_mode(InputMode::JsonDetail);
             assert_unsupported_action_is_a_noop(
-                &mut jsonb_detail_state,
+                &mut json_detail_state,
                 Action::BeginKeySequence(Prefix::G),
             );
-            assert_eq!(jsonb_detail_state.ui.key_sequence(), KeySequenceState::Idle);
+            assert_eq!(json_detail_state.ui.key_sequence(), KeySequenceState::Idle);
 
             let mut analyze_state = create_test_state();
             test_fixtures::activate_sqlite_connection(&mut analyze_state, "sqlite://test.db");
@@ -412,6 +436,8 @@ mod tests {
                 &mut explain_state,
                 Action::ExplainCompleted {
                     dsn: "sqlite://test.db".to_string(),
+                    database_type: DatabaseType::SQLite,
+                    database_generation: 0,
                     run_id: 1,
                     query: "SELECT 1".to_string(),
                     plan_text: "QUERY PLAN".to_string(),
@@ -424,6 +450,7 @@ mod tests {
                 &mut explain_state,
                 Action::ExplainFailed {
                     dsn: "sqlite://test.db".to_string(),
+                    database_generation: 0,
                     run_id: 1,
                     error: DbOperationError::QueryFailed("error".to_string()),
                     is_analyze: true,
@@ -1323,7 +1350,7 @@ mod tests {
             ));
             assert_eq!(state.input_mode(), InputMode::ConnectionError);
             assert!(state.connection_error.error_info.is_some());
-            assert!(matches!(effects.as_slice(), [Effect::CancelActiveQuery]));
+            assert!(matches!(effects.as_slice(), [Effect::CancelActiveTasks]));
         }
 
         #[test]
@@ -2016,16 +2043,22 @@ mod tests {
                 .connection_setup
                 .database
                 .set_content("mydb".to_string());
+            let run_id = state.session.begin_connection_save();
             let now = Instant::now();
 
             let effects = reduce(
                 &mut state,
-                Action::ConnectionSaveCompleted(ConnectionTarget {
-                    id: ConnectionId::new(),
-                    dsn: "postgres://db.example.com/mydb".to_string(),
-                    name: "Test Connection".to_string(),
-                    database_type: DatabaseType::PostgreSQL,
-                }),
+                Action::ConnectionSaveCompleted {
+                    target: ConnectionTarget {
+                        id: ConnectionId::new(),
+                        dsn: "postgres://db.example.com/mydb".to_string(),
+                        name: "Test Connection".to_string(),
+                        database_type: DatabaseType::PostgreSQL,
+                        database: None,
+                    },
+                    run_id,
+                    mysql_lower_case_table_names: None,
+                },
                 now,
                 &AppServices::stub(),
             );
@@ -2044,13 +2077,18 @@ mod tests {
         fn save_failed_sets_error_message() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConnectionSetup);
+            let run_id = state.session.begin_connection_save();
             let now = Instant::now();
 
             let effects = reduce(
                 &mut state,
-                Action::ConnectionSaveFailed(ConnectionSaveError::Store(ConnectionStoreError::Io(
-                    Arc::new(std::io::Error::other("Write error")),
-                ))),
+                Action::ConnectionSaveFailed {
+                    error: ConnectionSaveError::Store(ConnectionStoreError::Io(Arc::new(
+                        std::io::Error::other("Write error"),
+                    ))),
+                    database_type: DatabaseType::PostgreSQL,
+                    run_id,
+                },
                 now,
                 &AppServices::stub(),
             );
@@ -2082,7 +2120,7 @@ mod tests {
         }
 
         #[test]
-        fn cancel_after_save_returns_to_normal_and_dispatches_try_connect() {
+        fn cancel_after_save_returns_to_normal_without_action_redispatch() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConnectionSetup);
             state.connection_setup.set_first_run(false);
@@ -2096,8 +2134,7 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(effects[0], Effect::DispatchActions(_)));
+            assert!(effects.is_empty());
         }
     }
 
@@ -2118,7 +2155,7 @@ mod tests {
                 .open("", "", ConfirmIntent::QuitNoConnection);
             let now = Instant::now();
 
-            reduce(
+            let effects = reduce(
                 &mut state,
                 Action::ConfirmDialogConfirm,
                 now,
@@ -2127,6 +2164,7 @@ mod tests {
 
             assert!(state.should_quit);
             assert!(state.confirm_dialog.intent().is_none());
+            assert!(matches!(effects.as_slice(), [Effect::CancelActiveTasks]));
         }
 
         #[test]
@@ -2204,6 +2242,7 @@ mod tests {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id: 1,
                     affected_rows: 1,
+                    diagnostics: Vec::new(),
                 },
                 now,
                 &AppServices::stub(),
@@ -2532,16 +2571,22 @@ mod tests {
                 .session
                 .set_connection_state(ConnectionState::NotConnected);
             state.session.set_metadata_state(MetadataState::NotLoaded);
+            let run_id = state.session.begin_connection_save();
             let now = Instant::now();
 
             let effects = reduce(
                 &mut state,
-                Action::ConnectionSaveCompleted(ConnectionTarget {
-                    id: ConnectionId::new(),
-                    dsn: "postgres://localhost/test".to_string(),
-                    name: "Test".to_string(),
-                    database_type: DatabaseType::PostgreSQL,
-                }),
+                Action::ConnectionSaveCompleted {
+                    target: ConnectionTarget {
+                        id: ConnectionId::new(),
+                        dsn: "postgres://localhost/test".to_string(),
+                        name: "Test".to_string(),
+                        database_type: DatabaseType::PostgreSQL,
+                        database: None,
+                    },
+                    run_id,
+                    mysql_lower_case_table_names: None,
+                },
                 now,
                 &AppServices::stub(),
             );
@@ -2579,6 +2624,7 @@ mod tests {
                     dsn: "postgres://localhost/other".to_string(),
                     name: "Other".to_string(),
                     database_type: DatabaseType::PostgreSQL,
+                    database: None,
                 }),
                 now,
                 &AppServices::stub(),
@@ -2631,6 +2677,7 @@ mod tests {
                     dsn: "postgres://localhost/cached".to_string(),
                     name: "Cached".to_string(),
                     database_type: DatabaseType::PostgreSQL,
+                    database: None,
                 }),
                 now,
                 &AppServices::stub(),
@@ -2648,7 +2695,7 @@ mod tests {
             assert!(
                 effects
                     .iter()
-                    .any(|effect| matches!(effect, Effect::CancelActiveQuery))
+                    .any(|effect| matches!(effect, Effect::CancelActiveTasks))
             );
             assert!(
                 effects
@@ -2682,6 +2729,7 @@ mod tests {
                     dsn: "postgres://localhost/b".to_string(),
                     name: "B".to_string(),
                     database_type: DatabaseType::PostgreSQL,
+                    database: None,
                 }),
                 Instant::now(),
                 &AppServices::stub(),
@@ -2694,6 +2742,7 @@ mod tests {
                     dsn: dsn_a.clone(),
                     name: "A".to_string(),
                     database_type: DatabaseType::PostgreSQL,
+                    database: None,
                 }),
                 Instant::now(),
                 &AppServices::stub(),
@@ -2954,6 +3003,44 @@ mod tests {
         }
 
         #[test]
+        fn failed_refresh_prefetches_source_and_selected_tables() {
+            let mut state = state_with_metadata();
+            state
+                .er_preparation
+                .set_targets(vec!["public.users".to_string()]);
+            let run_id = state.er_preparation.start_waiting_run();
+
+            let effects = reduce(
+                &mut state,
+                Action::SmartErRefreshFailed(SmartErRefreshError {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
+                    error: DbOperationError::Timeout("timed out".to_string()),
+                    new_metadata: None,
+                }),
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(effects.iter().any(|effect| matches!(
+                effect,
+                Effect::DispatchActions(actions)
+                    if actions.iter().any(|action| matches!(action, Action::StartPrefetchAll))
+            )));
+
+            reduce(
+                &mut state,
+                Action::StartPrefetchAll,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(state.sql_modal.is_prefetch_queued("public.users"));
+            assert!(state.sql_modal.is_prefetch_queued("public.posts"));
+            assert!(state.er_preparation.fk_expanded());
+        }
+
+        #[test]
         fn prefetch_complete_dispatches_er_generate() {
             let mut state = state_with_metadata();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
@@ -3026,6 +3113,7 @@ mod tests {
         use super::*;
         use crate::domain::{DatabaseMetadata, QueryResult, QuerySource};
         use crate::model::browse::query_execution::PREVIEW_PAGE_SIZE;
+        use crate::test_support;
 
         fn state_after_confirm_and_complete() -> (AppState, Instant) {
             let mut state = create_test_state();
@@ -3079,6 +3167,20 @@ mod tests {
                 reduce(&mut state, action, now, &AppServices::stub());
             }
 
+            let generation = state.session.selection_generation();
+            let detail_run_id = state.session.begin_table_detail_run();
+            reduce(
+                &mut state,
+                Action::TableDetailLoaded {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id: detail_run_id,
+                    detail: Box::new(test_support::table::minimal("public", "users")),
+                    generation,
+                },
+                now,
+                &AppServices::stub(),
+            );
+
             // Simulate QueryCompleted with a full page of results
             let current_gen = state.session.selection_generation();
             let result = Arc::new(QueryResult::success(
@@ -3095,8 +3197,10 @@ mod tests {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id,
                     result,
-                    generation: current_gen,
-                    target_page: Some(0),
+                    context: QueryCompletionContext::Preview {
+                        generation: current_gen,
+                        target_page: 0,
+                    },
                 },
                 now,
                 &AppServices::stub(),
@@ -3111,7 +3215,6 @@ mod tests {
 
             assert_eq!(state.query.pagination.schema(), "public");
             assert_eq!(state.query.pagination.table(), "users");
-            assert_eq!(state.query.pagination.total_rows_estimate(), Some(1200));
             assert_eq!(state.query.pagination.current_page(), 0);
             assert!(!state.query.pagination.reached_end());
         }
@@ -3196,7 +3299,7 @@ mod tests {
         fn palette_index_of(state: &AppState, target: impl Fn(&Action) -> bool) -> usize {
             palette_commands(
                 state.settings.saved_keymap_preset(),
-                state.session.active_engine_feature_profile(),
+                &state.session.active_engine_feature_profile(),
             )
             .enumerate()
             .find(|(_, kb)| target(&kb.action))

@@ -1,5 +1,5 @@
 use crate::model::app_state::AppState;
-use crate::model::browse::jsonb_detail::JsonbDetailMode;
+use crate::model::browse::json_detail::JsonDetailMode;
 use crate::model::connection::setup::ConnectionField;
 use crate::model::shared::cursor::CursorMove;
 use crate::model::shared::focused_pane::FocusedPane;
@@ -155,10 +155,10 @@ pub enum HelpOrigin {
         keymap_preset: KeymapPreset,
     },
     QueryHistoryPicker,
-    JsonbDetail {
-        mode: JsonbHelpMode,
+    JsonDetail {
+        mode: JsonHelpMode,
     },
-    JsonbEdit,
+    JsonEdit,
     CellDetail {
         searching: bool,
     },
@@ -183,8 +183,8 @@ impl HelpOrigin {
             | Self::ConfirmDialog
             | Self::ConnectionSelector
             | Self::QueryHistoryPicker
-            | Self::JsonbDetail { .. }
-            | Self::JsonbEdit
+            | Self::JsonDetail { .. }
+            | Self::JsonEdit
             | Self::CellDetail { .. }
             | Self::RowDetail => KeymapPreset::Default,
         }
@@ -224,10 +224,10 @@ impl HelpOrigin {
                 keymap_preset: state.settings.saved_keymap_preset(),
             },
             InputMode::QueryHistoryPicker => Self::QueryHistoryPicker,
-            InputMode::JsonbDetail => Self::JsonbDetail {
-                mode: JsonbHelpMode::from_state(state),
+            InputMode::JsonDetail => Self::JsonDetail {
+                mode: JsonHelpMode::from_state(state),
             },
-            InputMode::JsonbEdit => Self::JsonbEdit,
+            InputMode::JsonEdit => Self::JsonEdit,
             InputMode::CellDetail => Self::CellDetail {
                 searching: state.cell_detail.search().is_active(),
             },
@@ -263,8 +263,8 @@ impl HelpOrigin {
             Self::ConnectionSelector => "Connection Selector",
             Self::ErTablePicker { .. } => "ER Table Picker",
             Self::QueryHistoryPicker => "Query History Picker",
-            Self::JsonbDetail { mode } => mode.label(),
-            Self::JsonbEdit => "JSONB Edit",
+            Self::JsonDetail { mode } => mode.label(),
+            Self::JsonEdit => "JSON Edit",
             Self::CellDetail { searching: true } => "Cell Detail Search",
             Self::CellDetail { searching: false } => "Cell Detail",
             Self::RowDetail => "Row Detail",
@@ -291,15 +291,17 @@ impl SqlHelpMode {
             | SqlModalStatus::ConfirmingRisk { .. }
             | SqlModalStatus::ConfirmingAnalyzeRisk { .. } => Self::Confirm,
             SqlModalStatus::Running => Self::Running,
-            SqlModalStatus::Normal | SqlModalStatus::Success | SqlModalStatus::Error => match state
-                .session
-                .active_engine_feature_profile()
-                .normalize_sql_modal_tab(state.sql_modal.active_tab())
-            {
-                SqlModalTab::Sql => Self::Normal,
-                SqlModalTab::Plan => Self::Plan,
-                SqlModalTab::Compare => Self::Compare,
-            },
+            SqlModalStatus::Normal | SqlModalStatus::Success(_) | SqlModalStatus::Error(_) => {
+                match state
+                    .session
+                    .active_engine_feature_profile()
+                    .normalize_sql_modal_tab(state.sql_modal.active_tab())
+                {
+                    SqlModalTab::Sql => Self::Normal,
+                    SqlModalTab::Plan => Self::Plan,
+                    SqlModalTab::Compare => Self::Compare,
+                }
+            }
         }
     }
 
@@ -316,26 +318,26 @@ impl SqlHelpMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum JsonbHelpMode {
+pub enum JsonHelpMode {
     Detail,
     Search,
     Edit,
 }
 
-impl JsonbHelpMode {
+impl JsonHelpMode {
     fn from_state(state: &AppState) -> Self {
-        match state.jsonb_detail.mode() {
-            JsonbDetailMode::Viewing => Self::Detail,
-            JsonbDetailMode::Editing => Self::Edit,
-            JsonbDetailMode::Searching => Self::Search,
+        match state.json_detail.mode() {
+            JsonDetailMode::Viewing => Self::Detail,
+            JsonDetailMode::Editing => Self::Edit,
+            JsonDetailMode::Searching => Self::Search,
         }
     }
 
     fn label(self) -> &'static str {
         match self {
-            Self::Detail => "JSONB Detail",
-            Self::Search => "JSONB Search",
-            Self::Edit => "JSONB Edit",
+            Self::Detail => "JSON Detail",
+            Self::Search => "JSON Search",
+            Self::Edit => "JSON Edit",
         }
     }
 }

@@ -1,29 +1,31 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-#[cfg(test)]
-use crate::domain::QueryValue;
+use crate::domain::{RefreshScope, WriteDiagnostic};
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::{DeleteRefreshTarget, PostDeleteRowSelection};
 use crate::model::shared::confirm_dialog::ConfirmIntent;
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::json::json_diff::compute_json_diff;
 use crate::policy::preview_cell_text::{
-    CellPresentationPolicy, normalize_for_write_diff, uses_structured_json_diff,
+    CellPresentationPolicy, normalize_for_write_diff, normalize_structured_json_for_write,
+    uses_structured_json_diff,
 };
 use crate::policy::write::inline_cell_edit::build_inline_edited_value;
 use crate::policy::write::write_guardrails::{
     ColumnDiff, RiskLevel, TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
 };
 use crate::policy::write::write_update::escape_preview_value;
-use crate::ports::outbound::AccessMode;
+use crate::ports::outbound::{AccessMode, DbOperationError};
 use crate::services::AppServices;
 use crate::update::action::Action;
-use crate::update::browse::query::preview_effect_for_current_table;
+use crate::update::browse::query::{
+    execution::refresh_effects_for_scope, preview_effect_for_current_table,
+};
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{
     EditGuardrailError, build_bulk_delete_preview, editable_preview_base, ensure_column_writable,
-    reject_sqlite_null_pk,
+    reject_pending_mysql_connection_probe, reject_sqlite_null_pk,
 };
 
 fn build_update_preview(
@@ -66,17 +68,43 @@ fn build_update_preview(
         state.result_interaction.cell_edit().draft_value(),
     )?;
 
+    let database_type = state.session.active_database_type_or_default();
+    let column_data_type = state
+        .visible_preview_column(col_idx)
+        .map_or("", |c| c.data_type.as_str());
+    let handling = CellPresentationPolicy::new(database_type, column_data_type, "").diff_handling();
+    let (before, after) = if uses_structured_json_diff(handling) {
+        (
+            normalize_structured_json_for_write(
+                state.result_interaction.cell_edit().original_value(),
+            )
+            .map_err(|error| EditGuardrailError::InvalidJson(error.to_string()))?,
+            normalize_structured_json_for_write(state.result_interaction.cell_edit().draft_value())
+                .map_err(|error| EditGuardrailError::InvalidJson(error.to_string()))?,
+        )
+    } else {
+        (
+            normalize_for_write_diff(
+                state.result_interaction.cell_edit().original_value(),
+                handling,
+            ),
+            normalize_for_write_diff(state.result_interaction.cell_edit().draft_value(), handling),
+        )
+    };
+    if before == after {
+        return Err(EditGuardrailError::NoSemanticChanges);
+    }
+
     let identity_pairs = identity.identity_pairs_for_row(result, row_idx);
     if let Some(pairs) = identity_pairs.as_deref() {
         reject_sqlite_null_pk(state.session.active_database_type_or_default(), pairs)?;
     }
-    let predicate_pairs = identity.predicate_pairs_for_row(result, row_idx);
     let target = TargetSummary {
         schema: state.query.pagination.schema().to_string(),
         table: state.query.pagination.table().to_string(),
         key_values: identity_pairs.clone().unwrap_or_default(),
     };
-    let has_where = predicate_pairs
+    let has_where = identity_pairs
         .as_ref()
         .is_some_and(|pairs| !pairs.is_empty());
     let has_stable_row_identity = identity_pairs.is_some();
@@ -94,29 +122,13 @@ fn build_update_preview(
         &target.table,
         &column_name,
         &new_value,
-        &predicate_pairs.unwrap_or_default(),
+        &identity_pairs.unwrap_or_default(),
     );
     let preview = WritePreview {
         operation: WriteOperation::Update,
         sql,
         target_summary: target,
         diff: {
-            let database_type = state.session.active_database_type_or_default();
-            let column_data_type = state
-                .session
-                .table_detail()
-                .and_then(|td| td.columns.get(col_idx))
-                .map_or("", |c| c.data_type.as_str());
-            let handling =
-                CellPresentationPolicy::new(database_type, column_data_type, "").diff_handling();
-            let before = normalize_for_write_diff(
-                state.result_interaction.cell_edit().original_value(),
-                handling,
-            );
-            let after = normalize_for_write_diff(
-                state.result_interaction.cell_edit().draft_value(),
-                handling,
-            );
             let json_diff = uses_structured_json_diff(handling)
                 .then(|| compute_json_diff(&before, &after, 1))
                 .flatten();
@@ -167,6 +179,9 @@ pub fn reduce_write(
 ) -> DispatchResult {
     match action {
         Action::SubmitCellEditWrite => {
+            if reject_pending_mysql_connection_probe(state, now) {
+                return DispatchResult::handled();
+            }
             if !state.result_interaction.staged_delete_rows().is_empty() {
                 match build_bulk_delete_preview(state, services) {
                     Ok(result) => {
@@ -176,9 +191,7 @@ pub fn reduce_write(
                             result.target_row,
                             staged_count,
                         );
-                        return DispatchResult::handled_with(vec![Effect::DispatchActions(vec![
-                            Action::OpenWritePreviewConfirm(Box::new(result.preview)),
-                        ])]);
+                        return open_write_preview_confirm(state, &result.preview, now);
                     }
                     Err(err) => {
                         state.messages.set_error_at(err.to_string(), now);
@@ -196,9 +209,7 @@ pub fn reduce_write(
             }
 
             match build_update_preview(state, services) {
-                Ok(preview) => DispatchResult::handled_with(vec![Effect::DispatchActions(vec![
-                    Action::OpenWritePreviewConfirm(Box::new(preview)),
-                ])]),
+                Ok(preview) => open_write_preview_confirm(state, &preview, now),
                 Err(err) => {
                     state.messages.set_error_at(err.to_string(), now);
                     DispatchResult::handled()
@@ -206,54 +217,10 @@ pub fn reduce_write(
             }
         }
 
-        Action::OpenWritePreviewConfirm(preview) => {
-            if state.session.is_read_only() {
-                state.messages.set_error_at(
-                    "Read-only mode: write operations are disabled".to_string(),
-                    now,
-                );
+        Action::ExecuteWrite(query) => {
+            if reject_pending_mysql_connection_probe(state, now) {
                 return DispatchResult::handled();
             }
-            state
-                .result_interaction
-                .set_write_preview((**preview).clone());
-            let operation = preview.operation;
-            let title = match operation {
-                WriteOperation::Update => {
-                    state.query.clear_delete_refresh_target();
-                    format!("Confirm UPDATE: {}", preview.target_summary.table)
-                }
-                WriteOperation::Delete => {
-                    let n = state
-                        .query
-                        .pending_delete_refresh_target()
-                        .map_or(1, |target| target.expected_delete_count);
-                    format!(
-                        "Confirm DELETE: {} {} from {}",
-                        n,
-                        if n == 1 { "row" } else { "rows" },
-                        preview.target_summary.table
-                    )
-                }
-            };
-
-            state.confirm_dialog.open(
-                title,
-                build_write_preview_fallback_message(preview),
-                ConfirmIntent::ExecuteWrite {
-                    sql: preview.sql.clone(),
-                    blocked: preview.guardrail.blocked,
-                },
-            );
-            if matches!(operation, WriteOperation::Delete) {
-                state.modal.set_mode(InputMode::Normal);
-            }
-            state.modal.push_mode(InputMode::ConfirmDialog);
-
-            DispatchResult::handled()
-        }
-
-        Action::ExecuteWrite(query) => {
             if state.session.is_read_only() {
                 state.messages.set_error_at(
                     "Read-only mode: write operations are disabled".to_string(),
@@ -281,6 +248,7 @@ pub fn reduce_write(
             dsn,
             run_id,
             affected_rows,
+            diagnostics,
         } => {
             if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
@@ -294,18 +262,24 @@ pub fn reduce_write(
             state.result_interaction.clear_write_preview();
             match operation {
                 WriteOperation::Update => {
-                    if *affected_rows != 1 {
-                        state.messages.set_error_at(
-                            format!("UPDATE expected 1 row, but affected {affected_rows} rows"),
+                    if *affected_rows == 1 {
+                        state.messages.set_success_at(
+                            write_message_with_diagnostics(
+                                "Updated 1 row".to_string(),
+                                diagnostics,
+                            ),
                             now,
                         );
-                        state.modal.set_mode(InputMode::CellEdit);
-                        return DispatchResult::handled();
+                    } else {
+                        state.messages.set_error_at(
+                            write_message_with_diagnostics(
+                                format!("UPDATE expected 1 row, but affected {affected_rows} rows"),
+                                diagnostics,
+                            ),
+                            now,
+                        );
                     }
 
-                    state
-                        .messages
-                        .set_success_at("Updated 1 row".to_string(), now);
                     state.result_interaction.clear_cell_edit();
                     state.modal.set_mode(InputMode::Normal);
 
@@ -332,17 +306,23 @@ pub fn reduce_write(
                     let row_word = |n: usize| if n == 1 { "row" } else { "rows" };
                     if *affected_rows == expected {
                         state.messages.set_success_at(
-                            format!("Deleted {} {}", expected, row_word(expected)),
+                            write_message_with_diagnostics(
+                                format!("Deleted {} {}", expected, row_word(expected)),
+                                diagnostics,
+                            ),
                             now,
                         );
                     } else {
                         state.messages.set_error_at(
-                            format!(
-                                "DELETE expected {} {}, but affected {} {}",
-                                expected,
-                                row_word(expected),
-                                affected_rows,
-                                row_word(*affected_rows),
+                            write_message_with_diagnostics(
+                                format!(
+                                    "DELETE expected {} {}, but affected {} {}",
+                                    expected,
+                                    row_word(expected),
+                                    affected_rows,
+                                    row_word(*affected_rows),
+                                ),
+                                diagnostics,
                             ),
                             now,
                         );
@@ -374,29 +354,105 @@ pub fn reduce_write(
             }
 
             state.query.mark_idle();
+            let refresh_scope = match error {
+                DbOperationError::QueryFailedAfterChange { refresh_scope, .. } => *refresh_scope,
+                _ => RefreshScope::None,
+            };
             let operation = state.result_interaction.complete_write_failure();
             state.query.clear_delete_refresh_target();
             state.messages.set_error_at(error.user_message(), now);
-            state.modal.set_mode(match operation {
-                WriteOperation::Update => InputMode::CellEdit,
-                WriteOperation::Delete => InputMode::Normal,
-            });
-            DispatchResult::handled()
+            if refresh_scope == RefreshScope::None {
+                state.modal.set_mode(match operation {
+                    WriteOperation::Update => InputMode::CellEdit,
+                    WriteOperation::Delete => InputMode::Normal,
+                });
+                DispatchResult::handled()
+            } else {
+                state.result_interaction.clear_cell_edit();
+                state.result_interaction.clear_staged_deletes();
+                state.modal.set_mode(InputMode::Normal);
+                DispatchResult::handled_with(refresh_effects_for_scope(state, refresh_scope, now))
+            }
         }
 
         _ => DispatchResult::pass(),
     }
 }
 
+fn write_message_with_diagnostics(message: String, diagnostics: &[WriteDiagnostic]) -> String {
+    if diagnostics.is_empty() {
+        return message;
+    }
+
+    let details = diagnostics
+        .iter()
+        .map(WriteDiagnostic::display_message)
+        .collect::<Vec<_>>()
+        .join("; ");
+    format!("{message}; {details}")
+}
+
+fn open_write_preview_confirm(
+    state: &mut AppState,
+    preview: &WritePreview,
+    now: Instant,
+) -> DispatchResult {
+    if state.session.is_read_only() {
+        state.messages.set_error_at(
+            "Read-only mode: write operations are disabled".to_string(),
+            now,
+        );
+        return DispatchResult::handled();
+    }
+    state.result_interaction.set_write_preview(preview.clone());
+    let operation = preview.operation;
+    let title = match operation {
+        WriteOperation::Update => {
+            state.query.clear_delete_refresh_target();
+            format!("Confirm UPDATE: {}", preview.target_summary.table)
+        }
+        WriteOperation::Delete => {
+            let n = state
+                .query
+                .pending_delete_refresh_target()
+                .map_or(1, |target| target.expected_delete_count);
+            format!(
+                "Confirm DELETE: {} {} from {}",
+                n,
+                if n == 1 { "row" } else { "rows" },
+                preview.target_summary.table
+            )
+        }
+    };
+
+    state.confirm_dialog.open(
+        title,
+        build_write_preview_fallback_message(preview),
+        ConfirmIntent::ExecuteWrite {
+            sql: preview.sql.clone(),
+            blocked: preview.guardrail.blocked,
+        },
+    );
+    if matches!(operation, WriteOperation::Delete) {
+        state.modal.set_mode(InputMode::Normal);
+    }
+    state.modal.push_mode(InputMode::ConfirmDialog);
+
+    DispatchResult::handled()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support;
     use crate::update::test_fixtures;
 
     use crate::domain::connection::ConnectionId;
-    use crate::domain::{ColumnAttributes, DatabaseType, QueryResult, QuerySource};
+    use crate::domain::{
+        ColumnAttributes, DatabaseType, QueryResult, QuerySource, QueryValue, WriteDiagnosticLevel,
+    };
     use crate::model::browse::query_execution::{
-        DeleteRefreshTarget, PREVIEW_PAGE_SIZE, PostDeleteRowSelection, QueryStatus,
+        DeleteRefreshTarget, PREVIEW_PAGE_SIZE, PostDeleteRowSelection,
     };
     use crate::policy::write::write_guardrails::{
         GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
@@ -408,11 +464,24 @@ mod tests {
     use std::sync::Arc;
 
     fn write_succeeded_action(state: &mut AppState, affected_rows: usize) -> Action {
+        write_succeeded_action_with_diagnostics(state, affected_rows, Vec::new())
+    }
+
+    fn write_succeeded_action_with_diagnostics(
+        state: &mut AppState,
+        affected_rows: usize,
+        diagnostics: Vec<WriteDiagnostic>,
+    ) -> Action {
+        let dsn = state
+            .session
+            .dsn()
+            .map_or_else(|| "postgres://localhost/test".to_string(), str::to_string);
         let run_id = begin_query_run(state);
         Action::ExecuteWriteSucceeded {
-            dsn: "postgres://localhost/test".to_string(),
+            dsn,
             run_id,
             affected_rows,
+            diagnostics,
         }
     }
 
@@ -444,6 +513,49 @@ mod tests {
                 .result_interaction
                 .replace_cell_edit_draft("Bob".to_string());
             state
+        }
+
+        fn mysql_editable_state(data_type: &str, original: QueryValue, draft: &str) -> AppState {
+            let original_text = original.display_value();
+            let mut state = AppState::new("test_project".to_string());
+            test_fixtures::activate_mysql_connection(&mut state, "mysql://localhost/test");
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    "SELECT * FROM users".to_string(),
+                    vec!["id".to_string(), "name".to_string()],
+                    vec![vec![QueryValue::SqlLiteral("1".to_string()), original]],
+                    10,
+                    QuerySource::Preview,
+                )));
+            let mut detail = users_table_detail();
+            detail.columns[1].data_type = data_type.to_string();
+            state.session.set_table_detail_raw(Some(detail));
+            state.query.pagination.reset_for_table("public", "users");
+            state.modal.set_mode(InputMode::CellEdit);
+            state
+                .result_interaction
+                .begin_cell_edit(0, 1, original_text);
+            state
+                .result_interaction
+                .replace_cell_edit_draft(draft.to_string());
+            state
+        }
+
+        fn submit_write_preview(state: &mut AppState) -> WritePreview {
+            let effects = dispatch_query(
+                state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+            assert!(effects.is_empty());
+            state
+                .result_interaction
+                .pending_write_preview()
+                .cloned()
+                .expect("write preview")
         }
 
         #[test]
@@ -620,24 +732,79 @@ mod tests {
         fn submit_write_opens_confirm_dialog() {
             let mut state = editable_state();
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
-            assert_eq!(effects.len(), 1);
+            let preview = submit_write_preview(&mut state);
 
-            let dispatched = match &effects[0] {
-                Effect::DispatchActions(actions) => actions.first().expect("action"),
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
-            match dispatched {
-                Action::OpenWritePreviewConfirm(preview) => {
-                    assert!(preview.sql.contains("UPDATE"));
-                }
-                other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
+            assert!(preview.sql.contains("UPDATE"));
+        }
+
+        #[test]
+        fn mysql_unchanged_grid_values_return_no_changes_before_update_preview() {
+            let cases = [
+                ("text", QueryValue::text("Alice"), "Alice"),
+                (
+                    "decimal(10,2)",
+                    QueryValue::SqlLiteral("42.50".to_string()),
+                    "42.50",
+                ),
+                ("boolean", QueryValue::SqlLiteral("1".to_string()), "1"),
+                ("date", QueryValue::text("2026-08-21"), "2026-08-21"),
+                (
+                    "datetime",
+                    QueryValue::text("2026-08-21 12:34:56"),
+                    "2026-08-21 12:34:56",
+                ),
+                ("time", QueryValue::text("12:34:56"), "12:34:56"),
+            ];
+
+            for (data_type, original, draft) in cases {
+                let mut state = mysql_editable_state(data_type, original, draft);
+
+                let effects = dispatch_query(
+                    &mut state,
+                    &Action::SubmitCellEditWrite,
+                    Instant::now(),
+                    &AppServices::stub(),
+                )
+                .unwrap();
+
+                assert!(effects.is_empty(), "{data_type} should not send SQL");
+                assert_eq!(
+                    state.messages.last_error.as_deref(),
+                    Some("No semantic changes to write"),
+                    "{data_type} should be a no-op"
+                );
+                assert!(state.result_interaction.pending_write_preview().is_none());
+            }
+        }
+
+        #[test]
+        fn mysql_changed_grid_values_still_open_update_preview() {
+            let cases = [
+                ("text", QueryValue::text("Alice"), "Bob"),
+                (
+                    "decimal(10,2)",
+                    QueryValue::SqlLiteral("42.50".to_string()),
+                    "43.50",
+                ),
+                ("boolean", QueryValue::SqlLiteral("1".to_string()), "0"),
+                ("date", QueryValue::text("2026-08-21"), "2026-08-22"),
+                (
+                    "datetime",
+                    QueryValue::text("2026-08-21 12:34:56"),
+                    "2026-08-21 12:34:57",
+                ),
+                ("time", QueryValue::text("12:34:56"), "12:34:57"),
+            ];
+
+            for (data_type, original, draft) in cases {
+                let before = original.display_value();
+                let mut state = mysql_editable_state(data_type, original, draft);
+
+                let preview = submit_write_preview(&mut state);
+
+                assert_eq!(preview.diff[0].before, before, "{data_type} before");
+                assert_eq!(preview.diff[0].after, draft, "{data_type} after");
+                assert!(preview.sql.contains("UPDATE"), "{data_type} SQL");
             }
         }
 
@@ -655,27 +822,12 @@ mod tests {
             state.session.set_table_detail_raw(Some(detail));
             state.query.pagination.reset_for_table("main", "users");
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let preview = submit_write_preview(&mut state);
 
-            let dispatched = match &effects[0] {
-                Effect::DispatchActions(actions) => actions.first().expect("action"),
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
-            match dispatched {
-                Action::OpenWritePreviewConfirm(preview) => {
-                    assert_eq!(
-                        preview.sql,
-                        "UPDATE \"users\" SET \"name\" = 'Bob' WHERE \"id\" = '1'"
-                    );
-                }
-                other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-            }
+            assert_eq!(
+                preview.sql,
+                "UPDATE \"users\" SET \"name\" = 'Bob' WHERE \"id\" = '1'"
+            );
         }
 
         #[test]
@@ -693,27 +845,12 @@ mod tests {
             state.session.set_table_detail_raw(Some(detail));
             state.query.pagination.reset_for_table("main", "users");
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let preview = submit_write_preview(&mut state);
 
-            let dispatched = match &effects[0] {
-                Effect::DispatchActions(actions) => actions.first().expect("action"),
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
-            match dispatched {
-                Action::OpenWritePreviewConfirm(preview) => {
-                    assert_eq!(
-                        preview.sql,
-                        "UPDATE \"users\" SET \"name\" = 'Bob' WHERE \"id\" = '1'"
-                    );
-                }
-                other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-            }
+            assert_eq!(
+                preview.sql,
+                "UPDATE \"users\" SET \"name\" = 'Bob' WHERE \"id\" = '1'"
+            );
         }
 
         #[test]
@@ -750,29 +887,14 @@ mod tests {
                 .result_interaction
                 .replace_cell_edit_draft("7".to_string());
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let preview = submit_write_preview(&mut state);
 
-            let dispatched = match &effects[0] {
-                Effect::DispatchActions(actions) => actions.first().expect("action"),
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
-            match dispatched {
-                Action::OpenWritePreviewConfirm(preview) => {
-                    assert!(preview.sql.contains("SET \"score\" = 7"));
-                    assert!(!preview.sql.contains("SET \"score\" = '7'"));
-                }
-                other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-            }
+            assert!(preview.sql.contains("SET \"score\" = 7"));
+            assert!(!preview.sql.contains("SET \"score\" = '7'"));
         }
 
         #[test]
-        fn sqlite_text_cell_with_nul_keeps_raw_value_into_write_preview() {
+        fn sqlite_text_cell_with_nul_keeps_raw_values_into_write_preview() {
             let mut state = AppState::new("test_project".to_string());
             state.session.activate_connection_with_dsn(
                 &ConnectionId::from_string("sqlite-test"),
@@ -801,26 +923,14 @@ mod tests {
             state
                 .result_interaction
                 .begin_cell_edit(0, 1, "a\0b".to_string());
+            state
+                .result_interaction
+                .replace_cell_edit_draft("c\0d".to_string());
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let preview = submit_write_preview(&mut state);
 
-            let dispatched = match &effects[0] {
-                Effect::DispatchActions(actions) => actions.first().expect("action"),
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
-            match dispatched {
-                Action::OpenWritePreviewConfirm(preview) => {
-                    assert_eq!(preview.diff[0].before, "a\0b");
-                    assert_eq!(preview.diff[0].after, "a\0b");
-                }
-                other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-            }
+            assert_eq!(preview.diff[0].before, "a\0b");
+            assert_eq!(preview.diff[0].after, "c\0d");
         }
 
         #[test]
@@ -857,24 +967,9 @@ mod tests {
                 .result_interaction
                 .replace_cell_edit_draft("42".to_string());
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let preview = submit_write_preview(&mut state);
 
-            let dispatched = match &effects[0] {
-                Effect::DispatchActions(actions) => actions.first().expect("action"),
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
-            match dispatched {
-                Action::OpenWritePreviewConfirm(preview) => {
-                    assert!(preview.sql.contains("SET \"score\" = 42.0"));
-                }
-                other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-            }
+            assert!(preview.sql.contains("SET \"score\" = 42.0"));
         }
 
         #[test]
@@ -978,15 +1073,15 @@ mod tests {
             );
         }
 
-        fn editable_state_with_jsonb() -> AppState {
+        fn editable_state_with_json() -> AppState {
             let mut state = AppState::new("test_project".to_string());
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             state
                 .query
-                .set_current_result(editable_preview_result_with_jsonb());
+                .set_current_result(editable_preview_result_with_json());
             state
                 .session
-                .set_table_detail_raw(Some(jsonb_table_detail()));
+                .set_table_detail_raw(Some(json_table_detail()));
             state.query.pagination.reset_for_table("public", "users");
             state.modal.set_mode(InputMode::CellEdit);
             // col 2 = metadata (jsonb)
@@ -1000,8 +1095,22 @@ mod tests {
         }
 
         #[test]
-        fn jsonb_column_produces_structured_diff() {
-            let mut state = editable_state_with_jsonb();
+        fn json_column_produces_structured_diff() {
+            let mut state = editable_state_with_json();
+
+            let preview = submit_write_preview(&mut state);
+            assert!(
+                preview.diff[0].json_diff.is_some(),
+                "jsonb column should have structured diff"
+            );
+        }
+
+        #[test]
+        fn structured_json_semantic_noop_returns_no_changes() {
+            let mut state = editable_state_with_json();
+            state
+                .result_interaction
+                .replace_cell_edit_draft(r#"{ "role": "admin" }"#.to_string());
 
             let effects = dispatch_query(
                 &mut state,
@@ -1011,29 +1120,115 @@ mod tests {
             )
             .unwrap();
 
-            let preview = match &effects[0] {
-                Effect::DispatchActions(actions) => match actions.first().expect("action") {
-                    Action::OpenWritePreviewConfirm(preview) => preview.clone(),
-                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-                },
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
-            assert!(
-                preview.diff[0].json_diff.is_some(),
-                "jsonb column should have structured diff"
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("No semantic changes to write")
+            );
+            assert!(state.result_interaction.pending_write_preview().is_none());
+        }
+
+        #[test]
+        fn json_diff_uses_visible_column_name_after_hidden_primary_key() {
+            let mut state = editable_state_with_json();
+            let mut detail = json_table_detail();
+            detail.columns[0].attributes = detail.columns[0].attributes
+                | ColumnAttributes::HIDDEN
+                | ColumnAttributes::READ_ONLY;
+            state.session.set_table_detail_raw(Some(detail));
+            state.query.set_current_result(Arc::new(
+                QueryResult::success(
+                    "SELECT `name`, `metadata` FROM `public`.`users`".to_string(),
+                    vec!["name".to_string(), "metadata".to_string()],
+                    vec![vec!["Alice".to_string(), r#"{"role":"admin"}"#.to_string()]],
+                    10,
+                    QuerySource::Preview,
+                )
+                .with_explicit_row_identity(
+                    vec!["id".to_string()],
+                    vec![vec![QueryValue::text("1")]],
+                ),
+            ));
+            state.result_interaction.clear_cell_edit();
+            state.modal.set_mode(InputMode::CellEdit);
+            state
+                .result_interaction
+                .begin_cell_edit(0, 1, r#"{"role":"admin"}"#.to_string());
+            state
+                .result_interaction
+                .replace_cell_edit_draft(r#"{"role":"user"}"#.to_string());
+
+            let preview = submit_write_preview(&mut state);
+            assert!(preview.diff[0].json_diff.is_some());
+            assert!(preview.sql.contains(r#"WHERE "id" = '1'"#));
+        }
+
+        #[test]
+        fn composite_primary_key_preserves_order_in_update_preview() {
+            let mut state = AppState::new("test_project".to_string());
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    "SELECT first_id, second_id, name FROM composite_users".to_string(),
+                    vec![
+                        "first_id".to_string(),
+                        "second_id".to_string(),
+                        "name".to_string(),
+                    ],
+                    vec![vec!["1".to_string(), "2".to_string(), "Alice".to_string()]],
+                    1,
+                    QuerySource::Preview,
+                )));
+            let mut detail = users_table_detail();
+            detail.name = "composite_users".to_string();
+            detail.columns[0].name = "first_id".to_string();
+            detail.columns[1].name = "second_id".to_string();
+            detail.columns[1].attributes = ColumnAttributes::PRIMARY_KEY;
+            detail
+                .columns
+                .push(test_support::column::test_nullable_column(
+                    "name", "text", 3,
+                ));
+            detail.primary_key = Some(vec!["first_id".to_string(), "second_id".to_string()]);
+            state.session.set_table_detail_raw(Some(detail));
+            state
+                .query
+                .pagination
+                .reset_for_table("public", "composite_users");
+            state.modal.set_mode(InputMode::CellEdit);
+            state
+                .result_interaction
+                .begin_cell_edit(0, 2, "Alice".to_string());
+            state
+                .result_interaction
+                .replace_cell_edit_draft("Bob".to_string());
+
+            let preview = submit_write_preview(&mut state);
+
+            assert_eq!(
+                preview.target_summary.key_values,
+                vec![
+                    ("first_id".to_string(), QueryValue::text("1")),
+                    ("second_id".to_string(), QueryValue::text("2")),
+                ]
+            );
+            assert_eq!(
+                preview.sql,
+                "UPDATE \"public\".\"composite_users\" SET \"name\" = 'Bob' WHERE \"first_id\" = '1' AND \"second_id\" = '2'"
             );
         }
 
         #[test]
-        fn sqlite_jsonb_declared_type_preserves_string_diff_in_write_preview() {
-            let mut state = editable_state_with_jsonb();
+        fn sqlite_json_declared_type_preserves_string_diff_in_write_preview() {
+            let mut state = editable_state_with_json();
             state.session.activate_connection_with_dsn(
                 &ConnectionId::from_string("sqlite-test"),
                 "sqlite",
                 DatabaseType::SQLite,
                 "sqlite:///tmp/app.db",
             );
-            let mut detail = jsonb_table_detail();
+            let mut detail = json_table_detail();
             detail.schema = "main".to_string();
             state.session.set_table_detail_raw(Some(detail));
             state.query.pagination.reset_for_table("main", "users");
@@ -1047,21 +1242,7 @@ mod tests {
                 .result_interaction
                 .replace_cell_edit_draft(after.to_string());
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
-
-            let preview = match &effects[0] {
-                Effect::DispatchActions(actions) => match actions.first().expect("action") {
-                    Action::OpenWritePreviewConfirm(preview) => preview.clone(),
-                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-                },
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
+            let preview = submit_write_preview(&mut state);
             assert!(preview.diff[0].json_diff.is_none());
             assert_eq!(preview.diff[0].before, before);
             assert_eq!(preview.diff[0].after, after);
@@ -1078,21 +1259,7 @@ mod tests {
                 .result_interaction
                 .replace_cell_edit_draft(r#"{"key":"new"}"#.to_string());
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
-
-            let preview = match &effects[0] {
-                Effect::DispatchActions(actions) => match actions.first().expect("action") {
-                    Action::OpenWritePreviewConfirm(preview) => preview.clone(),
-                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-                },
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
+            let preview = submit_write_preview(&mut state);
             assert!(
                 preview.diff[0].json_diff.is_none(),
                 "text column should not have structured diff even if value looks like JSON"
@@ -1124,21 +1291,7 @@ mod tests {
                 .result_interaction
                 .replace_cell_edit_draft(after.to_string());
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
-
-            let preview = match &effects[0] {
-                Effect::DispatchActions(actions) => match actions.first().expect("action") {
-                    Action::OpenWritePreviewConfirm(preview) => preview.clone(),
-                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-                },
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
+            let preview = submit_write_preview(&mut state);
             assert!(preview.diff[0].json_diff.is_none());
             assert_eq!(preview.diff[0].before, before);
             assert_eq!(preview.diff[0].after, after);
@@ -1148,28 +1301,7 @@ mod tests {
         fn confirm_dialog_displays_and_executes_same_sql() {
             let mut state = editable_state();
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
-            let preview = match &effects[0] {
-                Effect::DispatchActions(actions) => match actions.first().expect("action") {
-                    Action::OpenWritePreviewConfirm(preview) => preview.clone(),
-                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-                },
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
-            let expected_sql = preview.sql.clone();
-
-            dispatch_query(
-                &mut state,
-                &Action::OpenWritePreviewConfirm(preview),
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let expected_sql = submit_write_preview(&mut state).sql;
 
             assert_eq!(
                 state
@@ -1197,7 +1329,7 @@ mod tests {
                 dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert_eq!(state.query.status(), QueryStatus::Running);
+            assert!(state.query.is_running());
             assert!(state.query.start_time().is_some());
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -1221,12 +1353,170 @@ mod tests {
             let effects =
                 dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
-            assert!(effects.is_empty());
-            assert_eq!(state.input_mode(), InputMode::CellEdit);
+            assert_eq!(effects.len(), 1);
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(state.query.is_running());
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("UPDATE expected 1 row, but affected 0 rows")
             );
+            assert!(matches!(
+                effects.first(),
+                Some(Effect::ExecutePreview { .. })
+            ));
+        }
+
+        #[test]
+        fn execute_write_with_multiple_rows_sets_error() {
+            let mut state = editable_state();
+            let action = write_succeeded_action(&mut state, 2);
+
+            let effects =
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+
+            assert_eq!(effects.len(), 1);
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(state.query.is_running());
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("UPDATE expected 1 row, but affected 2 rows")
+            );
+            assert!(matches!(
+                effects.first(),
+                Some(Effect::ExecutePreview { .. })
+            ));
+        }
+
+        #[test]
+        fn mysql_zero_affected_rows_from_predicate_mismatch_stays_error() {
+            let mut state = mysql_editable_state("text", QueryValue::text("Alice"), "Bob");
+            let run_id = begin_query_run(&mut state);
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::ExecuteWriteSucceeded {
+                    dsn: "mysql://localhost/test".to_string(),
+                    run_id,
+                    affected_rows: 0,
+                    diagnostics: Vec::new(),
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert_eq!(effects.len(), 1);
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("UPDATE expected 1 row, but affected 0 rows")
+            );
+        }
+
+        #[test]
+        fn mysql_write_diagnostic_is_visible_in_update_success() {
+            let mut state = mysql_editable_state("enum", QueryValue::text("before"), "after");
+            let action = write_succeeded_action_with_diagnostics(
+                &mut state,
+                1,
+                vec![WriteDiagnostic {
+                    level: WriteDiagnosticLevel::Warning,
+                    code: 1265,
+                    message: "Data truncated".to_string(),
+                }],
+            );
+
+            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+
+            assert_eq!(
+                state.messages.last_success.as_deref(),
+                Some("Updated 1 row; Warning (Code 1265): Data truncated")
+            );
+        }
+
+        #[test]
+        fn execute_write_failure_after_data_change_refreshes_and_discards_draft() {
+            let mut state = editable_state();
+            let action = write_failed_action(
+                &mut state,
+                DbOperationError::QueryFailedAfterChange {
+                    source: Arc::new(DbOperationError::QueryFailed(
+                        "marker read failed".to_string(),
+                    )),
+                    refresh_scope: RefreshScope::Data,
+                },
+            );
+
+            let effects =
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(!state.result_interaction.cell_edit().is_active());
+            assert!(state.query.is_running());
+            assert!(effects.iter().any(|effect| matches!(
+                effect,
+                Effect::ExecutePreview { table, .. } if table == "users"
+            )));
+            assert!(
+                effects
+                    .iter()
+                    .all(|effect| !matches!(effect, Effect::ExecuteWrite { .. }))
+            );
+        }
+
+        #[test]
+        fn execute_write_failure_after_metadata_change_refreshes_and_discards_draft() {
+            let mut state = editable_state();
+            let action = write_failed_action(
+                &mut state,
+                DbOperationError::QueryFailedAfterChange {
+                    source: Arc::new(DbOperationError::QueryFailed(
+                        "metadata marker read failed".to_string(),
+                    )),
+                    refresh_scope: RefreshScope::Metadata,
+                },
+            );
+
+            let effects =
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(!state.result_interaction.cell_edit().is_active());
+            assert!(state.session.table_detail().is_none());
+            assert!(!state.query.is_running());
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::CacheInvalidate { .. }))
+            );
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
+            );
+            assert!(
+                effects
+                    .iter()
+                    .all(|effect| !matches!(effect, Effect::ExecuteWrite { .. }))
+            );
+        }
+
+        #[test]
+        fn execute_write_failure_before_change_preserves_draft() {
+            let mut state = editable_state();
+            state.result_interaction.stage_row(0);
+            let action = write_failed_action(
+                &mut state,
+                DbOperationError::QueryFailed("before write".to_string()),
+            );
+
+            let effects =
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::CellEdit);
+            assert!(state.result_interaction.cell_edit().is_active());
+            assert_eq!(state.result_interaction.cell_edit().draft_value(), "Bob");
+            assert!(state.result_interaction.staged_delete_rows().contains(&0));
         }
 
         #[test]
@@ -1241,6 +1531,7 @@ mod tests {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id: old_run_id,
                     affected_rows: 1,
+                    diagnostics: Vec::new(),
                 },
                 Instant::now(),
                 &AppServices::stub(),
@@ -1281,13 +1572,9 @@ mod tests {
             state.modal.set_mode(InputMode::Normal);
             let preview = delete_preview();
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::OpenWritePreviewConfirm(Box::new(preview)),
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects = open_write_preview_confirm(&mut state, &preview, Instant::now())
+                .into_effects()
+                .expect("write preview should be handled");
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
@@ -1305,13 +1592,9 @@ mod tests {
             state.query.set_delete_refresh_target(0, Some(2), 3);
             let preview = delete_preview();
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::OpenWritePreviewConfirm(Box::new(preview)),
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects = open_write_preview_confirm(&mut state, &preview, Instant::now())
+                .into_effects()
+                .expect("write preview should be handled");
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -1405,6 +1688,36 @@ mod tests {
             assert!(state.result_interaction.staged_delete_rows().is_empty());
             assert_eq!(state.result_interaction.selection().row(), Some(4));
             assert_eq!(state.result_interaction.selection().cell(), Some(2));
+        }
+
+        #[test]
+        fn execute_write_failure_after_data_change_clears_staged_delete_and_refreshes() {
+            let mut state = create_test_state();
+            state.query.pagination.reset_for_table("public", "users");
+            state.query.set_delete_refresh_target(0, Some(2), 1);
+            state.result_interaction.stage_row(2);
+            state.result_interaction.set_write_preview(delete_preview());
+            let action = write_failed_action(
+                &mut state,
+                DbOperationError::QueryFailedAfterChange {
+                    source: Arc::new(DbOperationError::QueryFailed(
+                        "marker read failed".to_string(),
+                    )),
+                    refresh_scope: RefreshScope::Data,
+                },
+            );
+
+            let effects =
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(state.result_interaction.staged_delete_rows().is_empty());
+            assert!(state.query.pending_delete_refresh_target().is_none());
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::ExecutePreview { .. }))
+            );
         }
 
         #[test]

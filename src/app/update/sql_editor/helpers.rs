@@ -4,12 +4,17 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::ports::outbound::AccessMode;
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 pub(super) fn start_adhoc_if_connected(
     state: &mut AppState,
     query: String,
     now: Instant,
 ) -> DispatchResult {
+    if reject_pending_mysql_connection_probe(state, now) {
+        return DispatchResult::handled();
+    }
+
     let Some(dsn) = state.session.dsn().map(String::from) else {
         state
             .sql_modal

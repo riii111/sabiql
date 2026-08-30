@@ -5,6 +5,7 @@ pub mod completion_engine;
 pub mod connection;
 pub mod effect;
 pub mod er;
+mod metadata_task;
 mod query_task;
 pub mod render_schedule;
 pub mod runner;

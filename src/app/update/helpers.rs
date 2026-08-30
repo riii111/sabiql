@@ -2,16 +2,18 @@ use std::time::Instant;
 
 use unicode_casefold::UnicodeCaseFold;
 
+use crate::cmd::effect::Effect;
 use crate::domain::DatabaseType;
-use crate::domain::connection::SqliteConnectionConfig;
+use crate::domain::connection::{
+    MySqlConnectionConfig, MySqlSslMode, MySqlTransport, SqliteConnectionConfig,
+};
 use crate::domain::{QueryResult, QueryValue};
 use crate::model::app_state::AppState;
-use crate::model::browse::query_execution::QueryStatus;
 use crate::model::connection::setup::{ConnectionField, ConnectionSetupState};
 use crate::policy::write::inline_cell_edit::InlineCellEditError;
 use crate::policy::write::write_guardrails::{
     PreviewWriteability, StableRowIdentity, TargetSummary, WriteOperation, WritePreview,
-    evaluate_guardrails, preview_writeability, stable_row_identity_for_table,
+    evaluate_guardrails, preview_writeability_for_result, stable_row_identity_for_preview,
 };
 use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::services::AppServices;
@@ -21,7 +23,7 @@ pub(crate) fn require_er_diagram_enabled(
     state: &mut AppState,
     now: Instant,
 ) -> Option<DispatchResult> {
-    let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+    let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
     if feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
         return None;
     }
@@ -31,6 +33,32 @@ pub(crate) fn require_er_diagram_enabled(
         now,
     );
     Some(DispatchResult::handled())
+}
+
+pub(crate) fn reject_pending_mysql_connection_probe(state: &mut AppState, now: Instant) -> bool {
+    if state.session.pending_mysql_connection_probe().is_none() {
+        return false;
+    }
+
+    state
+        .messages
+        .set_error_at("Connection switch in progress".to_string(), now);
+    true
+}
+
+pub(crate) fn metadata_reload_effects(state: &mut AppState, dsn: &str) -> Vec<Effect> {
+    let run_id = state.session.begin_reload();
+
+    vec![Effect::Sequence(vec![
+        Effect::CacheInvalidate {
+            dsn: dsn.to_string(),
+        },
+        Effect::ClearCompletionEngineCache,
+        Effect::FetchMetadata {
+            dsn: dsn.to_string(),
+            run_id,
+        },
+    ])]
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -81,6 +109,10 @@ pub enum EditGuardrailError {
     NoActiveCell,
     #[error("Cell index out of bounds")]
     CellIndexOutOfBounds,
+    #[error("Invalid JSON: {0}")]
+    InvalidJson(String),
+    #[error("No semantic changes to write")]
+    NoSemanticChanges,
     #[error(transparent)]
     InlineCellEdit(#[from] InlineCellEditError),
     #[error("SQLite writes require non-NULL primary key values")]
@@ -135,7 +167,7 @@ pub fn editable_preview_base(
     if !state.query.pagination.matches_table(table_detail) {
         return Err(EditGuardrailError::StaleTableMetadata);
     }
-    match preview_writeability(table_detail) {
+    match preview_writeability_for_result(table_detail, result) {
         PreviewWriteability::Writable => {}
         PreviewWriteability::ReadOnly(reason) => {
             return Err(EditGuardrailError::ReadOnlyPreviewTarget(reason));
@@ -144,7 +176,7 @@ pub fn editable_preview_base(
             return Err(EditGuardrailError::EditingRequiresPrimaryKey);
         }
     }
-    let identity = stable_row_identity_for_table(table_detail)
+    let identity = stable_row_identity_for_preview(table_detail, result)
         .ok_or(EditGuardrailError::EditingRequiresPrimaryKey)?;
 
     Ok((result, identity))
@@ -185,7 +217,7 @@ pub fn build_bulk_delete_preview(
     if state.session.dsn().is_none() {
         return Err(EditGuardrailError::NoActiveConnection);
     }
-    if state.query.status() != QueryStatus::Idle {
+    if state.query.is_running() {
         return Err(EditGuardrailError::WriteUnavailableWhileQueryRunning);
     }
 
@@ -210,12 +242,9 @@ pub fn build_bulk_delete_preview(
             &identity_pairs,
         )?;
         if target_pairs.is_empty() {
-            target_pairs = identity_pairs;
+            target_pairs.clone_from(&identity_pairs);
         }
-        let predicate_pairs = identity
-            .predicate_pairs_for_row(result, row_idx)
-            .ok_or(EditGuardrailError::StableKeyColumnsMissing)?;
-        predicate_pairs_per_row.push(predicate_pairs);
+        predicate_pairs_per_row.push(identity_pairs);
     }
 
     let sql = services.sql_dialect.build_bulk_delete_sql(
@@ -362,65 +391,15 @@ fn require_non_empty(state: &mut ConnectionSetupState, field: ConnectionField, m
     }
 }
 
-#[cfg(test)]
-mod text_search_tests {
-    use super::find_text_matches;
-
-    #[test]
-    fn text_matches_return_first_match_offset_per_line_case_insensitively() {
-        let matches = find_text_matches(
-            "{\n  \"Theme\": \"dark\",\n  \"theme\": \"light\"\n}",
-            "theme",
-        );
-
-        assert_eq!(matches, vec![5, 24]);
-    }
-
-    #[test]
-    fn text_matches_return_empty_for_empty_query() {
-        let matches = find_text_matches("{\n  \"theme\": \"dark\"\n}", "");
-
-        assert!(matches.is_empty());
-    }
-
-    #[test]
-    fn text_matches_map_unicode_casefold_back_to_original_char_offset() {
-        let matches = find_text_matches("İx", "x");
-
-        assert_eq!(matches, vec![1]);
-    }
-
-    #[test]
-    fn text_matches_casefold_german_sharp_s() {
-        let matches = find_text_matches("Maße", "MASSE");
-
-        assert_eq!(matches, vec![0]);
-    }
-
-    #[test]
-    fn text_matches_do_not_duplicate_expanded_casefold_character() {
-        let matches = find_text_matches("Maße", "s");
-
-        assert_eq!(matches, vec![2]);
-    }
-
-    #[test]
-    fn text_matches_casefold_greek_final_sigma() {
-        let matches = find_text_matches("ὈΔΥΣΣΕΎΣ", "ὀδυσσεύς");
-
-        assert_eq!(matches, vec![0]);
-    }
-
-    #[test]
-    fn text_matches_return_all_matches_within_single_line() {
-        let matches = find_text_matches("theme theme", "theme");
-
-        assert_eq!(matches, vec![0, 6]);
-    }
-}
-
 pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) {
     state.clear_validation_error(field);
+    if let Some(other_field) = match field {
+        ConnectionField::SslCert => Some(ConnectionField::SslKey),
+        ConnectionField::SslKey => Some(ConnectionField::SslCert),
+        _ => None,
+    } {
+        state.clear_validation_error(other_field);
+    }
 
     if let Some(max_chars) = field.max_chars() {
         let length = state.field_value(field).chars().count();
@@ -440,7 +419,10 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
                 Err(error) => state.record_sqlite_config_error(error),
             }
         }
-        ConnectionField::Port => {
+        ConnectionField::Port
+            if state.database_type() != DatabaseType::MySQL
+                || state.mysql_transport() == MySqlTransport::Tcp =>
+        {
             let port = text_input_content(state, field).trim();
             if port.is_empty() {
                 state.set_validation_error(field, "Required");
@@ -456,7 +438,89 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
                 }
             }
         }
-        ConnectionField::Database => require_non_empty(state, field, "Required"),
+        ConnectionField::Database => {
+            if matches!(
+                state.database_type(),
+                DatabaseType::PostgreSQL | DatabaseType::MySQL
+            ) {
+                require_non_empty(state, field, "Required");
+            }
+        }
+        ConnectionField::Host
+            if state.database_type() == DatabaseType::MySQL
+                && state.mysql_transport() == MySqlTransport::Tcp =>
+        {
+            let host = text_input_content(state, field).trim();
+            if host.is_empty() {
+                state.set_validation_error(field, "Required");
+            } else if !MySqlConnectionConfig::is_valid_host(host) {
+                state.set_validation_error(field, "Invalid host");
+            }
+        }
+        ConnectionField::User if state.database_type() == DatabaseType::MySQL => {
+            require_non_empty(state, field, "Required");
+        }
+        ConnectionField::TransportPath if state.database_type() == DatabaseType::MySQL => {
+            let path = text_input_content(state, field);
+            if state.mysql_transport().requires_path() && path.trim().is_empty() {
+                state.set_validation_error(field, "Required");
+            } else if path.chars().any(char::is_control) {
+                state.set_validation_error(field, "Invalid path");
+            }
+        }
+        ConnectionField::SslCa if state.database_type() == DatabaseType::MySQL => {
+            let path = text_input_content(state, field).to_string();
+            if matches!(
+                state.mysql_ssl_mode(),
+                MySqlSslMode::VerifyCa | MySqlSslMode::VerifyIdentity
+            ) && path.trim().is_empty()
+            {
+                state.set_validation_error(field, "Required for this TLS mode");
+            } else if path.chars().any(char::is_control) {
+                state.set_validation_error(field, "Invalid path");
+            }
+        }
+        ConnectionField::SslCert | ConnectionField::SslKey
+            if state.database_type() == DatabaseType::MySQL =>
+        {
+            let path = text_input_content(state, field).to_string();
+            if path.chars().any(char::is_control) {
+                state.set_validation_error(field, "Invalid path");
+            }
+            let other_field = match field {
+                ConnectionField::SslCert => ConnectionField::SslKey,
+                ConnectionField::SslKey => ConnectionField::SslCert,
+                _ => unreachable!(),
+            };
+            let other_path = text_input_content(state, other_field).to_string();
+            if path.trim().is_empty() != other_path.trim().is_empty() {
+                state.set_validation_error(field, "Both client paths are required");
+                state.set_validation_error(other_field, "Both client paths are required");
+            }
+        }
+        ConnectionField::ServerPublicKeyPath if state.database_type() == DatabaseType::MySQL => {
+            let path = text_input_content(state, field);
+            if path.chars().any(char::is_control) {
+                state.set_validation_error(field, "Invalid path");
+            }
+        }
+        ConnectionField::CleartextAuth if state.database_type() == DatabaseType::MySQL => {
+            if state.cleartext_auth_plugin_enabled()
+                && !state.mysql_ssl_mode().allows_cleartext_auth()
+            {
+                state.set_validation_error(field, "Requires TLS");
+            }
+        }
+        ConnectionField::SslMode if state.database_type() == DatabaseType::MySQL => {
+            if state.mysql_transport() == MySqlTransport::NamedPipe
+                && !matches!(
+                    state.mysql_ssl_mode(),
+                    MySqlSslMode::Disabled | MySqlSslMode::Preferred
+                )
+            {
+                state.set_validation_error(field, "Named pipes do not support TLS");
+            }
+        }
         ConnectionField::Name => {
             let name = text_input_content(state, field).trim().to_string();
             if name.is_empty() {
@@ -464,18 +528,30 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
             }
         }
         ConnectionField::DatabaseType
+        | ConnectionField::Transport
+        | ConnectionField::TransportPath
+        | ConnectionField::Port
         | ConnectionField::Host
         | ConnectionField::User
         | ConnectionField::Password
-        | ConnectionField::SslMode => {}
+        | ConnectionField::SslMode
+        | ConnectionField::SslCa
+        | ConnectionField::SslCert
+        | ConnectionField::SslKey
+        | ConnectionField::ServerPublicKeyPath
+        | ConnectionField::CleartextAuth => {}
     }
 }
 
 pub fn validate_all(state: &mut ConnectionSetupState) {
-    let active_fields = ConnectionField::fields_for(state.database_type());
+    let active_fields = ConnectionField::fields_for(
+        state.database_type(),
+        state.mysql_transport(),
+        state.mysql_ssl_mode(),
+    );
     state.retain_validation_errors_for_visible_fields();
     for field in active_fields {
-        validate_field(state, *field);
+        validate_field(state, field);
     }
 }
 
@@ -555,6 +631,23 @@ mod tests {
             validate_field(&mut state, ConnectionField::Name);
 
             assert!(!state.has_validation_error(ConnectionField::Name));
+        }
+
+        #[test]
+        fn zero_port_sets_error() {
+            let mut state = ConnectionSetupState::default();
+            state.set_database_type(DatabaseType::MySQL);
+            state
+                .input_mut(ConnectionField::Port)
+                .unwrap()
+                .set_content("0".to_string());
+
+            validate_field(&mut state, ConnectionField::Port);
+
+            assert_eq!(
+                state.validation_error(ConnectionField::Port),
+                Some("Port must be > 0")
+            );
         }
     }
 
@@ -690,6 +783,173 @@ mod tests {
         }
     }
 
+    #[test]
+    fn mysql_validation_requires_host_user_and_database() {
+        let mut state = ConnectionSetupState::default();
+        state.set_database_type(DatabaseType::MySQL);
+        state
+            .input_mut(ConnectionField::Host)
+            .unwrap()
+            .set_content(" ".to_string());
+        state
+            .input_mut(ConnectionField::User)
+            .unwrap()
+            .set_content(" ".to_string());
+
+        validate_all(&mut state);
+
+        assert_eq!(
+            state.validation_error(ConnectionField::Host),
+            Some("Required")
+        );
+        assert_eq!(
+            state.validation_error(ConnectionField::User),
+            Some("Required")
+        );
+        assert_eq!(
+            state.validation_error(ConnectionField::Database),
+            Some("Required")
+        );
+    }
+
+    #[test]
+    fn mysql_validation_rejects_url_syntax_in_host() {
+        let mut state = ConnectionSetupState::default();
+        state.set_database_type(DatabaseType::MySQL);
+        state
+            .input_mut(ConnectionField::Host)
+            .unwrap()
+            .set_content("db example".to_string());
+
+        validate_field(&mut state, ConnectionField::Host);
+
+        assert_eq!(
+            state.validation_error(ConnectionField::Host),
+            Some("Invalid host")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mysql_unix_socket_validation_uses_path_instead_of_host_and_port() {
+        let mut state = ConnectionSetupState::default();
+        state.set_database_type(DatabaseType::MySQL);
+        state.mysql_transport = MySqlTransport::UnixSocket;
+        state
+            .input_mut(ConnectionField::Host)
+            .unwrap()
+            .set_content(" ".to_string());
+        state
+            .input_mut(ConnectionField::Port)
+            .unwrap()
+            .set_content("not-a-port".to_string());
+        state
+            .input_mut(ConnectionField::TransportPath)
+            .unwrap()
+            .set_content("/run/mysqld/mysqld.sock".to_string());
+
+        validate_field(&mut state, ConnectionField::TransportPath);
+
+        assert_eq!(state.validation_error(ConnectionField::TransportPath), None);
+        assert_eq!(state.validation_error(ConnectionField::Host), None);
+        assert_eq!(state.validation_error(ConnectionField::Port), None);
+    }
+
+    #[test]
+    fn mysql_verification_requires_ca_path() {
+        let mut state = ConnectionSetupState::default();
+        state.set_database_type(DatabaseType::MySQL);
+        state.mysql_ssl_mode = MySqlSslMode::VerifyCa;
+
+        validate_all(&mut state);
+
+        assert_eq!(
+            state.validation_error(ConnectionField::SslCa),
+            Some("Required for this TLS mode")
+        );
+    }
+
+    #[test]
+    fn mysql_cleartext_auth_requires_tls() {
+        let mut state = ConnectionSetupState::default();
+        state.set_database_type(DatabaseType::MySQL);
+        state.enable_cleartext_plugin = true;
+
+        validate_all(&mut state);
+
+        assert_eq!(
+            state.validation_error(ConnectionField::CleartextAuth),
+            Some("Requires TLS")
+        );
+
+        state.mysql_ssl_mode = MySqlSslMode::Required;
+        validate_all(&mut state);
+
+        assert_eq!(state.validation_error(ConnectionField::CleartextAuth), None);
+    }
+
+    #[test]
+    fn mysql_client_certificate_and_key_are_a_pair() {
+        let mut state = ConnectionSetupState::default();
+        state.set_database_type(DatabaseType::MySQL);
+        state
+            .input_mut(ConnectionField::SslCert)
+            .unwrap()
+            .set_content("client.pem".to_string());
+
+        validate_all(&mut state);
+
+        assert_eq!(
+            state.validation_error(ConnectionField::SslCert),
+            Some("Both client paths are required")
+        );
+        assert_eq!(
+            state.validation_error(ConnectionField::SslKey),
+            Some("Both client paths are required")
+        );
+    }
+
+    #[test]
+    fn validating_filled_client_key_clears_stale_pair_error() {
+        let mut state = ConnectionSetupState::default();
+        state.set_database_type(DatabaseType::MySQL);
+        state
+            .input_mut(ConnectionField::SslCert)
+            .unwrap()
+            .set_content("client.pem".to_string());
+        validate_field(&mut state, ConnectionField::SslCert);
+
+        state
+            .input_mut(ConnectionField::SslKey)
+            .unwrap()
+            .set_content("client-key.pem".to_string());
+        validate_field(&mut state, ConnectionField::SslKey);
+
+        assert_eq!(state.validation_error(ConnectionField::SslCert), None);
+        assert_eq!(state.validation_error(ConnectionField::SslKey), None);
+    }
+
+    #[test]
+    fn empty_or_complete_client_certificate_pair_is_accepted() {
+        let mut state = ConnectionSetupState::default();
+        state.set_database_type(DatabaseType::MySQL);
+        validate_all(&mut state);
+        assert_eq!(state.validation_error(ConnectionField::SslCert), None);
+        assert_eq!(state.validation_error(ConnectionField::SslKey), None);
+
+        state
+            .input_mut(ConnectionField::SslCert)
+            .unwrap()
+            .set_content("client.pem".to_string());
+        state
+            .input_mut(ConnectionField::SslKey)
+            .unwrap()
+            .set_content("client-key.pem".to_string());
+        validate_all(&mut state);
+        assert_eq!(state.validation_error(ConnectionField::SslCert), None);
+        assert_eq!(state.validation_error(ConnectionField::SslKey), None);
+    }
+
     mod delete_refresh_target_bulk {
         use super::*;
 
@@ -739,6 +999,7 @@ mod tests {
             let dsn = match database_type {
                 DatabaseType::PostgreSQL => "postgres://localhost/test",
                 DatabaseType::SQLite => "sqlite:///tmp/app.db",
+                DatabaseType::MySQL => "mysql://user@localhost/test",
             };
             state.session.activate_connection_with_dsn(
                 &ConnectionId::from_string("test-connection"),
@@ -832,6 +1093,62 @@ mod tests {
                 result,
                 Err(EditGuardrailError::SqliteNullPrimaryKey)
             ));
+        }
+    }
+
+    mod text_search {
+        use super::find_text_matches;
+
+        #[test]
+        fn text_matches_return_first_match_offset_per_line_case_insensitively() {
+            let matches = find_text_matches(
+                "{\n  \"Theme\": \"dark\",\n  \"theme\": \"light\"\n}",
+                "theme",
+            );
+
+            assert_eq!(matches, vec![5, 24]);
+        }
+
+        #[test]
+        fn text_matches_return_empty_for_empty_query() {
+            let matches = find_text_matches("{\n  \"theme\": \"dark\"\n}", "");
+
+            assert!(matches.is_empty());
+        }
+
+        #[test]
+        fn text_matches_map_unicode_casefold_back_to_original_char_offset() {
+            let matches = find_text_matches("İx", "x");
+
+            assert_eq!(matches, vec![1]);
+        }
+
+        #[test]
+        fn text_matches_casefold_german_sharp_s() {
+            let matches = find_text_matches("Maße", "MASSE");
+
+            assert_eq!(matches, vec![0]);
+        }
+
+        #[test]
+        fn text_matches_do_not_duplicate_expanded_casefold_character() {
+            let matches = find_text_matches("Maße", "s");
+
+            assert_eq!(matches, vec![2]);
+        }
+
+        #[test]
+        fn text_matches_casefold_greek_final_sigma() {
+            let matches = find_text_matches("ὈΔΥΣΣΕΎΣ", "ὀδυσσεύς");
+
+            assert_eq!(matches, vec![0]);
+        }
+
+        #[test]
+        fn text_matches_return_all_matches_within_single_line() {
+            let matches = find_text_matches("theme theme", "theme");
+
+            assert_eq!(matches, vec![0, 6]);
         }
     }
 }

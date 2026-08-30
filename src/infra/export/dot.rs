@@ -248,13 +248,6 @@ impl DotExporter<SystemGraphvizRunner, SystemViewerLauncher> {
     }
 }
 
-#[cfg(test)]
-impl<G: GraphvizRunner, V: ViewerLauncher> DotExporter<G, V> {
-    pub fn with_dependencies(graphviz: G, viewer: V) -> Self {
-        Self { graphviz, viewer }
-    }
-}
-
 impl<G, V> DotExporter<G, V> {
     fn escape_dot_string(s: &str) -> String {
         s.replace('\\', "\\\\")
@@ -376,6 +369,12 @@ impl<G: GraphvizRunner + 'static, V: ViewerLauncher + 'static> ErDiagramExporter
 mod tests {
     use super::*;
     use crate::domain::er::ErFkInfo;
+
+    impl<G: GraphvizRunner, V: ViewerLauncher> DotExporter<G, V> {
+        fn with_dependencies(graphviz: G, viewer: V) -> Self {
+            Self { graphviz, viewer }
+        }
+    }
 
     fn make_test_tables() -> Vec<ErTableInfo> {
         vec![

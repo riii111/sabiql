@@ -119,8 +119,6 @@ fn sqlite_explorer_shows_table_kind_suffixes() {
                     virtual_module: Some("fts5".to_string()),
                     ..TableKindInfo::default()
                 }),
-            TableSummary::new("main".to_string(), "active_users".to_string(), None, false)
-                .with_kind_info(fixtures::view_kind_info()),
             TableSummary::new("main".to_string(), "typed_users".to_string(), None, false)
                 .with_kind_info(TableKindInfo {
                     is_strict: true,
@@ -130,6 +128,36 @@ fn sqlite_explorer_shows_table_kind_suffixes() {
         metadata
     };
     state.session.mark_connected(Arc::new(metadata));
+    state.ui.set_explorer_selection(Some(0));
+
+    let mut terminal = create_test_terminal();
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn mysql_header_and_explorer_show_table_names() {
+    let mut state = create_test_state();
+    state.session.activate_connection_with_target(
+        &ConnectionId::from_string("mysql-test"),
+        "mysql",
+        DatabaseType::MySQL,
+        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+        Some("app"),
+    );
+    let mut metadata = DatabaseMetadata::new("app".to_string());
+    metadata.table_summaries = vec![
+        TableSummary::new("app".to_string(), "users".to_string(), None, false),
+        TableSummary::new("app".to_string(), "audit_log".to_string(), None, false),
+    ];
+    state.session.mark_connected(Arc::new(metadata));
+    let generation = state.session.select_table("app", "users", &mut state.query);
+    assert!(
+        state
+            .session
+            .set_table_detail(fixtures::minimal_table("app", "users"), generation)
+    );
     state.ui.set_explorer_selection(Some(0));
 
     let mut terminal = create_test_terminal();

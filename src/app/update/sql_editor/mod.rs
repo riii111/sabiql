@@ -25,6 +25,7 @@ pub fn dispatch_sql_modal(state: &mut AppState, action: &Action, now: Instant) -
 mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
+    use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, TableSummary};
     use crate::model::shared::flash_timer::FlashId;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::text_input::{TextInputLike, TextInputState};
@@ -33,6 +34,7 @@ mod tests {
     use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel};
     use crate::update::action::{CursorMove, InputTarget, ModalKind};
     use crate::update::test_fixtures;
+    use std::sync::Arc;
     use std::time::Instant;
 
     fn reduce_sql_modal(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
@@ -262,6 +264,52 @@ mod tests {
         }
 
         #[test]
+        fn submit_mysql_alter_table_confirmation_uses_generic_execution_effect() {
+            let mut state = sql_modal_state();
+            state.session.activate_connection_with_target(
+                &ConnectionId::new(),
+                "mysql",
+                DatabaseType::MySQL,
+                "mysql://test",
+                Some("app"),
+            );
+            state
+                .sql_modal
+                .editor
+                .set_content("ALTER TABLE users DROP COLUMN obsolete".to_string());
+
+            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
+
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingHigh {
+                    target_name,
+                    ..
+                } if target_name == "users"
+            ));
+
+            for c in "users".chars() {
+                reduce_sql_modal(
+                    &mut state,
+                    &Action::TextInput {
+                        target: InputTarget::SqlModalHighRisk,
+                        ch: c,
+                    },
+                    Instant::now(),
+                );
+            }
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now())
+                    .into_effects()
+                    .expect("confirmation should execute");
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::ExecuteAdhoc { query, .. }]
+                    if query == "ALTER TABLE users DROP COLUMN obsolete"
+            ));
+        }
+
+        #[test]
         fn submit_other_enters_risk_acknowledge() {
             let mut state = sql_modal_state();
             state
@@ -364,7 +412,7 @@ mod tests {
 
             let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
-            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Error));
+            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Error(_)));
             assert_eq!(
                 state.sql_modal.last_adhoc_error(),
                 Some("No active connection")
@@ -473,7 +521,7 @@ mod tests {
             let effects =
                 reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now());
 
-            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Error));
+            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Error(_)));
             assert_eq!(
                 state.sql_modal.last_adhoc_error(),
                 Some("No active connection")
@@ -684,7 +732,7 @@ mod tests {
                 .expect("reducer should handle action");
 
             assert!(effects.is_empty());
-            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Error);
+            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Error(_)));
             assert_eq!(
                 state.sql_modal.last_adhoc_error(),
                 Some("Read-only mode: write operations are disabled")
@@ -703,6 +751,7 @@ mod tests {
                 command_tag: None,
                 row_count: 5,
                 execution_time_ms: 10,
+                mysql_diagnostics: Vec::new(),
             });
             assert!(state.sql_modal.last_adhoc_success().is_some());
 
@@ -715,7 +764,7 @@ mod tests {
                 .into_effects()
                 .expect("reducer should handle action");
 
-            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Error);
+            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Error(_)));
             assert!(state.sql_modal.last_adhoc_success().is_none());
             assert!(state.sql_modal.last_adhoc_error().is_some());
         }
@@ -771,7 +820,7 @@ mod tests {
                 .expect("reducer should handle action");
 
             assert!(effects.is_empty());
-            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Error);
+            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Error(_)));
             assert_eq!(
                 state.sql_modal.last_adhoc_error(),
                 Some("Read-only mode: write operations are disabled")
@@ -846,6 +895,21 @@ mod tests {
             assert!(matches!(
                 effects.as_slice(),
                 [Effect::ExecuteAdhoc { run_id: 1, .. }]
+            ));
+        }
+
+        #[test]
+        fn submit_mysql_select_uses_generic_execution_effect() {
+            let mut state = modal_state_with_query("SELECT 1");
+            test_fixtures::activate_mysql_connection(&mut state, "mysql://localhost/test");
+
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::ExecuteAdhoc { query, .. }] if query == "SELECT 1"
             ));
         }
 
@@ -1023,6 +1087,28 @@ mod tests {
         }
 
         #[test]
+        fn opening_sql_modal_does_not_prefetch_catalog_details() {
+            let mut state = AppState::new("test".to_string());
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.table_summaries = (0..1_000)
+                .map(|index| {
+                    TableSummary::new("public".to_string(), format!("table_{index}"), None, false)
+                })
+                .collect();
+            state.session.set_metadata(Some(Arc::new(metadata)));
+
+            let effects = reduce_sql_modal(
+                &mut state,
+                &Action::OpenModal(ModalKind::SqlModal),
+                Instant::now(),
+            )
+            .expect("SQL modal open should be handled");
+
+            assert!(effects.is_empty());
+            assert!(!state.sql_modal.is_prefetch_started());
+        }
+
+        #[test]
         fn ignored_in_normal_mode() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("original".to_string());
@@ -1034,6 +1120,48 @@ mod tests {
             );
 
             assert_eq!(state.sql_modal.editor.content(), "original");
+        }
+    }
+
+    mod pending_probe {
+        use super::*;
+
+        #[test]
+        fn blocks_sql_modal_open_and_submit() {
+            let mut state = AppState::new("test".to_string());
+            state.session.activate_connection_with_target(
+                &ConnectionId::new(),
+                "current",
+                DatabaseType::MySQL,
+                "mysql://current",
+                Some("app"),
+            );
+            let _ = state.session.begin_mysql_connection_probe(
+                &ConnectionId::new(),
+                "target",
+                "mysql://target",
+                Some("app"),
+            );
+
+            let effects = reduce_sql_modal(
+                &mut state,
+                &Action::OpenModal(ModalKind::SqlModal),
+                Instant::now(),
+            )
+            .into_effects()
+            .expect("SQL modal open should be handled");
+
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::Normal);
+
+            state.modal.set_mode(InputMode::SqlModal);
+            state.sql_modal.editor.set_content("SELECT 1".to_string());
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
+                .into_effects()
+                .expect("SQL modal submit should be handled");
+
+            assert!(effects.is_empty());
+            assert!(!state.query.is_running());
         }
     }
 
@@ -1049,9 +1177,14 @@ mod tests {
                     top_node_type: None,
                     total_cost: None,
                     estimated_rows: None,
+                    actual_start_ms: None,
+                    actual_end_ms: None,
+                    actual_rows: None,
+                    loops: None,
                     is_analyze,
                     execution_time_ms: ms,
                 },
+                database_type: DatabaseType::PostgreSQL,
                 query_snippet: "SELECT 1".to_string(),
                 full_query: "SELECT 1".to_string(),
                 source,
@@ -1236,10 +1369,15 @@ mod tests {
                     raw_text: "Seq Scan on users  (cost=0.00..100.00 rows=10 width=32)".to_string(),
                     top_node_type: Some("Seq Scan".to_string()),
                     total_cost: Some(100.0),
-                    estimated_rows: Some(10),
+                    estimated_rows: Some(10.0),
+                    actual_start_ms: None,
+                    actual_end_ms: None,
+                    actual_rows: None,
+                    loops: None,
                     is_analyze: false,
                     execution_time_ms: 420,
                 },
+                database_type: DatabaseType::PostgreSQL,
                 query_snippet: "SELECT *".to_string(),
                 full_query: "SELECT * FROM users".to_string(),
                 source: SlotSource::AutoPrevious,
@@ -1250,10 +1388,15 @@ mod tests {
                         .to_string(),
                     top_node_type: Some("Index Scan".to_string()),
                     total_cost: Some(5.0),
-                    estimated_rows: Some(1),
+                    estimated_rows: Some(1.0),
+                    actual_start_ms: None,
+                    actual_end_ms: None,
+                    actual_rows: None,
+                    loops: None,
                     is_analyze: false,
                     execution_time_ms: 50,
                 },
+                database_type: DatabaseType::PostgreSQL,
                 query_snippet: "SELECT *".to_string(),
                 full_query: "SELECT * FROM users WHERE id=1".to_string(),
                 source: SlotSource::AutoLatest,

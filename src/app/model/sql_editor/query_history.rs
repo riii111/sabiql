@@ -126,11 +126,6 @@ impl QueryHistoryPickerState {
         self.selected = index;
     }
 
-    #[cfg(test)]
-    pub(crate) fn set_selection_for_test(&mut self, selected: usize) {
-        self.selected = selected;
-    }
-
     pub fn filtered_entries(&self) -> Vec<FilteredEntry<'_>> {
         let filter = self.filter_input.content();
 
@@ -207,6 +202,12 @@ mod tests {
     use super::*;
     use crate::domain::ConnectionId;
 
+    impl QueryHistoryPickerState {
+        pub(crate) fn set_selection_for_test(&mut self, selected: usize) {
+            self.selected = selected;
+        }
+    }
+
     fn state_with_selection() -> QueryHistoryPickerState {
         QueryHistoryPickerState {
             selected: 3,
@@ -279,10 +280,11 @@ mod tests {
 
     fn make_entry(query: &str) -> QueryHistoryEntry {
         use crate::domain::query_history::QueryResultStatus;
-        QueryHistoryEntry::new(
+        QueryHistoryEntry::new_with_database(
             query.to_string(),
             "2026-03-13T12:00:00Z".to_string(),
             ConnectionId::from_string("test-conn"),
+            None,
             QueryResultStatus::Success,
             None,
         )

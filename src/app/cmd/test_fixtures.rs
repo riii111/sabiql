@@ -9,17 +9,18 @@ use crate::cmd::runner::{
 };
 use crate::domain::SqliteDiagnosticsSnapshot;
 use crate::domain::connection::{ConnectionProfile, ServiceEntry};
-use crate::domain::query_history::QueryHistoryEntry;
+use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
 use crate::domain::{
-    ConnectionId, DatabaseMetadata, DiagnosticField, ErTableInfo, QueryResult, QuerySource,
-    QueryValue, SqlitePathError, classify_sqlite_metadata_error, classify_sqlite_read_error,
+    DatabaseMetadata, DiagnosticField, ErTableInfo, QueryResult, QuerySource, QueryValue,
+    SqlitePathError, classify_sqlite_metadata_error, classify_sqlite_read_error,
 };
 use crate::ports::outbound::DbOperationError;
 use crate::ports::outbound::{
     AppSettings, CachedResultExporter, ClipboardError, ClipboardWriter, ConfigWriter,
     ConfigWriterError, ConnectionStore, DsnBuilder, ErDiagramExporter, ErExportResult, ErLogWriter,
-    FolderOpenError, FolderOpener, MetadataProvider, PgServiceEntryReader, QueryExecutor,
-    QueryHistoryError, QueryHistoryStore, ServiceFileError, SettingsStore, SettingsStoreError,
+    FolderOpenError, FolderOpener, MetadataProvider, MySqlConnectionProbe,
+    MySqlConnectionProbeResult, PgServiceEntryReader, QueryExecutor, QueryHistoryError,
+    QueryHistoryStore, ServiceFileError, SettingsStore, SettingsStoreError,
     SqliteDiagnosticsProvider, SqlitePathValidator,
 };
 use crate::update::action::Action;
@@ -123,6 +124,16 @@ impl DsnBuilder for NoopDsnBuilder {
     }
 }
 
+pub struct NoopMySqlConnectionProbe;
+#[async_trait::async_trait]
+impl MySqlConnectionProbe for NoopMySqlConnectionProbe {
+    async fn probe(&self, _dsn: &str) -> Result<MySqlConnectionProbeResult, DbOperationError> {
+        Ok(MySqlConnectionProbeResult {
+            lower_case_table_names: 0,
+        })
+    }
+}
+
 pub struct NoopPgServiceEntryReader;
 impl PgServiceEntryReader for NoopPgServiceEntryReader {
     fn read_services(&self) -> Result<(Vec<ServiceEntry>, PathBuf), ServiceFileError> {
@@ -150,7 +161,7 @@ impl QueryHistoryStore for NoopQueryHistoryStore {
     async fn append(
         &self,
         _project_name: &str,
-        _connection_id: &ConnectionId,
+        _scope: &QueryHistoryScope,
         _entry: &QueryHistoryEntry,
     ) -> Result<(), QueryHistoryError> {
         Ok(())
@@ -159,7 +170,7 @@ impl QueryHistoryStore for NoopQueryHistoryStore {
     async fn load(
         &self,
         _project_name: &str,
-        _connection_id: &ConnectionId,
+        _scope: &QueryHistoryScope,
     ) -> Result<Vec<QueryHistoryEntry>, QueryHistoryError> {
         Ok(Vec::new())
     }
@@ -198,13 +209,15 @@ pub fn make_runner(
     cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
 ) -> EffectRunner {
-    make_runner_with_dsn(
+    make_runner_with_dsn_and_cached_result_exporter_and_probe(
         metadata_provider,
         query_executor,
         connection_store,
         cache,
         action_tx,
         Arc::new(NoopDsnBuilder),
+        Arc::new(NoopMySqlConnectionProbe),
+        Arc::new(TestCachedResultExporter),
     )
 }
 
@@ -216,13 +229,14 @@ pub fn make_runner_with_cached_result_exporter(
     action_tx: mpsc::Sender<Action>,
     cached_result_exporter: Arc<dyn CachedResultExporter>,
 ) -> EffectRunner {
-    make_runner_with_dsn_and_cached_result_exporter(
+    make_runner_with_dsn_and_cached_result_exporter_and_probe(
         metadata_provider,
         query_executor,
         connection_store,
         cache,
         action_tx,
         Arc::new(NoopDsnBuilder),
+        Arc::new(NoopMySqlConnectionProbe),
         cached_result_exporter,
     )
 }
@@ -235,30 +249,53 @@ pub fn make_runner_with_dsn(
     action_tx: mpsc::Sender<Action>,
     dsn_builder: Arc<dyn DsnBuilder>,
 ) -> EffectRunner {
-    make_runner_with_dsn_and_cached_result_exporter(
+    make_runner_with_dsn_and_probe(
         metadata_provider,
         query_executor,
         connection_store,
         cache,
         action_tx,
         dsn_builder,
-        Arc::new(TestCachedResultExporter),
+        Arc::new(NoopMySqlConnectionProbe),
     )
 }
 
-fn make_runner_with_dsn_and_cached_result_exporter(
+pub fn make_runner_with_dsn_and_probe(
     metadata_provider: Arc<dyn MetadataProvider>,
     query_executor: Arc<dyn QueryExecutor>,
     connection_store: Arc<dyn ConnectionStore>,
     cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
     dsn_builder: Arc<dyn DsnBuilder>,
+    mysql_connection_probe: Arc<dyn MySqlConnectionProbe>,
+) -> EffectRunner {
+    make_runner_with_dsn_and_cached_result_exporter_and_probe(
+        metadata_provider,
+        query_executor,
+        connection_store,
+        cache,
+        action_tx,
+        dsn_builder,
+        mysql_connection_probe,
+        Arc::new(TestCachedResultExporter),
+    )
+}
+
+fn make_runner_with_dsn_and_cached_result_exporter_and_probe(
+    metadata_provider: Arc<dyn MetadataProvider>,
+    query_executor: Arc<dyn QueryExecutor>,
+    connection_store: Arc<dyn ConnectionStore>,
+    cache: TtlCache<String, Arc<DatabaseMetadata>>,
+    action_tx: mpsc::Sender<Action>,
+    dsn_builder: Arc<dyn DsnBuilder>,
+    mysql_connection_probe: Arc<dyn MySqlConnectionProbe>,
     cached_result_exporter: Arc<dyn CachedResultExporter>,
 ) -> EffectRunner {
     EffectRunner::new(
         metadata_provider,
         ConnectionDeps {
             dsn_builder,
+            mysql_connection_probe,
             connection_store,
             pg_service_entry_reader: Some(Arc::new(NoopPgServiceEntryReader)),
             sqlite_path_validator: Arc::new(TestFsSqlitePathValidator),

@@ -1,18 +1,12 @@
 use std::borrow::Cow;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::app::policy::sql::sqlite_export::is_sqlite_rerunnable_export_statement;
-use crate::app::policy::sql::sqlite_statement_splitter::{
-    SqliteStatementSplitError, split_sqlite_statements,
-};
-use crate::app::policy::sql::sqlite_transaction::{
-    SqliteTransactionPolicy, sqlite_statement_classification,
+use crate::app::ports::outbound::DbOperationError;
+use crate::domain::sqlite_sql::{
+    SqliteStatementSplitError, SqliteTransactionPolicy, is_sqlite_rerunnable_export_statement,
+    split_sqlite_statements, sqlite_statement_classification,
     sqlite_transaction_policy_for_classifications,
 };
-use crate::app::ports::outbound::DbOperationError;
-
-#[cfg(test)]
-use crate::app::policy::sql::sqlite_transaction::SqliteStatementClassification;
 
 fn is_ident_char(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'_'
@@ -184,9 +178,7 @@ fn contains_sqlite_fsdir_access(sql: &str) -> bool {
     false
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn reject_sqlite_fsdir(
-    sql: &str,
-) -> Result<(), DbOperationError> {
+pub(in crate::adapters::sqlite) fn reject_sqlite_fsdir(sql: &str) -> Result<(), DbOperationError> {
     if contains_sqlite_fsdir_access(sql) {
         return Err(DbOperationError::UnsupportedOperation(
             SQLITE_FSDIR_SAFE_MODE_ERROR.to_string(),
@@ -272,7 +264,7 @@ fn is_create_keyword_prefix(sql: &str, keyword: &str) -> bool {
     second.eq_ignore_ascii_case(keyword)
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn is_create_virtual_table_prefix(sql: &str) -> bool {
+pub(in crate::adapters::sqlite) fn is_create_virtual_table_prefix(sql: &str) -> bool {
     let Some((first, pos)) = next_keyword_from(sql, 0) else {
         return false;
     };
@@ -291,11 +283,11 @@ pub(in crate::adapters::sqlite::sqlite3) fn is_create_virtual_table_prefix(sql: 
     third.eq_ignore_ascii_case("TABLE")
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn is_create_view_prefix(sql: &str) -> bool {
+pub(in crate::adapters::sqlite) fn is_create_view_prefix(sql: &str) -> bool {
     is_create_keyword_prefix(sql, "VIEW")
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn virtual_table_module_name(sql: &str) -> Option<String> {
+pub(in crate::adapters::sqlite) fn virtual_table_module_name(sql: &str) -> Option<String> {
     let mut offset = 0;
     while let Some((keyword, end)) = next_keyword_from(sql, offset) {
         if keyword.eq_ignore_ascii_case("USING") {
@@ -446,7 +438,7 @@ fn contains_sqlite_meta_command(sql: &str) -> bool {
     false
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn is_sqlite_rerunnable_export_query(
+pub(in crate::adapters::sqlite) fn is_sqlite_rerunnable_export_query(
     query: &str,
 ) -> Result<bool, DbOperationError> {
     let statements = try_split_sqlite_statements(query)?;
@@ -456,8 +448,7 @@ pub(in crate::adapters::sqlite::sqlite3) fn is_sqlite_rerunnable_export_query(
             .all(|statement| is_sqlite_rerunnable_export_statement(statement)))
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn sqlite_export_not_rerunnable_error() -> DbOperationError
-{
+pub(in crate::adapters::sqlite) fn sqlite_export_not_rerunnable_error() -> DbOperationError {
     DbOperationError::UnsupportedOperation(
         "Cannot re-execute this query for CSV export because it contains write or DDL statements"
             .to_string(),
@@ -471,7 +462,7 @@ pub(in crate::adapters::sqlite::sqlite3) enum SqliteWrapMode {
 }
 
 #[derive(Debug)]
-pub(in crate::adapters::sqlite::sqlite3) struct SqliteStatementPlan<'a> {
+pub(in crate::adapters::sqlite) struct SqliteStatementPlan<'a> {
     query: &'a str,
     statements: Vec<&'a str>,
     wrap_mode: SqliteWrapMode,
@@ -482,7 +473,7 @@ impl<'a> SqliteStatementPlan<'a> {
         self.query
     }
 
-    pub(in crate::adapters::sqlite::sqlite3) fn statements(&self) -> &[&'a str] {
+    pub(in crate::adapters::sqlite) fn statements(&self) -> &[&'a str] {
         &self.statements
     }
 
@@ -495,7 +486,7 @@ impl<'a> SqliteStatementPlan<'a> {
     }
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn sqlite_statement_plan(
+pub(in crate::adapters::sqlite) fn sqlite_statement_plan(
     query: &str,
 ) -> Result<SqliteStatementPlan<'_>, DbOperationError> {
     let statements = try_split_sqlite_statements(query)?;
@@ -619,7 +610,7 @@ fn sqlite_execution_query_for_plan<'query>(plan: &SqliteStatementPlan<'query>) -
     }
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn sqlite_probe_marker() -> String {
+pub(in crate::adapters::sqlite) fn sqlite_probe_marker() -> String {
     static SEQ: AtomicU64 = AtomicU64::new(0);
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -660,11 +651,11 @@ fn sqlite_empty_result_frame(statement: &str, marker: &str) -> String {
     )
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn sqlite_empty_result_sentinel(marker: &str) -> String {
+pub(in crate::adapters::sqlite) fn sqlite_empty_result_sentinel(marker: &str) -> String {
     format!("{marker}_empty")
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn sqlite_adhoc_execution_query_for_plan(
+pub(in crate::adapters::sqlite) fn sqlite_adhoc_execution_query_for_plan(
     plan: &SqliteStatementPlan<'_>,
     marker: &str,
 ) -> String {
@@ -700,7 +691,7 @@ pub(in crate::adapters::sqlite::sqlite3) fn sqlite_adhoc_execution_query_for_pla
     parts.join("\n;\n")
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn append_changes_query_for_plan(
+pub(in crate::adapters::sqlite) fn append_changes_query_for_plan(
     plan: &SqliteStatementPlan<'_>,
 ) -> String {
     let body = sqlite_execution_query_for_plan(plan).trim_end().to_string();
@@ -767,6 +758,8 @@ fn statement_emits_result_set(statement: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::sqlite_sql::SqliteStatementClassification;
+
     use super::*;
     use rstest::rstest;
 

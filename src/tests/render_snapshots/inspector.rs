@@ -1,7 +1,9 @@
 use super::*;
 use harness::table_detail_loaded_state;
 use sabiql_app::model::shared::inspector_tab::InspectorTab;
-use sabiql_domain::{ConnectionId, TableKind, TableKindInfo};
+use sabiql_domain::{
+    ColumnGenerationKind, ConnectionId, TableKind, TableKindInfo, TableStorageAttributes,
+};
 
 #[test]
 fn inspector_columns_narrow_pane_keeps_horizontal_scroll() {
@@ -85,6 +87,33 @@ fn inspector_columns_marks_read_only_generated_columns() {
 }
 
 #[test]
+fn inspector_columns_shows_mysql_column_metadata() {
+    let mut state = harness::explorer_selected_state();
+    let mut terminal = create_test_terminal();
+
+    let mut table = fixtures::sample_table_detail();
+    table.columns[1].character_set_name = Some("utf8mb4".to_string());
+    table.columns[1].collation_name = Some("utf8mb4_bin".to_string());
+    table.columns[2].attributes =
+        ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED | ColumnAttributes::NULLABLE;
+    table.columns[2].generation_expression = Some("(`id` * 2)".to_string());
+    table.columns[2].generation_kind = Some(ColumnGenerationKind::Stored);
+    let _ = state.session.set_table_detail(table, 0);
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::from_string("mysql-test"),
+        "app",
+        DatabaseType::MySQL,
+        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+    );
+    state.ui.set_inspector_tab(InspectorTab::Columns);
+    state.ui.set_focused_pane(FocusedPane::Inspector);
+
+    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn inspector_indexes_tab_with_data() {
     let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
@@ -93,6 +122,36 @@ fn inspector_indexes_tab_with_data() {
     state.ui.set_focused_pane(FocusedPane::Inspector);
 
     let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn inspector_indexes_tab_for_mysql_hides_unsupported_partial_column() {
+    let mut state = harness::explorer_selected_state();
+    let mut terminal = create_test_terminal();
+
+    let mut table = fixtures::sample_table_detail();
+    table.indexes = vec![Index {
+        name: "idx_users_email_lower".to_string(),
+        columns: vec!["lower(email)".to_string()],
+        attributes: IndexAttributes::EXPRESSION | IndexAttributes::HAS_AUXILIARY_COLUMNS,
+        index_type: IndexType::BTree,
+        definition: Some(
+            "CREATE INDEX idx_users_email_lower ON users ((lower(`email`)))".to_string(),
+        ),
+    }];
+    let _ = state.session.set_table_detail(table, 0);
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::from_string("mysql-test"),
+        "app",
+        DatabaseType::MySQL,
+        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+    );
+    state.ui.set_inspector_tab(InspectorTab::Indexes);
+    state.ui.set_focused_pane(FocusedPane::Inspector);
+
+    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
 
     insta::assert_snapshot!(output);
 }
@@ -359,6 +418,55 @@ fn inspector_info_tab_for_sqlite_hides_postgres_only_fields() {
         "app.db",
         DatabaseType::SQLite,
         "sqlite:///tmp/app.db",
+    );
+    state.ui.set_inspector_tab(InspectorTab::Info);
+    state.ui.set_focused_pane(FocusedPane::Inspector);
+
+    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn inspector_info_tab_for_mysql_hides_schema_field() {
+    let mut state = harness::explorer_selected_state();
+    let mut terminal = create_test_terminal();
+
+    let _ = state
+        .session
+        .set_table_detail(fixtures::sample_table_detail(), 0);
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::from_string("mysql-test"),
+        "app",
+        DatabaseType::MySQL,
+        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+    );
+    state.ui.set_inspector_tab(InspectorTab::Info);
+    state.ui.set_focused_pane(FocusedPane::Inspector);
+
+    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn inspector_info_tab_for_mysql_shows_storage_attributes() {
+    let mut state = harness::explorer_selected_state();
+    let mut terminal = create_test_terminal();
+
+    let mut table = fixtures::sample_table_detail();
+    table.storage_attributes = TableStorageAttributes {
+        engine: Some("InnoDB".to_string()),
+        row_format: Some("Compressed".to_string()),
+        table_collation: Some("utf8mb4_bin".to_string()),
+        create_options: Some("partitioned".to_string()),
+    };
+    let _ = state.session.set_table_detail(table, 0);
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::from_string("mysql-test"),
+        "app",
+        DatabaseType::MySQL,
+        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
     );
     state.ui.set_inspector_tab(InspectorTab::Info);
     state.ui.set_focused_pane(FocusedPane::Inspector);

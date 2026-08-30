@@ -1,20 +1,33 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::domain::{ConnectionId, DatabaseMetadata, QueryResult, Table};
-use crate::model::browse::result_history::ResultHistory;
+use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, QueryResult, Table};
+use crate::model::browse::query_execution::PaginationState;
 use crate::model::shared::inspector_tab::InspectorTab;
 
 #[derive(Debug, Clone, Default)]
 pub struct ConnectionCache {
+    pub connection_dsn: Option<String>,
+    pub database_type: Option<DatabaseType>,
+    pub database: Option<String>,
     pub metadata: Option<Arc<DatabaseMetadata>>,
     pub effective_user: Option<String>,
     pub table_detail: Option<Table>,
     pub selected_table_key: Option<String>,
     pub query_result: Option<Arc<QueryResult>>,
-    pub result_history: ResultHistory,
+    pub pagination: PaginationState,
     pub explorer_selected: usize,
     pub inspector_tab: InspectorTab,
+}
+
+impl ConnectionCache {
+    pub fn is_valid_mysql_snapshot(&self, dsn: &str, database: Option<&str>) -> bool {
+        self.connection_dsn.as_deref() == Some(dsn)
+            && self.database_type == Some(DatabaseType::MySQL)
+            && self.database.as_deref() == database
+            && self.metadata.is_some()
+            && self.effective_user.is_some()
+    }
 }
 
 #[derive(Debug, Default)]
@@ -23,14 +36,6 @@ pub struct ConnectionCacheStore {
 }
 
 impl ConnectionCacheStore {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn get_or_create(&mut self, id: &ConnectionId) -> &mut ConnectionCache {
-        self.caches.entry(id.clone()).or_default()
-    }
-
     pub fn get(&self, id: &ConnectionId) -> Option<&ConnectionCache> {
         self.caches.get(id)
     }
@@ -54,33 +59,30 @@ mod tests {
 
         assert!(cache.metadata.is_none());
         assert!(cache.effective_user.is_none());
+        assert!(cache.connection_dsn.is_none());
+        assert!(cache.database_type.is_none());
+        assert!(cache.database.is_none());
         assert!(cache.table_detail.is_none());
         assert!(cache.selected_table_key.is_none());
         assert!(cache.query_result.is_none());
+        assert_eq!(cache.pagination.current_page(), 0);
+        assert!(cache.pagination.schema().is_empty());
+        assert!(cache.pagination.table().is_empty());
         assert_eq!(cache.explorer_selected, 0);
         assert_eq!(cache.inspector_tab, InspectorTab::default());
     }
 
     #[test]
     fn store_get_returns_none_for_unknown_id() {
-        let store = ConnectionCacheStore::new();
+        let store = ConnectionCacheStore::default();
         let id = ConnectionId::new();
 
         assert!(store.get(&id).is_none());
     }
 
     #[test]
-    fn store_get_or_create_creates_default() {
-        let mut store = ConnectionCacheStore::new();
-        let id = ConnectionId::new();
-
-        let cache = store.get_or_create(&id);
-        assert!(cache.metadata.is_none());
-    }
-
-    #[test]
     fn store_save_and_get_returns_saved_cache() {
-        let mut store = ConnectionCacheStore::new();
+        let mut store = ConnectionCacheStore::default();
         let id = ConnectionId::new();
 
         let cache = ConnectionCache {
@@ -97,7 +99,7 @@ mod tests {
 
     #[test]
     fn store_remove_returns_and_deletes_cache() {
-        let mut store = ConnectionCacheStore::new();
+        let mut store = ConnectionCacheStore::default();
         let id = ConnectionId::new();
 
         let cache = ConnectionCache {
@@ -116,7 +118,7 @@ mod tests {
     fn preserves_metadata_on_save_and_get() {
         use crate::domain::{DatabaseMetadata, TableSummary};
 
-        let mut store = ConnectionCacheStore::new();
+        let mut store = ConnectionCacheStore::default();
         let id = ConnectionId::new();
 
         let metadata = Arc::new({
@@ -146,10 +148,26 @@ mod tests {
     }
 
     #[test]
+    fn mysql_restore_requires_matching_connection_identity() {
+        let cache = ConnectionCache {
+            connection_dsn: Some("mysql://user@localhost/app".to_string()),
+            database_type: Some(DatabaseType::MySQL),
+            database: Some("app".to_string()),
+            metadata: Some(Arc::new(DatabaseMetadata::new("app".to_string()))),
+            effective_user: Some("user@localhost".to_string()),
+            ..Default::default()
+        };
+
+        assert!(cache.is_valid_mysql_snapshot("mysql://user@localhost/app", Some("app")));
+        assert!(!cache.is_valid_mysql_snapshot("mysql://user@localhost/other", Some("app")));
+        assert!(!cache.is_valid_mysql_snapshot("mysql://user@localhost/app", Some("other")));
+    }
+
+    #[test]
     fn preserves_query_result_on_save_and_get() {
         use crate::domain::{QueryResult, QuerySource};
 
-        let mut store = ConnectionCacheStore::new();
+        let mut store = ConnectionCacheStore::default();
         let id = ConnectionId::new();
 
         let query_result = QueryResult::success(

@@ -24,6 +24,7 @@ pub trait QueryExecutor: Send + Sync {
         query: &str,
         access_mode: AccessMode,
     ) -> Result<QueryResult, DbOperationError>;
+
     async fn execute_write(
         &self,
         dsn: &str,

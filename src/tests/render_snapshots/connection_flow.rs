@@ -1,6 +1,18 @@
 use super::*;
-use crate::tests::harness::{focus_connection_field, set_connection_input};
+use crate::tests::harness::{
+    focus_connection_field, render_to_string_with_services, set_connection_input,
+};
 use sabiql_app::model::shared::settings::KeymapPreset;
+use sabiql_app::ports::outbound::DsnBuilder;
+use sabiql_domain::ConnectionProfile;
+
+struct EmptyPasswordDsnBuilder;
+
+impl DsnBuilder for EmptyPasswordDsnBuilder {
+    fn build_dsn(&self, _profile: &ConnectionProfile) -> String {
+        "mysql://mysql_user:@localhost:3306/app?ssl-mode=PREFERRED".to_string()
+    }
+}
 
 fn repeated(ch: char, len: usize) -> String {
     std::iter::repeat_n(ch, len).collect()
@@ -44,6 +56,77 @@ fn connection_setup_sqlite_form() {
         .set_content("/tmp/app.db".to_string());
 
     let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn connection_setup_mysql_form() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::ConnectionSetup);
+    state
+        .connection_setup
+        .set_database_type(DatabaseType::MySQL);
+    state
+        .connection_setup
+        .input_mut(ConnectionField::Database)
+        .unwrap()
+        .set_content("app".to_string());
+    state
+        .connection_setup
+        .input_mut(ConnectionField::User)
+        .unwrap()
+        .set_content("mysql_user".to_string());
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn connection_setup_mysql_cleartext_auth_notice() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::ConnectionSetup);
+    state
+        .connection_setup
+        .set_database_type(DatabaseType::MySQL);
+    focus_connection_field(&mut state, ConnectionField::CleartextAuth);
+    state.connection_setup.toggle_focused_dropdown();
+    state.connection_setup.dropdown_next();
+    state.connection_setup.confirm_dropdown();
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn connection_setup_mysql_preview_does_not_mask_empty_password() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+    let mut services = AppServices::stub();
+    services.dsn_builder = Arc::new(EmptyPasswordDsnBuilder);
+
+    state.modal.set_mode(InputMode::ConnectionSetup);
+    state
+        .connection_setup
+        .set_database_type(DatabaseType::MySQL);
+    state
+        .connection_setup
+        .input_mut(ConnectionField::Database)
+        .unwrap()
+        .set_content("app".to_string());
+    state
+        .connection_setup
+        .input_mut(ConnectionField::User)
+        .unwrap()
+        .set_content("mysql_user".to_string());
+
+    let output = render_to_string_with_services(&mut terminal, &mut state, &services);
 
     insta::assert_snapshot!(output);
 }
@@ -326,6 +409,107 @@ fn connection_error_collapsed() {
     let output = render_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
+}
+
+#[test]
+fn mysql_active_connection_retryable_error_shows_retry_action() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.session.activate_connection_with_target(
+        &sabiql_domain::ConnectionId::from_string("mysql-test"),
+        "mysql",
+        DatabaseType::MySQL,
+        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+        Some("app"),
+    );
+    state.modal.set_mode(InputMode::ConnectionError);
+    state
+        .connection_error
+        .set_error(ConnectionErrorInfo::with_kind(
+            ConnectionErrorKind::Timeout,
+            "ERROR 2003 (HY000): Can't connect to MySQL server on 'localhost' (110)",
+        ));
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+fn render_service_error_without_service_file_hint(save_and_connect: bool) -> String {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+    state.session.activate_connection_with_dsn(
+        &sabiql_domain::ConnectionId::from_string("service"),
+        "service",
+        DatabaseType::PostgreSQL,
+        "service=mydb",
+    );
+    state
+        .runtime
+        .set_service_file_path(Some(std::path::PathBuf::from("/etc/pg_service.conf")));
+    if save_and_connect {
+        state.connection_error.set_save_and_connect_error(
+            ConnectionErrorInfo::new("mysql save failed"),
+            DatabaseType::MySQL,
+        );
+    } else {
+        state.connection_error.set_connection_switch_error(
+            ConnectionErrorInfo::new("mysql switch failed"),
+            DatabaseType::MySQL,
+        );
+    }
+    state.modal.set_mode(InputMode::ConnectionError);
+
+    render_to_string(&mut terminal, &mut state)
+}
+
+#[test]
+fn connection_error_save_failure_hides_retry_in_modal_and_footer() {
+    let output = render_service_error_without_service_file_hint(true);
+
+    assert!(output.contains("Actions:  e  Re-enter"));
+    assert!(output.contains("e:Edit"));
+    assert!(!output.contains("Retry"));
+}
+
+#[test]
+fn non_mysql_retryable_error_hides_retry_in_modal_and_footer() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+    state.session.activate_connection_with_dsn(
+        &sabiql_domain::ConnectionId::from_string("postgres-test"),
+        "postgres",
+        DatabaseType::PostgreSQL,
+        "postgres://localhost:5432/app",
+    );
+    state.modal.set_mode(InputMode::ConnectionError);
+    state
+        .connection_error
+        .set_error(ConnectionErrorInfo::with_kind(
+            ConnectionErrorKind::Timeout,
+            "connection timed out",
+        ));
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    assert!(output.contains("Actions:  e  Re-enter"));
+    assert!(output.contains("e:Edit"));
+    assert!(!output.contains("Retry"));
+}
+
+#[test]
+fn connection_error_omits_service_file_hint_for_mysql_save() {
+    let output = render_service_error_without_service_file_hint(true);
+
+    assert!(!output.contains("pg_service.conf"));
+}
+
+#[test]
+fn connection_error_omits_service_file_hint_for_mysql_switch() {
+    let output = render_service_error_without_service_file_hint(false);
+
+    assert!(!output.contains("pg_service.conf"));
 }
 
 #[test]

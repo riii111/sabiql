@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::domain::{QueryResult, QuerySource, Table};
-use crate::model::browse::result_history::ResultHistory;
 use crate::model::shared::async_run::AsyncRun;
 
 pub const PREVIEW_PAGE_SIZE: usize = 500;
@@ -14,17 +13,9 @@ pub enum VisibleResultKind {
     Empty,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum QueryStatus {
-    #[default]
-    Idle,
-    Running,
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct PaginationState {
     current_page: usize,
-    total_rows_estimate: Option<i64>,
     reached_end: bool,
     schema: String,
     table: String,
@@ -33,10 +24,6 @@ pub struct PaginationState {
 impl PaginationState {
     pub fn current_page(&self) -> usize {
         self.current_page
-    }
-
-    pub fn total_rows_estimate(&self) -> Option<i64> {
-        self.total_rows_estimate
     }
 
     pub fn reached_end(&self) -> bool {
@@ -49,10 +36,6 @@ impl PaginationState {
 
     pub fn table(&self) -> &str {
         &self.table
-    }
-
-    pub fn has_table(&self) -> bool {
-        !self.table.is_empty()
     }
 
     pub fn matches_table(&self, table: &Table) -> bool {
@@ -69,23 +52,12 @@ impl PaginationState {
         }
     }
 
-    pub fn offset(&self) -> usize {
-        self.current_page * PREVIEW_PAGE_SIZE
-    }
-
     pub fn next_page(&self) -> usize {
         self.current_page + 1
     }
 
     pub fn prev_page(&self) -> usize {
         self.current_page.saturating_sub(1)
-    }
-
-    pub fn total_pages_estimate(&self) -> Option<usize> {
-        self.total_rows_estimate.map(|total| {
-            let total = total.max(0) as usize;
-            total.div_ceil(PREVIEW_PAGE_SIZE).max(1)
-        })
     }
 
     pub fn can_next(&self) -> bool {
@@ -98,7 +70,6 @@ impl PaginationState {
 
     pub fn reset(&mut self) {
         self.current_page = 0;
-        self.total_rows_estimate = None;
         self.reached_end = false;
         self.schema.clear();
         self.table.clear();
@@ -110,22 +81,12 @@ impl PaginationState {
         self.table = table.to_string();
     }
 
-    pub fn reset_for_table_with_estimate(
-        &mut self,
-        schema: &str,
-        table: &str,
-        estimate: Option<i64>,
-    ) {
-        self.reset_for_table(schema, table);
-        self.total_rows_estimate = estimate;
-    }
-
     pub fn clear_reached_end(&mut self) {
         self.reached_end = false;
     }
 
-    pub fn set_total_rows_estimate(&mut self, estimate: Option<i64>) {
-        self.total_rows_estimate = estimate;
+    pub fn mark_reached_end(&mut self) {
+        self.reached_end = true;
     }
 
     // Use when navigation changes only the page index and must preserve the
@@ -157,15 +118,28 @@ pub struct DeleteRefreshTarget {
     pub expected_delete_count: usize,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct PendingPreview {
+    result: Arc<QueryResult>,
+    generation: u64,
+    target_page: Option<usize>,
+    highlight: bool,
+}
+
+impl PendingPreview {
+    pub(crate) fn into_parts(self) -> (Arc<QueryResult>, Option<usize>, bool) {
+        (self.result, self.target_page, self.highlight)
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct QueryExecution {
-    status: QueryStatus,
     start_time: Option<Instant>,
     current_result: Option<Arc<QueryResult>>,
-    result_history: ResultHistory,
     result_generation: u64,
     result_highlight_until: Option<Instant>,
     pub pagination: PaginationState,
+    pending_preview: Option<PendingPreview>,
     pending_delete_refresh_target: Option<DeleteRefreshTarget>,
     post_delete_row_selection: PostDeleteRowSelection,
     run: AsyncRun,
@@ -176,29 +150,29 @@ impl QueryExecution {
 
     #[must_use]
     pub fn begin_running(&mut self, now: Instant) -> u64 {
-        self.status = QueryStatus::Running;
         self.start_time = Some(now);
+        self.pending_preview = None;
         self.run.begin()
     }
 
     pub fn mark_idle(&mut self) {
-        self.status = QueryStatus::Idle;
         self.start_time = None;
         self.run.clear_active();
     }
 
     pub fn reset_for_context_change(&mut self) {
         self.mark_idle();
+        self.pending_preview = None;
         self.clear_delete_refresh_target();
         self.post_delete_row_selection = PostDeleteRowSelection::Keep;
     }
 
-    pub fn is_current_run(&self, run_id: u64) -> bool {
-        self.run.is_current(run_id)
+    pub fn restore_pagination(&mut self, pagination: PaginationState) {
+        self.pagination = pagination;
     }
 
-    pub fn status(&self) -> QueryStatus {
-        self.status
+    pub fn is_current_run(&self, run_id: u64) -> bool {
+        self.run.is_current(run_id)
     }
 
     pub fn start_time(&self) -> Option<Instant> {
@@ -206,7 +180,7 @@ impl QueryExecution {
     }
 
     pub fn is_running(&self) -> bool {
-        self.status == QueryStatus::Running
+        self.start_time.is_some()
     }
 
     // ── Current result ──────────────────────────────────────────────
@@ -221,22 +195,37 @@ impl QueryExecution {
         self.result_generation += 1;
     }
 
-    pub fn push_history(&mut self, result: Arc<QueryResult>) {
-        self.result_history.push(result);
-        self.result_generation += 1;
+    pub(crate) fn defer_preview(
+        &mut self,
+        result: Arc<QueryResult>,
+        generation: u64,
+        target_page: Option<usize>,
+        highlight: bool,
+    ) {
+        self.pending_preview = Some(PendingPreview {
+            result,
+            generation,
+            target_page,
+            highlight,
+        });
+    }
+
+    pub(crate) fn has_pending_preview(&self, generation: u64) -> bool {
+        self.pending_preview
+            .as_ref()
+            .is_some_and(|pending| pending.generation == generation)
+    }
+
+    pub(crate) fn take_pending_preview(&mut self, generation: u64) -> Option<PendingPreview> {
+        if self.has_pending_preview(generation) {
+            self.pending_preview.take()
+        } else {
+            None
+        }
     }
 
     pub fn result_generation(&self) -> u64 {
         self.result_generation
-    }
-
-    pub fn result_history(&self) -> &ResultHistory {
-        &self.result_history
-    }
-
-    pub fn restore_history(&mut self, history: ResultHistory) {
-        self.result_history = history;
-        self.result_generation += 1;
     }
 
     pub fn current_result(&self) -> Option<&Arc<QueryResult>> {
@@ -338,7 +327,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn empty_when_no_result_and_no_history() {
+        fn empty_when_no_result() {
             let qe = QueryExecution::default();
 
             assert_eq!(qe.visible_result_kind(), VisibleResultKind::Empty);
@@ -380,26 +369,8 @@ mod tests {
         }
 
         #[test]
-        fn history_does_not_replace_current_result() {
-            let mut qe = QueryExecution::default();
-            qe.result_history.push(make_result(QuerySource::Adhoc));
-            qe.current_result = Some(make_result(QuerySource::Preview));
-
-            assert!(qe.visible_result().is_some());
-            assert_eq!(qe.visible_result().unwrap().source, QuerySource::Preview);
-        }
-
-        #[test]
         fn empty_query_execution_returns_none() {
             let qe = QueryExecution::default();
-
-            assert!(qe.visible_result().is_none());
-        }
-
-        #[test]
-        fn history_without_live_result_returns_none() {
-            let mut qe = QueryExecution::default();
-            qe.result_history.push(make_result(QuerySource::Adhoc));
 
             assert!(qe.visible_result().is_none());
         }
@@ -455,7 +426,7 @@ mod tests {
     fn default_creates_idle_state() {
         let execution = QueryExecution::default();
 
-        assert_eq!(execution.status(), QueryStatus::Idle);
+        assert!(!execution.is_running());
         assert!(execution.start_time().is_none());
         assert!(execution.current_result().is_none());
         assert_eq!(execution.result_generation(), 0);
@@ -486,15 +457,6 @@ mod tests {
         }
 
         #[test]
-        fn increments_on_push_history() {
-            let mut qe = QueryExecution::default();
-
-            qe.push_history(make_result(QuerySource::Adhoc));
-            assert_eq!(qe.result_generation(), 1);
-            assert_eq!(qe.result_history.len(), 1);
-        }
-
-        #[test]
         fn does_not_increment_on_cursor_like_operations() {
             let mut qe = QueryExecution::default();
             qe.set_current_result(make_result(QuerySource::Preview));
@@ -509,22 +471,19 @@ mod tests {
     }
 
     #[test]
-    fn query_status_default_is_idle() {
-        assert_eq!(QueryStatus::default(), QueryStatus::Idle);
-    }
-
-    #[test]
     fn context_reset_clears_query_owned_write_state() {
         let mut execution = QueryExecution::default();
         let run_id = execution.begin_running(Instant::now());
         execution.set_delete_refresh_target(2, Some(3), 1);
         execution.set_post_delete_selection(PostDeleteRowSelection::Select(4));
+        execution.defer_preview(make_result(QuerySource::Preview), 1, Some(0), true);
 
         execution.reset_for_context_change();
 
-        assert_eq!(execution.status(), QueryStatus::Idle);
+        assert!(!execution.is_running());
         assert!(!execution.is_current_run(run_id));
         assert!(execution.pending_delete_refresh_target().is_none());
+        assert!(!execution.has_pending_preview(1));
         assert_eq!(
             execution.post_delete_row_selection(),
             PostDeleteRowSelection::Keep
@@ -533,63 +492,6 @@ mod tests {
 
     mod pagination {
         use super::*;
-
-        #[test]
-        fn offset_returns_correct_value() {
-            let p = PaginationState {
-                current_page: 3,
-                ..Default::default()
-            };
-
-            assert_eq!(p.offset(), 3 * PREVIEW_PAGE_SIZE);
-        }
-
-        #[test]
-        fn total_pages_estimate_rounds_up() {
-            let p = PaginationState {
-                total_rows_estimate: Some(1001),
-                ..Default::default()
-            };
-
-            assert_eq!(p.total_pages_estimate(), Some(3));
-        }
-
-        #[test]
-        fn total_pages_estimate_exact_division() {
-            let p = PaginationState {
-                total_rows_estimate: Some(1000),
-                ..Default::default()
-            };
-
-            assert_eq!(p.total_pages_estimate(), Some(2));
-        }
-
-        #[test]
-        fn total_pages_estimate_none_when_unknown() {
-            let p = PaginationState::default();
-
-            assert_eq!(p.total_pages_estimate(), None);
-        }
-
-        #[test]
-        fn total_pages_estimate_clamps_zero_to_one() {
-            let p = PaginationState {
-                total_rows_estimate: Some(0),
-                ..Default::default()
-            };
-
-            assert_eq!(p.total_pages_estimate(), Some(1));
-        }
-
-        #[test]
-        fn total_pages_estimate_clamps_negative_to_one() {
-            let p = PaginationState {
-                total_rows_estimate: Some(-1),
-                ..Default::default()
-            };
-
-            assert_eq!(p.total_pages_estimate(), Some(1));
-        }
 
         #[test]
         fn can_next_false_when_reached_end() {
@@ -602,7 +504,7 @@ mod tests {
         }
 
         #[test]
-        fn can_next_true_when_estimate_unknown() {
+        fn can_next_true_before_end_of_data() {
             let p = PaginationState::default();
 
             assert!(p.can_next());
@@ -629,7 +531,6 @@ mod tests {
         fn reset_clears_state() {
             let mut p = PaginationState {
                 current_page: 5,
-                total_rows_estimate: Some(10000),
                 reached_end: true,
                 schema: "public".to_string(),
                 table: "users".to_string(),
@@ -638,26 +539,23 @@ mod tests {
             p.reset();
 
             assert_eq!(p.current_page, 0);
-            assert_eq!(p.total_rows_estimate, None);
             assert!(!p.reached_end);
             assert!(p.schema.is_empty());
             assert!(p.table.is_empty());
         }
 
         #[test]
-        fn reset_for_table_with_estimate_sets_target_and_resets_page_state() {
+        fn reset_for_table_sets_target_and_resets_page_state() {
             let mut p = PaginationState {
                 current_page: 5,
-                total_rows_estimate: Some(1),
                 reached_end: true,
                 schema: "old".to_string(),
                 table: "old".to_string(),
             };
 
-            p.reset_for_table_with_estimate("public", "users", Some(1200));
+            p.reset_for_table("public", "users");
 
             assert_eq!(p.current_page(), 0);
-            assert_eq!(p.total_rows_estimate(), Some(1200));
             assert!(!p.reached_end());
             assert_eq!(p.schema(), "public");
             assert_eq!(p.table(), "users");
@@ -685,6 +583,19 @@ mod tests {
 
             assert_eq!(p.current_page(), 3);
             assert!(!p.reached_end());
+        }
+
+        #[test]
+        fn mark_reached_end_only_sets_that_flag() {
+            let mut p = PaginationState {
+                current_page: 3,
+                ..Default::default()
+            };
+
+            p.mark_reached_end();
+
+            assert_eq!(p.current_page(), 3);
+            assert!(p.reached_end());
         }
     }
 }

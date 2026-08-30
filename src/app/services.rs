@@ -1,151 +1,221 @@
-#[cfg(any(test, feature = "test-support"))]
-use std::fmt::Write as _;
 use std::sync::Arc;
 
 use super::ports::outbound::{DdlGenerator, DsnBuilder, SqlDialect};
-#[cfg(any(test, feature = "test-support"))]
-use crate::domain::{ConnectionProfile, DatabaseType, QueryValue, Table};
 pub struct AppServices {
     pub ddl_generator: Arc<dyn DdlGenerator>,
     pub sql_dialect: Arc<dyn SqlDialect>,
     pub dsn_builder: Arc<dyn DsnBuilder>,
 }
 
-impl AppServices {
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn stub() -> Self {
-        use crate::policy::sql::sqlite_explain::build_sqlite_explain_query_plan_sql;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support {
+    use std::fmt::Write as _;
+    use std::sync::Arc;
 
-        fn quote_literal(value: &str) -> String {
-            format!("'{}'", value.replace('\'', "''"))
-        }
+    use super::{AppServices, DdlGenerator, DsnBuilder, SqlDialect};
+    use crate::domain::{ConnectionProfile, DatabaseType, QueryValue, Table};
 
-        fn sql_literal(database_type: DatabaseType, value: &QueryValue) -> String {
-            match value {
-                QueryValue::Null => "NULL".to_string(),
-                QueryValue::Text(value) => quote_literal(value),
-                QueryValue::SqlLiteral(value) => value.clone(),
-                QueryValue::Blob(bytes) => {
-                    let mut hex = String::with_capacity(bytes.len() * 2);
-                    for byte in bytes {
-                        let _ = write!(hex, "{byte:02x}");
+    impl AppServices {
+        #[doc(hidden)]
+        pub fn stub() -> Self {
+            use crate::domain::mysql_sql::{
+                mysql_explain_rejection_message, mysql_tree_explain_query_kind,
+            };
+            use crate::domain::sqlite_sql::build_sqlite_explain_query_plan_sql;
+
+            fn quote_identifier(database_type: DatabaseType, value: &str) -> String {
+                match database_type {
+                    DatabaseType::MySQL => {
+                        format!("`{}`", value.replace('`', "``"))
                     }
+                    DatabaseType::PostgreSQL | DatabaseType::SQLite => {
+                        format!("\"{}\"", value.replace('"', "\"\""))
+                    }
+                }
+            }
+
+            fn quote_literal(database_type: DatabaseType, value: &str) -> String {
+                if database_type != DatabaseType::MySQL {
+                    return format!("'{}'", value.replace('\'', "''"));
+                }
+
+                let mut escaped = String::with_capacity(value.len());
+                for character in value.chars() {
+                    match character {
+                        '\0' => escaped.push_str("\\0"),
+                        '\n' => escaped.push_str("\\n"),
+                        '\r' => escaped.push_str("\\r"),
+                        '\t' => escaped.push_str("\\t"),
+                        '\u{0008}' => escaped.push_str("\\b"),
+                        '\u{001a}' => escaped.push_str("\\Z"),
+                        '\\' => escaped.push_str("\\\\"),
+                        '\'' => escaped.push_str("\\'"),
+                        _ => escaped.push(character),
+                    }
+                }
+                format!("'{escaped}'")
+            }
+
+            fn sql_literal(database_type: DatabaseType, value: &QueryValue) -> String {
+                match value {
+                    QueryValue::Null => "NULL".to_string(),
+                    QueryValue::Text(value) => quote_literal(database_type, value),
+                    QueryValue::SqlLiteral(value) => value.clone(),
+                    QueryValue::Blob(bytes) => {
+                        let mut hex = String::with_capacity(bytes.len() * 2);
+                        for byte in bytes {
+                            let _ = write!(hex, "{byte:02x}");
+                        }
+                        match database_type {
+                            DatabaseType::PostgreSQL => format!("'\\x{hex}'"),
+                            DatabaseType::SQLite | DatabaseType::MySQL => {
+                                format!("X'{}'", hex.to_uppercase())
+                            }
+                        }
+                    }
+                }
+            }
+
+            fn equality_predicate(
+                database_type: DatabaseType,
+                key: &str,
+                value: &QueryValue,
+            ) -> String {
+                match value {
+                    QueryValue::Null => {
+                        format!("{} IS NULL", quote_identifier(database_type, key))
+                    }
+                    _ => format!(
+                        "{} = {}",
+                        quote_identifier(database_type, key),
+                        sql_literal(database_type, value)
+                    ),
+                }
+            }
+
+            struct StubDdlGenerator;
+            impl DdlGenerator for StubDdlGenerator {
+                fn generate_ddl(&self, _database_type: DatabaseType, _table: &Table) -> String {
+                    String::new()
+                }
+            }
+
+            struct StubSqlDialect;
+            impl SqlDialect for StubSqlDialect {
+                fn build_explain_sql(
+                    &self,
+                    database_type: DatabaseType,
+                    query: &str,
+                ) -> Option<String> {
                     match database_type {
-                        DatabaseType::PostgreSQL => format!("'\\x{hex}'"),
-                        DatabaseType::SQLite => format!("X'{}'", hex.to_uppercase()),
+                        DatabaseType::PostgreSQL => Some(format!("EXPLAIN {query}")),
+                        DatabaseType::SQLite => build_sqlite_explain_query_plan_sql(query),
+                        DatabaseType::MySQL => mysql_explain_rejection_message(query)
+                            .is_none()
+                            .then(|| format!("EXPLAIN FORMAT=TREE {query}")),
+                    }
+                }
+
+                fn build_explain_analyze_sql(
+                    &self,
+                    database_type: DatabaseType,
+                    query: &str,
+                ) -> Option<String> {
+                    match database_type {
+                        DatabaseType::PostgreSQL => Some(format!("EXPLAIN ANALYZE {query}")),
+                        DatabaseType::SQLite => None,
+                        DatabaseType::MySQL => {
+                            let explain = format!("EXPLAIN ANALYZE FORMAT=TREE {query}");
+                            mysql_tree_explain_query_kind(&explain)
+                                .is_some()
+                                .then_some(explain)
+                        }
+                    }
+                }
+
+                fn build_update_sql(
+                    &self,
+                    database_type: DatabaseType,
+                    schema: &str,
+                    table: &str,
+                    column: &str,
+                    new_value: &QueryValue,
+                    pk_pairs: &[(String, QueryValue)],
+                ) -> String {
+                    let set_clause = format!(
+                        "{} = {}",
+                        quote_identifier(database_type, column),
+                        sql_literal(database_type, new_value)
+                    );
+                    let where_clause = pk_pairs
+                        .iter()
+                        .map(|(key, value)| equality_predicate(database_type, key, value))
+                        .collect::<Vec<_>>()
+                        .join(" AND ");
+                    match database_type {
+                        DatabaseType::PostgreSQL | DatabaseType::MySQL => {
+                            format!(
+                                "UPDATE {}.{} SET {set_clause} WHERE {where_clause}",
+                                quote_identifier(database_type, schema),
+                                quote_identifier(database_type, table)
+                            )
+                        }
+                        DatabaseType::SQLite => {
+                            format!(
+                                "UPDATE {} SET {set_clause} WHERE {where_clause}",
+                                quote_identifier(database_type, table)
+                            )
+                        }
+                    }
+                }
+                fn build_bulk_delete_sql(
+                    &self,
+                    database_type: DatabaseType,
+                    schema: &str,
+                    table: &str,
+                    pk_pairs_per_row: &[Vec<(String, QueryValue)>],
+                ) -> String {
+                    let where_clause = pk_pairs_per_row
+                        .iter()
+                        .map(|pk_pairs| {
+                            pk_pairs
+                                .iter()
+                                .map(|(key, value)| equality_predicate(database_type, key, value))
+                                .collect::<Vec<_>>()
+                                .join(" AND ")
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" OR ");
+                    match database_type {
+                        DatabaseType::PostgreSQL | DatabaseType::MySQL => {
+                            format!(
+                                "DELETE FROM {}.{} WHERE {where_clause}",
+                                quote_identifier(database_type, schema),
+                                quote_identifier(database_type, table)
+                            )
+                        }
+                        DatabaseType::SQLite => {
+                            format!(
+                                "DELETE FROM {} WHERE {where_clause}",
+                                quote_identifier(database_type, table)
+                            )
+                        }
                     }
                 }
             }
-        }
 
-        fn equality_predicate(
-            database_type: DatabaseType,
-            key: &str,
-            value: &QueryValue,
-        ) -> String {
-            match value {
-                QueryValue::Null => format!("\"{key}\" IS NULL"),
-                _ => format!("\"{key}\" = {}", sql_literal(database_type, value)),
-            }
-        }
-
-        struct StubDdlGenerator;
-        impl DdlGenerator for StubDdlGenerator {
-            fn generate_ddl(&self, _database_type: DatabaseType, _table: &Table) -> String {
-                String::new()
-            }
-        }
-
-        struct StubSqlDialect;
-        impl SqlDialect for StubSqlDialect {
-            fn build_explain_sql(
-                &self,
-                database_type: DatabaseType,
-                query: &str,
-            ) -> Option<String> {
-                match database_type {
-                    DatabaseType::PostgreSQL => Some(format!("EXPLAIN {query}")),
-                    DatabaseType::SQLite => build_sqlite_explain_query_plan_sql(query),
+            struct StubDsnBuilder;
+            impl DsnBuilder for StubDsnBuilder {
+                fn build_dsn(&self, _profile: &ConnectionProfile) -> String {
+                    "stub-dsn".to_string()
                 }
             }
 
-            fn build_explain_analyze_sql(
-                &self,
-                database_type: DatabaseType,
-                query: &str,
-            ) -> Option<String> {
-                match database_type {
-                    DatabaseType::PostgreSQL => Some(format!("EXPLAIN ANALYZE {query}")),
-                    DatabaseType::SQLite => None,
-                }
+            Self {
+                ddl_generator: Arc::new(StubDdlGenerator),
+                sql_dialect: Arc::new(StubSqlDialect),
+                dsn_builder: Arc::new(StubDsnBuilder),
             }
-
-            fn build_update_sql(
-                &self,
-                database_type: DatabaseType,
-                schema: &str,
-                table: &str,
-                column: &str,
-                new_value: &QueryValue,
-                pk_pairs: &[(String, QueryValue)],
-            ) -> String {
-                let set_clause =
-                    format!("\"{column}\" = {}", sql_literal(database_type, new_value));
-                let where_clause = pk_pairs
-                    .iter()
-                    .map(|(key, value)| equality_predicate(database_type, key, value))
-                    .collect::<Vec<_>>()
-                    .join(" AND ");
-                match database_type {
-                    DatabaseType::PostgreSQL => {
-                        format!(
-                            "UPDATE \"{schema}\".\"{table}\" SET {set_clause} WHERE {where_clause}"
-                        )
-                    }
-                    DatabaseType::SQLite => {
-                        format!("UPDATE \"{table}\" SET {set_clause} WHERE {where_clause}")
-                    }
-                }
-            }
-            fn build_bulk_delete_sql(
-                &self,
-                database_type: DatabaseType,
-                schema: &str,
-                table: &str,
-                pk_pairs_per_row: &[Vec<(String, QueryValue)>],
-            ) -> String {
-                let where_clause = pk_pairs_per_row
-                    .iter()
-                    .map(|pk_pairs| {
-                        pk_pairs
-                            .iter()
-                            .map(|(key, value)| equality_predicate(database_type, key, value))
-                            .collect::<Vec<_>>()
-                            .join(" AND ")
-                    })
-                    .collect::<Vec<_>>()
-                    .join(" OR ");
-                match database_type {
-                    DatabaseType::PostgreSQL => {
-                        format!("DELETE FROM \"{schema}\".\"{table}\" WHERE {where_clause}")
-                    }
-                    DatabaseType::SQLite => format!("DELETE FROM \"{table}\" WHERE {where_clause}"),
-                }
-            }
-        }
-
-        struct StubDsnBuilder;
-        impl DsnBuilder for StubDsnBuilder {
-            fn build_dsn(&self, _profile: &ConnectionProfile) -> String {
-                "stub-dsn".to_string()
-            }
-        }
-
-        Self {
-            ddl_generator: Arc::new(StubDdlGenerator),
-            sql_dialect: Arc::new(StubSqlDialect),
-            dsn_builder: Arc::new(StubDsnBuilder),
         }
     }
 }
@@ -153,6 +223,7 @@ impl AppServices {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::{DatabaseType, QueryValue};
 
     #[test]
     fn stub_sqlite_explain_passes_through_existing_query_plan_prefix() {

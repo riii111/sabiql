@@ -1,0 +1,54 @@
+---
+source: src/tests/render_snapshots/inspector.rs
+expression: output
+---
+test_project ▸ test_db ▸ -                                                                                                                            connected | app
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]
+│> users                                │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  posts                                ││Name    Type           Null   PK   Read-only   Default   Comment       Charset   Collation     Generation                 │
+│  comments                             ││id      integer               ✓                          Primary key                                                      │
+│                                       ││name    varchar(255)                                                   utf8mb4   utf8mb4_bin                              │
+│                                       ││email   varchar(255)   ✓           generated                                                   STORED: (`id` * 2)         │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       │└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+│                                       │┌ [3] Result ──────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                       ││(select a table to preview)                                                                                               │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+└───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+r:Reload  s:SQL  e:ER Diagram  ^P:Tables  ^O:History  ^R:Read-Only  f:Focus  Tab/⇧Tab:InsTabs  ?:Help  F1:Palette  ,:Settings  q:Quit

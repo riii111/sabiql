@@ -1,7 +1,5 @@
 use std::time::Instant;
 
-#[cfg(test)]
-use crate::domain::ColumnAttributes;
 use crate::model::app_state::AppState;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
@@ -102,6 +100,8 @@ pub fn reduce_selection(state: &mut AppState, action: &Action, now: Instant) -> 
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::ColumnAttributes;
+
     use super::*;
     use crate::domain::Column;
     use crate::domain::{QueryResult, QuerySource, Table};

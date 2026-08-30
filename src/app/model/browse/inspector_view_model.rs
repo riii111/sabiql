@@ -1,15 +1,31 @@
-use crate::domain::{DatabaseType, ForeignKey, Index, IndexType, RlsInfo, Table};
+use crate::domain::{
+    ColumnGenerationKind, DatabaseType, ForeignKey, Index, IndexType, RlsInfo, Table,
+    TriggerCreationContext,
+};
+use crate::model::browse::session::TableDetailState;
 use crate::model::shared::engine_feature_profile::{EngineFeatureProfile, InspectorInfoField};
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::policy::table_kind::{inspector_flags_label, inspector_kind_label};
 use crate::ports::outbound::DdlGenerator;
 
+pub const MYSQL_TRIGGER_DETAIL_LINES_PER_ROW: usize = 12;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InspectorViewModel {
     active_tab: InspectorTab,
+    load_state: InspectorLoadState,
     section: Option<InspectorSection>,
     empty_state: Option<InspectorEmptyState>,
     unavailable_reason: Option<InspectorUnavailableReason>,
+    mysql_trigger_details: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InspectorLoadState {
+    NoTableSelected,
+    Loading,
+    Success,
+    Error(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,10 +36,14 @@ pub enum InspectorSection {
     Columns {
         rows: Vec<InspectorColumnRow>,
         show_read_only: bool,
+        show_character_set: bool,
+        show_collation: bool,
+        show_generation: bool,
     },
     Indexes {
         rows: Vec<InspectorIndexRow>,
         show_type: bool,
+        show_partial: bool,
         show_details: bool,
     },
     ForeignKeys {
@@ -57,6 +77,10 @@ pub struct InspectorColumnRow {
     pub read_only_reason: Option<String>,
     pub default: Option<String>,
     pub comment: Option<String>,
+    pub character_set_name: Option<String>,
+    pub collation_name: Option<String>,
+    pub generation_expression: Option<String>,
+    pub generation_kind: Option<ColumnGenerationKind>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,6 +98,8 @@ pub struct InspectorForeignKeyRow {
     pub name: String,
     pub columns: String,
     pub references: String,
+    pub on_update: String,
+    pub on_delete: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,8 +107,10 @@ pub struct InspectorTriggerRow {
     pub name: String,
     pub timing: String,
     pub events: String,
-    pub function_name: String,
-    pub security_definer: bool,
+    pub action_order: Option<i32>,
+    pub definition: String,
+    pub security_context: Option<String>,
+    pub creation_context: Option<TriggerCreationContext>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -116,20 +144,30 @@ pub enum InspectorUnavailableReason {
 }
 
 impl InspectorViewModel {
-    pub fn build(
+    pub fn build_with_detail_state(
         profile: &EngineFeatureProfile,
         selected_tab: InspectorTab,
-        table: Option<&Table>,
+        table_detail_state: &TableDetailState,
         database_type: DatabaseType,
         ddl_generator: &dyn DdlGenerator,
     ) -> Self {
         let active_tab = profile.normalize_inspector_tab(selected_tab);
+        let (load_state, table) = match table_detail_state {
+            TableDetailState::NotSelected => (InspectorLoadState::NoTableSelected, None),
+            TableDetailState::Loading => (InspectorLoadState::Loading, None),
+            TableDetailState::Loaded(table) => (InspectorLoadState::Success, Some(table.as_ref())),
+            TableDetailState::Error(error) => (InspectorLoadState::Error(error.clone()), None),
+        };
         let Some(table) = table else {
+            let empty_state = matches!(&load_state, InspectorLoadState::NoTableSelected)
+                .then_some(InspectorEmptyState::NoTableSelected);
             return Self {
                 active_tab,
+                load_state,
                 section: None,
-                empty_state: Some(InspectorEmptyState::NoTableSelected),
+                empty_state,
                 unavailable_reason: None,
+                mysql_trigger_details: false,
             };
         };
 
@@ -140,9 +178,10 @@ impl InspectorViewModel {
                         .supported_inspector_info_fields()
                         .iter()
                         .copied()
-                        .map(|field| InspectorInfoRow::Field {
-                            field,
-                            value: info_value(field, table),
+                        .filter_map(|field| {
+                            let value = info_value(field, table);
+                            (value.is_some() || !field.omit_when_empty())
+                                .then_some(InspectorInfoRow::Field { field, value })
                         })
                         .collect(),
                 },
@@ -154,7 +193,7 @@ impl InspectorViewModel {
                     .columns
                     .iter()
                     .any(|column| column.read_only_reason().is_some());
-                let rows = table
+                let rows: Vec<InspectorColumnRow> = table
                     .columns
                     .iter()
                     .map(|column| InspectorColumnRow {
@@ -165,12 +204,24 @@ impl InspectorViewModel {
                         read_only_reason: column.read_only_reason().map(ToString::to_string),
                         default: column.default.clone(),
                         comment: column.comment.clone(),
+                        character_set_name: column.character_set_name.clone(),
+                        collation_name: column.collation_name.clone(),
+                        generation_expression: column.generation_expression.clone(),
+                        generation_kind: column.generation_kind,
                     })
                     .collect();
+                let show_character_set = rows.iter().any(|row| row.character_set_name.is_some());
+                let show_collation = rows.iter().any(|row| row.collation_name.is_some());
+                let show_generation = rows.iter().any(|row| {
+                    row.generation_expression.is_some() || row.generation_kind.is_some()
+                });
                 (
                     InspectorSection::Columns {
                         rows,
                         show_read_only,
+                        show_character_set,
+                        show_collation,
+                        show_generation,
                     },
                     table
                         .columns
@@ -184,6 +235,10 @@ impl InspectorViewModel {
                     .indexes
                     .iter()
                     .any(|index| index.index_type != IndexType::Unknown);
+                let show_partial = matches!(
+                    database_type,
+                    DatabaseType::PostgreSQL | DatabaseType::SQLite
+                );
                 let show_details = table.indexes.iter().any(Index::has_index_detail);
                 let rows = table
                     .indexes
@@ -201,6 +256,7 @@ impl InspectorViewModel {
                     InspectorSection::Indexes {
                         rows,
                         show_type,
+                        show_partial,
                         show_details,
                     },
                     table
@@ -248,8 +304,10 @@ impl InspectorViewModel {
                             .map(ToString::to_string)
                             .collect::<Vec<_>>()
                             .join("/"),
-                        function_name: trigger.function_name.clone(),
-                        security_definer: trigger.security_definer,
+                        action_order: trigger.action_order,
+                        definition: trigger.definition.clone(),
+                        security_context: trigger.security_context.clone(),
+                        creation_context: trigger.creation_context.clone(),
                     })
                     .collect();
                 (
@@ -276,14 +334,21 @@ impl InspectorViewModel {
 
         Self {
             active_tab,
+            load_state,
             section: Some(section),
             empty_state,
             unavailable_reason,
+            mysql_trigger_details: database_type == DatabaseType::MySQL
+                && active_tab == InspectorTab::Triggers,
         }
     }
 
     pub fn active_tab(&self) -> InspectorTab {
         self.active_tab
+    }
+
+    pub fn load_state(&self) -> &InspectorLoadState {
+        &self.load_state
     }
 
     pub fn section(&self) -> Option<&InspectorSection> {
@@ -299,10 +364,27 @@ impl InspectorViewModel {
     }
 
     pub fn row_count(&self) -> usize {
+        if self.mysql_trigger_details {
+            return self
+                .section
+                .as_ref()
+                .and_then(|section| match section {
+                    InspectorSection::Triggers { rows } => {
+                        Some(rows.len() * MYSQL_TRIGGER_DETAIL_LINES_PER_ROW)
+                    }
+                    _ => None,
+                })
+                .unwrap_or_default();
+        }
+
         self.section.as_ref().map_or(0, InspectorSection::row_count)
     }
 
     pub fn visible_rows(&self, pane_height: u16) -> usize {
+        if self.mysql_trigger_details {
+            return pane_height.saturating_sub(3) as usize;
+        }
+
         match self.section.as_ref() {
             Some(
                 InspectorSection::Info { .. }
@@ -362,6 +444,10 @@ fn info_value(field: InspectorInfoField, table: &Table) -> Option<String> {
         InspectorInfoField::TableName => Some(table.name.clone()),
         InspectorInfoField::TableKind => Some(inspector_kind_label(&table.kind_info)),
         InspectorInfoField::TableFlags => inspector_flags_label(&table.kind_info),
+        InspectorInfoField::Engine => table.storage_attributes.engine.clone(),
+        InspectorInfoField::RowFormat => table.storage_attributes.row_format.clone(),
+        InspectorInfoField::TableCollation => table.storage_attributes.table_collation.clone(),
+        InspectorInfoField::CreateOptions => table.storage_attributes.create_options.clone(),
     }
 }
 
@@ -369,7 +455,11 @@ fn index_detail(index: &Index) -> String {
     if index.needs_source_definition_detail()
         && let Some(definition) = &index.definition
     {
-        return definition.clone();
+        let mut detail = definition.clone();
+        if index.is_invisible() {
+            detail.push_str("; invisible");
+        }
+        return detail;
     }
 
     let mut details = Vec::new();
@@ -384,6 +474,9 @@ fn index_detail(index: &Index) -> String {
     }
     if index.has_non_binary_collation() {
         details.push("collation");
+    }
+    if index.is_invisible() {
+        details.push("invisible");
     }
     details.join("; ")
 }
@@ -410,6 +503,8 @@ fn foreign_key_row(fk: &ForeignKey) -> InspectorForeignKeyRow {
         } else {
             format!("{references} (unresolved)")
         },
+        on_update: fk.on_update.to_string(),
+        on_delete: fk.on_delete.to_string(),
     }
 }
 
@@ -440,7 +535,7 @@ mod tests {
     use super::*;
     use crate::domain::{
         Column, ColumnAttributes, FkAction, IndexAttributes, RlsCommand, RlsPolicy, TableKindInfo,
-        Trigger, TriggerEvent, TriggerTiming,
+        TableStorageAttributes, Trigger, TriggerEvent, TriggerTiming,
     };
 
     struct TestDdlGenerator;
@@ -463,6 +558,10 @@ mod tests {
                 default: None,
                 comment: None,
                 ordinal_position: 1,
+                character_set_name: None,
+                collation_name: None,
+                generation_expression: None,
+                generation_kind: None,
             }],
             primary_key: Some(vec!["id".to_string()]),
             foreign_keys: vec![ForeignKey {
@@ -473,8 +572,8 @@ mod tests {
                 to_schema: "public".to_string(),
                 to_table: "orgs".to_string(),
                 to_columns: vec!["id".to_string()],
-                on_delete: FkAction::NoAction,
-                on_update: FkAction::NoAction,
+                on_delete: FkAction::Cascade,
+                on_update: FkAction::SetNull,
                 reference_resolved: true,
             }],
             indexes: vec![Index {
@@ -500,22 +599,41 @@ mod tests {
                 name: "users_updated".to_string(),
                 timing: TriggerTiming::Before,
                 events: vec![TriggerEvent::Update],
-                function_name: "set_updated_at".to_string(),
-                security_definer: false,
+                action_order: None,
+                definition: "set_updated_at".to_string(),
+                security_context: Some("INVOKER".to_string()),
+                creation_context: None,
             }],
             row_count_estimate: Some(3),
             comment: Some("Users".to_string()),
             source_ddl: None,
+            storage_attributes: TableStorageAttributes::default(),
             kind_info: TableKindInfo::default(),
         }
     }
 
+    fn build_loaded(
+        profile: &EngineFeatureProfile,
+        selected_tab: InspectorTab,
+        table: &Table,
+        database_type: DatabaseType,
+        ddl_generator: &dyn DdlGenerator,
+    ) -> InspectorViewModel {
+        InspectorViewModel::build_with_detail_state(
+            profile,
+            selected_tab,
+            &TableDetailState::Loaded(Box::new(table.clone())),
+            database_type,
+            ddl_generator,
+        )
+    }
+
     #[test]
     fn no_table_exposes_empty_state_without_display_rows() {
-        let model = InspectorViewModel::build(
+        let model = InspectorViewModel::build_with_detail_state(
             &EngineFeatureProfile::postgres_like(),
             InspectorTab::Info,
-            None,
+            &TableDetailState::NotSelected,
             DatabaseType::PostgreSQL,
             &TestDdlGenerator,
         );
@@ -526,6 +644,249 @@ mod tests {
             Some(InspectorEmptyState::NoTableSelected)
         );
         assert_eq!(model.unavailable_reason(), None);
+    }
+
+    #[test]
+    fn loading_detail_exposes_loading_state_without_stale_rows() {
+        let model = InspectorViewModel::build_with_detail_state(
+            &EngineFeatureProfile::mysql_like(),
+            InspectorTab::Info,
+            &TableDetailState::Loading,
+            DatabaseType::MySQL,
+            &TestDdlGenerator,
+        );
+
+        assert_eq!(model.load_state(), &InspectorLoadState::Loading);
+        assert_eq!(model.section(), None);
+        assert_eq!(model.empty_state(), None);
+    }
+
+    #[test]
+    fn failed_detail_exposes_error_state_without_stale_rows() {
+        let model = InspectorViewModel::build_with_detail_state(
+            &EngineFeatureProfile::mysql_like(),
+            InspectorTab::Info,
+            &TableDetailState::Error("permission denied".to_string()),
+            DatabaseType::MySQL,
+            &TestDdlGenerator,
+        );
+
+        assert_eq!(
+            model.load_state(),
+            &InspectorLoadState::Error("permission denied".to_string())
+        );
+        assert_eq!(model.section(), None);
+    }
+
+    #[test]
+    fn mysql_info_has_only_comment_rows_and_table_name() {
+        let model = build_loaded(
+            &EngineFeatureProfile::mysql_like(),
+            InspectorTab::Info,
+            &table(),
+            DatabaseType::MySQL,
+            &TestDdlGenerator,
+        );
+
+        assert_eq!(model.row_count(), 3);
+        match model.section() {
+            Some(InspectorSection::Info { rows }) => assert_eq!(
+                rows,
+                &[
+                    InspectorInfoRow::Field {
+                        field: InspectorInfoField::Comment,
+                        value: Some("Users".to_string()),
+                    },
+                    InspectorInfoRow::Field {
+                        field: InspectorInfoField::RowCount,
+                        value: Some("~3".to_string()),
+                    },
+                    InspectorInfoRow::Field {
+                        field: InspectorInfoField::TableName,
+                        value: Some("users".to_string()),
+                    },
+                ]
+            ),
+            section => panic!("expected info section, got {section:?}"),
+        }
+    }
+
+    #[test]
+    fn mysql_info_shows_server_storage_attributes() {
+        let mut table = table();
+        table.storage_attributes = TableStorageAttributes {
+            engine: Some("InnoDB".to_string()),
+            row_format: Some("Compressed".to_string()),
+            table_collation: Some("utf8mb4_bin".to_string()),
+            create_options: Some("partitioned".to_string()),
+        };
+
+        let model = build_loaded(
+            &EngineFeatureProfile::mysql_like(),
+            InspectorTab::Info,
+            &table,
+            DatabaseType::MySQL,
+            &TestDdlGenerator,
+        );
+
+        match model.section() {
+            Some(InspectorSection::Info { rows }) => assert_eq!(
+                rows.iter()
+                    .map(|row| match row {
+                        InspectorInfoRow::Field { field, value } => (*field, value.as_deref()),
+                    })
+                    .collect::<Vec<_>>(),
+                vec![
+                    (InspectorInfoField::Comment, Some("Users")),
+                    (InspectorInfoField::RowCount, Some("~3")),
+                    (InspectorInfoField::TableName, Some("users")),
+                    (InspectorInfoField::Engine, Some("InnoDB")),
+                    (InspectorInfoField::RowFormat, Some("Compressed")),
+                    (InspectorInfoField::TableCollation, Some("utf8mb4_bin")),
+                    (InspectorInfoField::CreateOptions, Some("partitioned")),
+                ]
+            ),
+            section => panic!("expected info section, got {section:?}"),
+        }
+    }
+
+    #[test]
+    fn mysql_columns_include_column_metadata_only_when_present() {
+        let mut table = table();
+        table.columns[0].attributes = ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED;
+        table.columns[0].character_set_name = Some("utf8mb4".to_string());
+        table.columns[0].collation_name = Some("utf8mb4_bin".to_string());
+        table.columns[0].generation_expression = Some("(`id` * 2)".to_string());
+        table.columns[0].generation_kind = Some(ColumnGenerationKind::Stored);
+
+        let model = build_loaded(
+            &EngineFeatureProfile::mysql_like(),
+            InspectorTab::Columns,
+            &table,
+            DatabaseType::MySQL,
+            &TestDdlGenerator,
+        );
+
+        match model.section() {
+            Some(InspectorSection::Columns {
+                rows,
+                show_read_only,
+                show_character_set,
+                show_collation,
+                show_generation,
+            }) => {
+                assert!(*show_read_only);
+                assert!(*show_character_set);
+                assert!(*show_collation);
+                assert!(*show_generation);
+                assert_eq!(rows[0].generation_kind, Some(ColumnGenerationKind::Stored));
+                assert_eq!(rows[0].generation_expression.as_deref(), Some("(`id` * 2)"));
+            }
+            section => panic!("expected columns section, got {section:?}"),
+        }
+    }
+
+    #[test]
+    fn foreign_key_rows_include_referential_actions() {
+        let model = build_loaded(
+            &EngineFeatureProfile::mysql_like(),
+            InspectorTab::ForeignKeys,
+            &table(),
+            DatabaseType::MySQL,
+            &TestDdlGenerator,
+        );
+
+        match model.section() {
+            Some(InspectorSection::ForeignKeys { rows }) => assert_eq!(
+                rows,
+                &[InspectorForeignKeyRow {
+                    name: "users_org_id_fkey".to_string(),
+                    columns: "org_id".to_string(),
+                    references: "public.orgs(id)".to_string(),
+                    on_update: "SET NULL".to_string(),
+                    on_delete: "CASCADE".to_string(),
+                }]
+            ),
+            section => panic!("expected foreign keys section, got {section:?}"),
+        }
+    }
+
+    #[test]
+    fn mysql_info_omits_schema_and_indexes_hide_partial_column() {
+        let mut table = table();
+        table.indexes = vec![Index {
+            name: "users_email_lower".to_string(),
+            columns: vec!["lower(email)".to_string()],
+            attributes: IndexAttributes::EXPRESSION,
+            index_type: IndexType::BTree,
+            definition: Some(
+                "CREATE INDEX users_email_lower ON users ((lower(email)))".to_string(),
+            ),
+        }];
+
+        let info = build_loaded(
+            &EngineFeatureProfile::mysql_like(),
+            InspectorTab::Info,
+            &table,
+            DatabaseType::MySQL,
+            &TestDdlGenerator,
+        );
+        let indexes = build_loaded(
+            &EngineFeatureProfile::mysql_like(),
+            InspectorTab::Indexes,
+            &table,
+            DatabaseType::MySQL,
+            &TestDdlGenerator,
+        );
+
+        match info.section() {
+            Some(InspectorSection::Info { rows }) => assert!(!rows.iter().any(|row| {
+                matches!(
+                    row,
+                    InspectorInfoRow::Field {
+                        field: InspectorInfoField::Schema,
+                        ..
+                    }
+                )
+            })),
+            section => panic!("expected info section, got {section:?}"),
+        }
+        match indexes.section() {
+            Some(InspectorSection::Indexes { show_partial, .. }) => assert!(!show_partial),
+            section => panic!("expected index section, got {section:?}"),
+        }
+    }
+
+    #[test]
+    fn mysql_trigger_rows_preserve_action_order_and_creation_context() {
+        let mut table = table();
+        table.triggers[0].action_order = Some(2);
+        table.triggers[0].creation_context = Some(TriggerCreationContext {
+            sql_mode: Some("STRICT_TRANS_TABLES".to_string()),
+            character_set_client: Some("utf8mb4".to_string()),
+            collation_connection: Some("utf8mb4_0900_ai_ci".to_string()),
+            database_collation: Some("utf8mb4_0900_ai_ci".to_string()),
+            created: Some("2026-08-21 10:20:30.00".to_string()),
+        });
+
+        let model = build_loaded(
+            &EngineFeatureProfile::mysql_like(),
+            InspectorTab::Triggers,
+            &table,
+            DatabaseType::MySQL,
+            &TestDdlGenerator,
+        );
+
+        match model.section() {
+            Some(InspectorSection::Triggers { rows }) => {
+                assert_eq!(rows[0].action_order, Some(2));
+                assert_eq!(rows[0].creation_context, table.triggers[0].creation_context);
+            }
+            section => panic!("expected trigger section, got {section:?}"),
+        }
+        assert_eq!(model.row_count(), MYSQL_TRIGGER_DETAIL_LINES_PER_ROW);
+        assert_eq!(model.visible_rows(8), 5);
+        assert_eq!(model.max_scroll(8), 7);
     }
 
     #[test]
@@ -542,10 +903,10 @@ mod tests {
         ];
 
         for (tab, expected_rows) in cases {
-            let model = InspectorViewModel::build(
+            let model = build_loaded(
                 &EngineFeatureProfile::postgres_like(),
                 tab,
-                Some(&table),
+                &table,
                 DatabaseType::PostgreSQL,
                 &TestDdlGenerator,
             );
@@ -565,20 +926,20 @@ mod tests {
         table.columns.clear();
         table.rls = None;
 
-        let empty = InspectorViewModel::build(
+        let empty = build_loaded(
             &EngineFeatureProfile::postgres_like(),
             InspectorTab::Columns,
-            Some(&table),
+            &table,
             DatabaseType::PostgreSQL,
             &TestDdlGenerator,
         );
         assert_eq!(empty.row_count(), 0);
         assert_eq!(empty.empty_state(), Some(InspectorEmptyState::NoColumns));
 
-        let unavailable = InspectorViewModel::build(
+        let unavailable = build_loaded(
             &EngineFeatureProfile::postgres_like(),
             InspectorTab::Rls,
-            Some(&table),
+            &table,
             DatabaseType::PostgreSQL,
             &TestDdlGenerator,
         );
@@ -599,10 +960,10 @@ mod tests {
         ];
 
         for (tab, expected_rows) in cases {
-            let model = InspectorViewModel::build(
+            let model = build_loaded(
                 &EngineFeatureProfile::postgres_like(),
                 tab,
-                Some(&table),
+                &table,
                 DatabaseType::PostgreSQL,
                 &TestDdlGenerator,
             );
@@ -621,10 +982,10 @@ mod tests {
         let mut table = table();
         let column = table.columns[0].clone();
         table.columns.resize(6, column);
-        let model = InspectorViewModel::build(
+        let model = build_loaded(
             &EngineFeatureProfile::postgres_like(),
             InspectorTab::Columns,
-            Some(&table),
+            &table,
             DatabaseType::PostgreSQL,
             &TestDdlGenerator,
         );
@@ -655,10 +1016,10 @@ mod tests {
             },
         ];
 
-        let model = InspectorViewModel::build(
+        let model = build_loaded(
             &EngineFeatureProfile::postgres_like(),
             InspectorTab::Indexes,
-            Some(&table),
+            &table,
             DatabaseType::PostgreSQL,
             &TestDdlGenerator,
         );
@@ -670,6 +1031,47 @@ mod tests {
                 assert!(*show_details);
                 assert!(rows[0].detail.is_some());
                 assert_eq!(rows[1].detail, None);
+            }
+            section => panic!("expected index section, got {section:?}"),
+        }
+    }
+
+    #[test]
+    fn mysql_index_rows_show_prefix_direction_and_visibility() {
+        let mut table = table();
+        table.indexes = vec![
+            Index {
+                name: "users_email_idx".to_string(),
+                columns: vec!["email(8) DESC".to_string()],
+                attributes: IndexAttributes::DESCENDING | IndexAttributes::INVISIBLE,
+                index_type: IndexType::BTree,
+                definition: None,
+            },
+            Index {
+                name: "users_email_functional_idx".to_string(),
+                columns: vec!["lower(email)".to_string()],
+                attributes: IndexAttributes::EXPRESSION | IndexAttributes::INVISIBLE,
+                index_type: IndexType::BTree,
+                definition: Some("lower(email)".to_string()),
+            },
+        ];
+
+        let model = build_loaded(
+            &EngineFeatureProfile::mysql_like(),
+            InspectorTab::Indexes,
+            &table,
+            DatabaseType::MySQL,
+            &TestDdlGenerator,
+        );
+
+        match model.section() {
+            Some(InspectorSection::Indexes {
+                rows, show_details, ..
+            }) => {
+                assert!(*show_details);
+                assert_eq!(rows[0].columns, "email(8) DESC");
+                assert_eq!(rows[0].detail.as_deref(), Some("descending; invisible"));
+                assert_eq!(rows[1].detail.as_deref(), Some("lower(email); invisible"));
             }
             section => panic!("expected index section, got {section:?}"),
         }

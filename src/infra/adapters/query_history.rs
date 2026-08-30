@@ -4,8 +4,7 @@ use async_trait::async_trait;
 
 use crate::app::ports::outbound::{QueryHistoryError, QueryHistoryStore};
 use crate::config::cache::{CacheDirError, get_cache_dir};
-use crate::domain::connection::ConnectionId;
-use crate::domain::query_history::QueryHistoryEntry;
+use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
 
 const MAX_HISTORY_ENTRIES: usize = 1000;
 
@@ -58,13 +57,6 @@ impl FileQueryHistoryStore {
         Self { base_dir: None }
     }
 
-    #[cfg(test)]
-    fn with_base_dir(base_dir: PathBuf) -> Self {
-        Self {
-            base_dir: Some(base_dir),
-        }
-    }
-
     fn resolve_history_dir(&self, project_name: &str) -> Result<PathBuf, QueryHistoryError> {
         if let Some(base) = &self.base_dir {
             Ok(base.join("history"))
@@ -80,11 +72,11 @@ impl QueryHistoryStore for FileQueryHistoryStore {
     async fn append(
         &self,
         project_name: &str,
-        connection_id: &ConnectionId,
+        scope: &QueryHistoryScope,
         entry: &QueryHistoryEntry,
     ) -> Result<(), QueryHistoryError> {
         let history_dir = self.resolve_history_dir(project_name)?;
-        let path = history_dir.join(format!("{connection_id}.jsonl"));
+        let path = history_dir.join(format!("{}.jsonl", scope.connection_id));
         let line = serde_json::to_string(entry)?;
 
         tokio::task::spawn_blocking(move || {
@@ -99,10 +91,11 @@ impl QueryHistoryStore for FileQueryHistoryStore {
     async fn load(
         &self,
         project_name: &str,
-        connection_id: &ConnectionId,
+        scope: &QueryHistoryScope,
     ) -> Result<Vec<QueryHistoryEntry>, QueryHistoryError> {
         let history_dir = self.resolve_history_dir(project_name)?;
-        let path = history_dir.join(format!("{connection_id}.jsonl"));
+        let path = history_dir.join(format!("{}.jsonl", scope.connection_id));
+        let database = scope.database.clone();
 
         tokio::task::spawn_blocking(move || {
             if !path.exists() {
@@ -114,6 +107,7 @@ impl QueryHistoryStore for FileQueryHistoryStore {
                 .lines()
                 .filter(|line| !line.trim().is_empty())
                 .filter_map(|line| serde_json::from_str(line).ok())
+                .filter(|entry: &QueryHistoryEntry| entry.database == database)
                 .collect();
 
             Ok(entries)
@@ -125,17 +119,35 @@ impl QueryHistoryStore for FileQueryHistoryStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::connection::ConnectionId;
     use crate::domain::query_history::QueryResultStatus;
     use tempfile::TempDir;
 
+    impl FileQueryHistoryStore {
+        fn with_base_dir(base_dir: PathBuf) -> Self {
+            Self {
+                base_dir: Some(base_dir),
+            }
+        }
+    }
+
     fn make_entry(query: &str) -> QueryHistoryEntry {
-        QueryHistoryEntry::new(
+        QueryHistoryEntry::new_with_database(
             query.to_string(),
             "2026-03-13T12:00:00Z".to_string(),
             ConnectionId::from_string("test-conn"),
+            None,
             QueryResultStatus::Success,
             None,
         )
+    }
+
+    fn scope(connection_id: &ConnectionId) -> QueryHistoryScope {
+        QueryHistoryScope::new(connection_id.clone(), None)
+    }
+
+    fn database_scope(connection_id: &ConnectionId, database: &str) -> QueryHistoryScope {
+        QueryHistoryScope::new(connection_id.clone(), Some(database.to_string()))
     }
 
     #[tokio::test]
@@ -149,7 +161,7 @@ mod tests {
         assert!(!conn_id.as_str().contains('/'));
 
         store
-            .append("test", &conn_id, &make_entry("SELECT 1"))
+            .append("test", &scope(&conn_id), &make_entry("SELECT 1"))
             .await
             .unwrap();
 
@@ -157,7 +169,7 @@ mod tests {
         let path = history_dir.join(format!("{conn_id}.jsonl"));
         assert!(path.is_file());
 
-        let entries = store.load("test", &conn_id).await.unwrap();
+        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].query, "SELECT 1");
     }
@@ -169,7 +181,10 @@ mod tests {
         let conn_id = ConnectionId::from_string("test-conn");
 
         let entry = make_entry("SELECT 1");
-        store.append("test", &conn_id, &entry).await.unwrap();
+        store
+            .append("test", &scope(&conn_id), &entry)
+            .await
+            .unwrap();
 
         let history_dir = tmp.path().join("history");
         let path = history_dir.join(format!("{conn_id}.jsonl"));
@@ -186,24 +201,82 @@ mod tests {
         let conn_id = ConnectionId::from_string("test-conn");
 
         store
-            .append("test", &conn_id, &make_entry("SELECT 1"))
+            .append("test", &scope(&conn_id), &make_entry("SELECT 1"))
             .await
             .unwrap();
         store
-            .append("test", &conn_id, &make_entry("SELECT 2"))
+            .append("test", &scope(&conn_id), &make_entry("SELECT 2"))
             .await
             .unwrap();
         store
-            .append("test", &conn_id, &make_entry("SELECT 3"))
+            .append("test", &scope(&conn_id), &make_entry("SELECT 3"))
             .await
             .unwrap();
 
-        let entries = store.load("test", &conn_id).await.unwrap();
+        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
 
         assert_eq!(entries.len(), 3);
         assert_eq!(entries[0].query, "SELECT 1");
         assert_eq!(entries[1].query, "SELECT 2");
         assert_eq!(entries[2].query, "SELECT 3");
+    }
+
+    #[tokio::test]
+    async fn load_filters_entries_by_database_scope() {
+        let tmp = TempDir::new().unwrap();
+        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
+        let conn_id = ConnectionId::from_string("test-conn");
+        let app_scope = database_scope(&conn_id, "app");
+        let analytics_scope = database_scope(&conn_id, "analytics");
+
+        store
+            .append(
+                "test",
+                &app_scope,
+                &QueryHistoryEntry::new_with_database(
+                    "SELECT app".to_string(),
+                    "2026-03-13T12:00:00Z".to_string(),
+                    conn_id.clone(),
+                    Some("app".to_string()),
+                    QueryResultStatus::Success,
+                    None,
+                ),
+            )
+            .await
+            .unwrap();
+        store
+            .append(
+                "test",
+                &analytics_scope,
+                &QueryHistoryEntry::new_with_database(
+                    "SELECT analytics".to_string(),
+                    "2026-03-13T12:01:00Z".to_string(),
+                    conn_id.clone(),
+                    Some("analytics".to_string()),
+                    QueryResultStatus::Success,
+                    None,
+                ),
+            )
+            .await
+            .unwrap();
+
+        let app_entries = store.load("test", &app_scope).await.unwrap();
+        let analytics_entries = store.load("test", &analytics_scope).await.unwrap();
+
+        assert_eq!(
+            app_entries
+                .iter()
+                .map(|entry| entry.query.as_str())
+                .collect::<Vec<_>>(),
+            ["SELECT app"]
+        );
+        assert_eq!(
+            analytics_entries
+                .iter()
+                .map(|entry| entry.query.as_str())
+                .collect::<Vec<_>>(),
+            ["SELECT analytics"]
+        );
     }
 
     #[tokio::test]
@@ -215,12 +288,16 @@ mod tests {
         // Write 1001 entries
         for i in 0..1001 {
             store
-                .append("test", &conn_id, &make_entry(&format!("SELECT {i}")))
+                .append(
+                    "test",
+                    &scope(&conn_id),
+                    &make_entry(&format!("SELECT {i}")),
+                )
                 .await
                 .unwrap();
         }
 
-        let entries = store.load("test", &conn_id).await.unwrap();
+        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
 
         assert_eq!(entries.len(), MAX_HISTORY_ENTRIES);
         // Oldest entry (SELECT 0) should be trimmed, newest (SELECT 1000) should remain
@@ -234,7 +311,7 @@ mod tests {
         let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
         let conn_id = ConnectionId::from_string("nonexistent");
 
-        let entries = store.load("test", &conn_id).await.unwrap();
+        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
 
         assert!(entries.is_empty());
     }
@@ -247,7 +324,7 @@ mod tests {
 
         // Write a valid entry
         store
-            .append("test", &conn_id, &make_entry("SELECT 1"))
+            .append("test", &scope(&conn_id), &make_entry("SELECT 1"))
             .await
             .unwrap();
 
@@ -261,11 +338,11 @@ mod tests {
 
         // Write another valid entry
         store
-            .append("test", &conn_id, &make_entry("SELECT 2"))
+            .append("test", &scope(&conn_id), &make_entry("SELECT 2"))
             .await
             .unwrap();
 
-        let entries = store.load("test", &conn_id).await.unwrap();
+        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
 
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].query, "SELECT 1");
@@ -280,12 +357,16 @@ mod tests {
 
         for i in 0..5 {
             store
-                .append("test", &conn_id, &make_entry(&format!("SELECT {i}")))
+                .append(
+                    "test",
+                    &scope(&conn_id),
+                    &make_entry(&format!("SELECT {i}")),
+                )
                 .await
                 .unwrap();
         }
 
-        let entries = store.load("test", &conn_id).await.unwrap();
+        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
         assert_eq!(entries.len(), 5);
         assert_eq!(entries[0].query, "SELECT 0");
         assert_eq!(entries[4].query, "SELECT 4");
@@ -299,12 +380,16 @@ mod tests {
 
         for i in 0..MAX_HISTORY_ENTRIES {
             store
-                .append("test", &conn_id, &make_entry(&format!("SELECT {i}")))
+                .append(
+                    "test",
+                    &scope(&conn_id),
+                    &make_entry(&format!("SELECT {i}")),
+                )
                 .await
                 .unwrap();
         }
 
-        let entries = store.load("test", &conn_id).await.unwrap();
+        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
         assert_eq!(entries.len(), MAX_HISTORY_ENTRIES);
         assert_eq!(entries[0].query, "SELECT 0");
         assert_eq!(
@@ -322,12 +407,16 @@ mod tests {
         let total = MAX_HISTORY_ENTRIES + 5;
         for i in 0..total {
             store
-                .append("test", &conn_id, &make_entry(&format!("SELECT {i}")))
+                .append(
+                    "test",
+                    &scope(&conn_id),
+                    &make_entry(&format!("SELECT {i}")),
+                )
                 .await
                 .unwrap();
         }
 
-        let entries = store.load("test", &conn_id).await.unwrap();
+        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
         assert_eq!(entries.len(), MAX_HISTORY_ENTRIES);
         // Oldest 5 entries (0..5) should be trimmed
         assert_eq!(entries[0].query, "SELECT 5");
@@ -346,7 +435,11 @@ mod tests {
         // Fill to just above the limit so trim fires on next append
         for i in 0..MAX_HISTORY_ENTRIES {
             store
-                .append("test", &conn_id, &make_entry(&format!("SELECT {i}")))
+                .append(
+                    "test",
+                    &scope(&conn_id),
+                    &make_entry(&format!("SELECT {i}")),
+                )
                 .await
                 .unwrap();
         }
@@ -358,12 +451,12 @@ mod tests {
 
         // append should still succeed (trim failure is best-effort)
         let result = store
-            .append("test", &conn_id, &make_entry("SELECT final"))
+            .append("test", &scope(&conn_id), &make_entry("SELECT final"))
             .await;
         assert!(result.is_ok());
 
         // The entry was written even though trim failed
-        let entries = store.load("test", &conn_id).await.unwrap();
+        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
         assert!(entries.len() > MAX_HISTORY_ENTRIES);
         assert_eq!(entries.last().unwrap().query, "SELECT final");
     }
@@ -385,7 +478,7 @@ mod tests {
         // Malformed line should be skipped
         writeln!(file, "not valid json").unwrap();
 
-        let entries = store.load("test", &conn_id).await.unwrap();
+        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
 
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].query, "SELECT 1");

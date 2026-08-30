@@ -9,7 +9,8 @@ use ratatui::widgets::{Cell, Paragraph, Row, Table as RatatuiTable, Wrap};
 use crate::app::model::app_state::AppState;
 use crate::app::model::browse::inspector_view_model::{
     InspectorColumnRow, InspectorEmptyState, InspectorForeignKeyRow, InspectorIndexRow,
-    InspectorInfoRow, InspectorRlsRow, InspectorSection, InspectorTriggerRow, InspectorViewModel,
+    InspectorInfoRow, InspectorLoadState, InspectorRlsRow, InspectorSection, InspectorTriggerRow,
+    InspectorViewModel,
 };
 use crate::app::model::shared::engine_feature_profile::InspectorInfoField;
 use crate::app::model::shared::flash_timer::{FlashId, FlashTimerStore};
@@ -20,6 +21,7 @@ use crate::app::model::shared::viewport::{
     widths_fingerprint,
 };
 use crate::app::services::AppServices;
+use crate::domain::DatabaseType;
 use crate::primitives::atoms::{apply_yank_flash, panel_block};
 use crate::primitives::utils::text_utils::{
     MIN_COL_WIDTH, PADDING, calculate_header_min_widths, truncate_to_width,
@@ -27,6 +29,18 @@ use crate::primitives::utils::text_utils::{
 use crate::theme::ThemePalette;
 
 pub struct Inspector;
+
+#[derive(Debug, Clone, Copy)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "Inspector column display options are independent UI columns"
+)]
+struct ColumnDisplayOptions {
+    read_only: bool,
+    character_set: bool,
+    collation: bool,
+    generation: bool,
+}
 
 impl Inspector {
     pub fn render(
@@ -104,6 +118,29 @@ impl Inspector {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
+        match view_model.load_state() {
+            InspectorLoadState::NoTableSelected => {
+                frame.render_widget(
+                    Paragraph::new("(select a table)")
+                        .style(Style::default().fg(theme.semantic.text.placeholder)),
+                    inner,
+                );
+                return ViewportPlan::default();
+            }
+            InspectorLoadState::Loading => {
+                return ViewportPlan::default();
+            }
+            InspectorLoadState::Error(error) => {
+                frame.render_widget(
+                    Paragraph::new(format!("Error: {error}"))
+                        .style(Style::default().fg(theme.semantic.status.error)),
+                    inner,
+                );
+                return ViewportPlan::default();
+            }
+            InspectorLoadState::Success => {}
+        }
+
         if let Some(empty_state) = view_model.empty_state() {
             let style = if matches!(empty_state, InspectorEmptyState::NoTableSelected) {
                 Style::default().fg(theme.semantic.text.placeholder)
@@ -137,19 +174,31 @@ impl Inspector {
             Some(InspectorSection::Columns {
                 rows,
                 show_read_only,
-            }) => Self::render_columns(
-                frame,
-                inner,
-                rows,
-                *show_read_only,
-                state.ui.inspector_scroll_offset(),
-                state.ui.inspector_horizontal_offset(),
-                state.ui.inspector_viewport_plan(),
-                theme,
-            ),
+                show_character_set,
+                show_collation,
+                show_generation,
+            }) => {
+                let options = ColumnDisplayOptions {
+                    read_only: *show_read_only,
+                    character_set: *show_character_set,
+                    collation: *show_collation,
+                    generation: *show_generation,
+                };
+                Self::render_columns(
+                    frame,
+                    inner,
+                    rows,
+                    options,
+                    state.ui.inspector_scroll_offset(),
+                    state.ui.inspector_horizontal_offset(),
+                    state.ui.inspector_viewport_plan(),
+                    theme,
+                )
+            }
             Some(InspectorSection::Indexes {
                 rows,
                 show_type,
+                show_partial,
                 show_details,
             }) => {
                 Self::render_indexes(
@@ -157,6 +206,7 @@ impl Inspector {
                     inner,
                     rows,
                     *show_type,
+                    *show_partial,
                     *show_details,
                     state.ui.inspector_scroll_offset(),
                     theme,
@@ -183,16 +233,15 @@ impl Inspector {
                 );
                 ViewportPlan::default()
             }
-            Some(InspectorSection::Triggers { rows }) => {
-                Self::render_triggers(
-                    frame,
-                    inner,
-                    rows,
-                    state.ui.inspector_scroll_offset(),
-                    theme,
-                );
-                ViewportPlan::default()
-            }
+            Some(InspectorSection::Triggers { rows }) => Self::render_triggers(
+                frame,
+                inner,
+                rows,
+                state.session.active_database_type_or_default(),
+                state.ui.inspector_scroll_offset(),
+                state.ui.inspector_horizontal_offset(),
+                theme,
+            ),
             Some(InspectorSection::Ddl { rows }) => {
                 Self::render_ddl(
                     frame,
@@ -251,6 +300,10 @@ impl Inspector {
             InspectorInfoField::TableName => "Table:   ",
             InspectorInfoField::TableKind => "Kind:    ",
             InspectorInfoField::TableFlags => "Flags:   ",
+            InspectorInfoField::Engine => "Engine:  ",
+            InspectorInfoField::RowFormat => "Row format: ",
+            InspectorInfoField::TableCollation => "Collation:  ",
+            InspectorInfoField::CreateOptions => "Create options: ",
         };
         let value = value.map_or_else(
             || {
@@ -272,7 +325,7 @@ impl Inspector {
         frame: &mut Frame,
         area: Rect,
         rows: &[InspectorColumnRow],
-        show_read_only: bool,
+        options: ColumnDisplayOptions,
         scroll_offset: usize,
         horizontal_offset: usize,
         stored_plan: &ViewportPlan,
@@ -280,14 +333,23 @@ impl Inspector {
     ) -> ViewportPlan {
         let available_width = area.width.saturating_sub(2);
         let mut headers = vec!["Name", "Type", "Null", "PK"];
-        if show_read_only {
+        if options.read_only {
             headers.push("Read-only");
         }
         headers.extend(["Default", "Comment"]);
+        if options.character_set {
+            headers.push("Charset");
+        }
+        if options.collation {
+            headers.push("Collation");
+        }
+        if options.generation {
+            headers.push("Generation");
+        }
 
         let data_rows: Vec<Vec<String>> = rows
             .iter()
-            .map(|row| column_row_cells(row, show_read_only))
+            .map(|row| column_row_cells(row, options))
             .collect();
 
         let header_min_widths = calculate_header_min_widths(&headers);
@@ -355,7 +417,7 @@ impl Inspector {
             .skip(clamped_scroll_offset)
             .take(data_rows_visible)
             .map(|(row_idx, row)| {
-                let cells = column_row_cells(row, show_read_only);
+                let cells = column_row_cells(row, options);
                 let base_style = if (row_idx - clamped_scroll_offset) % 2 == 1 {
                     Style::default().bg(theme.component.table.striped_row_bg)
                 } else {
@@ -367,8 +429,8 @@ impl Inspector {
                         let text = cells.get(col_idx).map_or("", String::as_str);
                         let display = truncate_to_width(text, col_width as usize);
 
-                        let read_only_col_idx = show_read_only.then_some(4);
-                        let comment_col_idx = if show_read_only { 6 } else { 5 };
+                        let read_only_col_idx = options.read_only.then_some(4);
+                        let comment_col_idx = if options.read_only { 6 } else { 5 };
                         let cell_style = if col_idx == 3 && !text.is_empty() {
                             Style::default().fg(theme.semantic.text.accent)
                         } else if read_only_col_idx == Some(col_idx) && !text.is_empty() {
@@ -426,32 +488,20 @@ impl Inspector {
         area: Rect,
         rows: &[InspectorIndexRow],
         show_type: bool,
+        show_partial: bool,
         has_details: bool,
         scroll_offset: usize,
         theme: &ThemePalette,
     ) {
-        let headers_with_type_and_details =
-            ["Name", "Columns", "Type", "Unique", "Partial", "Detail"];
-        let headers_with_type = ["Name", "Columns", "Type", "Unique"];
-        let headers_without_type_and_details = ["Name", "Columns", "Unique", "Partial", "Detail"];
-        let headers_without_type = ["Name", "Columns", "Unique"];
-        let headers = if show_type && has_details {
-            &headers_with_type_and_details[..]
-        } else if show_type {
-            &headers_with_type[..]
-        } else if has_details {
-            &headers_without_type_and_details[..]
-        } else {
-            &headers_without_type[..]
-        };
+        let headers = index_headers(show_type, show_partial, has_details);
         // Width sampling sees only the first 50 rows, so row_fn rebuilds text
         // per visible row instead of indexing into the sample
         let data_rows: Vec<Vec<String>> = rows
             .iter()
             .take(50)
-            .map(|row| index_row_cells(row, show_type, has_details))
+            .map(|row| index_row_cells(row, show_type, show_partial, has_details))
             .collect();
-        let col_widths = calculate_column_widths(headers, &data_rows);
+        let col_widths = calculate_column_widths(&headers, &data_rows);
         let widths: Vec<Constraint> = col_widths.iter().map(|&w| Constraint::Length(w)).collect();
 
         use crate::primitives::molecules::{StripedTableConfig, render_striped_table};
@@ -459,7 +509,7 @@ impl Inspector {
             frame,
             area,
             &StripedTableConfig {
-                headers,
+                headers: &headers,
                 widths: &widths,
                 total_items: rows.len(),
                 empty_message: "No indexes",
@@ -467,7 +517,7 @@ impl Inspector {
             scroll_offset,
             theme,
             |idx| {
-                index_row_cells(&rows[idx], show_type, has_details)
+                index_row_cells(&rows[idx], show_type, show_partial, has_details)
                     .into_iter()
                     .map(Cell::from)
                     .collect()
@@ -482,7 +532,7 @@ impl Inspector {
         scroll_offset: usize,
         theme: &ThemePalette,
     ) {
-        let headers = ["Name", "Columns", "References"];
+        let headers = ["Name", "Columns", "References", "On update", "On delete"];
         // Width sampling sees only the first 50 rows, so row_fn rebuilds text
         // per visible row instead of indexing into the sample
         let data_rows: Vec<Vec<String>> = rows.iter().take(50).map(foreign_key_row_cells).collect();
@@ -595,37 +645,127 @@ impl Inspector {
         frame: &mut Frame,
         area: Rect,
         rows: &[InspectorTriggerRow],
+        database_type: DatabaseType,
         scroll_offset: usize,
+        horizontal_offset: usize,
         theme: &ThemePalette,
-    ) {
-        let headers = ["Name", "Timing", "Event", "Function", "SecDef"];
-        let widths = [
-            Constraint::Percentage(25),
-            Constraint::Percentage(15),
-            Constraint::Percentage(20),
-            Constraint::Percentage(25),
-            Constraint::Percentage(15),
-        ];
+    ) -> ViewportPlan {
+        let (headers, widths): (&[&str], &[Constraint]) = match database_type {
+            DatabaseType::PostgreSQL => (
+                &["Name", "Timing", "Event", "Function", "Security"],
+                &[
+                    Constraint::Percentage(25),
+                    Constraint::Percentage(15),
+                    Constraint::Percentage(20),
+                    Constraint::Percentage(25),
+                    Constraint::Percentage(15),
+                ],
+            ),
+            DatabaseType::SQLite => (
+                &["Name", "Timing", "Event", "Definition"],
+                &[
+                    Constraint::Percentage(25),
+                    Constraint::Percentage(15),
+                    Constraint::Percentage(20),
+                    Constraint::Percentage(40),
+                ],
+            ),
+            DatabaseType::MySQL => {
+                return Self::render_mysql_trigger_details(
+                    frame,
+                    area,
+                    rows,
+                    scroll_offset,
+                    horizontal_offset,
+                    theme,
+                );
+            }
+        };
 
         use crate::primitives::molecules::{StripedTableConfig, render_striped_table};
         render_striped_table(
             frame,
             area,
             &StripedTableConfig {
-                headers: &headers,
-                widths: &widths,
+                headers,
+                widths,
                 total_items: rows.len(),
                 empty_message: "No triggers",
             },
             scroll_offset,
             theme,
             |idx| {
-                trigger_row_cells(&rows[idx])
+                trigger_row_cells(&rows[idx], database_type)
                     .into_iter()
                     .map(Cell::from)
                     .collect()
             },
         );
+
+        ViewportPlan::default()
+    }
+
+    fn render_mysql_trigger_details(
+        frame: &mut Frame,
+        area: Rect,
+        rows: &[InspectorTriggerRow],
+        scroll_offset: usize,
+        horizontal_offset: usize,
+        theme: &ThemePalette,
+    ) -> ViewportPlan {
+        use crate::primitives::atoms::scroll_indicator::{
+            VerticalScrollParams, clamp_scroll_offset, render_vertical_scroll_indicator_bar,
+        };
+
+        let lines: Vec<Line> = rows
+            .iter()
+            .flat_map(mysql_trigger_detail_lines)
+            .map(|line| Line::from(line).style(Style::default().fg(theme.semantic.text.primary)))
+            .collect();
+        let total_lines = lines.len();
+        let has_vertical_scrollbar = total_lines > area.height as usize;
+        let content_area = Rect {
+            width: area.width.saturating_sub(u16::from(has_vertical_scrollbar)),
+            ..area
+        };
+        let visible_lines = content_area.height as usize;
+        let content_width = lines.iter().map(Line::width).max().unwrap_or_default();
+        let clamped_scroll_offset = clamp_scroll_offset(scroll_offset, visible_lines, total_lines);
+        let clamped_horizontal_offset = clamp_scroll_offset(
+            horizontal_offset,
+            content_area.width as usize,
+            content_width,
+        );
+
+        frame.render_widget(
+            Paragraph::new(lines).scroll((
+                clamped_scroll_offset.min(u16::MAX as usize) as u16,
+                clamped_horizontal_offset.min(u16::MAX as usize) as u16,
+            )),
+            content_area,
+        );
+
+        if has_vertical_scrollbar {
+            render_vertical_scroll_indicator_bar(
+                frame,
+                area,
+                VerticalScrollParams {
+                    position: clamped_scroll_offset,
+                    viewport_size: visible_lines,
+                    total_items: total_lines,
+                    has_horizontal_scrollbar: false,
+                },
+                theme,
+            );
+        }
+
+        ViewportPlan {
+            column_count: 1,
+            max_offset: content_width.saturating_sub(content_area.width as usize),
+            total_columns: 1,
+            available_width: content_area.width,
+            widths_fingerprint: 0,
+        }
     }
 
     fn render_ddl(
@@ -675,29 +815,69 @@ impl Inspector {
     }
 }
 
-fn column_row_cells(row: &InspectorColumnRow, show_read_only: bool) -> Vec<String> {
+fn index_headers(show_type: bool, show_partial: bool, has_details: bool) -> Vec<&'static str> {
+    let mut headers = vec!["Name", "Columns"];
+    if show_type {
+        headers.push("Type");
+    }
+    headers.push("Unique");
+    if show_partial && has_details {
+        headers.push("Partial");
+    }
+    if has_details {
+        headers.push("Detail");
+    }
+    headers
+}
+
+fn column_row_cells(row: &InspectorColumnRow, options: ColumnDisplayOptions) -> Vec<String> {
     let mut cells = vec![
         row.name.clone(),
         row.data_type.clone(),
         checkmark(row.nullable),
         checkmark(row.primary_key),
     ];
-    if show_read_only {
+    if options.read_only {
         cells.push(row.read_only_reason.clone().unwrap_or_default());
     }
     cells.push(row.default.clone().unwrap_or_default());
     cells.push(row.comment.clone().unwrap_or_default());
+    if options.character_set {
+        cells.push(row.character_set_name.clone().unwrap_or_default());
+    }
+    if options.collation {
+        cells.push(row.collation_name.clone().unwrap_or_default());
+    }
+    if options.generation {
+        cells.push(generation_display(row));
+    }
     cells
 }
 
-fn index_row_cells(row: &InspectorIndexRow, show_type: bool, show_details: bool) -> Vec<String> {
+fn generation_display(row: &InspectorColumnRow) -> String {
+    match (row.generation_kind, row.generation_expression.as_deref()) {
+        (Some(kind), Some(expression)) => format!("{}: {expression}", kind.label()),
+        (Some(kind), None) => kind.label().to_string(),
+        (None, Some(expression)) => expression.to_string(),
+        (None, None) => String::new(),
+    }
+}
+
+fn index_row_cells(
+    row: &InspectorIndexRow,
+    show_type: bool,
+    show_partial: bool,
+    show_details: bool,
+) -> Vec<String> {
     let mut cells = vec![row.name.clone(), row.columns.clone()];
     if show_type {
         cells.push(row.index_type.clone().unwrap_or_default());
     }
     cells.push(checkmark(row.unique));
-    if show_details {
+    if show_partial && show_details {
         cells.push(checkmark(row.partial));
+    }
+    if show_details {
         cells.push(row.detail.clone().unwrap_or_default());
     }
     cells
@@ -708,16 +888,80 @@ fn foreign_key_row_cells(row: &InspectorForeignKeyRow) -> Vec<String> {
         row.name.clone(),
         row.columns.clone(),
         row.references.clone(),
+        row.on_update.clone(),
+        row.on_delete.clone(),
     ]
 }
 
-fn trigger_row_cells(row: &InspectorTriggerRow) -> Vec<String> {
-    vec![
+fn trigger_row_cells(row: &InspectorTriggerRow, database_type: DatabaseType) -> Vec<String> {
+    let mut cells = Vec::new();
+    if database_type == DatabaseType::MySQL {
+        cells.push(
+            row.action_order
+                .map(|order| order.to_string())
+                .unwrap_or_default(),
+        );
+    }
+    cells.extend([
         row.name.clone(),
         row.timing.clone(),
         row.events.clone(),
-        row.function_name.clone(),
-        checkmark(row.security_definer),
+        row.definition.clone(),
+    ]);
+    if database_type != DatabaseType::SQLite {
+        cells.push(row.security_context.clone().unwrap_or_default());
+    }
+    cells
+}
+
+fn mysql_trigger_detail_lines(row: &InspectorTriggerRow) -> Vec<String> {
+    let context = row.creation_context.as_ref();
+    vec![
+        format!(
+            "Order: {}",
+            row.action_order
+                .map(|order| order.to_string())
+                .unwrap_or_default()
+        ),
+        format!("Name: {}", row.name),
+        format!("Timing: {}", row.timing),
+        format!("Event: {}", row.events),
+        format!("Action: {}", row.definition),
+        format!(
+            "Definer: {}",
+            row.security_context.as_deref().unwrap_or_default()
+        ),
+        format!(
+            "SQL_MODE: {}",
+            context
+                .and_then(|context| context.sql_mode.as_deref())
+                .unwrap_or_default()
+        ),
+        format!(
+            "CHARACTER_SET_CLIENT: {}",
+            context
+                .and_then(|context| context.character_set_client.as_deref())
+                .unwrap_or_default()
+        ),
+        format!(
+            "COLLATION_CONNECTION: {}",
+            context
+                .and_then(|context| context.collation_connection.as_deref())
+                .unwrap_or_default()
+        ),
+        format!(
+            "DATABASE_COLLATION: {}",
+            context
+                .and_then(|context| context.database_collation.as_deref())
+                .unwrap_or_default()
+        ),
+        format!(
+            "CREATED: {}",
+            context
+                .and_then(|context| context.created.as_deref())
+                .unwrap_or_default()
+        ),
+        String::new(),
     ]
 }
 
@@ -748,4 +992,239 @@ fn calculate_column_widths(headers: &[&str], rows: &[Vec<String>]) -> Vec<u16> {
             (max_width + PADDING).clamp(MIN_COL_WIDTH, MAX_COL_WIDTH)
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::TriggerCreationContext;
+
+    #[test]
+    fn index_headers_match_row_cells_for_all_flag_combinations() {
+        let row = InspectorIndexRow {
+            name: "idx_users_email".to_string(),
+            columns: "email".to_string(),
+            index_type: Some("B-tree".to_string()),
+            unique: false,
+            partial: true,
+            detail: Some("CREATE INDEX idx_users_email ON users(email)".to_string()),
+        };
+
+        let cases = [
+            (
+                (false, false, false),
+                vec!["Name", "Columns", "Unique"],
+                vec!["idx_users_email", "email", ""],
+            ),
+            (
+                (true, false, false),
+                vec!["Name", "Columns", "Type", "Unique"],
+                vec!["idx_users_email", "email", "B-tree", ""],
+            ),
+            (
+                (false, true, false),
+                vec!["Name", "Columns", "Unique"],
+                vec!["idx_users_email", "email", ""],
+            ),
+            (
+                (true, true, false),
+                vec!["Name", "Columns", "Type", "Unique"],
+                vec!["idx_users_email", "email", "B-tree", ""],
+            ),
+            (
+                (false, false, true),
+                vec!["Name", "Columns", "Unique", "Detail"],
+                vec![
+                    "idx_users_email",
+                    "email",
+                    "",
+                    "CREATE INDEX idx_users_email ON users(email)",
+                ],
+            ),
+            (
+                (true, false, true),
+                vec!["Name", "Columns", "Type", "Unique", "Detail"],
+                vec![
+                    "idx_users_email",
+                    "email",
+                    "B-tree",
+                    "",
+                    "CREATE INDEX idx_users_email ON users(email)",
+                ],
+            ),
+            (
+                (false, true, true),
+                vec!["Name", "Columns", "Unique", "Partial", "Detail"],
+                vec![
+                    "idx_users_email",
+                    "email",
+                    "",
+                    "✓",
+                    "CREATE INDEX idx_users_email ON users(email)",
+                ],
+            ),
+            (
+                (true, true, true),
+                vec!["Name", "Columns", "Type", "Unique", "Partial", "Detail"],
+                vec![
+                    "idx_users_email",
+                    "email",
+                    "B-tree",
+                    "",
+                    "✓",
+                    "CREATE INDEX idx_users_email ON users(email)",
+                ],
+            ),
+        ];
+
+        for ((show_type, show_partial, has_details), expected_headers, expected_cells) in cases {
+            let headers = index_headers(show_type, show_partial, has_details);
+            let cells = index_row_cells(&row, show_type, show_partial, has_details);
+
+            assert_eq!(headers, expected_headers);
+            assert_eq!(
+                cells,
+                expected_cells
+                    .into_iter()
+                    .map(String::from)
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
+
+    #[test]
+    fn column_row_cells_include_optional_columns_for_all_display_options() {
+        let row = InspectorColumnRow {
+            name: "id".to_string(),
+            data_type: "integer".to_string(),
+            nullable: false,
+            primary_key: true,
+            read_only_reason: Some("read-only".to_string()),
+            default: Some("default".to_string()),
+            comment: Some("comment".to_string()),
+            character_set_name: Some("charset".to_string()),
+            collation_name: Some("collation".to_string()),
+            generation_expression: Some("generation".to_string()),
+            generation_kind: None,
+        };
+
+        for read_only in [false, true] {
+            for character_set in [false, true] {
+                for collation in [false, true] {
+                    for generation in [false, true] {
+                        let options = ColumnDisplayOptions {
+                            read_only,
+                            character_set,
+                            collation,
+                            generation,
+                        };
+                        let mut expected = vec!["id", "integer", "", "✓"];
+                        if options.read_only {
+                            expected.push("read-only");
+                        }
+                        expected.extend(["default", "comment"]);
+                        if options.character_set {
+                            expected.push("charset");
+                        }
+                        if options.collation {
+                            expected.push("collation");
+                        }
+                        if options.generation {
+                            expected.push("generation");
+                        }
+
+                        assert_eq!(column_row_cells(&row, options), expected);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn foreign_key_row_cells_include_referential_actions() {
+        let row = InspectorForeignKeyRow {
+            name: "fk_users_department".to_string(),
+            columns: "department_id".to_string(),
+            references: "public.departments(id)".to_string(),
+            on_update: "NO ACTION".to_string(),
+            on_delete: "CASCADE".to_string(),
+        };
+
+        assert_eq!(
+            foreign_key_row_cells(&row),
+            vec![
+                "fk_users_department",
+                "department_id",
+                "public.departments(id)",
+                "NO ACTION",
+                "CASCADE",
+            ]
+        );
+    }
+
+    #[test]
+    fn mysql_trigger_details_render_all_creation_context_fields() {
+        use crate::app::model::shared::theme_id::ThemeId;
+        use crate::theme::palette_for;
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+        use ratatui::layout::Rect;
+
+        let row = InspectorTriggerRow {
+            name: "audit_changes".to_string(),
+            timing: "BEFORE".to_string(),
+            events: "UPDATE".to_string(),
+            action_order: Some(2),
+            definition: format!("SET NEW.value = {}", "x".repeat(100)),
+            security_context: Some("sabiql@%".to_string()),
+            creation_context: Some(TriggerCreationContext {
+                sql_mode: Some("STRICT_TRANS_TABLES".to_string()),
+                character_set_client: Some("utf8mb4".to_string()),
+                collation_connection: Some("utf8mb4_0900_ai_ci".to_string()),
+                database_collation: Some("utf8mb4_0900_ai_ci".to_string()),
+                created: Some("2026-08-21 10:20:30.00".to_string()),
+            }),
+        };
+        let mut terminal = Terminal::new(TestBackend::new(80, 12)).unwrap();
+        let theme = palette_for(ThemeId::Default);
+        let mut plan = ViewportPlan::default();
+
+        terminal
+            .draw(|frame| {
+                plan = Inspector::render_triggers(
+                    frame,
+                    Rect::new(0, 0, 80, 12),
+                    &[row],
+                    DatabaseType::MySQL,
+                    0,
+                    0,
+                    theme,
+                );
+            })
+            .unwrap();
+
+        assert!(plan.max_offset > 0);
+
+        let buffer = terminal.backend().buffer();
+        let rendered: String = (0..buffer.area.height)
+            .flat_map(|y| {
+                (0..buffer.area.width)
+                    .map(move |x| buffer.cell((x, y)).unwrap().symbol())
+                    .chain(std::iter::once("\n"))
+            })
+            .collect();
+
+        for expected in [
+            "SQL_MODE: STRICT_TRANS_TABLES",
+            "CHARACTER_SET_CLIENT: utf8mb4",
+            "COLLATION_CONNECTION: utf8mb4_0900_ai_ci",
+            "DATABASE_COLLATION: utf8mb4_0900_ai_ci",
+            "CREATED: 2026-08-21 10:20:30.00",
+        ] {
+            assert!(
+                rendered.contains(expected),
+                "missing {expected:?} in {rendered:?}"
+            );
+        }
+    }
 }

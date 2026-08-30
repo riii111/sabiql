@@ -7,6 +7,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::ports::outbound::AccessMode;
 use crate::update::action::{Action, ScrollAmount, ScrollTarget};
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 pub(super) fn reduce_confirm_dialog(
     state: &mut AppState,
@@ -34,7 +35,7 @@ pub(super) fn reduce_confirm_dialog(
             match intent {
                 Some(ConfirmIntent::QuitNoConnection) => {
                     state.should_quit = true;
-                    DispatchResult::handled()
+                    DispatchResult::handled_with(vec![Effect::CancelActiveTasks])
                 }
                 Some(ConfirmIntent::DeleteConnection(id)) => {
                     DispatchResult::handled_with(vec![Effect::DeleteConnection { id }])
@@ -48,6 +49,11 @@ pub(super) fn reduce_confirm_dialog(
                     sql,
                     blocked: false,
                 }) => {
+                    if reject_pending_mysql_connection_probe(state, now) {
+                        state.result_interaction.clear_write_preview();
+                        state.query.clear_delete_refresh_target();
+                        return DispatchResult::handled();
+                    }
                     if let Some(dsn) = state.session.dsn().map(String::from) {
                         let run_id = state.query.begin_running(now);
                         DispatchResult::handled_with(vec![Effect::ExecuteWrite {
@@ -76,6 +82,9 @@ pub(super) fn reduce_confirm_dialog(
                     file_name,
                     row_count,
                 }) => {
+                    if reject_pending_mysql_connection_probe(state, now) {
+                        return DispatchResult::handled();
+                    }
                     if state.session.dsn() == Some(dsn.as_str())
                         && state.query.is_current_run(run_id)
                     {
@@ -97,6 +106,9 @@ pub(super) fn reduce_confirm_dialog(
                     row_count,
                     snapshot,
                 }) => {
+                    if reject_pending_mysql_connection_probe(state, now) {
+                        return DispatchResult::handled();
+                    }
                     if state.session.dsn() == Some(dsn.as_str())
                         && state.query.is_current_run(run_id)
                     {

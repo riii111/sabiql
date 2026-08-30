@@ -2,14 +2,14 @@ use crate::update::action::Action;
 
 use super::actions;
 use super::types::{
-    BrowseVimContext, JsonbDetailVimContext, SqlModalVimContext, VimCommand, VimSurfaceContext,
+    BrowseVimContext, JsonDetailVimContext, SqlModalVimContext, VimCommand, VimSurfaceContext,
 };
 
 pub fn surface(command: VimCommand, ctx: VimSurfaceContext) -> Option<Action> {
     match ctx {
         VimSurfaceContext::Browse(ctx) => browse(command, ctx),
         VimSurfaceContext::SqlModal(ctx) => sql(command, ctx),
-        VimSurfaceContext::JsonbDetail(ctx) => jsonb(command, ctx),
+        VimSurfaceContext::JsonDetail(ctx) => json(command, ctx),
     }
 }
 
@@ -28,6 +28,6 @@ fn sql(command: VimCommand, ctx: SqlModalVimContext) -> Option<Action> {
     actions::sql::command(command, ctx)
 }
 
-fn jsonb(command: VimCommand, ctx: JsonbDetailVimContext) -> Option<Action> {
-    actions::jsonb::command(command, ctx)
+fn json(command: VimCommand, ctx: JsonDetailVimContext) -> Option<Action> {
+    actions::json::command(command, ctx)
 }

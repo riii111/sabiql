@@ -5,7 +5,7 @@ use crate::model::app_state::AppState;
 use crate::model::connection::setup::ConnectionField;
 use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
 use crate::model::shared::focused_pane::FocusedPane;
-use crate::model::shared::help::{HelpOrigin, JsonbHelpMode, SqlHelpMode};
+use crate::model::shared::help::{HelpOrigin, JsonHelpMode, SqlHelpMode};
 use crate::model::shared::settings::KeymapPreset;
 use crate::policy::preview_cell_text::CellPresentationPolicy;
 use crate::policy::{FeaturePolicy, FeatureRequirement};
@@ -34,11 +34,15 @@ impl HelpDocument {
             filter.content(),
             filter.cursor(),
             state.settings.saved_keymap_preset(),
-            state.session.active_engine_feature_profile(),
-            state
-                .session
-                .active_database_type()
-                .map(|database_type| CellPresentationPolicy::new(database_type, "jsonb", "")),
+            &state.session.active_engine_feature_profile(),
+            state.session.active_database_type().map(|database_type| {
+                let data_type = if database_type == DatabaseType::MySQL {
+                    "json"
+                } else {
+                    "jsonb"
+                };
+                CellPresentationPolicy::new(database_type, data_type, "")
+            }),
         )
     }
 
@@ -319,8 +323,8 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
             rows_from_mode_rows_if_visible(er_picker_rows(keymap_preset), feature_policy)
         }
         HelpOrigin::QueryHistoryPicker => rows_from_mode_rows(QUERY_HISTORY_PICKER_ROWS),
-        HelpOrigin::JsonbDetail { mode } => jsonb_current_rows(mode, feature_policy),
-        HelpOrigin::JsonbEdit => rows_from_mode_rows_if_visible(JSONB_EDIT_ROWS, feature_policy),
+        HelpOrigin::JsonDetail { mode } => json_current_rows(mode, feature_policy),
+        HelpOrigin::JsonEdit => rows_from_mode_rows_if_visible(JSON_EDIT_ROWS, feature_policy),
         HelpOrigin::CellDetail { searching: true } => rows_from_bindings(CELL_DETAIL_SEARCH_KEYS),
         HelpOrigin::CellDetail { searching: false } => rows_from_mode_rows(CELL_DETAIL_ROWS),
         HelpOrigin::RowDetail => rows_from_mode_rows(ROW_DETAIL_ROWS),
@@ -336,7 +340,7 @@ fn command_line_rows(feature_policy: &FeaturePolicy) -> Vec<HelpRow> {
     rows_from_binding_iter(
         COMMAND_LINE_KEYS
             .iter()
-            .filter(|binding| feature_policy.is_visible(binding.feature_requirement())),
+            .filter(|binding| feature_policy.is_enabled(binding.feature_requirement())),
     )
 }
 
@@ -353,10 +357,10 @@ fn reference_sections(
         &global::PANE_SWITCH,
         &global::INSPECTOR_TABS,
     ];
-    if feature_policy.is_visible(global::ER_DIAGRAM.feature_requirement()) {
+    if feature_policy.is_enabled(global::ER_DIAGRAM.feature_requirement()) {
         open_switch_rows.insert(2, &global::ER_DIAGRAM);
     }
-    if feature_policy.is_visible(sqlite_diagnostics(keymap_preset).feature_requirement()) {
+    if feature_policy.is_enabled(sqlite_diagnostics(keymap_preset).feature_requirement()) {
         open_switch_rows.insert(2, sqlite_diagnostics(keymap_preset));
     }
 
@@ -369,11 +373,11 @@ fn reference_sections(
         &result_active::UNSTAGE_DELETE,
         &inspector_ddl::YANK,
     ]);
-    if feature_policy.is_visible(jsonb_detail::YANK.feature_requirement())
-        && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_jsonb_detail_modal)
+    if feature_policy.is_enabled(json_detail::YANK.feature_requirement())
+        && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_json_detail_modal)
     {
         data_action_rows.extend(rows_from_mode_row_refs_if_visible(
-            &[&jsonb_detail::YANK],
+            &[&json_detail::YANK],
             feature_policy,
         ));
     }
@@ -382,14 +386,14 @@ fn reference_sections(
         &table_picker::TYPE_FILTER,
         &query_history_picker::TYPE_FILTER,
     ]);
-    if feature_policy.is_visible(er_picker::TYPE_FILTER.feature_requirement()) {
+    if feature_policy.is_enabled(er_picker::TYPE_FILTER.feature_requirement()) {
         search_filter_rows.insert(1, row_from_mode_row(&er_picker::TYPE_FILTER));
     }
-    if feature_policy.is_visible(jsonb_search::TYPE_SEARCH.feature_requirement())
-        && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_jsonb_detail_modal)
+    if feature_policy.is_enabled(json_search::TYPE_SEARCH.feature_requirement())
+        && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_json_detail_modal)
     {
         search_filter_rows.extend(rows_from_bindings_if_visible(
-            JSONB_SEARCH_KEYS,
+            JSON_SEARCH_KEYS,
             feature_policy,
         ));
     }
@@ -401,41 +405,41 @@ fn reference_sections(
         rows_from_bindings(CELL_EDIT_KEYS),
         rows_from_bindings_if_visible(SQL_MODAL_CONFIRMING_KEYS, feature_policy),
     ]);
-    if feature_policy.is_visible(jsonb_edit::ESC_NORMAL.feature_requirement())
-        && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_jsonb_detail_modal)
+    if feature_policy.is_enabled(FeatureRequirement::JsonDocumentEdit)
+        && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_json_detail_modal)
     {
         editing_rows.extend(rows_from_mode_rows_if_visible(
-            JSONB_EDIT_ROWS,
+            JSON_EDIT_ROWS,
             feature_policy,
         ));
     }
 
     let mut advanced_rows = Vec::new();
-    if feature_policy.is_visible(FeatureRequirement::Explain) {
+    if feature_policy.is_enabled(FeatureRequirement::Explain) {
         advanced_rows.extend(sql_current_rows(
             SqlHelpMode::Plan,
             keymap_preset,
             feature_policy,
         ));
     }
-    if feature_policy.is_visible(FeatureRequirement::PlanComparison) {
+    if feature_policy.is_enabled(FeatureRequirement::PlanComparison) {
         advanced_rows.extend(sql_current_rows(
             SqlHelpMode::Compare,
             keymap_preset,
             feature_policy,
         ));
     }
-    if feature_policy.is_visible(FeatureRequirement::ErDiagram) {
+    if feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
         advanced_rows.extend(rows_from_mode_rows_if_visible(
             er_picker_rows(keymap_preset),
             feature_policy,
         ));
     }
-    if feature_policy.is_visible(FeatureRequirement::JsonbDetail)
-        && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_jsonb_detail_modal)
+    if feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail)
+        && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_json_detail_modal)
     {
         advanced_rows.extend(rows_from_mode_rows_if_visible(
-            JSONB_DETAIL_ROWS,
+            JSON_DETAIL_ROWS,
             feature_policy,
         ));
     }
@@ -527,7 +531,7 @@ fn sql_current_rows(
         },
         SqlHelpMode::Plan => {
             let mut bindings: Vec<&KeyBinding> = vec![sql_modal_plan_explain(keymap_preset)];
-            if feature_policy.is_visible(sql_modal_plan::ANALYZE.feature_requirement()) {
+            if feature_policy.is_enabled(sql_modal_plan::ANALYZE.feature_requirement()) {
                 bindings.push(&sql_modal_plan::ANALYZE);
             }
             bindings.extend([
@@ -541,7 +545,7 @@ fn sql_current_rows(
         }
         SqlHelpMode::Compare => {
             let mut bindings: Vec<&KeyBinding> = vec![sql_modal_compare_explain(keymap_preset)];
-            if feature_policy.is_visible(sql_modal_compare::ANALYZE.feature_requirement()) {
+            if feature_policy.is_enabled(sql_modal_compare::ANALYZE.feature_requirement()) {
                 bindings.push(&sql_modal_compare::ANALYZE);
             }
             bindings.extend([
@@ -566,7 +570,7 @@ fn connection_setup_current_rows(
 ) -> Vec<HelpRow> {
     let is_dropdown_field = matches!(
         focused_field,
-        ConnectionField::DatabaseType | ConnectionField::SslMode
+        ConnectionField::DatabaseType | ConnectionField::Transport | ConnectionField::SslMode
     );
     let submit = if is_dropdown_field {
         &connection_setup::ENTER_DROPDOWN
@@ -592,11 +596,11 @@ fn connection_setup_current_rows(
     rows
 }
 
-fn jsonb_current_rows(mode: JsonbHelpMode, feature_policy: &FeaturePolicy) -> Vec<HelpRow> {
+fn json_current_rows(mode: JsonHelpMode, feature_policy: &FeaturePolicy) -> Vec<HelpRow> {
     match mode {
-        JsonbHelpMode::Detail => rows_from_mode_rows_if_visible(JSONB_DETAIL_ROWS, feature_policy),
-        JsonbHelpMode::Search => rows_from_bindings_if_visible(JSONB_SEARCH_KEYS, feature_policy),
-        JsonbHelpMode::Edit => rows_from_mode_rows_if_visible(JSONB_EDIT_ROWS, feature_policy),
+        JsonHelpMode::Detail => rows_from_mode_rows_if_visible(JSON_DETAIL_ROWS, feature_policy),
+        JsonHelpMode::Search => rows_from_bindings_if_visible(JSON_SEARCH_KEYS, feature_policy),
+        JsonHelpMode::Edit => rows_from_mode_rows_if_visible(JSON_EDIT_ROWS, feature_policy),
     }
 }
 
@@ -618,7 +622,7 @@ fn rows_from_bindings_if_visible(
     rows_from_binding_iter(
         bindings
             .iter()
-            .filter(|binding| feature_policy.is_visible(binding.feature_requirement())),
+            .filter(|binding| feature_policy.is_enabled(binding.feature_requirement())),
     )
 }
 
@@ -634,7 +638,7 @@ fn rows_from_binding_refs_if_visible(
         bindings
             .iter()
             .copied()
-            .filter(|binding| feature_policy.is_visible(binding.feature_requirement())),
+            .filter(|binding| feature_policy.is_enabled(binding.feature_requirement())),
     )
 }
 
@@ -689,7 +693,7 @@ fn rows_from_mode_rows_if_visible(
     feature_policy: &FeaturePolicy,
 ) -> Vec<HelpRow> {
     rows.iter()
-        .filter(|row| feature_policy.is_visible(row.feature_requirement()))
+        .filter(|row| feature_policy.is_enabled(row.feature_requirement()))
         .map(row_from_mode_row)
         .collect()
 }
@@ -703,7 +707,7 @@ fn rows_from_mode_row_refs_if_visible(
     feature_policy: &FeaturePolicy,
 ) -> Vec<HelpRow> {
     rows.iter()
-        .filter(|row| feature_policy.is_visible(row.feature_requirement()))
+        .filter(|row| feature_policy.is_enabled(row.feature_requirement()))
         .map(|&row| row_from_mode_row(row))
         .collect()
 }
@@ -730,7 +734,7 @@ fn merge_rows(groups: &[Vec<HelpRow>]) -> Vec<HelpRow> {
 mod tests {
     use super::*;
     use crate::domain::ConnectionId;
-    use crate::model::browse::jsonb_detail::JsonbDetailMode;
+    use crate::model::browse::json_detail::JsonDetailMode;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::sql_editor::modal::SqlModalTab;
 
@@ -1001,7 +1005,7 @@ mod tests {
     }
 
     #[test]
-    fn origin_from_state_maps_sql_plan_and_jsonb_search() {
+    fn origin_from_state_maps_sql_plan_and_json_search() {
         let mut sql_state = AppState::new("test".to_string());
         sql_state.session.activate_connection_with_dsn(
             &ConnectionId::new(),
@@ -1018,17 +1022,12 @@ mod tests {
             "Current: SQL Editor Plan"
         );
 
-        let mut jsonb_state = AppState::new("test".to_string());
-        jsonb_state.modal.set_mode(InputMode::JsonbDetail);
-        jsonb_state
-            .jsonb_detail
-            .set_mode(JsonbDetailMode::Searching);
-        let jsonb_document = HelpDocument::new(HelpOrigin::from_state(&jsonb_state), "");
+        let mut json_state = AppState::new("test".to_string());
+        json_state.modal.set_mode(InputMode::JsonDetail);
+        json_state.json_detail.set_mode(JsonDetailMode::Searching);
+        let json_document = HelpDocument::new(HelpOrigin::from_state(&json_state), "");
 
-        assert_eq!(
-            jsonb_document.sections()[0].title(),
-            "Current: JSONB Search"
-        );
+        assert_eq!(json_document.sections()[0].title(), "Current: JSON Search");
     }
 
     #[test]
@@ -1074,8 +1073,12 @@ mod tests {
     }
 
     #[test]
-    fn jsonb_help_rows_follow_cell_presentation_policy() {
-        for database_type in [DatabaseType::PostgreSQL, DatabaseType::SQLite] {
+    fn json_help_rows_follow_cell_presentation_policy() {
+        for database_type in [
+            DatabaseType::PostgreSQL,
+            DatabaseType::MySQL,
+            DatabaseType::SQLite,
+        ] {
             let mut state = AppState::new("test".to_string());
             state.session.activate_connection_with_dsn(
                 &ConnectionId::new(),
@@ -1088,13 +1091,23 @@ mod tests {
 
             let document = HelpDocument::from_state(&state);
             let descriptions = row_descriptions(&document);
-            let help_includes_jsonb = descriptions
+            let help_includes_json = descriptions
                 .iter()
-                .any(|description| description.contains("JSONB"));
-            let policy_allows_jsonb =
-                CellPresentationPolicy::new(database_type, "jsonb", "").uses_jsonb_detail_modal();
+                .any(|description| description.contains("Close JSON detail"));
+            let data_type = if database_type == DatabaseType::MySQL {
+                "json"
+            } else {
+                "jsonb"
+            };
+            let policy_allows_json =
+                CellPresentationPolicy::new(database_type, data_type, "").uses_json_detail_modal();
 
-            assert_eq!(help_includes_jsonb, policy_allows_jsonb);
+            assert_eq!(help_includes_json, policy_allows_json);
+            assert!(
+                descriptions
+                    .iter()
+                    .all(|description| !description.contains("JSONB"))
+            );
         }
     }
 
