@@ -10,9 +10,7 @@ use tokio::sync::mpsc;
 use crate::cmd::cache::TtlCache;
 use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::effect::Effect;
-use crate::cmd::runner::{
-    ConnectionDeps, EffectRunner, ErDeps, QueryDeps, SettingsDeps, UtilityDeps,
-};
+use crate::cmd::runner::{ConnectionDeps, EffectRunner, ErDeps, QueryDeps, UtilityDeps};
 use crate::domain::SqliteDiagnosticsSnapshot;
 use crate::domain::connection::{ConnectionProfile, ServiceEntry};
 use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
@@ -385,9 +383,7 @@ fn make_runner_with_dsn_and_cached_result_exporter_and_probe(
             clipboard: Arc::new(NoopClipboardWriter),
             folder_opener: Arc::new(NoopFolderOpener),
         },
-        SettingsDeps {
-            settings_store: Arc::new(NoopSettingsStore),
-        },
+        Arc::new(NoopSettingsStore),
         cache,
         action_tx,
     )
