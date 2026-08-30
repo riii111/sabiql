@@ -564,11 +564,15 @@ mod tests {
         use tokio::sync::oneshot;
         use tokio::time::{Duration, timeout};
 
+        use crate::domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
+        use crate::ports::outbound::DbOperationError;
+
         use super::*;
 
         struct BlockingDropState {
             entered: Mutex<Option<oneshot::Sender<()>>>,
             released: (Mutex<bool>, Condvar),
+            finished: Mutex<Option<oneshot::Sender<()>>>,
         }
 
         impl BlockingDropState {
@@ -602,6 +606,15 @@ mod tests {
                         break;
                     }
                 }
+                let finished_sender = self
+                    .0
+                    .finished
+                    .lock()
+                    .expect("finished signal lock poisoned")
+                    .take();
+                if let Some(sender) = finished_sender {
+                    sender.send(()).ok();
+                }
             }
         }
 
@@ -619,9 +632,32 @@ mod tests {
             }
         }
 
+        struct BlockingDiagnosticsProvider {
+            started: Arc<tokio::sync::Notify>,
+            drop_state: Arc<BlockingDropState>,
+        }
+
+        #[async_trait::async_trait]
+        impl SqliteDiagnosticsProvider for BlockingDiagnosticsProvider {
+            async fn fetch_core_diagnostics(
+                &self,
+                _dsn: &str,
+            ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {
+                let _drop_signal = BlockingDrop(Arc::clone(&self.drop_state));
+                self.started.notify_one();
+                pending().await
+            }
+
+            async fn fetch_quick_check(&self, _dsn: &str) -> DiagnosticField {
+                let _drop_signal = BlockingDrop(Arc::clone(&self.drop_state));
+                self.started.notify_one();
+                pending().await
+            }
+        }
+
         #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
         async fn cancel_tracked_tasks_aborts_all_groups_before_joining() {
-            let (tx, _rx) = mpsc::channel(8);
+            let (tx, mut rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
@@ -632,9 +668,11 @@ mod tests {
 
             let (query_started_tx, query_started_rx) = oneshot::channel();
             let (query_drop_tx, mut query_drop_rx) = oneshot::channel();
+            let (query_finished_tx, mut query_finished_rx) = oneshot::channel();
             let query_drop_state = Arc::new(BlockingDropState {
                 entered: Mutex::new(Some(query_drop_tx)),
                 released: (Mutex::new(false), Condvar::new()),
+                finished: Mutex::new(Some(query_finished_tx)),
             });
             runner
                 .query_tasks
@@ -679,26 +717,98 @@ mod tests {
                 .await
                 .expect("connection task should start");
 
-            let cancel = runner.cancel_tracked_tasks();
-            tokio::pin!(cancel);
-            let connection_aborted = tokio::select! {
-                result = &mut connection_drop_rx => result.is_ok(),
-                () = &mut cancel => false,
-                () = tokio::time::sleep(Duration::from_secs(1)) => false,
-            };
-
-            query_drop_state.release();
-            let query_dropped = timeout(Duration::from_secs(1), &mut query_drop_rx)
+            let diagnostics_started = Arc::new(tokio::sync::Notify::new());
+            let (diagnostics_drop_tx, mut diagnostics_drop_rx) = oneshot::channel();
+            let diagnostics_drop_state = Arc::new(BlockingDropState {
+                entered: Mutex::new(Some(diagnostics_drop_tx)),
+                released: (Mutex::new(false), Condvar::new()),
+                finished: Mutex::new(None),
+            });
+            let diagnostics_provider = Arc::new(BlockingDiagnosticsProvider {
+                started: Arc::clone(&diagnostics_started),
+                drop_state: Arc::clone(&diagnostics_drop_state),
+            }) as Arc<dyn SqliteDiagnosticsProvider>;
+            sqlite_diagnostics::run(
+                Effect::FetchSqliteDiagnosticsCore {
+                    dsn: "sqlite:///tmp/app.db".to_string(),
+                    run_id: 1,
+                },
+                &runner.action_tx,
+                &diagnostics_provider,
+                &runner.sqlite_diagnostics_task,
+            )
+            .await;
+            timeout(Duration::from_secs(1), diagnostics_started.notified())
                 .await
-                .is_ok();
+                .expect("SQLite diagnostics task should start");
+
+            let mut state = AppState::new("test".to_string());
+            let completion_engine = RefCell::new(CompletionEngine::new());
+            let mut renderer = test_fixtures::NoopRenderer;
+            let services = AppServices::stub();
+            let mut follow_up = Box::pin(runner.execute_effects(
+                vec![
+                    Effect::CancelTrackedTasks,
+                    Effect::DispatchActions(vec![Action::Render]),
+                ],
+                &mut renderer,
+                &mut state,
+                &completion_engine,
+                &services,
+            ));
+            timeout(Duration::from_secs(1), async {
+                tokio::select! {
+                    _ = &mut follow_up => {
+                        panic!("follow-up ran before query task joined")
+                    }
+                    result = &mut query_drop_rx => {
+                        result.expect("query drop signal should be sent");
+                    }
+                }
+            })
+            .await
+            .expect("query task should enter its drop gate");
+            query_drop_state.release();
+            timeout(Duration::from_secs(1), &mut query_finished_rx)
+                .await
+                .expect("query task should leave its drop gate")
+                .expect("query finished signal should be sent");
+            timeout(Duration::from_secs(1), async {
+                tokio::select! {
+                    _ = &mut follow_up => {
+                        panic!("follow-up ran before SQLite diagnostics task joined")
+                    }
+                    result = &mut diagnostics_drop_rx => {
+                        result.expect("SQLite diagnostics drop signal should be sent");
+                    }
+                }
+            })
+            .await
+            .expect("SQLite diagnostics task should enter its drop gate");
+            assert!(
+                timeout(Duration::from_millis(50), &mut follow_up)
+                    .await
+                    .is_err(),
+                "follow-up ran before SQLite diagnostics task joined"
+            );
+            diagnostics_drop_state.release();
+            let actions = timeout(Duration::from_secs(1), follow_up)
+                .await
+                .expect("cancellation and follow-up should finish")
+                .expect("effect execution should succeed");
             let table_dropped = timeout(Duration::from_secs(1), &mut table_drop_rx)
                 .await
                 .is_ok();
-            let cancellation_finished = timeout(Duration::from_secs(1), cancel).await.is_ok();
-            assert!(connection_aborted, "connection task was not aborted first");
-            assert!(query_dropped, "query task was not aborted");
+            let connection_aborted = timeout(Duration::from_secs(1), &mut connection_drop_rx)
+                .await
+                .is_ok();
+            assert!(connection_aborted, "connection task was not aborted");
             assert!(table_dropped, "table detail task was not aborted");
-            assert!(cancellation_finished, "cancellation did not finish");
+            assert!(matches!(actions.as_slice(), [Action::Render]));
+            assert!(
+                rx.try_recv().is_err(),
+                "SQLite diagnostics task emitted a late action"
+            );
         }
     }
 
