@@ -497,5 +497,220 @@ fn consume_required_ascii_whitespace(text: &str, index: &mut usize) -> Option<()
 }
 
 #[cfg(test)]
-#[path = "mysql_sql_tests.rs"]
-mod tests;
+mod tests {
+    mod validation {
+        use super::super::*;
+
+        #[test]
+        fn classifies_mysql_multi_statement_for_execution() {
+            let statements =
+                classify_mysql_multi_statement("UPDATE items SET value = 1; SELECT 2", Some("app"))
+                    .expect("valid MySQL statements");
+
+            assert!(matches!(
+                statements[0].kind,
+                MySqlStatementKind::Update { has_where: false }
+            ));
+            assert_eq!(statements[1].sql, "SELECT 2");
+        }
+
+        #[test]
+        fn accepts_comments_hints_and_version_comments() {
+            assert!(
+                classify_mysql_multi_statement(
+                    "SELECT /*+ MAX_EXECUTION_TIME(1000) */ 1 # trailing\n",
+                    Some("app")
+                )
+                .is_ok()
+            );
+            assert!(classify_mysql_multi_statement("/*!80000 SELECT 1 */", Some("app")).is_ok());
+        }
+
+        #[test]
+        fn distinguishes_persistent_mysql_schema_changes_from_temporary_tables() {
+            assert!(mysql_statement_is_persistent_schema_change(
+                &MySqlStatementKind::CreateTable { temporary: false }
+            ));
+            assert!(!mysql_statement_is_persistent_schema_change(
+                &MySqlStatementKind::CreateTable { temporary: true }
+            ));
+            assert!(!mysql_statement_is_persistent_schema_change(
+                &MySqlStatementKind::DropTable { temporary: true }
+            ));
+        }
+
+        #[test]
+        fn rejects_invalid_mysql_scripts_before_execution() {
+            for sql in [
+                "SELECT 'unfinished",
+                "SELECT 1 /* unfinished",
+                "MERGE INTO items USING source ON items.id = source.id",
+            ] {
+                assert!(
+                    classify_mysql_multi_statement(sql, Some("app")).is_err(),
+                    "{sql}"
+                );
+            }
+        }
+
+        #[test]
+        fn accepts_replace_for_execution() {
+            let statements = classify_mysql_multi_statement(
+                "REPLACE INTO items (id, value) VALUES (1, 'new')",
+                Some("app"),
+            )
+            .expect("REPLACE should use the regular MySQL execution path");
+
+            assert_eq!(statements.len(), 1);
+            assert_eq!(statements[0].kind(), &MySqlStatementKind::Replace);
+            assert_eq!(statements[0].target(), Some("items"));
+        }
+
+        #[test]
+        fn preserves_mysql_split_errors_for_callers() {
+            assert!(classify_mysql_multi_statement("SELECT 'unfinished", Some("app")).is_err());
+            assert!(classify_mysql_multi_statement("SELECT 1 /* unfinished", Some("app")).is_err());
+        }
+
+        #[test]
+        fn rejects_unsupported_controls_and_statements_before_execution() {
+            for sql in [
+                "USE app",
+                "SET sql_mode = 'ANSI_QUOTES'",
+                "LOCK TABLES items READ",
+                "UNLOCK TABLES",
+                "CALL do_work()",
+                "LOAD DATA INFILE 'x' INTO TABLE items",
+                "/*! SET sql_mode='ANSI_QUOTES' */ SELECT 1",
+                "SELECT 1 /*!40101 + 1 */",
+                "DELIMITER //\nSELECT 1//",
+                "charset utf8mb4\nSELECT 1",
+                "source ./script.sql",
+                "system echo unsafe",
+                "\\C /tmp/other.sock\nSELECT 1",
+                "SELECT 1\n\\! echo unsafe",
+                "SELECT 1\nsystem echo unsafe",
+            ] {
+                assert!(
+                    classify_mysql_multi_statement(sql, Some("app")).is_err(),
+                    "{sql}"
+                );
+            }
+            for sql in [
+                "SELECT 'source ./script.sql\\n'",
+                "SELECT /* source ./script.sql */ 1",
+                "SELECT `system echo unsafe`",
+                "UPDATE items\nSET value = 1 WHERE id = 1",
+            ] {
+                assert!(
+                    classify_mysql_multi_statement(sql, Some("app")).is_ok(),
+                    "{sql}"
+                );
+            }
+        }
+
+        #[test]
+        fn rejects_ambiguous_mysql_mutation_targets() {
+            for sql in [
+                "ALTER TABLE",
+                "ALTER TABLE ADD COLUMN value INT",
+                "ALTER TABLE ALTER COLUMN value DROP DEFAULT",
+                "ALTER TABLE DROP COLUMN value",
+                "ALTER TABLE MODIFY COLUMN value INT",
+                "ALTER TABLE RENAME TO archived_items",
+                "ALTER TABLE TRUNCATE PARTITION p0",
+                "ALTER TABLE LOCK=EXCLUSIVE",
+                "ALTER TABLE PARTITION BY HASH(id)",
+                "ALTER TABLE FORCE",
+                "ALTER TABLE ORDER BY value",
+                "ALTER TABLE SECONDARY_LOAD",
+                "ALTER TABLE SECONDARY_LOAD PARTITION (p0)",
+                "ALTER TABLE SECONDARY_UNLOAD",
+                "ALTER TABLE SECONDARY_UNLOAD PARTITION (p0)",
+            ] {
+                assert!(
+                    classify_mysql_multi_statement(sql, Some("app")).is_err(),
+                    "{sql}"
+                );
+            }
+        }
+    }
+
+    mod explain_parsing {
+        use super::super::*;
+
+        #[test]
+        fn recognizes_generated_tree_explain_queries() {
+            assert_eq!(
+                mysql_tree_explain_query_kind("EXPLAIN FORMAT=TREE UPDATE items SET value = 1"),
+                Some(false)
+            );
+            assert_eq!(
+                mysql_tree_explain_query_kind("EXPLAIN ANALYZE FORMAT=TREE TABLE items"),
+                Some(true)
+            );
+            assert_eq!(
+                mysql_tree_explain_query_kind("EXPLAIN ANALYZE FORMAT=TREE DELETE FROM items"),
+                None
+            );
+        }
+
+        #[test]
+        fn allows_replace_for_tree_explain_but_not_explain_analyze() {
+            for query in [
+                "REPLACE INTO items (id, value) VALUES (1, 'new')",
+                "REPLACE items (id, value) VALUES (1, 'new')",
+            ] {
+                assert_eq!(mysql_explain_rejection_message(query), None, "{query}");
+                assert_eq!(
+                    mysql_tree_explain_query_kind(&format!("EXPLAIN FORMAT=TREE {query}")),
+                    Some(false),
+                    "{query}"
+                );
+                assert_eq!(
+                    mysql_tree_explain_query_kind(&format!("EXPLAIN ANALYZE FORMAT=TREE {query}")),
+                    None,
+                    "{query}"
+                );
+            }
+        }
+
+        #[test]
+        fn rejects_replace_without_a_classifiable_target_for_explain() {
+            for query in ["REPLACE", "REPLACE INTO"] {
+                assert_eq!(
+                    mysql_explain_rejection_message(query),
+                    Some(
+                        "MySQL EXPLAIN supports SELECT, TABLE, INSERT, REPLACE, UPDATE, or DELETE statements"
+                    ),
+                    "{query}"
+                );
+            }
+        }
+
+        #[test]
+        fn recognizes_tree_explain_queries_with_whitespace_around_equals() {
+            assert_eq!(
+                mysql_tree_explain_query_kind("EXPLAIN FORMAT = TREE UPDATE items SET value = 1"),
+                Some(false)
+            );
+            assert_eq!(
+                mysql_tree_explain_query_kind("EXPLAIN ANALYZE FORMAT = TREE TABLE items"),
+                Some(true)
+            );
+        }
+
+        #[test]
+        fn tree_explain_prefix_keeps_keyword_boundaries_and_ignores_non_sql_text() {
+            for sql in [
+                "EXPLAIN FORMAT = JSON SELECT 1",
+                "EXPLAIN FORMAT = TREEish SELECT 1",
+                "EXPLAINFORMAT = TREE SELECT 1",
+                "/* EXPLAIN FORMAT = TREE */ SELECT 1",
+                "SELECT 'EXPLAIN FORMAT = TREE SELECT 1'",
+            ] {
+                assert_eq!(mysql_tree_explain_query_kind(sql), None, "{sql}");
+            }
+        }
+    }
+}

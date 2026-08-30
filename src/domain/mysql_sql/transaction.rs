@@ -77,3 +77,77 @@ pub(super) fn classify_mysql_transaction_statement(
         ))),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::*;
+
+    #[test]
+    fn unicode_savepoints_are_case_insensitive_in_transactions() {
+        assert!(
+            classify_mysql_multi_statement(
+                "START TRANSACTION; SAVEPOINT café; ROLLBACK TO SAVEPOINT CAFÉ; COMMIT",
+                Some("app"),
+            )
+            .is_ok()
+        );
+        assert!(
+            classify_mysql_multi_statement(
+                "START TRANSACTION; SAVEPOINT ς; ROLLBACK TO SAVEPOINT σ; COMMIT",
+                Some("app"),
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn modifiers_are_rejected() {
+        for sql in [
+            "START TRANSACTION READ ONLY",
+            "COMMIT AND CHAIN",
+            "ROLLBACK AND NO CHAIN",
+            "ROLLBACK TO SAVEPOINT named extra",
+            "RELEASE SAVEPOINT named extra",
+            "BEGIN",
+            "BEGIN; UPDATE items SET value = 1",
+            "SAVEPOINT named",
+        ] {
+            assert!(
+                classify_mysql_multi_statement(sql, Some("app")).is_err(),
+                "{sql}"
+            );
+        }
+        for sql in [
+            "COMMIT",
+            "ROLLBACK",
+            "BEGIN; COMMIT",
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; ROLLBACK",
+            "START TRANSACTION; ROLLBACK",
+            "BEGIN; SAVEPOINT named; ROLLBACK TO named; RELEASE SAVEPOINT named; COMMIT",
+            "CREATE TEMPORARY TABLE temp_items (id INT); INSERT INTO temp_items VALUES (1); SELECT * FROM temp_items",
+            "CREATE TEMPORARY TABLE temp_items (id INT); DROP TEMPORARY TABLE app.temp_items",
+        ] {
+            assert!(
+                classify_mysql_multi_statement(sql, Some("app")).is_ok(),
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_persistent_ddl_inside_an_explicit_transaction() {
+        for sql in [
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; CREATE TABLE new_items (id INT); ROLLBACK",
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; ALTER TABLE items ADD COLUMN extra INT; ROLLBACK",
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; DROP TABLE items; ROLLBACK",
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; TRUNCATE TABLE items; ROLLBACK",
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; CREATE VIEW item_view AS SELECT 1; ROLLBACK",
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; DROP VIEW item_view; ROLLBACK",
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; CREATE INDEX item_index ON items (value); ROLLBACK",
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; DROP INDEX item_index ON items; ROLLBACK",
+        ] {
+            let error = classify_mysql_multi_statement(sql, Some("app")).unwrap_err();
+            assert!(error.contains("implicit commit"), "{sql}: {error}");
+        }
+    }
+}

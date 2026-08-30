@@ -208,3 +208,235 @@ fn skip_parenthesized_tokens(tokens: &[Token], index: usize) -> Option<usize> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    mod validation {
+        use crate::mysql_sql::{
+            classify_mysql_multi_statement,
+            classify_mysql_multi_statement_with_lower_case_table_names,
+        };
+
+        #[test]
+        fn ddl_rejects_a_different_database() {
+            for sql in [
+                "ALTER TABLE other.items ADD COLUMN value INT",
+                "ALTER TABLE app.items RENAME TO other.archived_items",
+                "ALTER TABLE items RENAME TO other.archived_items",
+                "ALTER TABLE app.items RENAME AS other.archived_items",
+                "RENAME TABLE app.items TO other.archived_items",
+                "DROP TABLE app.keep, other.drop_me",
+            ] {
+                assert!(
+                    classify_mysql_multi_statement(sql, Some("app")).is_err(),
+                    "{sql}"
+                );
+            }
+            for sql in [
+                "ALTER TABLE app.items ADD COLUMN value INT",
+                "RENAME TABLE items TO app.archived_items",
+                "ALTER TABLE app.items RENAME TO app.archived_items",
+                "ALTER TABLE app.items RENAME AS app.archived_items",
+            ] {
+                assert!(
+                    classify_mysql_multi_statement(sql, Some("app")).is_ok(),
+                    "{sql}"
+                );
+            }
+            assert!(classify_mysql_multi_statement("CREATE TABLE items (id INT)", None).is_err());
+        }
+
+        #[test]
+        fn qualified_mysql_mutations_require_exact_selected_database() {
+            for sql in [
+                "INSERT INTO other.items VALUES (1)",
+                "UPDATE other.items SET value = 1",
+                "DELETE FROM other.items WHERE id = 1",
+                "INSERT INTO APP.items VALUES (1)",
+                "UPDATE APP.items SET value = 1",
+                "DELETE FROM APP.items WHERE id = 1",
+            ] {
+                assert!(
+                    classify_mysql_multi_statement(sql, Some("app")).is_err(),
+                    "{sql}"
+                );
+            }
+
+            for sql in [
+                "INSERT INTO items VALUES (1)",
+                "UPDATE items SET value = 1",
+                "DELETE FROM items WHERE id = 1",
+                "INSERT INTO app.items VALUES (1)",
+                "UPDATE app.items SET value = 1",
+                "DELETE FROM app.items WHERE id = 1",
+            ] {
+                assert!(
+                    classify_mysql_multi_statement(sql, Some("app")).is_ok(),
+                    "{sql}"
+                );
+            }
+        }
+
+        #[test]
+        fn qualified_mysql_mutations_follow_lower_case_table_names() {
+            for lower_case_table_names in [1, 2] {
+                for sql in [
+                    "INSERT INTO APP.items VALUES (1)",
+                    "UPDATE APP.items SET value = 1",
+                    "DELETE FROM APP.items WHERE id = 1",
+                ] {
+                    let statements = classify_mysql_multi_statement_with_lower_case_table_names(
+                        sql,
+                        Some("app"),
+                        lower_case_table_names,
+                    )
+                    .unwrap_or_else(|error| panic!("{sql}: {error}"));
+                    assert_eq!(statements[0].target_database.as_deref(), Some("APP"));
+                    assert_eq!(statements[0].target(), Some("items"));
+                }
+            }
+
+            assert!(
+                classify_mysql_multi_statement_with_lower_case_table_names(
+                    "UPDATE APP.items SET value = 1",
+                    Some("app"),
+                    0,
+                )
+                .is_err()
+            );
+            assert!(
+                classify_mysql_multi_statement_with_lower_case_table_names(
+                    "UPDATE other.items SET value = 1",
+                    Some("app"),
+                    1,
+                )
+                .is_err()
+            );
+        }
+
+        #[test]
+        fn qualified_utf8_mysql_mutations_follow_selected_database_case_rules() {
+            let exact = classify_mysql_multi_statement_with_lower_case_table_names(
+                "UPDATE äpp.éléments SET value = 1",
+                Some("äpp"),
+                0,
+            )
+            .unwrap();
+            assert_eq!(exact[0].target_database.as_deref(), Some("äpp"));
+            assert_eq!(exact[0].target(), Some("éléments"));
+
+            for lower_case_table_names in [1, 2] {
+                let statements = classify_mysql_multi_statement_with_lower_case_table_names(
+                    "UPDATE ÄPP.éléments SET value = 1",
+                    Some("äpp"),
+                    lower_case_table_names,
+                )
+                .unwrap();
+                assert_eq!(statements[0].target_database.as_deref(), Some("ÄPP"));
+                assert_eq!(statements[0].target(), Some("éléments"));
+            }
+
+            assert!(
+                classify_mysql_multi_statement_with_lower_case_table_names(
+                    "UPDATE ÄPP.éléments SET value = 1",
+                    Some("äpp"),
+                    0,
+                )
+                .is_err()
+            );
+        }
+
+        #[test]
+        fn temporary_mysql_table_keys_follow_unicode_table_case_rules() {
+            assert!(
+                classify_mysql_multi_statement_with_lower_case_table_names(
+                    "CREATE TEMPORARY TABLE café (id INT); DROP TEMPORARY TABLE CAFÉ",
+                    Some("app"),
+                    0,
+                )
+                .is_err()
+            );
+
+            for lower_case_table_names in [1, 2] {
+                assert!(
+                    classify_mysql_multi_statement_with_lower_case_table_names(
+                        "CREATE TEMPORARY TABLE café (id INT); DROP TEMPORARY TABLE CAFÉ",
+                        Some("app"),
+                        lower_case_table_names,
+                    )
+                    .is_ok()
+                );
+            }
+
+            assert!(
+            classify_mysql_multi_statement_with_lower_case_table_names(
+                "CREATE TEMPORARY TABLE items (id INT); CREATE TEMPORARY TABLE ITEMS (id INT); DROP TEMPORARY TABLE items; DROP TEMPORARY TABLE ITEMS",
+                Some("app"),
+                0,
+            )
+            .is_ok()
+        );
+        }
+
+        #[test]
+        fn qualified_mysql_mutations_match_unicode_database_names_without_rewriting_targets() {
+            for lower_case_table_names in [1, 2] {
+                let statements = classify_mysql_multi_statement_with_lower_case_table_names(
+                    "UPDATE `ÄPP`.items SET value = 1",
+                    Some("äpp"),
+                    lower_case_table_names,
+                )
+                .unwrap();
+
+                assert_eq!(statements[0].target_database.as_deref(), Some("ÄPP"));
+                assert_eq!(statements[0].target(), Some("items"));
+            }
+
+            assert!(
+                classify_mysql_multi_statement_with_lower_case_table_names(
+                    "UPDATE `ÄPP`.items SET value = 1",
+                    Some("äpp"),
+                    0,
+                )
+                .is_err()
+            );
+        }
+
+        #[test]
+        fn temporary_mysql_table_keys_follow_unicode_database_case_rules() {
+            for lower_case_table_names in [1, 2] {
+                assert!(
+                classify_mysql_multi_statement_with_lower_case_table_names(
+                    "CREATE TEMPORARY TABLE temp_items (id INT); DROP TEMPORARY TABLE `ÄPP`.temp_items",
+                    Some("äpp"),
+                    lower_case_table_names,
+                )
+                .is_ok()
+            );
+            }
+
+            assert!(
+            classify_mysql_multi_statement_with_lower_case_table_names(
+                "CREATE TEMPORARY TABLE temp_items (id INT); DROP TEMPORARY TABLE `ÄPP`.temp_items",
+                Some("äpp"),
+                0,
+            )
+            .is_err()
+        );
+        }
+
+        #[test]
+        fn rename_rejects_database_names_that_differ_only_by_case() {
+            for sql in [
+                "ALTER TABLE APP.items ADD COLUMN value INT",
+                "ALTER TABLE app.items RENAME TO APP.archived_items",
+                "RENAME TABLE app.items TO APP.archived_items",
+            ] {
+                assert!(
+                    classify_mysql_multi_statement(sql, Some("app")).is_err(),
+                    "{sql}"
+                );
+            }
+        }
+    }
+}
