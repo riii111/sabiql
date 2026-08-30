@@ -6,10 +6,10 @@ use crate::model::app_state::AppState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::model::shared::ui_state::YankFlash;
-use crate::ports::outbound::ClipboardError;
 use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::clipboard_unavailable;
 
 pub fn reduce_yank(
     state: &mut AppState,
@@ -132,10 +132,6 @@ pub fn reduce_yank(
         }
         _ => DispatchResult::pass(),
     }
-}
-
-fn clipboard_unavailable() -> Action {
-    Action::CopyFailed(ClipboardError::Unavailable("Clipboard unavailable".into()))
 }
 
 #[cfg(test)]
