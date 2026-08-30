@@ -5,9 +5,9 @@ use crate::model::app_state::AppState;
 use crate::model::browse::row_detail::RowDetailState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
-use crate::ports::outbound::ClipboardError;
 use crate::update::action::{Action, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget};
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::clipboard_unavailable;
 
 pub fn reduce_row_detail(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
@@ -47,9 +47,7 @@ pub fn reduce_row_detail(state: &mut AppState, action: &Action, now: Instant) ->
             DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                 content,
                 on_success: Some(Box::new(Action::RowDetailYankSuccess)),
-                on_failure: Some(Box::new(Action::CopyFailed(ClipboardError::Unavailable(
-                    "Clipboard unavailable".into(),
-                )))),
+                on_failure: Some(Box::new(clipboard_unavailable())),
             }])
         }
 
@@ -58,9 +56,7 @@ pub fn reduce_row_detail(state: &mut AppState, action: &Action, now: Instant) ->
             DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                 content,
                 on_success: Some(Box::new(Action::RowDetailYankSuccess)),
-                on_failure: Some(Box::new(Action::CopyFailed(ClipboardError::Unavailable(
-                    "Clipboard unavailable".into(),
-                )))),
+                on_failure: Some(Box::new(clipboard_unavailable())),
             }])
         }
 
