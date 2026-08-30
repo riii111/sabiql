@@ -1,6 +1,10 @@
 use super::splitter::{
     first_sqlite_keyword, keywords_with_depth, statement_keyword, top_level_keywords,
 };
+use crate::sql_lex::{
+    advance_single_quote, skip_block_comment, skip_double_quoted_identifier, skip_line_comment,
+    skip_sqlite_quoted_identifier,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SqliteStatementClassification {
@@ -249,16 +253,77 @@ pub fn parse_sqlite_pragma(statement: &str) -> Option<SqlitePragma> {
 }
 
 fn pragma_value(tail: &str) -> Option<String> {
-    let value = if let Some(value) = tail.strip_prefix('=') {
-        value
+    let (value, stop_at_close) = if let Some(value) = tail.strip_prefix('=') {
+        (value, false)
     } else {
         let value = tail.strip_prefix('(')?;
-        &value[..value.find(')')?]
+        (value, true)
     };
-    value
-        .split(|ch: char| !ch.is_alphanumeric() && ch != '_')
-        .find(|part| !part.is_empty())
-        .map(str::to_ascii_lowercase)
+    let chars: Vec<(usize, char)> = value.char_indices().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        let (byte_pos, ch) = chars[i];
+        if let Some(next) = skip_line_comment(&chars, i, ch) {
+            i = next;
+            continue;
+        }
+        if let Some(next) = skip_block_comment(&chars, i, ch) {
+            if next > chars.len() {
+                return None;
+            }
+            i = next;
+            continue;
+        }
+        if matches!(ch, '\'' | '"' | '`' | '[') {
+            let next = pragma_quoted_value_end(&chars, i, ch)?;
+            let content_start = chars.get(i + 1)?.0;
+            let content_end = chars.get(next.checked_sub(1)?)?.0;
+            if let Some(part) = value[content_start..content_end]
+                .split(|ch: char| !ch.is_alphanumeric() && ch != '_')
+                .find(|part| !part.is_empty())
+            {
+                return Some(part.to_ascii_lowercase());
+            }
+            i = next;
+            continue;
+        }
+        if stop_at_close && ch == ')' {
+            return None;
+        }
+        if ch.is_alphanumeric() || ch == '_' {
+            let start = byte_pos;
+            let mut end = i + 1;
+            while end < chars.len() && (chars[end].1.is_alphanumeric() || chars[end].1 == '_') {
+                end += 1;
+            }
+            let end_byte = chars.get(end).map_or(value.len(), |(pos, _)| *pos);
+            return Some(value[start..end_byte].to_ascii_lowercase());
+        }
+        i += 1;
+    }
+    None
+}
+
+fn pragma_quoted_value_end(chars: &[(usize, char)], i: usize, ch: char) -> Option<usize> {
+    let end = match ch {
+        '\'' => {
+            let mut in_string = false;
+            let mut cursor = i;
+            while cursor < chars.len() {
+                cursor = advance_single_quote(chars, cursor, chars[cursor].1, &mut in_string)?;
+                if !in_string {
+                    return Some(cursor);
+                }
+            }
+            return None;
+        }
+        '"' => skip_double_quoted_identifier(chars, i, ch)?,
+        '`' | '[' => skip_sqlite_quoted_identifier(chars, i, ch)?,
+        _ => return None,
+    };
+    let close = if ch == '[' { ']' } else { ch };
+    (end <= chars.len() && end > i && chars.get(end - 1).is_some_and(|(_, last)| *last == close))
+        .then_some(end)
 }
 
 fn pragma_identifier_and_tail(sql: &str) -> Option<(&str, &str)> {
@@ -298,6 +363,18 @@ mod tests {
         );
         assert_eq!(
             sqlite_statement_classification("PRAGMA user_version = 42"),
+            SqliteStatementClassification::TransactionalWrite
+        );
+    }
+
+    #[test]
+    fn preserves_pragma_classification_after_value_comments() {
+        assert_eq!(
+            sqlite_statement_classification("PRAGMA journal_mode = /* comment */ WAL"),
+            SqliteStatementClassification::TransactionIncompatible
+        );
+        assert_eq!(
+            sqlite_statement_classification("PRAGMA application_id(/* comment */ 7)"),
             SqliteStatementClassification::TransactionalWrite
         );
     }
@@ -386,5 +463,28 @@ mod tests {
         assert_eq!(pragma.name, "application_id");
         assert!(pragma.has_value);
         assert_eq!(pragma.value.as_deref(), Some("7"));
+    }
+
+    #[test]
+    fn skips_comments_before_pragma_values() {
+        for (sql, expected) in [
+            ("PRAGMA foreign_keys = /* comment */ OFF", Some("off")),
+            ("PRAGMA foreign_keys = -- comment\n0", Some("0")),
+            ("PRAGMA foreign_keys(/* comment */ false)", Some("false")),
+            (
+                "PRAGMA \"main\".\"foreign_keys\"(/* comment */ OFF)",
+                Some("off"),
+            ),
+        ] {
+            let pragma = parse_sqlite_pragma(sql).unwrap();
+            assert_eq!(pragma.value.as_deref(), expected, "{sql}");
+        }
+    }
+
+    #[test]
+    fn does_not_extract_unterminated_block_comment_as_pragma_value() {
+        let pragma = parse_sqlite_pragma("PRAGMA foreign_keys = /* OFF").unwrap();
+
+        assert_eq!(pragma.value, None);
     }
 }

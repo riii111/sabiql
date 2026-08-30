@@ -833,7 +833,7 @@ fn sqlite_pragma_risk(sql: &str) -> Option<SqlRiskDecision> {
             | "incremental_vacuum"
             | "wal_checkpoint"
     ) || (pragma_name == "foreign_keys"
-        && matches!(value, Some("off" | "0" | "false")));
+        && (value.is_none() || matches!(value, Some("off" | "0" | "false"))));
 
     Some(SqlRiskDecision {
         risk_level: if dangerous {
@@ -1195,11 +1195,28 @@ mod tests {
                 assert!(matches!(result.confirmation, ConfirmationType::Immediate));
             }
 
+            #[test]
+            fn sqlite_allowlisted_pragma_ignores_value_comments() {
+                let sql = "PRAGMA table_info(/* comment */ users)";
+                let result =
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                        .expect("SQLite SQL risk evaluation is supported");
+
+                assert_eq!(result.risk_level, RiskLevel::Low);
+                assert!(result.read_only_allowed);
+                assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+            }
+
             #[rstest]
             #[case::writable_schema("PRAGMA writable_schema = ON")]
             #[case::writable_schema_call("PRAGMA writable_schema(ON)")]
             #[case::foreign_keys_off("PRAGMA foreign_keys = OFF")]
             #[case::foreign_keys_call_off("PRAGMA foreign_keys(OFF)")]
+            #[case::foreign_keys_off_after_block_comment("PRAGMA foreign_keys = /* comment */ OFF")]
+            #[case::foreign_keys_zero_after_line_comment("PRAGMA foreign_keys = -- comment\n0")]
+            #[case::foreign_keys_false_after_block_comment(
+                "PRAGMA foreign_keys(/* comment */ false)"
+            )]
             #[case::quoted_schema_foreign_keys_off("PRAGMA \"main\".\"foreign_keys\" = OFF")]
             #[case::bracket_schema_journal_mode("PRAGMA [main].[journal_mode](WAL)")]
             #[case::journal_mode("PRAGMA journal_mode = WAL")]
@@ -1246,6 +1263,24 @@ mod tests {
                 assert_eq!(result.risk_level, RiskLevel::Medium);
                 assert!(!result.read_only_allowed);
                 assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+            }
+
+            #[test]
+            fn sqlite_unterminated_value_comment_requires_acknowledgment() {
+                let sql = "PRAGMA foreign_keys = /* OFF";
+                let result =
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                        .expect("SQLite SQL risk evaluation is supported");
+
+                assert_eq!(result.risk_level, RiskLevel::High);
+                assert!(!result.read_only_allowed);
+                assert!(matches!(
+                    result.confirmation,
+                    ConfirmationType::Acknowledge {
+                        reason: AcknowledgeReason::TargetNameUnavailable,
+                        ref label,
+                    } if label == "PRAGMA"
+                ));
             }
         }
 
@@ -1590,6 +1625,27 @@ mod tests {
                 let result = evaluate_multi_statement_for_database(
                     DatabaseType::SQLite,
                     "PRAGMA foreign_keys = OFF; CREATE TABLE users(id INTEGER)",
+                );
+
+                match result {
+                    MultiStatementDecision::Allow { risk, .. } => {
+                        assert!(matches!(
+                            risk.confirmation,
+                            ConfirmationType::Acknowledge {
+                                reason: AcknowledgeReason::TargetNameUnavailable,
+                                ref label,
+                            } if label == "PRAGMA"
+                        ));
+                    }
+                    _ => panic!("expected Allow"),
+                }
+            }
+
+            #[test]
+            fn sqlite_incompatible_transaction_preserves_commented_high_risk_acknowledgement() {
+                let result = evaluate_multi_statement_for_database(
+                    DatabaseType::SQLite,
+                    "PRAGMA foreign_keys = /* comment */ OFF; CREATE TABLE users(id INTEGER)",
                 );
 
                 match result {
