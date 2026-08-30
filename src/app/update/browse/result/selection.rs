@@ -89,9 +89,6 @@ pub fn reduce_selection(state: &mut AppState, action: &Action, _now: Instant) ->
             state.result_interaction.clear_staged_deletes();
             DispatchResult::handled()
         }
-        Action::ResultNextPage | Action::ResultPrevPage => {
-            DispatchResult::pass() // Handled entirely by the query reducer (reset only after transition confirmed)
-        }
         _ => DispatchResult::pass(),
     }
 }
