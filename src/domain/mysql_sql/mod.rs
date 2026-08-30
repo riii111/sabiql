@@ -603,6 +603,19 @@ mod tests {
     }
 
     #[test]
+    fn rejects_mysql_numeric_literals_as_mutation_targets() {
+        for sql in [
+            "UPDATE 1e3 SET value = 1",
+            "UPDATE 1e+3 SET value = 1",
+            "UPDATE 1e-3 SET value = 1",
+            "UPDATE 0x01AF SET value = 1",
+            "UPDATE 0b01 SET value = 1",
+        ] {
+            assert!(classify_mysql_statement(sql).is_err(), "{sql}");
+        }
+    }
+
+    #[test]
     fn preserves_utf8_targets_around_comments_and_executable_comments() {
         for sql in [
             "UPDATE /* ignored café */ café SET value = 1",

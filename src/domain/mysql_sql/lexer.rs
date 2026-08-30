@@ -147,7 +147,21 @@ pub(super) fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MySqlLexError
             {
                 index += character.len_utf8();
             }
-            let is_digit_only = sql[start..index].bytes().all(|byte| byte.is_ascii_digit());
+            let candidate = &sql[start..index];
+            let is_digit_only = candidate.bytes().all(|byte| byte.is_ascii_digit());
+            let is_exponent_literal = is_mysql_exponent_literal(candidate.as_bytes());
+            let is_hex_or_bit_literal = is_mysql_hex_or_bit_literal(candidate.as_bytes());
+            let is_signed_exponent = is_mysql_exponent_prefix(candidate.as_bytes())
+                && matches!(bytes.get(index), Some(b'+' | b'-'))
+                && bytes.get(index + 1).is_some_and(u8::is_ascii_digit);
+            let is_numeric_literal =
+                is_digit_only || is_exponent_literal || is_hex_or_bit_literal || is_signed_exponent;
+            if is_signed_exponent {
+                index += 1;
+                while index < bytes.len() && bytes[index].is_ascii_digit() {
+                    index += 1;
+                }
+            }
             if is_digit_only && bytes.get(index) == Some(&b'.') {
                 while index < bytes.len()
                     && (bytes[index].is_ascii_alphanumeric()
@@ -157,7 +171,7 @@ pub(super) fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MySqlLexError
                 }
             }
             let text = sql[start..index].to_string();
-            let kind = if is_digit_only {
+            let kind = if is_numeric_literal {
                 TokenKind::Number
             } else {
                 TokenKind::Word(text.to_ascii_uppercase())
@@ -187,6 +201,36 @@ pub(super) fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MySqlLexError
 
 fn is_mysql_unquoted_identifier_char(character: char) -> bool {
     character.is_ascii_alphanumeric() || matches!(character, '_' | '$' | '\u{0080}'..='\u{FFFF}')
+}
+
+fn is_mysql_exponent_prefix(bytes: &[u8]) -> bool {
+    bytes.len() > 1
+        && matches!(bytes.last(), Some(b'e' | b'E'))
+        && bytes[..bytes.len() - 1].iter().all(u8::is_ascii_digit)
+}
+
+fn is_mysql_exponent_literal(bytes: &[u8]) -> bool {
+    let Some(exponent_index) = bytes.iter().position(|byte| matches!(byte, b'e' | b'E')) else {
+        return false;
+    };
+    let mantissa = &bytes[..exponent_index];
+    let exponent = &bytes[exponent_index + 1..];
+    is_mysql_ascii_digit_sequence(mantissa) && is_mysql_ascii_digit_sequence(exponent)
+}
+
+fn is_mysql_hex_or_bit_literal(bytes: &[u8]) -> bool {
+    if bytes.len() <= 2 || bytes[0] != b'0' {
+        return false;
+    }
+    match bytes[1] {
+        b'x' => bytes[2..].iter().all(u8::is_ascii_hexdigit),
+        b'b' => bytes[2..].iter().all(|byte| matches!(byte, b'0' | b'1')),
+        _ => false,
+    }
+}
+
+fn is_mysql_ascii_digit_sequence(bytes: &[u8]) -> bool {
+    !bytes.is_empty() && bytes.iter().all(u8::is_ascii_digit)
 }
 
 pub(super) fn split_mysql_statements(sql: &str) -> Result<Vec<String>, MySqlLexError> {
