@@ -4,7 +4,7 @@ use std::time::SystemTime;
 use tokio::sync::mpsc;
 
 use crate::cmd::effect::Effect;
-use crate::cmd::query_task::QueryTaskRegistry;
+use crate::cmd::single_task_owner::SingleTaskOwner;
 use crate::domain::command_tag::CommandTag;
 use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope, QueryResultStatus};
 use crate::domain::{DatabaseDiagnostic, DatabaseType};
@@ -83,7 +83,7 @@ pub async fn run(
     query_executor: &Arc<dyn QueryExecutor>,
     query_history_store: &Arc<dyn QueryHistoryStore>,
     cached_result_exporter: &Arc<dyn CachedResultExporter>,
-    query_tasks: &QueryTaskRegistry,
+    query_tasks: &SingleTaskOwner,
     state: &AppState,
 ) {
     match effect {
@@ -101,7 +101,7 @@ pub async fn run(
             let tx = action_tx.clone();
 
             query_tasks
-                .spawn(async move {
+                .replace(async move {
                     match executor
                         .execute_preview(&dsn, &schema, &table, limit, offset)
                         .await
@@ -146,7 +146,7 @@ pub async fn run(
             let tx = action_tx.clone();
 
             query_tasks
-                .spawn(async move {
+                .replace(async move {
                     match executor.execute_adhoc(&dsn, &query, access_mode).await {
                         Ok(result) => {
                             let plan_result = match database_type {
@@ -217,7 +217,7 @@ pub async fn run(
             let project = state.runtime.project_name().to_string();
             let history_scope = state.session.query_history_scope();
             query_tasks
-                .spawn(async move {
+                .replace(async move {
                     let result = executor.execute_adhoc(&dsn, &query, access_mode).await;
                     match result {
                         Ok(result) => {
@@ -282,7 +282,7 @@ pub async fn run(
             let history_scope = state.session.query_history_scope();
 
             query_tasks
-                .spawn(async move {
+                .replace(async move {
                     match executor.execute_write(&dsn, &query, access_mode).await {
                         Ok(result) => {
                             let mut result = result;
@@ -341,7 +341,7 @@ pub async fn run(
             let export_dsn = dsn.clone();
 
             query_tasks
-                .spawn(async move {
+                .replace(async move {
                     let result = executor
                         .export_to_csv(&export_dsn, &query, &file_name)
                         .await;
@@ -382,7 +382,7 @@ pub async fn run(
             let exporter = Arc::clone(cached_result_exporter);
 
             query_tasks
-                .spawn(async move {
+                .replace(async move {
                     let result = exporter
                         .export_cached_result_to_csv(file_name, columns, values)
                         .await;
@@ -460,7 +460,7 @@ mod tests {
         use tokio::sync::{Barrier, Mutex, oneshot};
 
         use super::*;
-        use crate::cmd::query_task::QueryTaskRegistry;
+        use crate::cmd::single_task_owner::SingleTaskOwner;
         use crate::domain::connection::ConnectionId;
         use crate::domain::query_history::{
             QueryHistoryEntry, QueryHistoryScope, QueryResultStatus,
@@ -565,7 +565,7 @@ mod tests {
             let query_history_store: Arc<dyn QueryHistoryStore> = Arc::new(store.clone());
             let cached_result_exporter: Arc<dyn CachedResultExporter> =
                 Arc::new(test_fixtures::TestCachedResultExporter);
-            let query_tasks = QueryTaskRegistry::default();
+            let query_tasks = SingleTaskOwner::default();
 
             super::super::run(
                 effect,
