@@ -55,26 +55,25 @@ fn utc_now_iso8601() -> String {
 }
 
 fn spawn_query_history_append(
-    query_history_store: &Arc<dyn QueryHistoryStore>,
-    project_name: &str,
-    scope: &QueryHistoryScope,
-    query: &str,
+    query_history_store: Arc<dyn QueryHistoryStore>,
+    project_name: String,
+    scope: QueryHistoryScope,
+    query: String,
     result_status: QueryResultStatus,
     affected_rows: Option<u64>,
 ) {
-    let store = Arc::clone(query_history_store);
     let entry = QueryHistoryEntry::new_with_database(
-        query.to_string(),
+        query,
         utc_now_iso8601(),
         scope.connection_id.clone(),
         scope.database.clone(),
         result_status,
         affected_rows,
     );
-    let project = project_name.to_string();
-    let scope = scope.clone();
     tokio::spawn(async move {
-        let _ = store.append(&project, &scope, &entry).await;
+        let _ = query_history_store
+            .append(&project_name, &scope, &entry)
+            .await;
     });
 }
 
@@ -217,7 +216,6 @@ pub async fn run(
             let history_store = Arc::clone(query_history_store);
             let project = state.runtime.project_name().to_string();
             let history_scope = state.session.query_history_scope();
-            let query_for_history = query.clone();
             query_tasks
                 .spawn(async move {
                     let result = executor.execute_adhoc(&dsn, &query, access_mode).await;
@@ -225,16 +223,16 @@ pub async fn run(
                         Ok(result) => {
                             let mut result = result;
                             mask_mysql_diagnostics(&mut result.mysql_diagnostics);
-                            if let Some(scope) = &history_scope {
+                            if let Some(scope) = history_scope {
                                 let rows = result
                                     .command_tag
                                     .as_ref()
                                     .and_then(CommandTag::affected_rows);
                                 spawn_query_history_append(
-                                    &history_store,
-                                    &project,
+                                    history_store,
+                                    project,
                                     scope,
-                                    &query_for_history,
+                                    query,
                                     QueryResultStatus::Success,
                                     rows,
                                 );
@@ -248,12 +246,12 @@ pub async fn run(
                             .ok();
                         }
                         Err(e) => {
-                            if let Some(scope) = &history_scope {
+                            if let Some(scope) = history_scope {
                                 spawn_query_history_append(
-                                    &history_store,
-                                    &project,
+                                    history_store,
+                                    project,
                                     scope,
-                                    &query_for_history,
+                                    query,
                                     QueryResultStatus::Failed,
                                     None,
                                 );
@@ -282,7 +280,6 @@ pub async fn run(
             let history_store = Arc::clone(query_history_store);
             let project = state.runtime.project_name().to_string();
             let history_scope = state.session.query_history_scope();
-            let query_for_history = query.clone();
 
             query_tasks
                 .spawn(async move {
@@ -290,12 +287,12 @@ pub async fn run(
                         Ok(result) => {
                             let mut result = result;
                             mask_mysql_diagnostics(&mut result.diagnostics);
-                            if let Some(scope) = &history_scope {
+                            if let Some(scope) = history_scope {
                                 spawn_query_history_append(
-                                    &history_store,
-                                    &project,
+                                    history_store,
+                                    project,
                                     scope,
-                                    &query_for_history,
+                                    query,
                                     QueryResultStatus::Success,
                                     Some(result.affected_rows as u64),
                                 );
@@ -310,12 +307,12 @@ pub async fn run(
                             .ok();
                         }
                         Err(e) => {
-                            if let Some(scope) = &history_scope {
+                            if let Some(scope) = history_scope {
                                 spawn_query_history_append(
-                                    &history_store,
-                                    &project,
+                                    history_store,
+                                    project,
                                     scope,
-                                    &query_for_history,
+                                    query,
                                     QueryResultStatus::Failed,
                                     None,
                                 );
@@ -484,6 +481,438 @@ mod tests {
         .unwrap();
 
         run.actions.into_iter().next().expect("action dispatched")
+    }
+
+    mod query_history_append {
+        use tokio::sync::{Barrier, Mutex, oneshot};
+
+        use super::*;
+        use crate::cmd::query_task::QueryTaskRegistry;
+        use crate::domain::connection::ConnectionId;
+        use crate::domain::query_history::{
+            QueryHistoryEntry, QueryHistoryScope, QueryResultStatus,
+        };
+        use crate::domain::{CommandTag, DatabaseType};
+        use crate::ports::outbound::{
+            CachedResultExporter, DbOperationError, QueryExecutor, QueryHistoryError,
+            QueryHistoryStore,
+        };
+
+        #[derive(Clone)]
+        struct HistoryCall {
+            project_name: String,
+            scope: QueryHistoryScope,
+            entry: QueryHistoryEntry,
+        }
+
+        #[derive(Clone)]
+        struct RecordingQueryHistoryStore {
+            calls: Arc<Mutex<Vec<HistoryCall>>>,
+            append_barrier: Arc<Barrier>,
+            append_started: Arc<Mutex<Option<oneshot::Sender<()>>>>,
+            append_finished: Arc<Mutex<Option<oneshot::Sender<()>>>>,
+        }
+
+        #[async_trait::async_trait]
+        impl QueryHistoryStore for RecordingQueryHistoryStore {
+            async fn append(
+                &self,
+                project_name: &str,
+                scope: &QueryHistoryScope,
+                entry: &QueryHistoryEntry,
+            ) -> Result<(), QueryHistoryError> {
+                let signal = self.append_started.lock().await.take();
+                if let Some(signal) = signal {
+                    signal.send(()).ok();
+                }
+                self.calls.lock().await.push(HistoryCall {
+                    project_name: project_name.to_string(),
+                    scope: scope.clone(),
+                    entry: entry.clone(),
+                });
+                self.append_barrier.wait().await;
+                let signal = self.append_finished.lock().await.take();
+                if let Some(signal) = signal {
+                    signal.send(()).ok();
+                }
+                Ok(())
+            }
+
+            async fn load(
+                &self,
+                _project_name: &str,
+                _scope: &QueryHistoryScope,
+            ) -> Result<Vec<QueryHistoryEntry>, QueryHistoryError> {
+                Ok(Vec::new())
+            }
+        }
+
+        fn history_store() -> (
+            RecordingQueryHistoryStore,
+            oneshot::Receiver<()>,
+            oneshot::Receiver<()>,
+        ) {
+            let (started_tx, started_rx) = oneshot::channel();
+            let (finished_tx, finished_rx) = oneshot::channel();
+            (
+                RecordingQueryHistoryStore {
+                    calls: Arc::new(Mutex::new(Vec::new())),
+                    append_barrier: Arc::new(Barrier::new(2)),
+                    append_started: Arc::new(Mutex::new(Some(started_tx))),
+                    append_finished: Arc::new(Mutex::new(Some(finished_tx))),
+                },
+                started_rx,
+                finished_rx,
+            )
+        }
+
+        fn connected_state() -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.session.activate_connection_with_target(
+                &ConnectionId::from_string("connection"),
+                "connection",
+                DatabaseType::MySQL,
+                "dsn://test",
+                Some("analytics"),
+            );
+            state
+        }
+
+        async fn run_with_history(
+            effect: Effect,
+            executor: MockQueryExecutor,
+            state: AppState,
+            store: RecordingQueryHistoryStore,
+            append_started_rx: oneshot::Receiver<()>,
+            append_finished_rx: oneshot::Receiver<()>,
+            expect_append: bool,
+        ) -> (Action, Vec<HistoryCall>) {
+            let (tx, mut rx) = mpsc::channel(8);
+            let query_executor: Arc<dyn QueryExecutor> = Arc::new(executor);
+            let query_history_store: Arc<dyn QueryHistoryStore> = Arc::new(store.clone());
+            let cached_result_exporter: Arc<dyn CachedResultExporter> =
+                Arc::new(test_fixtures::TestCachedResultExporter);
+            let query_tasks = QueryTaskRegistry::default();
+
+            super::super::run(
+                effect,
+                &tx,
+                &query_executor,
+                &query_history_store,
+                &cached_result_exporter,
+                &query_tasks,
+                &state,
+            )
+            .await;
+
+            let action =
+                test_fixtures::recv_action_with_timeout(&mut rx, Duration::from_secs(1)).await;
+            if expect_append {
+                drop(append_started_rx);
+                let append_release = Arc::clone(&store.append_barrier);
+                tokio::time::timeout(Duration::from_secs(1), append_release.wait())
+                    .await
+                    .expect("history append should reach its release point");
+                tokio::time::timeout(Duration::from_secs(1), append_finished_rx)
+                    .await
+                    .expect("history append should finish")
+                    .expect("history append signal should be sent");
+            } else {
+                assert!(
+                    tokio::time::timeout(Duration::from_millis(1), append_started_rx)
+                        .await
+                        .is_err(),
+                    "history append should not be spawned"
+                );
+            }
+
+            let calls = store.calls.lock().await.clone();
+            (action, calls)
+        }
+
+        fn assert_history_call(
+            calls: &[HistoryCall],
+            query: &str,
+            result_status: QueryResultStatus,
+            affected_rows: Option<u64>,
+        ) {
+            assert_eq!(calls.len(), 1);
+            let call = &calls[0];
+            assert_eq!(call.project_name, "test");
+            assert_eq!(call.scope.connection_id.as_str(), "connection");
+            assert_eq!(call.scope.database.as_deref(), Some("analytics"));
+            assert_eq!(call.entry.query, query);
+            assert_eq!(call.entry.connection_id.as_str(), "connection");
+            assert_eq!(call.entry.database.as_deref(), Some("analytics"));
+            assert_eq!(call.entry.result_status, result_status);
+            assert_eq!(call.entry.affected_rows, affected_rows);
+        }
+
+        #[tokio::test(start_paused = true)]
+        async fn adhoc_success_appends_query_history_after_execution() {
+            let mut executor = MockQueryExecutor::new();
+            executor.expect_execute_adhoc().once().returning(|_, _, _| {
+                Ok(test_fixtures::sample_query_result().with_command_tag(CommandTag::Update(7)))
+            });
+            let (store, append_started_rx, append_rx) = history_store();
+
+            let (action, calls) = run_with_history(
+                Effect::ExecuteAdhoc {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 1,
+                    query: "UPDATE users SET active = true".to_string(),
+                    access_mode: AccessMode::ReadOnly,
+                },
+                executor,
+                connected_state(),
+                store,
+                append_started_rx,
+                append_rx,
+                true,
+            )
+            .await;
+
+            assert!(matches!(action, Action::QueryCompleted { run_id: 1, .. }));
+            assert_history_call(
+                &calls,
+                "UPDATE users SET active = true",
+                QueryResultStatus::Success,
+                Some(7),
+            );
+        }
+
+        #[tokio::test(start_paused = true)]
+        async fn adhoc_failure_appends_failed_query_history() {
+            let mut executor = MockQueryExecutor::new();
+            executor.expect_execute_adhoc().once().returning(|_, _, _| {
+                Err(DbOperationError::QueryFailed("syntax error".to_string()))
+            });
+            let (store, append_started_rx, append_rx) = history_store();
+
+            let (action, calls) = run_with_history(
+                Effect::ExecuteAdhoc {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 2,
+                    query: "SELECT broken".to_string(),
+                    access_mode: AccessMode::ReadOnly,
+                },
+                executor,
+                connected_state(),
+                store,
+                append_started_rx,
+                append_rx,
+                true,
+            )
+            .await;
+
+            assert!(matches!(action, Action::QueryFailed { run_id: 2, .. }));
+            assert_history_call(&calls, "SELECT broken", QueryResultStatus::Failed, None);
+        }
+
+        #[tokio::test(start_paused = true)]
+        async fn write_success_appends_affected_rows_to_query_history() {
+            let mut executor = MockQueryExecutor::new();
+            executor.expect_execute_write().once().returning(|_, _, _| {
+                Ok(WriteExecutionResult {
+                    affected_rows: 7,
+                    diagnostics: Vec::new(),
+                })
+            });
+            let (store, append_started_rx, append_rx) = history_store();
+
+            let (action, calls) = run_with_history(
+                Effect::ExecuteWrite {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 3,
+                    query: "UPDATE users SET active = true".to_string(),
+                    access_mode: AccessMode::ReadWrite,
+                },
+                executor,
+                connected_state(),
+                store,
+                append_started_rx,
+                append_rx,
+                true,
+            )
+            .await;
+
+            assert!(matches!(
+                action,
+                Action::ExecuteWriteSucceeded {
+                    run_id: 3,
+                    affected_rows: 7,
+                    ..
+                }
+            ));
+            assert_history_call(
+                &calls,
+                "UPDATE users SET active = true",
+                QueryResultStatus::Success,
+                Some(7),
+            );
+        }
+
+        #[tokio::test(start_paused = true)]
+        async fn write_failure_appends_failed_query_history() {
+            let mut executor = MockQueryExecutor::new();
+            executor.expect_execute_write().once().returning(|_, _, _| {
+                Err(DbOperationError::QueryFailed("write failed".to_string()))
+            });
+            let (store, append_started_rx, append_rx) = history_store();
+
+            let (action, calls) = run_with_history(
+                Effect::ExecuteWrite {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 4,
+                    query: "UPDATE users SET active = false".to_string(),
+                    access_mode: AccessMode::ReadWrite,
+                },
+                executor,
+                connected_state(),
+                store,
+                append_started_rx,
+                append_rx,
+                true,
+            )
+            .await;
+
+            assert!(matches!(
+                action,
+                Action::ExecuteWriteFailed { run_id: 4, .. }
+            ));
+            assert_history_call(
+                &calls,
+                "UPDATE users SET active = false",
+                QueryResultStatus::Failed,
+                None,
+            );
+        }
+
+        #[tokio::test(start_paused = true)]
+        async fn history_disabled_does_not_spawn_append() {
+            let mut executor = MockQueryExecutor::new();
+            executor
+                .expect_execute_adhoc()
+                .once()
+                .returning(|_, _, _| Ok(test_fixtures::sample_query_result()));
+            let (store, append_started_rx, append_rx) = history_store();
+
+            let (action, calls) = run_with_history(
+                Effect::ExecuteAdhoc {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 5,
+                    query: "SELECT 1".to_string(),
+                    access_mode: AccessMode::ReadOnly,
+                },
+                executor,
+                AppState::new("test".to_string()),
+                store,
+                append_started_rx,
+                append_rx,
+                false,
+            )
+            .await;
+
+            assert!(matches!(action, Action::QueryCompleted { run_id: 5, .. }));
+            assert!(calls.is_empty());
+        }
+
+        #[tokio::test(start_paused = true)]
+        async fn adhoc_failure_history_disabled_does_not_spawn_append() {
+            let mut executor = MockQueryExecutor::new();
+            executor.expect_execute_adhoc().once().returning(|_, _, _| {
+                Err(DbOperationError::QueryFailed("syntax error".to_string()))
+            });
+            let (store, append_started_rx, append_rx) = history_store();
+
+            let (action, calls) = run_with_history(
+                Effect::ExecuteAdhoc {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 8,
+                    query: "SELECT broken".to_string(),
+                    access_mode: AccessMode::ReadOnly,
+                },
+                executor,
+                AppState::new("test".to_string()),
+                store,
+                append_started_rx,
+                append_rx,
+                false,
+            )
+            .await;
+
+            assert!(matches!(action, Action::QueryFailed { run_id: 8, .. }));
+            assert!(calls.is_empty());
+        }
+
+        #[tokio::test(start_paused = true)]
+        async fn write_success_history_disabled_does_not_spawn_append() {
+            let mut executor = MockQueryExecutor::new();
+            executor.expect_execute_write().once().returning(|_, _, _| {
+                Ok(WriteExecutionResult {
+                    affected_rows: 7,
+                    diagnostics: Vec::new(),
+                })
+            });
+            let (store, append_started_rx, append_rx) = history_store();
+
+            let (action, calls) = run_with_history(
+                Effect::ExecuteWrite {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 6,
+                    query: "UPDATE users SET active = true".to_string(),
+                    access_mode: AccessMode::ReadWrite,
+                },
+                executor,
+                AppState::new("test".to_string()),
+                store,
+                append_started_rx,
+                append_rx,
+                false,
+            )
+            .await;
+
+            assert!(matches!(
+                action,
+                Action::ExecuteWriteSucceeded {
+                    run_id: 6,
+                    affected_rows: 7,
+                    ..
+                }
+            ));
+            assert!(calls.is_empty());
+        }
+
+        #[tokio::test(start_paused = true)]
+        async fn write_failure_history_disabled_does_not_spawn_append() {
+            let mut executor = MockQueryExecutor::new();
+            executor.expect_execute_write().once().returning(|_, _, _| {
+                Err(DbOperationError::QueryFailed("write failed".to_string()))
+            });
+            let (store, append_started_rx, append_rx) = history_store();
+
+            let (action, calls) = run_with_history(
+                Effect::ExecuteWrite {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 7,
+                    query: "UPDATE users SET active = false".to_string(),
+                    access_mode: AccessMode::ReadWrite,
+                },
+                executor,
+                AppState::new("test".to_string()),
+                store,
+                append_started_rx,
+                append_rx,
+                false,
+            )
+            .await;
+
+            assert!(matches!(
+                action,
+                Action::ExecuteWriteFailed { run_id: 7, .. }
+            ));
+            assert!(calls.is_empty());
+        }
     }
 
     mod explain_plan_text {
