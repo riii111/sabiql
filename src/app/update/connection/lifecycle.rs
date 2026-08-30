@@ -58,13 +58,10 @@ pub fn reduce_connection_lifecycle(
                 state.query.reset_for_context_change();
                 return DispatchResult::handled_with(termination_effects(
                     &state.query,
-                    vec![
-                        Effect::CancelSqliteDiagnostics,
-                        Effect::ProbeMySqlConnection {
-                            target: target.clone(),
-                            run_id,
-                        },
-                    ],
+                    vec![Effect::ProbeMySqlConnection {
+                        target: target.clone(),
+                        run_id,
+                    }],
                 ));
             }
 
@@ -72,10 +69,7 @@ pub fn reduce_connection_lifecycle(
 
             if let Some(cached) = state.connection_caches.get(id).cloned() {
                 restore_cache(state, &cached, target);
-                let mut effects = vec![
-                    Effect::CancelSqliteDiagnostics,
-                    Effect::ClearCompletionEngineCache,
-                ];
+                let mut effects = vec![Effect::ClearCompletionEngineCache];
                 if state.session.effective_user().is_none() {
                     let run_id = state.session.begin_effective_user_fetch();
                     effects.push(Effect::FetchEffectiveUser {
@@ -91,7 +85,6 @@ pub fn reduce_connection_lifecycle(
                 DispatchResult::handled_with(termination_effects(
                     &state.query,
                     vec![
-                        Effect::CancelSqliteDiagnostics,
                         Effect::ClearCompletionEngineCache,
                         Effect::FetchMetadata {
                             dsn: dsn.clone(),
