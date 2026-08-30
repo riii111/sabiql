@@ -1191,6 +1191,25 @@ mod tests {
         }
 
         #[test]
+        fn process_empty_queue_returns_handled_without_effects() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let run_id = state.sql_modal.begin_er_prefetch();
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::ProcessPrefetchQueue { run_id },
+                Instant::now(),
+            )
+            .into_effects()
+            .expect("empty prefetch queue should be handled");
+
+            assert!(effects.is_empty());
+            assert_eq!(state.sql_modal.active_prefetch_run_id(), Some(run_id));
+            assert!(!state.sql_modal.has_pending_prefetch());
+            assert_eq!(state.sql_modal.prefetch_in_flight_count(), 0);
+        }
+
+        #[test]
         fn pending_mysql_probe_rejects_prefetch_queue_without_dequeuing() {
             let mut state = state_with_pending_mysql_probe();
             let run_id = state.sql_modal.begin_completion_prefetch();
