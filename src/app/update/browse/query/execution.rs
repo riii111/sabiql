@@ -267,7 +267,7 @@ pub(super) fn refresh_effects_for_scope(
     let mut effects = vec![];
 
     if refresh_scope == RefreshScope::Metadata {
-        state.sql_modal.reset_prefetch();
+        state.table_prefetch.reset_prefetch();
         state.er_preparation.invalidate_run();
         state.session.set_table_detail_raw(None);
         let run_id = state.session.begin_metadata_refresh();
@@ -1635,9 +1635,9 @@ mod tests {
         #[test]
         fn ddl_resets_prefetch_state_and_clears_table_detail() {
             let mut state = state_with_table("public", "users");
-            let _ = state.sql_modal.begin_er_prefetch();
+            let _ = state.table_prefetch.begin_er_prefetch();
             state
-                .sql_modal
+                .table_prefetch
                 .queue_table_prefetch("public.users".to_string());
             state
                 .session
@@ -1651,8 +1651,8 @@ mod tests {
 
             dispatch_query(&mut state, &action, Instant::now());
 
-            assert!(state.sql_modal.active_prefetch_run_id().is_none());
-            assert!(!state.sql_modal.has_pending_prefetch());
+            assert!(state.table_prefetch.active_prefetch_run_id().is_none());
+            assert!(!state.table_prefetch.has_pending_prefetch());
             assert!(state.session.table_detail().is_none());
         }
 
@@ -1809,7 +1809,7 @@ mod tests {
 
             let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
-            assert!(state.sql_modal.active_prefetch_run_id().is_none());
+            assert!(state.table_prefetch.active_prefetch_run_id().is_none());
             assert!(
                 effects
                     .iter()

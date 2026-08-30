@@ -29,6 +29,7 @@ use crate::model::shared::ui_state::{UiState, scroll_max_offset};
 use crate::model::sql_editor::modal::SqlModalContext;
 use crate::model::sql_editor::query_history::QueryHistoryPickerState;
 use crate::model::sqlite::diagnostics::SqliteDiagnosticsState;
+use crate::model::table_prefetch::TablePrefetchState;
 use crate::policy::preview_cell_text::CellPresentationPolicy;
 use crate::policy::sql::result_query::is_rerunnable_select;
 use crate::policy::table_kind::max_explorer_table_label_width;
@@ -51,6 +52,7 @@ pub struct AppState {
     pub ui: UiState,
     pub query: QueryExecution,
     pub sql_modal: SqlModalContext,
+    pub table_prefetch: TablePrefetchState,
     pub messages: MessageState,
     pub er_preparation: super::er_state::ErPreparationState,
     pub connection_setup: ConnectionSetupState,
@@ -85,6 +87,7 @@ impl AppState {
             ui: UiState::new(),
             query: QueryExecution::default(),
             sql_modal: SqlModalContext::default(),
+            table_prefetch: TablePrefetchState::default(),
             messages: MessageState::default(),
             er_preparation: super::er_state::ErPreparationState::default(),
             connection_setup: ConnectionSetupState::default(),
@@ -482,7 +485,7 @@ mod tests {
         ConfirmPreviewLayout, InspectorLayout, RowDetailLayout,
     };
     use crate::model::shared::viewport::ViewportPlan;
-    use crate::model::sql_editor::modal::FailedPrefetchEntry;
+    use crate::model::table_prefetch::FailedPrefetchEntry;
     use crate::services::AppServices;
     use crate::update::action::Action;
     use crate::update::dispatch_metadata;
@@ -1154,29 +1157,29 @@ mod tests {
         }
     }
 
-    mod sql_modal_lifecycle {
+    mod table_prefetch_lifecycle {
         use super::*;
 
         #[test]
         fn prefetch_queue_starts_empty() {
             let state = make_state();
 
-            assert!(!state.sql_modal.has_pending_prefetch());
-            assert!(state.sql_modal.active_prefetch_run_id().is_none());
+            assert!(!state.table_prefetch.has_pending_prefetch());
+            assert!(state.table_prefetch.active_prefetch_run_id().is_none());
         }
 
         #[test]
         fn prefetch_queue_is_fifo() {
             let mut state = make_state();
             state
-                .sql_modal
+                .table_prefetch
                 .queue_table_prefetch("public.users".to_string());
             state
-                .sql_modal
+                .table_prefetch
                 .queue_table_prefetch("public.orders".to_string());
 
-            let first = state.sql_modal.take_next_prefetch();
-            let second = state.sql_modal.take_next_prefetch();
+            let first = state.table_prefetch.take_next_prefetch();
+            let second = state.table_prefetch.take_next_prefetch();
 
             assert_eq!(first, Some("public.users".to_string()));
             assert_eq!(second, Some("public.orders".to_string()));
@@ -1187,11 +1190,11 @@ mod tests {
             let mut state = make_state();
 
             state
-                .sql_modal
+                .table_prefetch
                 .start_table_prefetch("public.users".to_string());
 
-            assert!(state.sql_modal.is_table_prefetching("public.users"));
-            assert!(!state.sql_modal.is_table_prefetching("public.orders"));
+            assert!(state.table_prefetch.is_table_prefetching("public.users"));
+            assert!(!state.table_prefetch.is_table_prefetching("public.orders"));
         }
 
         #[test]
@@ -1199,7 +1202,7 @@ mod tests {
             let mut state = make_state();
             let now = Instant::now();
 
-            state.sql_modal.fail_table_prefetch(
+            state.table_prefetch.fail_table_prefetch(
                 "public.users".to_string(),
                 FailedPrefetchEntry {
                     failed_at: now,
@@ -1208,7 +1211,10 @@ mod tests {
                 },
             );
 
-            let entry = state.sql_modal.failed_prefetch("public.users").unwrap();
+            let entry = state
+                .table_prefetch
+                .failed_prefetch("public.users")
+                .unwrap();
             assert_eq!(entry.failed_at, now);
             assert_eq!(entry.error, "connection timeout");
         }
@@ -1220,14 +1226,14 @@ mod tests {
         fn prepare_state_for_reload() -> AppState {
             let mut state = make_state();
             activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let _ = state.sql_modal.begin_er_prefetch();
+            let _ = state.table_prefetch.begin_er_prefetch();
             state
-                .sql_modal
+                .table_prefetch
                 .queue_table_prefetch("public.users".to_string());
             state
-                .sql_modal
+                .table_prefetch
                 .start_table_prefetch("public.orders".to_string());
-            state.sql_modal.fail_table_prefetch(
+            state.table_prefetch.fail_table_prefetch(
                 "public.failed".to_string(),
                 FailedPrefetchEntry {
                     failed_at: Instant::now(),
@@ -1244,10 +1250,15 @@ mod tests {
 
             dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
-            assert!(state.sql_modal.active_prefetch_run_id().is_none());
-            assert!(!state.sql_modal.has_pending_prefetch());
-            assert_eq!(state.sql_modal.prefetch_in_flight_count(), 0);
-            assert!(state.sql_modal.failed_prefetch("public.failed").is_none());
+            assert!(state.table_prefetch.active_prefetch_run_id().is_none());
+            assert!(!state.table_prefetch.has_pending_prefetch());
+            assert_eq!(state.table_prefetch.prefetch_in_flight_count(), 0);
+            assert!(
+                state
+                    .table_prefetch
+                    .failed_prefetch("public.failed")
+                    .is_none()
+            );
         }
 
         #[test]

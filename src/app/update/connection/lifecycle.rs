@@ -818,8 +818,8 @@ mod tests {
             state.ui.set_pending_er_picker(true);
             let _ = state.er_preparation.start_waiting_run();
             state
-                .er_preparation
-                .queue_pending_table("public.users".to_string());
+                .table_prefetch
+                .queue_table_prefetch("public.users".to_string());
         }
 
         fn seed_sqlite_diagnostics(state: &mut AppState) {
@@ -833,7 +833,7 @@ mod tests {
         fn assert_er_state_cleared(state: &AppState) {
             assert!(!state.ui.pending_er_picker());
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
-            assert!(state.er_preparation.pending_tables().is_empty());
+            assert!(!state.table_prefetch.has_pending_prefetch());
         }
 
         fn assert_reconciles_postgres_to_sqlite_feature_state(cached: bool) {
@@ -1499,15 +1499,15 @@ mod tests {
             state.ui.set_pending_er_picker(true);
             let _ = state.er_preparation.start_waiting_run();
             state
-                .er_preparation
-                .queue_pending_table("public.users".to_string());
+                .table_prefetch
+                .queue_table_prefetch("public.users".to_string());
 
             let action = create_postgres_switch_action(&new_id, "fresh_db");
             reduce(&mut state, &action);
 
             assert!(!state.ui.pending_er_picker());
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
-            assert!(state.er_preparation.pending_tables().is_empty());
+            assert!(!state.table_prefetch.has_pending_prefetch());
         }
 
         #[test]
@@ -1517,8 +1517,8 @@ mod tests {
             state.ui.set_pending_er_picker(true);
             let _ = state.er_preparation.start_waiting_run();
             state
-                .er_preparation
-                .queue_pending_table("public.users".to_string());
+                .table_prefetch
+                .queue_table_prefetch("public.users".to_string());
             state
                 .connection_caches
                 .save(&target_id, ConnectionCache::default());
@@ -1528,7 +1528,7 @@ mod tests {
 
             assert!(!state.ui.pending_er_picker());
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
-            assert!(state.er_preparation.pending_tables().is_empty());
+            assert!(!state.table_prefetch.has_pending_prefetch());
         }
     }
 
@@ -2456,32 +2456,32 @@ mod tests {
             state
                 .connection_caches
                 .save(&target_id, ConnectionCache::default());
-            let _ = state.sql_modal.begin_er_prefetch();
+            let _ = state.table_prefetch.begin_er_prefetch();
             state
-                .sql_modal
+                .table_prefetch
                 .queue_table_prefetch("public.users".to_string());
 
             let action = create_postgres_switch_action(&target_id, "cached_db");
             reduce(&mut state, &action);
 
-            assert!(state.sql_modal.active_prefetch_run_id().is_none());
-            assert!(!state.sql_modal.has_pending_prefetch());
+            assert!(state.table_prefetch.active_prefetch_run_id().is_none());
+            assert!(!state.table_prefetch.has_pending_prefetch());
         }
 
         #[test]
         fn switch_without_cache_resets_sql_prefetch() {
             let mut state = AppState::new("test".to_string());
             let new_id = ConnectionId::new();
-            let _ = state.sql_modal.begin_er_prefetch();
+            let _ = state.table_prefetch.begin_er_prefetch();
             state
-                .sql_modal
+                .table_prefetch
                 .queue_table_prefetch("public.users".to_string());
 
             let action = create_postgres_switch_action(&new_id, "fresh_db");
             reduce(&mut state, &action);
 
-            assert!(state.sql_modal.active_prefetch_run_id().is_none());
-            assert!(!state.sql_modal.has_pending_prefetch());
+            assert!(state.table_prefetch.active_prefetch_run_id().is_none());
+            assert!(!state.table_prefetch.has_pending_prefetch());
         }
 
         #[test]

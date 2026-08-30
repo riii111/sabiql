@@ -148,14 +148,14 @@ mod tests {
         #[test]
         fn active_prefetch_run_still_resets_and_emits_smart_refresh() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let _ = state.sql_modal.begin_er_prefetch();
+            let _ = state.table_prefetch.begin_er_prefetch();
             state.session.set_metadata(Some(make_metadata(0)));
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now())
                 .into_effects()
                 .expect("reducer should handle action");
 
-            assert!(state.sql_modal.active_prefetch_run_id().is_none());
+            assert!(state.table_prefetch.active_prefetch_run_id().is_none());
             assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
@@ -165,7 +165,7 @@ mod tests {
         fn pending_mysql_probe_rejects_er_open_before_prefetch_invalidation() {
             let mut state = state_with_pending_mysql_probe();
             state.session.set_metadata(Some(make_metadata(1)));
-            let prefetch_run_id = state.sql_modal.begin_er_prefetch();
+            let prefetch_run_id = state.table_prefetch.begin_er_prefetch();
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now())
                 .into_effects()
@@ -173,7 +173,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(
-                state.sql_modal.active_prefetch_run_id(),
+                state.table_prefetch.active_prefetch_run_id(),
                 Some(prefetch_run_id)
             );
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
@@ -189,7 +189,7 @@ mod tests {
             state.session.set_metadata(Some(make_metadata(1)));
             let run_id = state.er_preparation.start_waiting_run();
             state.er_preparation.mark_waiting_for_test();
-            let prefetch_run_id = state.sql_modal.begin_er_prefetch();
+            let prefetch_run_id = state.table_prefetch.begin_er_prefetch();
             let _ = state.session.begin_mysql_connection_probe(
                 &ConnectionId::from_string("mysql-target"),
                 "mysql-target",
@@ -244,7 +244,7 @@ mod tests {
             }
 
             assert_eq!(
-                state.sql_modal.active_prefetch_run_id(),
+                state.table_prefetch.active_prefetch_run_id(),
                 Some(prefetch_run_id)
             );
             assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
@@ -256,7 +256,7 @@ mod tests {
             state.session.set_metadata(Some(make_metadata(1)));
             let run_id = state.er_preparation.start_waiting_run();
             state.er_preparation.mark_waiting_for_test();
-            let _ = state.sql_modal.begin_er_prefetch();
+            let _ = state.table_prefetch.begin_er_prefetch();
             let _ = state.session.begin_mysql_connection_probe(
                 &ConnectionId::from_string("mysql-target"),
                 "mysql-target",
@@ -313,7 +313,7 @@ mod tests {
             assert!(matches!(effects.as_slice(), [Effect::CancelConnectionTask]));
             assert!(state.session.pending_mysql_connection_probe().is_none());
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
-            assert!(state.sql_modal.active_prefetch_run_id().is_none());
+            assert!(state.table_prefetch.active_prefetch_run_id().is_none());
 
             let effects = reducer::reduce(
                 &mut state,
@@ -374,7 +374,7 @@ mod tests {
         #[test]
         fn no_metadata_returns_error() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let _ = state.sql_modal.begin_er_prefetch();
+            let _ = state.table_prefetch.begin_er_prefetch();
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now())
                 .into_effects()

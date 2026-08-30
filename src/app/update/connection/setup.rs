@@ -1338,8 +1338,8 @@ mod tests {
             state.ui.set_pending_er_picker(true);
             let _ = state.er_preparation.start_waiting_run();
             state
-                .er_preparation
-                .queue_pending_table("public.users".to_string());
+                .table_prefetch
+                .queue_table_prefetch("public.users".to_string());
             let run_id = state.session.begin_connection_save();
 
             let action = Action::ConnectionSaveCompleted {
@@ -1357,7 +1357,7 @@ mod tests {
 
             assert!(!state.ui.pending_er_picker());
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
-            assert!(state.er_preparation.pending_tables().is_empty());
+            assert!(!state.table_prefetch.has_pending_prefetch());
         }
 
         #[test]

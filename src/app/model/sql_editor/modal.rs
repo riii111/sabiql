@@ -1,8 +1,6 @@
-use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::Instant;
 
 use crate::domain::{CommandTag, DatabaseDiagnostic};
-use crate::model::shared::async_run::AsyncRun;
 use crate::model::shared::multi_line_input::MultiLineInputState;
 use crate::model::shared::text_input::{TextInputLike, TextInputState};
 use crate::policy::write::sql_risk::AcknowledgeReason;
@@ -33,13 +31,6 @@ pub enum SqlModalTab {
     Sql,
     Plan,
     Compare,
-}
-
-#[derive(Debug, Clone)]
-pub struct FailedPrefetchEntry {
-    pub failed_at: Instant,
-    pub error: String,
-    pub retry_count: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,11 +77,6 @@ pub struct SqlModalContext {
     pub(crate) status: SqlModalStatus,
     pub(crate) completion: CompletionState,
     pub(crate) completion_debounce: Option<Instant>,
-    prefetch_queue: VecDeque<String>,
-    prefetching_tables: HashSet<String>,
-    failed_prefetch_tables: HashMap<String, FailedPrefetchEntry>,
-    prefetch_tracks_er: bool,
-    pub(crate) prefetch_run: AsyncRun,
     active_tab: SqlModalTab,
 }
 
@@ -101,116 +87,6 @@ impl SqlModalContext {
 
     pub fn editor_mut_for_input(&mut self) -> &mut MultiLineInputState {
         &mut self.editor
-    }
-
-    // ── Prefetch lifecycle ──────────────────────────────────────────
-
-    pub fn reset_prefetch(&mut self) {
-        self.prefetch_queue.clear();
-        self.prefetching_tables.clear();
-        self.failed_prefetch_tables.clear();
-        self.prefetch_tracks_er = false;
-        self.prefetch_run.clear_active();
-    }
-
-    #[must_use]
-    pub fn begin_er_prefetch(&mut self) -> u64 {
-        if self.prefetch_run.active_id().is_some() && !self.prefetch_tracks_er {
-            // Responses from the replaced completion run are stale and will be discarded.
-            self.prefetching_tables.clear();
-        }
-        self.prefetch_tracks_er = true;
-        self.prefetch_queue.clear();
-        self.failed_prefetch_tables.clear();
-        self.prefetch_run.begin()
-    }
-
-    #[must_use]
-    pub fn begin_completion_prefetch(&mut self) -> u64 {
-        self.prefetch_tracks_er = false;
-        self.prefetch_queue.clear();
-        self.failed_prefetch_tables.clear();
-        self.prefetch_run.begin()
-    }
-
-    pub fn prefetch_tracks_er(&self) -> bool {
-        self.prefetch_tracks_er
-    }
-
-    pub fn invalidate_prefetch(&mut self) {
-        self.prefetch_tracks_er = false;
-        self.prefetching_tables.clear();
-        self.prefetch_run.clear_active();
-    }
-
-    pub fn has_pending_prefetch(&self) -> bool {
-        !self.prefetch_queue.is_empty()
-    }
-
-    pub fn is_prefetch_queued(&self, table: &str) -> bool {
-        self.prefetch_queue.iter().any(|queued| queued == table)
-    }
-
-    pub fn is_table_prefetching(&self, table: &str) -> bool {
-        self.prefetching_tables.contains(table)
-    }
-
-    pub fn prefetch_in_flight_count(&self) -> usize {
-        self.prefetching_tables.len()
-    }
-
-    pub fn failed_prefetch(&self, table: &str) -> Option<&FailedPrefetchEntry> {
-        self.failed_prefetch_tables.get(table)
-    }
-
-    pub fn queue_table_prefetch(&mut self, table: String) {
-        if self.prefetching_tables.contains(&table) || self.is_prefetch_queued(&table) {
-            return;
-        }
-        self.prefetch_queue.push_back(table);
-    }
-
-    pub fn defer_table_prefetch(&mut self, table: String) {
-        if self.prefetching_tables.contains(&table) || self.is_prefetch_queued(&table) {
-            return;
-        }
-        self.prefetch_queue.push_front(table);
-    }
-
-    pub fn take_next_prefetch(&mut self) -> Option<String> {
-        self.prefetch_queue.pop_front()
-    }
-
-    pub fn start_table_prefetch(&mut self, table: String) {
-        self.prefetch_queue.retain(|queued| queued != &table);
-        self.prefetching_tables.insert(table);
-    }
-
-    pub fn complete_table_prefetch(&mut self, table: &str) {
-        self.prefetch_queue.retain(|queued| queued != table);
-        self.prefetching_tables.remove(table);
-        self.failed_prefetch_tables.remove(table);
-    }
-
-    pub fn fail_table_prefetch(&mut self, table: String, entry: FailedPrefetchEntry) {
-        self.prefetch_queue.retain(|queued| queued != &table);
-        self.prefetching_tables.remove(&table);
-        self.failed_prefetch_tables.insert(table, entry);
-    }
-
-    pub fn retry_table_prefetch(&mut self, table: String, entry: FailedPrefetchEntry) -> bool {
-        let had_other_pending_before_requeue = self.has_pending_prefetch();
-        self.fail_table_prefetch(table.clone(), entry);
-        self.queue_table_prefetch(table);
-        had_other_pending_before_requeue
-    }
-
-    pub fn active_prefetch_run_id(&self) -> Option<u64> {
-        self.prefetch_run.active_id()
-    }
-
-    pub fn is_current_prefetch_run(&self, run_id: u64) -> bool {
-        self.prefetch_run.is_current(run_id)
     }
 
     // ── Adhoc status ────────────────────────────────────────────────
@@ -479,7 +355,6 @@ mod tests {
             assert_eq!(ctx.editor.cursor(), 0);
             assert_eq!(ctx.status, SqlModalStatus::Normal);
             assert!(!ctx.completion.visible);
-            assert!(ctx.active_prefetch_run_id().is_none());
         }
 
         #[test]
@@ -499,67 +374,6 @@ mod tests {
             assert_eq!(ctx.editor.cursor(), 0);
             assert!(!ctx.completion.visible);
             assert!(ctx.completion.candidates.is_empty());
-        }
-    }
-
-    mod prefetch {
-        use super::*;
-
-        #[test]
-        fn reset_clears_all_state() {
-            let mut ctx = SqlModalContext::default();
-            let _ = ctx.begin_er_prefetch();
-            ctx.queue_table_prefetch("public.users".to_string());
-            ctx.start_table_prefetch("public.posts".to_string());
-            ctx.fail_table_prefetch(
-                "public.failed".to_string(),
-                FailedPrefetchEntry {
-                    failed_at: Instant::now(),
-                    error: "error".to_string(),
-                    retry_count: 0,
-                },
-            );
-
-            ctx.reset_prefetch();
-
-            assert!(ctx.active_prefetch_run_id().is_none());
-            assert!(!ctx.has_pending_prefetch());
-            assert_eq!(ctx.prefetch_in_flight_count(), 0);
-            assert!(ctx.failed_prefetch("public.failed").is_none());
-        }
-
-        #[test]
-        fn queueing_skips_queued_and_in_flight_tables() {
-            let mut ctx = SqlModalContext::default();
-            ctx.queue_table_prefetch("public.users".to_string());
-            ctx.queue_table_prefetch("public.users".to_string());
-            ctx.start_table_prefetch("public.orders".to_string());
-            ctx.queue_table_prefetch("public.orders".to_string());
-
-            assert!(ctx.has_pending_prefetch());
-            assert!(ctx.is_prefetch_queued("public.users"));
-            assert!(ctx.is_table_prefetching("public.orders"));
-            assert_eq!(ctx.prefetch_in_flight_count(), 1);
-        }
-
-        #[test]
-        fn retry_table_prefetch_preserves_failure_and_requeues_table() {
-            let mut ctx = SqlModalContext::default();
-            let failed_at = Instant::now();
-
-            ctx.start_table_prefetch("public.users".to_string());
-            ctx.retry_table_prefetch(
-                "public.users".to_string(),
-                FailedPrefetchEntry {
-                    failed_at,
-                    error: "timeout".to_string(),
-                    retry_count: 1,
-                },
-            );
-
-            assert!(!ctx.is_table_prefetching("public.users"));
-            assert!(ctx.is_prefetch_queued("public.users"));
-            assert_eq!(ctx.failed_prefetch("public.users").unwrap().retry_count, 1);
         }
     }
 

@@ -69,7 +69,7 @@ impl Footer {
         });
         let spinner = spinner_char(now_ms);
 
-        let progress = state.er_preparation.progress();
+        let progress = state.er_preparation.progress(&state.table_prefetch);
 
         let text = format!(
             "{spinner} Preparing ER... ({}/{})",
