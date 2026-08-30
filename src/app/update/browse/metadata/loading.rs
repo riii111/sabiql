@@ -71,7 +71,6 @@ pub(super) fn reduce_loading(
                         .ui
                         .set_explorer_selection(if has_tables { Some(0) } else { None });
                     state.session.clear_table_selection(&mut state.query);
-                    state.query.clear_current_result();
                     effects.extend(termination_effects(&state.query, vec![]));
                 }
             }
@@ -119,7 +118,6 @@ pub(super) fn reduce_loading(
             if !was_connected {
                 state.session.set_metadata(None);
                 state.session.clear_table_selection(&mut state.query);
-                state.query.clear_current_result();
                 state.ui.set_explorer_selection(None);
                 state.result_interaction.reset_view();
                 state.modal.replace_mode(InputMode::ConnectionError);
@@ -220,6 +218,28 @@ mod tests {
         ));
         assert!(state.session.is_table_detail_terminal(generation));
         assert!(effects.is_empty());
+    }
+
+    #[test]
+    fn initial_metadata_failure_clears_result_once() {
+        let mut state = AppState::new("test".to_string());
+        let dsn = "postgres://localhost/test";
+        let run_id = state.session.begin_connecting(dsn);
+        let _ = state
+            .session
+            .select_table("public", "users", &mut state.query);
+        state.query.set_current_result(Arc::new(QueryResult::error(
+            "SELECT * FROM public.users".to_string(),
+            "preview failed".to_string(),
+            0,
+            QuerySource::Preview,
+        )));
+        let result_generation = state.query.result_generation();
+
+        reduce_loading(&mut state, &metadata_failed(dsn, run_id), Instant::now());
+
+        assert!(state.query.current_result().is_none());
+        assert_eq!(state.query.result_generation(), result_generation + 1);
     }
 
     #[rstest::rstest]
