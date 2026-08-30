@@ -983,6 +983,7 @@ mod tests {
 
             assert!(state.query.pagination.table().is_empty());
             assert!(state.query.current_result().is_none());
+            assert_eq!(state.query.result_generation(), 2);
             assert!(state.session.table_detail().is_none());
             assert!(state.session.selected_table_key().is_none());
             assert_eq!(state.ui.explorer_selected(), 0);
@@ -1188,6 +1189,25 @@ mod tests {
                     .iter()
                     .any(|effect| matches!(effect, Effect::DispatchActions(_)))
             );
+        }
+
+        #[test]
+        fn process_empty_queue_returns_handled_without_effects() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let run_id = state.sql_modal.begin_er_prefetch();
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::ProcessPrefetchQueue { run_id },
+                Instant::now(),
+            )
+            .into_effects()
+            .expect("empty prefetch queue should be handled");
+
+            assert!(effects.is_empty());
+            assert_eq!(state.sql_modal.active_prefetch_run_id(), Some(run_id));
+            assert!(!state.sql_modal.has_pending_prefetch());
+            assert_eq!(state.sql_modal.prefetch_in_flight_count(), 0);
         }
 
         #[test]

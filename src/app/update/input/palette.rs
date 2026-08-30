@@ -72,11 +72,7 @@ pub fn palette_commands(
     let feature_policy = FeaturePolicy::new(engine_feature_profile);
     palette_commands_for(preset)
         .iter()
-        .filter(move |kb| palette_command_supported(kb, &feature_policy))
-}
-
-fn palette_command_supported(kb: &KeyBinding, feature_policy: &FeaturePolicy) -> bool {
-    feature_policy.is_enabled(kb.feature_requirement())
+        .filter(move |kb| feature_policy.is_enabled(kb.feature_requirement()))
 }
 
 #[cfg(test)]

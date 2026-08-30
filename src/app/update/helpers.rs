@@ -15,7 +15,9 @@ use crate::policy::write::write_guardrails::{
     evaluate_guardrails, preview_writeability_for_result, stable_row_identity_for_preview,
 };
 use crate::policy::{FeaturePolicy, FeatureRequirement};
+use crate::ports::outbound::ClipboardError;
 use crate::services::AppServices;
+use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
 pub(crate) fn require_er_diagram_enabled(state: &mut AppState) -> Option<DispatchResult> {
@@ -39,6 +41,10 @@ pub(crate) fn reject_pending_mysql_connection_probe(state: &mut AppState) -> boo
         .messages
         .set_error("Connection switch in progress".to_string());
     true
+}
+
+pub(crate) fn clipboard_unavailable() -> Action {
+    Action::CopyFailed(ClipboardError::Unavailable("Clipboard unavailable".into()))
 }
 
 pub(crate) fn metadata_reload_effects(state: &mut AppState, dsn: &str) -> Vec<Effect> {
