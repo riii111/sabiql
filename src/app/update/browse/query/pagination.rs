@@ -176,12 +176,11 @@ pub fn reduce_pagination(
                 return DispatchResult::handled();
             };
 
-            let export_query = result.query.clone();
             let file_name = csv_export_file_name(state, result.source);
             let row_count = result.row_count();
 
             if state.session.active_database_type() == Some(DatabaseType::SQLite) {
-                match sqlite_export_plan(result.source, &export_query, &result.columns, row_count) {
+                match sqlite_export_plan(result.source, &result.query, &result.columns, row_count) {
                     SqliteExportPlan::NotExportable { reason } => {
                         state.messages.set_error(reason);
                         return DispatchResult::handled();
@@ -219,9 +218,10 @@ pub fn reduce_pagination(
                     );
                 }
 
-                let Some(plan) = mysql_export_plan(&export_query) else {
+                let Some(plan) = mysql_export_plan(&result.query) else {
                     return DispatchResult::handled();
                 };
+                let export_query = result.query.clone();
                 let (row_count, count_query_statement) = match plan {
                     MySqlExportPlan::CountRows { statement } => {
                         (RerunnableCsvRowCount::QueryDatabase, Some(statement))
@@ -242,6 +242,7 @@ pub fn reduce_pagination(
                 );
             }
 
+            let export_query = result.query.clone();
             let run_id = state.query.begin_non_preview_running(now);
             dispatch_rerunnable_csv_export(
                 state,
