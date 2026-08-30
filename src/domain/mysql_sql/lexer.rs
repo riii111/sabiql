@@ -138,28 +138,26 @@ pub(super) fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MySqlLexError
             let start = index;
             index += 1;
             while index < bytes.len()
-                && (bytes[index].is_ascii_alphanumeric() || matches!(bytes[index], b'.' | b'_'))
+                && (bytes[index].is_ascii_alphanumeric()
+                    || matches!(bytes[index], b'.' | b'_' | b'$'))
             {
                 index += 1;
             }
-            let kind = if !sql[start..index].contains('.')
-                && sql[index..].chars().next().is_some_and(|character| {
-                    !character.is_ascii() && is_mysql_unquoted_identifier_char(character)
-                }) {
+            let has_dot = sql[start..index].contains('.');
+            if !has_dot {
                 while let Some(character) = sql[index..].chars().next()
                     && is_mysql_unquoted_identifier_char(character)
                 {
                     index += character.len_utf8();
                 }
-                TokenKind::Word(sql[start..index].to_ascii_uppercase())
+            }
+            let text = sql[start..index].to_string();
+            let kind = if !has_dot && text.chars().any(|character| !character.is_ascii_digit()) {
+                TokenKind::Word(text.to_ascii_uppercase())
             } else {
                 TokenKind::Number
             };
-            tokens.push(Token {
-                kind,
-                depth,
-                text: sql[start..index].to_string(),
-            });
+            tokens.push(Token { kind, depth, text });
             continue;
         }
         let kind = TokenKind::Symbol(byte as char);

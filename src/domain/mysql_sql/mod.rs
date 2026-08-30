@@ -264,7 +264,7 @@ fn mysql_target_key(
     };
     let target = statement.target.as_deref()?;
     let target = match lower_case_table_names {
-        0 => target.to_ascii_uppercase(),
+        0 => target.to_string(),
         1 | 2 => target.to_lowercase(),
         _ => return None,
     };
@@ -272,7 +272,7 @@ fn mysql_target_key(
 }
 
 fn mysql_names_equal(left: &str, right: &str) -> bool {
-    left.eq_ignore_ascii_case(right) || left.to_lowercase() == right.to_lowercase()
+    left.to_uppercase() == right.to_uppercase()
 }
 
 fn validate_mysql_submission_state(
@@ -564,6 +564,11 @@ mod tests {
     fn preserves_utf8_unquoted_and_backtick_targets() {
         let cases = [
             ("UPDATE café SET value = 1", None, "café"),
+            ("UPDATE 1é SET value = 1", None, "1é"),
+            ("UPDATE 1abc SET value = 1", None, "1abc"),
+            ("UPDATE 1_foo SET value = 1", None, "1_foo"),
+            ("UPDATE 1$foo SET value = 1", None, "1$foo"),
+            ("UPDATE 1$é SET value = 1", None, "1$é"),
             (
                 "UPDATE café.éléments SET value = 1",
                 Some("café"),
@@ -596,6 +601,7 @@ mod tests {
             "UPDATE /* ignored café */ café SET value = 1",
             "UPDATE café -- ignored comment\n SET value = 1",
             "UPDATE café--x\n SET value = 1",
+            "/*!80000 UPDATE café SET value = 1 */",
             "CREATE TABLE café (id INT) /*!40100 DEFAULT CHARSET=utf8mb4 */",
             "DROP TABLE café /*!80000 RESTRICT */",
         ] {
@@ -1131,6 +1137,15 @@ mod tests {
                 .is_ok()
             );
         }
+
+        assert!(
+            classify_mysql_multi_statement_with_lower_case_table_names(
+                "CREATE TEMPORARY TABLE items (id INT); CREATE TEMPORARY TABLE ITEMS (id INT); DROP TEMPORARY TABLE items; DROP TEMPORARY TABLE ITEMS",
+                Some("app"),
+                0,
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -1138,6 +1153,13 @@ mod tests {
         assert!(
             classify_mysql_multi_statement(
                 "START TRANSACTION; SAVEPOINT café; ROLLBACK TO SAVEPOINT CAFÉ; COMMIT",
+                Some("app"),
+            )
+            .is_ok()
+        );
+        assert!(
+            classify_mysql_multi_statement(
+                "START TRANSACTION; SAVEPOINT ς; ROLLBACK TO SAVEPOINT σ; COMMIT",
                 Some("app"),
             )
             .is_ok()

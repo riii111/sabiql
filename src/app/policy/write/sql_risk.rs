@@ -2091,6 +2091,24 @@ mod mysql_tests {
     }
 
     #[test]
+    fn qualified_confirmation_preserves_utf8_target() {
+        let MultiStatementDecision::Allow { risk, .. } =
+            evaluate_multi_statement_for_database_with_context(
+                DatabaseType::MySQL,
+                Some("äpp"),
+                "UPDATE äpp.éléments SET value = 1",
+            )
+        else {
+            panic!("expected Allow");
+        };
+
+        assert!(matches!(
+            risk.confirmation,
+            ConfirmationType::TableNameInput { ref target, .. } if target == "éléments"
+        ));
+    }
+
+    #[test]
     fn aligns_supported_mysql_ddl_risk_and_schema_classification() {
         let cases = [
             (
