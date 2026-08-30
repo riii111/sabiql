@@ -114,10 +114,6 @@ impl EffectRunner {
         &self.action_tx
     }
 
-    async fn cancel_metadata_tasks(&self) {
-        self.metadata_tasks.cancel().await;
-    }
-
     async fn cancel_tracked_tasks(&self) {
         let connection_task = self.connection_task.abort();
         let metadata_tasks = self.metadata_tasks.abort();
@@ -236,7 +232,7 @@ impl EffectRunner {
                         | Effect::SwitchConnection { .. }
                         | Effect::SwitchToService { .. }
                 ) {
-                    self.cancel_metadata_tasks().await;
+                    self.metadata_tasks.cancel().await;
                 }
                 if matches!(
                     &e,
@@ -269,7 +265,7 @@ impl EffectRunner {
             | Effect::CacheInvalidate { .. }
             | Effect::CancelMetadataTasks) => {
                 if matches!(&e, Effect::FetchMetadata { .. }) {
-                    self.cancel_metadata_tasks().await;
+                    self.metadata_tasks.cancel().await;
                     self.smart_er_refresh_task.cancel().await;
                 }
                 cmd_browse::metadata::run(
