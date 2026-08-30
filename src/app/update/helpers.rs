@@ -14,23 +14,9 @@ use crate::policy::write::write_guardrails::{
     PreviewWriteability, StableRowIdentity, TargetSummary, WriteOperation, WritePreview,
     evaluate_guardrails, preview_writeability_for_result, stable_row_identity_for_preview,
 };
-use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::ports::outbound::ClipboardError;
 use crate::services::AppServices;
 use crate::update::action::Action;
-use crate::update::dispatch_result::DispatchResult;
-
-pub(crate) fn require_er_diagram_enabled(state: &mut AppState) -> Option<DispatchResult> {
-    let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
-    if feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
-        return None;
-    }
-
-    state
-        .messages
-        .set_error("ER diagrams are not available for this connection".to_string());
-    Some(DispatchResult::handled())
-}
 
 pub(crate) fn reject_pending_mysql_connection_probe(state: &mut AppState) -> bool {
     if state.session.pending_mysql_connection_probe().is_none() {
