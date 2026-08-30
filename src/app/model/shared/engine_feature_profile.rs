@@ -64,11 +64,12 @@ impl InspectorProfile {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct EngineFeatureProfile {
-    inspector: InspectorProfile,
-    explain: ExplainProfile,
-    connection_features: &'static [ConnectionFeature],
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EngineFeatureProfile {
+    Disconnected,
+    PostgreSQL,
+    SQLite,
+    MySQL,
 }
 
 const DISCONNECTED_INSPECTOR: InspectorProfile = InspectorProfile::new(
@@ -139,68 +140,20 @@ const SERVER_FEATURES: &[ConnectionFeature] = &[
 const SQLITE_FEATURES: &[ConnectionFeature] = &[ConnectionFeature::SqliteDiagnostics];
 
 impl EngineFeatureProfile {
-    fn new(
-        inspector: InspectorProfile,
-        explain: ExplainProfile,
-        connection_features: &'static [ConnectionFeature],
-    ) -> Self {
-        assert!(
-            !inspector.tabs().is_empty(),
-            "EngineFeatureProfile requires at least one supported inspector tab"
-        );
-        assert!(
-            !inspector.info_fields().is_empty(),
-            "EngineFeatureProfile requires at least one supported inspector info field"
-        );
-        assert!(
-            has_unique_items(inspector.tabs()),
-            "EngineFeatureProfile supported inspector tabs must be unique"
-        );
-        assert!(
-            has_unique_items(inspector.info_fields()),
-            "EngineFeatureProfile supported inspector info fields must be unique"
-        );
-        assert!(
-            has_unique_items(connection_features),
-            "EngineFeatureProfile connection features must be unique"
-        );
-        Self {
-            inspector,
-            explain,
-            connection_features,
-        }
-    }
-
     pub fn disconnected() -> Self {
-        Self::new(
-            DISCONNECTED_INSPECTOR,
-            ExplainProfile::Unsupported,
-            NO_CONNECTION_FEATURES,
-        )
+        Self::Disconnected
     }
 
     pub fn postgres_like() -> Self {
-        Self::new(
-            POSTGRESQL_INSPECTOR,
-            ExplainProfile::QueryPlanAndAnalyze,
-            SERVER_FEATURES,
-        )
+        Self::PostgreSQL
     }
 
     pub fn sqlite_like() -> Self {
-        Self::new(
-            SQLITE_INSPECTOR,
-            ExplainProfile::QueryPlanOnly,
-            SQLITE_FEATURES,
-        )
+        Self::SQLite
     }
 
     pub fn mysql_like() -> Self {
-        Self::new(
-            MYSQL_INSPECTOR,
-            ExplainProfile::QueryPlanAndAnalyze,
-            SERVER_FEATURES,
-        )
+        Self::MySQL
     }
 
     pub fn for_database_type(database_type: DatabaseType) -> Self {
@@ -212,11 +165,11 @@ impl EngineFeatureProfile {
     }
 
     pub fn supports_explain(&self) -> bool {
-        !matches!(self.explain, ExplainProfile::Unsupported)
+        !matches!(self.explain(), ExplainProfile::Unsupported)
     }
 
     pub fn supports_explain_analyze(&self) -> bool {
-        matches!(self.explain, ExplainProfile::QueryPlanAndAnalyze)
+        matches!(self.explain(), ExplainProfile::QueryPlanAndAnalyze)
     }
 
     pub fn supports_er_diagram(&self) -> bool {
@@ -224,7 +177,7 @@ impl EngineFeatureProfile {
     }
 
     pub fn supports_plan_comparison(&self) -> bool {
-        matches!(self.explain, ExplainProfile::QueryPlanAndAnalyze)
+        matches!(self.explain(), ExplainProfile::QueryPlanAndAnalyze)
     }
 
     pub fn supports_json_document_detail(&self) -> bool {
@@ -240,19 +193,19 @@ impl EngineFeatureProfile {
     }
 
     pub fn supported_inspector_tabs(&self) -> &'static [InspectorTab] {
-        self.inspector.tabs()
+        self.inspector().tabs()
     }
 
     pub fn supported_inspector_info_fields(&self) -> &'static [InspectorInfoField] {
-        self.inspector.info_fields()
+        self.inspector().info_fields()
     }
 
     pub fn supports_inspector_tab(&self, tab: InspectorTab) -> bool {
-        self.inspector.tabs().contains(&tab)
+        self.supported_inspector_tabs().contains(&tab)
     }
 
     pub fn supported_sql_modal_tabs(&self) -> &'static [SqlModalTab] {
-        match self.explain {
+        match self.explain() {
             ExplainProfile::Unsupported => &[SqlModalTab::Sql],
             ExplainProfile::QueryPlanOnly => &[SqlModalTab::Sql, SqlModalTab::Plan],
             ExplainProfile::QueryPlanAndAnalyze => {
@@ -281,8 +234,7 @@ impl EngineFeatureProfile {
         if self.supports_inspector_tab(tab) {
             tab
         } else {
-            self.inspector
-                .tabs()
+            self.supported_inspector_tabs()
                 .first()
                 .copied()
                 .expect("EngineFeatureProfile requires at least one supported inspector tab")
@@ -297,12 +249,37 @@ impl EngineFeatureProfile {
         self.cycle_inspector_tab(current, -1)
     }
 
+    fn inspector(&self) -> InspectorProfile {
+        match self {
+            Self::Disconnected => DISCONNECTED_INSPECTOR,
+            Self::PostgreSQL => POSTGRESQL_INSPECTOR,
+            Self::SQLite => SQLITE_INSPECTOR,
+            Self::MySQL => MYSQL_INSPECTOR,
+        }
+    }
+
+    fn explain(&self) -> ExplainProfile {
+        match self {
+            Self::Disconnected => ExplainProfile::Unsupported,
+            Self::SQLite => ExplainProfile::QueryPlanOnly,
+            Self::PostgreSQL | Self::MySQL => ExplainProfile::QueryPlanAndAnalyze,
+        }
+    }
+
+    fn connection_features(&self) -> &'static [ConnectionFeature] {
+        match self {
+            Self::Disconnected => NO_CONNECTION_FEATURES,
+            Self::PostgreSQL | Self::MySQL => SERVER_FEATURES,
+            Self::SQLite => SQLITE_FEATURES,
+        }
+    }
+
     fn supports_connection_feature(&self, feature: ConnectionFeature) -> bool {
-        self.connection_features.contains(&feature)
+        self.connection_features().contains(&feature)
     }
 
     fn cycle_inspector_tab(&self, current: InspectorTab, delta: isize) -> InspectorTab {
-        let tabs = self.inspector.tabs();
+        let tabs = self.inspector().tabs();
         let current = self.normalize_inspector_tab(current);
         let current_idx = tabs.iter().position(|tab| *tab == current).unwrap_or(0) as isize;
         let next_idx = (current_idx + delta).rem_euclid(tabs.len() as isize) as usize;
@@ -318,16 +295,16 @@ impl EngineFeatureProfile {
     }
 }
 
-fn has_unique_items<T: Eq>(items: &[T]) -> bool {
-    !items
-        .iter()
-        .enumerate()
-        .any(|(idx, item)| items[idx + 1..].contains(item))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn has_unique_items<T: Eq>(items: &[T]) -> bool {
+        !items
+            .iter()
+            .enumerate()
+            .any(|(idx, item)| items[idx + 1..].contains(item))
+    }
 
     #[test]
     fn every_database_type_has_a_valid_profile() {
@@ -336,9 +313,9 @@ mod tests {
 
             assert!(!profile.supported_inspector_tabs().is_empty());
             assert!(!profile.supported_inspector_info_fields().is_empty());
-            assert!(has_unique_items(profile.supported_inspector_tabs()));
-            assert!(has_unique_items(profile.supported_inspector_info_fields()));
-            assert!(has_unique_items(profile.connection_features));
+            assert!(has_unique_items(profile.inspector().tabs()));
+            assert!(has_unique_items(profile.inspector().info_fields()));
+            assert!(has_unique_items(profile.connection_features()));
 
             if profile.supports_plan_comparison() {
                 assert!(profile.supports_explain());
@@ -523,7 +500,7 @@ mod tests {
         let profile = EngineFeatureProfile::postgres_like();
 
         assert!(matches!(
-            profile.explain,
+            profile.explain(),
             ExplainProfile::QueryPlanAndAnalyze
         ));
     }
