@@ -568,6 +568,9 @@ mod tests {
         use tokio::sync::oneshot;
         use tokio::time::{Duration, timeout};
 
+        use crate::domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
+        use crate::ports::outbound::DbOperationError;
+
         use super::*;
 
         struct BlockingDropState {
@@ -623,40 +626,24 @@ mod tests {
             }
         }
 
-        struct PendingDiagnosticsProvider {
+        struct BlockingDiagnosticsProvider {
             started: Arc<tokio::sync::Notify>,
-            allow_action: Mutex<Option<oneshot::Receiver<()>>>,
-            dropped: Arc<std::sync::atomic::AtomicBool>,
-        }
-
-        impl Drop for PendingDiagnosticsProvider {
-            fn drop(&mut self) {
-                self.dropped
-                    .store(true, std::sync::atomic::Ordering::SeqCst);
-            }
+            drop_state: Arc<BlockingDropState>,
         }
 
         #[async_trait::async_trait]
-        impl SqliteDiagnosticsProvider for PendingDiagnosticsProvider {
+        impl SqliteDiagnosticsProvider for BlockingDiagnosticsProvider {
             async fn fetch_core_diagnostics(
                 &self,
                 _dsn: &str,
-            ) -> Result<
-                crate::domain::SqliteDiagnosticsSnapshot,
-                crate::ports::outbound::DbOperationError,
-            > {
-                let allow_action = self
-                    .allow_action
-                    .lock()
-                    .expect("diagnostics action lock poisoned")
-                    .take()
-                    .expect("diagnostics action receiver should be available");
+            ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {
+                let _drop_signal = BlockingDrop(Arc::clone(&self.drop_state));
                 self.started.notify_one();
-                allow_action.await.ok();
-                Ok(crate::domain::SqliteDiagnosticsSnapshot::default())
+                pending().await
             }
 
-            async fn fetch_quick_check(&self, _dsn: &str) -> crate::domain::DiagnosticField {
+            async fn fetch_quick_check(&self, _dsn: &str) -> DiagnosticField {
+                let _drop_signal = BlockingDrop(Arc::clone(&self.drop_state));
                 self.started.notify_one();
                 pending().await
             }
@@ -723,12 +710,14 @@ mod tests {
                 .expect("connection task should start");
 
             let diagnostics_started = Arc::new(tokio::sync::Notify::new());
-            let diagnostics_dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
-            let (allow_diagnostics_action_tx, allow_diagnostics_action_rx) = oneshot::channel();
-            let diagnostics_provider = Arc::new(PendingDiagnosticsProvider {
+            let (diagnostics_drop_tx, mut diagnostics_drop_rx) = oneshot::channel();
+            let diagnostics_drop_state = Arc::new(BlockingDropState {
+                entered: Mutex::new(Some(diagnostics_drop_tx)),
+                released: (Mutex::new(false), Condvar::new()),
+            });
+            let diagnostics_provider = Arc::new(BlockingDiagnosticsProvider {
                 started: Arc::clone(&diagnostics_started),
-                allow_action: Mutex::new(Some(allow_diagnostics_action_rx)),
-                dropped: Arc::clone(&diagnostics_dropped),
+                drop_state: Arc::clone(&diagnostics_drop_state),
             }) as Arc<dyn SqliteDiagnosticsProvider>;
             sqlite_diagnostics::run(
                 Effect::FetchSqliteDiagnosticsCore {
@@ -744,35 +733,57 @@ mod tests {
                 .await
                 .expect("SQLite diagnostics task should start");
 
-            let cancel = runner.cancel_tracked_tasks();
-            tokio::pin!(cancel);
-            let connection_aborted = tokio::select! {
-                result = &mut connection_drop_rx => result.is_ok(),
-                () = &mut cancel => false,
-                () = tokio::time::sleep(Duration::from_secs(1)) => false,
-            };
-
+            let mut state = AppState::new("test".to_string());
+            let completion_engine = RefCell::new(CompletionEngine::new());
+            let mut renderer = test_fixtures::NoopRenderer;
+            let services = AppServices::stub();
+            let mut follow_up = Box::pin(runner.execute_effects(
+                vec![
+                    Effect::CancelTrackedTasks,
+                    Effect::DispatchActions(vec![Action::Render]),
+                ],
+                &mut renderer,
+                &mut state,
+                &completion_engine,
+                &services,
+            ));
+            timeout(Duration::from_secs(1), async {
+                tokio::select! {
+                    _ = &mut follow_up => {
+                        panic!("follow-up ran before SQLite diagnostics task joined")
+                    }
+                    result = &mut diagnostics_drop_rx => {
+                        result.expect("SQLite diagnostics drop signal should be sent");
+                    }
+                }
+            })
+            .await
+            .expect("SQLite diagnostics task should enter its drop gate");
+            assert!(
+                timeout(Duration::from_millis(50), &mut follow_up)
+                    .await
+                    .is_err(),
+                "follow-up ran before SQLite diagnostics task joined"
+            );
+            diagnostics_drop_state.release();
             query_drop_state.release();
+            let actions = timeout(Duration::from_secs(1), follow_up)
+                .await
+                .expect("cancellation and follow-up should finish")
+                .expect("effect execution should succeed");
             let query_dropped = timeout(Duration::from_secs(1), &mut query_drop_rx)
                 .await
                 .is_ok();
             let table_dropped = timeout(Duration::from_secs(1), &mut table_drop_rx)
                 .await
                 .is_ok();
-            let cancellation_finished = timeout(Duration::from_secs(1), cancel).await.is_ok();
-            assert!(connection_aborted, "connection task was not aborted first");
-            drop(diagnostics_provider);
-            assert!(
-                diagnostics_dropped.load(std::sync::atomic::Ordering::SeqCst),
-                "SQLite diagnostics task was not aborted"
-            );
+            let connection_aborted = timeout(Duration::from_secs(1), &mut connection_drop_rx)
+                .await
+                .is_ok();
+            assert!(connection_aborted, "connection task was not aborted");
             assert!(query_dropped, "query task was not aborted");
             assert!(table_dropped, "table detail task was not aborted");
-            assert!(cancellation_finished, "cancellation did not finish");
-            assert!(
-                allow_diagnostics_action_tx.send(()).is_err(),
-                "SQLite diagnostics task was still awaiting a follow-up"
-            );
+            assert!(matches!(actions.as_slice(), [Action::Render]));
             assert!(
                 rx.try_recv().is_err(),
                 "SQLite diagnostics task emitted a late action"
