@@ -28,8 +28,6 @@ pub struct ErPreparationState {
 pub struct ErPreparationProgress {
     pub cached: usize,
     pub total: usize,
-    pub failed: usize,
-    pub remaining: usize,
 }
 
 impl ErPreparationState {
@@ -48,8 +46,6 @@ impl ErPreparationState {
         ErPreparationProgress {
             cached,
             total: self.total_tables,
-            failed,
-            remaining,
         }
     }
 
