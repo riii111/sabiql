@@ -101,6 +101,5 @@ fn row_predicate(pk_pairs: &[(String, QueryValue)]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    include!("postgres_sql_tests.rs");
-}
+#[path = "postgres_sql_tests.rs"]
+mod tests;

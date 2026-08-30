@@ -255,7 +255,7 @@ mod bulk_delete {
 
     #[test]
     #[should_panic(expected = "pk_pairs_per_row must not be empty")]
-fn rejects_empty_rows() {
+    fn rejects_empty_rows() {
         let _ = build_bulk_delete_sql("public", "t", &[]);
     }
 }
