@@ -2682,7 +2682,7 @@ mod tests {
                     .explorer_selected,
                 5
             );
-            assert_eq!(effects.len(), 4);
+            assert_eq!(effects.len(), 3);
         }
 
         #[test]
@@ -2732,7 +2732,7 @@ mod tests {
                 state.session.metadata().as_ref().unwrap().database_name,
                 "cached_db"
             );
-            assert_eq!(effects.len(), 4);
+            assert_eq!(effects.len(), 3);
             assert!(
                 effects
                     .iter()
