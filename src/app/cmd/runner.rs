@@ -576,6 +576,7 @@ mod tests {
         struct BlockingDropState {
             entered: Mutex<Option<oneshot::Sender<()>>>,
             released: (Mutex<bool>, Condvar),
+            finished: Mutex<Option<oneshot::Sender<()>>>,
         }
 
         impl BlockingDropState {
@@ -608,6 +609,15 @@ mod tests {
                     if result.timed_out() {
                         break;
                     }
+                }
+                let finished_sender = self
+                    .0
+                    .finished
+                    .lock()
+                    .expect("finished signal lock poisoned")
+                    .take();
+                if let Some(sender) = finished_sender {
+                    sender.send(()).ok();
                 }
             }
         }
@@ -662,9 +672,11 @@ mod tests {
 
             let (query_started_tx, query_started_rx) = oneshot::channel();
             let (query_drop_tx, mut query_drop_rx) = oneshot::channel();
+            let (query_finished_tx, mut query_finished_rx) = oneshot::channel();
             let query_drop_state = Arc::new(BlockingDropState {
                 entered: Mutex::new(Some(query_drop_tx)),
                 released: (Mutex::new(false), Condvar::new()),
+                finished: Mutex::new(Some(query_finished_tx)),
             });
             runner
                 .query_tasks
@@ -714,6 +726,7 @@ mod tests {
             let diagnostics_drop_state = Arc::new(BlockingDropState {
                 entered: Mutex::new(Some(diagnostics_drop_tx)),
                 released: (Mutex::new(false), Condvar::new()),
+                finished: Mutex::new(None),
             });
             let diagnostics_provider = Arc::new(BlockingDiagnosticsProvider {
                 started: Arc::clone(&diagnostics_started),
@@ -750,6 +763,23 @@ mod tests {
             timeout(Duration::from_secs(1), async {
                 tokio::select! {
                     _ = &mut follow_up => {
+                        panic!("follow-up ran before query task joined")
+                    }
+                    result = &mut query_drop_rx => {
+                        result.expect("query drop signal should be sent");
+                    }
+                }
+            })
+            .await
+            .expect("query task should enter its drop gate");
+            query_drop_state.release();
+            timeout(Duration::from_secs(1), &mut query_finished_rx)
+                .await
+                .expect("query task should leave its drop gate")
+                .expect("query finished signal should be sent");
+            timeout(Duration::from_secs(1), async {
+                tokio::select! {
+                    _ = &mut follow_up => {
                         panic!("follow-up ran before SQLite diagnostics task joined")
                     }
                     result = &mut diagnostics_drop_rx => {
@@ -766,14 +796,10 @@ mod tests {
                 "follow-up ran before SQLite diagnostics task joined"
             );
             diagnostics_drop_state.release();
-            query_drop_state.release();
             let actions = timeout(Duration::from_secs(1), follow_up)
                 .await
                 .expect("cancellation and follow-up should finish")
                 .expect("effect execution should succeed");
-            let query_dropped = timeout(Duration::from_secs(1), &mut query_drop_rx)
-                .await
-                .is_ok();
             let table_dropped = timeout(Duration::from_secs(1), &mut table_drop_rx)
                 .await
                 .is_ok();
@@ -781,7 +807,6 @@ mod tests {
                 .await
                 .is_ok();
             assert!(connection_aborted, "connection task was not aborted");
-            assert!(query_dropped, "query task was not aborted");
             assert!(table_dropped, "table detail task was not aborted");
             assert!(matches!(actions.as_slice(), [Action::Render]));
             assert!(
