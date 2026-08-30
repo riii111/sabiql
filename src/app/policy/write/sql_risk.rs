@@ -854,9 +854,7 @@ fn sqlite_pragma_risk(sql: &str) -> Option<SqlRiskDecision> {
 }
 
 fn sqlite_foreign_keys_value_is_dangerous(value: Option<&str>) -> bool {
-    value.is_none()
-        || matches!(value, Some("off" | "no" | "false"))
-        || value.is_some_and(|value| value.starts_with('0'))
+    !matches!(value, Some("on" | "yes" | "true" | "1"))
 }
 
 fn evaluate_sqlite_specific_risk(sql: &str) -> Option<SqlRiskDecision> {
@@ -1230,6 +1228,18 @@ mod tests {
             #[case::foreign_keys_zero_exponent_after_block_comment(
                 "PRAGMA foreign_keys(/* comment */ 0e0)"
             )]
+            #[case::foreign_keys_unknown_after_block_comment(
+                "PRAGMA foreign_keys = /* comment */ BANANA"
+            )]
+            #[case::foreign_keys_unknown_call_after_line_comment(
+                "PRAGMA foreign_keys(\n-- comment\nBANANA)"
+            )]
+            #[case::foreign_keys_unknown_single_quoted_value(
+                "PRAGMA foreign_keys = /* comment */ 'BANANA'"
+            )]
+            #[case::foreign_keys_unknown_double_quoted_value(
+                "PRAGMA foreign_keys(/* comment */ \"BANANA\")"
+            )]
             #[case::quoted_schema_foreign_keys_off("PRAGMA \"main\".\"foreign_keys\" = OFF")]
             #[case::bracket_schema_journal_mode("PRAGMA [main].[journal_mode](WAL)")]
             #[case::journal_mode("PRAGMA journal_mode = WAL")]
@@ -1259,6 +1269,22 @@ mod tests {
                 let sql = "PRAGMA user_version = 3";
                 let result =
                     evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                        .expect("SQLite SQL risk evaluation is supported");
+
+                assert_eq!(result.risk_level, RiskLevel::Medium);
+                assert!(!result.read_only_allowed);
+                assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+            }
+
+            #[rstest]
+            #[case::on("ON")]
+            #[case::yes("YES")]
+            #[case::true_value("TRUE")]
+            #[case::one("1")]
+            fn sqlite_foreign_keys_enable_values_are_medium_writes(#[case] value: &str) {
+                let sql = format!("PRAGMA foreign_keys = {value}");
+                let result =
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(&sql), &sql)
                         .expect("SQLite SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::Medium);
