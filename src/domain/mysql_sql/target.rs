@@ -86,9 +86,24 @@ pub(super) fn identifier_at(
     ) {
         let second_token = tokens.get(index + 2)?;
         let second = identifier_text(second_token)?;
-        return Some((second, Some(first), index + 3));
+        let next = index + 3;
+        if has_unexpected_identifier_boundary(tokens, next) {
+            return None;
+        }
+        return Some((second, Some(first), next));
     }
-    Some((first, None, index + 1))
+    let next = index + 1;
+    if has_unexpected_identifier_boundary(tokens, next) {
+        return None;
+    }
+    Some((first, None, next))
+}
+
+fn has_unexpected_identifier_boundary(tokens: &[Token], index: usize) -> bool {
+    tokens.get(index).is_some_and(|token| match &token.kind {
+        TokenKind::Symbol(symbol) => !matches!(*symbol, '(' | ';'),
+        _ => false,
+    })
 }
 
 fn identifier_text(token: &Token) -> Option<String> {

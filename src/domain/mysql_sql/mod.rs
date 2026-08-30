@@ -620,13 +620,19 @@ mod tests {
         for sql in [
             "UPDATE /* ignored café */ café SET value = 1",
             "UPDATE café -- ignored comment\n SET value = 1",
-            "UPDATE café--x\n SET value = 1",
             "/*!80000 UPDATE café SET value = 1 */",
             "CREATE TABLE café (id INT) /*!40100 DEFAULT CHARSET=utf8mb4 */",
             "DROP TABLE café /*!80000 RESTRICT */",
         ] {
             let statement = classify_mysql_statement(sql).expect(sql);
             assert_eq!(statement.target(), Some("café"), "{sql}");
+        }
+
+        for sql in [
+            "UPDATE café--x\n SET value = 1",
+            "UPDATE 1e+foo SET value = 1",
+        ] {
+            assert!(classify_mysql_statement(sql).is_err(), "{sql}");
         }
     }
 
