@@ -238,9 +238,7 @@ impl ConnectionSetup {
                 Self::render_dropdown_list(
                     frame,
                     field_area,
-                    SslMode::all_variants()
-                        .iter()
-                        .map(|ssl_mode| ssl_mode_label_text(*ssl_mode)),
+                    SslMode::all_variants().iter().map(SslMode::as_str),
                     form_state.ssl_dropdown().selected_index(),
                     theme,
                 );
@@ -513,23 +511,10 @@ impl ConnectionSetup {
     }
 }
 
-fn ssl_mode_label_text(mode: SslMode) -> &'static str {
-    match mode {
-        SslMode::Disable => "disable",
-        SslMode::Allow => "allow",
-        SslMode::Prefer => "prefer",
-        SslMode::Require => "require",
-        SslMode::VerifyCa => "verify-ca",
-        SslMode::VerifyFull => "verify-full",
-    }
-}
-
 fn ssl_mode_label(state: &ConnectionSetupState) -> String {
     match state.database_type() {
         DatabaseType::MySQL => state.mysql_ssl_mode().to_string(),
-        DatabaseType::PostgreSQL | DatabaseType::SQLite => {
-            ssl_mode_label_text(state.ssl_mode()).to_string()
-        }
+        DatabaseType::PostgreSQL | DatabaseType::SQLite => state.ssl_mode().to_string(),
     }
 }
 
