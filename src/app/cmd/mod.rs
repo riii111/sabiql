@@ -1,5 +1,4 @@
 pub mod browse;
-pub mod cache;
 pub mod cli_sqlite;
 pub mod completion_engine;
 pub mod connection;

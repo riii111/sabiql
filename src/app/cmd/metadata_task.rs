@@ -1,18 +1,25 @@
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, Weak};
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
 
-use tokio::task::JoinHandle;
+use tokio::sync::{mpsc, oneshot};
+use tokio::task::{JoinHandle, JoinSet};
 
-struct TaskEntry {
-    released: Arc<AtomicBool>,
-    handle: Option<JoinHandle<()>>,
+type MetadataTask = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
+
+enum Command {
+    Spawn(MetadataTask),
+    Abort(oneshot::Sender<()>),
+}
+
+#[derive(Default)]
+struct RegistryState {
+    command_tx: Option<mpsc::UnboundedSender<Command>>,
+    owner: Option<JoinHandle<()>>,
 }
 
 #[derive(Default)]
 pub struct MetadataTaskRegistry {
-    active: Mutex<HashMap<u64, TaskEntry>>,
-    next_id: AtomicU64,
+    state: Mutex<RegistryState>,
 }
 
 impl MetadataTaskRegistry {
@@ -20,116 +27,79 @@ impl MetadataTaskRegistry {
     where
         F: Future<Output = ()> + Send + 'static,
     {
-        let task_id = registry.next_id.fetch_add(1, Ordering::Relaxed);
-        let released = Arc::new(AtomicBool::new(false));
-        registry
-            .active
-            .lock()
-            .expect("metadata task registry lock poisoned")
-            .insert(
-                task_id,
-                TaskEntry {
-                    released: Arc::clone(&released),
-                    handle: None,
-                },
-            );
-
-        let registration_guard = TaskRegistrationGuard {
-            registry: Arc::downgrade(registry),
-            task_id,
-            released: Arc::clone(&released),
-        };
-        let handle = tokio::spawn(async move {
-            let _registration_guard = registration_guard;
-            task.await;
-        });
-
-        let mut handle = Some(handle);
-        let abort = {
-            let mut active = registry
-                .active
-                .lock()
-                .expect("metadata task registry lock poisoned");
-            match active.get_mut(&task_id) {
-                Some(entry) if !released.load(Ordering::SeqCst) => {
-                    entry.handle = handle.take();
-                    false
-                }
-                Some(_) | None => {
-                    active.remove(&task_id);
-                    true
-                }
-            }
-        };
-
-        if abort {
-            handle
-                .take()
-                .expect("metadata task handle should be available")
-                .abort();
-        }
+        let command_tx = Self::command_tx(registry);
+        command_tx.send(Command::Spawn(Box::pin(task))).ok();
     }
 
     pub async fn cancel(&self) {
-        for handle in self.abort() {
+        if let Some(handle) = self.abort() {
             let _ = handle.await;
         }
     }
 
-    pub fn abort(&self) -> Vec<JoinHandle<()>> {
-        let handles = self
-            .active
+    pub fn abort(&self) -> Option<JoinHandle<()>> {
+        let command_tx = self
+            .state
             .lock()
             .expect("metadata task registry lock poisoned")
-            .drain()
-            .filter_map(|(_, entry)| entry.handle)
-            .collect::<Vec<_>>();
-
-        for handle in &handles {
-            handle.abort();
-        }
-        handles
+            .command_tx
+            .clone()?;
+        let (done_tx, done_rx) = oneshot::channel();
+        command_tx.send(Command::Abort(done_tx)).ok()?;
+        Some(tokio::spawn(async move {
+            let _ = done_rx.await;
+        }))
     }
 
-    fn remove_released(&self, task_id: u64, released: &Arc<AtomicBool>) {
-        let mut active = self
-            .active
+    fn command_tx(registry: &Arc<Self>) -> mpsc::UnboundedSender<Command> {
+        let mut state = registry
+            .state
             .lock()
             .expect("metadata task registry lock poisoned");
-        let should_remove = active
-            .get(&task_id)
-            .is_some_and(|entry| Arc::ptr_eq(&entry.released, released));
-        if should_remove {
-            active.remove(&task_id);
+        if let Some(command_tx) = &state.command_tx {
+            return command_tx.clone();
+        }
+
+        let (command_tx, commands) = mpsc::unbounded_channel();
+        let owner = tokio::spawn(run(commands));
+        state.command_tx = Some(command_tx.clone());
+        state.owner = Some(owner);
+        command_tx
+    }
+}
+
+async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
+    let mut tasks = JoinSet::new();
+    loop {
+        tokio::select! {
+            command = commands.recv() => match command {
+                Some(Command::Spawn(task)) => {
+                    tasks.spawn(task);
+                }
+                Some(Command::Abort(done)) => {
+                    tasks.shutdown().await;
+                    let _ = done.send(());
+                }
+                None => {
+                    tasks.shutdown().await;
+                    return;
+                }
+            },
+            result = tasks.join_next(), if !tasks.is_empty() => {
+                let _ = result;
+            }
         }
     }
 }
 
 impl Drop for MetadataTaskRegistry {
     fn drop(&mut self) {
-        let active = self
-            .active
+        let state = self
+            .state
             .get_mut()
             .expect("metadata task registry lock poisoned");
-        for entry in active.values_mut() {
-            if let Some(handle) = entry.handle.take() {
-                handle.abort();
-            }
-        }
-    }
-}
-
-struct TaskRegistrationGuard {
-    registry: Weak<MetadataTaskRegistry>,
-    task_id: u64,
-    released: Arc<AtomicBool>,
-}
-
-impl Drop for TaskRegistrationGuard {
-    fn drop(&mut self) {
-        self.released.store(true, Ordering::SeqCst);
-        if let Some(registry) = self.registry.upgrade() {
-            registry.remove_released(self.task_id, &self.released);
+        if let Some(owner) = state.owner.take() {
+            owner.abort();
         }
     }
 }
@@ -137,8 +107,7 @@ impl Drop for TaskRegistrationGuard {
 #[cfg(test)]
 mod tests {
     use std::future::pending;
-    use std::sync::atomic::AtomicUsize;
-    use tokio::sync::oneshot;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::time::{Duration, timeout};
 
     use super::*;
@@ -171,8 +140,6 @@ mod tests {
         for signal in started {
             signal.await.expect("prefetch task should start");
         }
-        assert_eq!(registry.active.lock().unwrap().len(), 4);
-
         registry.cancel().await;
 
         timeout(Duration::from_secs(1), async {
@@ -182,24 +149,23 @@ mod tests {
         })
         .await
         .expect("all prefetch tasks should be dropped");
-        assert!(registry.active.lock().unwrap().is_empty());
     }
 
     #[tokio::test]
-    async fn removes_released_task_from_registry() {
+    async fn reaps_completed_task_from_registry() {
         let registry = Arc::new(MetadataTaskRegistry::default());
-        let (done_tx, done_rx) = oneshot::channel();
+        let reaped = Arc::new(AtomicUsize::new(0));
+        let reaped_signal = DropSignal(Arc::clone(&reaped));
         MetadataTaskRegistry::spawn(&registry, async move {
-            done_tx.send(()).ok();
+            std::panic::panic_any(reaped_signal);
         });
 
-        done_rx.await.expect("task should complete");
         timeout(Duration::from_secs(1), async {
-            while !registry.active.lock().unwrap().is_empty() {
+            while reaped.load(Ordering::SeqCst) != 1 {
                 tokio::task::yield_now().await;
             }
         })
         .await
-        .expect("released task should be removed");
+        .expect("completed task should be reaped");
     }
 }

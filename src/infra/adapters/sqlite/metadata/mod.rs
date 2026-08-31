@@ -23,7 +23,6 @@ fn sqlite_table_not_found(table: &str) -> DbOperationError {
 #[async_trait]
 impl MetadataProvider for SqliteAdapter {
     async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
-        self.cli.ensure_safe_mode_supported().await?;
         let path = Self::path_from_dsn(dsn)?;
         let tables = self.fetch_catalog_rows(path).await?;
         Ok(metadata_from_catalog(path, &tables))
