@@ -53,7 +53,7 @@ fn sql_completion_popup_uses_injected_theme_styles() {
 
     assert!(
         has_completion_border,
-        "Expected anchored completion popup border to use injected modal border color"
+        "Expected completion popup border to use injected modal border color"
     );
     assert!(
         has_selected_completion,
