@@ -145,7 +145,7 @@ async fn main() -> Result<()> {
             dsn_builder: Arc::clone(&adapter_registry) as _,
             mysql_connection_probe,
             connection_store: Arc::clone(&connection_store) as _,
-            pg_service_entry_reader: Some(Arc::clone(&pg_service_entry_reader)),
+            pg_service_entry_reader: Arc::clone(&pg_service_entry_reader),
             sqlite_path_validator: Arc::new(FsSqlitePathValidator),
         },
         QueryDeps {

@@ -330,7 +330,7 @@ pub(crate) async fn run(
 
         Effect::LoadConnections => {
             let store = Arc::clone(&connection.connection_store);
-            let reader = connection.pg_service_entry_reader.clone();
+            let reader = Arc::clone(&connection.pg_service_entry_reader);
             let tx = action_tx.clone();
 
             tokio::task::spawn_blocking(move || {
@@ -339,10 +339,10 @@ pub(crate) async fn run(
                     Err(e) => (vec![], Some(e.to_string())),
                 };
                 let (services, service_file_path, service_load_warning) =
-                    match reader.as_ref().map(|reader| reader.read_services()) {
-                        Some(Ok((s, p))) => (s, Some(p), None),
-                        Some(Err(ServiceFileError::NotFound(_))) | None => (vec![], None, None),
-                        Some(Err(e)) => (vec![], None, Some(e.to_string())),
+                    match reader.read_services() {
+                        Ok((s, p)) => (s, Some(p), None),
+                        Err(ServiceFileError::NotFound(_)) => (vec![], None, None),
+                        Err(e) => (vec![], None, Some(e.to_string())),
                     };
 
                 tx.blocking_send(Action::ConnectionsLoaded(ConnectionsLoadedPayload {
@@ -1108,8 +1108,6 @@ mod tests {
 
     mod load_connections {
         use super::*;
-        use crate::cmd::runner::{ConnectionDeps, EffectRunner, ErDeps, QueryDeps, UtilityDeps};
-
         #[tokio::test]
         async fn error_returns_empty_connections_list() {
             let mut mock_store = MockConnectionStore::new();
@@ -1143,66 +1141,6 @@ mod tests {
             assert!(
                 matches!(action, Action::ConnectionsLoaded(ConnectionsLoadedPayload { ref profiles, .. }) if profiles.is_empty()),
                 "expected ConnectionsLoaded with empty profiles, got {action:?}"
-            );
-        }
-
-        #[tokio::test]
-        async fn missing_pg_service_reader_skips_service_loading() {
-            let mut mock_store = MockConnectionStore::new();
-            mock_store.expect_load_all().once().returning(|| Ok(vec![]));
-
-            let (tx, mut rx) = mpsc::channel(8);
-            let runner = EffectRunner::new(
-                Arc::new(MockMetadataProvider::new()),
-                ConnectionDeps {
-                    dsn_builder: Arc::new(test_fixtures::NoopDsnBuilder),
-                    mysql_connection_probe: Arc::new(test_fixtures::NoopMySqlConnectionProbe),
-                    connection_store: Arc::new(mock_store),
-                    pg_service_entry_reader: None,
-                    sqlite_path_validator: Arc::new(test_fixtures::TestFsSqlitePathValidator),
-                },
-                QueryDeps {
-                    query_executor: Arc::new(MockQueryExecutor::new()),
-                    query_history_store: Arc::new(test_fixtures::NoopQueryHistoryStore),
-                    sqlite_diagnostics: Arc::new(test_fixtures::NoopSqliteDiagnosticsProvider),
-                    cached_result_exporter: Arc::new(test_fixtures::TestCachedResultExporter),
-                },
-                ErDeps {
-                    er_exporter: Arc::new(test_fixtures::NoopErExporter),
-                    config_writer: Arc::new(test_fixtures::NoopConfigWriter),
-                    er_log_writer: Arc::new(test_fixtures::NoopErLogWriter),
-                },
-                UtilityDeps {
-                    clipboard: Arc::new(test_fixtures::NoopClipboardWriter),
-                    folder_opener: Arc::new(test_fixtures::NoopFolderOpener),
-                },
-                Arc::new(test_fixtures::NoopSettingsStore),
-                tx,
-            );
-
-            let run = test_fixtures::run_one_effect(
-                &runner,
-                Effect::LoadConnections,
-                AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
-                &mut rx,
-                Some(std::time::Duration::from_millis(500)),
-            )
-            .await
-            .unwrap();
-
-            let action = run.actions.into_iter().next().expect("action dispatched");
-            assert!(
-                matches!(
-                    action,
-                    Action::ConnectionsLoaded(ConnectionsLoadedPayload {
-                        ref services,
-                        service_file_path: None,
-                        service_load_warning: None,
-                        ..
-                    }) if services.is_empty()
-                ),
-                "expected ConnectionsLoaded without services, got {action:?}"
             );
         }
     }
