@@ -13,7 +13,6 @@ use crate::model::shared::key_sequence::Prefix;
 use crate::model::sql_editor::completion::CompletionCandidate;
 use crate::policy::{FeatureRequirement, mask_password};
 use crate::ports::outbound::clipboard::ClipboardError;
-use crate::ports::outbound::connection_store::ConnectionStoreError;
 use crate::ports::outbound::{AppSettings, DbOperationError};
 use std::collections::HashMap;
 
@@ -28,7 +27,7 @@ pub enum ConnectionSaveError {
     #[error("{0}")]
     Validation(#[from] ConnectionProfileError),
     #[error("{0}")]
-    Store(#[from] ConnectionStoreError),
+    Store(String),
     #[error("{0}")]
     Metadata(#[from] DbOperationError),
     #[error("{error}")]
@@ -394,7 +393,7 @@ pub enum Action {
         error: DbOperationError,
     },
     ConnectionEditLoaded(Box<ConnectionProfile>),
-    ConnectionEditLoadFailed(ConnectionStoreError),
+    ConnectionEditLoadFailed(String),
     CloseConnectionError,
     ToggleConnectionErrorDetails,
     CopyConnectionError,
@@ -404,7 +403,7 @@ pub enum Action {
     RequestDeleteSelectedConnection,
     DeleteConnection(ConnectionId),
     ConnectionDeleted(ConnectionId),
-    ConnectionDeleteFailed(ConnectionStoreError),
+    ConnectionDeleteFailed(String),
     RequestEditSelectedConnection,
 
     // SQLite diagnostics
