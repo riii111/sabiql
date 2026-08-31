@@ -37,7 +37,7 @@ pub use ddl_generator::DdlGenerator;
 pub use dsn_builder::DsnBuilder;
 pub use er_exporter::{ErDiagramExporter, ErExportError, ErExportResult};
 pub use er_log_writer::ErLogWriter;
-pub use folder_opener::{FolderOpenError, FolderOpener};
+pub use folder_opener::FolderOpener;
 pub use metadata::MetadataProvider;
 pub use mysql_connection_probe::{MySqlConnectionProbe, MySqlConnectionProbeResult};
 pub use query_executor::QueryExecutor;
