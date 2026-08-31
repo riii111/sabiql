@@ -275,7 +275,7 @@ fn sql_modal_insert_cursor_advances_visual_row_when_line_wraps() {
 }
 
 #[test]
-fn connection_setup_cursor_matrix() {
+fn connection_setup_cursor_position_tracks_head_middle_and_tail() {
     for (cursor, expected_symbol) in [(0, "d"), (7, "p"), (14, " ")] {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
@@ -297,8 +297,8 @@ fn connection_setup_cursor_matrix() {
 }
 
 #[test]
-fn cell_edit_cursor_matrix() {
-    for (cursor, expected_symbol) in [(0, "a"), (7, "h"), (14, "o")] {
+fn cell_edit_cursor_position_tracks_head_middle_and_tail() {
+    for (cursor, expected_symbol) in [(0, "a"), (7, "h"), (15, " ")] {
         let mut state = table_detail_loaded_state();
         let mut terminal = create_test_terminal();
 
