@@ -1,19 +1,16 @@
 use std::cell::RefCell;
 
-use tokio::sync::mpsc;
-
 use crate::cmd::completion_engine::{CompletionDatabaseScope, CompletionEngine};
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::text_input::TextInputLike;
 use crate::update::action::Action;
 
-pub async fn run(
+pub fn run(
     effect: Effect,
-    action_tx: &mpsc::Sender<Action>,
     state: &AppState,
     completion_engine: &RefCell<CompletionEngine>,
-) {
+) -> Vec<Action> {
     match effect {
         Effect::CacheTableInCompletionEngine {
             qualified_name,
@@ -22,18 +19,22 @@ pub async fn run(
             completion_engine
                 .borrow_mut()
                 .cache_table_detail(qualified_name, *table);
+            vec![]
         }
 
         Effect::EvictTablesFromCompletionCache { tables } => {
             completion_engine.borrow_mut().evict_tables(&tables);
+            vec![]
         }
 
         Effect::ClearCompletionEngineCache => {
             completion_engine.borrow_mut().clear_table_cache();
+            vec![]
         }
 
         Effect::ResizeCompletionCache { capacity } => {
             completion_engine.borrow_mut().resize_cache(capacity);
+            vec![]
         }
 
         Effect::TriggerCompletion => {
@@ -49,6 +50,7 @@ pub async fn run(
                 (prep, missing)
             };
 
+            let mut actions = Vec::new();
             if !missing.is_empty() {
                 if let Some(run_id) = state.table_prefetch.active_prefetch_run_id() {
                     for action in missing.into_iter().filter_map(|qualified_name| {
@@ -60,12 +62,10 @@ pub async fn run(
                             }
                         })
                     }) {
-                        action_tx.try_send(action).ok();
+                        actions.push(action);
                     }
                 } else {
-                    action_tx
-                        .try_send(Action::StartCompletionPrefetch { tables: missing })
-                        .ok();
+                    actions.push(Action::StartCompletionPrefetch { tables: missing });
                 }
             }
 
@@ -87,18 +87,16 @@ pub async fn run(
                 (candidates, token_len, visible)
             };
 
-            action_tx
-                .send(Action::CompletionUpdated {
-                    candidates,
-                    trigger_position: cursor.saturating_sub(token_len),
-                    visible,
-                    dsn: state.session.dsn().map(str::to_string),
-                    connection_generation: state.session.connection_generation(),
-                    database_generation: state.session.database_generation(),
-                    metadata_generation: state.session.metadata_generation(),
-                })
-                .await
-                .ok();
+            actions.push(Action::CompletionUpdated {
+                candidates,
+                trigger_position: cursor.saturating_sub(token_len),
+                visible,
+                dsn: state.session.dsn().map(str::to_string),
+                connection_generation: state.session.connection_generation(),
+                database_generation: state.session.database_generation(),
+                metadata_generation: state.session.metadata_generation(),
+            });
+            actions
         }
 
         _ => unreachable!("completion::run called with non-completion effect"),
@@ -112,9 +110,8 @@ mod tests {
     use crate::model::shared::input_mode::InputMode;
     use std::sync::Arc;
 
-    #[tokio::test]
-    async fn trigger_completion_prefetches_only_referenced_tables() {
-        let (action_tx, mut action_rx) = mpsc::channel(8);
+    #[test]
+    fn trigger_completion_prefetches_only_referenced_tables() {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::SqlModal);
         state
@@ -130,22 +127,16 @@ mod tests {
             .collect();
         state.session.set_metadata(Some(Arc::new(metadata)));
 
-        run(
+        let actions = run(
             Effect::TriggerCompletion,
-            &action_tx,
             &state,
             &RefCell::new(CompletionEngine::new()),
-        )
-        .await;
+        );
 
         assert!(matches!(
-            action_rx.recv().await,
-            Some(Action::StartCompletionPrefetch { tables })
-                if tables == vec!["public.users".to_string()]
-        ));
-        assert!(matches!(
-            action_rx.recv().await,
-            Some(Action::CompletionUpdated { .. })
+            actions.as_slice(),
+            [Action::StartCompletionPrefetch { tables }, Action::CompletionUpdated { .. }]
+                if *tables == vec!["public.users".to_string()]
         ));
     }
 }
