@@ -19,7 +19,7 @@ use crate::domain::{
 };
 use crate::policy::sql::statement_classifier::{
     StatementKind, classify, collect_top_level_tokens, drop_subtype, extract_target_name,
-    first_keyword, skip_dollar_quoted_string, statement_after_leading_ctes,
+    first_keyword, skip_dollar_quoted_string, statement_after_leading_ctes, unquote_simple,
 };
 
 // Why the statement cannot be confirmed via typed target name.
@@ -674,36 +674,48 @@ fn high_acknowledge_keyword(keyword: &str) -> SqlRiskDecision {
 
 fn sqlite_replace_target_in_statement(sql: &str) -> Option<String> {
     let trimmed = sql.trim();
-    let tokens = top_level_token_pairs(trimmed);
+    let chars: Vec<(usize, char)> = trimmed.char_indices().collect();
+    let tokens = collect_top_level_tokens(trimmed, &chars);
     let lowers: Vec<String> = tokens
         .iter()
         .map(|(_, token)| token.to_lowercase())
         .collect();
-    let replace_into = lowers.first().is_some_and(|token| token == "replace")
-        && lowers.get(1).is_some_and(|token| token == "into");
-    if replace_into {
-        let into = tokens.get(1)?;
-        return sqlite_identifier_after(trimmed, into.0 + into.1.len());
-    }
-    let insert_or_replace = lowers.first().is_some_and(|token| token == "insert")
+    let target_start = if lowers.first().is_some_and(|token| token == "replace")
+        && lowers.get(1).is_some_and(|token| token == "into")
+    {
+        2
+    } else if lowers.first().is_some_and(|token| token == "insert")
         && lowers.get(1).is_some_and(|token| token == "or")
         && lowers.get(2).is_some_and(|token| token == "replace")
-        && lowers.get(3).is_some_and(|token| token == "into");
-    if insert_or_replace {
-        let into = tokens.get(3)?;
-        return sqlite_identifier_after(trimmed, into.0 + into.1.len());
-    }
-    None
-}
+        && lowers.get(3).is_some_and(|token| token == "into")
+    {
+        4
+    } else {
+        return None;
+    };
 
-fn top_level_token_pairs(sql: &str) -> Vec<(usize, String)> {
-    let trimmed = sql.trim();
-    let chars: Vec<(usize, char)> = trimmed.char_indices().collect();
-    collect_top_level_tokens(trimmed, &chars)
+    let mut target = String::new();
+    let mut target_index = target_start;
+    loop {
+        let token = tokens.get(target_index)?.1.as_str();
+        if token == "," {
+            return None;
+        }
+        target.push_str(token);
+        if !token.ends_with('.') {
+            break;
+        }
+        target_index += 1;
+    }
+
+    let unquoted = unquote_simple(&target);
+    (unquoted != target || !target.contains(['"', '`', '[', ']'])).then_some(unquoted)
 }
 
 fn top_level_tokens(sql: &str) -> Vec<String> {
-    top_level_token_pairs(sql)
+    let trimmed = sql.trim();
+    let chars: Vec<(usize, char)> = trimmed.char_indices().collect();
+    collect_top_level_tokens(trimmed, &chars)
         .into_iter()
         .map(|(_, token)| token)
         .collect()
@@ -736,74 +748,6 @@ fn sqlite_drop_risk(sql: &str) -> Option<SqlRiskDecision> {
         },
         None => high_acknowledge_label(label),
     })
-}
-
-fn skip_whitespace(sql: &str, mut cursor: usize) -> usize {
-    while cursor < sql.len() {
-        let Some(ch) = sql[cursor..].chars().next() else {
-            break;
-        };
-        if !ch.is_whitespace() {
-            break;
-        }
-        cursor += ch.len_utf8();
-    }
-    cursor
-}
-
-fn sqlite_identifier_part(sql: &str, cursor: usize) -> Option<(String, usize)> {
-    let ch = sql[cursor..].chars().next()?;
-    let close_quote = match ch {
-        '"' => Some('"'),
-        '`' => Some('`'),
-        '[' => Some(']'),
-        _ => None,
-    };
-    if let Some(close) = close_quote {
-        let mut value = String::new();
-        let mut next = cursor + ch.len_utf8();
-        while next < sql.len() {
-            let c = sql[next..].chars().next()?;
-            next += c.len_utf8();
-            if c == close {
-                if close != ']' && sql[next..].starts_with(close) {
-                    value.push(close);
-                    next += close.len_utf8();
-                    continue;
-                }
-                return Some((value, next));
-            }
-            value.push(c);
-        }
-        return None;
-    }
-
-    let mut end = cursor;
-    while end < sql.len() {
-        let c = sql[end..].chars().next()?;
-        if c.is_whitespace() || matches!(c, '.' | '(' | ',' | ';') {
-            break;
-        }
-        end += c.len_utf8();
-    }
-    (end > cursor).then(|| (sql[cursor..end].to_string(), end))
-}
-
-fn sqlite_identifier_after(sql: &str, start: usize) -> Option<String> {
-    let mut cursor = skip_whitespace(sql, start);
-    let mut parts = Vec::new();
-
-    loop {
-        let (part, next) = sqlite_identifier_part(sql, cursor)?;
-        parts.push(part);
-        cursor = skip_whitespace(sql, next);
-        if !sql[cursor..].starts_with('.') {
-            break;
-        }
-        cursor = skip_whitespace(sql, cursor + 1);
-    }
-
-    Some(parts.join("."))
 }
 
 fn sqlite_pragma_risk(sql: &str) -> Option<SqlRiskDecision> {
@@ -1404,6 +1348,14 @@ mod tests {
                 "INSERT OR REPLACE INTO main.[my table](id) VALUES (1)",
                 "main.my table"
             )]
+            #[case::comment_between_into_and_target(
+                "REPLACE INTO /* comment */ [my table](id) VALUES (1)",
+                "my table"
+            )]
+            #[case::schema_qualified_with_whitespace(
+                "REPLACE INTO main /* comment */ . [my table](id) VALUES (1)",
+                "main.my table"
+            )]
             fn sqlite_replace_requires_table_name_input(
                 #[case] sql: &str,
                 #[case] expected_target: &str,
@@ -1421,6 +1373,31 @@ mod tests {
                         label: "REPLACE",
                     } if target == expected_target
                 ));
+            }
+
+            #[test]
+            fn sqlite_replace_with_unterminated_target_requires_acknowledgement() {
+                for sql in [
+                    "REPLACE INTO \"unfinished",
+                    "REPLACE INTO `unfinished",
+                    "REPLACE INTO [unfinished",
+                ] {
+                    let result =
+                        evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                            .expect("SQLite SQL risk evaluation is supported");
+
+                    assert!(
+                        matches!(
+                            result.confirmation,
+                            ConfirmationType::Acknowledge {
+                                reason: AcknowledgeReason::TargetNameUnavailable,
+                                ref label,
+                            } if label == "REPLACE"
+                        ),
+                        "{sql}: {:?}",
+                        result.confirmation
+                    );
+                }
             }
         }
 
