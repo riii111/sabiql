@@ -77,7 +77,7 @@ fn move_result_row_and_scroll(state: &mut AppState, direction: ScrollDirection, 
     scroll_result_by(state, direction, delta);
 }
 
-pub fn reduce_scroll(state: &mut AppState, action: &Action) -> DispatchResult {
+pub(in crate::update) fn reduce_scroll(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
         Action::Scroll {
             target: ScrollTarget::Result,

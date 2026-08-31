@@ -11,7 +11,11 @@ use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 
-pub fn dispatch_query(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub(in crate::update) fn dispatch_query(
+    state: &mut AppState,
+    action: &Action,
+    now: Instant,
+) -> DispatchResult {
     execution::reduce_execution(state, action, now)
         .or_else(|| write::reduce_write(state, action, now))
         .or_else(|| pagination::reduce_pagination(state, action, now))

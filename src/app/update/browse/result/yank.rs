@@ -11,7 +11,7 @@ use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::clipboard_unavailable;
 
-pub fn reduce_yank(
+pub(in crate::update) fn reduce_yank(
     state: &mut AppState,
     action: &Action,
     services: &AppServices,

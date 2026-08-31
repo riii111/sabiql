@@ -11,7 +11,7 @@ use crate::update::input::vim::{
 
 use super::interaction::InputInteraction;
 
-pub fn handle_json_detail_keys_with_policy(
+pub(super) fn handle_json_detail_keys_with_policy(
     combo: KeyCombo,
     interaction: InputInteraction,
     pending_prefix: Option<Prefix>,
@@ -119,7 +119,7 @@ fn handle_search_input(combo: KeyCombo, feature_policy: &FeaturePolicy) -> Actio
     }
 }
 
-pub fn handle_json_edit_keys_with_policy(
+pub(super) fn handle_json_edit_keys_with_policy(
     combo: KeyCombo,
     feature_policy: &FeaturePolicy,
 ) -> Action {

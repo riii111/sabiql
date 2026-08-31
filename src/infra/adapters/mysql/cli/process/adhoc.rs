@@ -74,7 +74,7 @@ struct MySqlStatementExecution {
     diagnostics: Vec<DatabaseDiagnostic>,
 }
 
-pub(super) async fn fill_mysql_empty_result_columns(
+async fn fill_mysql_empty_result_columns(
     process: &mut MySqlProcess,
     mut result: MySqlResultSet,
     option_file: &Path,

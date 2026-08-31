@@ -1,9 +1,14 @@
+#![allow(
+    clippy::redundant_pub_crate,
+    reason = "cache helpers are crate-visible through the config facade but the implementation module stays internal"
+)]
+
 use std::fs;
 use std::io;
 use std::path::PathBuf;
 
 #[derive(Debug, thiserror::Error)]
-pub enum CacheDirError {
+pub(crate) enum CacheDirError {
     #[error("cache directory is unavailable")]
     BaseDirUnavailable,
     #[error("I/O error: {0}")]
@@ -16,7 +21,7 @@ impl From<io::Error> for CacheDirError {
     }
 }
 
-pub fn get_cache_dir(project_name: &str) -> Result<PathBuf, CacheDirError> {
+pub(crate) fn get_cache_dir(project_name: &str) -> Result<PathBuf, CacheDirError> {
     let cache_base = dirs::cache_dir().ok_or(CacheDirError::BaseDirUnavailable)?;
     let cache_dir = cache_base.join("sabiql").join(project_name);
 
