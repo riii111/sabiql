@@ -8,7 +8,7 @@ use harness::{
 
 use std::sync::Arc;
 
-use sabiql_app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
+use sabiql_app::model::connection::error::ConnectionErrorInfo;
 use sabiql_app::model::connection::setup::ConnectionField;
 use sabiql_app::model::shared::focused_pane::FocusedPane;
 use sabiql_app::model::shared::input_mode::InputMode;
@@ -20,7 +20,7 @@ use sabiql_app::policy::write::write_guardrails::{
     AdhocRiskDecision, ColumnDiff, GuardrailDecision, RiskLevel, TargetSummary, WriteOperation,
     WritePreview,
 };
-use sabiql_app::ports::outbound::DdlGenerator;
+use sabiql_app::ports::outbound::{ConnectionFailureKind, DbOperationError, DdlGenerator};
 use sabiql_app::services::AppServices;
 use sabiql_domain::{
     ColumnAttributes, CommandTag, DatabaseType, FkAction, ForeignKey, Index, IndexAttributes,

@@ -166,7 +166,7 @@ pub(super) fn reduce_connection_error(
 mod tests {
     use super::*;
     use crate::domain::{ConnectionId, DatabaseType};
-    use crate::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
+    use crate::model::connection::error::ConnectionErrorInfo;
     use crate::model::connection::state::ConnectionState;
     use crate::update::test_fixtures;
 
@@ -186,8 +186,10 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state
                 .connection_error
-                .set_error(ConnectionErrorInfo::with_kind(
-                    ConnectionErrorKind::Unknown,
+                .set_error(ConnectionErrorInfo::from_parts(
+                    "Connection failed",
+                    "See details for more information",
+                    false,
                     "line1\nline2\nline3",
                 ));
 
@@ -297,8 +299,10 @@ mod tests {
         );
         state
             .connection_error
-            .set_error(ConnectionErrorInfo::with_kind(
-                ConnectionErrorKind::Unknown,
+            .set_error(ConnectionErrorInfo::from_parts(
+                "Connection failed",
+                "See details for more information",
+                false,
                 "connection failed",
             ));
         state.session.set_connection_state(ConnectionState::Failed);
@@ -336,8 +340,10 @@ mod tests {
         );
         state
             .connection_error
-            .set_error(ConnectionErrorInfo::with_kind(
-                ConnectionErrorKind::ConnectionRefused,
+            .set_error(ConnectionErrorInfo::from_parts(
+                "Connection refused",
+                "Check the host, port, and server availability",
+                true,
                 "connection refused",
             ));
         state.modal.set_mode(InputMode::ConnectionError);
@@ -371,8 +377,10 @@ mod tests {
             .begin_mysql_connection_probe(&id, "mysql-a", dsn, Some("a"));
         state
             .connection_error
-            .set_error(ConnectionErrorInfo::with_kind(
-                ConnectionErrorKind::ConnectionRefused,
+            .set_error(ConnectionErrorInfo::from_parts(
+                "Connection refused",
+                "Check the host, port, and server availability",
+                true,
                 "connection refused",
             ));
         state.modal.set_mode(InputMode::ConnectionError);
@@ -409,8 +417,10 @@ mod tests {
         );
         state
             .connection_error
-            .set_error(ConnectionErrorInfo::with_kind(
-                ConnectionErrorKind::ConnectionRefused,
+            .set_error(ConnectionErrorInfo::from_parts(
+                "Connection refused",
+                "Check the host, port, and server availability",
+                true,
                 "connection refused",
             ));
         state.modal.set_mode(InputMode::ConnectionError);

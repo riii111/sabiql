@@ -250,7 +250,6 @@ mod tests {
     use crate::model::browse::query_execution::PaginationState;
     use crate::model::browse::session::TableDetailState;
     use crate::model::connection::cache::ConnectionCache;
-    use crate::model::connection::error::ConnectionErrorKind;
     use crate::model::connection::state::ConnectionState;
     use crate::model::er_state::ErStatus;
     use crate::model::shared::confirm_dialog::ConfirmIntent;
@@ -389,8 +388,10 @@ mod tests {
             state.session.set_connection_state(ConnectionState::Failed);
             state
                 .connection_error
-                .set_error(ConnectionErrorInfo::with_kind(
-                    ConnectionErrorKind::ConnectionRefused,
+                .set_error(ConnectionErrorInfo::from_parts(
+                    "Connection refused",
+                    "Check the host, port, and server availability",
+                    true,
                     "connection refused",
                 ));
 
@@ -2421,8 +2422,8 @@ mod tests {
             assert!(state.session.connection_state().is_failed());
             assert_eq!(state.modal.active_mode(), InputMode::ConnectionError);
             assert_eq!(
-                state.connection_error.error_info().unwrap().kind,
-                ConnectionErrorKind::AuthFailed
+                state.connection_error.error_info().unwrap().summary(),
+                "Authentication failed"
             );
         }
     }

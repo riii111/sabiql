@@ -450,13 +450,14 @@ mod tests {
     use super::Footer;
     use crate::app::domain::{ConnectionId, DatabaseType};
     use crate::app::model::app_state::AppState;
-    use crate::app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
+    use crate::app::model::connection::error::ConnectionErrorInfo;
     use crate::app::model::connection::setup::ConnectionField;
     use crate::app::model::shared::focused_pane::FocusedPane;
     use crate::app::model::shared::input_mode::InputMode;
     use crate::app::model::shared::settings::KeymapPreset;
     use crate::app::model::shared::ui_state::FocusMode;
     use crate::app::model::sql_editor::modal::SqlModalStatus;
+    use crate::app::ports::outbound::DbOperationError;
     use crate::app::update::input::keybindings::{
         connection_error, connection_setup, global, help, json_detail, json_edit, result_active,
         row_detail,
@@ -712,12 +713,11 @@ mod tests {
             DatabaseType::MySQL,
             "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
         );
-        state
-            .connection_error
-            .set_save_and_connect_error(ConnectionErrorInfo::with_kind(
-                ConnectionErrorKind::Timeout,
-                "connection timed out",
-            ));
+        state.connection_error.set_save_and_connect_error(
+            ConnectionErrorInfo::from_db_operation_error(&DbOperationError::Timeout(
+                "connection timed out".to_string(),
+            )),
+        );
         state.modal.set_mode(InputMode::ConnectionError);
 
         let hints = Footer::get_context_hints(&state);

@@ -1152,7 +1152,7 @@ mod tests {
     mod response_handlers {
         use super::*;
         use crate::domain::{DatabaseMetadata, MetadataState, QueryResult, QuerySource};
-        use crate::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
+        use crate::model::connection::error::ConnectionErrorInfo;
         use crate::model::connection::state::ConnectionState;
 
         fn metadata_loaded_action(state: &mut AppState, metadata: DatabaseMetadata) -> Action {
@@ -1414,8 +1414,10 @@ mod tests {
             let mut state = create_test_state();
             state
                 .connection_error
-                .set_error(ConnectionErrorInfo::with_kind(
-                    ConnectionErrorKind::Unknown,
+                .set_error(ConnectionErrorInfo::from_parts(
+                    "Connection failed",
+                    "See details for more information",
+                    false,
                     "error",
                 ));
             state.ui.set_focused_pane(FocusedPane::Result); // Any pane works
@@ -1435,12 +1437,14 @@ mod tests {
     mod connection_error_actions {
         use super::*;
         use crate::domain::MetadataState;
-        use crate::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
+        use crate::model::connection::error::ConnectionErrorInfo;
 
         fn state_with_error() -> AppState {
             let mut state = create_test_state();
-            let info = ConnectionErrorInfo::with_kind(
-                ConnectionErrorKind::HostUnreachable,
+            let info = ConnectionErrorInfo::from_parts(
+                "Could not resolve host",
+                "Check the hostname",
+                true,
                 "psql: error: could not translate host",
             );
             state.connection_error.set_error(info);
