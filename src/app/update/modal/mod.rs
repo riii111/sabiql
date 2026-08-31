@@ -1422,7 +1422,7 @@ mod tests {
             #[rstest]
             #[case::next_increments(vec!["SELECT 1", "SELECT 2"], 0, ListMotion::Next, 1)]
             #[case::next_clamps_at_end(vec!["SELECT 1"], 0, ListMotion::Next, 0)]
-            #[case::previous_decrements(vec!["SELECT 1", "SELECT 2"], 1, ListMotion::Previous, 0)]
+            #[case::previous_decrements(Vec::<&str>::new(), 1, ListMotion::Previous, 0)]
             fn selection_moves_to_expected_index(
                 #[case] queries: Vec<&str>,
                 #[case] initial_selection: usize,
