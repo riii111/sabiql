@@ -115,11 +115,11 @@ impl EffectRunner {
         let metadata_task = self.metadata_tasks.abort();
         let smart_er_task = self.smart_er_refresh_task.abort();
         let sqlite_diagnostics_tasks = self.sqlite_diagnostics_task.abort();
+        let query_task = self.query_tasks.abort();
+        let table_detail_task = self.table_detail_tasks.abort();
         if let Some(task) = metadata_task {
             let _ = task.await;
         }
-        let query_task = self.query_tasks.abort();
-        let table_detail_task = self.table_detail_tasks.abort();
         if let Some(task) = query_task {
             let _ = task.await;
         }
