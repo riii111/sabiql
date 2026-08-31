@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::effect::Effect;
 use crate::cmd::metadata_task::MetadataTaskRegistry;
-use crate::cmd::query_task::TableDetailTaskRegistry;
+use crate::cmd::single_task_owner::SingleTaskOwner;
 use crate::cmd::sqlite_path_validate::validate_sqlite_database_path;
 use crate::domain::sqlite_path_from_dsn;
 use crate::policy::sqlite_path::to_db_operation_error;
@@ -18,7 +18,7 @@ pub async fn run(
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
     sqlite_path_validator: &Arc<dyn SqlitePathValidator>,
-    table_detail_tasks: &TableDetailTaskRegistry,
+    table_detail_tasks: &SingleTaskOwner,
     metadata_tasks: &Arc<MetadataTaskRegistry>,
     completion_engine: &RefCell<CompletionEngine>,
 ) {
@@ -175,13 +175,13 @@ async fn fetch_table_detail(
     table: String,
     generation: u64,
     run_id: u64,
-    table_detail_tasks: &TableDetailTaskRegistry,
+    table_detail_tasks: &SingleTaskOwner,
 ) {
     let provider = Arc::clone(metadata_provider);
     let tx = action_tx.clone();
 
     table_detail_tasks
-        .spawn(async move {
+        .replace(async move {
             match provider.fetch_table_detail(&dsn, &schema, &table).await {
                 Ok(detail) => {
                     tx.send(Action::TableDetailLoaded {
