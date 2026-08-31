@@ -8,33 +8,12 @@ pub struct TextInputState {
     viewport_offset: usize,
 }
 
-pub trait TextInputLike {
-    fn text_input(&self) -> &TextInputState;
-
-    fn content(&self) -> &str {
-        self.text_input().content()
-    }
-
-    fn cursor(&self) -> usize {
-        self.text_input().cursor()
-    }
-
-    fn char_count(&self) -> usize {
-        self.text_input().char_count()
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextKillDirection {
     ToLineEnd,
     ToLineStart,
     ReadlineWordEnd,
     ReadlinePreviousWhitespace,
-}
-
-pub trait TextInputEditing {
-    fn kill(&mut self, direction: TextKillDirection) -> String;
-    fn yank(&mut self, text: &str);
 }
 
 impl TextInputState {
@@ -140,6 +119,19 @@ impl TextInputState {
         )
     }
 
+    pub fn kill(&mut self, direction: TextKillDirection) -> String {
+        match direction {
+            TextKillDirection::ToLineEnd => self.kill_to_line_end(),
+            TextKillDirection::ToLineStart => self.kill_to_line_start(),
+            TextKillDirection::ReadlineWordEnd => self.kill_next_word(),
+            TextKillDirection::ReadlinePreviousWhitespace => self.kill_previous_word(),
+        }
+    }
+
+    pub fn yank(&mut self, text: &str) {
+        self.insert_str(text);
+    }
+
     pub fn move_cursor(&mut self, movement: CursorMove) {
         match movement {
             CursorMove::Left => {
@@ -241,27 +233,6 @@ impl TextInputState {
         self.cursor = start;
         self.viewport_offset = 0;
         removed
-    }
-}
-
-impl TextInputLike for TextInputState {
-    fn text_input(&self) -> &TextInputState {
-        self
-    }
-}
-
-impl TextInputEditing for TextInputState {
-    fn kill(&mut self, direction: TextKillDirection) -> String {
-        match direction {
-            TextKillDirection::ToLineEnd => self.kill_to_line_end(),
-            TextKillDirection::ToLineStart => self.kill_to_line_start(),
-            TextKillDirection::ReadlineWordEnd => self.kill_next_word(),
-            TextKillDirection::ReadlinePreviousWhitespace => self.kill_previous_word(),
-        }
-    }
-
-    fn yank(&mut self, text: &str) {
-        self.insert_str(text);
     }
 }
 

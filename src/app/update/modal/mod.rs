@@ -1106,7 +1106,6 @@ mod tests {
         use crate::domain::query_history::{
             QueryHistoryEntry, QueryHistoryScope, QueryResultStatus,
         };
-        use crate::model::shared::text_input::TextInputLike;
         use crate::ports::outbound::query_history::QueryHistoryError;
 
         fn make_entry(query: &str, conn_id: &ConnectionId) -> QueryHistoryEntry {

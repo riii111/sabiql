@@ -3,7 +3,6 @@ use std::time::{Duration, Instant};
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::KeySequenceState;
-use crate::model::shared::text_input::TextInputEditing;
 use crate::model::sql_editor::modal::{SqlModalStatus, sql_modal_visible_rows};
 use crate::update::action::{Action, CursorMove, InputTarget};
 use crate::update::dispatch_result::DispatchResult;

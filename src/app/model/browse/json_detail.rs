@@ -1,7 +1,5 @@
 use crate::model::shared::detail_view::{DetailContentState, DetailSearchState};
 use crate::model::shared::multi_line_input::MultiLineInputState;
-use crate::model::shared::text_input::TextInputLike;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum JsonDetailMode {
     #[default]
@@ -165,7 +163,6 @@ mod test_support {
 #[cfg(test)]
 mod tests {
     use super::{JsonDetailMode, JsonDetailState};
-    use crate::model::shared::text_input::TextInputLike;
 
     #[test]
     fn open_prettifies_valid_json_into_editor() {

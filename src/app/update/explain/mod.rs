@@ -26,7 +26,6 @@ mod tests {
     use crate::domain::DatabaseType;
     use crate::model::browse::query_execution::PostDeleteRowSelection;
     use crate::model::shared::input_mode::InputMode;
-    use crate::model::shared::text_input::TextInputLike;
     use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
     use crate::policy::write::sql_risk::AcknowledgeReason;
     use crate::ports::outbound::AccessMode;
