@@ -2,6 +2,13 @@
     clippy::disallowed_methods,
     reason = "the main loop is the time source: it reads the clock and injects `now` into reducers"
 )]
+#![cfg_attr(
+    test,
+    allow(
+        unreachable_pub,
+        reason = "test support visibility is excluded from production API measurement"
+    )
+)]
 
 use std::cell::RefCell;
 use std::sync::Arc;

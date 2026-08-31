@@ -1,18 +1,18 @@
 mod app_config_file;
 
-pub mod cached_result_exporter;
-pub mod clipboard;
-pub mod config_writer;
-pub mod connection_store;
+pub(crate) mod cached_result_exporter;
+pub(crate) mod clipboard;
+pub(crate) mod config_writer;
+pub(crate) mod connection_store;
 pub(crate) mod csv_export;
-pub mod er_log_writer;
-pub mod folder_opener;
+pub(crate) mod er_log_writer;
+pub(crate) mod folder_opener;
 pub mod mysql;
-pub mod postgres;
-pub mod query_history;
-pub mod registry;
-pub mod settings_store;
-pub mod sqlite;
+pub(crate) mod postgres;
+pub(crate) mod query_history;
+pub(crate) mod registry;
+pub(crate) mod settings_store;
+pub(crate) mod sqlite;
 #[cfg(test)]
 pub(crate) mod test_support;
 pub use cached_result_exporter::CsvCachedResultExporter;

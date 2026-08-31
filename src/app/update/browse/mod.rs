@@ -1,4 +1,4 @@
-pub mod metadata;
-pub mod navigation;
-pub mod query;
-pub mod result;
+pub(in crate::update) mod metadata;
+pub(in crate::update) mod navigation;
+pub(in crate::update) mod query;
+pub(in crate::update) mod result;

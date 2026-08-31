@@ -21,7 +21,11 @@ use crate::update::input::command::action_for_command;
 
 use super::write;
 
-pub fn reduce_execution(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub(in crate::update) fn reduce_execution(
+    state: &mut AppState,
+    action: &Action,
+    now: Instant,
+) -> DispatchResult {
     match action {
         Action::QueryCompleted {
             run_id,

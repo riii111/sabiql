@@ -1,2 +1,2 @@
-pub(crate) mod completion;
-pub(crate) mod query_history;
+pub(in crate::cmd) mod completion;
+pub(in crate::cmd) mod query_history;

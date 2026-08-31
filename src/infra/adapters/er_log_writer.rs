@@ -14,7 +14,7 @@ impl ErLogWriter for FsErLogWriter {
     }
 }
 
-pub fn write_er_failure_log_blocking(
+fn write_er_failure_log_blocking(
     failed_tables: Vec<(String, String)>,
     cache_dir: PathBuf,
 ) -> std::io::Result<()> {

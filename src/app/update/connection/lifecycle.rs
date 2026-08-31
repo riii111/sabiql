@@ -20,7 +20,7 @@ fn clear_query_confirmation(state: &mut AppState) {
     state.sql_modal.enter_normal();
 }
 
-pub fn reduce_connection_lifecycle(
+pub(in crate::update) fn reduce_connection_lifecycle(
     state: &mut AppState,
     action: &Action,
     _now: std::time::Instant,

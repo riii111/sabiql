@@ -1,2 +1,2 @@
-pub(crate) mod metadata;
-pub(crate) mod query;
+pub(in crate::cmd) mod metadata;
+pub(in crate::cmd) mod query;

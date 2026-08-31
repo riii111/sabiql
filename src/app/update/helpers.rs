@@ -18,7 +18,7 @@ use crate::ports::outbound::ClipboardError;
 use crate::sql_builder::build_bulk_delete_sql;
 use crate::update::action::Action;
 
-pub(crate) fn reject_pending_mysql_connection_probe(state: &mut AppState) -> bool {
+pub(in crate::update) fn reject_pending_mysql_connection_probe(state: &mut AppState) -> bool {
     if state.session.pending_mysql_connection_probe().is_none() {
         return false;
     }
@@ -29,11 +29,11 @@ pub(crate) fn reject_pending_mysql_connection_probe(state: &mut AppState) -> boo
     true
 }
 
-pub(crate) fn clipboard_unavailable() -> Action {
+pub(in crate::update) fn clipboard_unavailable() -> Action {
     Action::CopyFailed(ClipboardError::Unavailable("Clipboard unavailable".into()))
 }
 
-pub(crate) fn metadata_reload_effects(state: &mut AppState, dsn: &str) -> Vec<Effect> {
+pub(in crate::update) fn metadata_reload_effects(state: &mut AppState, dsn: &str) -> Vec<Effect> {
     let run_id = state.session.begin_reload();
 
     vec![
@@ -47,7 +47,7 @@ pub(crate) fn metadata_reload_effects(state: &mut AppState, dsn: &str) -> Vec<Ef
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum EditGuardrailError {
+pub(in crate::update) enum EditGuardrailError {
     #[error("No result to edit")]
     NoResult,
     #[error("Only Preview results are editable")]
@@ -102,13 +102,13 @@ pub enum EditGuardrailError {
     GuardrailBlocked(String),
 }
 
-pub struct BulkDeletePreviewResult {
+pub(in crate::update) struct BulkDeletePreviewResult {
     pub preview: WritePreview,
     pub target_page: usize,
     pub target_row: Option<usize>,
 }
 
-pub fn reject_sqlite_null_pk(
+pub(in crate::update) fn reject_sqlite_null_pk(
     database_type: DatabaseType,
     pk_pairs: &[(String, QueryValue)],
 ) -> Result<(), EditGuardrailError> {
@@ -125,7 +125,7 @@ pub fn reject_sqlite_null_pk(
 // Entry checks in navigation and submit-time checks in query should both use this.
 // Row/column selection source is intentionally left to each caller:
 // navigation uses live selection, query submit uses cell_edit state.
-pub fn editable_preview_base(
+pub(in crate::update) fn editable_preview_base(
     state: &AppState,
 ) -> Result<(&QueryResult, StableRowIdentity), EditGuardrailError> {
     let result = state
@@ -163,7 +163,7 @@ pub fn editable_preview_base(
     Ok((result, identity))
 }
 
-pub fn ensure_column_writable(
+pub(in crate::update) fn ensure_column_writable(
     state: &AppState,
     column_name: &str,
     identity: &StableRowIdentity,
@@ -188,7 +188,7 @@ pub fn ensure_column_writable(
     Ok(())
 }
 
-pub fn build_bulk_delete_preview(
+pub(in crate::update) fn build_bulk_delete_preview(
     state: &AppState,
 ) -> Result<BulkDeletePreviewResult, EditGuardrailError> {
     if state.result_interaction.staged_delete_rows().is_empty() {
@@ -268,7 +268,7 @@ pub fn build_bulk_delete_preview(
     })
 }
 
-pub fn deletion_refresh_target_bulk(
+pub(in crate::update) fn deletion_refresh_target_bulk(
     row_count: usize,
     deleted_count: usize,
     first_deleted_idx: usize,
@@ -287,7 +287,7 @@ pub fn deletion_refresh_target_bulk(
     }
 }
 
-pub fn find_text_matches(content: &str, query: &str) -> Vec<usize> {
+pub(in crate::update) fn find_text_matches(content: &str, query: &str) -> Vec<usize> {
     if query.is_empty() {
         return Vec::new();
     }
@@ -365,7 +365,7 @@ fn require_non_empty(state: &mut ConnectionSetupState, field: ConnectionField, m
     }
 }
 
-pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) {
+pub(in crate::update) fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) {
     state.clear_validation_error(field);
     if let Some(other_field) = match field {
         ConnectionField::SslCert => Some(ConnectionField::SslKey),
@@ -517,7 +517,7 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
     }
 }
 
-pub fn validate_all(state: &mut ConnectionSetupState) {
+pub(in crate::update) fn validate_all(state: &mut ConnectionSetupState) {
     let active_fields = ConnectionField::fields_for(
         state.database_type(),
         state.mysql_transport(),
