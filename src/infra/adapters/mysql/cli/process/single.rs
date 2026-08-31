@@ -63,28 +63,3 @@ pub(super) async fn run_mysql_single_statement_process_with_diagnostics(
         diagnostics,
     })
 }
-
-#[cfg(test)]
-pub(super) mod test_support {
-    use super::super::super::xml::MySqlResultSet;
-    use super::super::read_one_mysql_resultset;
-    use super::*;
-
-    pub async fn run_mysql_single_statement_process(
-        process: &mut MySqlProcess,
-        query: &str,
-        access_mode: AccessMode,
-    ) -> Result<MySqlResultSet, DbOperationError> {
-        configure_mysql_session(process, access_mode).await?;
-        write_mysql_statement(process, query).await?;
-
-        #[cfg(unix)]
-        let stdout = read_one_mysql_resultset(process).await?;
-        let result = finish_mysql_session(process).await?;
-        validate_mysql_session_exit(&result, process.client_packet_limit_bytes)?;
-        #[cfg(unix)]
-        return parse_mysql_xml(&stdout);
-        #[cfg(not(unix))]
-        parse_mysql_xml(&result.stdout)
-    }
-}
