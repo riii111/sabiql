@@ -354,7 +354,7 @@ fn make_runner_with_dsn_and_cached_result_exporter_and_probe(
             dsn_builder,
             mysql_connection_probe,
             connection_store,
-            pg_service_entry_reader: Some(Arc::new(NoopPgServiceEntryReader)),
+            pg_service_entry_reader: Arc::new(NoopPgServiceEntryReader),
             sqlite_path_validator: Arc::new(TestFsSqlitePathValidator),
         },
         QueryDeps {
