@@ -66,7 +66,7 @@ pub(super) fn reduce_yank(state: &mut AppState, action: &Action, now: Instant) -
                 Some(c) if !c.is_empty() => {
                     DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                         content: c,
-                        on_success: Some(Box::new(Action::SqlModalYankSuccess)),
+                        on_success: Box::new(Action::SqlModalYankSuccess),
                         on_failure: Some(Box::new(clipboard_unavailable())),
                     }])
                 }

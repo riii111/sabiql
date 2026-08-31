@@ -95,7 +95,7 @@ pub fn reduce_json(state: &mut AppState, action: &Action, now: Instant) -> Dispa
             let json = state.json_detail.current_json_for_yank();
             DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                 content: json,
-                on_success: Some(Box::new(Action::JsonYankSuccess)),
+                on_success: Box::new(Action::JsonYankSuccess),
                 on_failure: Some(Box::new(clipboard_unavailable())),
             }])
         }
@@ -1085,10 +1085,7 @@ mod tests {
                     ..
                 } => {
                     assert!(content.contains("theme"));
-                    assert!(matches!(
-                        on_success.as_deref(),
-                        Some(Action::JsonYankSuccess)
-                    ));
+                    assert!(matches!(on_success.as_ref(), Action::JsonYankSuccess));
                 }
                 other => panic!("expected CopyToClipboard, got {other:?}"),
             }
