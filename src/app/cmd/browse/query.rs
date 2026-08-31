@@ -164,7 +164,6 @@ pub async fn run(
                             match plan_result {
                                 Ok(plan_text) => {
                                     tx.send(Action::ExplainCompleted {
-                                        dsn,
                                         database_type,
                                         database_generation,
                                         run_id,
@@ -178,7 +177,6 @@ pub async fn run(
                                 }
                                 Err(error) => {
                                     tx.send(Action::ExplainFailed {
-                                        dsn,
                                         database_generation,
                                         run_id,
                                         error,
@@ -191,7 +189,6 @@ pub async fn run(
                         }
                         Err(e) => {
                             tx.send(Action::ExplainFailed {
-                                dsn,
                                 database_generation,
                                 run_id,
                                 error: e,
@@ -298,7 +295,6 @@ pub async fn run(
                                 );
                             }
                             tx.send(Action::ExecuteWriteSucceeded {
-                                dsn,
                                 run_id,
                                 affected_rows: result.affected_rows,
                                 diagnostics: result.diagnostics,
@@ -317,13 +313,9 @@ pub async fn run(
                                     None,
                                 );
                             }
-                            tx.send(Action::ExecuteWriteFailed {
-                                dsn,
-                                run_id,
-                                error: e,
-                            })
-                            .await
-                            .ok();
+                            tx.send(Action::ExecuteWriteFailed { run_id, error: e })
+                                .await
+                                .ok();
                         }
                     }
                 })
@@ -348,7 +340,6 @@ pub async fn run(
                     match result {
                         Ok(path) => {
                             tx.send(Action::CsvExportSucceeded {
-                                dsn,
                                 run_id,
                                 path: path.display().to_string(),
                                 row_count: None,
@@ -357,13 +348,9 @@ pub async fn run(
                             .ok();
                         }
                         Err(e) => {
-                            tx.send(Action::CsvExportFailed {
-                                dsn,
-                                run_id,
-                                error: e,
-                            })
-                            .await
-                            .ok();
+                            tx.send(Action::CsvExportFailed { run_id, error: e })
+                                .await
+                                .ok();
                         }
                     }
                 })
@@ -371,12 +358,12 @@ pub async fn run(
         }
 
         Effect::ExportCsvFromCache {
-            dsn,
             run_id,
             file_name,
             columns,
             values,
             row_count,
+            ..
         } => {
             let tx = action_tx.clone();
             let exporter = Arc::clone(cached_result_exporter);
@@ -390,7 +377,6 @@ pub async fn run(
                     match result {
                         Ok(path) => {
                             tx.send(Action::CsvExportSucceeded {
-                                dsn,
                                 run_id,
                                 path: path.display().to_string(),
                                 row_count,
@@ -399,7 +385,7 @@ pub async fn run(
                             .ok();
                         }
                         Err(error) => {
-                            tx.send(Action::CsvExportFailed { dsn, run_id, error })
+                            tx.send(Action::CsvExportFailed { run_id, error })
                                 .await
                                 .ok();
                         }

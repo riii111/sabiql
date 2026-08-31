@@ -207,12 +207,11 @@ pub fn reduce_write(state: &mut AppState, action: &Action, now: Instant) -> Disp
         }
 
         Action::ExecuteWriteSucceeded {
-            dsn,
             run_id,
             affected_rows,
             diagnostics,
         } => {
-            if state.is_stale_query_run(dsn, *run_id) {
+            if !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -304,8 +303,8 @@ pub fn reduce_write(state: &mut AppState, action: &Action, now: Instant) -> Disp
             }
         }
 
-        Action::ExecuteWriteFailed { dsn, run_id, error } => {
-            if state.is_stale_query_run(dsn, *run_id) {
+        Action::ExecuteWriteFailed { run_id, error } => {
+            if !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -431,13 +430,8 @@ mod tests {
         affected_rows: usize,
         diagnostics: Vec<DatabaseDiagnostic>,
     ) -> Action {
-        let dsn = state
-            .session
-            .dsn()
-            .map_or_else(|| "postgres://localhost/test".to_string(), str::to_string);
         let run_id = begin_query_run(state);
         Action::ExecuteWriteSucceeded {
-            dsn,
             run_id,
             affected_rows,
             diagnostics,
@@ -446,11 +440,7 @@ mod tests {
 
     fn write_failed_action(state: &mut AppState, error: DbOperationError) -> Action {
         let run_id = begin_query_run(state);
-        Action::ExecuteWriteFailed {
-            dsn: "postgres://localhost/test".to_string(),
-            run_id,
-            error,
-        }
+        Action::ExecuteWriteFailed { run_id, error }
     }
 
     mod write_flow {
@@ -1297,7 +1287,6 @@ mod tests {
             let effects = dispatch_query(
                 &mut state,
                 &Action::ExecuteWriteSucceeded {
-                    dsn: "mysql://localhost/test".to_string(),
                     run_id,
                     affected_rows: 0,
                     diagnostics: Vec::new(),
@@ -1423,7 +1412,6 @@ mod tests {
             let effects = dispatch_query(
                 &mut state,
                 &Action::ExecuteWriteSucceeded {
-                    dsn: "postgres://localhost/test".to_string(),
                     run_id: old_run_id,
                     affected_rows: 1,
                     diagnostics: Vec::new(),

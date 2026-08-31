@@ -37,13 +37,8 @@ pub(super) fn reduce_sqlite_diagnostics(
             state.modal.set_mode(InputMode::Normal);
             DispatchResult::handled_with(vec![Effect::CancelSqliteDiagnostics])
         }
-        Action::SqliteDiagnosticsCoreLoaded {
-            dsn,
-            run_id,
-            snapshot,
-        } => {
-            if !state.session.dsn_matches(dsn) || !state.sqlite_diagnostics.is_current_run(*run_id)
-            {
+        Action::SqliteDiagnosticsCoreLoaded { run_id, snapshot } => {
+            if !state.sqlite_diagnostics.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
             state
@@ -52,12 +47,10 @@ pub(super) fn reduce_sqlite_diagnostics(
             DispatchResult::handled()
         }
         Action::SqliteDiagnosticsQuickCheckLoaded {
-            dsn,
             run_id,
             quick_check,
         } => {
-            if !state.session.dsn_matches(dsn) || !state.sqlite_diagnostics.is_current_run(*run_id)
-            {
+            if !state.sqlite_diagnostics.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
             state
@@ -234,7 +227,6 @@ mod tests {
         reduce_sqlite_diagnostics(
             &mut state,
             &Action::SqliteDiagnosticsQuickCheckLoaded {
-                dsn: "sqlite:///tmp/app.db".to_string(),
                 run_id: run_id + 1,
                 quick_check: DiagnosticField::ok("ok"),
             },

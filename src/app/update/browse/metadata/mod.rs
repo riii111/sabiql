@@ -127,13 +127,13 @@ mod tests {
         #[test]
         fn stale_metadata_loaded_does_not_replace_current_state() {
             let mut state = state_with_dsn("postgres://localhost/new");
-            let run_id = state.session.begin_metadata_refresh();
+            let stale_run_id = state.session.begin_metadata_refresh();
+            let _current_run_id = state.session.begin_metadata_refresh();
 
             let effects = dispatch_metadata(
                 &mut state,
                 &Action::MetadataLoaded {
-                    dsn: "postgres://localhost/old".to_string(),
-                    run_id,
+                    run_id: stale_run_id,
                     metadata: metadata_with_users(),
                 },
                 Instant::now(),
@@ -206,7 +206,6 @@ mod tests {
             dispatch_metadata(
                 &mut state,
                 &Action::MetadataFailed {
-                    dsn: "postgres://localhost/test".to_string(),
                     run_id: metadata_run_id,
                     error: DbOperationError::PermissionDenied("denied".to_string()),
                 },
@@ -981,11 +980,7 @@ mod tests {
 
         fn metadata_loaded_action(state: &mut AppState, metadata: Arc<DatabaseMetadata>) -> Action {
             let run_id = state.session.begin_metadata_refresh();
-            Action::MetadataLoaded {
-                dsn: "postgres://localhost/test".to_string(),
-                run_id,
-                metadata,
-            }
+            Action::MetadataLoaded { run_id, metadata }
         }
 
         #[test]
@@ -1020,7 +1015,6 @@ mod tests {
             let effects = dispatch_metadata(
                 &mut state,
                 &Action::MetadataLoaded {
-                    dsn: "sqlite:///tmp/test.db".to_string(),
                     run_id: metadata_run_id,
                     metadata: make_metadata(vec![("public", "orders")]),
                 },

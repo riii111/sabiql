@@ -157,12 +157,11 @@ pub fn reduce_pagination(state: &mut AppState, action: &Action, now: Instant) ->
         }
 
         Action::CsvExportSucceeded {
-            dsn,
             run_id,
             path,
             row_count,
         } => {
-            if state.is_stale_query_run(dsn, *run_id) {
+            if !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -178,8 +177,8 @@ pub fn reduce_pagination(state: &mut AppState, action: &Action, now: Instant) ->
             DispatchResult::handled_with(vec![Effect::OpenFolder { path: folder }])
         }
 
-        Action::CsvExportFailed { dsn, run_id, error } => {
-            if state.is_stale_query_run(dsn, *run_id) {
+        Action::CsvExportFailed { run_id, error } => {
+            if !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -260,7 +259,6 @@ mod tests {
     fn csv_succeeded_action(state: &mut AppState, path: &str, row_count: Option<usize>) -> Action {
         let run_id = begin_query_run(state);
         Action::CsvExportSucceeded {
-            dsn: "postgres://localhost/test".to_string(),
             run_id,
             path: path.to_string(),
             row_count,
@@ -269,11 +267,7 @@ mod tests {
 
     fn csv_failed_action(state: &mut AppState, error: DbOperationError) -> Action {
         let run_id = begin_query_run(state);
-        Action::CsvExportFailed {
-            dsn: "postgres://localhost/test".to_string(),
-            run_id,
-            error,
-        }
+        Action::CsvExportFailed { run_id, error }
     }
 
     fn preview_result_with_two_columns(row_count: usize) -> Arc<QueryResult> {

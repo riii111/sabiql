@@ -18,14 +18,13 @@ pub(super) fn reduce_loading(
     now: Instant,
 ) -> DispatchResult {
     match action {
-        Action::MetadataLoaded {
-            dsn,
-            run_id,
-            metadata,
-        } => {
-            if !state.session.dsn_matches(dsn) || !state.session.is_current_metadata_run(*run_id) {
+        Action::MetadataLoaded { run_id, metadata } => {
+            if !state.session.is_current_metadata_run(*run_id) {
                 return DispatchResult::handled();
             }
+            let Some(dsn) = state.session.dsn().map(String::from) else {
+                return DispatchResult::handled();
+            };
 
             let has_tables = !metadata.table_summaries.is_empty();
             state.session.mark_connected(Arc::clone(metadata));
@@ -58,7 +57,7 @@ pub(super) fn reduce_loading(
                     ));
                     let detail_run_id = state.session.begin_table_detail_run();
                     effects.push(Effect::FetchTableDetail {
-                        dsn: dsn.clone(),
+                        dsn,
                         schema: state.query.pagination.schema().to_string(),
                         table: state.query.pagination.table().to_string(),
                         generation,
@@ -91,13 +90,10 @@ pub(super) fn reduce_loading(
             DispatchResult::handled_with(effects)
         }
         Action::EffectiveUserLoaded {
-            dsn,
             run_id,
             effective_user,
         } => {
-            if !state.session.dsn_matches(dsn)
-                || !state.session.is_current_effective_user_run(*run_id)
-            {
+            if !state.session.is_current_effective_user_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -106,8 +102,8 @@ pub(super) fn reduce_loading(
                 .mark_effective_user_loaded(effective_user.clone());
             DispatchResult::handled()
         }
-        Action::MetadataFailed { dsn, run_id, error } => {
-            if !state.session.dsn_matches(dsn) || !state.session.is_current_metadata_run(*run_id) {
+        Action::MetadataFailed { run_id, error } => {
+            if !state.session.is_current_metadata_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -193,9 +189,8 @@ mod tests {
         (generation, run_id)
     }
 
-    fn metadata_failed(dsn: &str, run_id: u64) -> Action {
+    fn metadata_failed(run_id: u64) -> Action {
         Action::MetadataFailed {
-            dsn: dsn.to_string(),
             run_id,
             error: DbOperationError::PermissionDenied("metadata refresh failed".to_string()),
         }
@@ -205,9 +200,8 @@ mod tests {
     fn metadata_failure_terminates_initial_loading_detail() {
         let mut state = connected_state(DatabaseType::PostgreSQL);
         let (generation, run_id) = loading_detail_and_metadata_run(&mut state);
-        let dsn = state.session.dsn().expect("connected DSN").to_string();
 
-        let effects = reduce_loading(&mut state, &metadata_failed(&dsn, run_id), Instant::now())
+        let effects = reduce_loading(&mut state, &metadata_failed(run_id), Instant::now())
             .into_effects()
             .expect("metadata failure should be handled");
 
@@ -235,7 +229,7 @@ mod tests {
         )));
         let result_generation = state.query.result_generation();
 
-        reduce_loading(&mut state, &metadata_failed(dsn, run_id), Instant::now());
+        reduce_loading(&mut state, &metadata_failed(run_id), Instant::now());
 
         assert!(state.query.current_result().is_none());
         assert_eq!(state.query.result_generation(), result_generation + 1);
@@ -263,9 +257,7 @@ mod tests {
             TableDetailState::Loading
         ));
         let run_id = state.session.begin_metadata_refresh();
-        let dsn = state.session.dsn().expect("connected DSN").to_string();
-
-        let effects = reduce_loading(&mut state, &metadata_failed(&dsn, run_id), Instant::now())
+        let effects = reduce_loading(&mut state, &metadata_failed(run_id), Instant::now())
             .into_effects()
             .expect("metadata failure should be handled");
 
@@ -281,7 +273,6 @@ mod tests {
     fn metadata_failure_reveals_pending_preview_after_terminalizing_detail() {
         let mut state = connected_state(DatabaseType::SQLite);
         let (generation, run_id) = loading_detail_and_metadata_run(&mut state);
-        let dsn = state.session.dsn().expect("connected DSN").to_string();
         state.query.defer_preview(
             Arc::new(QueryResult::error(
                 "SELECT * FROM public.users".to_string(),
@@ -294,7 +285,7 @@ mod tests {
             false,
         );
 
-        let effects = reduce_loading(&mut state, &metadata_failed(&dsn, run_id), Instant::now())
+        let effects = reduce_loading(&mut state, &metadata_failed(run_id), Instant::now())
             .into_effects()
             .expect("metadata failure should be handled");
 
@@ -321,7 +312,6 @@ mod tests {
     fn reload_failure_terminates_detail_owned_by_metadata_refresh() {
         let mut state = connected_state(DatabaseType::PostgreSQL);
         let (generation, _) = loading_detail_and_metadata_run(&mut state);
-        let dsn = state.session.dsn().expect("connected DSN").to_string();
         state.query.defer_preview(
             Arc::new(QueryResult::error(
                 "SELECT * FROM public.users".to_string(),
@@ -339,7 +329,7 @@ mod tests {
             .expect("metadata reload should be handled");
         let run_id = state.session.metadata_generation();
 
-        let effects = reduce_loading(&mut state, &metadata_failed(&dsn, run_id), Instant::now())
+        let effects = reduce_loading(&mut state, &metadata_failed(run_id), Instant::now())
             .into_effects()
             .expect("metadata failure should be handled");
 
@@ -371,9 +361,7 @@ mod tests {
             .into_effects()
             .expect("metadata reload should be handled");
         let run_id = state.session.metadata_generation();
-        let dsn = state.session.dsn().expect("connected DSN").to_string();
-
-        let effects = reduce_loading(&mut state, &metadata_failed(&dsn, run_id), Instant::now())
+        let effects = reduce_loading(&mut state, &metadata_failed(run_id), Instant::now())
             .into_effects()
             .expect("metadata failure should be handled");
 
@@ -399,15 +387,10 @@ mod tests {
         let generation = state
             .session
             .select_table("public", "orders", &mut state.query);
-        let dsn = state.session.dsn().expect("connected DSN").to_string();
 
-        let effects = reduce_loading(
-            &mut state,
-            &metadata_failed(&dsn, stale_run_id),
-            Instant::now(),
-        )
-        .into_effects()
-        .expect("stale metadata failure should be handled");
+        let effects = reduce_loading(&mut state, &metadata_failed(stale_run_id), Instant::now())
+            .into_effects()
+            .expect("stale metadata failure should be handled");
 
         assert!(effects.is_empty());
         assert!(matches!(
@@ -429,15 +412,10 @@ mod tests {
             .select_table("main", "orders", &mut state.query);
         let detail = table::minimal("main", "orders");
         assert!(state.session.set_table_detail(detail, generation));
-        let dsn = state.session.dsn().expect("connected DSN").to_string();
 
-        let effects = reduce_loading(
-            &mut state,
-            &metadata_failed(&dsn, stale_run_id),
-            Instant::now(),
-        )
-        .into_effects()
-        .expect("stale metadata failure should be handled");
+        let effects = reduce_loading(&mut state, &metadata_failed(stale_run_id), Instant::now())
+            .into_effects()
+            .expect("stale metadata failure should be handled");
 
         assert!(effects.is_empty());
         assert!(matches!(
@@ -468,11 +446,10 @@ mod tests {
             .into_effects()
             .expect("metadata reload should be handled");
         let metadata_run_id = state.session.metadata_generation();
-        let dsn = state.session.dsn().expect("connected DSN").to_string();
 
         let effects = reduce_loading(
             &mut state,
-            &metadata_failed(&dsn, metadata_run_id),
+            &metadata_failed(metadata_run_id),
             Instant::now(),
         )
         .into_effects()
@@ -492,15 +469,10 @@ mod tests {
         let mut state = connected_state(DatabaseType::MySQL);
         let (generation, stale_run_id) = loading_detail_and_metadata_run(&mut state);
         let current_run_id = state.session.begin_metadata_refresh();
-        let dsn = state.session.dsn().expect("connected DSN").to_string();
 
-        let effects = reduce_loading(
-            &mut state,
-            &metadata_failed(&dsn, stale_run_id),
-            Instant::now(),
-        )
-        .into_effects()
-        .expect("stale metadata failure should be handled");
+        let effects = reduce_loading(&mut state, &metadata_failed(stale_run_id), Instant::now())
+            .into_effects()
+            .expect("stale metadata failure should be handled");
 
         assert!(effects.is_empty());
         assert!(matches!(

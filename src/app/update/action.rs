@@ -433,12 +433,10 @@ pub enum Action {
     // SQLite diagnostics
     RunSqliteDiagnosticsQuickCheck,
     SqliteDiagnosticsCoreLoaded {
-        dsn: String,
         run_id: u64,
         snapshot: Box<SqliteDiagnosticsSnapshot>,
     },
     SqliteDiagnosticsQuickCheckLoaded {
-        dsn: String,
         run_id: u64,
         quick_check: DiagnosticField,
     },
@@ -458,17 +456,14 @@ pub enum Action {
     // Database structure
     ReloadMetadata,
     MetadataLoaded {
-        dsn: String,
         run_id: u64,
         metadata: Arc<DatabaseMetadata>,
     },
     MetadataFailed {
-        dsn: String,
         run_id: u64,
         error: DbOperationError,
     },
     EffectiveUserLoaded {
-        dsn: String,
         run_id: u64,
         effective_user: Option<String>,
     },
@@ -564,7 +559,6 @@ pub enum Action {
     ExplainAnalyzeConfirm,
     ExplainAnalyzeCancel,
     ExplainCompleted {
-        dsn: String,
         database_type: DatabaseType,
         database_generation: u64,
         run_id: u64,
@@ -574,7 +568,6 @@ pub enum Action {
         execution_time_ms: u64,
     },
     ExplainFailed {
-        dsn: String,
         database_generation: u64,
         run_id: u64,
         error: DbOperationError,
@@ -599,13 +592,11 @@ pub enum Action {
         generation: u64,
     },
     ExecuteWriteSucceeded {
-        dsn: String,
         run_id: u64,
         affected_rows: usize,
         diagnostics: Vec<DatabaseDiagnostic>,
     },
     ExecuteWriteFailed {
-        dsn: String,
         run_id: u64,
         error: DbOperationError,
     },
@@ -649,13 +640,11 @@ pub enum Action {
     // CSV export
     RequestCsvExport,
     CsvExportSucceeded {
-        dsn: String,
         run_id: u64,
         path: String,
         row_count: Option<usize>,
     },
     CsvExportFailed {
-        dsn: String,
         run_id: u64,
         error: DbOperationError,
     },
@@ -982,7 +971,6 @@ mod tests {
     fn completion_actions_keep_feature_requirements() {
         assert_eq!(
             Action::ExplainCompleted {
-                dsn: "dsn".to_string(),
                 database_type: DatabaseType::PostgreSQL,
                 database_generation: 0,
                 run_id: 1,
@@ -996,7 +984,6 @@ mod tests {
         );
         assert_eq!(
             Action::ExplainFailed {
-                dsn: "dsn".to_string(),
                 database_generation: 0,
                 run_id: 1,
                 error: DbOperationError::QueryFailed("error".to_string()),
@@ -1007,7 +994,6 @@ mod tests {
         );
         assert_eq!(
             Action::SqliteDiagnosticsCoreLoaded {
-                dsn: "sqlite://test.db".to_string(),
                 run_id: 1,
                 snapshot: Box::new(SqliteDiagnosticsSnapshot::default()),
             }
