@@ -55,7 +55,7 @@ impl ConnectionErrorInfo {
                 (summary, hint, false)
             }
             DbOperationError::UnsupportedOperationWithSqliteKind {
-                kind: SqliteCompatibilityKind::SafeMode | SqliteCompatibilityKind::TableList,
+                kind: SqliteCompatibilityKind::SafeMode,
                 ..
             } => (
                 "SQLite 3.41.1 or later required",
@@ -442,23 +442,6 @@ mod tests {
                 ));
 
             assert_eq!(info.summary(), "Connection failed");
-        }
-
-        #[test]
-        fn from_db_operation_error_classifies_typed_sqlite_table_list_requirement() {
-            let info = ConnectionErrorInfo::from_db_operation_error(
-                &DbOperationError::UnsupportedOperationWithSqliteKind {
-                    kind: SqliteCompatibilityKind::TableList,
-                    details: "upgrade sqlite3 to version 3.41.1 or later".to_string(),
-                },
-            );
-
-            assert_eq!(info.summary(), "SQLite 3.41.1 or later required");
-            assert_eq!(info.hint(), "Upgrade sqlite3 to use SQLite safely");
-            assert_eq!(
-                info.masked_details(),
-                "upgrade sqlite3 to version 3.41.1 or later"
-            );
         }
 
         #[test]

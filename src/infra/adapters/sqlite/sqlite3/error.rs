@@ -53,11 +53,6 @@ fn classify_by_stderr(details: &str) -> DbOperationError {
         return safe_mode_required_error(details);
     }
 
-    // Keep table-list fallback in SqliteAdapter::list_tables working.
-    if lower.contains("pragma_table_list") {
-        return DbOperationError::QueryFailed(details.to_string());
-    }
-
     if is_locked(&lower) {
         return DbOperationError::LockTimeout(details.to_string());
     }
@@ -206,10 +201,6 @@ mod tests {
         #[case(
             "Error: no such trigger: missing_trigger",
             ClassifiedKind::ObjectMissing
-        )]
-        #[case(
-            "Error: in prepare, no such table: main.pragma_table_list",
-            ClassifiedKind::QueryFailed
         )]
         fn classifies_sqlite_stderr(#[case] input: &str, #[case] expected: ClassifiedKind) {
             let error = classify_query_error(input);

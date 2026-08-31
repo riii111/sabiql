@@ -59,7 +59,6 @@ impl UnsupportedOperationKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SqliteCompatibilityKind {
     SafeMode,
-    TableList,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

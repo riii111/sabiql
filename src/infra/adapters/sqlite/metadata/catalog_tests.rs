@@ -1,21 +1,7 @@
 use crate::app::ports::outbound::{DbOperationError, MetadataProvider, SqliteCompatibilityKind};
 use crate::domain::{Schema, SqlitePathError, TableKind, TableKindInfo};
 
-use super::super::super::sqlite3::metadata::RawTable;
 use super::super::SqliteAdapter;
-use super::kind_info_for_raw_table;
-
-#[test]
-fn legacy_list_row_uses_sql_for_storage() {
-    let table: RawTable = serde_json::from_str(
-        r#"{"name":"settings","sql":"CREATE TABLE settings(id INTEGER PRIMARY KEY) WITHOUT ROWID;"}"#,
-    )
-    .unwrap();
-
-    let kind_info = kind_info_for_raw_table(&table);
-
-    assert!(kind_info.without_rowid);
-}
 
 mod metadata {
     use crate::adapters::test_support;

@@ -11,29 +11,15 @@ pub(in crate::adapters::sqlite) use raw::{
     RawBatchIndex, RawColumn, RawForeignKey, RawIndexColumn, RawNamedTableMetadata,
     RawPreviewMetadata, RawReferencedColumns, RawTable, RawTableKindInfo, RawTableMetadata,
 };
-use raw::{RawCatalog, RawJsonPayload, RawNamedJsonPayload, RawRowCount};
+use raw::{RawCatalog, RawJsonPayload, RawNamedJsonPayload};
 
 impl SqliteAdapter {
     pub(in crate::adapters::sqlite) async fn fetch_catalog_rows(
         &self,
         path: &str,
     ) -> Result<Vec<RawTable>, DbOperationError> {
-        match self
-            .execute_catalog_query(path, sql::user_tables_query())
+        self.execute_catalog_query(path, sql::user_tables_query())
             .await
-        {
-            Ok(tables) => Ok(tables),
-            Err(DbOperationError::QueryFailed(message))
-                if sql::is_table_list_unavailable(&message) =>
-            {
-                if self.has_virtual_tables(path).await? {
-                    return Err(sql::table_list_required_error());
-                }
-                self.execute_catalog_query(path, sql::legacy_user_tables_query())
-                    .await
-            }
-            Err(error) => Err(error),
-        }
     }
 
     pub(in crate::adapters::sqlite) async fn fetch_preview_metadata_rows(
@@ -82,14 +68,6 @@ impl SqliteAdapter {
             .collect()
     }
 
-    async fn has_virtual_tables(&self, path: &str) -> Result<bool, DbOperationError> {
-        let rows: Vec<RawRowCount> = self
-            .cli
-            .execute_json_read_only(path, sql::has_virtual_tables_query())
-            .await?;
-        Ok(rows.into_iter().next().is_some_and(|row| row.count > 0))
-    }
-
     async fn execute_json_payload<T: for<'de> Deserialize<'de>>(
         &self,
         path: &str,
@@ -123,8 +101,6 @@ fn row_count_fallback_mode<T>(
 
 #[cfg(test)]
 mod tests {
-    use crate::adapters::test_support;
-
     use super::*;
 
     #[test]
@@ -137,25 +113,5 @@ mod tests {
             row_count_fallback_mode(sql::TableMetadataQueryMode::Full, &result),
             Some(sql::TableMetadataQueryMode::FullWithoutRowCount)
         );
-    }
-
-    #[tokio::test]
-    async fn detects_virtual_tables_in_schema() {
-        let (_dir, dsn) =
-            test_support::make_sqlite_db("CREATE VIRTUAL TABLE notes_fts USING fts5(body);");
-        let adapter = SqliteAdapter::new();
-        let path = SqliteAdapter::path_from_dsn(&dsn).unwrap();
-
-        assert!(adapter.has_virtual_tables(path).await.unwrap());
-    }
-
-    #[tokio::test]
-    async fn simple_schema_has_no_virtual_tables() {
-        let (_dir, dsn) =
-            test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-        let adapter = SqliteAdapter::new();
-        let path = SqliteAdapter::path_from_dsn(&dsn).unwrap();
-
-        assert!(!adapter.has_virtual_tables(path).await.unwrap());
     }
 }
