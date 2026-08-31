@@ -127,7 +127,7 @@ pub enum DbOperationError {
     #[error("Query failed")]
     QueryFailed(String),
     #[error("CSV export failed")]
-    ExportIo(#[source] ExportIoSource),
+    ExportIo(#[source] Arc<std::io::Error>),
     #[error("Preview exceeded its byte budget")]
     PreviewSizeExceeded(String),
     #[error("Query failed after a change")]
@@ -172,29 +172,6 @@ pub enum DbOperationError {
     Timeout(String),
     #[error("Operation canceled")]
     Canceled(String),
-}
-
-#[derive(Clone)]
-pub struct ExportIoSource(Arc<std::io::Error>);
-
-impl ExportIoSource {
-    pub fn new(error: std::io::Error) -> Self {
-        Self(Arc::new(error))
-    }
-}
-
-impl std::ops::Deref for ExportIoSource {
-    type Target = std::io::Error;
-
-    fn deref(&self) -> &Self::Target {
-        self.0.as_ref()
-    }
-}
-
-impl fmt::Display for ExportIoSource {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
 }
 
 impl DbOperationError {
@@ -427,7 +404,7 @@ mod tests {
         #[case(DbOperationError::LockTimeout("boom".to_string()))]
         #[case(DbOperationError::ObjectMissing("boom".to_string()))]
         #[case(DbOperationError::QueryFailed("boom".to_string()))]
-        #[case(DbOperationError::ExportIo(ExportIoSource::new(std::io::Error::other("boom"))))]
+        #[case(DbOperationError::ExportIo(Arc::new(std::io::Error::other("boom"))))]
         #[case(DbOperationError::UnsupportedOperation("boom".to_string()))]
         #[case(DbOperationError::UnsupportedOperationWithKind {
             kind: UnsupportedOperationKind::ClientVersion,
@@ -590,7 +567,7 @@ mod tests {
 
         #[test]
         fn export_io_uses_export_guidance_and_preserves_source() {
-            let error = DbOperationError::ExportIo(ExportIoSource::new(std::io::Error::other(
+            let error = DbOperationError::ExportIo(Arc::new(std::io::Error::other(
                 "password=mysecret host=localhost",
             )));
 

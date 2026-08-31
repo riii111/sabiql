@@ -1,5 +1,6 @@
 use std::path::Path;
 use std::process::{ExitStatus, Stdio};
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde::de::DeserializeOwned;
@@ -8,7 +9,7 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::adapters::csv_export::CsvOutputError;
-use crate::app::ports::outbound::{DbOperationError, ExportIoSource, SqliteCompatibilityKind};
+use crate::app::ports::outbound::{DbOperationError, SqliteCompatibilityKind};
 
 use super::super::path_validation;
 use super::error::{classify_cli_spawn_error, classify_query_error};
@@ -206,7 +207,7 @@ impl SqliteCli {
             Ok(file) => file,
             Err(error) => {
                 kill_and_wait(&mut child).await;
-                return Err(DbOperationError::ExportIo(ExportIoSource::new(error)));
+                return Err(DbOperationError::ExportIo(Arc::new(error)));
             }
         };
         let mut writer = tokio::io::BufWriter::new(file);
