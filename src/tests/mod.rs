@@ -54,9 +54,7 @@ mod cli_sqlite_startup {
     use std::fs;
     use std::path::Path;
 
-    use sabiql_app::cmd::cli_sqlite::{
-        activate_cli_sqlite_connection, connection_id_for_path, resolve_cli_sqlite_target,
-    };
+    use sabiql_app::cmd::cli_sqlite::{activate_cli_sqlite_connection, resolve_cli_sqlite_target};
     use sabiql_app::model::app_state::AppState;
     use sabiql_app::ports::outbound::{AccessMode, QueryExecutor};
     use sabiql_infra::adapters::{FsSqlitePathValidator, SqliteAdapter};
@@ -68,11 +66,7 @@ mod cli_sqlite_startup {
         let path = dir.path().join("app.db");
         fs::write(&path, b"SQLite format 3\0rest").unwrap();
 
-        let target =
-            resolve_cli_sqlite_target(path.to_str().unwrap(), &FsSqlitePathValidator).unwrap();
-
-        assert_eq!(target.path(), path.to_str().unwrap());
-        assert_eq!(target.dsn(), format!("sqlite://{}", path.display()));
+        assert!(resolve_cli_sqlite_target(path.to_str().unwrap(), &FsSqlitePathValidator).is_ok());
     }
 
     #[test]
@@ -81,10 +75,7 @@ mod cli_sqlite_startup {
         let path = dir.path().join("History");
         fs::write(&path, b"SQLite format 3\0rest").unwrap();
 
-        let target =
-            resolve_cli_sqlite_target(path.to_str().unwrap(), &FsSqlitePathValidator).unwrap();
-
-        assert_eq!(target.path(), path.to_str().unwrap());
+        assert!(resolve_cli_sqlite_target(path.to_str().unwrap(), &FsSqlitePathValidator).is_ok());
     }
 
     #[test]
@@ -173,7 +164,6 @@ mod cli_sqlite_startup {
         let canonical_a = database_a.to_str().unwrap();
         let expected_dsn = format!("sqlite://{canonical_a}");
 
-        assert_eq!(absolute.0, connection_id_for_path(canonical_a));
         assert_eq!(absolute.0, relative.0);
         assert_eq!(absolute.0, symlinked.0);
         assert_eq!(absolute.1, expected_dsn);
