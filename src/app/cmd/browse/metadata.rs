@@ -203,11 +203,12 @@ async fn prefetch_table_detail(
 
     if already_cached {
         action_tx
-            .send(Action::TableDetailAlreadyCached {
+            .send(Action::TableDetailCached {
                 dsn,
                 run_id,
                 schema,
                 table,
+                detail: None,
             })
             .await
             .ok();
@@ -230,7 +231,7 @@ async fn prefetch_table_detail(
                     run_id,
                     schema,
                     table,
-                    detail: Box::new(detail),
+                    detail: Some(Box::new(detail)),
                 })
                 .await
                 .ok();
@@ -594,8 +595,61 @@ mod tests {
 
             let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
-                matches!(action, Action::TableDetailCached { .. }),
+                matches!(
+                    action,
+                    Action::TableDetailCached {
+                        detail: Some(_),
+                        ..
+                    }
+                ),
                 "expected TableDetailCached, got {action:?}"
+            );
+        }
+
+        #[tokio::test]
+        async fn cached_table_detail_returns_empty_outcome() {
+            let mut mock_provider = MockMetadataProvider::new();
+            mock_provider.expect_fetch_table_detail().never();
+            mock_provider.expect_fetch_table_columns_and_fks().never();
+
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner(
+                Arc::new(mock_provider),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                tx,
+            );
+            let mut completion_engine = CompletionEngine::new();
+            completion_engine.cache_table_detail("public.users".to_string(), sample_table());
+
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::PrefetchTableColumnsAndFks {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 3,
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(completion_engine),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
+
+            let action = run.actions.into_iter().next().expect("action dispatched");
+            assert!(
+                matches!(
+                    action,
+                    Action::TableDetailCached {
+                        ref dsn,
+                        run_id: 3,
+                        detail: None,
+                        ..
+                    } if dsn == "dsn://test"
+                ),
+                "expected cache-hit TableDetailCached, got {action:?}"
             );
         }
     }

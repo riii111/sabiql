@@ -99,7 +99,6 @@ pub(super) fn reduce_prefetch(
             | Action::PrefetchTableDetail { .. }
             | Action::TableDetailCached { .. }
             | Action::TableDetailCacheFailed { .. }
-            | Action::TableDetailAlreadyCached { .. }
     ) && reject_pending_mysql_connection_probe(state)
     {
         return DispatchResult::handled();
@@ -233,10 +232,13 @@ pub(super) fn reduce_prefetch(
                 .table_prefetch
                 .complete_table_prefetch(&qualified_name);
 
-            let mut effects = vec![Effect::CacheTableInCompletionEngine {
-                qualified_name,
-                table: detail.clone(),
-            }];
+            let mut effects = Vec::new();
+            if let Some(detail) = detail {
+                effects.push(Effect::CacheTableInCompletionEngine {
+                    qualified_name,
+                    table: detail.clone(),
+                });
+            }
 
             if state.table_prefetch.has_pending_prefetch() {
                 effects.push(Effect::SchedulePrefetchQueueProcessing { run_id: *run_id });
@@ -294,36 +296,6 @@ pub(super) fn reduce_prefetch(
             DispatchResult::handled_with(effects)
         }
 
-        Action::TableDetailAlreadyCached {
-            dsn,
-            run_id,
-            schema,
-            table,
-        } => {
-            if !state.session.dsn_matches(dsn)
-                || !state.table_prefetch.is_current_prefetch_run(*run_id)
-            {
-                return DispatchResult::handled();
-            }
-            let qualified_name = format!("{schema}.{table}");
-            state
-                .table_prefetch
-                .complete_table_prefetch(&qualified_name);
-
-            let mut effects = Vec::new();
-
-            if state.table_prefetch.has_pending_prefetch() {
-                effects.push(Effect::SchedulePrefetchQueueProcessing { run_id: *run_id });
-            }
-
-            if state.table_prefetch.prefetch_tracks_er() {
-                effects.extend(check_er_completion(state));
-            } else if state.modal.active_mode() == InputMode::SqlModal {
-                effects.push(Effect::TriggerCompletion);
-            }
-
-            DispatchResult::handled_with(effects)
-        }
         _ => DispatchResult::pass(),
     }
 }

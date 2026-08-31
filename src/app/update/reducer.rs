@@ -1878,7 +1878,7 @@ mod tests {
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    detail: make_test_table(),
+                    detail: Some(make_test_table()),
                 },
                 now,
                 &AppServices::stub(),
@@ -1909,7 +1909,7 @@ mod tests {
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    detail: make_test_table(),
+                    detail: Some(make_test_table()),
                 },
                 now,
                 &AppServices::stub(),
@@ -3134,17 +3134,23 @@ mod tests {
 
             let effects = reduce(
                 &mut state,
-                Action::TableDetailAlreadyCached {
+                Action::TableDetailCached {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
+                    detail: None,
                 },
                 now,
                 &AppServices::stub(),
             );
 
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+            assert!(
+                !effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::CacheTableInCompletionEngine { .. }))
+            );
             assert!(effects.iter().any(|e| {
                 matches!(e, Effect::DispatchActions(actions)
                     if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache)))
@@ -3172,11 +3178,12 @@ mod tests {
             );
             let effects = reduce(
                 &mut state,
-                Action::TableDetailAlreadyCached {
+                Action::TableDetailCached {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
+                    detail: None,
                 },
                 now,
                 &AppServices::stub(),

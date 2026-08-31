@@ -483,7 +483,7 @@ pub enum Action {
         run_id: u64,
         schema: String,
         table: String,
-        detail: Box<Table>,
+        detail: Option<Box<Table>>,
     },
     TableDetailCacheFailed {
         dsn: String,
@@ -491,12 +491,6 @@ pub enum Action {
         schema: String,
         table: String,
         error: DbOperationError,
-    },
-    TableDetailAlreadyCached {
-        dsn: String,
-        run_id: u64,
-        schema: String,
-        table: String,
     },
     StartErPrefetchAll,
     StartErPrefetchScoped {
