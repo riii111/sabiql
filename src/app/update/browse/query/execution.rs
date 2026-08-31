@@ -1669,7 +1669,6 @@ mod tests {
                     run_id: old_er_run_id,
                     new_metadata: Arc::new(DatabaseMetadata::new("new".to_string())),
                     stale_tables: vec![],
-                    added_tables: vec![],
                     removed_tables: vec![],
                     missing_in_cache: vec![],
                     new_signatures: std::collections::HashMap::new(),
