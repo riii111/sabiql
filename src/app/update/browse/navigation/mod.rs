@@ -21,7 +21,7 @@ pub(super) fn explorer_item_count(state: &AppState) -> usize {
     state.tables().len()
 }
 
-pub(crate) fn dispatch_navigation(
+pub(in crate::update) fn dispatch_navigation(
     state: &mut AppState,
     action: &Action,
     services: &AppServices,

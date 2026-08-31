@@ -21,7 +21,7 @@ use crate::update::input::command::action_for_command;
 
 use super::write;
 
-pub(crate) fn reduce_execution(
+pub(in crate::update) fn reduce_execution(
     state: &mut AppState,
     action: &Action,
     now: Instant,

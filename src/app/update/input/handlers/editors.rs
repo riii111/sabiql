@@ -4,7 +4,7 @@ use crate::update::input::keybindings;
 use crate::update::input::keybindings::{Key, KeyCombo};
 use crate::update::input::keymap;
 
-pub(crate) fn handle_cell_edit_keys(combo: KeyCombo) -> Action {
+pub(super) fn handle_cell_edit_keys(combo: KeyCombo) -> Action {
     use crate::update::action::CursorMove;
     if let Some(action) = keymap::resolve(&combo, keybindings::CELL_EDIT_KEYS) {
         return action;
@@ -40,7 +40,7 @@ pub(crate) fn handle_cell_edit_keys(combo: KeyCombo) -> Action {
     }
 }
 
-pub(crate) fn handle_command_line_mode_with_policy(
+pub(super) fn handle_command_line_mode_with_policy(
     combo: KeyCombo,
     feature_policy: &FeaturePolicy,
 ) -> Action {

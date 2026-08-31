@@ -13,6 +13,10 @@ use crossterm::{
     clippy::print_stderr,
     reason = "panic hook must write to stderr after terminal restore"
 )]
+#[allow(
+    clippy::redundant_pub_crate,
+    reason = "the binary entrypoint calls this through its private panic hook module"
+)]
 pub(super) fn install_hooks() -> Result<()> {
     let hook_builder = color_eyre::config::HookBuilder::default().display_env_section(false);
     let (panic_hook, eyre_hook) = hook_builder.into_hooks();

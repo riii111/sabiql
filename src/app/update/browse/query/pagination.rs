@@ -91,7 +91,7 @@ fn dispatch_rerunnable_csv_export(
     DispatchResult::handled()
 }
 
-pub(crate) fn reduce_pagination(
+pub(in crate::update) fn reduce_pagination(
     state: &mut AppState,
     action: &Action,
     now: Instant,

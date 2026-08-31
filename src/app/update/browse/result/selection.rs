@@ -24,7 +24,7 @@ fn ensure_cell_visible(state: &mut AppState) {
     }
 }
 
-pub(crate) fn reduce_selection(
+pub(in crate::update) fn reduce_selection(
     state: &mut AppState,
     action: &Action,
     _now: Instant,

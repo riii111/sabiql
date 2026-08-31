@@ -9,7 +9,7 @@ use crate::update::action::{Action, ModalKind, ScrollAmount, ScrollDirection, Sc
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::clipboard_unavailable;
 
-pub(crate) fn reduce_row_detail(
+pub(in crate::update) fn reduce_row_detail(
     state: &mut AppState,
     action: &Action,
     now: Instant,

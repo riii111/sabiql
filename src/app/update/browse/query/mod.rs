@@ -11,7 +11,7 @@ use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 
-pub(crate) fn dispatch_query(
+pub(in crate::update) fn dispatch_query(
     state: &mut AppState,
     action: &Action,
     now: Instant,

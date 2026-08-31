@@ -10,12 +10,12 @@ use crate::ports::outbound::ErDiagramExporter;
 use crate::update::action::{Action, ErDiagramInfo};
 
 #[derive(Default)]
-pub(crate) struct SmartErRefreshTaskOwner {
+pub(in crate::cmd) struct SmartErRefreshTaskOwner {
     active: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl SmartErRefreshTaskOwner {
-    pub(crate) async fn replace<F>(&self, task: F)
+    pub(in crate::cmd) async fn replace<F>(&self, task: F)
     where
         F: Future<Output = ()> + Send + 'static,
     {
@@ -27,13 +27,13 @@ impl SmartErRefreshTaskOwner {
             .expect("Smart ER refresh task lock poisoned") = Some(task);
     }
 
-    pub(crate) async fn cancel(&self) {
+    pub(in crate::cmd) async fn cancel(&self) {
         if let Some(task) = self.abort() {
             let _ = task.await;
         }
     }
 
-    pub(crate) fn abort(&self) -> Option<JoinHandle<()>> {
+    pub(in crate::cmd) fn abort(&self) -> Option<JoinHandle<()>> {
         let task = self
             .active
             .lock()
@@ -59,7 +59,7 @@ impl Drop for SmartErRefreshTaskOwner {
     }
 }
 
-pub(crate) fn spawn_er_diagram_task(
+pub(in crate::cmd) fn spawn_er_diagram_task(
     exporter: Arc<dyn ErDiagramExporter>,
     tables: Vec<ErTableInfo>,
     run_id: u64,

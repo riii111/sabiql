@@ -1,9 +1,14 @@
+#![allow(
+    clippy::redundant_pub_crate,
+    reason = "cache helpers are crate-visible through the config facade but the implementation module stays internal"
+)]
+
 use std::fs;
 use std::io;
 use std::path::PathBuf;
 
 #[derive(Debug, thiserror::Error)]
-pub enum CacheDirError {
+pub(crate) enum CacheDirError {
     #[error("cache directory is unavailable")]
     BaseDirUnavailable,
     #[error("I/O error: {0}")]

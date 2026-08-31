@@ -1,3 +1,8 @@
+#![allow(
+    clippy::redundant_pub_crate,
+    reason = "metadata dispatch is re-exported through the crate-local update facade and used by AppState tests"
+)]
+
 use std::time::Instant;
 
 mod er_neighbors;

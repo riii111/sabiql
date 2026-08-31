@@ -46,7 +46,7 @@ const NODE_TYPES: &[&str] = &[
     "WindowAgg",
 ];
 
-pub(crate) fn highlight_plan_line(raw: &str, theme: &ThemePalette) -> Line<'static> {
+pub(super) fn highlight_plan_line(raw: &str, theme: &ThemePalette) -> Line<'static> {
     let trimmed = raw.trim_start();
     // ASCII-only: PostgreSQL EXPLAIN output uses space indentation, never multibyte
     let leading_spaces = raw.len() - trimmed.len();

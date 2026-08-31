@@ -16,7 +16,7 @@ use crate::primitives::atoms::apply_yank_flash_masked;
 use crate::primitives::utils::text_utils::truncate_to_width_with;
 use crate::theme::ThemePalette;
 
-pub(crate) fn render(
+pub(super) fn render(
     frame: &mut Frame,
     area: Rect,
     state: &AppState,

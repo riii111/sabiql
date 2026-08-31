@@ -11,7 +11,7 @@ use crate::model::app_state::AppState;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub(crate) fn dispatch_explain(
+pub(in crate::update) fn dispatch_explain(
     state: &mut AppState,
     action: &Action,
     now: Instant,

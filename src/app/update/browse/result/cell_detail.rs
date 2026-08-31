@@ -11,7 +11,7 @@ use crate::update::action::{Action, InputTarget, ModalKind, ScrollDirection, Scr
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{clipboard_unavailable, find_text_matches};
 
-pub(crate) fn reduce_cell_detail(
+pub(in crate::update) fn reduce_cell_detail(
     state: &mut AppState,
     action: &Action,
     now: Instant,

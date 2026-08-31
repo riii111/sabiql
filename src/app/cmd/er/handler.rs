@@ -24,7 +24,7 @@ struct GenerateErDiagramRequest {
     browser: Option<String>,
 }
 
-pub(crate) async fn run(
+pub(in crate::cmd) async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     er_exporter: &Arc<dyn ErDiagramExporter>,
@@ -91,7 +91,7 @@ pub(crate) async fn run(
     }
 }
 
-pub(crate) fn smart_refresh_task(
+pub(in crate::cmd) fn smart_refresh_task(
     action_tx: mpsc::Sender<Action>,
     metadata_provider: Arc<dyn MetadataProvider>,
     dsn: String,

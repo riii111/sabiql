@@ -1,3 +1,8 @@
+#![allow(
+    clippy::redundant_pub_crate,
+    reason = "crate-visible policy facade re-exports selected items from private implementation modules"
+)]
+
 mod diff;
 mod display;
 mod handling;

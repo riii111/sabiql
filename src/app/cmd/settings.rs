@@ -3,7 +3,7 @@ use tokio::sync::mpsc;
 use crate::ports::outbound::{AppSettings, SettingsStore};
 use crate::update::action::Action;
 
-pub(crate) async fn run(
+pub(in crate::cmd) async fn run(
     settings: AppSettings,
     action_tx: &mpsc::Sender<Action>,
     settings_store: &std::sync::Arc<dyn SettingsStore>,

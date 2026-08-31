@@ -1,3 +1,8 @@
+#![allow(
+    clippy::redundant_pub_crate,
+    reason = "config types and version helpers are crate-visible through the config facade but the implementation module stays internal"
+)]
+
 use serde::{Deserialize, Serialize};
 
 use crate::domain::connection::{
@@ -20,7 +25,7 @@ pub(crate) struct ConfigVersionCheck {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ConnectionConfigFile {
+pub(crate) struct ConnectionConfigFile {
     pub version: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
@@ -32,7 +37,7 @@ pub struct ConnectionConfigFile {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ConnectionConfigEntry {
+pub(crate) struct ConnectionConfigEntry {
     pub id: String,
     pub name: String,
     #[serde(default)]
