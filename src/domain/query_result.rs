@@ -393,6 +393,25 @@ mod tests {
         }
 
         #[test]
+        fn preserves_text_values_and_untyped_display() {
+            let text = "a\0bc".to_string();
+            let result = QueryResult::success(
+                "SELECT body".to_string(),
+                vec!["body".to_string()],
+                vec![vec![text.clone()]],
+                0,
+                QuerySource::Adhoc,
+            );
+
+            assert_eq!(result.values(), &[vec![QueryValue::text(text.clone())]]);
+            assert_eq!(
+                result.display_value_ref_at(0, 0).as_deref(),
+                Some(text.as_str())
+            );
+            assert_eq!(result.display_row_at(0), Some(vec![text]));
+        }
+
+        #[test]
         fn row_count_matches_rows_len() {
             let result = QueryResult::success(
                 "SELECT".to_string(),
