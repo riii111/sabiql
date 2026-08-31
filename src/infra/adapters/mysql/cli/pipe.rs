@@ -214,11 +214,21 @@ where
             trace_mysql_frame("receive resultset", frame.0.len());
             return Ok(frame);
         }
-        if stderr_closed {
-            let count = reader
-                .read(&mut chunk)
-                .await
-                .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+        let stdout_count = tokio::select! {
+            result = reader.read(&mut chunk) => Some(
+                result.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?,
+            ),
+            result = stderr.read(&mut stderr_chunk), if !stderr_closed => {
+                let count = result.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+                if count == 0 {
+                    stderr_closed = true;
+                } else {
+                    pending_stderr.extend_from_slice(&stderr_chunk[..count]);
+                }
+                None
+            }
+        };
+        if let Some(count) = stdout_count {
             if count == 0 {
                 finish_mysql_pipe_after_stdout_eof(stderr, child, pending_stderr).await?;
                 return Err(mysql_pipe_empty_response_or_error(
@@ -227,28 +237,6 @@ where
                 ));
             }
             pending.extend_from_slice(&chunk[..count]);
-        } else {
-            tokio::select! {
-                result = reader.read(&mut chunk) => {
-                    let count = result.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
-                    if count == 0 {
-                        finish_mysql_pipe_after_stdout_eof(stderr, child, pending_stderr).await?;
-                        return Err(mysql_pipe_empty_response_or_error(
-                            pending_stderr,
-                            client_packet_limit_bytes,
-                        ));
-                    }
-                    pending.extend_from_slice(&chunk[..count]);
-                }
-                result = stderr.read(&mut stderr_chunk) => {
-                    let count = result.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
-                    if count == 0 {
-                        stderr_closed = true;
-                    } else {
-                        pending_stderr.extend_from_slice(&stderr_chunk[..count]);
-                    }
-                }
-            }
         }
     }
 }
