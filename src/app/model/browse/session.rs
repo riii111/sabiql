@@ -636,8 +636,6 @@ impl BrowseSession {
     ) -> ConnectionCache {
         ConnectionCache {
             connection_dsn: self.dsn.clone(),
-            database_type: self.active_database_type(),
-            database: self.active_database().map(str::to_string),
             metadata: self.metadata.clone(),
             effective_user: self.effective_user.clone(),
             table_detail: self.table_detail().cloned(),
