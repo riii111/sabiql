@@ -1,46 +1,55 @@
-use tokio::sync::Mutex;
+use std::sync::Mutex;
+
 use tokio::task::JoinHandle;
 
 #[derive(Default)]
-pub struct TaskRegistry {
+pub struct SingleTaskOwner {
     active: Mutex<Option<JoinHandle<()>>>,
 }
 
-impl TaskRegistry {
-    /// Starts a task after cancelling any currently active task.
-    ///
-    /// Each registry instance intentionally permits only one active task at a
-    /// time; separate instances are used for queries and table details.
-    pub async fn spawn<F>(&self, task: F)
+impl SingleTaskOwner {
+    pub async fn replace<F>(&self, task: F)
     where
         F: Future<Output = ()> + Send + 'static,
     {
-        let mut active = self.active.lock().await;
-        if let Some(handle) = active.take() {
-            handle.abort();
-            let _ = handle.await;
+        if let Some(task) = self.abort() {
+            let _ = task.await;
         }
-        let handle = tokio::spawn(task);
-        *active = Some(handle);
+        let task = tokio::spawn(task);
+        *self.active.lock().expect("single task owner lock poisoned") = Some(task);
     }
 
-    pub async fn abort(&self) -> Option<JoinHandle<()>> {
-        let handle = self.active.lock().await.take();
-        if let Some(handle) = &handle {
-            handle.abort();
+    pub fn abort(&self) -> Option<JoinHandle<()>> {
+        let task = self
+            .active
+            .lock()
+            .expect("single task owner lock poisoned")
+            .take();
+        if let Some(task) = &task {
+            task.abort();
         }
-        handle
+        task
     }
 
     pub async fn cancel(&self) {
-        if let Some(handle) = self.abort().await {
-            let _ = handle.await;
+        if let Some(task) = self.abort() {
+            let _ = task.await;
         }
     }
 }
 
-pub type QueryTaskRegistry = TaskRegistry;
-pub type TableDetailTaskRegistry = TaskRegistry;
+impl Drop for SingleTaskOwner {
+    fn drop(&mut self) {
+        if let Some(task) = self
+            .active
+            .get_mut()
+            .expect("single task owner lock poisoned")
+            .take()
+        {
+            task.abort();
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -59,14 +68,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancel_drops_active_query_task() {
-        let registry = QueryTaskRegistry::default();
+    async fn cancel_drops_active_task() {
+        let owner = SingleTaskOwner::default();
         let dropped = Arc::new(AtomicBool::new(false));
         let (started_tx, started_rx) = oneshot::channel();
         let guard = DropSignal(Arc::clone(&dropped));
 
-        registry
-            .spawn(async move {
+        owner
+            .replace(async move {
                 let _guard = guard;
                 started_tx.send(()).ok();
                 std::future::pending::<()>().await;
@@ -74,20 +83,20 @@ mod tests {
             .await;
 
         started_rx.await.expect("query task should start");
-        registry.cancel().await;
+        owner.cancel().await;
 
         assert!(dropped.load(Ordering::SeqCst));
     }
 
     #[tokio::test]
-    async fn replacement_waits_for_previous_query_task_to_drop() {
-        let registry = QueryTaskRegistry::default();
+    async fn replacement_waits_for_previous_task_to_drop() {
+        let owner = SingleTaskOwner::default();
         let dropped = Arc::new(AtomicBool::new(false));
         let (started_tx, started_rx) = oneshot::channel();
         let first_guard = DropSignal(Arc::clone(&dropped));
 
-        registry
-            .spawn(async move {
+        owner
+            .replace(async move {
                 let _guard = first_guard;
                 started_tx.send(()).ok();
                 std::future::pending::<()>().await;
@@ -97,8 +106,8 @@ mod tests {
         started_rx.await.expect("query task should start");
 
         let (replacement_started_tx, replacement_started_rx) = oneshot::channel();
-        registry
-            .spawn(async move {
+        owner
+            .replace(async move {
                 assert!(dropped.load(Ordering::SeqCst));
                 replacement_started_tx.send(()).ok();
             })
@@ -106,7 +115,7 @@ mod tests {
 
         replacement_started_rx
             .await
-            .expect("replacement query task should start");
-        registry.cancel().await;
+            .expect("replacement task should start");
+        owner.cancel().await;
     }
 }

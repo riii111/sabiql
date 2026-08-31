@@ -17,8 +17,8 @@ use crate::cmd::effect::Effect;
 use crate::cmd::er::handler as cmd_er;
 use crate::cmd::er::task::SmartErRefreshTaskOwner;
 use crate::cmd::metadata_task::MetadataTaskRegistry;
-use crate::cmd::query_task::{QueryTaskRegistry, TableDetailTaskRegistry};
 use crate::cmd::settings as cmd_settings;
+use crate::cmd::single_task_owner::SingleTaskOwner;
 use crate::cmd::sql_editor::completion as cmd_completion;
 use crate::cmd::sql_editor::query_history::spawn_query_history_load;
 use crate::cmd::sqlite_diagnostics;
@@ -69,8 +69,8 @@ pub struct EffectRunner {
     settings_store: Arc<dyn SettingsStore>,
     metadata_cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
-    query_tasks: QueryTaskRegistry,
-    table_detail_tasks: TableDetailTaskRegistry,
+    query_tasks: SingleTaskOwner,
+    table_detail_tasks: SingleTaskOwner,
     metadata_tasks: Arc<MetadataTaskRegistry>,
     connection_task: ConnectionTaskOwner,
     sqlite_diagnostics_task: sqlite_diagnostics::SqliteDiagnosticsTaskOwner,
@@ -97,8 +97,8 @@ impl EffectRunner {
             settings_store,
             metadata_cache,
             action_tx,
-            query_tasks: QueryTaskRegistry::default(),
-            table_detail_tasks: TableDetailTaskRegistry::default(),
+            query_tasks: SingleTaskOwner::default(),
+            table_detail_tasks: SingleTaskOwner::default(),
             metadata_tasks: Arc::new(MetadataTaskRegistry::default()),
             connection_task: ConnectionTaskOwner::default(),
             sqlite_diagnostics_task: sqlite_diagnostics::SqliteDiagnosticsTaskOwner::default(),
@@ -118,8 +118,8 @@ impl EffectRunner {
         if let Some(task) = metadata_task {
             let _ = task.await;
         }
-        let (query_task, table_detail_task) =
-            tokio::join!(self.query_tasks.abort(), self.table_detail_tasks.abort());
+        let query_task = self.query_tasks.abort();
+        let table_detail_task = self.table_detail_tasks.abort();
         if let Some(task) = query_task {
             let _ = task.await;
         }
@@ -670,7 +670,7 @@ mod tests {
             });
             runner
                 .query_tasks
-                .spawn({
+                .replace({
                     let drop_state = Arc::clone(&query_drop_state);
                     async move {
                         let _drop_signal = BlockingDrop(drop_state);
@@ -685,7 +685,7 @@ mod tests {
             let (table_drop_tx, mut table_drop_rx) = oneshot::channel();
             runner
                 .table_detail_tasks
-                .spawn({
+                .replace({
                     async move {
                         let _drop_signal = TaskDropSignal(Mutex::new(Some(table_drop_tx)));
                         table_started_tx.send(()).ok();
