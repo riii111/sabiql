@@ -408,6 +408,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn uncached_new_tables_are_reported_as_missing_in_cache() {
+        let dsn = "mysql://user:password@localhost:3306/app";
+        let state = state_with_mysql_dsn(dsn);
+        let completion_engine = RefCell::new(CompletionEngine::new());
+        let (action_tx, mut action_rx) = mpsc::channel(1);
+
+        handle_smart_refresh_cache_and_diff(
+            &action_tx,
+            &state,
+            &completion_engine,
+            dsn.to_string(),
+            1,
+            Arc::new(DatabaseMetadata::new("app".to_string())),
+            Arc::new(TableSignatureSnapshot {
+                signatures: vec![TableSignature {
+                    schema: "app".to_string(),
+                    name: "new_table".to_string(),
+                    signature: "signature".to_string(),
+                }],
+                prefetched_table_details: vec![],
+            }),
+        )
+        .await
+        .unwrap();
+
+        let Action::SmartErRefreshCompleted(result) = action_rx.recv().await.unwrap() else {
+            panic!("expected smart refresh completion");
+        };
+        assert_eq!(result.missing_in_cache, vec!["app.new_table"]);
+    }
+
+    #[tokio::test]
     async fn pending_mysql_probe_drops_smart_refresh_cache_diff() {
         let dsn = "mysql://user:password@localhost:3306/app";
         let mut state = state_with_mysql_dsn(dsn);

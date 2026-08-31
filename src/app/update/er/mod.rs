@@ -556,7 +556,7 @@ mod tests {
                 dsn: "postgres://localhost/test".to_string(),
                 run_id: 1,
                 new_metadata: make_metadata(2),
-                stale_tables: vec![],
+                stale_tables: vec!["public.uncached".to_string()],
                 removed_tables: vec![],
                 missing_in_cache: vec!["public.uncached".to_string()],
                 new_signatures: HashMap::new(),
@@ -566,11 +566,17 @@ mod tests {
                 .into_effects()
                 .expect("reducer should handle action");
 
-            assert!(effects.iter().any(|e| matches!(
-                e,
-                Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::StartErPrefetchScoped { .. }))
-            )));
+            let Some(Effect::DispatchActions(actions)) = effects.iter().find(|effect| {
+                matches!(effect, Effect::DispatchActions(actions) if actions.iter().any(
+                    |action| matches!(action, Action::StartErPrefetchScoped { .. })
+                ))
+            }) else {
+                panic!("expected scoped prefetch");
+            };
+            assert!(matches!(
+                actions.as_slice(),
+                [Action::StartErPrefetchScoped { tables }] if tables == &["public.uncached"]
+            ));
         }
 
         #[test]
