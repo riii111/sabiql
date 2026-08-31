@@ -132,7 +132,6 @@ pub(in crate::adapters::mysql) const INDEX_RESULT_COLUMNS: &[&str] = &[
     "EXPRESSION",
     "COLLATION",
     "IS_VISIBLE",
-    "IS_PRIMARY",
 ];
 pub(in crate::adapters::mysql) const TRIGGER_RESULT_COLUMNS: &[&str] = &[
     "TRIGGER_NAME",
@@ -152,7 +151,7 @@ const VIEW_SHOW_CREATE_RESULT_COLUMNS: &[&str] = &["View", "Create View"];
 
 pub(in crate::adapters::mysql) fn indexes_query(schema: &str, table: &str) -> String {
     format!(
-        "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.SUB_PART, s.EXPRESSION, s.COLLATION, s.IS_VISIBLE, CASE WHEN s.INDEX_NAME = 'PRIMARY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY FROM INFORMATION_SCHEMA.STATISTICS AS s WHERE s.TABLE_SCHEMA = {} AND s.TABLE_NAME = {} ORDER BY INDEX_NAME, SEQ_IN_INDEX",
+        "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.SUB_PART, s.EXPRESSION, s.COLLATION, s.IS_VISIBLE FROM INFORMATION_SCHEMA.STATISTICS AS s WHERE s.TABLE_SCHEMA = {} AND s.TABLE_NAME = {} ORDER BY INDEX_NAME, SEQ_IN_INDEX",
         quote_string(schema),
         quote_string(table),
     )
@@ -324,7 +323,7 @@ mod tests {
         assert_eq!(
             indexes_sql,
             format!(
-                "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.SUB_PART, s.EXPRESSION, s.COLLATION, s.IS_VISIBLE, CASE WHEN s.INDEX_NAME = 'PRIMARY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY FROM INFORMATION_SCHEMA.STATISTICS AS s WHERE s.TABLE_SCHEMA = {quoted_schema} AND s.TABLE_NAME = {quoted_table} ORDER BY INDEX_NAME, SEQ_IN_INDEX"
+                "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.SUB_PART, s.EXPRESSION, s.COLLATION, s.IS_VISIBLE FROM INFORMATION_SCHEMA.STATISTICS AS s WHERE s.TABLE_SCHEMA = {quoted_schema} AND s.TABLE_NAME = {quoted_table} ORDER BY INDEX_NAME, SEQ_IN_INDEX"
             )
         );
 
@@ -444,7 +443,6 @@ mod tests {
                 "EXPRESSION",
                 "COLLATION",
                 "IS_VISIBLE",
-                "IS_PRIMARY",
             ]
         );
         assert_eq!(
