@@ -115,6 +115,9 @@ impl EffectRunner {
         let metadata_task = self.metadata_tasks.abort();
         let smart_er_task = self.smart_er_refresh_task.abort();
         let sqlite_diagnostics_tasks = self.sqlite_diagnostics_task.abort();
+        if let Some(task) = metadata_task {
+            let _ = task.await;
+        }
         let (query_task, table_detail_task) =
             tokio::join!(self.query_tasks.abort(), self.table_detail_tasks.abort());
         if let Some(task) = query_task {
@@ -126,11 +129,7 @@ impl EffectRunner {
         if let Some(task) = connection_task {
             let _ = task.await;
         }
-        for task in metadata_task
-            .into_iter()
-            .chain(smart_er_task)
-            .chain(sqlite_diagnostics_tasks)
-        {
+        for task in smart_er_task.into_iter().chain(sqlite_diagnostics_tasks) {
             let _ = task.await;
         }
     }
