@@ -212,7 +212,6 @@ mod tests {
                     run_id,
                     new_metadata: make_metadata(1),
                     stale_tables: vec![],
-                    added_tables: vec![],
                     removed_tables: vec![],
                     missing_in_cache: vec![],
                     new_signatures: HashMap::new(),
@@ -469,7 +468,6 @@ mod tests {
                 run_id: 1,
                 new_metadata: make_metadata(2),
                 stale_tables: vec![],
-                added_tables: vec![],
                 removed_tables: vec![],
                 missing_in_cache: vec![],
                 new_signatures: HashMap::new(),
@@ -498,7 +496,6 @@ mod tests {
                 run_id: 1,
                 new_metadata: make_metadata(2),
                 stale_tables: vec!["public.users".to_string()],
-                added_tables: vec![],
                 removed_tables: vec![],
                 missing_in_cache: vec![],
                 new_signatures: HashMap::new(),
@@ -521,35 +518,6 @@ mod tests {
         }
 
         #[test]
-        fn added_tables_trigger_scoped_prefetch() {
-            let mut state = state_with_dsn("postgres://localhost/test");
-            set_active_run_id(&mut state, 1);
-            state.er_preparation.mark_waiting_for_test();
-            state.session.set_metadata(Some(make_metadata(0)));
-
-            let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
-                dsn: "postgres://localhost/test".to_string(),
-                run_id: 1,
-                new_metadata: make_metadata(3),
-                stale_tables: vec![],
-                added_tables: vec!["public.new_table".to_string()],
-                removed_tables: vec![],
-                missing_in_cache: vec![],
-                new_signatures: HashMap::new(),
-            });
-
-            let effects = reduce_er(&mut state, &action, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
-
-            assert!(effects.iter().any(|e| matches!(
-                e,
-                Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::StartErPrefetchScoped { .. }))
-            )));
-        }
-
-        #[test]
         fn removed_tables_trigger_evict() {
             let mut state = state_with_dsn("postgres://localhost/test");
             set_active_run_id(&mut state, 1);
@@ -561,7 +529,6 @@ mod tests {
                 run_id: 1,
                 new_metadata: make_metadata(1),
                 stale_tables: vec![],
-                added_tables: vec![],
                 removed_tables: vec!["public.dropped".to_string()],
                 missing_in_cache: vec![],
                 new_signatures: HashMap::new(),
@@ -590,7 +557,6 @@ mod tests {
                 run_id: 1,
                 new_metadata: make_metadata(2),
                 stale_tables: vec![],
-                added_tables: vec![],
                 removed_tables: vec![],
                 missing_in_cache: vec!["public.uncached".to_string()],
                 new_signatures: HashMap::new(),
@@ -618,7 +584,6 @@ mod tests {
                 run_id: 3,
                 new_metadata: make_metadata(0),
                 stale_tables: vec![],
-                added_tables: vec![],
                 removed_tables: vec![],
                 missing_in_cache: vec![],
                 new_signatures: HashMap::new(),
@@ -646,7 +611,6 @@ mod tests {
                 run_id: 1,
                 new_metadata: make_metadata(5),
                 stale_tables: vec![],
-                added_tables: vec![],
                 removed_tables: vec![],
                 missing_in_cache: vec![],
                 new_signatures: new_sigs.clone(),

@@ -286,11 +286,6 @@ async fn handle_smart_refresh_cache_and_diff(
     let old_names: HashSet<&str> = old_signatures.keys().map(String::as_str).collect();
     let new_names: HashSet<&str> = new_signatures.keys().map(String::as_str).collect();
 
-    let added_tables: Vec<String> = new_names
-        .difference(&old_names)
-        .filter(|name| !cached_tables.contains(**name))
-        .map(ToString::to_string)
-        .collect();
     let removed_tables: Vec<String> = old_names
         .difference(&new_names)
         .map(ToString::to_string)
@@ -318,7 +313,6 @@ async fn handle_smart_refresh_cache_and_diff(
             run_id,
             new_metadata,
             stale_tables,
-            added_tables,
             removed_tables,
             missing_in_cache,
             new_signatures,
@@ -410,7 +404,6 @@ mod tests {
         let Action::SmartErRefreshCompleted(result) = action_rx.recv().await.unwrap() else {
             panic!("expected smart refresh completion");
         };
-        assert!(result.added_tables.is_empty());
         assert!(result.missing_in_cache.is_empty());
     }
 
