@@ -133,7 +133,7 @@ impl QueryExecutor for MySqlAdapter {
         let execution = metadata::execute_preview(dsn, schema, table, limit, offset).await?;
         let preview = execution.metadata;
         let values = metadata::convert_preview_values_with_binary_charset(
-            &execution.result_set,
+            execution.result_set,
             &preview.visible_columns,
             &preview.identity_columns,
         )?;
