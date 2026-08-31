@@ -32,10 +32,6 @@ mod tests {
     struct FailingSettingsStore;
 
     impl SettingsStore for RecordingSettingsStore {
-        fn load(&self) -> Result<AppSettings, SettingsStoreError> {
-            Ok(AppSettings::default())
-        }
-
         fn save(&self, settings: AppSettings) -> Result<(), SettingsStoreError> {
             self.saved.lock().unwrap().push(settings);
             Ok(())
@@ -43,10 +39,6 @@ mod tests {
     }
 
     impl SettingsStore for FailingSettingsStore {
-        fn load(&self) -> Result<AppSettings, SettingsStoreError> {
-            Ok(AppSettings::default())
-        }
-
         fn save(&self, _settings: AppSettings) -> Result<(), SettingsStoreError> {
             Err(SettingsStoreError::Io(Arc::new(std::io::Error::other(
                 "disk full",
