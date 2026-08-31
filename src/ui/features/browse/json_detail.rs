@@ -8,7 +8,6 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::browse::json_detail::JsonDetailMode;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::shared::render_output::JsonDetailLayout;
-use crate::app::model::shared::text_input::TextInputLike;
 use crate::app::policy::{FeaturePolicy, FeatureRequirement};
 use crate::features::browse::detail_view::render_detail_search;
 use crate::primitives::atoms::scroll_indicator::{

@@ -12,15 +12,7 @@ struct QuotedRecord {
     values: Vec<QueryValue>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct SplitSegment {
-    text: String,
-}
-
-fn split_outside_sqlite_quotes(
-    input: &str,
-    delimiter: u8,
-) -> Result<Vec<SplitSegment>, DbOperationError> {
+fn split_outside_sqlite_quotes(input: &str, delimiter: u8) -> Result<Vec<&str>, DbOperationError> {
     let mut segments = Vec::new();
     let mut start = 0usize;
     let mut in_quote = false;
@@ -36,9 +28,7 @@ fn split_outside_sqlite_quotes(
                 i += 1;
             }
             byte if byte == delimiter && !in_quote => {
-                segments.push(SplitSegment {
-                    text: input[start..i].to_string(),
-                });
+                segments.push(&input[start..i]);
                 start = i + 1;
                 i += 1;
             }
@@ -50,26 +40,21 @@ fn split_outside_sqlite_quotes(
             "unterminated SQLite quoted output".to_string(),
         ));
     }
-    segments.push(SplitSegment {
-        text: input[start..].to_string(),
-    });
+    segments.push(&input[start..]);
     Ok(segments)
 }
 
-fn split_quoted_records(stdout: &str) -> Result<Vec<SplitSegment>, DbOperationError> {
+fn split_quoted_records(stdout: &str) -> Result<Vec<&str>, DbOperationError> {
     let mut records = split_outside_sqlite_quotes(stdout, b'\n')?
         .into_iter()
-        .map(|segment| SplitSegment {
-            text: segment.text.trim_end_matches('\r').to_string(),
-        })
+        .map(|segment| segment.trim_end_matches('\r'))
         .collect::<Vec<_>>();
-    records.retain(|segment| !segment.text.is_empty());
+    records.retain(|segment| !segment.is_empty());
     Ok(records)
 }
 
-fn split_quoted_fields(record: &str) -> Result<Vec<String>, DbOperationError> {
+fn split_quoted_fields(record: &str) -> Result<Vec<&str>, DbOperationError> {
     split_outside_sqlite_quotes(record, b',')
-        .map(|segments| segments.into_iter().map(|segment| segment.text).collect())
 }
 
 fn unquote_sql_text(value: &str) -> String {
@@ -277,7 +262,7 @@ pub(in crate::adapters::sqlite::sqlite3) fn parse_quoted_value(
 }
 
 fn parse_quoted_records(
-    raw_records: &[SplitSegment],
+    raw_records: &[&str],
     source: QuerySource,
 ) -> Result<Vec<QuotedRecord>, DbOperationError> {
     raw_records
@@ -285,9 +270,9 @@ fn parse_quoted_records(
         .enumerate()
         .map(|(index, segment)| {
             let decode_preview_transport = source == QuerySource::Preview && index > 0;
-            split_quoted_fields(&segment.text)?
+            split_quoted_fields(segment)?
                 .into_iter()
-                .map(|field| parse_quoted_value(&field, source, decode_preview_transport))
+                .map(|field| parse_quoted_value(field, source, decode_preview_transport))
                 .collect::<Result<Vec<_>, _>>()
                 .map(|values| QuotedRecord { values })
         })
@@ -373,13 +358,7 @@ pub(in crate::adapters::sqlite) fn last_sqlite_result_set(
                     "mismatched SQLite result marker".to_string(),
                 ));
             }
-            last_result = Some(
-                raw_records[result_start..index]
-                    .iter()
-                    .map(|segment| segment.text.as_str())
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-            );
+            last_result = Some(raw_records[result_start..index].join("\n"));
             index += 2;
             result_start = index;
         } else {
@@ -441,7 +420,7 @@ pub(in crate::adapters::sqlite) fn strip_sqlite_probes(
             changes.insert(stmt_index, affected_rows);
             index += 2;
         } else {
-            kept.push(raw_records[index].text.clone());
+            kept.push(raw_records[index]);
             index += 1;
         }
     }
@@ -511,6 +490,20 @@ mod tests {
                 result.display_row_at(0),
                 Some(vec!["line 1\nline 2".to_string(), "ok".to_string()])
             );
+        }
+
+        #[test]
+        fn quoted_to_query_result_accepts_crlf_output() {
+            let result = quoted_to_query_result(
+                "SELECT body FROM notes",
+                "'body'\r\n'line 1'\r\n",
+                QuerySource::Adhoc,
+                1,
+            )
+            .unwrap();
+
+            assert_eq!(result.columns, vec!["body"]);
+            assert_eq!(result.display_row_at(0), Some(vec!["line 1".to_string()]));
         }
 
         #[test]

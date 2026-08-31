@@ -8,7 +8,6 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::flash_timer::FlashId;
-use crate::app::model::shared::text_input::TextInputLike;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::primitives::atoms::{
     CursorKind, ModalTextSurface, apply_yank_flash, build_modal_text_surface_lines,

@@ -36,7 +36,7 @@ pub struct ConnectionDeps {
     pub dsn_builder: Arc<dyn DsnBuilder>,
     pub mysql_connection_probe: Arc<dyn MySqlConnectionProbe>,
     pub connection_store: Arc<dyn ConnectionStore>,
-    pub pg_service_entry_reader: Option<Arc<dyn PgServiceEntryReader>>,
+    pub pg_service_entry_reader: Arc<dyn PgServiceEntryReader>,
     pub sqlite_path_validator: Arc<dyn SqlitePathValidator>,
 }
 

@@ -3,7 +3,6 @@ use std::cell::RefCell;
 use crate::cmd::completion_engine::{CompletionDatabaseScope, CompletionEngine};
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
-use crate::model::shared::text_input::TextInputLike;
 use crate::update::action::Action;
 
 pub fn run(

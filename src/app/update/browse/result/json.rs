@@ -5,7 +5,6 @@ use crate::model::browse::json_detail::{JsonDetailMode, JsonDetailState};
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::KeySequenceState;
-use crate::model::shared::text_input::{TextInputEditing, TextInputLike};
 use crate::model::shared::ui_state::DEFAULT_JSON_DETAIL_EDITOR_VISIBLE_ROWS;
 use crate::policy::preview_cell_text::CellPresentationPolicy;
 use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};

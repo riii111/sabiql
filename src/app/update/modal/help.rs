@@ -2,7 +2,7 @@ use crate::catalog::HelpDocument;
 use crate::model::app_state::AppState;
 use crate::model::shared::help::HelpOrigin;
 use crate::model::shared::input_mode::InputMode;
-use crate::model::shared::text_input::{TextInputEditing, TextInputState};
+use crate::model::shared::text_input::TextInputState;
 use crate::update::action::{
     Action, InputTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
 };
