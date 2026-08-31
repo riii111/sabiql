@@ -202,14 +202,7 @@ impl DdlGenerator for DbAdapterRegistry {
 #[async_trait]
 impl MySqlConnectionProbe for DbAdapterRegistry {
     async fn probe(&self, dsn: &str) -> Result<MySqlConnectionProbeResult, DbOperationError> {
-        match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::MySQL => self.mysql.probe(dsn).await,
-            DatabaseType::PostgreSQL | DatabaseType::SQLite => {
-                Err(DbOperationError::UnsupportedOperation(
-                    "Connection probing is only implemented for MySQL".to_string(),
-                ))
-            }
-        }
+        self.mysql.probe(dsn).await
     }
 }
 
@@ -219,23 +212,11 @@ impl SqliteDiagnosticsProvider for DbAdapterRegistry {
         &self,
         dsn: &str,
     ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {
-        match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::PostgreSQL | DatabaseType::MySQL => {
-                Err(DbOperationError::ConnectionFailed(
-                    "SQLite diagnostics are unavailable for non-SQLite connections".to_string(),
-                ))
-            }
-            DatabaseType::SQLite => self.sqlite.fetch_core_diagnostics(dsn).await,
-        }
+        self.sqlite.fetch_core_diagnostics(dsn).await
     }
 
     async fn fetch_quick_check(&self, dsn: &str) -> DiagnosticField {
-        match Self::db_type_from_dsn(dsn) {
-            Ok(DatabaseType::SQLite) => self.sqlite.fetch_quick_check(dsn).await,
-            Ok(DatabaseType::PostgreSQL | DatabaseType::MySQL) | Err(_) => DiagnosticField::err(
-                "SQLite diagnostics are unavailable for non-SQLite connections",
-            ),
-        }
+        self.sqlite.fetch_quick_check(dsn).await
     }
 }
 
