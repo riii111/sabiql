@@ -1,12 +1,12 @@
 use super::handling::PreviewCellTextDisplayHandling;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CellDetailDisplay {
+pub(crate) struct CellDetailDisplay {
     pub content: String,
     pub formatted_json: bool,
 }
 
-pub fn format_for_cell_detail(
+pub(crate) fn format_for_cell_detail(
     value: &str,
     handling: PreviewCellTextDisplayHandling,
 ) -> CellDetailDisplay {

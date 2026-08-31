@@ -107,6 +107,7 @@ codegen-units = 1
 
 [workspace.lints.rust]
 redundant_imports = "deny"
+unreachable_pub = "deny"
 
 [workspace.lints.clippy]
 # Groups

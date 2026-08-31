@@ -6,7 +6,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ConnectionsLoadedPayload, ListMotion, ListTarget};
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce_connection_list(
+pub(in crate::update) fn reduce_connection_list(
     state: &mut AppState,
     action: &Action,
     _now: Instant,

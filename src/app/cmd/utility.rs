@@ -6,7 +6,7 @@ use crate::cmd::effect::Effect;
 use crate::ports::outbound::{ClipboardWriter, FolderOpener};
 use crate::update::action::Action;
 
-pub(crate) async fn run(
+pub(in crate::cmd) async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     clipboard: &Arc<dyn ClipboardWriter>,

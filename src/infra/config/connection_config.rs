@@ -1,3 +1,8 @@
+#![allow(
+    clippy::redundant_pub_crate,
+    reason = "config types and version helpers are crate-visible through the config facade but the implementation module stays internal"
+)]
+
 use serde::{Deserialize, Serialize};
 
 use crate::domain::connection::{
@@ -6,21 +11,21 @@ use crate::domain::connection::{
     SqliteConnectionConfig, SqliteConnectionConfigError, SslMode,
 };
 
-pub const CURRENT_VERSION: u32 = 3;
+pub(crate) const CURRENT_VERSION: u32 = 3;
 // Version 2 remains readable because older config files omit db_type and map to PostgreSQL.
 const SUPPORTED_CONFIG_VERSIONS: &[u32] = &[2, CURRENT_VERSION];
 
-pub fn is_supported_config_version(version: u32) -> bool {
+pub(crate) fn is_supported_config_version(version: u32) -> bool {
     SUPPORTED_CONFIG_VERSIONS.contains(&version)
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ConfigVersionCheck {
+pub(crate) struct ConfigVersionCheck {
     pub version: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ConnectionConfigFile {
+pub(crate) struct ConnectionConfigFile {
     pub version: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
@@ -32,7 +37,7 @@ pub struct ConnectionConfigFile {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ConnectionConfigEntry {
+pub(crate) struct ConnectionConfigEntry {
     pub id: String,
     pub name: String,
     #[serde(default)]

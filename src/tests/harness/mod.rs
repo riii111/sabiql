@@ -28,10 +28,11 @@ pub fn test_instant() -> Instant {
 
 pub fn create_test_state() -> AppState {
     let mut state = AppState::new("test_project".to_string());
-    state.session.set_active_connection_identity_for_test(
+    state.session.activate_connection_with_dsn(
         &ConnectionId::from_string("test-connection"),
         "localhost:5432/test",
         DatabaseType::PostgreSQL,
+        "localhost:5432/test",
     );
     state
 }

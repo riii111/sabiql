@@ -262,7 +262,7 @@ impl PostgresAdapter {
         )
     }
 
-    pub(in crate::adapters::postgres) fn rls_query(schema: &str, table: &str) -> String {
+    fn rls_query(schema: &str, table: &str) -> String {
         format!(
             r"
             SELECT json_build_object(
@@ -329,7 +329,7 @@ impl PostgresAdapter {
         )
     }
 
-    pub(in crate::adapters::postgres) fn table_info_query(schema: &str, table: &str) -> String {
+    fn table_info_query(schema: &str, table: &str) -> String {
         format!(
             r"
             SELECT row_to_json(t)

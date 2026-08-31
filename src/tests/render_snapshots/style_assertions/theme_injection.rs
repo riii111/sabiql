@@ -1,4 +1,25 @@
 use super::*;
+use sabiql_ui::theme::{StatusTokens, TableTokens};
+
+fn contrast_theme() -> ThemePalette {
+    ThemePalette {
+        semantic: SemanticTokens {
+            status: StatusTokens {
+                pending: Color::Rgb(0xff, 0x9f, 0x1c),
+                ..DEFAULT_THEME.semantic.status
+            },
+            ..DEFAULT_THEME.semantic
+        },
+        component: ComponentTokens {
+            table: TableTokens {
+                result_cell_active_bg: Color::Rgb(0x3a, 0x44, 0x6e),
+                staged_delete_bg: Color::Rgb(0x4a, 0x1f, 0x1f),
+                ..DEFAULT_THEME.component.table
+            },
+            ..DEFAULT_THEME.component
+        },
+    }
+}
 
 #[test]
 fn injected_palette_changes_shell_modal_and_picker_styles() {
@@ -123,22 +144,22 @@ fn test_contrast_theme_applies_result_pane_table_colors() {
     state.result_interaction.activate_cell(0, 0);
     state.result_interaction.stage_row(1);
 
-    let staged_buffer =
-        render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &TEST_CONTRAST_THEME);
+    let theme = contrast_theme();
+    let staged_buffer = render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &theme);
     let has_staged_delete_bg = has_cell(&staged_buffer, |cell| {
-        cell.bg == TEST_CONTRAST_THEME.component.table.staged_delete_bg
+        cell.bg == theme.component.table.staged_delete_bg
     });
     let has_active_cell_bg = has_cell(&staged_buffer, |cell| {
-        cell.bg == TEST_CONTRAST_THEME.component.table.result_cell_active_bg
+        cell.bg == theme.component.table.result_cell_active_bg
     });
 
     assert!(
         has_staged_delete_bg,
-        "Expected staged delete row to resolve background from TEST_CONTRAST_THEME"
+        "Expected staged delete row to resolve background from the contrast theme"
     );
     assert!(
         has_active_cell_bg,
-        "Expected active result cell to resolve background from TEST_CONTRAST_THEME"
+        "Expected active result cell to resolve background from the contrast theme"
     );
 
     state
@@ -148,15 +169,14 @@ fn test_contrast_theme_applies_result_pane_table_colors() {
         .result_interaction
         .replace_cell_edit_draft("new@example.com".to_string());
 
-    let draft_buffer =
-        render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &TEST_CONTRAST_THEME);
+    let draft_buffer = render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &theme);
     let has_pending_draft_fg = has_cell(&draft_buffer, |cell| {
-        cell.fg == TEST_CONTRAST_THEME.semantic.status.pending
+        cell.fg == theme.semantic.status.pending
     });
 
     assert!(
         has_pending_draft_fg,
-        "Expected pending draft cell to resolve foreground from TEST_CONTRAST_THEME"
+        "Expected pending draft cell to resolve foreground from the contrast theme"
     );
 }
 

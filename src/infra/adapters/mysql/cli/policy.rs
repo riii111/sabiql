@@ -407,7 +407,7 @@ pub(super) fn query_failed_after_change(
     }
 }
 
-pub(super) fn is_mysql_row_count_marker(result: &MySqlResultSet, marker: &str) -> bool {
+fn is_mysql_row_count_marker(result: &MySqlResultSet, marker: &str) -> bool {
     result.columns == ["__sabiql_marker", "affected_rows"]
         && result.values.len() == 1
         && result.values[0].first().and_then(QueryValue::as_str) == Some(marker)

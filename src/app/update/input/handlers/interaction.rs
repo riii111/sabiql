@@ -6,13 +6,13 @@ use crate::model::sql_editor::modal::SqlModalStatus;
 use crate::update::action::InputTarget;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InputInteraction {
+pub(super) enum InputInteraction {
     Viewing,
     FormEditing(InputTarget),
     VimEditing(InputTarget),
 }
 
-pub fn resolve_input_interaction(state: &AppState) -> InputInteraction {
+pub(super) fn resolve_input_interaction(state: &AppState) -> InputInteraction {
     // Readline belongs to self-contained form fields. SQL and JSON document editors keep
     // their Vim contexts so Ctrl/Alt bindings never create a hybrid editing model.
     match state.input_mode() {
@@ -65,7 +65,7 @@ mod tests {
 
         let mut json_detail = AppState::new("test".to_string());
         json_detail.modal.set_mode(InputMode::JsonDetail);
-        json_detail.json_detail.set_mode(JsonDetailMode::Editing);
+        json_detail.json_detail.enter_edit();
 
         let mut json_editor = AppState::new("test".to_string());
         json_editor.modal.set_mode(InputMode::JsonEdit);
