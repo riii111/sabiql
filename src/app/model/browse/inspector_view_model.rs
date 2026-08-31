@@ -185,10 +185,6 @@ impl InspectorViewModel {
                 None,
             ),
             InspectorTab::Columns => {
-                let show_read_only = table
-                    .columns
-                    .iter()
-                    .any(|column| column_read_only_reason(column).is_some());
                 let rows: Vec<InspectorColumnRow> = table
                     .columns
                     .iter()
@@ -206,6 +202,7 @@ impl InspectorViewModel {
                         generation_kind: column.generation_kind,
                     })
                     .collect();
+                let show_read_only = rows.iter().any(|row| row.read_only_reason.is_some());
                 let show_character_set = rows.iter().any(|row| row.character_set_name.is_some());
                 let show_collation = rows.iter().any(|row| row.collation_name.is_some());
                 let show_generation = rows.iter().any(|row| {
@@ -227,16 +224,11 @@ impl InspectorViewModel {
                 )
             }
             InspectorTab::Indexes => {
-                let show_type = table
-                    .indexes
-                    .iter()
-                    .any(|index| index.index_type != IndexType::Unknown);
                 let show_partial = matches!(
                     database_type,
                     DatabaseType::PostgreSQL | DatabaseType::SQLite
                 );
-                let show_details = table.indexes.iter().any(Index::has_index_detail);
-                let rows = table
+                let rows: Vec<InspectorIndexRow> = table
                     .indexes
                     .iter()
                     .map(|index| InspectorIndexRow {
@@ -248,6 +240,8 @@ impl InspectorViewModel {
                         detail: index.has_index_detail().then(|| index_detail(index)),
                     })
                     .collect();
+                let show_type = rows.iter().any(|row| row.index_type.is_some());
+                let show_details = rows.iter().any(|row| row.detail.is_some());
                 (
                     InspectorSection::Indexes {
                         rows,
