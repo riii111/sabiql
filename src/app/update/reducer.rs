@@ -2098,7 +2098,6 @@ mod tests {
                     error: ConnectionSaveError::Store(ConnectionStoreError::Io(Arc::new(
                         std::io::Error::other("Write error"),
                     ))),
-                    database_type: DatabaseType::PostgreSQL,
                     run_id,
                 },
                 now,
