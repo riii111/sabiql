@@ -166,7 +166,7 @@ pub(super) fn reduce_connection_error(
 mod tests {
     use super::*;
     use crate::domain::{ConnectionId, DatabaseType};
-    use crate::model::connection::error::ConnectionErrorInfo;
+    use crate::model::connection::error::test_support;
     use crate::model::connection::state::ConnectionState;
     use crate::update::test_fixtures;
 
@@ -184,14 +184,12 @@ mod tests {
         #[test]
         fn stops_at_detail_line_count() {
             let mut state = AppState::new("test".to_string());
-            state
-                .connection_error
-                .set_error(ConnectionErrorInfo::from_parts(
-                    "Connection failed",
-                    "See details for more information",
-                    false,
-                    "line1\nline2\nline3",
-                ));
+            state.connection_error.set_error(test_support::from_parts(
+                "Connection failed",
+                "See details for more information",
+                false,
+                "line1\nline2\nline3",
+            ));
 
             let action = scroll_down_action();
             let now = Instant::now();
@@ -297,14 +295,12 @@ mod tests {
             "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
             Some("app"),
         );
-        state
-            .connection_error
-            .set_error(ConnectionErrorInfo::from_parts(
-                "Connection failed",
-                "See details for more information",
-                false,
-                "connection failed",
-            ));
+        state.connection_error.set_error(test_support::from_parts(
+            "Connection failed",
+            "See details for more information",
+            false,
+            "connection failed",
+        ));
         state.session.set_connection_state(ConnectionState::Failed);
         state.modal.set_mode(InputMode::ConnectionError);
 
@@ -338,14 +334,12 @@ mod tests {
             "mysql://user@localhost:3306/b?ssl-mode=PREFERRED",
             Some("b"),
         );
-        state
-            .connection_error
-            .set_error(ConnectionErrorInfo::from_parts(
-                "Connection refused",
-                "Check the host, port, and server availability",
-                true,
-                "connection refused",
-            ));
+        state.connection_error.set_error(test_support::from_parts(
+            "Connection refused",
+            "Check the host, port, and server availability",
+            true,
+            "connection refused",
+        ));
         state.modal.set_mode(InputMode::ConnectionError);
 
         reduce_connection_error(&mut state, &Action::CloseConnectionError, Instant::now());
@@ -375,14 +369,12 @@ mod tests {
         let _ = state
             .session
             .begin_mysql_connection_probe(&id, "mysql-a", dsn, Some("a"));
-        state
-            .connection_error
-            .set_error(ConnectionErrorInfo::from_parts(
-                "Connection refused",
-                "Check the host, port, and server availability",
-                true,
-                "connection refused",
-            ));
+        state.connection_error.set_error(test_support::from_parts(
+            "Connection refused",
+            "Check the host, port, and server availability",
+            true,
+            "connection refused",
+        ));
         state.modal.set_mode(InputMode::ConnectionError);
 
         assert!(!state.session.has_pending_connection_switch());
@@ -415,14 +407,12 @@ mod tests {
             "mysql://user@localhost:3306/b?ssl-mode=PREFERRED",
             Some("b"),
         );
-        state
-            .connection_error
-            .set_error(ConnectionErrorInfo::from_parts(
-                "Connection refused",
-                "Check the host, port, and server availability",
-                true,
-                "connection refused",
-            ));
+        state.connection_error.set_error(test_support::from_parts(
+            "Connection refused",
+            "Check the host, port, and server availability",
+            true,
+            "connection refused",
+        ));
         state.modal.set_mode(InputMode::ConnectionError);
 
         reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());

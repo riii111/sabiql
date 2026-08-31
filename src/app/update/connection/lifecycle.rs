@@ -250,6 +250,7 @@ mod tests {
     use crate::model::browse::query_execution::PaginationState;
     use crate::model::browse::session::TableDetailState;
     use crate::model::connection::cache::ConnectionCache;
+    use crate::model::connection::error::test_support;
     use crate::model::connection::state::ConnectionState;
     use crate::model::er_state::ErStatus;
     use crate::model::shared::confirm_dialog::ConfirmIntent;
@@ -386,14 +387,12 @@ mod tests {
             let mut state = active_mysql_state();
             let target = mysql_target("mysql-a", "a");
             state.session.set_connection_state(ConnectionState::Failed);
-            state
-                .connection_error
-                .set_error(ConnectionErrorInfo::from_parts(
-                    "Connection refused",
-                    "Check the host, port, and server availability",
-                    true,
-                    "connection refused",
-                ));
+            state.connection_error.set_error(test_support::from_parts(
+                "Connection refused",
+                "Check the host, port, and server availability",
+                true,
+                "connection refused",
+            ));
 
             let retry_effects = reduce_connection_error(
                 &mut state,

@@ -142,7 +142,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
 mod tests {
     use super::*;
     use crate::domain::{ConnectionId, DatabaseType};
-    use crate::model::connection::error::ConnectionErrorInfo;
+    use crate::model::connection::error::test_support;
     use crate::model::shared::key_sequence::KeySequenceState;
     use crate::model::shared::settings::KeymapPreset;
     use crate::model::shared::ui_state::FocusMode;
@@ -497,14 +497,12 @@ mod tests {
             #[test]
             fn alt_enter_noop_when_connection_error_is_open() {
                 let mut state = browse_state();
-                state
-                    .connection_error
-                    .set_error(ConnectionErrorInfo::from_parts(
-                        "Connection failed",
-                        "See details for more information",
-                        false,
-                        "boom",
-                    ));
+                state.connection_error.set_error(test_support::from_parts(
+                    "Connection failed",
+                    "See details for more information",
+                    false,
+                    "boom",
+                ));
 
                 let result = handle_normal_mode(KeyCombo::alt(Key::Enter), &state);
 
@@ -514,14 +512,12 @@ mod tests {
             #[test]
             fn plain_enter_confirms_connection_error() {
                 let mut state = browse_state();
-                state
-                    .connection_error
-                    .set_error(ConnectionErrorInfo::from_parts(
-                        "Connection failed",
-                        "See details for more information",
-                        false,
-                        "boom",
-                    ));
+                state.connection_error.set_error(test_support::from_parts(
+                    "Connection failed",
+                    "See details for more information",
+                    false,
+                    "boom",
+                ));
 
                 let result = handle_normal_mode(KeyCombo::plain(Key::Enter), &state);
 

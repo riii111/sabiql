@@ -479,7 +479,9 @@ mod tests {
     };
     use crate::model::browse::inspector_view_model::InspectorLoadState;
     use crate::model::browse::row_detail::RowDetailState;
-    use crate::model::connection::error::ConnectionErrorInfo;
+    use crate::model::connection::error::{
+        ConnectionErrorInfo, test_support as connection_error_test_support,
+    };
     use crate::model::er_state::ErStatus;
     use crate::model::shared::render_output::{
         ConfirmPreviewLayout, InspectorLayout, RowDetailLayout,
@@ -542,7 +544,7 @@ mod tests {
         }
 
         fn retryable_error() -> ConnectionErrorInfo {
-            ConnectionErrorInfo::from_parts(
+            connection_error_test_support::from_parts(
                 "Connection timed out",
                 "Check network connectivity",
                 true,
@@ -598,7 +600,7 @@ mod tests {
             );
             state
                 .connection_error
-                .set_error(ConnectionErrorInfo::from_parts(
+                .set_error(connection_error_test_support::from_parts(
                     "Connection failed",
                     "See details for more information",
                     false,

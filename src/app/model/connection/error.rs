@@ -13,16 +13,6 @@ pub struct ConnectionErrorInfo {
 }
 
 impl ConnectionErrorInfo {
-    #[cfg(test)]
-    pub(crate) fn from_parts(
-        summary: &'static str,
-        hint: &'static str,
-        retryable: bool,
-        raw_stderr: impl Into<String>,
-    ) -> Self {
-        Self::from_presentation(summary, hint, retryable, raw_stderr)
-    }
-
     fn from_presentation(
         summary: &'static str,
         hint: &'static str,
@@ -142,6 +132,20 @@ impl ConnectionErrorInfo {
     }
 }
 
+#[cfg(test)]
+pub(crate) mod test_support {
+    use super::ConnectionErrorInfo;
+
+    pub fn from_parts(
+        summary: &'static str,
+        hint: &'static str,
+        retryable: bool,
+        raw_stderr: impl Into<String>,
+    ) -> ConnectionErrorInfo {
+        ConnectionErrorInfo::from_presentation(summary, hint, retryable, raw_stderr)
+    }
+}
+
 fn sqlite_path_presentation(error: &SqlitePathError) -> (&'static str, &'static str, bool) {
     match error {
         SqlitePathError::FileNotFound(_) => (
@@ -194,7 +198,7 @@ mod tests {
 
         #[test]
         fn from_parts_uses_provided_presentation() {
-            let info = ConnectionErrorInfo::from_parts(
+            let info = test_support::from_parts(
                 "Connection timed out",
                 "Check network connectivity",
                 true,
@@ -532,7 +536,7 @@ mod tests {
 
         #[test]
         fn info_keeps_only_masked_details() {
-            let info = ConnectionErrorInfo::from_parts(
+            let info = test_support::from_parts(
                 "Connection failed",
                 "See details for more information",
                 false,

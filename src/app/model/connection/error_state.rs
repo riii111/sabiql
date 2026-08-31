@@ -132,9 +132,10 @@ impl ConnectionErrorState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::connection::error::test_support;
 
     fn sample_error() -> ConnectionErrorInfo {
-        ConnectionErrorInfo::from_parts(
+        test_support::from_parts(
             "Connection timed out",
             "Check network connectivity",
             true,
@@ -333,7 +334,7 @@ mod tests {
         #[test]
         fn counts_lines_of_error_details() {
             let mut state = ConnectionErrorState::default();
-            state.set_error(ConnectionErrorInfo::from_parts(
+            state.set_error(test_support::from_parts(
                 "Connection failed",
                 "See details for more information",
                 false,
