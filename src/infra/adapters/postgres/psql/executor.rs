@@ -8,7 +8,7 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::adapters::csv_export::CsvOutputError;
-use crate::app::ports::outbound::{DbOperationError, ExportIoSource};
+use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{CommandTag, QueryResult, QuerySource, RefreshScope, WriteExecutionResult};
 
 use super::super::PostgresAdapter;
@@ -25,7 +25,7 @@ async fn collect_csv_output(
 
     let file = tokio::fs::File::create(path)
         .await
-        .map_err(|e| DbOperationError::ExportIo(ExportIoSource::new(e)))?;
+        .map_err(|e| DbOperationError::ExportIo(Arc::new(e)))?;
     let mut writer = tokio::io::BufWriter::new(file);
 
     let result = timeout(timeout_duration, async {
