@@ -17,7 +17,7 @@ pub struct TomlSettingsStore {
 
 impl TomlSettingsStore {
     pub fn new() -> Result<Self, SettingsStoreError> {
-        let config_dir = get_config_dir()?;
+        let config_dir = app_config_dir()?;
         Ok(Self { config_dir })
     }
 
@@ -25,12 +25,8 @@ impl TomlSettingsStore {
         Self { config_dir }
     }
 
-    fn config_file_path(&self) -> PathBuf {
-        config_file_path(&self.config_dir)
-    }
-
     fn load_config_file_lenient(&self) -> Result<Option<ConnectionConfigFile>, SettingsStoreError> {
-        let path = self.config_file_path();
+        let path = config_file_path(&self.config_dir);
         if !path.exists() {
             return Ok(None);
         }
@@ -51,7 +47,7 @@ impl TomlSettingsStore {
     }
 
     fn load_config_file_strict(&self) -> Result<Option<ConnectionConfigFile>, SettingsStoreError> {
-        let path = self.config_file_path();
+        let path = config_file_path(&self.config_dir);
         if !path.exists() {
             return Ok(None);
         }
@@ -96,10 +92,6 @@ impl SettingsStore for TomlSettingsStore {
 
         Ok(())
     }
-}
-
-fn get_config_dir() -> Result<PathBuf, SettingsStoreError> {
-    Ok(app_config_dir()?)
 }
 
 fn app_settings(config: ConnectionConfigFile) -> AppSettings {

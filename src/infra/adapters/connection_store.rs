@@ -16,7 +16,7 @@ pub struct TomlConnectionStore {
 
 impl TomlConnectionStore {
     pub fn new() -> Result<Self, ConnectionStoreError> {
-        let config_dir = get_config_dir()?;
+        let config_dir = app_config_dir()?;
         Ok(Self { config_dir })
     }
 
@@ -24,12 +24,12 @@ impl TomlConnectionStore {
         Self { config_dir }
     }
 
-    fn config_file_path(&self) -> PathBuf {
+    pub fn storage_path(&self) -> PathBuf {
         config_file_path(&self.config_dir)
     }
 
     fn load_config_file(&self) -> Result<Option<ConnectionConfigFile>, ConnectionStoreError> {
-        let path = self.config_file_path();
+        let path = config_file_path(&self.config_dir);
         if !path.exists() {
             return Ok(None);
         }
@@ -114,14 +114,6 @@ impl ConnectionStore for TomlConnectionStore {
 
         self.write_all(&profiles)
     }
-
-    fn storage_path(&self) -> PathBuf {
-        self.config_file_path()
-    }
-}
-
-fn get_config_dir() -> Result<PathBuf, ConnectionStoreError> {
-    Ok(app_config_dir()?)
 }
 
 #[cfg(test)]
