@@ -69,7 +69,7 @@ fn fake_mysql(mode: &str) -> (TempDir, PathBuf, PathBuf) {
             _ => "printf '%s\\n' '<resultset><row><field name=\"__sabiql_session_marker\">'\"$marker\"'</field><field name=\"__sabiql_sql_mode\">STRICT_TRANS_TABLES</field></row></resultset>'".to_string(),
         };
     let user_response = if mode == "failure" {
-        "printf '%s\\n' '<resultset><row><field name=\"partial\">row</field></row></resultset>'\n    printf '%s\\n' 'ERROR 1064 (42000): syntax error' >&2\n    exit_status=1"
+        "printf '%s\\n' '<resultset><row><field name=\"partial\">row</field></row></resultset>'\n    exit_status=1\n    [ \"$adhoc\" -eq 0 ] && printf '%s\\n' 'ERROR 1064 (42000): syntax error' >&2"
     } else if mode == "no_result_failure" {
         "printf '%s\\n' 'ERROR 1054 (42S22): Unknown column missing_column' >&2\n    exit 1"
     } else if mode == "connection_refused" {
@@ -85,6 +85,11 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>'"
     } else {
         ""
     };
+    let finish_error = if mode == "failure" {
+        "printf '%s\\n' 'ERROR 1064 (42000): syntax error' >&2"
+    } else {
+        ""
+    };
     let settings_timeout = if mode == "timeout" {
         "while :; do :; done"
     } else {
@@ -96,9 +101,13 @@ option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
 log="$option.log"
 eof=$(printf '\004')
 exit_status=0
+adhoc=0
+case "$*" in
+  *--show-warnings*) adhoc=1 ;;
+esac
 while IFS= read -r line; do
   printf '%s\n' "$line" >> "$log"
-  [ "$line" = "$eof" ] && exit "$exit_status"
+  [ "$line" = "$eof" ] && break
   [ "$line" = ";" ] && continue
   case "$line" in
     "SET SESSION autocommit=1, completion_type=NO_CHAIN")
@@ -113,6 +122,7 @@ while IFS= read -r line; do
         {session_response}
       else
         printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
+        {finish_error}
       fi
       ;;
     *)
@@ -120,6 +130,7 @@ while IFS= read -r line; do
       ;;
   esac
 done
+exit "$exit_status"
 "#,
     );
     fs::write(&program, script).unwrap();

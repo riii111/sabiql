@@ -100,7 +100,12 @@ async fn nonzero_cli_exit_discards_any_collected_stdout() {
     )
     .await;
 
-    assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+    let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+    assert!(
+        matches!(result, Err(DbOperationError::QueryFailed(_))),
+        "result={result:?}; log={log}"
+    );
+    assert!(log.contains(MYSQL_SESSION_MARKER_COLUMN), "{log}");
 }
 
 #[tokio::test]
