@@ -1,28 +1,28 @@
 use std::path::Path;
 use std::process::Command;
 
-use crate::app::ports::outbound::folder_opener::{FolderOpenError, FolderOpener};
+use crate::app::ports::outbound::folder_opener::FolderOpener;
 
 pub struct NativeFolderOpener;
 
 impl FolderOpener for NativeFolderOpener {
-    fn open(&self, path: &Path) -> Result<(), FolderOpenError> {
+    fn open(&self, path: &Path) -> Result<(), std::io::Error> {
         open_folder(path)
     }
 }
 
 #[cfg(target_os = "macos")]
-fn open_folder(path: &Path) -> Result<(), FolderOpenError> {
+fn open_folder(path: &Path) -> Result<(), std::io::Error> {
     spawn_folder_opener("open", &[], path)
 }
 
 #[cfg(any(target_os = "freebsd", target_os = "linux"))]
-fn open_folder(path: &Path) -> Result<(), FolderOpenError> {
+fn open_folder(path: &Path) -> Result<(), std::io::Error> {
     spawn_folder_opener("xdg-open", &[], path)
 }
 
 #[cfg(target_os = "windows")]
-fn open_folder(path: &Path) -> Result<(), FolderOpenError> {
+fn open_folder(path: &Path) -> Result<(), std::io::Error> {
     spawn_folder_opener("explorer", &[], path)
 }
 
@@ -32,7 +32,7 @@ fn open_folder(path: &Path) -> Result<(), FolderOpenError> {
     target_os = "linux",
     target_os = "windows"
 ))]
-fn spawn_folder_opener(program: &str, args: &[&str], path: &Path) -> Result<(), FolderOpenError> {
+fn spawn_folder_opener(program: &str, args: &[&str], path: &Path) -> Result<(), std::io::Error> {
     Command::new(program).args(args).arg(path).spawn()?;
     Ok(())
 }
@@ -43,6 +43,6 @@ fn spawn_folder_opener(program: &str, args: &[&str], path: &Path) -> Result<(), 
     target_os = "linux",
     target_os = "windows"
 )))]
-fn open_folder(_path: &Path) -> Result<(), FolderOpenError> {
+fn open_folder(_path: &Path) -> Result<(), std::io::Error> {
     Err(std::io::Error::other("Opening folders is unsupported on this platform").into())
 }
