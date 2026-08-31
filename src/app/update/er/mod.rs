@@ -331,11 +331,6 @@ mod tests {
         #[test]
         fn no_dsn_returns_error() {
             let mut state = AppState::new("test".to_string());
-            state.session.set_active_connection_identity_for_test(
-                &ConnectionId::new(),
-                "postgres",
-                DatabaseType::PostgreSQL,
-            );
             state.session.set_metadata(Some(make_metadata(5)));
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now())
