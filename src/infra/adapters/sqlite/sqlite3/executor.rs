@@ -139,9 +139,9 @@ impl SqliteCli {
             .spawn()
             .map_err(classify_cli_spawn_error)?;
 
-        let stdin = child.stdin.take();
-        let stdout = child.stdout.take();
-        let mut stderr_handle = child.stderr.take();
+        let stdin = child.stdin.take().expect("piped sqlite stdin");
+        let mut stdout = child.stdout.take().expect("piped sqlite stdout");
+        let mut stderr_handle = child.stderr.take().expect("piped sqlite stderr");
 
         let file = match tokio::fs::File::create(output_path).await {
             Ok(file) => file,
@@ -156,48 +156,44 @@ impl SqliteCli {
             let (stdin_result, stdout_result, stderr_result) = tokio::join!(
                 async { Ok::<_, CsvOutputError>(write_sql_to_stdin(stdin, &sql).await?) },
                 async {
-                    if let Some(mut stdout) = stdout {
-                        let mut buf = [0u8; 8192];
+                    let mut buf = [0u8; 8192];
+                    #[cfg(windows)]
+                    let mut newline_normalizer = WindowsCsvNewlineNormalizer::default();
+                    #[cfg(windows)]
+                    let mut normalized_buf = Vec::with_capacity(buf.len());
+                    loop {
+                        let n = stdout.read(&mut buf).await?;
+                        if n == 0 {
+                            break;
+                        }
                         #[cfg(windows)]
-                        let mut newline_normalizer = WindowsCsvNewlineNormalizer::default();
-                        #[cfg(windows)]
-                        let mut normalized_buf = Vec::with_capacity(buf.len());
-                        loop {
-                            let n = stdout.read(&mut buf).await?;
-                            if n == 0 {
-                                break;
-                            }
-                            #[cfg(windows)]
-                            {
-                                let output =
-                                    newline_normalizer.normalize(&buf[..n], &mut normalized_buf);
-                                writer
-                                    .write_all(output)
-                                    .await
-                                    .map_err(CsvOutputError::File)?;
-                            }
-                            #[cfg(not(windows))]
+                        {
+                            let output =
+                                newline_normalizer.normalize(&buf[..n], &mut normalized_buf);
                             writer
-                                .write_all(&buf[..n])
+                                .write_all(output)
                                 .await
                                 .map_err(CsvOutputError::File)?;
                         }
-                        #[cfg(windows)]
-                        if let Some(trailing_carriage_return) = newline_normalizer.finish() {
-                            writer
-                                .write_all(&[trailing_carriage_return])
-                                .await
-                                .map_err(CsvOutputError::File)?;
-                        }
-                        writer.flush().await.map_err(CsvOutputError::File)?;
+                        #[cfg(not(windows))]
+                        writer
+                            .write_all(&buf[..n])
+                            .await
+                            .map_err(CsvOutputError::File)?;
                     }
+                    #[cfg(windows)]
+                    if let Some(trailing_carriage_return) = newline_normalizer.finish() {
+                        writer
+                            .write_all(&[trailing_carriage_return])
+                            .await
+                            .map_err(CsvOutputError::File)?;
+                    }
+                    writer.flush().await.map_err(CsvOutputError::File)?;
                     Ok::<_, CsvOutputError>(())
                 },
                 async {
                     let mut buf = Vec::new();
-                    if let Some(ref mut stderr) = stderr_handle {
-                        stderr.read_to_end(&mut buf).await?;
-                    }
+                    stderr_handle.read_to_end(&mut buf).await?;
                     Ok::<_, CsvOutputError>(String::from_utf8_lossy(&buf).into_owned())
                 }
             );
@@ -295,25 +291,21 @@ impl SqliteCli {
             .spawn()
             .map_err(classify_cli_spawn_error)?;
 
-        let stdin = child.stdin.take();
-        let mut stdout_handle = child.stdout.take();
-        let mut stderr_handle = child.stderr.take();
+        let stdin = child.stdin.take().expect("piped sqlite stdin");
+        let mut stdout_handle = child.stdout.take().expect("piped sqlite stdout");
+        let mut stderr_handle = child.stderr.take().expect("piped sqlite stderr");
 
         let result = timeout(Duration::from_secs(timeout_secs), async {
             let (stdin_result, stdout_result, stderr_result) = tokio::join!(
                 write_sql_to_stdin(stdin, sql),
                 async {
                     let mut buf = Vec::new();
-                    if let Some(ref mut stdout) = stdout_handle {
-                        stdout.read_to_end(&mut buf).await?;
-                    }
+                    stdout_handle.read_to_end(&mut buf).await?;
                     Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
                 },
                 async {
                     let mut buf = Vec::new();
-                    if let Some(ref mut stderr) = stderr_handle {
-                        stderr.read_to_end(&mut buf).await?;
-                    }
+                    stderr_handle.read_to_end(&mut buf).await?;
                     Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
                 }
             );
@@ -385,21 +377,19 @@ impl WindowsCsvNewlineNormalizer {
 }
 
 async fn write_sql_to_stdin(
-    stdin: Option<tokio::process::ChildStdin>,
+    mut stdin: tokio::process::ChildStdin,
     sql: &str,
 ) -> Result<(), std::io::Error> {
-    if let Some(mut stdin) = stdin {
-        let execution_sql = terminated_sql(sql);
-        if let Err(error) = stdin.write_all(execution_sql.as_bytes()).await
-            && error.kind() != std::io::ErrorKind::BrokenPipe
-        {
-            return Err(error);
-        }
-        if let Err(error) = stdin.shutdown().await
-            && error.kind() != std::io::ErrorKind::BrokenPipe
-        {
-            return Err(error);
-        }
+    let execution_sql = terminated_sql(sql);
+    if let Err(error) = stdin.write_all(execution_sql.as_bytes()).await
+        && error.kind() != std::io::ErrorKind::BrokenPipe
+    {
+        return Err(error);
+    }
+    if let Err(error) = stdin.shutdown().await
+        && error.kind() != std::io::ErrorKind::BrokenPipe
+    {
+        return Err(error);
     }
     Ok(())
 }
