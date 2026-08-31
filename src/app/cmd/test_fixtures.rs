@@ -180,7 +180,6 @@ pub fn active_connection_save_guard(run_id: u64) -> Arc<ConnectionSaveGuard> {
 }
 
 pub struct EffectRun {
-    pub state: AppState,
     pub actions: Vec<Action>,
 }
 
@@ -208,7 +207,7 @@ pub fn run_one_effect<'a>(
             actions.push(recv_action_with_timeout(action_rx, timeout).await);
         }
 
-        Ok(EffectRun { state, actions })
+        Ok(EffectRun { actions })
     })
 }
 
