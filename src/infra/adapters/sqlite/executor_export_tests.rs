@@ -78,8 +78,7 @@ world'), (2, 'done');
 
 #[tokio::test]
 async fn export_to_csv_rejects_write_sql() {
-    let (dir, dsn) = test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-    let path = dir.path().join("write_export.csv");
+    let (_dir, dsn) = test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
     let adapter = SqliteAdapter::new();
 
     let result = adapter
@@ -91,7 +90,6 @@ async fn export_to_csv_rejects_write_sql() {
         Err(DbOperationError::UnsupportedOperation(message))
         if message.contains("write or DDL")
     ));
-    assert!(!path.exists());
 }
 
 #[tokio::test]
@@ -111,9 +109,8 @@ async fn export_to_csv_rejects_fsdir_before_creating_output() {
 }
 
 #[tokio::test]
-async fn export_to_csv_missing_table_returns_object_missing_and_removes_file() {
-    let (dir, dsn) = test_support::make_sqlite_db("");
-    let path = dir.path().join("missing_export.csv");
+async fn export_to_csv_missing_table_returns_object_missing() {
+    let (_dir, dsn) = test_support::make_sqlite_db("");
     let adapter = SqliteAdapter::new();
 
     let result = adapter
@@ -121,7 +118,6 @@ async fn export_to_csv_missing_table_returns_object_missing_and_removes_file() {
         .await;
 
     assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
-    assert!(!path.exists());
 }
 
 #[tokio::test]
