@@ -37,7 +37,10 @@ pub(crate) async fn run(
         }
         Effect::OpenFolder { path } => {
             if let Err(e) = folder_opener.open(&path) {
-                action_tx.send(Action::OpenFolderFailed(e)).await.ok();
+                action_tx
+                    .send(Action::OpenFolderFailed(Arc::new(e)))
+                    .await
+                    .ok();
             }
         }
         _ => unreachable!("utility::run called with non-utility effect"),
@@ -51,7 +54,6 @@ mod tests {
     use std::sync::Mutex;
 
     use crate::ports::outbound::clipboard::ClipboardError;
-    use crate::ports::outbound::folder_opener::FolderOpenError;
 
     struct MockClipboard {
         result: Result<(), ClipboardError>,
@@ -65,7 +67,7 @@ mod tests {
 
     struct MockFolderOpener {
         opened: Mutex<Vec<PathBuf>>,
-        result: Result<(), FolderOpenError>,
+        result: Result<(), String>,
     }
 
     impl MockFolderOpener {
@@ -79,17 +81,18 @@ mod tests {
         fn failing(error: &str) -> Self {
             Self {
                 opened: Mutex::new(vec![]),
-                result: Err(FolderOpenError::Spawn(Arc::new(std::io::Error::other(
-                    error,
-                )))),
+                result: Err(error.to_owned()),
             }
         }
     }
 
     impl FolderOpener for MockFolderOpener {
-        fn open(&self, path: &Path) -> Result<(), FolderOpenError> {
+        fn open(&self, path: &Path) -> Result<(), std::io::Error> {
             self.opened.lock().unwrap().push(path.to_path_buf());
-            self.result.clone()
+            match &self.result {
+                Ok(()) => Ok(()),
+                Err(error) => Err(std::io::Error::other(error.as_str())),
+            }
         }
     }
 
