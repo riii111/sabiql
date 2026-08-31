@@ -44,5 +44,7 @@ fn spawn_folder_opener(program: &str, args: &[&str], path: &Path) -> Result<(), 
     target_os = "windows"
 )))]
 fn open_folder(_path: &Path) -> Result<(), std::io::Error> {
-    Err(std::io::Error::other("Opening folders is unsupported on this platform").into())
+    Err(std::io::Error::other(
+        "Opening folders is unsupported on this platform",
+    ))
 }
