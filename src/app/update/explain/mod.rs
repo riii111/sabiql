@@ -94,7 +94,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
             activate_postgres_connection(&mut state);
-            state.sql_modal.set_status_for_test(SqlModalStatus::Running);
+            state.sql_modal.begin_adhoc_running();
 
             let effects = reduce_explain(&mut state, &Action::ExplainRequest, Instant::now())
                 .into_effects()
@@ -870,23 +870,21 @@ mod tests {
 
     mod analyze_confirm_cancel {
         use super::*;
-        use crate::model::shared::text_input::TextInputState;
-
         #[test]
         fn confirm_from_high_with_matching_table_emits_effect() {
             let mut state = sql_modal_state();
             activate_postgres_connection(&mut state);
-            let mut input = TextInputState::default();
+            state.sql_modal.begin_confirming_analyze_high(
+                "DELETE FROM users".to_string(),
+                "users".to_string(),
+            );
             for c in "users".chars() {
-                input.insert_char(c);
+                state
+                    .sql_modal
+                    .confirming_analyze_high_input_mut()
+                    .expect("analyze confirmation should have input")
+                    .insert_char(c);
             }
-            state
-                .sql_modal
-                .set_status_for_test(SqlModalStatus::ConfirmingAnalyzeHigh {
-                    query: "DELETE FROM users".to_string(),
-                    input,
-                    target_name: "users".to_string(),
-                });
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeConfirm, Instant::now())
@@ -901,15 +899,15 @@ mod tests {
         fn confirm_from_high_with_mismatch_is_noop() {
             let mut state = sql_modal_state();
             activate_postgres_connection(&mut state);
-            let mut input = TextInputState::default();
-            input.insert_char('x');
+            state.sql_modal.begin_confirming_analyze_high(
+                "DELETE FROM users".to_string(),
+                "users".to_string(),
+            );
             state
                 .sql_modal
-                .set_status_for_test(SqlModalStatus::ConfirmingAnalyzeHigh {
-                    query: "DELETE FROM users".to_string(),
-                    input,
-                    target_name: "users".to_string(),
-                });
+                .confirming_analyze_high_input_mut()
+                .expect("analyze confirmation should have input")
+                .insert_char('x');
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeConfirm, Instant::now())
@@ -928,11 +926,7 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_status_for_test(SqlModalStatus::ConfirmingAnalyzeHigh {
-                    query: "DROP TABLE users".to_string(),
-                    input: TextInputState::default(),
-                    target_name: "users".to_string(),
-                });
+                .begin_confirming_analyze_high("DROP TABLE users".to_string(), "users".to_string());
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeCancel, Instant::now());
 
@@ -944,13 +938,10 @@ mod tests {
             use crate::policy::write::sql_risk::AcknowledgeReason;
             let mut state = sql_modal_state();
             activate_postgres_connection(&mut state);
-            state
-                .sql_modal
-                .set_status_for_test(SqlModalStatus::ConfirmingAnalyzeRisk {
-                    query: "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN DELETE"
-                        .to_string(),
-                    reason: AcknowledgeReason::UnknownRisk,
-                });
+            state.sql_modal.begin_confirming_analyze_risk(
+                "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN DELETE".to_string(),
+                AcknowledgeReason::UnknownRisk,
+            );
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeConfirm, Instant::now())
@@ -965,12 +956,10 @@ mod tests {
         fn cancel_from_risk_acknowledge_resets_to_normal() {
             use crate::policy::write::sql_risk::AcknowledgeReason;
             let mut state = sql_modal_state();
-            state
-                .sql_modal
-                .set_status_for_test(SqlModalStatus::ConfirmingAnalyzeRisk {
-                    query: "GRANT SELECT ON users TO role1".to_string(),
-                    reason: AcknowledgeReason::UnknownRisk,
-                });
+            state.sql_modal.begin_confirming_analyze_risk(
+                "GRANT SELECT ON users TO role1".to_string(),
+                AcknowledgeReason::UnknownRisk,
+            );
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeCancel, Instant::now());
 
@@ -986,7 +975,7 @@ mod tests {
             let mut state = sql_modal_state();
             activate_postgres_connection(&mut state);
             let _ = state.query.begin_running(Instant::now());
-            state.sql_modal.set_status_for_test(SqlModalStatus::Running);
+            state.sql_modal.begin_adhoc_running();
             let database_generation = state.session.database_generation();
 
             reduce_explain(
@@ -1014,7 +1003,7 @@ mod tests {
             let mut state = sql_modal_state();
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
             let _ = state.query.begin_running(Instant::now());
-            state.sql_modal.set_status_for_test(SqlModalStatus::Running);
+            state.sql_modal.begin_adhoc_running();
             let database_generation = state.session.database_generation();
 
             reduce_explain(
@@ -1046,7 +1035,7 @@ mod tests {
             test_fixtures::activate_postgres_connection(&mut state, "dsn://current");
             let stale_run_id = state.query.begin_running(Instant::now());
             let _current_run_id = state.query.begin_running(Instant::now());
-            state.sql_modal.set_status_for_test(SqlModalStatus::Running);
+            state.sql_modal.begin_adhoc_running();
             let database_generation = state.session.database_generation();
             state.explain.set_plan(
                 "Original".to_string(),
@@ -1081,7 +1070,7 @@ mod tests {
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
             let database_generation = state.session.database_generation();
             let run_id = state.query.begin_running(Instant::now());
-            state.sql_modal.set_status_for_test(SqlModalStatus::Running);
+            state.sql_modal.begin_adhoc_running();
             state.explain.set_plan(
                 "original".to_string(),
                 DatabaseType::MySQL,
@@ -1128,7 +1117,7 @@ mod tests {
             let mut state = sql_modal_state();
             activate_postgres_connection(&mut state);
             let _ = state.query.begin_running(Instant::now());
-            state.sql_modal.set_status_for_test(SqlModalStatus::Running);
+            state.sql_modal.begin_adhoc_running();
             let database_generation = state.session.database_generation();
 
             reduce_explain(
@@ -1157,7 +1146,7 @@ mod tests {
             test_fixtures::activate_postgres_connection(&mut state, "dsn://current");
             let stale_run_id = state.query.begin_running(Instant::now());
             let _current_run_id = state.query.begin_running(Instant::now());
-            state.sql_modal.set_status_for_test(SqlModalStatus::Running);
+            state.sql_modal.begin_adhoc_running();
             let database_generation = state.session.database_generation();
             state.explain.set_plan(
                 "Original".to_string(),
@@ -1205,7 +1194,7 @@ mod tests {
             let right_query = state.explain.right().unwrap().full_query.clone();
             let database_generation = state.session.database_generation();
             let run_id = state.query.begin_running(Instant::now());
-            state.sql_modal.set_status_for_test(SqlModalStatus::Running);
+            state.sql_modal.begin_adhoc_running();
 
             let id = state.session.active_connection_id().cloned().unwrap();
             let name = state.session.active_connection_name().unwrap().to_string();
