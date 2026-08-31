@@ -150,17 +150,6 @@ impl JsonDetailState {
 }
 
 #[cfg(test)]
-mod test_support {
-    use super::{JsonDetailMode, JsonDetailState};
-
-    impl JsonDetailState {
-        pub(crate) fn set_mode(&mut self, mode: JsonDetailMode) {
-            self.mode = mode;
-        }
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::{JsonDetailMode, JsonDetailState};
 
