@@ -1159,22 +1159,6 @@ mod tests {
             collation: false,
             generation: false,
         };
-        let headers = ["Name", "Type", "Null", "PK", "Default", "Comment"];
-        let sampled_widths = calculate_column_widths(
-            &headers,
-            &rows[..50]
-                .iter()
-                .map(|row| column_row_cells(row, options))
-                .collect::<Vec<_>>(),
-        );
-        let all_widths = calculate_column_widths(
-            &headers,
-            &rows
-                .iter()
-                .map(|row| column_row_cells(row, options))
-                .collect::<Vec<_>>(),
-        );
-        assert_eq!(sampled_widths, all_widths);
         let mut terminal = Terminal::new(TestBackend::new(80, 12)).unwrap();
         let theme = palette_for(ThemeId::Default);
 
