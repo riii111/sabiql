@@ -20,8 +20,8 @@ async fn collect_csv_output(
     path: &Path,
     timeout_duration: Duration,
 ) -> Result<(), DbOperationError> {
-    let stdout = child.stdout.take();
-    let stderr_handle = child.stderr.take();
+    let mut stdout = child.stdout.take().expect("piped psql stdout");
+    let mut stderr_handle = child.stderr.take().expect("piped psql stderr");
 
     let file = tokio::fs::File::create(path)
         .await
@@ -31,27 +31,23 @@ async fn collect_csv_output(
     let result = timeout(timeout_duration, async {
         let ((), stderr, status) = tokio::try_join!(
             async {
-                if let Some(mut out) = stdout {
-                    let mut buf = [0u8; 8192];
-                    loop {
-                        let n = out.read(&mut buf).await?;
-                        if n == 0 {
-                            break;
-                        }
-                        writer
-                            .write_all(&buf[..n])
-                            .await
-                            .map_err(CsvOutputError::File)?;
+                let mut buf = [0u8; 8192];
+                loop {
+                    let n = stdout.read(&mut buf).await?;
+                    if n == 0 {
+                        break;
                     }
-                    writer.flush().await.map_err(CsvOutputError::File)?;
+                    writer
+                        .write_all(&buf[..n])
+                        .await
+                        .map_err(CsvOutputError::File)?;
                 }
+                writer.flush().await.map_err(CsvOutputError::File)?;
                 Ok::<_, CsvOutputError>(())
             },
             async {
                 let mut buf = Vec::new();
-                if let Some(mut err) = stderr_handle {
-                    err.read_to_end(&mut buf).await?;
-                }
+                stderr_handle.read_to_end(&mut buf).await?;
                 Ok::<_, CsvOutputError>(String::from_utf8_lossy(&buf).into_owned())
             },
             async { Ok::<_, CsvOutputError>(child.wait().await?) },
@@ -208,23 +204,19 @@ impl PostgresAdapter {
             .spawn()
             .map_err(classify_cli_spawn_error)?;
 
-        let mut stdout_handle = child.stdout.take();
-        let mut stderr_handle = child.stderr.take();
+        let mut stdout_handle = child.stdout.take().expect("piped psql stdout");
+        let mut stderr_handle = child.stderr.take().expect("piped psql stderr");
 
         let result = timeout(Duration::from_secs(timeout_secs), async {
             let (stdout_result, stderr_result) = tokio::join!(
                 async {
                     let mut buf = Vec::new();
-                    if let Some(ref mut out) = stdout_handle {
-                        out.read_to_end(&mut buf).await?;
-                    }
+                    stdout_handle.read_to_end(&mut buf).await?;
                     Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
                 },
                 async {
                     let mut buf = Vec::new();
-                    if let Some(ref mut err) = stderr_handle {
-                        err.read_to_end(&mut buf).await?;
-                    }
+                    stderr_handle.read_to_end(&mut buf).await?;
                     Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
                 }
             );
