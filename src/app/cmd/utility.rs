@@ -133,7 +133,7 @@ mod tests {
             run(
                 Effect::CopyToClipboard {
                     content: "hello".to_string(),
-                    on_success: Box::new(Action::Render),
+                    on_success: Box::new(Action::None),
                     on_failure: Some(Box::new(Action::Render)),
                 },
                 &tx,
