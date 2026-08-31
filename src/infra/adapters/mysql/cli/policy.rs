@@ -20,10 +20,8 @@ pub(super) const MYSQL_SESSION_SQL_MODE_COLUMN: &str = "__sabiql_sql_mode";
 
 #[derive(Debug, Clone, Copy)]
 pub(super) enum MySqlMetadataFallbackKind {
-    Select,
-    Table,
-    Show,
-    Describe,
+    Session,
+    External,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -99,11 +97,11 @@ pub(in crate::adapters::mysql) fn validate_mysql_export_query(
 pub(super) fn mysql_metadata_fallback_kind(
     kind: &MySqlStatementKind,
 ) -> Option<MySqlMetadataFallbackKind> {
+    use MySqlMetadataFallbackKind::{External, Session};
+
     match kind {
-        MySqlStatementKind::Select => Some(MySqlMetadataFallbackKind::Select),
-        MySqlStatementKind::Table => Some(MySqlMetadataFallbackKind::Table),
-        MySqlStatementKind::Show => Some(MySqlMetadataFallbackKind::Show),
-        MySqlStatementKind::Describe => Some(MySqlMetadataFallbackKind::Describe),
+        MySqlStatementKind::Select | MySqlStatementKind::Table => Some(Session),
+        MySqlStatementKind::Show | MySqlStatementKind::Describe => Some(External),
         _ => None,
     }
 }
