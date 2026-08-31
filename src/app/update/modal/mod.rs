@@ -17,13 +17,13 @@ pub(crate) fn dispatch_modal(
     action: &Action,
     now: Instant,
 ) -> DispatchResult {
-    base::reduce_base_lifecycle(state, action, now)
+    base::reduce_base_lifecycle(state, action)
         .or_else(|| settings::reduce_settings(state, action, now))
-        .or_else(|| help::reduce_help(state, action, now))
-        .or_else(|| sqlite_diagnostics::reduce_sqlite_diagnostics(state, action, now))
+        .or_else(|| help::reduce_help(state, action))
+        .or_else(|| sqlite_diagnostics::reduce_sqlite_diagnostics(state, action))
         .or_else(|| confirm_dialog::reduce_confirm_dialog(state, action, now))
         .or_else(|| er_picker::reduce_er_picker(state, action, now))
-        .or_else(|| query_history::reduce_query_history_picker(state, action, now))
+        .or_else(|| query_history::reduce_query_history_picker(state, action))
 }
 
 #[cfg(test)]

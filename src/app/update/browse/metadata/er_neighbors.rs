@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::update::action::Action;
@@ -19,11 +17,7 @@ pub(super) fn expand_prefetch_with_fk_neighbors(state: &AppState, run_id: u64) -
     }]
 }
 
-pub(super) fn reduce_er_neighbors(
-    state: &mut AppState,
-    action: &Action,
-    _now: Instant,
-) -> DispatchResult {
+pub(super) fn reduce_er_neighbors(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
         Action::ExpandPrefetchWithFkNeighbors { run_id } => {
             if reject_pending_mysql_connection_probe(state) {

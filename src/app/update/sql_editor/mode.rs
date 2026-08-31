@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use crate::model::app_state::AppState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
@@ -8,7 +6,7 @@ use crate::update::action::{Action, CursorMove, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 
-pub(super) fn reduce_mode(state: &mut AppState, action: &Action, _now: Instant) -> DispatchResult {
+pub(super) fn reduce_mode(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
         // Modal open/submit
         Action::OpenModal(ModalKind::SqlModal) => {
