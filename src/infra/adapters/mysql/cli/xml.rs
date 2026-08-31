@@ -22,7 +22,7 @@ const MYSQL_RESULTSET_END: &[u8] = b"</resultset>";
 
 type MySqlResultsetFrameWithDiagnostics = (Vec<u8>, Vec<DatabaseDiagnostic>);
 
-pub(super) const MYSQL_PREVIEW_MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
+const MYSQL_PREVIEW_MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 const MYSQL_PREVIEW_MAX_FIELD_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Debug, Default)]

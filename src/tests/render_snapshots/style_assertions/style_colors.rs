@@ -1,4 +1,19 @@
 use super::*;
+use sabiql_ui::theme::NavigationTokens;
+
+fn contrast_theme() -> ThemePalette {
+    ThemePalette {
+        component: ComponentTokens {
+            navigation: NavigationTokens {
+                section_header: Color::Rgb(0x2f, 0xc4, 0xb2),
+                scrollbar_active: Color::Rgb(0x2f, 0xc4, 0xb2),
+                ..DEFAULT_THEME.component.navigation
+            },
+            ..DEFAULT_THEME.component
+        },
+        ..DEFAULT_THEME
+    }
+}
 
 #[test]
 fn pending_draft_cell_uses_orange_fg() {
@@ -186,6 +201,7 @@ fn header_status_uses_success_warning_and_error_colors() {
     );
 
     let mut no_dsn = create_test_state();
+    no_dsn.session.clear_connection();
     let no_dsn_buffer = render_and_get_buffer_at(&mut terminal, &mut no_dsn, now);
     assert_header_status_color(
         &no_dsn_buffer,
@@ -289,23 +305,23 @@ fn test_contrast_theme_applies_help_overlay_navigation_colors() {
     state.modal.set_mode(InputMode::Help);
     state.ui.help_mut().set_scroll_offset(14);
 
-    let buffer =
-        render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &TEST_CONTRAST_THEME);
+    let theme = contrast_theme();
+    let buffer = render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &theme);
 
     let has_section_header = has_cell(&buffer, |cell| {
-        cell.symbol() == "▸" && cell.fg == TEST_CONTRAST_THEME.component.navigation.section_header
+        cell.symbol() == "▸" && cell.fg == theme.component.navigation.section_header
     });
     assert!(
         has_section_header,
-        "Expected help overlay to resolve section_header from TEST_CONTRAST_THEME"
+        "Expected help overlay to resolve section_header from the contrast theme"
     );
 
     let has_active_scrollbar = has_cell(&buffer, |cell| {
         matches!(cell.symbol(), "▲" | "▼" | "┃")
-            && cell.fg == TEST_CONTRAST_THEME.component.navigation.scrollbar_active
+            && cell.fg == theme.component.navigation.scrollbar_active
     });
     assert!(
         has_active_scrollbar,
-        "Expected help overlay to resolve active scrollbar color from TEST_CONTRAST_THEME"
+        "Expected help overlay to resolve active scrollbar color from the contrast theme"
     );
 }

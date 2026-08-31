@@ -218,7 +218,7 @@ impl TextInputState {
         self.char_count
     }
 
-    pub(crate) fn remove_range(&mut self, start: usize, end: usize) -> String {
+    pub(super) fn remove_range(&mut self, start: usize, end: usize) -> String {
         let start = start.min(self.char_count);
         let end = end.min(self.char_count);
         if start >= end {

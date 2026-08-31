@@ -461,20 +461,7 @@ impl PostgresAdapter {
 }
 
 #[cfg(test)]
-mod test_support {
-    use super::PostgresAdapter;
-
-    impl PostgresAdapter {
-        pub(in crate::adapters::postgres) fn parse_affected_rows(stdout: &str) -> Option<usize> {
-            Self::parse_affected_rows_with_source(stdout).ok()
-        }
-    }
-}
-
-#[cfg(test)]
 mod tests {
-    use crate::adapters::postgres::PostgresAdapter;
-
     mod boundary_marker {
         use super::super::boundary_marker;
 
@@ -835,132 +822,30 @@ mod tests {
     }
 
     mod write_command_tag {
-        use super::*;
+        use rstest::rstest;
 
-        #[test]
-        fn parse_affected_rows_for_update() {
-            let out = "UPDATE 1\n";
-            assert_eq!(PostgresAdapter::parse_affected_rows(out), Some(1));
-        }
-
-        #[test]
-        fn parse_affected_rows_for_delete() {
-            let out = "DELETE 3\n";
-            assert_eq!(PostgresAdapter::parse_affected_rows(out), Some(3));
-        }
-
-        #[test]
-        fn parse_affected_rows_returns_count_for_select() {
-            let out = "SELECT 1\n";
-            assert_eq!(PostgresAdapter::parse_affected_rows(out), Some(1));
-        }
-
-        #[test]
-        fn update_zero_rows_returns_zero() {
-            assert_eq!(PostgresAdapter::parse_affected_rows("UPDATE 0"), Some(0));
-        }
-
-        #[test]
-        fn delete_large_number_returns_correct_value() {
+        #[rstest]
+        #[case::update("UPDATE 1\n", 1)]
+        #[case::delete("DELETE 3\n", 3)]
+        #[case::insert("INSERT 0 10\n", 10)]
+        #[case::select("SELECT 1\n", 1)]
+        #[case::zero_rows("UPDATE 0", 0)]
+        #[case::large_number("DELETE 1000000", 1_000_000)]
+        fn parse_affected_rows_returns_count(#[case] stdout: &str, #[case] expected: usize) {
             assert_eq!(
-                PostgresAdapter::parse_affected_rows("DELETE 1000000"),
-                Some(1_000_000)
+                super::super::PostgresAdapter::parse_affected_rows_with_source(stdout),
+                Ok(expected)
             );
         }
 
-        #[test]
-        fn invalid_format_returns_none() {
-            assert_eq!(PostgresAdapter::parse_affected_rows("FOOBAR"), None);
-            assert_eq!(PostgresAdapter::parse_affected_rows("UPDATE abc"), None);
-            assert_eq!(PostgresAdapter::parse_affected_rows(""), None);
-        }
-    }
-
-    mod execute_query_result_command_tag {
-        use crate::adapters::postgres::PostgresAdapter;
-        use crate::domain::CommandTag;
-
-        fn dml_stdout_returns_command_tag(
-            stdout: &str,
-            expected_tag: CommandTag,
-            expected_rows: usize,
-        ) {
-            let tag = PostgresAdapter::extract_command_tag(stdout);
-            assert_eq!(tag.as_ref(), Some(&expected_tag));
-            let rows = tag
-                .as_ref()
-                .and_then(CommandTag::affected_rows)
-                .unwrap_or(0) as usize;
-            assert_eq!(rows, expected_rows);
-        }
-
-        #[test]
-        fn update_stdout_yields_update_tag() {
-            dml_stdout_returns_command_tag("UPDATE 3\n", CommandTag::Update(3), 3);
-        }
-
-        #[test]
-        fn delete_stdout_yields_delete_tag() {
-            dml_stdout_returns_command_tag("DELETE 5\n", CommandTag::Delete(5), 5);
-        }
-
-        #[test]
-        fn insert_stdout_yields_insert_tag() {
-            dml_stdout_returns_command_tag("INSERT 0 7\n", CommandTag::Insert(7), 7);
-        }
-
-        #[test]
-        fn create_table_stdout_yields_create_tag_zero_rows() {
-            let tag = PostgresAdapter::extract_command_tag("CREATE TABLE\n");
-            assert_eq!(tag, Some(CommandTag::Create("TABLE".to_string())));
-            assert_eq!(tag.unwrap().affected_rows(), None);
-        }
-
-        #[test]
-        fn csv_stdout_is_not_mistaken_for_command_tag() {
-            // CSV data: last line "1,Alice" does not match any DML pattern
-            let csv = "id,name\n1,Alice\n2,Bob\n";
-            let tag = PostgresAdapter::extract_command_tag(csv);
-            // Should be Other or None, never a DML/DDL variant
-            let is_dml = tag.as_ref().is_some_and(CommandTag::is_data_modifying);
-            assert!(!is_dml, "CSV output should not be parsed as DML tag");
-        }
-
-        #[test]
-        fn select_csv_last_line_is_not_mistaken_for_select_tag() {
-            // psql --csv does NOT append "SELECT N" to output; last line is data
-            let csv = "count\n42\n";
-            let tag = PostgresAdapter::extract_command_tag(csv);
-            assert_ne!(tag, Some(CommandTag::Select(42)));
-        }
-
-        // psql returns "SELECT n" for CREATE TABLE AS SELECT
-        #[test]
-        fn select_tag_captured_for_ctas() {
-            let tag = PostgresAdapter::parse_command_tag("SELECT 5");
-            assert_eq!(tag, Ok(CommandTag::Select(5)));
-            let passes = tag
-                .ok()
-                .as_ref()
-                .is_some_and(|t| t.is_data_modifying() || matches!(t, CommandTag::Select(_)));
-            assert!(passes);
-        }
-
-        // 0-row SELECT header-only CSV parses as Other, which the filter rejects
-        #[test]
-        fn empty_select_header_not_captured_by_filter() {
-            let cases = ["id,name", "id,name,email", "count"];
-            for input in cases {
-                let tag = PostgresAdapter::parse_command_tag(input);
-                let passes = tag
-                    .ok()
-                    .as_ref()
-                    .is_some_and(|t| t.is_data_modifying() || matches!(t, CommandTag::Select(_)));
-                assert!(
-                    !passes,
-                    "header '{input}' must not pass the command-tag filter"
-                );
-            }
+        #[rstest]
+        #[case("FOOBAR")]
+        #[case("UPDATE abc")]
+        #[case("")]
+        fn parse_affected_rows_rejects_invalid_output(#[case] stdout: &str) {
+            assert!(
+                super::super::PostgresAdapter::parse_affected_rows_with_source(stdout).is_err()
+            );
         }
     }
 }

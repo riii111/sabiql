@@ -5,7 +5,7 @@ use super::app_config_file::{
     self, config_file_path, get_config_dir as app_config_dir, render_config_file, write_config_file,
 };
 use crate::app::ports::outbound::connection_store::{ConnectionStore, ConnectionStoreError};
-use crate::config::connection_config::{
+use crate::config::{
     CURRENT_VERSION, ConfigVersionCheck, ConnectionConfigFile, is_supported_config_version,
 };
 use crate::domain::connection::{ConnectionId, ConnectionProfile};

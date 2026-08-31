@@ -1,9 +1,14 @@
+#![allow(
+    clippy::redundant_pub_crate,
+    reason = "crate-visible policy facade re-exports selected items from private implementation modules"
+)]
+
 mod diff;
 mod display;
 mod handling;
 
-pub use diff::{
+pub(crate) use diff::{
     normalize_for_write_diff, normalize_structured_json_for_write, uses_structured_json_diff,
 };
-pub use display::format_for_cell_detail;
-pub use handling::CellPresentationPolicy;
+pub(crate) use display::format_for_cell_detail;
+pub(crate) use handling::CellPresentationPolicy;

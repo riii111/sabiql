@@ -705,7 +705,6 @@ fn merge_rows(groups: &[Vec<HelpRow>]) -> Vec<HelpRow> {
 mod tests {
     use super::*;
     use crate::domain::{ConnectionId, DatabaseType};
-    use crate::model::browse::json_detail::JsonDetailMode;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::sql_editor::modal::SqlModalTab;
 
@@ -995,7 +994,7 @@ mod tests {
 
         let mut json_state = AppState::new("test".to_string());
         json_state.modal.set_mode(InputMode::JsonDetail);
-        json_state.json_detail.set_mode(JsonDetailMode::Searching);
+        json_state.json_detail.enter_search();
         let json_document = HelpDocument::new(HelpOrigin::from_state(&json_state), "");
 
         assert_eq!(json_document.sections()[0].title(), "Current: JSON Search");

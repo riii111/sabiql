@@ -205,7 +205,7 @@ impl EffectRunner {
                 if matches!(&e, Effect::ProbeMySqlConnection { .. }) {
                     self.table_detail_tasks.cancel().await;
                 }
-                cmd_connection::run(
+                Ok(cmd_connection::run(
                     e,
                     &self.action_tx,
                     &self.connection,
@@ -213,8 +213,9 @@ impl EffectRunner {
                     &self.metadata_provider,
                     state,
                 )
-                .await;
-                Ok(vec![])
+                .await
+                .into_iter()
+                .collect())
             }
 
             e @ (Effect::FetchMetadata { .. }
@@ -318,8 +319,7 @@ impl EffectRunner {
             }
 
             Effect::SaveSettings { settings } => {
-                cmd_settings::run(settings, &self.action_tx, &self.settings_store).await;
-                Ok(vec![])
+                Ok(vec![cmd_settings::run(settings, &self.settings_store)])
             }
 
             e @ (Effect::FetchSqliteDiagnosticsCore { .. }

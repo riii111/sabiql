@@ -1,7 +1,7 @@
 use crate::update::action::Action;
 use crate::update::input::keybindings::{KeyCombo, ROW_DETAIL};
 
-pub fn handle_row_detail_keys(combo: KeyCombo) -> Action {
+pub(super) fn handle_row_detail_keys(combo: KeyCombo) -> Action {
     ROW_DETAIL.resolve(&combo).unwrap_or(Action::None)
 }
 
