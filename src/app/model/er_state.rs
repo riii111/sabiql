@@ -152,23 +152,6 @@ impl ErPreparationState {
 }
 
 #[cfg(test)]
-pub mod test_support {
-    use super::{ErPreparationState, ErStatus};
-
-    impl ErPreparationState {
-        #[doc(hidden)]
-        pub fn total_tables(&self) -> usize {
-            self.total_tables
-        }
-
-        #[doc(hidden)]
-        pub fn mark_waiting_for_test(&mut self) {
-            self.status = ErStatus::Waiting;
-        }
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
 
