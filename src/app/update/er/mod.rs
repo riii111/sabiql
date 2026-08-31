@@ -27,7 +27,7 @@ pub(crate) fn dispatch_er(state: &mut AppState, action: &Action, now: Instant) -
     diagram::reduce_diagram_lifecycle(state, action, now)
         .or_else(|| smart_refresh_fetched::reduce_smart_refresh_fetched(state, action))
         .or_else(|| smart_refresh_completed::reduce_smart_refresh_completed(state, action, now))
-        .or_else(|| smart_refresh_failed::reduce_smart_refresh_failed(state, action, now))
+        .or_else(|| smart_refresh_failed::reduce_smart_refresh_failed(state, action))
 }
 
 #[cfg(test)]
