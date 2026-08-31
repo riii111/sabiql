@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use crate::domain::{CommandTag, DatabaseDiagnostic};
 use crate::model::shared::multi_line_input::MultiLineInputState;
-use crate::model::shared::text_input::{TextInputLike, TextInputState};
+use crate::model::shared::text_input::TextInputState;
 use crate::policy::write::sql_risk::AcknowledgeReason;
 use crate::policy::write::write_guardrails::AdhocRiskDecision;
 
