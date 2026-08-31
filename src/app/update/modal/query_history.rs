@@ -35,7 +35,7 @@ pub(super) fn reduce_query_history_picker(state: &mut AppState, action: &Action)
                 .query_history_scope()
                 .expect("active connection checked above");
             DispatchResult::handled_with(vec![Effect::LoadQueryHistory {
-                project_name: state.runtime.project_name.clone(),
+                project_name: state.project_name().to_string(),
                 scope,
             }])
         }
