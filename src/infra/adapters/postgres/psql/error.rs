@@ -26,11 +26,7 @@ pub(in crate::adapters::postgres) fn classify_query_error(
 ) -> DbOperationError {
     let trimmed = stderr.trim();
     let Some(details) = (!trimmed.is_empty()).then_some(trimmed) else {
-        return DbOperationError::QueryFailed(if status.success() {
-            String::new()
-        } else {
-            exit_status_details(status)
-        });
+        return DbOperationError::QueryFailed(exit_status_details(status));
     };
 
     if let Some(sqlstate) = extract_sqlstate(details) {
@@ -496,16 +492,6 @@ mod tests {
                 classify_query_error("ERROR:  42501: permission denied", status),
                 DbOperationError::PermissionDenied(details)
                     if details == "ERROR:  42501: permission denied"
-            ));
-        }
-
-        #[test]
-        fn zero_status_does_not_create_failure_detail() {
-            let status = exit_status(0);
-
-            assert!(matches!(
-                classify_query_error("", status),
-                DbOperationError::QueryFailed(details) if details.is_empty()
             ));
         }
 
