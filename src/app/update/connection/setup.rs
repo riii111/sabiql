@@ -1260,7 +1260,7 @@ mod tests {
 
             reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
 
-            let saved = state.connection_caches.get(&current_id).unwrap();
+            let saved = &state.connection_caches[&current_id];
             assert_eq!(saved.explorer_selected, 4);
             assert!(saved.metadata.is_some());
         }
@@ -1301,7 +1301,7 @@ mod tests {
             };
             reduce(&mut state, &action, Instant::now());
 
-            assert!(state.connection_caches.get(&saved_id).is_none());
+            assert!(!state.connection_caches.contains_key(&saved_id));
         }
 
         #[test]

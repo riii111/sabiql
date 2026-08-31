@@ -2653,15 +2653,8 @@ mod tests {
 
             assert_eq!(state.session.active_connection_id(), Some(&conn_b));
             assert!(state.session.connection_state().is_connecting());
-            assert!(state.connection_caches.get(&conn_a).is_some());
-            assert_eq!(
-                state
-                    .connection_caches
-                    .get(&conn_a)
-                    .unwrap()
-                    .explorer_selected,
-                5
-            );
+            assert!(state.connection_caches.contains_key(&conn_a));
+            assert_eq!(state.connection_caches[&conn_a].explorer_selected, 5);
             assert!(matches!(
                 effects.as_slice(),
                 [

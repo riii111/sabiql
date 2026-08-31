@@ -568,7 +568,7 @@ mod tests {
             let action = create_postgres_switch_action(&new_id, "new_db");
             reduce(&mut state, &action);
 
-            let saved = state.connection_caches.get(&current_id).unwrap();
+            let saved = &state.connection_caches[&current_id];
             assert_eq!(saved.explorer_selected, 5);
             assert_eq!(saved.inspector_tab, InspectorTab::Indexes);
         }
@@ -678,7 +678,7 @@ mod tests {
                 &create_postgres_switch_action(&ConnectionId::from_string("postgres"), "postgres"),
             );
 
-            let cache = state.connection_caches.get(&current_id).unwrap();
+            let cache = &state.connection_caches[&current_id];
             assert!(
                 cache.is_valid_mysql_snapshot(
                     "mysql://user@localhost:3306/current",
@@ -1080,7 +1080,7 @@ mod tests {
             let target_id = ConnectionId::from_string("mysql-target");
             let target = mysql_target(&target_id, "mysql://user@localhost:3306/app", "app");
             state.connection_caches.insert(
-                target_id.clone(),
+                target_id,
                 valid_mysql_cache(&target.dsn, target.database.as_deref().unwrap()),
             );
 
@@ -1206,7 +1206,7 @@ mod tests {
                         .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
                 );
                 assert!(state.session.connection_state().is_connecting());
-                assert!(state.connection_caches.get(&target_id).is_none());
+                assert!(!state.connection_caches.contains_key(&target_id));
             }
         }
 
@@ -1216,7 +1216,7 @@ mod tests {
             let target_id = ConnectionId::from_string("mysql-target");
             let target = mysql_target(&target_id, "mysql://user@localhost:3306/app", "app");
             state.connection_caches.insert(
-                target_id.clone(),
+                target_id,
                 valid_mysql_cache(&target.dsn, target.database.as_deref().unwrap()),
             );
 
@@ -1293,7 +1293,7 @@ mod tests {
             let target_id = ConnectionId::from_string("mysql-target");
             let target = mysql_target(&target_id, "mysql://user@localhost:3306/app", "app");
             state.connection_caches.insert(
-                target_id.clone(),
+                target_id,
                 valid_mysql_cache(&target.dsn, target.database.as_deref().unwrap()),
             );
 
@@ -1353,7 +1353,7 @@ mod tests {
                     .iter()
                     .any(|e| matches!(e, Effect::FetchMetadata { .. }))
             );
-            assert!(state.connection_caches.get(&target_id).is_some());
+            assert!(state.connection_caches.contains_key(&target_id));
             assert_eq!(state.ui.explorer_selected(), 42);
             assert_eq!(state.query.pagination.schema(), "main");
             assert_eq!(state.query.pagination.table(), "items");
@@ -2348,14 +2348,7 @@ mod tests {
             assert!(effects.is_empty());
             assert_eq!(state.session.active_connection_id(), Some(&current.id));
             assert_eq!(state.session.active_database(), None);
-            assert_eq!(
-                state
-                    .connection_caches
-                    .get(&current.id)
-                    .unwrap()
-                    .explorer_selected,
-                7
-            );
+            assert_eq!(state.connection_caches[&current.id].explorer_selected, 7);
             assert!(state.messages.last_error().is_some_and(|message| {
                 message.contains("MySQL connection field `database` is required")
             }));
