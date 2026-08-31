@@ -189,13 +189,15 @@ fn preview_metadata_from_columns(
 }
 
 pub(in crate::adapters::mysql) fn convert_preview_values_with_binary_charset(
-    result: &MySqlResultSet,
+    result: MySqlResultSet,
     columns: &[Column],
     identity_columns: &[Column],
 ) -> Result<ConvertedPreviewValues, DbOperationError> {
     let expected_columns = preview_result_columns(columns, identity_columns);
-    if result.values.is_empty() {
-        if result.columns.is_empty() || result.columns == expected_columns {
+    let result_columns = result.columns;
+    let values = result.values;
+    if values.is_empty() {
+        if result_columns.is_empty() || result_columns == expected_columns {
             return Ok(ConvertedPreviewValues {
                 visible: Vec::new(),
                 identity: (!identity_columns.is_empty()).then(Vec::new),
@@ -205,21 +207,20 @@ pub(in crate::adapters::mysql) fn convert_preview_values_with_binary_charset(
             "MySQL preview returned an unexpected column count".to_string(),
         ));
     }
-    if result.columns != expected_columns {
+    if result_columns != expected_columns {
         return Err(DbOperationError::MetadataParseFailed(
             "MySQL preview returned unexpected columns".to_string(),
         ));
     }
-    let rows = result
-        .values
-        .iter()
+    let rows = values
+        .into_iter()
         .map(|row| {
             if row.len() != expected_columns.len() {
                 return Err(DbOperationError::MetadataParseFailed(
                     "MySQL preview returned an unexpected row width".to_string(),
                 ));
             }
-            row.iter()
+            row.into_iter()
                 .zip(columns.iter().chain(identity_columns))
                 .map(|(value, column)| {
                     let has_binary_charset = column
@@ -235,17 +236,16 @@ pub(in crate::adapters::mysql) fn convert_preview_values_with_binary_charset(
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let (visible, identity) = rows.into_iter().fold(
-        (Vec::new(), (!identity_columns.is_empty()).then(Vec::new)),
-        |(mut visible, mut identity), row| {
-            let (visible_row, identity_row) = row.split_at(columns.len());
-            visible.push(visible_row.to_vec());
+    let mut identity = (!identity_columns.is_empty()).then(Vec::new);
+    let visible = rows
+        .into_iter()
+        .map(|mut row| {
             if let Some(identity) = identity.as_mut() {
-                identity.push(identity_row.to_vec());
+                identity.push(row.split_off(columns.len()));
             }
-            (visible, identity)
-        },
-    );
+            row
+        })
+        .collect();
     Ok(ConvertedPreviewValues { visible, identity })
 }
 
@@ -266,22 +266,22 @@ pub(in crate::adapters::mysql) fn preview_result_columns(
 }
 
 fn convert_preview_value(
-    value: &QueryValue,
+    value: QueryValue,
     data_type: &str,
     has_binary_charset: bool,
 ) -> QueryValue {
     let QueryValue::Text(value) = value else {
-        return value.clone();
+        return value;
     };
     if (has_binary_charset || is_binary_type(data_type))
-        && let Some(bytes) = decode_hex(value)
+        && let Some(bytes) = decode_hex(&value)
     {
         return QueryValue::Blob(bytes);
     }
-    if is_numeric_type(data_type) && is_sql_numeric_literal(value) {
-        return QueryValue::SqlLiteral(value.clone());
+    if is_numeric_type(data_type) && is_sql_numeric_literal(&value) {
+        return QueryValue::SqlLiteral(value);
     }
-    QueryValue::Text(value.clone())
+    QueryValue::Text(value)
 }
 
 fn is_binary_type(data_type: &str) -> bool {
@@ -398,7 +398,7 @@ mod tests {
     use super::*;
 
     fn convert_preview_values(
-        result: &MySqlResultSet,
+        result: MySqlResultSet,
         columns: &[Column],
         identity_columns: &[Column],
     ) -> Result<ConvertedPreviewValues, DbOperationError> {
@@ -637,7 +637,7 @@ done
             column("binary_value", "blob"),
         ];
 
-        let values = convert_preview_values(&result, &columns, &[]).expect("conversion succeeds");
+        let values = convert_preview_values(result, &columns, &[]).expect("conversion succeeds");
 
         assert_eq!(values.visible[0][0], QueryValue::Text("0x41".to_string()));
         assert_eq!(values.visible[0][1], QueryValue::Blob(vec![0, 255]));
@@ -659,7 +659,7 @@ done
             column("text_value", "varchar(3)"),
         ];
 
-        let values = convert_preview_values(&result, &columns, &[]).expect("conversion succeeds");
+        let values = convert_preview_values(result, &columns, &[]).expect("conversion succeeds");
 
         assert_eq!(values.visible[0][0], QueryValue::Blob(vec![0, 255, 161]));
         assert_eq!(values.visible[0][1], QueryValue::Blob(vec![16, 254]));
@@ -674,7 +674,7 @@ done
         );
         let columns = vec![column("bit_value", "bit(3)")];
 
-        let values = convert_preview_values(&result, &columns, &[]).expect("conversion succeeds");
+        let values = convert_preview_values(result, &columns, &[]).expect("conversion succeeds");
 
         assert_eq!(values.visible[0][0], QueryValue::Blob(vec![5]));
     }
@@ -689,7 +689,7 @@ done
         );
         let columns = vec![column("location", "point srid 4326")];
 
-        let values = convert_preview_values(&result, &columns, &[]).expect("conversion succeeds");
+        let values = convert_preview_values(result, &columns, &[]).expect("conversion succeeds");
 
         assert_eq!(
             values.visible[0][0],
@@ -716,7 +716,7 @@ done
             column("float_value", "double"),
         ];
 
-        let values = convert_preview_values(&result, &columns, &[]).expect("conversion succeeds");
+        let values = convert_preview_values(result, &columns, &[]).expect("conversion succeeds");
 
         assert_eq!(values.visible[0][0].as_str(), Some("18446744073709551615"));
         assert!(matches!(values.visible[0][0], QueryValue::SqlLiteral(_)));
@@ -745,7 +745,7 @@ done
         let visible_columns = vec![column("payload", "text")];
         let identity_columns = vec![column("id", "int")];
 
-        let values = convert_preview_values(&result, &visible_columns, &identity_columns)
+        let values = convert_preview_values(result, &visible_columns, &identity_columns)
             .expect("conversion succeeds");
 
         assert_eq!(
@@ -764,7 +764,7 @@ done
         let identity_columns = vec![column("id", "int")];
         let result = result(&["payload", "__sabiql_row_identity_0"], Vec::new());
 
-        let values = convert_preview_values(&result, &columns, &identity_columns)
+        let values = convert_preview_values(result, &columns, &identity_columns)
             .expect("empty result conversion");
 
         assert!(values.visible.is_empty());
