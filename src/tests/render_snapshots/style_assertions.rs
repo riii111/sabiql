@@ -15,7 +15,7 @@ use sabiql_app::model::shared::input_mode::InputMode;
 use sabiql_app::model::shared::theme_id::ThemeId;
 use sabiql_app::model::shared::ui_state::{HELP_MODAL_HEIGHT_PERCENT, HELP_MODAL_WIDTH_PERCENT};
 use sabiql_app::update::action::{Action, CursorMove, InputTarget, ModalKind};
-use sabiql_app::update::browse::result::dispatch_result;
+use sabiql_app::update::dispatch_result;
 use sabiql_domain::{Column, ConnectionId, QueryResult};
 use sabiql_ui::theme::test_support::TEST_CONTRAST_THEME;
 use sabiql_ui::theme::{

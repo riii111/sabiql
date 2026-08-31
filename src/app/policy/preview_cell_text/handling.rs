@@ -1,26 +1,26 @@
 use crate::domain::DatabaseType;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PreviewCellTextDiffHandling {
+pub(crate) enum PreviewCellTextDiffHandling {
     RawText,
     StructuredJson,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PreviewCellTextDisplayHandling {
+pub(crate) enum PreviewCellTextDisplayHandling {
     RawText,
     PrettyPrintJsonText,
     StructuredJson,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CellPresentationPolicy {
+pub(crate) struct CellPresentationPolicy {
     diff_handling: PreviewCellTextDiffHandling,
     display_handling: PreviewCellTextDisplayHandling,
 }
 
 impl CellPresentationPolicy {
-    pub fn new(database_type: DatabaseType, column_data_type: &str, value: &str) -> Self {
+    pub(crate) fn new(database_type: DatabaseType, column_data_type: &str, value: &str) -> Self {
         let diff_handling = match (database_type, column_data_type) {
             (DatabaseType::PostgreSQL, "jsonb") | (DatabaseType::MySQL, "json") => {
                 PreviewCellTextDiffHandling::StructuredJson
@@ -51,15 +51,15 @@ impl CellPresentationPolicy {
         }
     }
 
-    pub fn diff_handling(self) -> PreviewCellTextDiffHandling {
+    pub(crate) fn diff_handling(self) -> PreviewCellTextDiffHandling {
         self.diff_handling
     }
 
-    pub fn display_handling(self) -> PreviewCellTextDisplayHandling {
+    pub(crate) fn display_handling(self) -> PreviewCellTextDisplayHandling {
         self.display_handling
     }
 
-    pub fn uses_json_detail_modal(self) -> bool {
+    pub(crate) fn uses_json_detail_modal(self) -> bool {
         self.display_handling == PreviewCellTextDisplayHandling::StructuredJson
     }
 }

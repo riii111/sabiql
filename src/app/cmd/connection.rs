@@ -23,12 +23,12 @@ use crate::update::action::{
 };
 
 #[derive(Default)]
-pub(crate) struct ConnectionTaskOwner {
+pub(in crate::cmd) struct ConnectionTaskOwner {
     active: std::sync::Mutex<Option<JoinHandle<()>>>,
 }
 
 impl ConnectionTaskOwner {
-    pub(crate) async fn replace<F>(&self, task: F)
+    pub(in crate::cmd) async fn replace<F>(&self, task: F)
     where
         F: std::future::Future<Output = ()> + Send + 'static,
     {
@@ -37,13 +37,13 @@ impl ConnectionTaskOwner {
         *self.active.lock().expect("connection task lock poisoned") = Some(task);
     }
 
-    pub(crate) async fn cancel(&self) {
+    pub(in crate::cmd) async fn cancel(&self) {
         if let Some(task) = self.abort() {
             let _ = task.await;
         }
     }
 
-    pub(crate) fn abort(&self) -> Option<JoinHandle<()>> {
+    pub(in crate::cmd) fn abort(&self) -> Option<JoinHandle<()>> {
         let task = self
             .active
             .lock()
@@ -82,7 +82,7 @@ fn claim_and_save<T>(
     Some(result)
 }
 
-pub(crate) async fn run(
+pub(in crate::cmd) async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     connection: &ConnectionDeps,

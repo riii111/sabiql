@@ -12,7 +12,11 @@ use crate::model::app_state::AppState;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn dispatch_sql_modal(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub(in crate::update) fn dispatch_sql_modal(
+    state: &mut AppState,
+    action: &Action,
+    now: Instant,
+) -> DispatchResult {
     completion::reduce_completion(state, action)
         .or_else(|| editing::reduce_editing(state, action, now))
         .or_else(|| mode::reduce_mode(state, action))

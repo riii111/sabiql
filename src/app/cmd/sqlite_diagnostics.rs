@@ -10,26 +10,26 @@ use crate::ports::outbound::SqliteDiagnosticsProvider;
 use crate::update::action::Action;
 
 #[derive(Default)]
-pub(crate) struct SqliteDiagnosticsTaskOwner {
+pub(in crate::cmd) struct SqliteDiagnosticsTaskOwner {
     core: SingleTaskOwner,
     quick_check: SingleTaskOwner,
 }
 
 impl SqliteDiagnosticsTaskOwner {
-    pub(crate) async fn cancel(&self) {
+    pub(in crate::cmd) async fn cancel(&self) {
         for task in self.abort() {
             let _ = task.await;
         }
     }
 
-    pub(crate) fn abort(&self) -> Vec<JoinHandle<()>> {
+    pub(in crate::cmd) fn abort(&self) -> Vec<JoinHandle<()>> {
         let core = self.core.abort();
         let quick_check = self.quick_check.abort();
         [core, quick_check].into_iter().flatten().collect()
     }
 }
 
-pub(crate) async fn run(
+pub(in crate::cmd) async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     provider: &Arc<dyn SqliteDiagnosticsProvider>,

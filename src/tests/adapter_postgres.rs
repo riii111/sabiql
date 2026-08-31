@@ -9,7 +9,7 @@
 //! The database user must be able to create and drop schemas.
 
 use sabiql_app::ports::outbound::{AccessMode, DbOperationError, MetadataProvider, QueryExecutor};
-use sabiql_infra::adapters::postgres::PostgresAdapter;
+use sabiql_infra::adapters::PostgresAdapter;
 
 use crate::tests::harness::postgres::{
     postgres_bad_dsn, postgres_integration_dsn, with_postgres_test_db,

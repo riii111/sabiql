@@ -7,7 +7,7 @@ use super::app_config_file::{
 use crate::app::model::shared::settings::KeymapPreset;
 use crate::app::model::shared::theme_id::ThemeId;
 use crate::app::ports::outbound::{AppSettings, SettingsStore, SettingsStoreError};
-use crate::config::connection_config::{
+use crate::config::{
     CURRENT_VERSION, ConfigVersionCheck, ConnectionConfigFile, is_supported_config_version,
 };
 

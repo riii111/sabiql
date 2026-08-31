@@ -5,7 +5,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce_focus(state: &mut AppState, action: &Action) -> DispatchResult {
+pub(in crate::update) fn reduce_focus(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
         Action::SetFocusedPane(pane) => {
             if *pane != FocusedPane::Result {

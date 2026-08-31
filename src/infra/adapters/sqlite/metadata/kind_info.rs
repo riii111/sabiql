@@ -7,7 +7,7 @@ pub(super) fn table_kind_info_from_raw(raw: &RawTableKindInfo) -> TableKindInfo 
     table_kind_info_from_pragma(&raw.r#type, raw.wr, raw.strict, raw.sql.as_deref())
 }
 
-pub(super) fn table_kind_info_from_pragma(
+fn table_kind_info_from_pragma(
     table_type: &str,
     without_rowid: i64,
     strict: i64,

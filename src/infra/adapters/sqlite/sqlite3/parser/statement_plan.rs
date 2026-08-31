@@ -10,7 +10,7 @@ use crate::domain::sqlite_sql::{
 use super::lexer::{contains_keyword, dml_keyword, first_keyword, try_split_sqlite_statements};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::adapters::sqlite::sqlite3) enum SqliteWrapMode {
+enum SqliteWrapMode {
     None,
     BeginCommit,
 }
@@ -35,7 +35,7 @@ impl<'a> SqliteStatementPlan<'a> {
         is_dml_statement(self.statements[index])
     }
 
-    pub(in crate::adapters::sqlite::sqlite3) fn wrap_mode(&self) -> SqliteWrapMode {
+    fn wrap_mode(&self) -> SqliteWrapMode {
         self.wrap_mode
     }
 }
