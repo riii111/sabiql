@@ -358,10 +358,7 @@ impl EffectRunner {
             | Effect::EvictTablesFromCompletionCache { .. }
             | Effect::ClearCompletionEngineCache
             | Effect::ResizeCompletionCache { .. }
-            | Effect::TriggerCompletion) => {
-                cmd_completion::run(e, &self.action_tx, state, completion_engine).await;
-                Ok(vec![])
-            }
+            | Effect::TriggerCompletion) => Ok(cmd_completion::run(e, state, completion_engine)),
         }
     }
 }
