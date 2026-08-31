@@ -639,6 +639,32 @@ mod tests {
         }
 
         #[test]
+        fn stale_export_success_after_connection_switch_is_ignored() {
+            let mut state = create_test_state();
+            let stale_run_id = begin_query_run(&mut state);
+
+            state.session.reset(&mut state.query);
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/other");
+            let current_run_id = begin_query_run(&mut state);
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::CsvExportSucceeded {
+                    run_id: stale_run_id,
+                    path: "/tmp/stale-export.csv".to_string(),
+                    row_count: Some(1),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(stale_run_id < current_run_id);
+            assert!(effects.is_empty());
+            assert!(state.query.is_running());
+            assert!(state.messages.last_success.is_none());
+        }
+
+        #[test]
         fn export_failed_sets_error_message() {
             let mut state = create_test_state();
             let action = csv_failed_action(
@@ -653,6 +679,31 @@ mod tests {
                 state.messages.last_error.as_deref(),
                 Some("Query failed: psql error. Review the database error details and SQL.")
             );
+        }
+
+        #[test]
+        fn stale_export_failure_after_connection_switch_is_ignored() {
+            let mut state = create_test_state();
+            let stale_run_id = begin_query_run(&mut state);
+
+            state.session.reset(&mut state.query);
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/other");
+            let current_run_id = begin_query_run(&mut state);
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::CsvExportFailed {
+                    run_id: stale_run_id,
+                    error: DbOperationError::QueryFailed("stale export".to_string()),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(stale_run_id < current_run_id);
+            assert!(effects.is_empty());
+            assert!(state.query.is_running());
+            assert!(state.messages.last_error.is_none());
         }
 
         #[test]

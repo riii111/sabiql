@@ -1424,6 +1424,41 @@ mod tests {
             assert!(state.messages.last_success.is_none());
             assert!(state.query.is_running());
         }
+
+        #[test]
+        fn stale_write_failure_does_not_change_error_modal_or_refresh_target() {
+            let mut state = editable_state();
+            let target = DeleteRefreshTarget {
+                target_page: 1,
+                target_row: Some(2),
+                expected_delete_count: 1,
+            };
+            state.query.set_delete_refresh_target(
+                target.target_page,
+                target.target_row,
+                target.expected_delete_count,
+            );
+            let stale_run_id = begin_query_run(&mut state);
+            let current_run_id = begin_query_run(&mut state);
+            let input_mode = state.input_mode();
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::ExecuteWriteFailed {
+                    run_id: stale_run_id,
+                    error: DbOperationError::QueryFailed("stale write".to_string()),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(stale_run_id < current_run_id);
+            assert!(effects.is_empty());
+            assert!(state.query.is_running());
+            assert_eq!(state.input_mode(), input_mode);
+            assert_eq!(state.query.pending_delete_refresh_target(), Some(target));
+            assert!(state.messages.last_error.is_none());
+        }
     }
 
     mod delete_write_flow {

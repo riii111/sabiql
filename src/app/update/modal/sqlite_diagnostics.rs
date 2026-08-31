@@ -215,33 +215,51 @@ mod tests {
     fn quick_check_loaded_ignores_stale_run_id() {
         let mut state = AppState::new("test".to_string());
         test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
-        let run_id = state.sqlite_diagnostics.begin_core_fetch();
+        let stale_run_id = state.sqlite_diagnostics.begin_core_fetch();
         state.sqlite_diagnostics.set_core_loaded(
-            run_id,
+            stale_run_id,
             SqliteDiagnosticsSnapshot {
                 quick_check: DiagnosticField::Pending,
                 ..Default::default()
             },
         );
+        let current_run_id = state.sqlite_diagnostics.begin_core_fetch();
 
         reduce_sqlite_diagnostics(
             &mut state,
             &Action::SqliteDiagnosticsQuickCheckLoaded {
-                run_id: run_id + 1,
+                run_id: stale_run_id,
                 quick_check: DiagnosticField::ok("ok"),
             },
             Instant::now(),
         )
         .unwrap();
 
-        assert!(
-            state
-                .sqlite_diagnostics
-                .snapshot()
-                .unwrap()
-                .quick_check
-                .is_pending()
-        );
+        assert!(stale_run_id < current_run_id);
+        assert!(state.sqlite_diagnostics.snapshot().is_none());
+        assert!(state.sqlite_diagnostics.is_loading());
+    }
+
+    #[test]
+    fn core_loaded_ignores_stale_run_id_after_new_fetch() {
+        let mut state = AppState::new("test".to_string());
+        test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
+        let stale_run_id = state.sqlite_diagnostics.begin_core_fetch();
+        let current_run_id = state.sqlite_diagnostics.begin_core_fetch();
+
+        reduce_sqlite_diagnostics(
+            &mut state,
+            &Action::SqliteDiagnosticsCoreLoaded {
+                run_id: stale_run_id,
+                snapshot: Box::new(SqliteDiagnosticsSnapshot::default()),
+            },
+            Instant::now(),
+        )
+        .unwrap();
+
+        assert!(stale_run_id < current_run_id);
+        assert!(state.sqlite_diagnostics.snapshot().is_none());
+        assert!(state.sqlite_diagnostics.is_loading());
     }
 
     #[test]
