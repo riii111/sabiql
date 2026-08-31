@@ -65,7 +65,7 @@ mod tests {
 
         let mut json_detail = AppState::new("test".to_string());
         json_detail.modal.set_mode(InputMode::JsonDetail);
-        json_detail.json_detail.set_mode(JsonDetailMode::Editing);
+        json_detail.json_detail.enter_edit();
 
         let mut json_editor = AppState::new("test".to_string());
         json_editor.modal.set_mode(InputMode::JsonEdit);
