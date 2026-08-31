@@ -46,7 +46,7 @@ pub fn reduce_row_detail(state: &mut AppState, action: &Action, now: Instant) ->
             let content = state.row_detail.content_for_yank();
             DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                 content,
-                on_success: Some(Box::new(Action::RowDetailYankSuccess)),
+                on_success: Box::new(Action::RowDetailYankSuccess),
                 on_failure: Some(Box::new(clipboard_unavailable())),
             }])
         }
@@ -55,7 +55,7 @@ pub fn reduce_row_detail(state: &mut AppState, action: &Action, now: Instant) ->
             let content = state.row_detail.json_for_yank();
             DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                 content,
-                on_success: Some(Box::new(Action::RowDetailYankSuccess)),
+                on_success: Box::new(Action::RowDetailYankSuccess),
                 on_failure: Some(Box::new(clipboard_unavailable())),
             }])
         }
@@ -279,7 +279,7 @@ mod tests {
         assert!(matches!(
             &effects[0],
             Effect::CopyToClipboard { content, on_success, .. }
-            if content.contains("id\n  1") && matches!(on_success.as_deref(), Some(Action::RowDetailYankSuccess))
+            if content.contains("id\n  1") && matches!(on_success.as_ref(), Action::RowDetailYankSuccess)
         ));
     }
 
@@ -295,7 +295,7 @@ mod tests {
         assert!(matches!(
             &effects[0],
             Effect::CopyToClipboard { content, on_success, .. }
-            if content.contains("\"name\": \"alice\"") && matches!(on_success.as_deref(), Some(Action::RowDetailYankSuccess))
+            if content.contains("\"name\": \"alice\"") && matches!(on_success.as_ref(), Action::RowDetailYankSuccess)
         ));
     }
 
