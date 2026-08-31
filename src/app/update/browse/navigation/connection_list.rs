@@ -48,9 +48,7 @@ pub fn reduce_connection_list(
                     .cmp(&b.display_name().to_lowercase())
             });
             state.set_connections_and_services(sorted, services.clone());
-            state
-                .runtime
-                .set_service_file_path(service_file_path.clone());
+            state.set_service_file_path(service_file_path.clone());
 
             if let Some(warning) = profile_load_warning {
                 state.messages.set_error(warning.clone());
@@ -261,7 +259,7 @@ mod tests {
         }
 
         #[test]
-        fn stores_service_file_path_in_runtime() {
+        fn stores_service_file_path_in_app_state() {
             let mut state = AppState::new("test".to_string());
             let path = std::path::PathBuf::from("/etc/pg_service.conf");
 
@@ -278,7 +276,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.runtime.service_file_path(), Some(path.as_path()));
+            assert_eq!(state.service_file_path(), Some(path.as_path()));
         }
 
         #[test]
