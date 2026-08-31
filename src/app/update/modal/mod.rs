@@ -1537,14 +1537,22 @@ mod tests {
                 state.sql_modal.editor.set_content("old query".to_string());
                 state.sql_modal.enter_editing();
                 state.sql_modal.apply_completion_update(
-                    &[CompletionCandidate {
-                        text: "stale".to_string(),
-                        kind: CompletionKind::Keyword,
-                        score: 1,
-                    }],
+                    &[
+                        CompletionCandidate {
+                            text: "stale".to_string(),
+                            kind: CompletionKind::Keyword,
+                            score: 1,
+                        },
+                        CompletionCandidate {
+                            text: "older".to_string(),
+                            kind: CompletionKind::Keyword,
+                            score: 0,
+                        },
+                    ],
                     0,
                     true,
                 );
+                state.sql_modal.completion_next();
                 let test_conn = ConnectionId::from_string("test-conn");
                 state
                     .query_history_picker
