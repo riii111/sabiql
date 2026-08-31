@@ -13,23 +13,6 @@ pub struct ConnectionErrorInfo {
 }
 
 impl ConnectionErrorInfo {
-    fn from_presentation(
-        summary: &'static str,
-        hint: &'static str,
-        retryable: bool,
-        raw_stderr: impl Into<String>,
-    ) -> Self {
-        let raw_details = raw_stderr.into();
-        let masked_details = mask_password(&raw_details);
-
-        Self {
-            summary,
-            hint,
-            retryable,
-            masked_details,
-        }
-    }
-
     pub fn from_db_operation_error(error: &DbOperationError) -> Self {
         let raw_details = error.raw_details().into_owned();
         let (summary, hint, retryable) = match error {
@@ -130,19 +113,22 @@ impl ConnectionErrorInfo {
     pub const fn is_retryable(&self) -> bool {
         self.retryable
     }
-}
 
-#[cfg(test)]
-pub(crate) mod test_support {
-    use super::ConnectionErrorInfo;
-
-    pub fn from_parts(
+    fn from_presentation(
         summary: &'static str,
         hint: &'static str,
         retryable: bool,
         raw_stderr: impl Into<String>,
-    ) -> ConnectionErrorInfo {
-        ConnectionErrorInfo::from_presentation(summary, hint, retryable, raw_stderr)
+    ) -> Self {
+        let raw_details = raw_stderr.into();
+        let masked_details = mask_password(&raw_details);
+
+        Self {
+            summary,
+            hint,
+            retryable,
+            masked_details,
+        }
     }
 }
 
@@ -185,6 +171,10 @@ fn sqlite_path_presentation(error: &SqlitePathError) -> (&'static str, &'static 
         ),
     }
 }
+
+#[cfg(test)]
+#[path = "error_test_support.rs"]
+pub(crate) mod test_support;
 
 #[cfg(test)]
 mod tests {
