@@ -344,16 +344,12 @@ impl Inspector {
 
         let data_rows: Vec<Vec<String>> = rows
             .iter()
+            .take(50)
             .map(|row| column_row_cells(row, options))
             .collect();
 
         let header_min_widths = calculate_header_min_widths(&headers);
-        let sample: &[Vec<String>] = if data_rows.len() > 50 {
-            &data_rows[..50]
-        } else {
-            &data_rows
-        };
-        let all_ideal_widths = calculate_column_widths(&headers, sample);
+        let all_ideal_widths = calculate_column_widths(&headers, &data_rows);
         let fingerprint = widths_fingerprint(&all_ideal_widths, &header_min_widths);
         let plan = if stored_plan.needs_recalculation(available_width, fingerprint) {
             ViewportPlan::calculate(&all_ideal_widths, &header_min_widths, available_width)
@@ -401,7 +397,7 @@ impl Inspector {
         // Note: area is already inner (excluding border and tab bar)
         let data_rows_visible = area.height.saturating_sub(2) as usize;
         let scroll_viewport_size = data_rows_visible;
-        let total_rows = data_rows.len();
+        let total_rows = rows.len();
 
         let max_scroll_offset = total_rows.saturating_sub(data_rows_visible);
         let clamped_scroll_offset = scroll_offset.min(max_scroll_offset);
@@ -1128,6 +1124,65 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn columns_rendering_keeps_rows_after_width_sample_scrollable() {
+        use crate::app::model::shared::theme_id::ThemeId;
+        use crate::theme::palette_for;
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+        use ratatui::layout::Rect;
+
+        let rows: Vec<_> = (0..51)
+            .map(|index| InspectorColumnRow {
+                name: format!("column_{index}"),
+                data_type: "integer".to_string(),
+                nullable: true,
+                primary_key: false,
+                read_only_reason: None,
+                default: None,
+                comment: None,
+                character_set_name: None,
+                collation_name: None,
+                generation_expression: None,
+                generation_kind: None,
+            })
+            .collect();
+        let options = ColumnDisplayOptions {
+            read_only: false,
+            character_set: false,
+            collation: false,
+            generation: false,
+        };
+        let mut terminal = Terminal::new(TestBackend::new(80, 12)).unwrap();
+        let theme = palette_for(ThemeId::Default);
+
+        terminal
+            .draw(|frame| {
+                Inspector::render_columns(
+                    frame,
+                    Rect::new(0, 0, 80, 12),
+                    &rows,
+                    options,
+                    50,
+                    0,
+                    &ViewportPlan::default(),
+                    theme,
+                );
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let rendered: String = (0..buffer.area.height)
+            .flat_map(|y| {
+                (0..buffer.area.width)
+                    .map(move |x| buffer.cell((x, y)).unwrap().symbol())
+                    .chain(std::iter::once("\n"))
+            })
+            .collect();
+
+        assert!(rendered.contains("column_50"));
     }
 
     #[test]
