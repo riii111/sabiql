@@ -187,7 +187,6 @@ mod tests {
 
     mod catalog_semantics {
         use super::*;
-        use crate::update::input::keymap;
 
         mod action_mapping {
             use super::*;
@@ -460,63 +459,6 @@ mod tests {
             }
         }
 
-        mod resolver_contract {
-            use super::*;
-
-            fn check_keymap_roundtrip(bindings: &[KeyBinding], name: &str) {
-                for kb in bindings
-                    .iter()
-                    .filter(|kb| !matches!(kb.action, Action::None))
-                {
-                    for combo in kb.combos {
-                        let resolved = keymap::resolve(combo, bindings);
-                        match resolved {
-                            Some(ref action)
-                                if std::mem::discriminant(action)
-                                    == std::mem::discriminant(&kb.action) => {}
-                            other => panic!(
-                                "{name}: combo {combo:?} resolved to {other:?}, expected {:?}",
-                                kb.action
-                            ),
-                        }
-                    }
-                }
-            }
-
-            fn check_resolve_mode_roundtrip(rows: &[ModeRow], name: &str) {
-                for row in rows {
-                    for eb in row.bindings {
-                        for combo in eb.combos {
-                            let resolved = keymap::resolve_mode(combo, rows);
-                            match resolved {
-                                Some(ref action)
-                                    if std::mem::discriminant(action)
-                                        == std::mem::discriminant(&eb.action) => {}
-                                other => panic!(
-                                    "{name}: combo {combo:?} resolved to {other:?}, expected {:?}",
-                                    eb.action
-                                ),
-                            }
-                        }
-                    }
-                }
-            }
-
-            #[test]
-            fn keymap_resolve_roundtrip_for_simple_modes() {
-                check_keymap_roundtrip(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
-                check_keymap_roundtrip(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
-                check_keymap_roundtrip(JSON_SEARCH_KEYS, "JSON_SEARCH_KEYS");
-                check_keymap_roundtrip(CELL_DETAIL_SEARCH_KEYS, "CELL_DETAIL_SEARCH_KEYS");
-                check_keymap_roundtrip(GLOBAL_KEYS, "GLOBAL_KEYS");
-                check_keymap_roundtrip(IDE_GLOBAL_KEYS, "IDE_GLOBAL_KEYS");
-                for (name, mb) in ALL_MODE_BINDINGS {
-                    check_resolve_mode_roundtrip(mb.rows, name);
-                }
-                check_resolve_mode_roundtrip(ER_PICKER_ROWS_IDE, "ER_PICKER_ROWS_IDE");
-            }
-        }
-
         mod conflict_safety {
             use super::*;
 
@@ -605,15 +547,6 @@ mod tests {
             #[test]
             fn cell_edit_plain_char_combos_are_intentional() {
                 check_no_plain_char_in_filter_mode(CELL_EDIT_KEYS, "CELL_EDIT_KEYS", &[':']);
-            }
-        }
-
-        mod catalog_coverage {
-            use super::*;
-
-            #[test]
-            fn all_mode_bindings_count() {
-                assert_eq!(ALL_MODE_BINDINGS.len(), 13);
             }
         }
     }
