@@ -46,13 +46,11 @@ pub struct FileQueryHistoryStore {
     base_dir: Option<PathBuf>,
 }
 
-impl Default for FileQueryHistoryStore {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl FileQueryHistoryStore {
+    #[allow(
+        clippy::new_without_default,
+        reason = "new() is the only default construction API"
+    )]
     pub fn new() -> Self {
         Self { base_dir: None }
     }
