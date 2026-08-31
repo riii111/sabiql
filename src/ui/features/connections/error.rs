@@ -96,7 +96,7 @@ impl ConnectionError {
         ];
         if state.session.is_service_connection()
             && !state.connection_error.has_destination()
-            && let Some(path) = state.runtime.service_file_path()
+            && let Some(path) = state.service_file_path()
         {
             spans.push(Span::styled(
                 format!("  (edit {})", path.display()),

@@ -211,7 +211,7 @@ pub async fn run(
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
             let history_store = Arc::clone(query_history_store);
-            let project = state.runtime.project_name().to_string();
+            let project = state.project_name().to_string();
             let history_scope = state.session.query_history_scope();
             query_tasks
                 .replace(async move {
@@ -275,7 +275,7 @@ pub async fn run(
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
             let history_store = Arc::clone(query_history_store);
-            let project = state.runtime.project_name().to_string();
+            let project = state.project_name().to_string();
             let history_scope = state.session.query_history_scope();
 
             query_tasks

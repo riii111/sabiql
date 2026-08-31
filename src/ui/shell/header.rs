@@ -45,7 +45,7 @@ impl Header {
         };
 
         let left_items = vec![
-            HeaderItem::new(state.runtime.project_name(), item_style, 2),
+            HeaderItem::new(state.project_name(), item_style, 2),
             HeaderItem::new(db_name, item_style, 1),
             HeaderItem::new(&table, Style::default().fg(theme.semantic.text.primary), 0),
         ];

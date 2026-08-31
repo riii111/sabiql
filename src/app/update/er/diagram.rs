@@ -86,7 +86,7 @@ pub(super) fn reduce_diagram_lifecycle(
             DispatchResult::handled_with(vec![Effect::GenerateErDiagramFromCache {
                 run_id,
                 total_tables,
-                project_name: state.runtime.project_name.clone(),
+                project_name: state.project_name().to_string(),
                 target_tables: state.er_preparation.target_tables().to_vec(),
             }])
         }
