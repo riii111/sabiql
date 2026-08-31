@@ -123,24 +123,23 @@ impl QueryHistoryPickerState {
 
     pub fn grouped_filtered_entries(&self) -> Vec<GroupedEntry<'_>> {
         let filter = self.filter_input.content();
-        let mut matcher = Matcher::new(Config::DEFAULT);
-        let pattern = Pattern::parse(filter, CaseMatching::Ignore, Normalization::Smart);
+        let pattern = (!filter.is_empty())
+            .then(|| Pattern::parse(filter, CaseMatching::Ignore, Normalization::Smart));
+        let mut matcher = None;
         let mut groups: Vec<GroupedEntry<'_>> = Vec::new();
 
         for entry in self.entries.iter().rev() {
-            let match_indices = if filter.is_empty() {
-                Vec::new()
-            } else {
+            let match_indices = if let Some(pattern) = pattern.as_ref() {
                 let mut indices = Vec::new();
                 let mut buf = Vec::new();
                 let haystack = nucleo_matcher::Utf32Str::new(&entry.query, &mut buf);
-                if pattern
-                    .indices(haystack, &mut matcher, &mut indices)
-                    .is_none()
-                {
+                let matcher = matcher.get_or_insert_with(|| Matcher::new(Config::DEFAULT));
+                if pattern.indices(haystack, matcher, &mut indices).is_none() {
                     continue;
                 }
                 indices
+            } else {
+                Vec::new()
             };
 
             if let Some(last) = groups.last_mut().filter(|g| g.entry.query == entry.query) {
