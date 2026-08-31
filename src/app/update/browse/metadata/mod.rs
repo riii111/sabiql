@@ -617,7 +617,7 @@ mod tests {
         fn retry_limit_exceeded_as_last_table_triggers_er_completion() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.table_prefetch.begin_er_prefetch();
-            state.er_preparation.mark_waiting_for_test();
+            let _ = state.er_preparation.start_waiting_run();
             state.er_preparation.mark_fk_expanded();
             let qualified = "public.users".to_string();
             // Only table remaining; retry limit exceeded
@@ -654,7 +654,7 @@ mod tests {
         fn retry_limit_exceeded_with_queue_remaining_redrives_queue() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.table_prefetch.begin_er_prefetch();
-            state.er_preparation.mark_waiting_for_test();
+            let _ = state.er_preparation.start_waiting_run();
             state.er_preparation.mark_fk_expanded();
             let failed = "public.users".to_string();
             let remaining = "public.posts".to_string();
@@ -693,7 +693,7 @@ mod tests {
         fn process_queue_keeps_later_table_owned_after_terminal_failure() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.table_prefetch.begin_er_prefetch();
-            state.er_preparation.mark_waiting_for_test();
+            let _ = state.er_preparation.start_waiting_run();
             state.er_preparation.mark_fk_expanded();
             let failed = "public.users".to_string();
             let remaining = "public.posts".to_string();
@@ -904,7 +904,7 @@ mod tests {
         fn transient_failure_then_success_clears_er_failure_state() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.table_prefetch.begin_er_prefetch();
-            state.er_preparation.mark_waiting_for_test();
+            let _ = state.er_preparation.start_waiting_run();
             state.er_preparation.mark_fk_expanded();
             let qualified = "public.users".to_string();
             state.table_prefetch.start_table_prefetch(qualified.clone());
@@ -1453,7 +1453,7 @@ mod tests {
         fn complete_not_fk_expanded_dispatches_expand() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.table_prefetch.begin_er_prefetch();
-            state.er_preparation.mark_waiting_for_test();
+            let _ = state.er_preparation.start_waiting_run();
             state.er_preparation.mark_fk_unexpanded();
             let effects = check_er_completion(&mut state);
 
@@ -1467,7 +1467,7 @@ mod tests {
         #[test]
         fn complete_fk_expanded_dispatches_generate() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.mark_waiting_for_test();
+            let _ = state.er_preparation.start_waiting_run();
             state.er_preparation.mark_fk_expanded();
 
             let effects = check_er_completion(&mut state);
@@ -1505,7 +1505,7 @@ mod tests {
         fn pending_mysql_probe_rejects_neighbor_expansion() {
             let mut state = state_with_pending_mysql_probe();
             let run_id = state.table_prefetch.begin_er_prefetch();
-            state.er_preparation.mark_waiting_for_test();
+            let _ = state.er_preparation.start_waiting_run();
             state.er_preparation.mark_fk_unexpanded();
 
             let effects = dispatch_metadata(
@@ -1530,7 +1530,7 @@ mod tests {
         fn empty_neighbors_dispatches_generate() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.table_prefetch.begin_er_prefetch();
-            state.er_preparation.mark_waiting_for_test();
+            let _ = state.er_preparation.start_waiting_run();
 
             let effects = dispatch_metadata(
                 &mut state,
@@ -1554,7 +1554,7 @@ mod tests {
         fn non_empty_neighbors_adds_to_queue() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.table_prefetch.begin_er_prefetch();
-            state.er_preparation.mark_waiting_for_test();
+            let _ = state.er_preparation.start_waiting_run();
 
             let effects = dispatch_metadata(
                 &mut state,
@@ -1579,7 +1579,7 @@ mod tests {
         #[test]
         fn stale_neighbors_without_active_run_do_not_mutate_state() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.mark_waiting_for_test();
+            let _ = state.er_preparation.start_waiting_run();
 
             let effects = dispatch_metadata(
                 &mut state,
@@ -1600,7 +1600,7 @@ mod tests {
         fn pending_mysql_probe_rejects_discovered_neighbors_without_queueing() {
             let mut state = state_with_pending_mysql_probe();
             let run_id = state.table_prefetch.begin_er_prefetch();
-            state.er_preparation.mark_waiting_for_test();
+            let _ = state.er_preparation.start_waiting_run();
             state.er_preparation.mark_fk_unexpanded();
 
             let effects = dispatch_metadata(
@@ -1624,7 +1624,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             let stale_run_id = state.table_prefetch.begin_er_prefetch();
             let current_run_id = state.table_prefetch.begin_er_prefetch();
-            state.er_preparation.mark_waiting_for_test();
+            let _ = state.er_preparation.start_waiting_run();
 
             let effects = dispatch_metadata(
                 &mut state,
@@ -1648,7 +1648,7 @@ mod tests {
         fn duplicate_neighbors_are_not_requeued() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.table_prefetch.begin_er_prefetch();
-            state.er_preparation.mark_waiting_for_test();
+            let _ = state.er_preparation.start_waiting_run();
             state
                 .table_prefetch
                 .queue_table_prefetch("public.posts".to_string());
@@ -1691,7 +1691,7 @@ mod tests {
             // All Phase 2 tables fail → completion must still fire
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.table_prefetch.begin_er_prefetch();
-            state.er_preparation.mark_waiting_for_test();
+            let _ = state.er_preparation.start_waiting_run();
             state.er_preparation.mark_fk_expanded();
             let neighbor = "public.posts".to_string();
             state.table_prefetch.queue_table_prefetch(neighbor.clone());
