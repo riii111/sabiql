@@ -1,4 +1,5 @@
 use super::*;
+use crate::tests::harness::{focus_connection_field, set_connection_input};
 
 fn json_detail_state() -> (AppState, Instant) {
     let now = test_instant();
@@ -57,9 +58,9 @@ fn json_detail_state() -> (AppState, Instant) {
     );
     (state, now)
 }
-fn sql_modal_block_cursor_position(buffer: &ratatui::buffer::Buffer) -> Option<(u16, u16)> {
-    (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+fn block_cursor_position(buffer: &ratatui::buffer::Buffer) -> Option<(u16, u16)> {
+    (buffer.area.top()..buffer.area.bottom())
+        .flat_map(|y| (buffer.area.left()..buffer.area.right()).map(move |x| (x, y)))
         .find(|&(x, y)| {
             buffer.cell((x, y)).is_some_and(|cell| {
                 cell.bg == DEFAULT_THEME.semantic.cursor.bg
@@ -158,7 +159,7 @@ fn sql_modal_normal_cursor_position_tracks_head_middle_and_tail() {
     state.sql_modal.enter_normal();
 
     let head_buffer = render_and_get_buffer(&mut terminal, &mut state);
-    let head = sql_modal_block_cursor_position(&head_buffer)
+    let head = block_cursor_position(&head_buffer)
         .expect("Expected block cursor in SQL normal mode at head");
 
     state
@@ -166,7 +167,7 @@ fn sql_modal_normal_cursor_position_tracks_head_middle_and_tail() {
         .editor_mut_for_input()
         .set_content_with_cursor(content.clone(), middle_col);
     let middle_buffer = render_and_get_buffer(&mut terminal, &mut state);
-    let middle = sql_modal_block_cursor_position(&middle_buffer)
+    let middle = block_cursor_position(&middle_buffer)
         .expect("Expected block cursor in SQL normal mode at middle");
 
     state
@@ -174,7 +175,7 @@ fn sql_modal_normal_cursor_position_tracks_head_middle_and_tail() {
         .editor_mut_for_input()
         .set_content_with_cursor(content, tail_col);
     let tail_buffer = render_and_get_buffer(&mut terminal, &mut state);
-    let tail = sql_modal_block_cursor_position(&tail_buffer)
+    let tail = block_cursor_position(&tail_buffer)
         .expect("Expected block cursor in SQL normal mode at tail");
 
     assert_eq!(
@@ -271,6 +272,51 @@ fn sql_modal_insert_cursor_advances_visual_row_when_line_wraps() {
     let wrapped = render_and_get_cursor_position(&mut terminal, &mut state);
 
     assert!(wrapped.y > head.y);
+}
+
+#[test]
+fn connection_setup_cursor_matrix() {
+    for (cursor, expected_symbol) in [(0, "d"), (7, "p"), (14, " ")] {
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.modal.set_mode(InputMode::ConnectionSetup);
+        focus_connection_field(&mut state, ConnectionField::Host);
+        set_connection_input(
+            &mut state,
+            ConnectionField::Host,
+            TextInputState::new("db.example.com", cursor),
+        );
+
+        let buffer = render_and_get_buffer(&mut terminal, &mut state);
+        let (x, y) = block_cursor_position(&buffer).expect("expected connection cursor");
+        let cell = buffer.cell((x, y)).expect("connection cursor cell");
+
+        assert_eq!(cell.symbol(), expected_symbol);
+    }
+}
+
+#[test]
+fn cell_edit_cursor_matrix() {
+    for (cursor, expected_symbol) in [(0, "b"), (7, "m"), (15, " ")] {
+        let mut state = table_detail_loaded_state();
+        let mut terminal = create_test_terminal();
+
+        with_current_result(&mut state);
+        state.ui.set_focused_pane(FocusedPane::Result);
+        state.result_interaction.activate_cell(1, 2);
+        state.modal.set_mode(InputMode::CellEdit);
+        state
+            .result_interaction
+            .begin_cell_edit(1, 2, "bob@example.com".to_string());
+        state.result_interaction.cell_edit_set_cursor(cursor);
+
+        let buffer = render_and_get_buffer(&mut terminal, &mut state);
+        let (x, y) = block_cursor_position(&buffer).expect("expected cell edit cursor");
+        let cell = buffer.cell((x, y)).expect("cell edit cursor cell");
+
+        assert_eq!(cell.symbol(), expected_symbol);
+    }
 }
 
 #[test]
