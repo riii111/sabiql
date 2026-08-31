@@ -19,7 +19,6 @@ pub(super) fn reduce_smart_refresh_completed(
             run_id,
             new_metadata,
             stale_tables,
-            added_tables,
             removed_tables,
             missing_in_cache,
             new_signatures,
@@ -43,7 +42,6 @@ pub(super) fn reduce_smart_refresh_completed(
 
             let mut refetch: Vec<String> = stale_tables
                 .iter()
-                .chain(added_tables)
                 .chain(missing_in_cache)
                 .cloned()
                 .collect();

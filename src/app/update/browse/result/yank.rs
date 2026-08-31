@@ -35,10 +35,10 @@ pub fn reduce_yank(
                 if let Some(value) = content {
                     DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                         content: value,
-                        on_success: Some(Box::new(Action::ResultCellYankSuccess {
+                        on_success: Box::new(Action::ResultCellYankSuccess {
                             row: row_idx,
                             col: col_idx,
-                        })),
+                        }),
                         on_failure: Some(Box::new(clipboard_unavailable())),
                     }])
                 } else {
@@ -62,7 +62,7 @@ pub fn reduce_yank(
                     .generate_ddl(state.session.active_database_type_or_default(), table);
                 return DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                     content: ddl,
-                    on_success: Some(Box::new(Action::DdlYankSuccess)),
+                    on_success: Box::new(Action::DdlYankSuccess),
                     on_failure: Some(Box::new(clipboard_unavailable())),
                 }]);
             }
@@ -95,7 +95,7 @@ pub fn reduce_yank(
                 if let Some(tsv) = content {
                     DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                         content: tsv,
-                        on_success: Some(Box::new(Action::ResultRowYankSuccess { row: row_idx })),
+                        on_success: Box::new(Action::ResultRowYankSuccess { row: row_idx }),
                         on_failure: Some(Box::new(clipboard_unavailable())),
                     }])
                 } else {
@@ -223,8 +223,8 @@ mod tests {
                 } => {
                     assert_eq!(content, "r1c2");
                     assert!(matches!(
-                        on_success.as_deref(),
-                        Some(Action::ResultCellYankSuccess { row: 1, col: 2 })
+                        on_success.as_ref(),
+                        Action::ResultCellYankSuccess { row: 1, col: 2 }
                     ));
                 }
                 other => panic!("expected CopyToClipboard, got {other:?}"),
@@ -352,8 +352,8 @@ mod tests {
                 } => {
                     assert_eq!(content, "v0\tv1\tv2");
                     assert!(matches!(
-                        on_success.as_deref(),
-                        Some(Action::ResultRowYankSuccess { row: 0 })
+                        on_success.as_ref(),
+                        Action::ResultRowYankSuccess { row: 0 }
                     ));
                 }
                 other => panic!("expected CopyToClipboard, got {other:?}"),
@@ -541,10 +541,7 @@ mod tests {
                     ..
                 } => {
                     assert!(content.contains("CREATE TABLE"));
-                    assert!(matches!(
-                        on_success.as_deref(),
-                        Some(Action::DdlYankSuccess)
-                    ));
+                    assert!(matches!(on_success.as_ref(), Action::DdlYankSuccess));
                 }
                 other => panic!("expected CopyToClipboard, got {other:?}"),
             }

@@ -98,7 +98,6 @@ pub(crate) async fn run(
             run_id,
             run_guard,
         } => {
-            let database_type = config.database_type();
             let id = id.unwrap_or_else(ConnectionId::new);
             let profile = ConnectionProfile::with_id_and_config(id, name, config);
             let profile = match profile {
@@ -107,7 +106,6 @@ pub(crate) async fn run(
                     action_tx
                         .send(Action::ConnectionSaveFailed {
                             error: e.into(),
-                            database_type,
                             run_id,
                         })
                         .await
@@ -130,7 +128,6 @@ pub(crate) async fn run(
                         action_tx
                             .send(Action::ConnectionSaveFailed {
                                 error: error.into(),
-                                database_type,
                                 run_id,
                             })
                             .await
@@ -140,7 +137,6 @@ pub(crate) async fn run(
                 };
                 let dsn = connection.dsn_builder.build_dsn(&profile);
                 let target = ConnectionTarget::from_profile(&profile, dsn);
-                let database_type = target.database_type;
 
                 connection_task
                     .replace(async move {
@@ -158,7 +154,6 @@ pub(crate) async fn run(
                                 Some(Err(e)) => {
                                     tx.blocking_send(Action::ConnectionSaveFailed {
                                         error: e.into(),
-                                        database_type,
                                         run_id,
                                     })
                                     .ok();
@@ -174,9 +169,8 @@ pub(crate) async fn run(
             }
 
             let dsn = connection.dsn_builder.build_dsn(&profile);
-            let database_type = profile.database_type();
 
-            if database_type == DatabaseType::MySQL {
+            if profile.database_type() == DatabaseType::MySQL {
                 let target = ConnectionTarget::from_profile(&profile, dsn);
                 let probe = Arc::clone(&connection.mysql_connection_probe);
                 connection_task
@@ -204,7 +198,6 @@ pub(crate) async fn run(
                                     Some(Err(e)) => {
                                         tx.send(Action::ConnectionSaveFailed {
                                             error: e.into(),
-                                            database_type,
                                             run_id,
                                         })
                                         .await
@@ -215,11 +208,7 @@ pub(crate) async fn run(
                             }
                             Err(e) => {
                                 tx.send(Action::ConnectionSaveFailed {
-                                    error: ConnectionSaveError::Probe {
-                                        error: e,
-                                        dsn: target.dsn.clone(),
-                                    },
-                                    database_type,
+                                    error: ConnectionSaveError::Probe { error: e },
                                     run_id,
                                 })
                                 .await
@@ -257,7 +246,6 @@ pub(crate) async fn run(
                                 Some(Err(e)) => {
                                     tx.send(Action::ConnectionSaveFailed {
                                         error: e.into(),
-                                        database_type,
                                         run_id,
                                     })
                                     .await
@@ -269,7 +257,6 @@ pub(crate) async fn run(
                         Err(e) => {
                             tx.send(Action::ConnectionSaveFailed {
                                 error: e.into(),
-                                database_type,
                                 run_id,
                             })
                             .await
@@ -629,10 +616,9 @@ mod tests {
             assert!(matches!(
                 action,
                 Action::ConnectionSaveFailed {
-                    error: ConnectionSaveError::Probe { dsn, .. },
-                    database_type: DatabaseType::MySQL,
+                    error: ConnectionSaveError::Probe { .. },
                     run_id: 1,
-                } if dsn == "mysql://user:secret@localhost:3306?ssl-mode=REQUIRED"
+                }
             ));
         }
 
@@ -834,11 +820,7 @@ mod tests {
 
             assert!(matches!(
                 run.actions.into_iter().next(),
-                Some(Action::ConnectionSaveFailed {
-                    database_type: DatabaseType::PostgreSQL,
-                    run_id: 1,
-                    ..
-                })
+                Some(Action::ConnectionSaveFailed { run_id: 1, .. })
             ));
         }
 
@@ -1026,7 +1008,6 @@ mod tests {
                         error: ConnectionSaveError::Validation(ConnectionProfileError::SqlitePath(
                             SqlitePathError::FileNotFound(_)
                         ),),
-                        database_type: DatabaseType::SQLite,
                         run_id: 1,
                     }
                 ),
