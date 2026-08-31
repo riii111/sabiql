@@ -13,7 +13,6 @@ use super::metadata::{
     run_mysql_metadata_query_with_read_only_session_with_timeout,
 };
 use super::single::run_mysql_single_statement_process_with_diagnostics;
-use super::single::test_support::run_mysql_single_statement_process;
 use super::*;
 use crate::adapters::csv_export::export_to_path;
 use crate::domain::mysql_sql::{classify_mysql_statement, split_mysql_statements};
@@ -35,23 +34,6 @@ async fn export_mysql_csv_with_program(
     .await
 }
 async fn run_mysql_single_statement_with_program(
-    program: &OsStr,
-    option_file: &std::path::Path,
-    query: &str,
-    access_mode: AccessMode,
-    execution_timeout: Duration,
-) -> Result<MySqlResultSet, DbOperationError> {
-    let mut process = MySqlProcess::spawn_with_program(program, option_file)?;
-    run_mysql_process_with_timeout(
-        execution_timeout,
-        &mut process,
-        RefreshScope::None,
-        async |process| run_mysql_single_statement_process(process, query, access_mode).await,
-    )
-    .await
-}
-
-async fn run_mysql_single_statement_with_diagnostics_with_program(
     program: &OsStr,
     option_file: &std::path::Path,
     query: &str,
@@ -86,8 +68,10 @@ fn fake_mysql(mode: &str) -> (TempDir, PathBuf, PathBuf) {
             "timeout" => "while :; do :; done".to_string(),
             _ => "printf '%s\\n' '<resultset><row><field name=\"__sabiql_session_marker\">'\"$marker\"'</field><field name=\"__sabiql_sql_mode\">STRICT_TRANS_TABLES</field></row></resultset>'".to_string(),
         };
-    let user_response = if mode == "failure" {
-        "printf '%s\\n' '<resultset><row><field name=\"partial\">row</field></row></resultset>'\n    printf '%s\\n' 'ERROR 1064 (42000): syntax error' >&2\n    exit 1"
+    let user_response = if mode == "nonzero_exit" {
+        "printf '%s\\n' '<resultset><row><field name=\"partial\">row</field></row></resultset>'"
+    } else if mode == "failure" {
+        "printf '%s\\n' '<resultset><row><field name=\"partial\">row</field></row></resultset>'\n    printf '%s\\n' 'ERROR 1064 (42000): syntax error' >&2\n    exit_status=1"
     } else if mode == "no_result_failure" {
         "printf '%s\\n' 'ERROR 1054 (42S22): Unknown column missing_column' >&2\n    exit 1"
     } else if mode == "connection_refused" {
@@ -103,6 +87,11 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>'"
     } else {
         ""
     };
+    let finish_status = if mode == "nonzero_exit" {
+        "exit_status=1\n        dd bs=1 count=1 >/dev/null 2>&1\n        break"
+    } else {
+        ""
+    };
     let settings_timeout = if mode == "timeout" {
         "while :; do :; done"
     } else {
@@ -113,9 +102,10 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>'"
 option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
 log="$option.log"
 eof=$(printf '\004')
+exit_status=0
 while IFS= read -r line; do
   printf '%s\n' "$line" >> "$log"
-  [ "$line" = "$eof" ] && exit 0
+  [ "$line" = "$eof" ] && break
   [ "$line" = ";" ] && continue
   case "$line" in
     "SET SESSION autocommit=1, completion_type=NO_CHAIN")
@@ -130,14 +120,15 @@ while IFS= read -r line; do
         {session_response}
       else
         printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
+        {finish_status}
       fi
       ;;
     *)
       {user_response}
-      exit 0
       ;;
   esac
 done
+exit "$exit_status"
 "#,
     );
     fs::write(&program, script).unwrap();
