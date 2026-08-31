@@ -88,7 +88,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>'"
         ""
     };
     let finish_status = if mode == "nonzero_exit" {
-        "exit_status=1\n        dd bs=1 count=1 >/dev/null 2>&1\n        break"
+        "exit_status=1\n        IFS= read -r marker_terminator\n        dd bs=1 count=1 >/dev/null 2>&1\n        break"
     } else {
         ""
     };
