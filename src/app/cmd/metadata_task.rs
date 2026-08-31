@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::{JoinHandle, JoinSet};
 
-type MetadataTask = Pin<Box<dyn Future<Output = Option<oneshot::Sender<()>>> + Send + 'static>>;
+type MetadataTask = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
 
 enum Command {
     Spawn(MetadataTask),
@@ -28,12 +28,7 @@ impl MetadataTaskRegistry {
         F: Future<Output = ()> + Send + 'static,
     {
         let command_tx = Self::command_tx(registry);
-        command_tx
-            .send(Command::Spawn(Box::pin(async move {
-                task.await;
-                None
-            })))
-            .ok();
+        command_tx.send(Command::Spawn(Box::pin(task))).ok();
     }
 
     pub async fn cancel(&self) {
@@ -157,22 +152,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn removes_released_task_from_registry() {
+    async fn reaps_completed_task_from_registry() {
         let registry = Arc::new(MetadataTaskRegistry::default());
-        let (done_tx, done_rx) = oneshot::channel();
-        let (reaped_tx, reaped_rx) = oneshot::channel();
-        let task = Box::pin(async move {
-            done_tx.send(()).ok();
-            Some(reaped_tx)
+        let reaped = Arc::new(AtomicUsize::new(0));
+        let reaped_signal = DropSignal(Arc::clone(&reaped));
+        MetadataTaskRegistry::spawn(&registry, async move {
+            std::panic::panic_any(reaped_signal);
         });
-        MetadataTaskRegistry::command_tx(&registry)
-            .send(Command::Spawn(task))
-            .expect("metadata task registry owner should be running");
 
-        done_rx.await.expect("task should complete");
-        timeout(Duration::from_secs(1), async { reaped_rx.await })
-            .await
-            .expect("released task should be removed")
-            .expect_err("reaped task signal should be dropped");
+        timeout(Duration::from_secs(1), async {
+            while reaped.load(Ordering::SeqCst) != 1 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("completed task should be reaped");
     }
 }
