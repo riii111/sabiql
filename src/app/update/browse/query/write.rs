@@ -37,12 +37,12 @@ fn build_update_preview(state: &AppState) -> Result<WritePreview, EditGuardrailE
         .result_interaction
         .cell_edit()
         .row()
-        .ok_or(EditGuardrailError::NoRowSelectedForEdit)?;
+        .ok_or(EditGuardrailError::NoActiveRow)?;
     let col_idx = state
         .result_interaction
         .cell_edit()
         .col()
-        .ok_or(EditGuardrailError::NoColumnSelectedForEdit)?;
+        .ok_or(EditGuardrailError::NoActiveCell)?;
 
     let row_values = result
         .values()
