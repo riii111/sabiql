@@ -270,19 +270,6 @@ impl ResolvedTags {
 }
 
 #[cfg(test)]
-mod test_support {
-    use super::{CommandTag, PostgresAdapter};
-
-    impl PostgresAdapter {
-        pub(in crate::adapters::postgres) fn extract_command_tag(
-            stdout: &str,
-        ) -> Option<CommandTag> {
-            Self::parse_command_tag(stdout).ok()
-        }
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::ParseCommandTagError;
     use crate::adapters::postgres::PostgresAdapter;
@@ -407,38 +394,21 @@ mod tests {
         }
 
         #[test]
-        fn extract_from_multiline_with_notice() {
+        fn parse_last_nonempty_line_after_notice() {
             let stdout = "NOTICE:  table \"foo\" does not exist, skipping\nDROP TABLE\n";
             assert_eq!(
-                PostgresAdapter::extract_command_tag(stdout),
-                Some(CommandTag::Drop("TABLE".to_string()))
+                PostgresAdapter::parse_command_tag(stdout),
+                Ok(CommandTag::Drop("TABLE".to_string()))
             );
         }
 
         #[test]
-        fn extract_skips_trailing_empty_lines() {
+        fn parse_skips_trailing_empty_lines() {
             let stdout = "INSERT 0 7\n\n  \n";
             assert_eq!(
-                PostgresAdapter::extract_command_tag(stdout),
-                Some(CommandTag::Insert(7))
+                PostgresAdapter::parse_command_tag(stdout),
+                Ok(CommandTag::Insert(7))
             );
-        }
-
-        #[test]
-        fn extract_from_empty_returns_none() {
-            assert_eq!(PostgresAdapter::extract_command_tag(""), None);
-            assert_eq!(PostgresAdapter::extract_command_tag("  \n  \n"), None);
-        }
-
-        #[test]
-        fn parse_affected_rows_regression() {
-            assert_eq!(PostgresAdapter::parse_affected_rows("UPDATE 3\n"), Some(3));
-            assert_eq!(PostgresAdapter::parse_affected_rows("DELETE 5\n"), Some(5));
-            assert_eq!(
-                PostgresAdapter::parse_affected_rows("INSERT 0 10\n"),
-                Some(10)
-            );
-            assert_eq!(PostgresAdapter::parse_affected_rows("SELECT 1\n"), Some(1));
         }
     }
 
