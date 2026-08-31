@@ -6,7 +6,7 @@ use crate::domain::query_history::QueryHistoryScope;
 use crate::ports::outbound::QueryHistoryStore;
 use crate::update::action::Action;
 
-pub fn spawn_query_history_load(
+pub(in crate::cmd) fn spawn_query_history_load(
     project_name: String,
     scope: QueryHistoryScope,
     action_tx: &mpsc::Sender<Action>,

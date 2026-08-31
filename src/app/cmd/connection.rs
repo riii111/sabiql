@@ -23,12 +23,12 @@ use crate::update::action::{
 };
 
 #[derive(Default)]
-pub(crate) struct ConnectionTaskOwner {
+pub(in crate::cmd) struct ConnectionTaskOwner {
     active: std::sync::Mutex<Option<JoinHandle<()>>>,
 }
 
 impl ConnectionTaskOwner {
-    pub(crate) async fn replace<F>(&self, task: F)
+    pub(in crate::cmd) async fn replace<F>(&self, task: F)
     where
         F: std::future::Future<Output = ()> + Send + 'static,
     {
@@ -37,13 +37,13 @@ impl ConnectionTaskOwner {
         *self.active.lock().expect("connection task lock poisoned") = Some(task);
     }
 
-    pub(crate) async fn cancel(&self) {
+    pub(in crate::cmd) async fn cancel(&self) {
         if let Some(task) = self.abort() {
             let _ = task.await;
         }
     }
 
-    pub(crate) fn abort(&self) -> Option<JoinHandle<()>> {
+    pub(in crate::cmd) fn abort(&self) -> Option<JoinHandle<()>> {
         let task = self
             .active
             .lock()
@@ -82,14 +82,14 @@ fn claim_and_save<T>(
     Some(result)
 }
 
-pub(crate) async fn run(
+pub(in crate::cmd) async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     connection: &ConnectionDeps,
     connection_task: &ConnectionTaskOwner,
     metadata_provider: &Arc<dyn MetadataProvider>,
     state: &AppState,
-) {
+) -> Option<Action> {
     match effect {
         Effect::SaveAndConnect {
             id,
@@ -110,7 +110,7 @@ pub(crate) async fn run(
                         })
                         .await
                         .ok();
-                    return;
+                    return None;
                 }
             };
             let store = Arc::clone(&connection.connection_store);
@@ -132,7 +132,7 @@ pub(crate) async fn run(
                             })
                             .await
                             .ok();
-                        return;
+                        return None;
                     }
                 };
                 let dsn = connection.dsn_builder.build_dsn(&profile);
@@ -165,7 +165,7 @@ pub(crate) async fn run(
                         .expect("connection store save task panicked");
                     })
                     .await;
-                return;
+                return None;
             }
 
             let dsn = connection.dsn_builder.build_dsn(&profile);
@@ -217,7 +217,7 @@ pub(crate) async fn run(
                         }
                     })
                     .await;
-                return;
+                return None;
             }
 
             let target = ConnectionTarget::from_profile(&profile, dsn);
@@ -265,6 +265,7 @@ pub(crate) async fn run(
                     }
                 })
                 .await;
+            None
         }
 
         Effect::ProbeMySqlConnection { target, run_id } => {
@@ -292,6 +293,7 @@ pub(crate) async fn run(
                     };
                 })
                 .await;
+            None
         }
 
         Effect::LoadConnectionForEdit { id } => {
@@ -314,6 +316,7 @@ pub(crate) async fn run(
                         .ok();
                 }
             });
+            None
         }
 
         Effect::LoadConnections => {
@@ -342,6 +345,7 @@ pub(crate) async fn run(
                 }))
                 .ok();
             });
+            None
         }
 
         Effect::DeleteConnection { id } => {
@@ -357,36 +361,29 @@ pub(crate) async fn run(
                         .ok();
                 }
             });
+            None
         }
 
         Effect::SwitchConnection { connection_index } => {
-            if let Some(profile) = state.connections().get(connection_index) {
+            state.connections().get(connection_index).map(|profile| {
                 let dsn = connection.dsn_builder.build_dsn(profile);
-                action_tx
-                    .send(Action::SwitchConnection(ConnectionTarget::from_profile(
-                        profile, dsn,
-                    )))
-                    .await
-                    .ok();
-            }
+                Action::SwitchConnection(ConnectionTarget::from_profile(profile, dsn))
+            })
         }
 
         Effect::SwitchToService { service_index } => {
-            if let Some(entry) = state.service_entries().get(service_index) {
+            state.service_entries().get(service_index).map(|entry| {
                 let id = entry.connection_id();
                 let dsn = entry.to_string();
                 let name = entry.display_name().to_owned();
-                action_tx
-                    .send(Action::SwitchConnection(ConnectionTarget {
-                        id,
-                        dsn,
-                        name,
-                        database_type: DatabaseType::PostgreSQL,
-                        database: None,
-                    }))
-                    .await
-                    .ok();
-            }
+                Action::SwitchConnection(ConnectionTarget {
+                    id,
+                    dsn,
+                    name,
+                    database_type: DatabaseType::PostgreSQL,
+                    database: None,
+                })
+            })
         }
 
         _ => unreachable!("connection::run called with non-connection effect"),
@@ -434,8 +431,8 @@ mod tests {
     use crate::domain::DatabaseMetadata;
     use crate::domain::connection::{
         ConnectionConfig, ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType,
-        MySqlConnectionConfig, MySqlSslMode, PostgresConnectionConfig, SqliteConnectionConfig,
-        SqlitePathError, SslMode,
+        MySqlConnectionConfig, MySqlSslMode, PostgresConnectionConfig, ServiceEntry,
+        SqliteConnectionConfig, SqlitePathError, SslMode,
     };
     use crate::model::app_state::AppState;
     use crate::ports::outbound::connection_store::MockConnectionStore;
@@ -1218,7 +1215,7 @@ mod tests {
 
             let mut renderer = NoopRenderer;
             let ce = RefCell::new(CompletionEngine::new());
-            runner
+            let actions = runner
                 .execute_effects(
                     vec![Effect::SwitchConnection {
                         connection_index: 0,
@@ -1231,7 +1228,8 @@ mod tests {
                 .await
                 .unwrap();
 
-            let action = rx.recv().await.expect("action dispatched");
+            assert!(rx.try_recv().is_err());
+            let action = actions.into_iter().next().expect("action dispatched");
             match action {
                 Action::SwitchConnection(ConnectionTarget {
                     id,
@@ -1257,7 +1255,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let mut renderer = NoopRenderer;
             let ce = RefCell::new(CompletionEngine::new());
-            runner
+            let actions = runner
                 .execute_effects(
                     vec![Effect::SwitchConnection {
                         connection_index: 99,
@@ -1270,7 +1268,47 @@ mod tests {
                 .await
                 .unwrap();
 
+            assert!(actions.is_empty());
             assert!(rx.try_recv().is_err());
+        }
+
+        #[tokio::test]
+        async fn dispatches_service_action_without_channel() {
+            let (tx, mut rx) = mpsc::channel::<Action>(16);
+            let runner = make_runner_with_dsn_builder(tx);
+
+            let mut state = AppState::new("test".to_string());
+            state.set_service_entries(vec![ServiceEntry {
+                service_name: "analytics".to_string(),
+            }]);
+            let expected_id = state.service_entries()[0].connection_id();
+            let mut renderer = NoopRenderer;
+            let ce = RefCell::new(CompletionEngine::new());
+            let actions = runner
+                .execute_effects(
+                    vec![Effect::SwitchToService { service_index: 0 }],
+                    &mut renderer,
+                    &mut state,
+                    &ce,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert!(rx.try_recv().is_err());
+            assert!(matches!(
+                actions.as_slice(),
+                [Action::SwitchConnection(ConnectionTarget {
+                    id,
+                    dsn,
+                    name,
+                    database_type: DatabaseType::PostgreSQL,
+                    database: None,
+                })]
+                    if *id == expected_id
+                        && dsn == "service=analytics"
+                        && name == "analytics"
+            ));
         }
     }
 }

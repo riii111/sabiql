@@ -11,7 +11,11 @@ use crate::update::action::{Action, InputTarget, ModalKind, ScrollDirection, Scr
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{clipboard_unavailable, find_text_matches};
 
-pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub(in crate::update) fn reduce_cell_detail(
+    state: &mut AppState,
+    action: &Action,
+    now: Instant,
+) -> DispatchResult {
     match action {
         Action::ResultOpenCellDetail => {
             if selected_cell_uses_json_detail_modal(state) {

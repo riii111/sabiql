@@ -55,11 +55,11 @@ impl InspectorProfile {
         Self { tabs, info_fields }
     }
 
-    pub fn tabs(&self) -> &'static [InspectorTab] {
+    pub(crate) fn tabs(&self) -> &'static [InspectorTab] {
         self.tabs
     }
 
-    pub fn info_fields(&self) -> &'static [InspectorInfoField] {
+    pub(crate) fn info_fields(&self) -> &'static [InspectorInfoField] {
         self.info_fields
     }
 }

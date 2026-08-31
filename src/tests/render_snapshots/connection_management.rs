@@ -48,10 +48,11 @@ fn connection_selector_with_multiple_connections() {
 
     let (active_id, connections) = three_connections();
     state.set_connections(connections);
-    state.session.set_active_connection_identity_for_test(
+    state.session.activate_connection_with_dsn(
         &active_id,
         "localhost:5432/test",
         sabiql_domain::DatabaseType::PostgreSQL,
+        "localhost:5432/test",
     );
     state.modal.set_mode(InputMode::ConnectionSelector);
     state.ui.set_connection_list_selection(Some(0));
@@ -78,10 +79,11 @@ fn connection_selector_with_service_entries() {
             },
         ],
     );
-    state.session.set_active_connection_identity_for_test(
+    state.session.activate_connection_with_dsn(
         &active_id,
         "localhost:5432/test",
         sabiql_domain::DatabaseType::PostgreSQL,
+        "localhost:5432/test",
     );
     state.modal.set_mode(InputMode::ConnectionSelector);
     state.ui.set_connection_list_selection(Some(0));
@@ -126,10 +128,11 @@ fn connection_selector_with_active_service() {
         },
     ]);
     // Set active connection to the first service entry
-    state.session.set_active_connection_identity_for_test(
+    state.session.activate_connection_with_dsn(
         &ConnectionId::from_string("service:dev-local".to_string()),
         "localhost:5432/test",
         sabiql_domain::DatabaseType::PostgreSQL,
+        "localhost:5432/test",
     );
     state.modal.set_mode(InputMode::ConnectionSelector);
     state.ui.set_connection_list_selection(Some(0));

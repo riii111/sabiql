@@ -12,7 +12,7 @@ use crate::model::app_state::AppState;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub(crate) fn dispatch_modal(
+pub(in crate::update) fn dispatch_modal(
     state: &mut AppState,
     action: &Action,
     now: Instant,
@@ -1509,14 +1509,24 @@ mod tests {
                 let mut state = connected_state();
                 enter_query_history(&mut state, InputMode::SqlModal);
                 state.sql_modal.editor.set_content("old query".to_string());
-                state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
-                state.sql_modal.completion_mut_for_test().visible = true;
-                state.sql_modal.completion_mut_for_test().candidates = vec![CompletionCandidate {
-                    text: "stale".to_string(),
-                    kind: CompletionKind::Keyword,
-                    score: 1,
-                }];
-                state.sql_modal.completion_mut_for_test().selected_index = 3;
+                state.sql_modal.enter_editing();
+                state.sql_modal.apply_completion_update(
+                    &[
+                        CompletionCandidate {
+                            text: "stale".to_string(),
+                            kind: CompletionKind::Keyword,
+                            score: 1,
+                        },
+                        CompletionCandidate {
+                            text: "older".to_string(),
+                            kind: CompletionKind::Keyword,
+                            score: 0,
+                        },
+                    ],
+                    0,
+                    true,
+                );
+                state.sql_modal.completion_next();
                 let test_conn = ConnectionId::from_string("test-conn");
                 state
                     .query_history_picker

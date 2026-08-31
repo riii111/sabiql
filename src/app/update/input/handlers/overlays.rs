@@ -5,7 +5,7 @@ use crate::update::input::keymap;
 
 use super::interaction::InputInteraction;
 
-pub fn handle_help_keys_with_policy(
+pub(super) fn handle_help_keys_with_policy(
     combo: KeyCombo,
     interaction: InputInteraction,
     feature_policy: &FeaturePolicy,
@@ -59,11 +59,11 @@ fn handle_help_editing_keys(combo: KeyCombo, feature_policy: &FeaturePolicy) -> 
     }
 }
 
-pub fn handle_confirm_dialog_keys(combo: KeyCombo) -> Action {
+pub(super) fn handle_confirm_dialog_keys(combo: KeyCombo) -> Action {
     keymap::resolve(&combo, keybindings::CONFIRM_DIALOG_KEYS).unwrap_or(Action::None)
 }
 
-pub fn handle_sqlite_diagnostics_keys_with_policy(
+pub(super) fn handle_sqlite_diagnostics_keys_with_policy(
     combo: KeyCombo,
     feature_policy: &FeaturePolicy,
 ) -> Action {

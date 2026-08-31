@@ -249,10 +249,7 @@ pub(in crate::adapters::mysql) fn convert_preview_values_with_binary_charset(
     Ok(ConvertedPreviewValues { visible, identity })
 }
 
-pub(in crate::adapters::mysql) fn preview_result_columns(
-    columns: &[Column],
-    identity_columns: &[Column],
-) -> Vec<String> {
+fn preview_result_columns(columns: &[Column], identity_columns: &[Column]) -> Vec<String> {
     columns
         .iter()
         .map(|column| column.name.clone())

@@ -94,10 +94,7 @@ impl MySqlProcess {
         Self::spawn_with_query_args(program, mysql_adhoc_args(option_file))
     }
 
-    pub(in crate::adapters::mysql) fn spawn_with_query_args(
-        program: &OsStr,
-        args: Vec<String>,
-    ) -> Result<Self, DbOperationError> {
+    fn spawn_with_query_args(program: &OsStr, args: Vec<String>) -> Result<Self, DbOperationError> {
         Self::spawn_with_args_and_limits(program, args, Some(MYSQL_CLIENT_MAX_PACKET_BYTES), false)
     }
 
