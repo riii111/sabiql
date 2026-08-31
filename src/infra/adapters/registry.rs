@@ -1,11 +1,9 @@
 use crate::app::ports::outbound::{
-    AccessMode, DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, MySqlConnectionProbe,
-    MySqlConnectionProbeResult, QueryExecutor, SqliteDiagnosticsProvider,
+    AccessMode, DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, QueryExecutor,
 };
 use crate::domain::connection::{ConnectionProfile, DatabaseType};
 use crate::domain::{
-    DatabaseMetadata, DiagnosticField, QueryResult, SqliteDiagnosticsSnapshot, Table,
-    TableSignatureSnapshot, WriteExecutionResult,
+    DatabaseMetadata, QueryResult, Table, TableSignatureSnapshot, WriteExecutionResult,
 };
 use async_trait::async_trait;
 use std::path::PathBuf;
@@ -199,27 +197,6 @@ impl DdlGenerator for DbAdapterRegistry {
     }
 }
 
-#[async_trait]
-impl MySqlConnectionProbe for DbAdapterRegistry {
-    async fn probe(&self, dsn: &str) -> Result<MySqlConnectionProbeResult, DbOperationError> {
-        self.mysql.probe(dsn).await
-    }
-}
-
-#[async_trait]
-impl SqliteDiagnosticsProvider for DbAdapterRegistry {
-    async fn fetch_core_diagnostics(
-        &self,
-        dsn: &str,
-    ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {
-        self.sqlite.fetch_core_diagnostics(dsn).await
-    }
-
-    async fn fetch_quick_check(&self, dsn: &str) -> DiagnosticField {
-        self.sqlite.fetch_quick_check(dsn).await
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::adapters::test_support;
@@ -405,16 +382,5 @@ mod tests {
 
         assert_eq!(detail.schema, "main");
         assert_eq!(detail.name, "users");
-    }
-
-    #[tokio::test]
-    async fn sqlite_diagnostics_rejects_postgres_dsn() {
-        let registry = DbAdapterRegistry::new();
-
-        let result = registry
-            .fetch_core_diagnostics("postgres://localhost/db")
-            .await;
-
-        assert!(matches!(result, Err(DbOperationError::ConnectionFailed(_))));
     }
 }

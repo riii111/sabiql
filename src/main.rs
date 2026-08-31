@@ -29,16 +29,18 @@ use sabiql_app::cmd::runner::{ConnectionDeps, EffectRunner, ErDeps, QueryDeps, U
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::input_mode::InputMode;
 use sabiql_app::ports::outbound::{
-    ConnectionStore, ConnectionStoreError, PgServiceEntryReader, ServiceFileError, SettingsStore,
+    ConnectionStore, ConnectionStoreError, MySqlConnectionProbe, PgServiceEntryReader,
+    ServiceFileError, SettingsStore, SqliteDiagnosticsProvider,
 };
 use sabiql_app::services::AppServices;
 use sabiql_app::update::action::Action;
 use sabiql_app::update::input::handle_event;
 use sabiql_app::update::reducer::reduce;
+use sabiql_infra::adapters::mysql::MySqlAdapter;
 use sabiql_infra::adapters::{
     ArboardClipboard, CsvCachedResultExporter, DbAdapterRegistry, FileConfigWriter,
     FileQueryHistoryStore, FsErLogWriter, FsSqlitePathValidator, NativeFolderOpener,
-    PgServiceFileReader, TomlConnectionStore, TomlSettingsStore,
+    PgServiceFileReader, SqliteAdapter, TomlConnectionStore, TomlSettingsStore,
 };
 use sabiql_infra::config::project_root::{find_project_root, get_project_name};
 use sabiql_infra::export::DotExporter;
@@ -125,6 +127,8 @@ async fn main() -> Result<()> {
     let (action_tx, mut action_rx) = mpsc::channel::<Action>(256);
 
     let adapter_registry = Arc::new(DbAdapterRegistry::new());
+    let mysql_connection_probe: Arc<dyn MySqlConnectionProbe> = Arc::new(MySqlAdapter::new());
+    let sqlite_diagnostics: Arc<dyn SqliteDiagnosticsProvider> = Arc::new(SqliteAdapter::new());
     let completion_engine = RefCell::new(CompletionEngine::new());
     let connection_store = TomlConnectionStore::new()?;
     let settings_store = TomlSettingsStore::new()?;
@@ -139,7 +143,7 @@ async fn main() -> Result<()> {
         Arc::clone(&adapter_registry) as _,
         ConnectionDeps {
             dsn_builder: Arc::clone(&adapter_registry) as _,
-            mysql_connection_probe: Arc::clone(&adapter_registry) as _,
+            mysql_connection_probe,
             connection_store: Arc::clone(&connection_store) as _,
             pg_service_entry_reader: Some(Arc::clone(&pg_service_entry_reader)),
             sqlite_path_validator: Arc::new(FsSqlitePathValidator),
@@ -147,7 +151,7 @@ async fn main() -> Result<()> {
         QueryDeps {
             query_executor: Arc::clone(&adapter_registry) as _,
             query_history_store: Arc::new(FileQueryHistoryStore::new()),
-            sqlite_diagnostics: Arc::clone(&adapter_registry) as _,
+            sqlite_diagnostics,
             cached_result_exporter: Arc::new(CsvCachedResultExporter),
         },
         ErDeps {
