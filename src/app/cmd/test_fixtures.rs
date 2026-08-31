@@ -244,10 +244,6 @@ impl QueryHistoryStore for NoopQueryHistoryStore {
 
 pub struct NoopSettingsStore;
 impl SettingsStore for NoopSettingsStore {
-    fn load(&self) -> Result<AppSettings, SettingsStoreError> {
-        Ok(AppSettings::default())
-    }
-
     fn save(&self, _settings: AppSettings) -> Result<(), SettingsStoreError> {
         Ok(())
     }
