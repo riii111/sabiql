@@ -218,11 +218,8 @@ impl MySqlExportPtySource<'_> {
         let previous_len = self.pending.len();
         self.pending.extend_from_slice(bytes);
         let start = self.frame_scanner.frame_start(&self.pending);
-        let prefix_end = start.unwrap_or(self.pending.len());
-        if prefix_end > previous_len {
-            let prefix = self.pending[previous_len..prefix_end].to_vec();
-            self.capture_error(&prefix);
-        }
+        let prefix_len = start.map_or(bytes.len(), |start| start.saturating_sub(previous_len));
+        self.capture_error(&bytes[..prefix_len]);
         if let Some(start) = start {
             self.pending.drain(..start);
             self.started = true;
@@ -257,11 +254,11 @@ impl AsyncRead for MySqlExportPtySource<'_> {
                 let mut read_buffer = ReadBuf::new(&mut chunk);
                 match Pin::new(&mut this.pty.output).poll_read(cx, &mut read_buffer) {
                     Poll::Ready(Ok(())) => {
-                        let bytes = read_buffer.filled().to_vec();
+                        let bytes = read_buffer.filled();
                         if bytes.is_empty() {
                             return Poll::Ready(Ok(()));
                         }
-                        this.append_before_resultset(&bytes);
+                        this.append_before_resultset(bytes);
                     }
                     Poll::Ready(Err(error)) => return Poll::Ready(Err(error)),
                     Poll::Pending => return Poll::Pending,
@@ -271,8 +268,8 @@ impl AsyncRead for MySqlExportPtySource<'_> {
 
             if !this.pending.is_empty() {
                 let count = buffer.remaining().min(this.pending.len());
-                let bytes = this.pending.drain(..count).collect::<Vec<_>>();
-                buffer.put_slice(&bytes);
+                buffer.put_slice(&this.pending[..count]);
+                this.pending.drain(..count);
                 return Poll::Ready(Ok(()));
             }
 
