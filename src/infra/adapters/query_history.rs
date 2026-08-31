@@ -150,11 +150,9 @@ mod tests {
 
     #[tokio::test]
     async fn append_and_load_succeed_for_cli_sqlite_connection_id() {
-        use sabiql_app::cmd::cli_sqlite::connection_id_for_path;
-
         let tmp = TempDir::new().unwrap();
         let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = connection_id_for_path("/tmp/app.db");
+        let conn_id = ConnectionId::from_string("cli-sqlite-test");
 
         assert!(!conn_id.as_str().contains('/'));
 
