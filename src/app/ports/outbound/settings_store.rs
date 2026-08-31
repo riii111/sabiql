@@ -51,6 +51,5 @@ impl From<toml::de::Error> for SettingsStoreError {
 }
 
 pub trait SettingsStore: Send + Sync {
-    fn load(&self) -> Result<AppSettings, SettingsStoreError>;
     fn save(&self, settings: AppSettings) -> Result<(), SettingsStoreError>;
 }
