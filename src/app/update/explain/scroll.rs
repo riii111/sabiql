@@ -1,6 +1,5 @@
 use crate::model::app_state::AppState;
 use crate::model::explain_context::ExplainContext;
-use crate::model::shared::text_input::TextInputLike;
 use crate::update::action::{Action, ScrollAmount, ScrollTarget};
 use crate::update::dispatch_result::DispatchResult;
 
