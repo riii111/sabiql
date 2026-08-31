@@ -4,9 +4,7 @@ pub(super) mod metadata;
 pub(super) mod parser;
 
 pub(super) use executor::SqliteCli;
-pub(in crate::adapters::sqlite) use parser::{
-    is_create_view_prefix, is_create_virtual_table_prefix, virtual_table_module_name,
-};
+pub(in crate::adapters::sqlite) use parser::virtual_table_module_name;
 
 #[cfg(test)]
 mod tests {

@@ -54,11 +54,6 @@ pub(in crate::adapters::sqlite) struct RawTrigger {
     pub(in crate::adapters::sqlite) sql: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub(super) struct RawRowCount {
-    pub(super) count: i64,
-}
-
 #[derive(Debug, Deserialize)]
 pub(super) struct RawJsonPayload {
     pub(super) payload: String,
@@ -66,11 +61,9 @@ pub(super) struct RawJsonPayload {
 
 #[derive(Debug, Clone, Deserialize)]
 pub(in crate::adapters::sqlite) struct RawTableKindInfo {
-    #[serde(rename = "type", default)]
+    #[serde(rename = "type")]
     pub(in crate::adapters::sqlite) r#type: String,
-    #[serde(default)]
     pub(in crate::adapters::sqlite) wr: i64,
-    #[serde(default)]
     pub(in crate::adapters::sqlite) strict: i64,
     pub(in crate::adapters::sqlite) sql: Option<String>,
 }

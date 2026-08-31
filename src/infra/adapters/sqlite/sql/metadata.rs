@@ -1,5 +1,3 @@
-use crate::app::ports::outbound::{DbOperationError, SqliteCompatibilityKind};
-
 use super::literal::{quote_ident, quote_literal};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,57 +55,6 @@ pub(in crate::adapters::sqlite) fn user_tables_query() -> &'static str {
         ORDER BY tl.name
     ) AS tables
     "
-}
-
-pub(in crate::adapters::sqlite) fn legacy_user_tables_query() -> &'static str {
-    r"
-    SELECT json_object(
-        'sqlite_version', sqlite_version(),
-        'tables', json(COALESCE(
-            json_group_array(json_object(
-                'name', tables.name,
-                'sql', tables.sql
-            )),
-            '[]'
-        ))
-    ) AS payload
-    FROM (
-        SELECT name, sql
-        FROM sqlite_master
-        WHERE type = 'table'
-          AND name NOT LIKE 'sqlite_%'
-        ORDER BY name
-    ) AS tables
-    "
-}
-
-pub(in crate::adapters::sqlite) fn has_virtual_tables_query() -> &'static str {
-    r"
-    SELECT COUNT(*) AS count
-    FROM sqlite_master
-    WHERE type = 'table'
-      AND sql IS NOT NULL
-      AND replace(
-              replace(
-                  replace(lower(sql), char(13), ' '),
-                  char(10), ' '
-              ),
-              char(9), ' '
-          ) LIKE 'create%virtual%table%'
-    "
-}
-
-pub(in crate::adapters::sqlite) fn table_list_required_error() -> DbOperationError {
-    DbOperationError::UnsupportedOperationWithSqliteKind {
-        kind: SqliteCompatibilityKind::TableList,
-        details: "This database contains virtual tables (such as FTS or RTree). \
-                  Upgrade sqlite3 to version 3.41.1 or later to browse it safely."
-            .to_string(),
-    }
-}
-
-pub(in crate::adapters::sqlite) fn is_table_list_unavailable(error: &str) -> bool {
-    error.to_ascii_lowercase().contains("pragma_table_list")
 }
 
 pub(in crate::adapters::sqlite) fn preview_metadata_query(table: &str) -> String {
@@ -316,44 +263,6 @@ mod tests {
             assert!(user_tables_query().contains("tl.wr"));
             assert!(user_tables_query().contains("tl.strict"));
             assert!(user_tables_query().contains("name NOT LIKE 'sqlite_%'"));
-        }
-
-        #[test]
-        fn legacy_user_tables_lists_tables_only() {
-            assert!(legacy_user_tables_query().contains("FROM sqlite_master"));
-            assert!(legacy_user_tables_query().contains("type = 'table'"));
-            assert!(!legacy_user_tables_query().contains("fts5_tables"));
-            assert!(legacy_user_tables_query().contains("name NOT LIKE 'sqlite_%'"));
-        }
-
-        #[test]
-        fn has_virtual_tables_detects_virtual_table_ddl() {
-            assert!(has_virtual_tables_query().contains("create%virtual%table%"));
-        }
-
-        #[test]
-        fn table_list_required_error_keeps_upgrade_guidance_without_marker() {
-            let error = table_list_required_error();
-            let message = error.user_message();
-            assert_eq!(error.summary(), "Unsupported operation");
-            assert_eq!(error.hint(), "Use a supported operation for this database");
-            assert!(message.contains("3.41.1"));
-            assert!(!message.contains("SQLITE_TABLE_LIST_REQUIRED"));
-            assert!(matches!(
-                error,
-                DbOperationError::UnsupportedOperationWithSqliteKind {
-                    kind: SqliteCompatibilityKind::TableList,
-                    ..
-                }
-            ));
-        }
-
-        #[test]
-        fn table_list_unavailable_detects_missing_pragma() {
-            assert!(is_table_list_unavailable(
-                "Error: in prepare, no such table: main.pragma_table_list"
-            ));
-            assert!(!is_table_list_unavailable("FOREIGN KEY constraint failed"));
         }
     }
 
