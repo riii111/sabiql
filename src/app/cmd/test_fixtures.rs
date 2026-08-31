@@ -23,10 +23,10 @@ use crate::ports::outbound::DbOperationError;
 use crate::ports::outbound::{
     AppSettings, CachedResultExporter, ClipboardError, ClipboardWriter, ConfigWriter,
     ConfigWriterError, ConnectionStore, DsnBuilder, ErDiagramExporter, ErExportResult, ErLogWriter,
-    FolderOpenError, FolderOpener, MetadataProvider, MySqlConnectionProbe,
-    MySqlConnectionProbeResult, PgServiceEntryReader, QueryExecutor, QueryHistoryError,
-    QueryHistoryStore, RenderOutput, RenderResult, Renderer, ServiceFileError, SettingsStore,
-    SettingsStoreError, SqliteDiagnosticsProvider, SqlitePathValidator,
+    FolderOpener, MetadataProvider, MySqlConnectionProbe, MySqlConnectionProbeResult,
+    PgServiceEntryReader, QueryExecutor, QueryHistoryError, QueryHistoryStore, RenderOutput,
+    RenderResult, Renderer, ServiceFileError, SettingsStore, SettingsStoreError,
+    SqliteDiagnosticsProvider, SqlitePathValidator,
 };
 use crate::services::AppServices;
 use crate::update::action::Action;
@@ -156,7 +156,7 @@ impl ClipboardWriter for NoopClipboardWriter {
 
 pub struct NoopFolderOpener;
 impl FolderOpener for NoopFolderOpener {
-    fn open(&self, _path: &Path) -> Result<(), FolderOpenError> {
+    fn open(&self, _path: &Path) -> Result<(), std::io::Error> {
         Ok(())
     }
 }
