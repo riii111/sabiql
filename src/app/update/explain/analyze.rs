@@ -3,7 +3,6 @@ use std::time::Instant;
 use crate::cmd::effect::Effect;
 use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
-use crate::model::shared::text_input::TextInputLike;
 use crate::model::sql_editor::modal::SqlModalStatus;
 use crate::policy::sql::statement_classifier;
 use crate::policy::write::sql_risk::{
