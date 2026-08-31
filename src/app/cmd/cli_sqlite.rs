@@ -43,34 +43,30 @@ pub enum CliSqliteActivateError {
 }
 
 impl CliSqliteTarget {
-    pub fn parse_cli_argument(input: &str) -> Result<Self, CliSqliteTargetError> {
+    fn parse_cli_argument(input: &str) -> Result<Self, CliSqliteTargetError> {
         let path = parse_cli_path(input)?;
         Ok(Self {
             config: SqliteConnectionConfig::new(path)?,
         })
     }
 
-    pub fn path(&self) -> &str {
+    fn path(&self) -> &str {
         self.config.path()
     }
 
-    pub fn dsn(&self) -> String {
-        format!("sqlite://{}", self.config.path())
-    }
-
-    pub fn display_name(&self) -> String {
+    fn display_name(&self) -> String {
         Path::new(self.config.path())
             .file_name()
             .and_then(|name| name.to_str())
             .map_or_else(|| self.config.path().to_string(), str::to_owned)
     }
 
-    pub fn path_for_validation(&self) -> &Path {
+    fn path_for_validation(&self) -> &Path {
         Path::new(self.config.path())
     }
 }
 
-pub fn connection_id_for_path(path: &str) -> ConnectionId {
+fn connection_id_for_path(path: &str) -> ConnectionId {
     let derived = Uuid::new_v5(&CLI_SQLITE_CONNECTION_NAMESPACE, path.as_bytes());
     ConnectionId::from_string(format!("cli-sqlite-{}", derived.as_simple()))
 }
@@ -150,7 +146,6 @@ mod tests {
             let target = CliSqliteTarget::parse_cli_argument("sqlite:///tmp/app.db").unwrap();
 
             assert_eq!(target.path(), "/tmp/app.db");
-            assert_eq!(target.dsn(), "sqlite:///tmp/app.db");
         }
 
         #[rstest]
