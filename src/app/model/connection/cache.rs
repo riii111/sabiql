@@ -1,7 +1,6 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, QueryResult, Table};
+use crate::domain::{DatabaseMetadata, DatabaseType, QueryResult, Table};
 use crate::model::browse::query_execution::PaginationState;
 use crate::model::shared::inspector_tab::InspectorTab;
 
@@ -30,25 +29,6 @@ impl ConnectionCache {
     }
 }
 
-#[derive(Debug, Default)]
-pub struct ConnectionCacheStore {
-    caches: HashMap<ConnectionId, ConnectionCache>,
-}
-
-impl ConnectionCacheStore {
-    pub fn get(&self, id: &ConnectionId) -> Option<&ConnectionCache> {
-        self.caches.get(id)
-    }
-
-    pub fn save(&mut self, id: &ConnectionId, cache: ConnectionCache) {
-        self.caches.insert(id.clone(), cache);
-    }
-
-    pub fn remove(&mut self, id: &ConnectionId) -> Option<ConnectionCache> {
-        self.caches.remove(id)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -73,81 +53,6 @@ mod tests {
     }
 
     #[test]
-    fn store_get_returns_none_for_unknown_id() {
-        let store = ConnectionCacheStore::default();
-        let id = ConnectionId::new();
-
-        assert!(store.get(&id).is_none());
-    }
-
-    #[test]
-    fn store_save_and_get_returns_saved_cache() {
-        let mut store = ConnectionCacheStore::default();
-        let id = ConnectionId::new();
-
-        let cache = ConnectionCache {
-            explorer_selected: 42,
-            inspector_tab: InspectorTab::Indexes,
-            ..Default::default()
-        };
-        store.save(&id, cache);
-
-        let retrieved = store.get(&id).unwrap();
-        assert_eq!(retrieved.explorer_selected, 42);
-        assert_eq!(retrieved.inspector_tab, InspectorTab::Indexes);
-    }
-
-    #[test]
-    fn store_remove_returns_and_deletes_cache() {
-        let mut store = ConnectionCacheStore::default();
-        let id = ConnectionId::new();
-
-        let cache = ConnectionCache {
-            explorer_selected: 99,
-            ..Default::default()
-        };
-        store.save(&id, cache);
-
-        let removed = store.remove(&id);
-        assert!(removed.is_some());
-        assert_eq!(removed.unwrap().explorer_selected, 99);
-        assert!(store.get(&id).is_none());
-    }
-
-    #[test]
-    fn preserves_metadata_on_save_and_get() {
-        use crate::domain::{DatabaseMetadata, TableSummary};
-
-        let mut store = ConnectionCacheStore::default();
-        let id = ConnectionId::new();
-
-        let metadata = Arc::new({
-            let mut metadata = DatabaseMetadata::new("test_db".to_string());
-            metadata.table_summaries = vec![TableSummary::new(
-                "public".to_string(),
-                "users".to_string(),
-                Some(100),
-                false,
-            )];
-            metadata
-        });
-
-        let cache = ConnectionCache {
-            metadata: Some(metadata),
-            effective_user: Some("postgres".to_string()),
-            ..Default::default()
-        };
-        store.save(&id, cache);
-
-        let retrieved = store.get(&id).unwrap();
-        assert!(retrieved.metadata.is_some());
-        assert_eq!(retrieved.effective_user.as_deref(), Some("postgres"));
-        let retrieved_metadata = retrieved.metadata.as_ref().unwrap();
-        assert_eq!(retrieved_metadata.database_name, "test_db");
-        assert_eq!(retrieved_metadata.table_summaries.len(), 1);
-    }
-
-    #[test]
     fn mysql_restore_requires_matching_connection_identity() {
         let cache = ConnectionCache {
             connection_dsn: Some("mysql://user@localhost/app".to_string()),
@@ -161,33 +66,5 @@ mod tests {
         assert!(cache.is_valid_mysql_snapshot("mysql://user@localhost/app", Some("app")));
         assert!(!cache.is_valid_mysql_snapshot("mysql://user@localhost/other", Some("app")));
         assert!(!cache.is_valid_mysql_snapshot("mysql://user@localhost/app", Some("other")));
-    }
-
-    #[test]
-    fn preserves_query_result_on_save_and_get() {
-        use crate::domain::{QueryResult, QuerySource};
-
-        let mut store = ConnectionCacheStore::default();
-        let id = ConnectionId::new();
-
-        let query_result = QueryResult::success(
-            "SELECT * FROM users".to_string(),
-            vec!["id".to_string(), "name".to_string()],
-            vec![vec!["1".to_string(), "Alice".to_string()]],
-            10,
-            QuerySource::Preview,
-        );
-
-        let cache = ConnectionCache {
-            query_result: Some(Arc::new(query_result)),
-            ..Default::default()
-        };
-        store.save(&id, cache);
-
-        let retrieved = store.get(&id).unwrap();
-        assert!(retrieved.query_result.is_some());
-        let retrieved_result = retrieved.query_result.as_ref().unwrap();
-        assert_eq!(retrieved_result.query, "SELECT * FROM users");
-        assert_eq!(retrieved_result.row_count(), 1);
     }
 }

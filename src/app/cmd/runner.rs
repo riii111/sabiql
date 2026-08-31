@@ -955,7 +955,7 @@ mod tests {
             let target_id = ConnectionId::new();
             state
                 .connection_caches
-                .save(&target_id, ConnectionCache::default());
+                .insert(target_id.clone(), ConnectionCache::default());
             let run_id = state.query.begin_running(Instant::now());
             let completion_engine = RefCell::new(CompletionEngine::new());
             let mut renderer = NoopRenderer;
