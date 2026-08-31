@@ -88,7 +88,7 @@ async fn read_only_session_failure_never_writes_user_sql() {
 
 #[tokio::test]
 async fn nonzero_cli_exit_discards_any_collected_stdout() {
-    let (_directory, program, log_file) = fake_mysql("failure");
+    let (_directory, program, log_file) = fake_mysql("nonzero_exit");
     let option_file = log_file.with_extension("cnf");
     fs::write(&option_file, "[client]\n").unwrap();
     let result = run_mysql_single_statement_with_program(

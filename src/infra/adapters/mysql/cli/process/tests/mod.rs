@@ -68,7 +68,9 @@ fn fake_mysql(mode: &str) -> (TempDir, PathBuf, PathBuf) {
             "timeout" => "while :; do :; done".to_string(),
             _ => "printf '%s\\n' '<resultset><row><field name=\"__sabiql_session_marker\">'\"$marker\"'</field><field name=\"__sabiql_sql_mode\">STRICT_TRANS_TABLES</field></row></resultset>'".to_string(),
         };
-    let user_response = if mode == "failure" {
+    let user_response = if mode == "nonzero_exit" {
+        "printf '%s\\n' '<resultset><row><field name=\"partial\">row</field></row></resultset>'"
+    } else if mode == "failure" {
         "printf '%s\\n' '<resultset><row><field name=\"partial\">row</field></row></resultset>'\n    exit_status=1\n    [ \"$adhoc\" -eq 0 ] && printf '%s\\n' 'ERROR 1064 (42000): syntax error' >&2"
     } else if mode == "no_result_failure" {
         "printf '%s\\n' 'ERROR 1054 (42S22): Unknown column missing_column' >&2\n    exit 1"
@@ -90,6 +92,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>'"
     } else {
         ""
     };
+    let finish_status = if mode == "nonzero_exit" { "exit 1" } else { "" };
     let settings_timeout = if mode == "timeout" {
         "while :; do :; done"
     } else {
@@ -123,6 +126,7 @@ while IFS= read -r line; do
       else
         printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
         {finish_error}
+        {finish_status}
       fi
       ;;
     *)
