@@ -568,7 +568,7 @@ mod tests {
             let action = create_postgres_switch_action(&new_id, "new_db");
             reduce(&mut state, &action);
 
-            let saved = state.connection_caches.get(&current_id).unwrap();
+            let saved = &state.connection_caches[&current_id];
             assert_eq!(saved.explorer_selected, 5);
             assert_eq!(saved.inspector_tab, InspectorTab::Indexes);
         }
@@ -678,7 +678,7 @@ mod tests {
                 &create_postgres_switch_action(&ConnectionId::from_string("postgres"), "postgres"),
             );
 
-            let cache = state.connection_caches.get(&current_id).unwrap();
+            let cache = &state.connection_caches[&current_id];
             assert!(
                 cache.is_valid_mysql_snapshot(
                     "mysql://user@localhost:3306/current",
@@ -700,7 +700,7 @@ mod tests {
                 inspector_tab: InspectorTab::ForeignKeys,
                 ..Default::default()
             };
-            state.connection_caches.save(&target_id, cached);
+            state.connection_caches.insert(target_id.clone(), cached);
 
             let action = create_postgres_switch_action(&target_id, "cached_db");
             reduce(&mut state, &action);
@@ -720,7 +720,7 @@ mod tests {
             let target_id = ConnectionId::new();
             state
                 .connection_caches
-                .save(&target_id, ConnectionCache::default());
+                .insert(target_id.clone(), ConnectionCache::default());
             let stale_run_id = state.query.begin_running(std::time::Instant::now());
 
             let action = create_postgres_switch_action(&target_id, "cached_db");
@@ -739,7 +739,7 @@ mod tests {
                 inspector_tab: InspectorTab::Ddl,
                 ..Default::default()
             };
-            state.connection_caches.save(&target_id, cached);
+            state.connection_caches.insert(target_id.clone(), cached);
 
             let action = Action::SwitchConnection(ConnectionTarget {
                 id: target_id,
@@ -846,8 +846,8 @@ mod tests {
             seed_explain_state(&mut state);
 
             if cached {
-                state.connection_caches.save(
-                    &target_id,
+                state.connection_caches.insert(
+                    target_id.clone(),
                     ConnectionCache {
                         inspector_tab: InspectorTab::Rls,
                         ..Default::default()
@@ -894,7 +894,7 @@ mod tests {
             if cached {
                 state
                     .connection_caches
-                    .save(&target_id, ConnectionCache::default());
+                    .insert(target_id.clone(), ConnectionCache::default());
             }
 
             reduce(
@@ -1079,8 +1079,8 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let target_id = ConnectionId::from_string("mysql-target");
             let target = mysql_target(&target_id, "mysql://user@localhost:3306/app", "app");
-            state.connection_caches.save(
-                &target_id,
+            state.connection_caches.insert(
+                target_id,
                 valid_mysql_cache(&target.dsn, target.database.as_deref().unwrap()),
             );
 
@@ -1176,9 +1176,10 @@ mod tests {
                 let mut state = AppState::new("test".to_string());
                 let target_id = ConnectionId::from_string("mysql-target");
                 let target = mysql_target(&target_id, "mysql://user@localhost:3306/app", "app");
-                state
-                    .connection_caches
-                    .save(&target_id, valid_mysql_cache(cached_dsn, cached_database));
+                state.connection_caches.insert(
+                    target_id.clone(),
+                    valid_mysql_cache(cached_dsn, cached_database),
+                );
 
                 let probe_effects =
                     reduce(&mut state, &Action::SwitchConnection(target.clone())).unwrap();
@@ -1205,7 +1206,7 @@ mod tests {
                         .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
                 );
                 assert!(state.session.connection_state().is_connecting());
-                assert!(state.connection_caches.get(&target_id).is_none());
+                assert!(!state.connection_caches.contains_key(&target_id));
             }
         }
 
@@ -1214,8 +1215,8 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let target_id = ConnectionId::from_string("mysql-target");
             let target = mysql_target(&target_id, "mysql://user@localhost:3306/app", "app");
-            state.connection_caches.save(
-                &target_id,
+            state.connection_caches.insert(
+                target_id,
                 valid_mysql_cache(&target.dsn, target.database.as_deref().unwrap()),
             );
 
@@ -1291,8 +1292,8 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let target_id = ConnectionId::from_string("mysql-target");
             let target = mysql_target(&target_id, "mysql://user@localhost:3306/app", "app");
-            state.connection_caches.save(
-                &target_id,
+            state.connection_caches.insert(
+                target_id,
                 valid_mysql_cache(&target.dsn, target.database.as_deref().unwrap()),
             );
 
@@ -1328,8 +1329,8 @@ mod tests {
             pagination.reset_for_table("main", "items");
             pagination.set_page_result(1, true);
             state.ui.set_explorer_selected_raw(7);
-            state.connection_caches.save(
-                &target_id,
+            state.connection_caches.insert(
+                target_id.clone(),
                 ConnectionCache {
                     explorer_selected: 42,
                     inspector_tab: InspectorTab::ForeignKeys,
@@ -1352,7 +1353,7 @@ mod tests {
                     .iter()
                     .any(|e| matches!(e, Effect::FetchMetadata { .. }))
             );
-            assert!(state.connection_caches.get(&target_id).is_some());
+            assert!(state.connection_caches.contains_key(&target_id));
             assert_eq!(state.ui.explorer_selected(), 42);
             assert_eq!(state.query.pagination.schema(), "main");
             assert_eq!(state.query.pagination.table(), "items");
@@ -1400,8 +1401,8 @@ mod tests {
             let mut pagination_b = PaginationState::default();
             pagination_b.reset_for_table("main", "orders");
             pagination_b.set_page_result(5, false);
-            state.connection_caches.save(
-                &connection_b,
+            state.connection_caches.insert(
+                connection_b.clone(),
                 ConnectionCache {
                     selected_table_key: Some("main.orders".to_string()),
                     query_result: Some(Arc::new(QueryResult::success(
@@ -1508,7 +1509,7 @@ mod tests {
                 .queue_table_prefetch("public.users".to_string());
             state
                 .connection_caches
-                .save(&target_id, ConnectionCache::default());
+                .insert(target_id.clone(), ConnectionCache::default());
 
             let action = create_postgres_switch_action(&target_id, "cached_db");
             reduce(&mut state, &action);
@@ -2327,8 +2328,8 @@ mod tests {
                 database: None,
             };
             reduce(&mut state, &Action::SwitchConnection(current.clone())).unwrap();
-            state.connection_caches.save(
-                &current.id,
+            state.connection_caches.insert(
+                current.id.clone(),
                 ConnectionCache {
                     explorer_selected: 7,
                     ..Default::default()
@@ -2347,14 +2348,7 @@ mod tests {
             assert!(effects.is_empty());
             assert_eq!(state.session.active_connection_id(), Some(&current.id));
             assert_eq!(state.session.active_database(), None);
-            assert_eq!(
-                state
-                    .connection_caches
-                    .get(&current.id)
-                    .unwrap()
-                    .explorer_selected,
-                7
-            );
+            assert_eq!(state.connection_caches[&current.id].explorer_selected, 7);
             assert!(state.messages.last_error().is_some_and(|message| {
                 message.contains("MySQL connection field `database` is required")
             }));
@@ -2421,7 +2415,7 @@ mod tests {
 
             state
                 .connection_caches
-                .save(&target_id, ConnectionCache::default());
+                .insert(target_id.clone(), ConnectionCache::default());
             state.result_interaction.activate_cell(3, 2);
 
             let action = create_postgres_switch_action(&target_id, "cached_db");
@@ -2439,7 +2433,7 @@ mod tests {
             let target_id = ConnectionId::new();
             state
                 .connection_caches
-                .save(&target_id, ConnectionCache::default());
+                .insert(target_id.clone(), ConnectionCache::default());
             let _ = state.table_prefetch.begin_er_prefetch();
             state
                 .table_prefetch

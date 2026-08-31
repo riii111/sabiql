@@ -1260,7 +1260,7 @@ mod tests {
 
             reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
 
-            let saved = state.connection_caches.get(&current_id).unwrap();
+            let saved = &state.connection_caches[&current_id];
             assert_eq!(saved.explorer_selected, 4);
             assert!(saved.metadata.is_some());
         }
@@ -1269,8 +1269,8 @@ mod tests {
         fn save_completed_removes_stale_connection_cache_for_saved_profile() {
             let mut state = AppState::new("test".to_string());
             let saved_id = ConnectionId::new();
-            state.connection_caches.save(
-                &saved_id,
+            state.connection_caches.insert(
+                saved_id.clone(),
                 ConnectionCache {
                     metadata: Some(Arc::new({
                         let mut metadata = DatabaseMetadata::new("stale".to_string());
@@ -1301,7 +1301,7 @@ mod tests {
             };
             reduce(&mut state, &action, Instant::now());
 
-            assert!(state.connection_caches.get(&saved_id).is_none());
+            assert!(!state.connection_caches.contains_key(&saved_id));
         }
 
         #[test]
