@@ -1,17 +1,16 @@
 use std::path::PathBuf;
-use std::sync::Arc;
 
-#[derive(Debug, Clone, thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum ConfigWriterError {
     #[error("cache directory is unavailable")]
     MissingCacheDir,
     #[error("I/O error: {0}")]
-    Io(#[source] Arc<std::io::Error>),
+    Io(#[source] std::io::Error),
 }
 
 impl From<std::io::Error> for ConfigWriterError {
     fn from(error: std::io::Error) -> Self {
-        Self::Io(Arc::new(error))
+        Self::Io(error)
     }
 }
 
