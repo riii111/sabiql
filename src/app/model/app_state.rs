@@ -49,8 +49,8 @@ pub struct AppState {
     pub render_dirty: bool,
 
     pub session: BrowseSession,
-    pub(crate) project_name: String,
-    pub(crate) service_file_path: Option<PathBuf>,
+    project_name: String,
+    service_file_path: Option<PathBuf>,
     pub ui: UiState,
     pub query: QueryExecution,
     pub sql_modal: SqlModalContext,

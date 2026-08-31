@@ -1118,19 +1118,18 @@ mod tests {
         }
 
         fn connected_state() -> AppState {
-            let mut state = create_test_state();
+            let mut state = AppState::new("test-project".to_string());
             state.session.activate_connection_with_dsn(
                 &ConnectionId::from_string("test-conn"),
                 "test",
                 DatabaseType::PostgreSQL,
                 "postgres://localhost/test",
             );
-            state.project_name = "test-project".to_string();
             state
         }
 
         fn mysql_connected_state(database: &str) -> AppState {
-            let mut state = create_test_state();
+            let mut state = AppState::new("test-project".to_string());
             state.session.activate_connection_with_target(
                 &ConnectionId::from_string("mysql-conn"),
                 "mysql",
@@ -1139,7 +1138,6 @@ mod tests {
                 Some(database),
             );
             state.session.mark_probe_connected();
-            state.project_name = "test-project".to_string();
             state
         }
 
