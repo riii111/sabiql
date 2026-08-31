@@ -28,29 +28,56 @@ impl TableMetadataQueryMode {
 
 pub(in crate::adapters::sqlite) fn user_tables_query() -> &'static str {
     r"
-    SELECT tl.name,
-           tl.type,
-           tl.wr,
-           tl.strict,
-           m.sql
-    FROM pragma_table_list() AS tl
-    LEFT JOIN sqlite_master AS m
-      ON m.type IN ('table', 'view')
-     AND m.name = tl.name
-    WHERE tl.schema = 'main'
-      AND tl.type IN ('table', 'virtual')
-      AND tl.name NOT LIKE 'sqlite_%'
-    ORDER BY tl.name
+    SELECT json_object(
+        'sqlite_version', sqlite_version(),
+        'tables', json(COALESCE(
+            json_group_array(json_object(
+                'name', tables.name,
+                'type', tables.type,
+                'wr', tables.wr,
+                'strict', tables.strict,
+                'sql', tables.sql
+            )),
+            '[]'
+        ))
+    ) AS payload
+    FROM (
+        SELECT tl.name,
+               tl.type,
+               tl.wr,
+               tl.strict,
+               m.sql
+        FROM pragma_table_list() AS tl
+        LEFT JOIN sqlite_master AS m
+          ON m.type IN ('table', 'view')
+         AND m.name = tl.name
+        WHERE tl.schema = 'main'
+          AND tl.type IN ('table', 'virtual')
+          AND tl.name NOT LIKE 'sqlite_%'
+        ORDER BY tl.name
+    ) AS tables
     "
 }
 
 pub(in crate::adapters::sqlite) fn legacy_user_tables_query() -> &'static str {
     r"
-    SELECT name, sql
-    FROM sqlite_master
-    WHERE type = 'table'
-      AND name NOT LIKE 'sqlite_%'
-    ORDER BY name
+    SELECT json_object(
+        'sqlite_version', sqlite_version(),
+        'tables', json(COALESCE(
+            json_group_array(json_object(
+                'name', tables.name,
+                'sql', tables.sql
+            )),
+            '[]'
+        ))
+    ) AS payload
+    FROM (
+        SELECT name, sql
+        FROM sqlite_master
+        WHERE type = 'table'
+          AND name NOT LIKE 'sqlite_%'
+        ORDER BY name
+    ) AS tables
     "
 }
 
