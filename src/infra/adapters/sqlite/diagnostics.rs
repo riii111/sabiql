@@ -70,42 +70,31 @@ async fn fetch_feature_summary(adapter: &SqliteAdapter, dsn: &str) -> Diagnostic
             .await,
     );
 
-    feature_summary_field(&compile_options, &module_list, &function_list)
+    feature_summary_field(
+        compile_options.as_deref(),
+        module_list.as_deref(),
+        function_list.as_deref(),
+    )
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum FeatureProbe {
-    Available(Vec<String>),
-    Unavailable,
-}
-
-impl FeatureProbe {
-    fn values(&self) -> Option<&[String]> {
-        match self {
-            Self::Available(values) => Some(values.as_slice()),
-            Self::Unavailable => None,
-        }
-    }
-}
-
-fn feature_probe(result: Result<QueryResult, DbOperationError>) -> FeatureProbe {
+fn feature_probe(result: Result<QueryResult, DbOperationError>) -> Option<Vec<String>> {
     match result {
-        Ok(query_result) if query_result.columns.is_empty() => FeatureProbe::Unavailable,
-        Ok(query_result) => FeatureProbe::Available(
+        Ok(query_result) if query_result.columns.is_empty() => None,
+        Ok(query_result) => Some(
             (0..query_result.data_row_count())
                 .filter_map(|row| query_result.display_value_at(row, 0))
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
                 .collect(),
         ),
-        Err(_) => FeatureProbe::Unavailable,
+        Err(_) => None,
     }
 }
 
 fn feature_summary_field(
-    compile_options: &FeatureProbe,
-    module_list: &FeatureProbe,
-    function_list: &FeatureProbe,
+    compile_options: Option<&[String]>,
+    module_list: Option<&[String]>,
+    function_list: Option<&[String]>,
 ) -> DiagnosticField {
     let features = [
         (
@@ -140,23 +129,26 @@ fn feature_summary_field(
 }
 
 fn feature_from_compile_or_module(
-    compile_options: &FeatureProbe,
-    module_list: &FeatureProbe,
+    compile_options: Option<&[String]>,
+    module_list: Option<&[String]>,
     compile_option: &str,
     module_name: &str,
 ) -> Option<bool> {
-    if contains_ignore_ascii_case(compile_options.values(), compile_option)
-        || contains_ignore_ascii_case(module_list.values(), module_name)
+    if contains_ignore_ascii_case(compile_options, compile_option)
+        || contains_ignore_ascii_case(module_list, module_name)
     {
         return Some(true);
     }
 
-    compile_options.values().map(|_| false)
+    compile_options.map(|_| false)
 }
 
-fn json_feature(compile_options: &FeatureProbe, function_list: &FeatureProbe) -> Option<bool> {
-    if contains_ignore_ascii_case(compile_options.values(), "ENABLE_JSON1")
-        || function_list.values().is_some_and(|functions| {
+fn json_feature(
+    compile_options: Option<&[String]>,
+    function_list: Option<&[String]>,
+) -> Option<bool> {
+    if contains_ignore_ascii_case(compile_options, "ENABLE_JSON1")
+        || function_list.is_some_and(|functions| {
             functions.iter().any(|function| {
                 let function = function.to_ascii_lowercase();
                 function == "json" || function.starts_with("json_")
@@ -165,11 +157,11 @@ fn json_feature(compile_options: &FeatureProbe, function_list: &FeatureProbe) ->
     {
         return Some(true);
     }
-    if contains_ignore_ascii_case(compile_options.values(), "OMIT_JSON") {
+    if contains_ignore_ascii_case(compile_options, "OMIT_JSON") {
         return Some(false);
     }
 
-    function_list.values().map(|_| false)
+    function_list.map(|_| false)
 }
 
 fn contains_ignore_ascii_case(values: Option<&[String]>, needle: &str) -> bool {
@@ -339,12 +331,15 @@ mod tests {
 
     #[test]
     fn feature_summary_reports_compile_module_and_json_function_support() {
-        let compile_options =
-            FeatureProbe::Available(vec!["ENABLE_FTS5".to_string(), "ENABLE_RTREE".to_string()]);
-        let module_list = FeatureProbe::Available(vec!["fts4".to_string()]);
-        let function_list = FeatureProbe::Available(vec!["json_extract".to_string()]);
+        let compile_options = Some(vec!["ENABLE_FTS5".to_string(), "ENABLE_RTREE".to_string()]);
+        let module_list = Some(vec!["fts4".to_string()]);
+        let function_list = Some(vec!["json_extract".to_string()]);
 
-        let field = feature_summary_field(&compile_options, &module_list, &function_list);
+        let field = feature_summary_field(
+            compile_options.as_deref(),
+            module_list.as_deref(),
+            function_list.as_deref(),
+        );
 
         assert_eq!(
             field.ok_value(),
@@ -354,11 +349,11 @@ mod tests {
 
     #[test]
     fn feature_summary_keeps_unknown_json_availability_separate_from_absent_modules() {
-        let compile_options = FeatureProbe::Available(Vec::new());
-        let module_list = FeatureProbe::Unavailable;
-        let function_list = FeatureProbe::Unavailable;
+        let compile_options = Some(Vec::new());
+        let module_list = None;
+        let function_list = None;
 
-        let field = feature_summary_field(&compile_options, &module_list, &function_list);
+        let field = feature_summary_field(compile_options.as_deref(), module_list, function_list);
 
         assert_eq!(
             field.ok_value(),
@@ -370,11 +365,7 @@ mod tests {
 
     #[test]
     fn feature_summary_is_unavailable_when_all_probes_are_unavailable() {
-        let field = feature_summary_field(
-            &FeatureProbe::Unavailable,
-            &FeatureProbe::Unavailable,
-            &FeatureProbe::Unavailable,
-        );
+        let field = feature_summary_field(None, None, None);
 
         assert_eq!(field, DiagnosticField::Unavailable);
     }
@@ -383,7 +374,7 @@ mod tests {
     fn feature_probe_treats_pragma_without_columns_as_unavailable() {
         let field = feature_probe(Ok(empty_query_result()));
 
-        assert_eq!(field, FeatureProbe::Unavailable);
+        assert_eq!(field, None);
     }
 
     #[test]
