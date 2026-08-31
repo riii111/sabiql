@@ -5,7 +5,6 @@ use crate::cmd::effect::Effect;
 use crate::domain::explain_plan::{ComparisonVerdict, compare_plans};
 use crate::model::app_state::AppState;
 use crate::model::shared::flash_timer::FlashId;
-use crate::model::shared::text_input::TextInputLike;
 use crate::model::sql_editor::modal::SqlModalTab;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
