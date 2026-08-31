@@ -193,7 +193,6 @@ pub struct SmartErRefreshResult {
     pub run_id: u64,
     pub new_metadata: Arc<DatabaseMetadata>,
     pub stale_tables: Vec<String>,
-    pub added_tables: Vec<String>,
     pub removed_tables: Vec<String>,
     pub missing_in_cache: Vec<String>,
     pub new_signatures: HashMap<String, String>,
