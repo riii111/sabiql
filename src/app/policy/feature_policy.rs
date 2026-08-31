@@ -12,14 +12,16 @@ pub enum FeatureRequirement {
     PlanComparison,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FeaturePolicy {
     profile: EngineFeatureProfile,
 }
 
 impl FeaturePolicy {
     pub fn new(profile: &EngineFeatureProfile) -> Self {
-        Self { profile: *profile }
+        Self {
+            profile: profile.clone(),
+        }
     }
 
     pub fn is_enabled(&self, requirement: FeatureRequirement) -> bool {

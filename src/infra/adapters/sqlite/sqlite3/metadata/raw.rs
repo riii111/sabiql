@@ -7,6 +7,12 @@ pub(in crate::adapters::sqlite) struct RawTable {
     pub(in crate::adapters::sqlite) kind: RawTableKindInfo,
 }
 
+#[derive(Debug, Deserialize)]
+pub(super) struct RawCatalog {
+    pub(super) sqlite_version: String,
+    pub(super) tables: Vec<RawTable>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub(in crate::adapters::sqlite) struct RawColumn {
     pub(in crate::adapters::sqlite) cid: i32,
