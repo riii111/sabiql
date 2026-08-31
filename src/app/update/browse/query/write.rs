@@ -1387,11 +1387,6 @@ mod tests {
             assert!(
                 effects
                     .iter()
-                    .any(|effect| matches!(effect, Effect::CacheInvalidate { .. }))
-            );
-            assert!(
-                effects
-                    .iter()
                     .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
             );
             assert!(

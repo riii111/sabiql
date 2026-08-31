@@ -1,12 +1,13 @@
 use std::collections::HashSet;
+use std::num::NonZeroUsize;
 
-use crate::cmd::cache::BoundedLruCache;
 use crate::domain::{DatabaseMetadata, DatabaseType, Table, TableSummary};
 use crate::model::shared::text_input::char_to_byte_index;
 use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
 use crate::policy::sql::lexer::{
     MYSQL_KEYWORDS, POSTGRESQL_KEYWORDS, SqlContext, SqlLexer, TableReference, Token, TokenKind,
 };
+use lru::LruCache;
 
 const COMPLETION_MAX_CANDIDATES: usize = 30;
 const TABLE_CACHE_CAPACITY: usize = 500;
@@ -39,7 +40,7 @@ pub(crate) struct PreparedCompletion {
 }
 
 pub struct CompletionEngine {
-    table_detail_cache: BoundedLruCache<String, Table>,
+    table_detail_cache: LruCache<String, Table>,
 }
 
 impl Default for CompletionEngine {
@@ -51,12 +52,14 @@ impl Default for CompletionEngine {
 impl CompletionEngine {
     pub fn new() -> Self {
         Self {
-            table_detail_cache: BoundedLruCache::new(TABLE_CACHE_CAPACITY),
+            table_detail_cache: LruCache::new(
+                NonZeroUsize::new(TABLE_CACHE_CAPACITY).expect("capacity must be > 0"),
+            ),
         }
     }
 
     pub(crate) fn cache_table_detail(&mut self, qualified_name: String, table: Table) {
-        self.table_detail_cache.insert(qualified_name, table);
+        let _ = self.table_detail_cache.put(qualified_name, table);
     }
 
     pub(crate) fn has_cached_table(&self, qualified_name: &str) -> bool {
@@ -65,7 +68,7 @@ impl CompletionEngine {
 
     pub(crate) fn evict_tables(&mut self, tables: &[String]) {
         for table in tables {
-            self.table_detail_cache.pop(table);
+            let _ = self.table_detail_cache.pop(table);
         }
     }
 
@@ -74,7 +77,8 @@ impl CompletionEngine {
     }
 
     pub(crate) fn resize_cache(&mut self, new_capacity: usize) {
-        self.table_detail_cache.resize(new_capacity);
+        self.table_detail_cache
+            .resize(NonZeroUsize::new(new_capacity).expect("capacity must be > 0"));
     }
 
     pub(crate) fn table_details_iter(&self) -> impl Iterator<Item = (&String, &Table)> {
@@ -243,7 +247,7 @@ impl CompletionEngine {
 
                 let selected_qualified = table_detail.map(Table::qualified_name);
                 let use_all_cache = referenced_tables.is_empty() && !has_unresolved_reference;
-                for (qualified_name, cached_table) in self.table_detail_cache.iter() {
+                for (qualified_name, cached_table) in &self.table_detail_cache {
                     if selected_qualified.as_ref() == Some(qualified_name) {
                         continue;
                     }
@@ -1263,7 +1267,8 @@ mod tests {
     impl CompletionEngine {
         fn new_with_capacity(capacity: usize) -> Self {
             let mut engine = Self::new();
-            engine.table_detail_cache = BoundedLruCache::new(capacity);
+            engine.table_detail_cache =
+                LruCache::new(NonZeroUsize::new(capacity).expect("capacity must be > 0"));
             engine
         }
 
@@ -4003,6 +4008,90 @@ mod tests {
             assert!(!e.has_cached_table("public.t1")); // evicted
             assert!(e.has_cached_table("public.t2"));
             assert!(e.has_cached_table("public.t3"));
+        }
+
+        #[test]
+        fn peeking_table_does_not_promote_it_before_eviction() {
+            let mut e = CompletionEngine::new_with_capacity(2);
+
+            e.cache_table_detail(
+                "public.t1".to_string(),
+                create_table("public", "t1", &["id"]),
+            );
+            e.cache_table_detail(
+                "public.t2".to_string(),
+                create_table("public", "t2", &["id"]),
+            );
+
+            assert!(e.table_detail_cache.peek("public.t1").is_some());
+            assert!(e.has_cached_table("public.t1"));
+
+            e.cache_table_detail(
+                "public.t3".to_string(),
+                create_table("public", "t3", &["id"]),
+            );
+
+            assert!(!e.has_cached_table("public.t1"));
+            assert!(e.has_cached_table("public.t2"));
+            assert!(e.has_cached_table("public.t3"));
+        }
+
+        #[test]
+        fn expanding_cache_preserves_entries_and_uses_new_capacity() {
+            let mut e = CompletionEngine::new_with_capacity(2);
+
+            e.cache_table_detail(
+                "public.t1".to_string(),
+                create_table("public", "t1", &["id"]),
+            );
+            e.cache_table_detail(
+                "public.t2".to_string(),
+                create_table("public", "t2", &["id"]),
+            );
+
+            e.resize_cache(5);
+
+            for name in ["t3", "t4", "t5", "t6"] {
+                e.cache_table_detail(
+                    format!("public.{name}"),
+                    create_table("public", name, &["id"]),
+                );
+            }
+
+            assert_eq!(e.table_details_iter().count(), 5);
+            assert!(!e.has_cached_table("public.t1"));
+            for name in ["t2", "t3", "t4", "t5", "t6"] {
+                assert!(e.has_cached_table(&format!("public.{name}")));
+            }
+        }
+
+        #[test]
+        fn shrinking_cache_evicts_least_recently_used_entries() {
+            let mut e = CompletionEngine::new_with_capacity(3);
+
+            for name in ["t1", "t2", "t3"] {
+                e.cache_table_detail(
+                    format!("public.{name}"),
+                    create_table("public", name, &["id"]),
+                );
+            }
+
+            e.resize_cache(2);
+
+            assert_eq!(e.table_details_iter().count(), 2);
+            assert!(!e.has_cached_table("public.t1"));
+            assert!(e.has_cached_table("public.t2"));
+            assert!(e.has_cached_table("public.t3"));
+
+            e.cache_table_detail(
+                "public.t4".to_string(),
+                create_table("public", "t4", &["id"]),
+            );
+
+            assert_eq!(e.table_details_iter().count(), 2);
+            assert!(!e.has_cached_table("public.t2"));
+            assert!(e.has_cached_table("public.t3"));
+            assert!(e.has_cached_table("public.t4"));
         }
     }
 

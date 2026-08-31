@@ -26,7 +26,6 @@ pub(super) fn reduce_smart_refresh_failed(
 
             if let Some(md) = new_metadata {
                 state.session.set_metadata(Some(Arc::clone(md)));
-                effects.push(Effect::CacheInvalidate { dsn: dsn.clone() });
             }
 
             let Some(metadata) = &state.session.metadata() else {

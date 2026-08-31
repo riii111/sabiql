@@ -9,7 +9,6 @@ use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
 use crate::cmd::browse as cmd_browse;
-use crate::cmd::cache::TtlCache;
 use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::connection as cmd_connection;
 use crate::cmd::connection::ConnectionTaskOwner;
@@ -23,7 +22,6 @@ use crate::cmd::sql_editor::completion as cmd_completion;
 use crate::cmd::sql_editor::query_history::spawn_query_history_load;
 use crate::cmd::sqlite_diagnostics;
 use crate::cmd::utility as cmd_utility;
-use crate::domain::DatabaseMetadata;
 use crate::model::app_state::AppState;
 use crate::ports::outbound::{
     CachedResultExporter, ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder,
@@ -67,7 +65,6 @@ pub struct EffectRunner {
     er: ErDeps,
     utility: UtilityDeps,
     settings_store: Arc<dyn SettingsStore>,
-    metadata_cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
     query_tasks: SingleTaskOwner,
     table_detail_tasks: SingleTaskOwner,
@@ -85,7 +82,6 @@ impl EffectRunner {
         er: ErDeps,
         utility: UtilityDeps,
         settings_store: Arc<dyn SettingsStore>,
-        metadata_cache: TtlCache<String, Arc<DatabaseMetadata>>,
         action_tx: mpsc::Sender<Action>,
     ) -> Self {
         Self {
@@ -95,7 +91,6 @@ impl EffectRunner {
             er,
             utility,
             settings_store,
-            metadata_cache,
             action_tx,
             query_tasks: SingleTaskOwner::default(),
             table_detail_tasks: SingleTaskOwner::default(),
@@ -112,11 +107,14 @@ impl EffectRunner {
 
     async fn cancel_tracked_tasks(&self) {
         let connection_task = self.connection_task.abort();
-        let metadata_tasks = self.metadata_tasks.abort();
+        let metadata_task = self.metadata_tasks.abort();
         let smart_er_task = self.smart_er_refresh_task.abort();
         let sqlite_diagnostics_tasks = self.sqlite_diagnostics_task.abort();
         let query_task = self.query_tasks.abort();
         let table_detail_task = self.table_detail_tasks.abort();
+        if let Some(task) = metadata_task {
+            let _ = task.await;
+        }
         if let Some(task) = query_task {
             let _ = task.await;
         }
@@ -126,11 +124,7 @@ impl EffectRunner {
         if let Some(task) = connection_task {
             let _ = task.await;
         }
-        for task in metadata_tasks
-            .into_iter()
-            .chain(smart_er_task)
-            .chain(sqlite_diagnostics_tasks)
-        {
+        for task in smart_er_task.into_iter().chain(sqlite_diagnostics_tasks) {
             let _ = task.await;
         }
     }
@@ -245,7 +239,6 @@ impl EffectRunner {
                     &self.connection,
                     &self.connection_task,
                     &self.metadata_provider,
-                    &self.metadata_cache,
                     state,
                 )
                 .await;
@@ -258,7 +251,6 @@ impl EffectRunner {
             | Effect::PrefetchTableColumnsAndFks { .. }
             | Effect::SchedulePrefetchQueueProcessing { .. }
             | Effect::DelayedProcessPrefetchQueue { .. }
-            | Effect::CacheInvalidate { .. }
             | Effect::CancelMetadataTasks) => {
                 if matches!(&e, Effect::FetchMetadata { .. }) {
                     self.metadata_tasks.cancel().await;
@@ -268,7 +260,6 @@ impl EffectRunner {
                     e,
                     &self.action_tx,
                     &self.metadata_provider,
-                    &self.metadata_cache,
                     &self.connection.sqlite_path_validator,
                     &self.table_detail_tasks,
                     &self.metadata_tasks,
@@ -448,7 +439,6 @@ mod tests {
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
-                TtlCache::new(300),
                 tx,
             );
 
@@ -471,7 +461,6 @@ mod tests {
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
-                TtlCache::new(300),
                 tx,
             );
 
@@ -514,7 +503,6 @@ mod tests {
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
-                TtlCache::new(300),
                 tx,
             );
 
@@ -657,7 +645,6 @@ mod tests {
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
-                TtlCache::new(300),
                 tx,
             );
 
@@ -817,7 +804,6 @@ mod tests {
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
-                TtlCache::new(300),
                 tx,
             );
 
@@ -987,7 +973,6 @@ mod tests {
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(executor),
                 Arc::new(MockConnectionStore::new()),
-                TtlCache::new(300),
                 action_tx,
             );
             let mut state = AppState::new("test".to_string());
@@ -1076,7 +1061,6 @@ mod tests {
                 Arc::new(provider),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
-                TtlCache::new(300),
                 action_tx,
             );
             let mut state = AppState::new("test".to_string());
@@ -1262,7 +1246,6 @@ mod tests {
                 Arc::new(metadata_provider),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
-                TtlCache::new(300),
                 action_tx,
                 Arc::new(test_fixtures::NoopDsnBuilder),
                 Arc::new(probe),
@@ -1328,7 +1311,6 @@ mod tests {
                 Arc::new(provider),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
-                TtlCache::new(300),
                 action_tx,
             );
             let mut state = AppState::new("test".to_string());
@@ -1519,7 +1501,6 @@ mod tests {
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
-                TtlCache::new(300),
                 action_tx,
                 Arc::new(test_fixtures::NoopDsnBuilder),
                 Arc::new(probe),
@@ -1592,7 +1573,6 @@ mod tests {
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
-                TtlCache::new(300),
                 action_tx,
                 Arc::new(test_fixtures::NoopDsnBuilder),
                 Arc::new(probe),
@@ -1665,7 +1645,6 @@ mod tests {
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
-                TtlCache::new(300),
                 action_tx,
                 Arc::new(test_fixtures::NoopDsnBuilder),
                 Arc::new(probe),
@@ -1726,7 +1705,6 @@ mod tests {
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(store),
-                TtlCache::new(300),
                 action_tx,
                 Arc::new(test_fixtures::NoopDsnBuilder),
             );
@@ -1783,21 +1761,18 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn cancelling_postgres_save_aborts_metadata_before_cache_or_action() {
+        async fn cancelling_postgres_save_aborts_metadata_before_action() {
             let (started_tx, mut started_rx) = mpsc::unbounded_channel();
             let dropped = Arc::new(AtomicUsize::new(0));
             let provider = PendingMetadataProvider {
                 started: started_tx,
                 dropped: Arc::clone(&dropped),
             };
-            let cache = TtlCache::new(300);
-            let observed_cache = cache.clone();
             let (action_tx, mut action_rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner(
                 Arc::new(provider),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
-                cache,
                 action_tx,
             );
             let mut state = AppState::new("test".to_string());
@@ -1839,7 +1814,6 @@ mod tests {
                     .await
                     .is_err()
             );
-            assert!(observed_cache.get(&String::new()).await.is_none());
         }
     }
 
@@ -1922,7 +1896,6 @@ mod tests {
                 Arc::new(PendingSmartErProvider { started, dropped }),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
-                TtlCache::new(300),
                 action_tx,
             )
         }

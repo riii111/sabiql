@@ -1,9 +1,11 @@
 use crate::cmd::effect::Effect;
-use crate::domain::connection::DatabaseType;
+use std::sync::Arc;
+
+use crate::domain::DatabaseMetadata;
 use crate::model::app_state::AppState;
 use crate::model::connection::cache::ConnectionCache;
 use crate::model::shared::inspector_tab::InspectorTab;
-use crate::update::action::ConnectionTarget;
+use crate::update::action::{Action, ConnectionTarget};
 use crate::update::query_context::termination_effects;
 
 fn reset_connection_scoped_state(state: &mut AppState) {
@@ -47,29 +49,25 @@ pub(super) fn connection_save_fetch_effects(
     state: &AppState,
     dsn: &str,
     run_id: u64,
-    database_type: DatabaseType,
+    metadata: Option<Arc<DatabaseMetadata>>,
 ) -> Vec<Effect> {
-    let fetch = Effect::FetchMetadata {
-        dsn: dsn.to_string(),
-        run_id,
-    };
-    if database_type == DatabaseType::SQLite {
-        vec![Effect::Sequence(termination_effects(
-            &state.query,
-            vec![
-                Effect::CacheInvalidate {
-                    dsn: dsn.to_string(),
-                },
-                Effect::ClearCompletionEngineCache,
-                fetch,
-            ],
-        ))]
+    let metadata_effect = if let Some(metadata) = metadata {
+        Effect::DispatchActions(vec![Action::MetadataLoaded {
+            dsn: dsn.to_string(),
+            run_id,
+            metadata,
+        }])
     } else {
-        termination_effects(
-            &state.query,
-            vec![Effect::ClearCompletionEngineCache, fetch],
-        )
-    }
+        Effect::FetchMetadata {
+            dsn: dsn.to_string(),
+            run_id,
+        }
+    };
+
+    termination_effects(
+        &state.query,
+        vec![Effect::ClearCompletionEngineCache, metadata_effect],
+    )
 }
 
 pub(super) fn mysql_connection_completion_effects(state: &mut AppState, dsn: &str) -> Vec<Effect> {

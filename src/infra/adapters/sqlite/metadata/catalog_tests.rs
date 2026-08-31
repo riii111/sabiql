@@ -77,25 +77,104 @@ mod metadata {
     }
 
     #[tokio::test]
-    async fn lists_user_tables_in_main_schema() {
+    async fn lists_user_tables_in_main_schema_with_one_process() {
+        if let Ok(dsn) = std::env::var("SABIQL_PROCESS_COUNTER_DSN") {
+            let adapter = SqliteAdapter::new();
+            let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
+            let table_names: Vec<_> = metadata
+                .table_summaries
+                .iter()
+                .map(|summary| summary.name.as_str())
+                .collect();
+
+            assert_eq!(metadata.schemas, vec![Schema::new("main")]);
+            assert_eq!(table_names, vec!["users"]);
+            assert_eq!(metadata.table_summaries[0].qualified_name(), "main.users");
+            assert!(metadata.table_summaries[0].row_count_estimate.is_none());
+            return;
+        }
+
         let (_dir, dsn) = test_support::make_sqlite_db(
             r"
         CREATE TABLE users(id INTEGER PRIMARY KEY AUTOINCREMENT);
         ",
         );
-        let adapter = SqliteAdapter::new();
 
+        #[cfg(unix)]
+        {
+            assert_catalog_metadata_uses_one_sqlite_process(&dsn);
+            return;
+        }
+
+        #[cfg(not(unix))]
+        let (adapter, process_counter) = SqliteAdapter::with_process_counter(&dsn);
+
+        #[cfg(not(unix))]
         let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
-        let table_names: Vec<_> = metadata
-            .table_summaries
-            .iter()
-            .map(|summary| summary.name.as_str())
-            .collect();
 
-        assert_eq!(metadata.schemas, vec![Schema::new("main")]);
-        assert_eq!(table_names, vec!["users"]);
-        assert_eq!(metadata.table_summaries[0].qualified_name(), "main.users");
-        assert!(metadata.table_summaries[0].row_count_estimate.is_none());
+        #[cfg(not(unix))]
+        {
+            let table_names: Vec<_> = metadata
+                .table_summaries
+                .iter()
+                .map(|summary| summary.name.as_str())
+                .collect();
+
+            assert_eq!(metadata.schemas, vec![Schema::new("main")]);
+            assert_eq!(table_names, vec!["users"]);
+            assert_eq!(metadata.table_summaries[0].qualified_name(), "main.users");
+            assert!(metadata.table_summaries[0].row_count_estimate.is_none());
+            assert_eq!(process_counter.count(), 1);
+        }
+    }
+
+    #[cfg(unix)]
+    fn assert_catalog_metadata_uses_one_sqlite_process(dsn: &str) {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+        use std::process::Command;
+
+        let wrapper_dir = tempfile::tempdir().unwrap();
+        let counter_file = wrapper_dir.path().join("process-count");
+        let wrapper = wrapper_dir.path().join("sqlite3");
+        let real_sqlite3 = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+            .map(|directory| directory.join("sqlite3"))
+            .find(|path| path.is_file())
+            .expect("sqlite3 must be available on PATH");
+        fs::write(
+            &wrapper,
+            "#!/bin/sh\nprintf '%s\\n' 1 >> \"$SABIQL_PROCESS_COUNTER_FILE\"\nexec \"$SABIQL_REAL_SQLITE3\" \"$@\"\n",
+        )
+        .unwrap();
+        fs::set_permissions(&wrapper, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let path = std::env::var_os("PATH").unwrap();
+        let child_path = std::env::join_paths(
+            std::iter::once(wrapper_dir.path().to_path_buf()).chain(std::env::split_paths(&path)),
+        )
+        .unwrap();
+        let output = Command::new(std::env::current_exe().unwrap())
+            .arg("adapters::sqlite::metadata::catalog::tests::metadata::lists_user_tables_in_main_schema_with_one_process")
+            .arg("--exact")
+            .arg("--nocapture")
+            .env("SABIQL_PROCESS_COUNTER_FILE", &counter_file)
+            .env("SABIQL_REAL_SQLITE3", real_sqlite3)
+            .env("SABIQL_PROCESS_COUNTER_DSN", dsn)
+            .env("PATH", child_path)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "child metadata test failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let starts = fs::read_to_string(&counter_file)
+            .unwrap_or_default()
+            .lines()
+            .count();
+        assert_eq!(starts, 1, "metadata should start sqlite3 exactly once");
     }
 
     #[tokio::test]

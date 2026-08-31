@@ -30,9 +30,6 @@ pub enum Effect {
         id: ConnectionId,
     },
 
-    CacheInvalidate {
-        dsn: String,
-    },
     FetchMetadata {
         dsn: String,
         run_id: u64,
