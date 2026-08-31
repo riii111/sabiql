@@ -112,26 +112,20 @@ pub fn build_render_lines(
         .add_modifier(Modifier::BOLD);
 
     let mut lines = vec![Line::raw("")];
-    for row in display_rows(snapshot) {
-        let field_value = display_field(row.field);
-        let value = if row.kind == DiagnosticFieldKind::QuickCheck {
+    for (kind, field) in display_rows(snapshot) {
+        let field_value = display_field(field);
+        let value = if kind == DiagnosticFieldKind::QuickCheck {
             quick_check_override.unwrap_or(&field_value)
         } else {
             &field_value
         };
         let value_style =
-            if row.kind == DiagnosticFieldKind::QuickCheck && quick_check_override.is_some() {
+            if kind == DiagnosticFieldKind::QuickCheck && quick_check_override.is_some() {
                 Style::default().fg(theme.semantic.status.warning)
             } else {
-                field_style(row.kind, row.field, snapshot, theme)
+                field_style(kind, field, snapshot, theme)
             };
-        append_field_lines(
-            &mut lines,
-            row.kind.label(),
-            value,
-            label_style,
-            value_style,
-        );
+        append_field_lines(&mut lines, kind.label(), value, label_style, value_style);
     }
     lines
 }
