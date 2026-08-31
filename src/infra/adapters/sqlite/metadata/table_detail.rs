@@ -28,7 +28,7 @@ pub(super) enum TableDetailMode {
 }
 
 impl TableDetailMode {
-    const fn include_indexes(self) -> bool {
+    const fn include_full_detail(self) -> bool {
         matches!(self, Self::Full | Self::Signature)
     }
 
@@ -38,14 +38,6 @@ impl TableDetailMode {
             Self::ColumnsAndFks => sql::TableMetadataQueryMode::ColumnsAndFks,
             Self::Signature => sql::TableMetadataQueryMode::FullWithoutRowCount,
         }
-    }
-
-    const fn include_triggers(self) -> bool {
-        matches!(self, Self::Full | Self::Signature)
-    }
-
-    const fn include_source_ddl(self) -> bool {
-        matches!(self, Self::Full | Self::Signature)
     }
 }
 
@@ -70,7 +62,7 @@ pub(super) fn table_from_metadata(
         return Err(super::sqlite_table_not_found(table));
     }
     let unique_single_columns = unique_single_columns_from_batch(&metadata.indexes);
-    let indexes = if mode.include_indexes() {
+    let indexes = if mode.include_full_detail() {
         indexes_from_batch(metadata.indexes)
     } else {
         Vec::new()
@@ -123,7 +115,7 @@ pub(super) fn table_from_metadata(
     let foreign_keys =
         foreign_keys_from_batch(table, metadata.foreign_keys, &metadata.referenced_columns)?;
     let mut triggers = Vec::new();
-    if mode.include_triggers() {
+    if mode.include_full_detail() {
         for raw in metadata.triggers {
             if let Some(sql) = raw.sql {
                 triggers.push(parse_sqlite_trigger(&raw.name, &sql)?);
@@ -144,7 +136,7 @@ pub(super) fn table_from_metadata(
         triggers,
         row_count_estimate: metadata.row_count,
         comment: None,
-        source_ddl: if mode.include_source_ddl() {
+        source_ddl: if mode.include_full_detail() {
             metadata.source_ddl
         } else {
             None
