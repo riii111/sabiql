@@ -1,18 +1,13 @@
 use tokio::sync::mpsc;
 
-use crate::cmd::effect::Effect;
-use crate::ports::outbound::SettingsStore;
+use crate::ports::outbound::{AppSettings, SettingsStore};
 use crate::update::action::Action;
 
 pub(crate) async fn run(
-    effect: Effect,
+    settings: AppSettings,
     action_tx: &mpsc::Sender<Action>,
     settings_store: &std::sync::Arc<dyn SettingsStore>,
 ) {
-    let Effect::SaveSettings { settings } = effect else {
-        return;
-    };
-
     let result = settings_store.save(settings.clone());
     let action = match result {
         Ok(()) => Action::SettingsSaved(settings),
@@ -28,7 +23,7 @@ mod tests {
     use super::*;
     use crate::model::shared::settings::KeymapPreset;
     use crate::model::shared::theme_id::ThemeId;
-    use crate::ports::outbound::{AppSettings, SettingsStoreError};
+    use crate::ports::outbound::SettingsStoreError;
 
     struct RecordingSettingsStore {
         saved: Mutex<Vec<AppSettings>>,
@@ -67,12 +62,10 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(1);
 
         run(
-            Effect::SaveSettings {
-                settings: AppSettings {
-                    theme_id: ThemeId::Light,
-                    keymap_preset: KeymapPreset::Ide,
-                    er_browser: Some("Firefox".to_string()),
-                },
+            AppSettings {
+                theme_id: ThemeId::Light,
+                keymap_preset: KeymapPreset::Ide,
+                er_browser: Some("Firefox".to_string()),
             },
             &tx,
             &(store.clone() as Arc<dyn SettingsStore>),
@@ -103,12 +96,10 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(1);
 
         run(
-            Effect::SaveSettings {
-                settings: AppSettings {
-                    theme_id: ThemeId::Light,
-                    keymap_preset: KeymapPreset::default(),
-                    er_browser: None,
-                },
+            AppSettings {
+                theme_id: ThemeId::Light,
+                keymap_preset: KeymapPreset::default(),
+                er_browser: None,
             },
             &tx,
             &(store as Arc<dyn SettingsStore>),

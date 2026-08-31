@@ -304,13 +304,21 @@ impl EffectRunner {
                 Ok(vec![])
             }
 
-            e @ Effect::LoadQueryHistory { .. } => {
-                spawn_query_history_load(e, &self.action_tx, &self.query.query_history_store);
+            Effect::LoadQueryHistory {
+                project_name,
+                scope,
+            } => {
+                spawn_query_history_load(
+                    project_name,
+                    scope,
+                    &self.action_tx,
+                    &self.query.query_history_store,
+                );
                 Ok(vec![])
             }
 
-            e @ Effect::SaveSettings { .. } => {
-                cmd_settings::run(e, &self.action_tx, &self.settings_store).await;
+            Effect::SaveSettings { settings } => {
+                cmd_settings::run(settings, &self.action_tx, &self.settings_store).await;
                 Ok(vec![])
             }
 
