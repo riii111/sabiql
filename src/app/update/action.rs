@@ -399,6 +399,7 @@ pub enum Action {
         target: ConnectionTarget,
         run_id: u64,
         mysql_lower_case_table_names: Option<u8>,
+        metadata: Option<Arc<DatabaseMetadata>>,
     },
     ConnectionSaveFailed {
         error: ConnectionSaveError,

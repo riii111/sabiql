@@ -273,7 +273,6 @@ pub(super) fn refresh_effects_for_scope(
         let run_id = state.session.begin_metadata_refresh();
 
         effects.push(Effect::CancelMetadataTasks);
-        effects.push(Effect::CacheInvalidate { dsn: dsn.clone() });
         effects.push(Effect::ClearCompletionEngineCache);
         effects.push(Effect::FetchMetadata { dsn, run_id });
     } else if !state.query.pagination.table().is_empty() {
@@ -376,7 +375,6 @@ fn apply_preview_result(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::cache::TtlCache;
     use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::runner::EffectRunner;
     use crate::cmd::test_fixtures;
@@ -458,7 +456,6 @@ mod tests {
             Arc::new(MockMetadataProvider::new()),
             Arc::new(MockQueryExecutor::new()),
             Arc::new(MockConnectionStore::new()),
-            TtlCache::new(300),
             tx,
         );
         let completion_engine = std::cell::RefCell::new(CompletionEngine::new());
@@ -1486,11 +1483,6 @@ mod tests {
             assert!(
                 effects
                     .iter()
-                    .any(|effect| matches!(effect, Effect::CacheInvalidate { .. }))
-            );
-            assert!(
-                effects
-                    .iter()
                     .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
             );
             assert!(
@@ -1577,11 +1569,6 @@ mod tests {
             let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert!(matches!(effects[0], Effect::CancelMetadataTasks));
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::CacheInvalidate { .. }))
-            );
             assert!(
                 effects
                     .iter()

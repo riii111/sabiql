@@ -144,25 +144,20 @@ pub fn complete_table_preview(state: &mut AppState, now: Instant) {
 pub fn assert_connection_save_fetch_effects(effects: &[Effect], database_type: DatabaseType) {
     match database_type {
         DatabaseType::SQLite => {
-            assert_eq!(effects.len(), 1, "sqlite save should emit Sequence");
-            let Effect::Sequence(seq) = &effects[0] else {
-                panic!("expected Sequence, got {effects:?}");
-            };
-            assert_eq!(seq.len(), 4);
-            assert!(matches!(seq[0], Effect::CancelTrackedTasks));
-            assert!(matches!(seq[1], Effect::CacheInvalidate { .. }));
-            assert!(matches!(seq[2], Effect::ClearCompletionEngineCache));
-            assert!(matches!(seq[3], Effect::FetchMetadata { .. }));
-        }
-        DatabaseType::PostgreSQL => {
-            assert_eq!(
-                effects.len(),
-                3,
-                "postgres save should preserve prefetched metadata cache"
-            );
+            assert_eq!(effects.len(), 3);
             assert!(matches!(effects[0], Effect::CancelTrackedTasks));
             assert!(matches!(effects[1], Effect::ClearCompletionEngineCache));
             assert!(matches!(effects[2], Effect::FetchMetadata { .. }));
+        }
+        DatabaseType::PostgreSQL => {
+            assert_eq!(effects.len(), 3);
+            assert!(matches!(effects[0], Effect::CancelTrackedTasks));
+            assert!(matches!(effects[1], Effect::ClearCompletionEngineCache));
+            assert!(matches!(
+                &effects[2],
+                Effect::DispatchActions(actions)
+                    if matches!(actions.as_slice(), [Action::MetadataLoaded { .. }])
+            ));
         }
         DatabaseType::MySQL => {
             assert_eq!(effects.len(), 1);

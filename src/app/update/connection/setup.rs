@@ -250,6 +250,7 @@ pub fn reduce_connection_setup(
             target,
             run_id,
             mysql_lower_case_table_names,
+            metadata,
         } => {
             if !state.session.is_current_connection_save(*run_id) {
                 return DispatchResult::handled();
@@ -281,7 +282,7 @@ pub fn reduce_connection_setup(
                 state,
                 dsn,
                 run_id,
-                *database_type,
+                metadata.clone(),
             ))
         }
         Action::ConnectionSaveFailed {
@@ -902,6 +903,7 @@ mod tests {
                     },
                     run_id,
                     mysql_lower_case_table_names: None,
+                    metadata: None,
                 },
                 Instant::now(),
             );
@@ -940,6 +942,7 @@ mod tests {
                     },
                     run_id: save_run_id,
                     mysql_lower_case_table_names: None,
+                    metadata: None,
                 },
                 Instant::now(),
             );
@@ -1176,6 +1179,7 @@ mod tests {
                 },
                 run_id,
                 mysql_lower_case_table_names: None,
+                metadata: None,
             };
             reduce(&mut state, &action, Instant::now());
 
@@ -1221,6 +1225,7 @@ mod tests {
                 },
                 run_id,
                 mysql_lower_case_table_names: None,
+                metadata: None,
             };
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();
 
@@ -1295,6 +1300,7 @@ mod tests {
                 },
                 run_id,
                 mysql_lower_case_table_names: None,
+                metadata: None,
             };
             reduce(&mut state, &action, Instant::now());
 
@@ -1316,10 +1322,11 @@ mod tests {
                 },
                 run_id,
                 mysql_lower_case_table_names: None,
+                metadata: None,
             };
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();
 
-            assert_eq!(effects.len(), 1);
+            assert_eq!(effects.len(), 3);
             test_fixtures::assert_connection_save_fetch_effects(&effects, DatabaseType::SQLite);
             assert_eq!(state.session.dsn(), Some("sqlite:///tmp/app.db"));
             assert_eq!(
@@ -1352,6 +1359,7 @@ mod tests {
                 },
                 run_id,
                 mysql_lower_case_table_names: None,
+                metadata: None,
             };
             reduce(&mut state, &action, Instant::now());
 
@@ -1374,6 +1382,7 @@ mod tests {
                 },
                 run_id,
                 mysql_lower_case_table_names: None,
+                metadata: None,
             };
 
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();
