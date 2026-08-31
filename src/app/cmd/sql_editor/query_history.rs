@@ -20,18 +20,11 @@ pub fn spawn_query_history_load(
             let tx = action_tx.clone();
 
             tokio::spawn(async move {
-                match store.load(&project_name, &scope).await {
-                    Ok(entries) => {
-                        tx.send(Action::QueryHistoryLoaded(scope, entries))
-                            .await
-                            .ok();
-                    }
-                    Err(e) => {
-                        tx.send(Action::QueryHistoryLoadFailed(scope, e.to_string()))
-                            .await
-                            .ok();
-                    }
-                }
+                let action = match store.load(&project_name, &scope).await {
+                    Ok(entries) => Action::QueryHistoryLoaded(scope, entries),
+                    Err(e) => Action::QueryHistoryLoadFailed(scope, e.to_string()),
+                };
+                tx.send(action).await.ok();
             });
         }
         _ => unreachable!("spawn_query_history_load called with non-query-history effect"),
