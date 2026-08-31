@@ -1397,6 +1397,7 @@ mod tests {
 
         mod filter_and_selection {
             use super::*;
+            use rstest::rstest;
 
             #[test]
             fn filter_input_resets_selection() {
@@ -1418,65 +1419,38 @@ mod tests {
                 assert!(effects.is_empty());
             }
 
-            #[test]
-            fn select_next_increments() {
+            #[rstest]
+            #[case::next_increments(vec!["SELECT 1", "SELECT 2"], 0, ListMotion::Next, 1)]
+            #[case::next_clamps_at_end(vec!["SELECT 1"], 0, ListMotion::Next, 0)]
+            #[case::previous_decrements(vec!["SELECT 1", "SELECT 2"], 1, ListMotion::Previous, 0)]
+            fn selection_moves_to_expected_index(
+                #[case] queries: Vec<&str>,
+                #[case] initial_selection: usize,
+                #[case] motion: ListMotion,
+                #[case] expected_selection: usize,
+            ) {
                 let mut state = connected_state();
                 let test_conn = ConnectionId::from_string("test-conn");
-                state.query_history_picker.replace_entries(&[
-                    make_entry("SELECT 1", &test_conn),
-                    make_entry("SELECT 2", &test_conn),
-                ]);
-
-                super::dispatch_modal(
-                    &mut state,
-                    &Action::ListSelect {
-                        target: ListTarget::QueryHistory,
-                        motion: ListMotion::Next,
-                    },
-                    Instant::now(),
-                )
-                .unwrap();
-
-                assert_eq!(state.query_history_picker.selected(), 1);
-            }
-
-            #[test]
-            fn select_next_clamps_at_end() {
-                let mut state = connected_state();
-                let test_conn = ConnectionId::from_string("test-conn");
+                let entries = queries
+                    .iter()
+                    .map(|query| make_entry(query, &test_conn))
+                    .collect::<Vec<_>>();
+                state.query_history_picker.replace_entries(&entries);
                 state
                     .query_history_picker
-                    .replace_entries(&[make_entry("SELECT 1", &test_conn)]);
+                    .set_selection_for_test(initial_selection);
 
                 super::dispatch_modal(
                     &mut state,
                     &Action::ListSelect {
                         target: ListTarget::QueryHistory,
-                        motion: ListMotion::Next,
+                        motion,
                     },
                     Instant::now(),
                 )
                 .unwrap();
 
-                assert_eq!(state.query_history_picker.selected(), 0);
-            }
-
-            #[test]
-            fn select_previous_decrements() {
-                let mut state = connected_state();
-                state.query_history_picker.set_selection_for_test(1);
-
-                super::dispatch_modal(
-                    &mut state,
-                    &Action::ListSelect {
-                        target: ListTarget::QueryHistory,
-                        motion: ListMotion::Previous,
-                    },
-                    Instant::now(),
-                )
-                .unwrap();
-
-                assert_eq!(state.query_history_picker.selected(), 0);
+                assert_eq!(state.query_history_picker.selected(), expected_selection);
             }
         }
 
