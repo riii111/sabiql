@@ -2,7 +2,6 @@ use std::time::Instant;
 
 use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
-use crate::model::shared::text_input::TextInputLike;
 use crate::policy::write::sql_risk::{
     ConfirmationType, MultiStatementDecision, SqlRiskDecision,
     evaluate_multi_statement_for_database_with_context,

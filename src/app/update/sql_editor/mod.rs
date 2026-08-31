@@ -29,7 +29,7 @@ mod tests {
     use crate::model::browse::query_execution::PostDeleteRowSelection;
     use crate::model::shared::flash_timer::FlashId;
     use crate::model::shared::input_mode::InputMode;
-    use crate::model::shared::text_input::{TextInputLike, TextInputState};
+    use crate::model::shared::text_input::TextInputState;
     use crate::model::sql_editor::modal::{AdhocSuccessSnapshot, SqlModalStatus, SqlModalTab};
     use crate::policy::write::sql_risk::AcknowledgeReason;
     use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel};

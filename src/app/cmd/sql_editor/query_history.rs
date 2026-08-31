@@ -77,6 +77,20 @@ mod tests {
         )
     }
 
+    async fn receive_one(mut rx: mpsc::Receiver<Action>) -> Action {
+        let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+            .await
+            .expect("action timeout")
+            .expect("channel closed");
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+                .await
+                .expect("channel close timeout")
+                .is_none()
+        );
+        action
+    }
+
     #[tokio::test]
     async fn load_success_dispatches_one_loaded_action() {
         let scope = scope();
@@ -84,7 +98,7 @@ mod tests {
         let store: Arc<dyn QueryHistoryStore> = Arc::new(TestQueryHistoryStore {
             result: Ok(entries.clone()),
         });
-        let (tx, mut rx) = mpsc::channel(2);
+        let (tx, rx) = mpsc::channel(2);
 
         spawn_query_history_load(
             Effect::LoadQueryHistory {
@@ -94,8 +108,9 @@ mod tests {
             &tx,
             &store,
         );
+        drop(tx);
 
-        let action = rx.recv().await.expect("action dispatched");
+        let action = receive_one(rx).await;
         match action {
             Action::QueryHistoryLoaded(received_scope, received_entries) => {
                 assert_eq!(received_scope, scope);
@@ -103,7 +118,6 @@ mod tests {
             }
             other => panic!("expected QueryHistoryLoaded, got {other:?}"),
         }
-        assert!(rx.try_recv().is_err());
     }
 
     #[tokio::test]
@@ -114,7 +128,7 @@ mod tests {
                 "disk error",
             )))),
         });
-        let (tx, mut rx) = mpsc::channel(2);
+        let (tx, rx) = mpsc::channel(2);
 
         spawn_query_history_load(
             Effect::LoadQueryHistory {
@@ -124,8 +138,9 @@ mod tests {
             &tx,
             &store,
         );
+        drop(tx);
 
-        let action = rx.recv().await.expect("action dispatched");
+        let action = receive_one(rx).await;
         match action {
             Action::QueryHistoryLoadFailed(received_scope, error) => {
                 assert_eq!(received_scope, scope);
@@ -133,6 +148,5 @@ mod tests {
             }
             other => panic!("expected QueryHistoryLoadFailed, got {other:?}"),
         }
-        assert!(rx.try_recv().is_err());
     }
 }

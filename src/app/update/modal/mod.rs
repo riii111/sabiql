@@ -1104,7 +1104,6 @@ mod tests {
         use crate::domain::query_history::{
             QueryHistoryEntry, QueryHistoryScope, QueryResultStatus,
         };
-        use crate::model::shared::text_input::TextInputLike;
 
         fn make_entry(query: &str, conn_id: &ConnectionId) -> QueryHistoryEntry {
             QueryHistoryEntry::new_with_database(

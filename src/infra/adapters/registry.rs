@@ -19,6 +19,10 @@ pub struct DbAdapterRegistry {
 }
 
 impl DbAdapterRegistry {
+    #[allow(
+        clippy::new_without_default,
+        reason = "new() is the only default construction API"
+    )]
     pub fn new() -> Self {
         Self {
             postgres: PostgresAdapter::new(),
@@ -64,12 +68,6 @@ impl DbAdapterRegistry {
             DatabaseType::SQLite => &self.sqlite,
             DatabaseType::MySQL => &self.mysql,
         }
-    }
-}
-
-impl Default for DbAdapterRegistry {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
