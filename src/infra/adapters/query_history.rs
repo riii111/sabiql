@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use async_trait::async_trait;
 
 use crate::app::ports::outbound::{QueryHistoryError, QueryHistoryStore};
-use crate::config::cache::{CacheDirError, get_cache_dir};
+use crate::config::{CacheDirError, get_cache_dir};
 use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
 
 const MAX_HISTORY_ENTRIES: usize = 1000;

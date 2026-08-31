@@ -77,7 +77,7 @@ fn spawn_query_history_append(
     });
 }
 
-pub async fn run(
+pub(in crate::cmd) async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     query_executor: &Arc<dyn QueryExecutor>,

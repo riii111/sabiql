@@ -2,7 +2,7 @@
 source: src/tests/render_snapshots/overlays.rs
 expression: output
 ---
-test_project ▸ t… ▸ - no dsn | localhost:5432/test
+test_proj… ▸ … ▸ - connected | localhost:5432/test
 ┌ [1] Explor┐[Info] [Cols] [Idx] [FK] [RLS] [Trig]
 │> publi╭ Help ───────────────────────────╮──────┐
 │  publi│                             Ret▲│      │

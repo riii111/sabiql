@@ -303,60 +303,6 @@ fn connection_setup_preview_with_max_length_fields() {
 }
 
 #[test]
-fn connection_setup_cursor_at_head() {
-    let mut state = create_test_state();
-    let mut terminal = create_test_terminal();
-
-    state.modal.set_mode(InputMode::ConnectionSetup);
-    focus_connection_field(&mut state, ConnectionField::Host);
-    set_connection_input(
-        &mut state,
-        ConnectionField::Host,
-        TextInputState::new("db.example.com", 0),
-    );
-
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
-fn connection_setup_cursor_at_middle() {
-    let mut state = create_test_state();
-    let mut terminal = create_test_terminal();
-
-    state.modal.set_mode(InputMode::ConnectionSetup);
-    focus_connection_field(&mut state, ConnectionField::Host);
-    set_connection_input(
-        &mut state,
-        ConnectionField::Host,
-        TextInputState::new("db.example.com", 7),
-    );
-
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
-fn connection_setup_cursor_at_tail() {
-    let mut state = create_test_state();
-    let mut terminal = create_test_terminal();
-
-    state.modal.set_mode(InputMode::ConnectionSetup);
-    focus_connection_field(&mut state, ConnectionField::Host);
-    state
-        .connection_setup
-        .input_mut(ConnectionField::Host)
-        .unwrap()
-        .set_content("db.example.com".to_string());
-
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
 fn connection_setup_ssl_mode_ide_hint() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();

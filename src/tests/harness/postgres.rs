@@ -2,7 +2,7 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use sabiql_app::ports::outbound::{AccessMode, DbOperationError, QueryExecutor};
-use sabiql_infra::adapters::postgres::PostgresAdapter;
+use sabiql_infra::adapters::PostgresAdapter;
 
 const DEFAULT_TEST_DSN: &str = "postgres://dev:dev@localhost:5433/testdb";
 const TEST_DSN_ENV: &str = "SABIQL_TEST_DSN";

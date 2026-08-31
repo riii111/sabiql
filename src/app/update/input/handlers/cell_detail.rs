@@ -4,7 +4,7 @@ use crate::update::input::keybindings::{
 };
 use crate::update::input::keymap;
 
-pub fn handle_cell_detail_keys(combo: KeyCombo, is_searching: bool) -> Action {
+pub(super) fn handle_cell_detail_keys(combo: KeyCombo, is_searching: bool) -> Action {
     if is_searching {
         return handle_search_input(combo);
     }

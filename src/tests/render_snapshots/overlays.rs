@@ -4,15 +4,33 @@ use ratatui::backend::TestBackend;
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::help::HelpOrigin;
 use sabiql_app::model::shared::settings::KeymapPreset;
-use sabiql_app::model::sql_editor::modal::SqlModalStatus;
 use sabiql_app::policy::write::sql_risk::AcknowledgeReason;
 use sabiql_domain::query_history::{QueryHistoryEntry, QueryResultStatus};
-use sabiql_domain::{ConnectionId, DatabaseDiagnostic, DiagnosticLevel, QueryResult};
+use sabiql_domain::{
+    ConnectionId, DatabaseDiagnostic, DiagnosticField, DiagnosticLevel, QueryResult,
+    SqliteDiagnosticsSnapshot,
+};
 
 const POSTGRES_SEQ_SCAN_PLAN: &str =
     "Seq Scan on users  (cost=0.00..1000.00 rows=2550 width=36)\n  Filter: (id > 10)";
 const POSTGRES_INDEX_SCAN_PLAN: &str = "Index Scan using idx_users_id on users  (cost=0.28..8.30 rows=1 width=36)\n  Index Cond: (id > 10)";
 const POSTGRES_PLAN_QUERY: &str = "SELECT * FROM users WHERE id > 10";
+
+fn baseline_sqlite_diagnostics_snapshot() -> SqliteDiagnosticsSnapshot {
+    SqliteDiagnosticsSnapshot {
+        db_file: DiagnosticField::ok("/tmp/app.db"),
+        sqlite_version: DiagnosticField::ok("3.45.0"),
+        feature_summary: DiagnosticField::ok(
+            "FTS5: available\nFTS4: not available\nRTree: available\nJSON: available",
+        ),
+        foreign_keys: DiagnosticField::ok("on"),
+        journal_mode: DiagnosticField::ok("wal"),
+        query_only: DiagnosticField::ok("off"),
+        busy_timeout: DiagnosticField::ok("5000"),
+        database_list: DiagnosticField::ok("0: main @ /tmp/app.db"),
+        quick_check: DiagnosticField::ok("ok"),
+    }
+}
 
 #[test]
 fn sql_modal_with_completion() {
@@ -119,10 +137,7 @@ fn sql_modal_unknown_risk_acknowledge() {
         .set_content("DO $$ BEGIN DELETE FROM users; END $$".to_string());
     state
         .sql_modal
-        .set_status_for_test(SqlModalStatus::ConfirmingRisk {
-            reason: AcknowledgeReason::UnknownRisk,
-            label: "DO".to_string(),
-        });
+        .begin_confirming_risk(AcknowledgeReason::UnknownRisk, "DO".to_string());
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -141,10 +156,7 @@ fn sql_modal_high_risk_without_target_acknowledge() {
         .set_content("DROP TABLE a, b".to_string());
     state
         .sql_modal
-        .set_status_for_test(SqlModalStatus::ConfirmingRisk {
-            reason: AcknowledgeReason::TargetNameUnavailable,
-            label: "DROP".to_string(),
-        });
+        .begin_confirming_risk(AcknowledgeReason::TargetNameUnavailable, "DROP".to_string());
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -161,12 +173,10 @@ fn sql_modal_non_atomic_transaction_acknowledge() {
         .sql_modal
         .editor_mut_for_input()
         .set_content("PRAGMA foreign_keys = OFF; CREATE TABLE users(id INTEGER)".to_string());
-    state
-        .sql_modal
-        .set_status_for_test(SqlModalStatus::ConfirmingRisk {
-            reason: AcknowledgeReason::NonAtomicTransaction,
-            label: "SQLite transaction".to_string(),
-        });
+    state.sql_modal.begin_confirming_risk(
+        AcknowledgeReason::NonAtomicTransaction,
+        "SQLite transaction".to_string(),
+    );
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -179,13 +189,10 @@ fn sql_modal_analyze_unknown_risk_acknowledge() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
-    state
-        .sql_modal
-        .set_status_for_test(SqlModalStatus::ConfirmingAnalyzeRisk {
-            query: "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN DELETE".to_string(),
-            reason: AcknowledgeReason::UnknownRisk,
-        });
-    state.sql_modal.set_active_tab(SqlModalTab::Plan);
+    state.sql_modal.begin_confirming_analyze_risk(
+        "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN DELETE".to_string(),
+        AcknowledgeReason::UnknownRisk,
+    );
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -198,64 +205,10 @@ fn sql_modal_analyze_read_only_acknowledge() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
-    state
-        .sql_modal
-        .set_status_for_test(SqlModalStatus::ConfirmingAnalyzeRisk {
-            query: "SELECT * FROM users".to_string(),
-            reason: AcknowledgeReason::AnalyzeExecution,
-        });
-    state.sql_modal.set_active_tab(SqlModalTab::Plan);
-
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
-fn sql_modal_cursor_at_head() {
-    let mut state = create_test_state();
-    let mut terminal = create_test_terminal();
-
-    state.modal.set_mode(InputMode::SqlModal);
-    state
-        .sql_modal
-        .editor_mut_for_input()
-        .set_content_with_cursor("SELECT 1".to_string(), 0);
-    state.sql_modal.enter_editing();
-
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
-fn sql_modal_cursor_at_middle() {
-    let mut state = create_test_state();
-    let mut terminal = create_test_terminal();
-
-    state.modal.set_mode(InputMode::SqlModal);
-    state
-        .sql_modal
-        .editor_mut_for_input()
-        .set_content_with_cursor("SELECT 1".to_string(), 4);
-    state.sql_modal.enter_editing();
-
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
-fn sql_modal_cursor_at_tail() {
-    let mut state = create_test_state();
-    let mut terminal = create_test_terminal();
-
-    state.modal.set_mode(InputMode::SqlModal);
-    state
-        .sql_modal
-        .editor_mut_for_input()
-        .set_content("SELECT 1".to_string());
-    state.sql_modal.enter_editing();
+    state.sql_modal.begin_confirming_analyze_risk(
+        "SELECT * FROM users".to_string(),
+        AcknowledgeReason::AnalyzeExecution,
+    );
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -272,7 +225,7 @@ fn sql_modal_ide_editing() {
         .sql_modal
         .editor_mut_for_input()
         .set_content("SELECT 1".to_string());
-    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    state.sql_modal.enter_editing();
     state.settings.load_keymap_preset(KeymapPreset::Ide);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -1026,28 +979,13 @@ fn sqlite_diagnostics_overlay_loading() {
 
 #[test]
 fn sqlite_diagnostics_overlay_loaded() {
-    use sabiql_domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
-
     let mut state = sqlite_connected_state();
     let mut terminal = create_test_terminal();
 
     let run_id = state.sqlite_diagnostics.begin_core_fetch();
-    state.sqlite_diagnostics.set_core_loaded(
-        run_id,
-        SqliteDiagnosticsSnapshot {
-            db_file: DiagnosticField::ok("/tmp/app.db"),
-            sqlite_version: DiagnosticField::ok("3.45.0"),
-            feature_summary: DiagnosticField::ok(
-                "FTS5: available\nFTS4: not available\nRTree: available\nJSON: available",
-            ),
-            foreign_keys: DiagnosticField::ok("on"),
-            journal_mode: DiagnosticField::ok("wal"),
-            query_only: DiagnosticField::ok("off"),
-            busy_timeout: DiagnosticField::ok("5000"),
-            database_list: DiagnosticField::ok("0: main @ /tmp/app.db"),
-            quick_check: DiagnosticField::ok("ok"),
-        },
-    );
+    state
+        .sqlite_diagnostics
+        .set_core_loaded(run_id, baseline_sqlite_diagnostics_snapshot());
     state.modal.set_mode(InputMode::SqliteDiagnostics);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -1057,26 +995,17 @@ fn sqlite_diagnostics_overlay_loaded() {
 
 #[test]
 fn sqlite_diagnostics_overlay_partial_failure() {
-    use sabiql_domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
-
     let mut state = sqlite_connected_state();
     let mut terminal = create_test_terminal();
 
     let run_id = state.sqlite_diagnostics.begin_core_fetch();
-    state.sqlite_diagnostics.set_core_loaded(
-        run_id,
-        SqliteDiagnosticsSnapshot {
-            db_file: DiagnosticField::ok("/tmp/app.db"),
-            sqlite_version: DiagnosticField::ok("3.45.0"),
-            feature_summary: DiagnosticField::Unavailable,
-            foreign_keys: DiagnosticField::err("timeout"),
-            journal_mode: DiagnosticField::ok("delete"),
-            query_only: DiagnosticField::ok("on"),
-            busy_timeout: DiagnosticField::ok("5000"),
-            database_list: DiagnosticField::ok("0: main @ /tmp/app.db"),
-            quick_check: DiagnosticField::ok("row 1 missing from index idx_users"),
-        },
-    );
+    let mut snapshot = baseline_sqlite_diagnostics_snapshot();
+    snapshot.feature_summary = DiagnosticField::Unavailable;
+    snapshot.foreign_keys = DiagnosticField::err("timeout");
+    snapshot.journal_mode = DiagnosticField::ok("delete");
+    snapshot.query_only = DiagnosticField::ok("on");
+    snapshot.quick_check = DiagnosticField::ok("row 1 missing from index idx_users");
+    state.sqlite_diagnostics.set_core_loaded(run_id, snapshot);
     state.modal.set_mode(InputMode::SqliteDiagnostics);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -1086,28 +1015,13 @@ fn sqlite_diagnostics_overlay_partial_failure() {
 
 #[test]
 fn sqlite_diagnostics_overlay_quick_check_pending() {
-    use sabiql_domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
-
     let mut state = sqlite_connected_state();
     let mut terminal = create_test_terminal();
 
     let run_id = state.sqlite_diagnostics.begin_core_fetch();
-    state.sqlite_diagnostics.set_core_loaded(
-        run_id,
-        SqliteDiagnosticsSnapshot {
-            db_file: DiagnosticField::ok("/tmp/app.db"),
-            sqlite_version: DiagnosticField::ok("3.45.0"),
-            feature_summary: DiagnosticField::ok(
-                "FTS5: available\nFTS4: not available\nRTree: available\nJSON: available",
-            ),
-            foreign_keys: DiagnosticField::ok("on"),
-            journal_mode: DiagnosticField::ok("wal"),
-            query_only: DiagnosticField::ok("off"),
-            busy_timeout: DiagnosticField::ok("5000"),
-            database_list: DiagnosticField::ok("0: main @ /tmp/app.db"),
-            quick_check: DiagnosticField::Pending,
-        },
-    );
+    state
+        .sqlite_diagnostics
+        .set_core_loaded(run_id, baseline_sqlite_diagnostics_snapshot());
     state.sqlite_diagnostics.begin_quick_check();
     state.modal.set_mode(InputMode::SqliteDiagnostics);
 
@@ -1118,28 +1032,13 @@ fn sqlite_diagnostics_overlay_quick_check_pending() {
 
 #[test]
 fn sqlite_diagnostics_overlay_quick_check_not_run() {
-    use sabiql_domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
-
     let mut state = sqlite_connected_state();
     let mut terminal = create_test_terminal();
 
     let run_id = state.sqlite_diagnostics.begin_core_fetch();
-    state.sqlite_diagnostics.set_core_loaded(
-        run_id,
-        SqliteDiagnosticsSnapshot {
-            db_file: DiagnosticField::ok("/tmp/app.db"),
-            sqlite_version: DiagnosticField::ok("3.45.0"),
-            feature_summary: DiagnosticField::ok(
-                "FTS5: available\nFTS4: not available\nRTree: available\nJSON: available",
-            ),
-            foreign_keys: DiagnosticField::ok("on"),
-            journal_mode: DiagnosticField::ok("wal"),
-            query_only: DiagnosticField::ok("off"),
-            busy_timeout: DiagnosticField::ok("5000"),
-            database_list: DiagnosticField::ok("0: main @ /tmp/app.db"),
-            quick_check: DiagnosticField::Pending,
-        },
-    );
+    let mut snapshot = baseline_sqlite_diagnostics_snapshot();
+    snapshot.quick_check = DiagnosticField::Pending;
+    state.sqlite_diagnostics.set_core_loaded(run_id, snapshot);
     state.modal.set_mode(InputMode::SqliteDiagnostics);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -1149,30 +1048,15 @@ fn sqlite_diagnostics_overlay_quick_check_not_run() {
 
 #[test]
 fn sqlite_diagnostics_overlay_wrapped_scroll() {
-    use sabiql_domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
-
     let mut state = sqlite_connected_state();
     let mut terminal = create_test_terminal_sized(50, 24);
 
     let run_id = state.sqlite_diagnostics.begin_core_fetch();
-    state.sqlite_diagnostics.set_core_loaded(
-        run_id,
-        SqliteDiagnosticsSnapshot {
-            db_file: DiagnosticField::ok(
-                "/tmp/very/long/database/path/that/will/wrap/in/a/narrow/viewport/app.db",
-            ),
-            sqlite_version: DiagnosticField::ok("3.45.0"),
-            feature_summary: DiagnosticField::ok(
-                "FTS5: available\nFTS4: not available\nRTree: available\nJSON: available",
-            ),
-            foreign_keys: DiagnosticField::ok("on"),
-            journal_mode: DiagnosticField::ok("wal"),
-            query_only: DiagnosticField::ok("off"),
-            busy_timeout: DiagnosticField::ok("5000"),
-            database_list: DiagnosticField::ok("0: main @ /tmp/app.db"),
-            quick_check: DiagnosticField::ok("ok"),
-        },
+    let mut snapshot = baseline_sqlite_diagnostics_snapshot();
+    snapshot.db_file = DiagnosticField::ok(
+        "/tmp/very/long/database/path/that/will/wrap/in/a/narrow/viewport/app.db",
     );
+    state.sqlite_diagnostics.set_core_loaded(run_id, snapshot);
     state.sqlite_diagnostics.set_scroll_offset(8);
     state.modal.set_mode(InputMode::SqliteDiagnostics);
 

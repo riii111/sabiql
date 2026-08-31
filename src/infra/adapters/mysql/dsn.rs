@@ -46,7 +46,7 @@ impl fmt::Debug for MySqlDsn {
     }
 }
 
-pub(super) fn build_mysql_dsn(config: &MySqlConnectionConfig) -> String {
+fn build_mysql_dsn(config: &MySqlConnectionConfig) -> String {
     let mut url = Url::parse("mysql://localhost").expect("static MySQL URL is valid");
     url.set_username(&config.username)
         .expect("MySQL username is valid URL data");
@@ -348,7 +348,7 @@ mod tests {
     use crate::domain::RefreshScope;
 
     #[test]
-    fn builds_and_parses_mysql_dsn_with_encoded_components() {
+    fn mysql_dsn_round_trip_preserves_connection_identity() {
         let config = MySqlConnectionConfig::new(
             "db.example",
             3307,
@@ -362,7 +362,7 @@ mod tests {
 
         assert_eq!(parsed.host, "db.example");
         assert_eq!(parsed.port, 3307);
-        assert_eq!(parsed.database.as_deref(), Some("app/schema"));
+        assert_eq!(parsed.database.as_deref(), config.database.as_deref());
         assert_eq!(parsed.username, "user name");
         assert_eq!(parsed.password, "p@ss#word");
         assert_eq!(parsed.ssl_mode, MySqlSslMode::Required);

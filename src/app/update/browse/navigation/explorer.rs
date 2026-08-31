@@ -11,7 +11,7 @@ use crate::update::dispatch_result::DispatchResult;
 
 use super::explorer_item_count;
 
-pub fn reduce_explorer(state: &mut AppState, action: &Action) -> DispatchResult {
+pub(in crate::update) fn reduce_explorer(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
         Action::Select(SelectMotion::Next) => {
             if state.ui.focused_pane() == FocusedPane::Explorer {

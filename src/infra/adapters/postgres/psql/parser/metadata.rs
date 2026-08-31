@@ -50,9 +50,7 @@ pub(in crate::adapters::postgres) struct TableInfo {
 }
 
 impl PostgresAdapter {
-    pub(in crate::adapters::postgres) fn parse_table_info(
-        json: &str,
-    ) -> Result<TableInfo, DbOperationError> {
+    fn parse_table_info(json: &str) -> Result<TableInfo, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
             return Ok(TableInfo {
                 owner: None,
@@ -146,9 +144,7 @@ impl PostgresAdapter {
         Ok(raw.into_iter().map(|s| Schema::new(s.name)).collect())
     }
 
-    pub(in crate::adapters::postgres) fn parse_columns(
-        json: &str,
-    ) -> Result<Vec<Column>, DbOperationError> {
+    fn parse_columns(json: &str) -> Result<Vec<Column>, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
             return Ok(Vec::new());
         };
@@ -184,9 +180,7 @@ impl PostgresAdapter {
             .collect())
     }
 
-    pub(in crate::adapters::postgres) fn parse_indexes(
-        json: &str,
-    ) -> Result<Vec<Index>, DbOperationError> {
+    fn parse_indexes(json: &str) -> Result<Vec<Index>, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
             return Ok(Vec::new());
         };
@@ -234,9 +228,7 @@ impl PostgresAdapter {
             .collect())
     }
 
-    pub(in crate::adapters::postgres) fn parse_foreign_keys(
-        json: &str,
-    ) -> Result<Vec<ForeignKey>, DbOperationError> {
+    fn parse_foreign_keys(json: &str) -> Result<Vec<ForeignKey>, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
             return Ok(Vec::new());
         };
@@ -283,9 +275,7 @@ impl PostgresAdapter {
             .map_err(DbOperationError::from)
     }
 
-    pub(in crate::adapters::postgres) fn parse_rls(
-        json: &str,
-    ) -> Result<Option<RlsInfo>, DbOperationError> {
+    fn parse_rls(json: &str) -> Result<Option<RlsInfo>, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
             return Ok(None);
         };
@@ -336,9 +326,7 @@ impl PostgresAdapter {
         }))
     }
 
-    pub(in crate::adapters::postgres) fn parse_triggers(
-        json: &str,
-    ) -> Result<Vec<Trigger>, DbOperationError> {
+    fn parse_triggers(json: &str) -> Result<Vec<Trigger>, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
             return Ok(Vec::new());
         };

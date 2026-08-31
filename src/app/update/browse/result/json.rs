@@ -15,7 +15,11 @@ use crate::update::helpers::{
 };
 use std::time::Instant;
 
-pub fn reduce_json(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub(in crate::update) fn reduce_json(
+    state: &mut AppState,
+    action: &Action,
+    now: Instant,
+) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::JsonDetail) => {
             let Some(result) = state.query.visible_result().filter(|r| !r.is_error()) else {

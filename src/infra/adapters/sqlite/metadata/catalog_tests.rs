@@ -5,6 +5,7 @@ use super::super::SqliteAdapter;
 
 mod metadata {
     use crate::adapters::test_support;
+    use rstest::rstest;
 
     use super::*;
 
@@ -248,48 +249,27 @@ mod metadata {
         }
     }
 
+    #[rstest]
+    #[case::regular("users", TableKind::Table, false, false, None)]
+    #[case::without_rowid("settings", TableKind::Table, false, true, None)]
+    #[case::name_containing_strict("strict_users", TableKind::Table, false, false, None)]
+    #[case::strict("typed_users", TableKind::Table, true, false, None)]
+    #[case::virtual_table("notes_fts", TableKind::Virtual, false, false, Some("fts5"))]
     #[tokio::test]
-    async fn classifies_regular_table_kind() {
+    async fn classifies_table_kind(
+        #[case] table_name: &str,
+        #[case] expected_kind: TableKind,
+        #[case] expected_strict: bool,
+        #[case] expected_without_rowid: bool,
+        #[case] expected_virtual_module: Option<&str>,
+    ) {
         let fixture = TableKindInfoMetadataFixture::new().await;
+        let kind_info = fixture.kind_info(table_name);
 
-        assert_eq!(fixture.kind_info("users").kind, TableKind::Table);
-        assert!(!fixture.kind_info("users").is_strict);
-        assert!(!fixture.kind_info("users").without_rowid);
-    }
-
-    #[tokio::test]
-    async fn classifies_without_rowid_table_kind() {
-        let fixture = TableKindInfoMetadataFixture::new().await;
-
-        assert!(fixture.kind_info("settings").without_rowid);
-    }
-
-    #[tokio::test]
-    async fn does_not_infer_strict_from_table_name() {
-        let fixture = TableKindInfoMetadataFixture::new().await;
-
-        assert!(
-            !fixture.kind_info("strict_users").is_strict,
-            "table name containing 'strict' must not infer STRICT from DDL when pragma.strict is 0"
-        );
-    }
-
-    #[tokio::test]
-    async fn classifies_strict_table_kind() {
-        let fixture = TableKindInfoMetadataFixture::new().await;
-
-        assert!(fixture.kind_info("typed_users").is_strict);
-    }
-
-    #[tokio::test]
-    async fn classifies_virtual_table_kind() {
-        let fixture = TableKindInfoMetadataFixture::new().await;
-
-        assert_eq!(fixture.kind_info("notes_fts").kind, TableKind::Virtual);
-        assert_eq!(
-            fixture.kind_info("notes_fts").virtual_module.as_deref(),
-            Some("fts5")
-        );
+        assert_eq!(kind_info.kind, expected_kind);
+        assert_eq!(kind_info.is_strict, expected_strict);
+        assert_eq!(kind_info.without_rowid, expected_without_rowid);
+        assert_eq!(kind_info.virtual_module.as_deref(), expected_virtual_module);
     }
 
     #[tokio::test]

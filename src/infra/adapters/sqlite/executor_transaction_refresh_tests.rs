@@ -501,91 +501,38 @@ mod transaction_execution {
 
     mod multi_statement_atomicity {
         use super::*;
+        use rstest::rstest;
 
+        #[rstest]
+        #[case::plain_dml("INSERT INTO users(id) VALUES (1); INSERT INTO missing(id) VALUES (2)")]
+        #[case::with_dml(
+            "WITH payload(id) AS (VALUES (1)) INSERT INTO users(id) SELECT id FROM payload; INSERT INTO missing(id) VALUES (2)"
+        )]
+        #[case::returning_dml(
+            "INSERT INTO users(id) VALUES (1) RETURNING id; INSERT INTO missing(id) VALUES (2)"
+        )]
+        #[case::select_then_dml(
+            "SELECT 1 AS marker; INSERT INTO users(id) VALUES (1); INSERT INTO missing(id) VALUES (2)"
+        )]
         #[tokio::test]
-        async fn multi_statement_dml_rolls_back_when_later_statement_fails() {
+        async fn multi_statement_rolls_back_when_later_statement_fails(#[case] query: &str) {
             let (_dir, dsn) =
                 test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
-
-            let result = adapter
-                .execute_adhoc(
-                    &dsn,
-                    "INSERT INTO users(id) VALUES (1); INSERT INTO missing(id) VALUES (2)",
-                    AccessMode::ReadWrite,
-                )
-                .await;
-
-            assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
-            let rows = adapter
-                .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
-                .await
-                .unwrap();
-            assert_eq!(rows.data_row_count(), 0);
-        }
-
-        #[tokio::test]
-        async fn with_dml_rolls_back_when_later_statement_fails() {
-            let (_dir, dsn) =
-                test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-            let adapter = SqliteAdapter::new();
-
-            let result = adapter
-                .execute_adhoc(
-                    &dsn,
-                    "WITH payload(id) AS (VALUES (1))
-                     INSERT INTO users(id) SELECT id FROM payload;
-                     INSERT INTO missing(id) VALUES (2)",
-                    AccessMode::ReadWrite,
-                )
-                .await;
-
-            assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
-            let rows = adapter
-                .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
-                .await
-                .unwrap();
-            assert_eq!(rows.data_row_count(), 0);
-        }
-
-        #[tokio::test]
-        async fn returning_dml_rolls_back_when_later_statement_fails() {
-            let (_dir, dsn) =
-                test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-            let adapter = SqliteAdapter::new();
-            let query =
-                "INSERT INTO users(id) VALUES (1) RETURNING id; INSERT INTO missing(id) VALUES (2)";
 
             let result = adapter
                 .execute_adhoc(&dsn, query, AccessMode::ReadWrite)
                 .await;
 
-            assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
+            assert!(
+                matches!(result, Err(DbOperationError::ObjectMissing(_))),
+                "{query}"
+            );
             let rows = adapter
                 .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
                 .await
                 .unwrap();
-            assert_eq!(rows.data_row_count(), 0);
-        }
-
-        #[tokio::test]
-        async fn select_then_dml_rolls_back_when_later_statement_fails() {
-            let (_dir, dsn) =
-                test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-            let adapter = SqliteAdapter::new();
-
-            let result = adapter
-            .execute_adhoc(
-                &dsn,
-                "SELECT 1 AS marker; INSERT INTO users(id) VALUES (1); INSERT INTO missing(id) VALUES (2)", AccessMode::ReadWrite)
-            .await;
-
-            assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
-            let rows = adapter
-                .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
-                .await
-                .unwrap();
-            assert_eq!(rows.data_row_count(), 0);
+            assert_eq!(rows.data_row_count(), 0, "{query}");
         }
     }
 }
