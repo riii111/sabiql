@@ -4,40 +4,18 @@ use tokio::task::JoinHandle;
 use std::sync::Arc;
 
 use crate::cmd::effect::Effect;
+use crate::cmd::single_task_owner::SingleTaskOwner;
 use crate::domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
 use crate::ports::outbound::SqliteDiagnosticsProvider;
 use crate::update::action::Action;
 
 #[derive(Default)]
 pub(crate) struct SqliteDiagnosticsTaskOwner {
-    core: std::sync::Mutex<Option<JoinHandle<()>>>,
-    quick_check: std::sync::Mutex<Option<JoinHandle<()>>>,
+    core: SingleTaskOwner,
+    quick_check: SingleTaskOwner,
 }
 
 impl SqliteDiagnosticsTaskOwner {
-    async fn replace<F>(slot: &std::sync::Mutex<Option<JoinHandle<()>>>, task: F)
-    where
-        F: std::future::Future<Output = ()> + Send + 'static,
-    {
-        if let Some(task) = Self::abort_slot(slot) {
-            let _ = task.await;
-        }
-        let task = tokio::spawn(task);
-        *slot.lock().expect("SQLite diagnostics task lock poisoned") = Some(task);
-    }
-
-    fn abort_slot(slot: &std::sync::Mutex<Option<JoinHandle<()>>>) -> Option<JoinHandle<()>> {
-        let task = {
-            slot.lock()
-                .expect("SQLite diagnostics task lock poisoned")
-                .take()
-        };
-        if let Some(task) = &task {
-            task.abort();
-        }
-        task
-    }
-
     pub(crate) async fn cancel(&self) {
         for task in self.abort() {
             let _ = task.await;
@@ -45,23 +23,9 @@ impl SqliteDiagnosticsTaskOwner {
     }
 
     pub(crate) fn abort(&self) -> Vec<JoinHandle<()>> {
-        let core = Self::abort_slot(&self.core);
-        let quick_check = Self::abort_slot(&self.quick_check);
+        let core = self.core.abort();
+        let quick_check = self.quick_check.abort();
         [core, quick_check].into_iter().flatten().collect()
-    }
-}
-
-impl Drop for SqliteDiagnosticsTaskOwner {
-    fn drop(&mut self) {
-        for slot in [&mut self.core, &mut self.quick_check] {
-            if let Some(task) = slot
-                .get_mut()
-                .expect("SQLite diagnostics task lock poisoned")
-                .take()
-            {
-                task.abort();
-            }
-        }
     }
 }
 
@@ -75,39 +39,43 @@ pub(crate) async fn run(
         Effect::FetchSqliteDiagnosticsCore { dsn, run_id } => {
             let action_tx = action_tx.clone();
             let provider = Arc::clone(provider);
-            SqliteDiagnosticsTaskOwner::replace(&task_owner.core, async move {
-                let action = match provider.fetch_core_diagnostics(&dsn).await {
-                    Ok(snapshot) => Action::SqliteDiagnosticsCoreLoaded {
-                        dsn,
-                        run_id,
-                        snapshot: Box::new(snapshot),
-                    },
-                    Err(error) => Action::SqliteDiagnosticsCoreLoaded {
-                        dsn,
-                        run_id,
-                        snapshot: Box::new(SqliteDiagnosticsSnapshot::core_fetch_failed(
-                            DiagnosticField::err(error.masked_details()),
-                        )),
-                    },
-                };
-                let _ = action_tx.send(action).await;
-            })
-            .await;
+            task_owner
+                .core
+                .replace(async move {
+                    let action = match provider.fetch_core_diagnostics(&dsn).await {
+                        Ok(snapshot) => Action::SqliteDiagnosticsCoreLoaded {
+                            dsn,
+                            run_id,
+                            snapshot: Box::new(snapshot),
+                        },
+                        Err(error) => Action::SqliteDiagnosticsCoreLoaded {
+                            dsn,
+                            run_id,
+                            snapshot: Box::new(SqliteDiagnosticsSnapshot::core_fetch_failed(
+                                DiagnosticField::err(error.masked_details()),
+                            )),
+                        },
+                    };
+                    let _ = action_tx.send(action).await;
+                })
+                .await;
         }
         Effect::FetchSqliteDiagnosticsQuickCheck { dsn, run_id } => {
             let action_tx = action_tx.clone();
             let provider = Arc::clone(provider);
-            SqliteDiagnosticsTaskOwner::replace(&task_owner.quick_check, async move {
-                let quick_check = provider.fetch_quick_check(&dsn).await;
-                let _ = action_tx
-                    .send(Action::SqliteDiagnosticsQuickCheckLoaded {
-                        dsn,
-                        run_id,
-                        quick_check,
-                    })
-                    .await;
-            })
-            .await;
+            task_owner
+                .quick_check
+                .replace(async move {
+                    let quick_check = provider.fetch_quick_check(&dsn).await;
+                    let _ = action_tx
+                        .send(Action::SqliteDiagnosticsQuickCheckLoaded {
+                            dsn,
+                            run_id,
+                            quick_check,
+                        })
+                        .await;
+                })
+                .await;
         }
         _ => {}
     }

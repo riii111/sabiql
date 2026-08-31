@@ -4,115 +4,13 @@ use std::num::NonZeroUsize;
 use crate::domain::{DatabaseMetadata, DatabaseType, Table, TableSummary};
 use crate::model::shared::text_input::char_to_byte_index;
 use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
-use crate::policy::sql::lexer::{SqlContext, SqlLexer, TableReference, Token, TokenKind};
+use crate::policy::sql::lexer::{
+    MYSQL_KEYWORDS, POSTGRESQL_KEYWORDS, SqlContext, SqlLexer, TableReference, Token, TokenKind,
+};
 use lru::LruCache;
 
 const COMPLETION_MAX_CANDIDATES: usize = 30;
 const TABLE_CACHE_CAPACITY: usize = 500;
-
-const MYSQL_COMPLETION_KEYWORDS: &[&str] = &[
-    "SELECT",
-    "FROM",
-    "WHERE",
-    "JOIN",
-    "LEFT",
-    "RIGHT",
-    "INNER",
-    "OUTER",
-    "CROSS",
-    "ON",
-    "AND",
-    "OR",
-    "NOT",
-    "IN",
-    "IS",
-    "NULL",
-    "TRUE",
-    "FALSE",
-    "LIKE",
-    "BETWEEN",
-    "EXISTS",
-    "CASE",
-    "WHEN",
-    "THEN",
-    "ELSE",
-    "END",
-    "AS",
-    "DISTINCT",
-    "ORDER",
-    "BY",
-    "ASC",
-    "DESC",
-    "GROUP",
-    "HAVING",
-    "LIMIT",
-    "OFFSET",
-    "UNION",
-    "INTERSECT",
-    "EXCEPT",
-    "ALL",
-    "INSERT",
-    "INTO",
-    "VALUES",
-    "UPDATE",
-    "SET",
-    "DELETE",
-    "TRUNCATE",
-    "CREATE",
-    "DROP",
-    "ALTER",
-    "TABLE",
-    "INDEX",
-    "VIEW",
-    "WITH",
-    "RECURSIVE",
-    "COALESCE",
-    "NULLIF",
-    "CAST",
-    "USING",
-    "NATURAL",
-    "WINDOW",
-    "OVER",
-    "PARTITION",
-    "ROWS",
-    "RANGE",
-    "UNBOUNDED",
-    "PRECEDING",
-    "FOLLOWING",
-    "CURRENT",
-    "ROW",
-    "EXPLAIN",
-    "ANALYZE",
-    "SHOW",
-    "DESCRIBE",
-    "DATABASE",
-    "DATABASES",
-    "PRIMARY",
-    "KEY",
-    "FOREIGN",
-    "REFERENCES",
-    "UNIQUE",
-    "DEFAULT",
-    "CONSTRAINT",
-    "CHECK",
-    "IF",
-    "CASCADE",
-    "RENAME",
-    "MODIFY",
-    "COLUMN",
-    "ENGINE",
-    "CHARACTER",
-    "CHARSET",
-    "COLLATE",
-    "AUTO_INCREMENT",
-    "FOR",
-    "LOCK",
-    "SHARE",
-    "START",
-    "TRANSACTION",
-    "COMMIT",
-    "ROLLBACK",
-];
 
 #[derive(Clone, Copy)]
 pub(crate) struct CompletionDatabaseScope<'a> {
@@ -142,7 +40,6 @@ pub(crate) struct PreparedCompletion {
 }
 
 pub struct CompletionEngine {
-    keywords: Vec<&'static str>,
     table_detail_cache: LruCache<String, Table>,
 }
 
@@ -155,71 +52,6 @@ impl Default for CompletionEngine {
 impl CompletionEngine {
     pub fn new() -> Self {
         Self {
-            keywords: vec![
-                "SELECT",
-                "FROM",
-                "WHERE",
-                "JOIN",
-                "LEFT",
-                "RIGHT",
-                "INNER",
-                "OUTER",
-                "CROSS",
-                "ON",
-                "AND",
-                "OR",
-                "NOT",
-                "IN",
-                "IS",
-                "NULL",
-                "TRUE",
-                "FALSE",
-                "LIKE",
-                "ILIKE",
-                "BETWEEN",
-                "EXISTS",
-                "CASE",
-                "WHEN",
-                "THEN",
-                "ELSE",
-                "END",
-                "AS",
-                "DISTINCT",
-                "ORDER",
-                "BY",
-                "ASC",
-                "DESC",
-                "NULLS",
-                "FIRST",
-                "LAST",
-                "GROUP",
-                "HAVING",
-                "LIMIT",
-                "OFFSET",
-                "UNION",
-                "INTERSECT",
-                "EXCEPT",
-                "ALL",
-                "INSERT",
-                "INTO",
-                "VALUES",
-                "UPDATE",
-                "SET",
-                "DELETE",
-                "CREATE",
-                "DROP",
-                "ALTER",
-                "TABLE",
-                "INDEX",
-                "VIEW",
-                "RETURNING",
-                "WITH",
-                "RECURSIVE",
-                "COALESCE",
-                "NULLIF",
-                "CAST",
-                "USING",
-            ],
             table_detail_cache: LruCache::new(
                 NonZeroUsize::new(TABLE_CACHE_CAPACITY).expect("capacity must be > 0"),
             ),
@@ -877,13 +709,7 @@ impl CompletionEngine {
         database_type: DatabaseType,
     ) -> Vec<CompletionCandidate> {
         let prefix_upper = prefix.to_uppercase();
-        let keywords = if database_type == DatabaseType::MySQL {
-            MYSQL_COMPLETION_KEYWORDS
-        } else {
-            &self.keywords
-        };
-        let mut candidates: Vec<_> = keywords
-            .iter()
+        let mut candidates: Vec<_> = completion_keywords_for_database(database_type)
             .filter(|kw| prefix.is_empty() || kw.starts_with(&prefix_upper))
             .map(|kw| {
                 let is_prefix_match = kw.starts_with(&prefix_upper);
@@ -1351,6 +1177,63 @@ impl CompletionEngine {
     }
 }
 
+fn completion_keywords_for_database(
+    database_type: DatabaseType,
+) -> impl Iterator<Item = &'static str> {
+    let keywords = if database_type == DatabaseType::MySQL {
+        MYSQL_KEYWORDS
+    } else {
+        POSTGRESQL_KEYWORDS
+    };
+    keywords
+        .iter()
+        .copied()
+        .filter(move |keyword| is_completion_keyword_for_database(database_type, keyword))
+}
+
+fn is_completion_keyword_for_database(database_type: DatabaseType, keyword: &str) -> bool {
+    match database_type {
+        DatabaseType::MySQL => !matches!(
+            keyword,
+            "STRAIGHT_JOIN" | "REPLACE" | "CALL" | "FULL" | "SAVEPOINT" | "RELEASE" | "USE"
+        ),
+        DatabaseType::PostgreSQL | DatabaseType::SQLite => !matches!(
+            keyword,
+            "ONLY"
+                | "FULL"
+                | "LATERAL"
+                | "DO"
+                | "GRANT"
+                | "REVOKE"
+                | "COPY"
+                | "CALL"
+                | "MERGE"
+                | "TRUNCATE"
+                | "BEGIN"
+                | "COMMIT"
+                | "ROLLBACK"
+                | "EXPLAIN"
+                | "ANALYZE"
+                | "SHOW"
+                | "SAVEPOINT"
+                | "START"
+                | "TRANSACTION"
+                | "RELEASE"
+                | "NATURAL"
+                | "WINDOW"
+                | "OVER"
+                | "PARTITION"
+                | "ROWS"
+                | "RANGE"
+                | "UNBOUNDED"
+                | "PRECEDING"
+                | "FOLLOWING"
+                | "CURRENT"
+                | "ROW"
+        ),
+    }
+}
+
 fn quote_mysql_identifiers(candidates: &mut [CompletionCandidate], database_type: DatabaseType) {
     if database_type != DatabaseType::MySQL {
         return;
@@ -1687,6 +1570,28 @@ mod tests {
 
             assert_eq!(candidates.len(), 1);
             assert_eq!(candidates[0].text, "SELECT");
+        }
+
+        #[test]
+        fn keyword_inventory_preserves_each_database_set() {
+            let expected_postgresql = "SELECT FROM WHERE JOIN LEFT RIGHT INNER OUTER CROSS ON AND OR NOT IN IS NULL TRUE FALSE LIKE ILIKE BETWEEN EXISTS CASE WHEN THEN ELSE END AS DISTINCT ORDER BY ASC DESC NULLS FIRST LAST GROUP HAVING LIMIT OFFSET UNION INTERSECT EXCEPT ALL INSERT INTO VALUES UPDATE SET DELETE CREATE DROP ALTER TABLE INDEX VIEW RETURNING WITH RECURSIVE COALESCE NULLIF CAST USING";
+            let expected_mysql = "SELECT FROM WHERE JOIN LEFT RIGHT INNER OUTER CROSS ON AND OR NOT IN IS NULL TRUE FALSE LIKE BETWEEN EXISTS CASE WHEN THEN ELSE END AS DISTINCT ORDER BY ASC DESC GROUP HAVING LIMIT OFFSET UNION INTERSECT EXCEPT ALL INSERT INTO VALUES UPDATE SET DELETE TRUNCATE CREATE DROP ALTER TABLE INDEX VIEW WITH RECURSIVE COALESCE NULLIF CAST USING NATURAL WINDOW OVER PARTITION ROWS RANGE UNBOUNDED PRECEDING FOLLOWING CURRENT ROW EXPLAIN ANALYZE SHOW DESCRIBE DATABASE DATABASES PRIMARY KEY FOREIGN REFERENCES UNIQUE DEFAULT CONSTRAINT CHECK IF CASCADE RENAME MODIFY COLUMN ENGINE CHARACTER CHARSET COLLATE AUTO_INCREMENT FOR LOCK SHARE START TRANSACTION COMMIT ROLLBACK";
+
+            let postgresql =
+                completion_keywords_for_database(DatabaseType::PostgreSQL).collect::<Vec<_>>();
+            let sqlite = completion_keywords_for_database(DatabaseType::SQLite).collect::<Vec<_>>();
+            let mut mysql =
+                completion_keywords_for_database(DatabaseType::MySQL).collect::<Vec<_>>();
+            let mut expected_mysql = expected_mysql.split_whitespace().collect::<Vec<_>>();
+
+            assert_eq!(
+                postgresql,
+                expected_postgresql.split_whitespace().collect::<Vec<_>>()
+            );
+            assert_eq!(sqlite, postgresql);
+            mysql.sort_unstable();
+            expected_mysql.sort_unstable();
+            assert_eq!(mysql, expected_mysql);
         }
     }
 
