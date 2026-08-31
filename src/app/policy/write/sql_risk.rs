@@ -694,6 +694,13 @@ fn sqlite_replace_target_in_statement(sql: &str) -> Option<String> {
         return None;
     };
 
+    let into = tokens.get(target_start - 1)?;
+    let first_target = tokens.get(target_start)?;
+    let into_end = into.0 + into.1.len();
+    if !is_comment_only(&trimmed[into_end..first_target.0]) {
+        return None;
+    }
+
     let mut target = String::new();
     let mut target_index = target_start;
     loop {
@@ -706,6 +713,25 @@ fn sqlite_replace_target_in_statement(sql: &str) -> Option<String> {
             break;
         }
         target_index += 1;
+    }
+
+    let target_token = tokens.get(target_index)?;
+    let target_is_quoted = target_token
+        .1
+        .as_bytes()
+        .first()
+        .is_some_and(|byte| matches!(*byte, b'"' | b'`' | b'['));
+    if !target_is_quoted {
+        let target_end = target_token.0 + target_token.1.len();
+        let tail = &trimmed[target_end..];
+        if let Some(ch) = tail.chars().next()
+            && !ch.is_whitespace()
+            && !matches!(ch, '(' | ',' | ';')
+            && !tail.starts_with("/*")
+            && !tail.starts_with("--")
+        {
+            return None;
+        }
     }
 
     let unquoted = unquote_simple(&target);
@@ -824,14 +850,25 @@ fn evaluate_sqlite_specific_risk(sql: &str) -> Option<SqlRiskDecision> {
                 })
             },
         ),
-        "insert" => sqlite_replace_target_in_statement(effective).map(|target| SqlRiskDecision {
-            risk_level: RiskLevel::High,
-            confirmation: ConfirmationType::TableNameInput {
-                target,
-                label: "REPLACE",
-            },
-            read_only_allowed: false,
-        }),
+        "insert"
+            if tokens.get(1).map(String::as_str) == Some("or")
+                && tokens.get(2).map(String::as_str) == Some("replace")
+                && tokens.get(3).map(String::as_str) == Some("into") =>
+        {
+            sqlite_replace_target_in_statement(effective).map_or_else(
+                || Some(high_acknowledge_label("REPLACE")),
+                |target| {
+                    Some(SqlRiskDecision {
+                        risk_level: RiskLevel::High,
+                        confirmation: ConfirmationType::TableNameInput {
+                            target,
+                            label: "REPLACE",
+                        },
+                        read_only_allowed: false,
+                    })
+                },
+            )
+        }
         "drop" => sqlite_drop_risk(effective),
         _ => None,
     }
@@ -1375,29 +1412,36 @@ mod tests {
                 ));
             }
 
-            #[test]
-            fn sqlite_replace_with_unterminated_target_requires_acknowledgement() {
-                for sql in [
-                    "REPLACE INTO \"unfinished",
-                    "REPLACE INTO `unfinished",
-                    "REPLACE INTO [unfinished",
-                ] {
-                    let result =
-                        evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
-                            .expect("SQLite SQL risk evaluation is supported");
+            #[rstest]
+            #[case::replace_unterminated_double_quote("REPLACE INTO \"unfinished")]
+            #[case::replace_unterminated_backtick("REPLACE INTO `unfinished")]
+            #[case::replace_unterminated_bracket("REPLACE INTO [unfinished")]
+            #[case::replace_dollar_identifier("REPLACE INTO foo$bar VALUES (1)")]
+            #[case::insert_or_replace_dollar_identifier(
+                "INSERT OR REPLACE INTO foo$bar VALUES (1)"
+            )]
+            #[case::replace_emoji_identifier("REPLACE INTO 🍣 VALUES (1)")]
+            #[case::insert_or_replace_emoji_identifier("INSERT OR REPLACE INTO 🍣 VALUES (1)")]
+            #[case::replace_combining_identifier("REPLACE INTO cafe\u{301} VALUES (1)")]
+            #[case::insert_or_replace_combining_identifier(
+                "INSERT OR REPLACE INTO cafe\u{301} VALUES (1)"
+            )]
+            fn sqlite_replace_with_unverifiable_target_requires_acknowledgement(#[case] sql: &str) {
+                let result =
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                        .expect("SQLite SQL risk evaluation is supported");
 
-                    assert!(
-                        matches!(
-                            result.confirmation,
-                            ConfirmationType::Acknowledge {
-                                reason: AcknowledgeReason::TargetNameUnavailable,
-                                ref label,
-                            } if label == "REPLACE"
-                        ),
-                        "{sql}: {:?}",
-                        result.confirmation
-                    );
-                }
+                assert!(
+                    matches!(
+                        result.confirmation,
+                        ConfirmationType::Acknowledge {
+                            reason: AcknowledgeReason::TargetNameUnavailable,
+                            ref label,
+                        } if label == "REPLACE"
+                    ),
+                    "{sql}: {:?}",
+                    result.confirmation
+                );
             }
         }
 
