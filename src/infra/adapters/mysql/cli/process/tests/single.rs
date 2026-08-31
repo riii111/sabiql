@@ -6,7 +6,7 @@ async fn diagnostics_use_adhoc_args_and_follow_resultset_to_marker() {
     let (_directory, program, log_file) = fake_mysql_single_with_warning();
     let option_file = log_file.with_extension("cnf");
     fs::write(&option_file, "[client]\n").unwrap();
-    let result = run_mysql_single_statement_with_diagnostics_with_program(
+    let result = run_mysql_single_statement_with_program(
         OsStr::new(&program),
         &option_file,
         "EXPLAIN FORMAT=TREE SELECT 1",
@@ -49,8 +49,9 @@ async fn sends_user_sql_only_after_a_valid_session_configuration() {
     .await
     .unwrap();
 
-    assert_eq!(result.columns, vec!["value"]);
-    assert_eq!(result.values[0][0].as_str(), Some("ok"));
+    let result_set = result.result_set.unwrap();
+    assert_eq!(result_set.columns, vec!["value"]);
+    assert_eq!(result_set.values[0][0].as_str(), Some("ok"));
     let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
     let positions = [
         MYSQL_SESSION_SETTINGS,
