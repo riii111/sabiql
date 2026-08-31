@@ -139,34 +139,10 @@ impl EffectRunner {
     ) -> Result<Vec<Action>> {
         let mut dispatched = Vec::new();
         for effect in effects {
-            match effect {
-                Effect::Sequence(seq_effects) => {
-                    for seq_effect in seq_effects {
-                        dispatched.extend(
-                            self.execute_single_effect(
-                                seq_effect,
-                                tui,
-                                state,
-                                completion_engine,
-                                services,
-                            )
-                            .await?,
-                        );
-                    }
-                }
-                single_effect => {
-                    dispatched.extend(
-                        self.execute_single_effect(
-                            single_effect,
-                            tui,
-                            state,
-                            completion_engine,
-                            services,
-                        )
-                        .await?,
-                    );
-                }
-            }
+            dispatched.extend(
+                self.execute_single_effect(effect, tui, state, completion_engine, services)
+                    .await?,
+            );
         }
         Ok(dispatched)
     }
@@ -191,10 +167,6 @@ impl EffectRunner {
                 Ok(vec![])
             }
 
-            Effect::Sequence(_) => {
-                // Handled in execute_effects()
-                Ok(vec![])
-            }
             Effect::DispatchActions(actions) => Ok(actions),
 
             e @ (Effect::CopyToClipboard { .. } | Effect::OpenFolder { .. }) => {

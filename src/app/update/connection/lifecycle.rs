@@ -374,11 +374,7 @@ mod tests {
             );
             assert!(reload_effects.iter().any(|effect| matches!(
                 effect,
-                Effect::Sequence(effects)
-                    if effects.iter().any(|effect| matches!(
-                        effect,
-                        Effect::FetchMetadata { dsn, .. } if dsn == &target.dsn
-                    ))
+                Effect::FetchMetadata { dsn, .. } if dsn == &target.dsn
             )));
         }
 
@@ -450,11 +446,7 @@ mod tests {
             );
             assert!(reload_effects.iter().any(|effect| matches!(
                 effect,
-                Effect::Sequence(effects)
-                    if effects.iter().any(|effect| matches!(
-                        effect,
-                        Effect::FetchMetadata { dsn, .. } if dsn == &target.dsn
-                    ))
+                Effect::FetchMetadata { dsn, .. } if dsn == &target.dsn
             )));
         }
 
@@ -1125,10 +1117,7 @@ mod tests {
             let metadata_run_id = effects
                 .iter()
                 .find_map(|effect| match effect {
-                    Effect::Sequence(effects) => effects.iter().find_map(|effect| match effect {
-                        Effect::FetchMetadata { run_id, .. } => Some(*run_id),
-                        _ => None,
-                    }),
+                    Effect::FetchMetadata { run_id, .. } => Some(*run_id),
                     _ => None,
                 })
                 .expect("cached MySQL state should start metadata revalidation");
