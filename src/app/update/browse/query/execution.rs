@@ -490,17 +490,19 @@ mod tests {
         renderer.frames.clear();
 
         let inspector_action = if inspector_failed {
-            Action::TableDetailFailed {
+            Action::TableDetailLoaded {
                 dsn: active_dsn(&state),
                 run_id: detail_run_id,
-                error: DbOperationError::QueryFailed("inspector failed".to_string()),
+                outcome: Err(DbOperationError::QueryFailed(
+                    "inspector failed".to_string(),
+                )),
                 generation,
             }
         } else {
             Action::TableDetailLoaded {
                 dsn: active_dsn(&state),
                 run_id: detail_run_id,
-                detail: Box::new(users_table_detail()),
+                outcome: Ok(Box::new(users_table_detail())),
                 generation,
             }
         };
@@ -956,7 +958,7 @@ mod tests {
                 &Action::TableDetailLoaded {
                     dsn,
                     run_id: detail_run_id,
-                    detail: Box::new(users_table_detail()),
+                    outcome: Ok(Box::new(users_table_detail())),
                     generation,
                 },
                 now,
@@ -1018,7 +1020,7 @@ mod tests {
                 &Action::TableDetailLoaded {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id: detail_run_id,
-                    detail: Box::new(users_table_detail()),
+                    outcome: Ok(Box::new(users_table_detail())),
                     generation,
                 },
                 Instant::now(),
@@ -1058,7 +1060,7 @@ mod tests {
                 &Action::TableDetailLoaded {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id: old_detail_run_id,
-                    detail: Box::new(users_table_detail()),
+                    outcome: Ok(Box::new(users_table_detail())),
                     generation: old_generation,
                 },
                 Instant::now(),
@@ -1088,7 +1090,7 @@ mod tests {
                 &Action::TableDetailLoaded {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id: new_detail_run_id,
-                    detail: Box::new(users_table_detail()),
+                    outcome: Ok(Box::new(users_table_detail())),
                     generation: new_generation,
                 },
                 Instant::now(),
@@ -1377,10 +1379,12 @@ mod tests {
 
             let effects = dispatch_metadata(
                 &mut state,
-                &Action::TableDetailFailed {
+                &Action::TableDetailLoaded {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id: detail_run_id,
-                    error: DbOperationError::QueryFailed("inspector failed".to_string()),
+                    outcome: Err(DbOperationError::QueryFailed(
+                        "inspector failed".to_string(),
+                    )),
                     generation,
                 },
                 Instant::now(),

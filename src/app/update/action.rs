@@ -470,13 +470,7 @@ pub enum Action {
     TableDetailLoaded {
         dsn: String,
         run_id: u64,
-        detail: Box<Table>,
-        generation: u64,
-    },
-    TableDetailFailed {
-        dsn: String,
-        run_id: u64,
-        error: DbOperationError,
+        outcome: Result<Box<Table>, DbOperationError>,
         generation: u64,
     },
     PrefetchTableDetail {
