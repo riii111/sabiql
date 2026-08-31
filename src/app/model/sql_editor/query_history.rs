@@ -16,11 +16,6 @@ pub struct QueryHistoryPickerState {
     filter_visible_width: usize,
 }
 
-pub struct FilteredEntry<'a> {
-    pub entry: &'a QueryHistoryEntry,
-    pub match_indices: Vec<u32>,
-}
-
 pub struct GroupedEntry<'a> {
     pub entry: &'a QueryHistoryEntry,
     pub count: usize,
@@ -126,57 +121,35 @@ impl QueryHistoryPickerState {
         self.selected = index;
     }
 
-    pub fn filtered_entries(&self) -> Vec<FilteredEntry<'_>> {
+    pub fn grouped_filtered_entries(&self) -> Vec<GroupedEntry<'_>> {
         let filter = self.filter_input.content();
+        let pattern = (!filter.is_empty())
+            .then(|| Pattern::parse(filter, CaseMatching::Ignore, Normalization::Smart));
+        let mut matcher = None;
+        let mut groups: Vec<GroupedEntry<'_>> = Vec::new();
 
-        // Return all entries in reverse order (newest first) when no filter
-        if filter.is_empty() {
-            return self
-                .entries
-                .iter()
-                .rev()
-                .map(|entry| FilteredEntry {
-                    entry,
-                    match_indices: Vec::new(),
-                })
-                .collect();
-        }
-
-        let mut matcher = Matcher::new(Config::DEFAULT);
-        let pattern = Pattern::parse(filter, CaseMatching::Ignore, Normalization::Smart);
-
-        self.entries
-            .iter()
-            .rev()
-            .filter_map(|entry| {
+        for entry in self.entries.iter().rev() {
+            let match_indices = if let Some(pattern) = pattern.as_ref() {
                 let mut indices = Vec::new();
                 let mut buf = Vec::new();
                 let haystack = nucleo_matcher::Utf32Str::new(&entry.query, &mut buf);
-                let score = pattern.indices(haystack, &mut matcher, &mut indices);
-                score.map(|_| FilteredEntry {
-                    entry,
-                    match_indices: indices,
-                })
-            })
-            .collect()
-    }
+                let matcher = matcher.get_or_insert_with(|| Matcher::new(Config::DEFAULT));
+                if pattern.indices(haystack, matcher, &mut indices).is_none() {
+                    continue;
+                }
+                indices
+            } else {
+                Vec::new()
+            };
 
-    pub fn grouped_filtered_entries(&self) -> Vec<GroupedEntry<'_>> {
-        let filtered = self.filtered_entries();
-        let mut groups: Vec<GroupedEntry<'_>> = Vec::new();
-
-        for fe in filtered {
-            if let Some(last) = groups
-                .last_mut()
-                .filter(|g| g.entry.query == fe.entry.query)
-            {
+            if let Some(last) = groups.last_mut().filter(|g| g.entry.query == entry.query) {
                 last.count += 1;
                 continue;
             }
             groups.push(GroupedEntry {
-                entry: fe.entry,
+                entry,
                 count: 1,
-                match_indices: fe.match_indices,
+                match_indices,
             });
         }
 
@@ -305,12 +278,12 @@ mod tests {
             make_entry("SELECT 3"),
         ]);
 
-        let filtered = state.filtered_entries();
+        let grouped = state.grouped_filtered_entries();
 
-        assert_eq!(filtered.len(), 3);
-        assert_eq!(filtered[0].entry.query, "SELECT 3");
-        assert_eq!(filtered[1].entry.query, "SELECT 2");
-        assert_eq!(filtered[2].entry.query, "SELECT 1");
+        assert_eq!(grouped.len(), 3);
+        assert_eq!(grouped[0].entry.query, "SELECT 3");
+        assert_eq!(grouped[1].entry.query, "SELECT 2");
+        assert_eq!(grouped[2].entry.query, "SELECT 1");
     }
 
     #[test]
@@ -322,10 +295,10 @@ mod tests {
         ]);
         state.filter_input.set_content("users".to_string());
 
-        let filtered = state.filtered_entries();
+        let grouped = state.grouped_filtered_entries();
 
-        assert_eq!(filtered.len(), 2);
-        assert!(filtered.iter().all(|f| f.entry.query.contains("users")));
+        assert_eq!(grouped.len(), 2);
+        assert!(grouped.iter().all(|g| g.entry.query.contains("users")));
     }
 
     #[test]
@@ -333,9 +306,9 @@ mod tests {
         let mut state = make_state(vec![make_entry("SELECT * FROM Users")]);
         state.filter_input.set_content("users".to_string());
 
-        let filtered = state.filtered_entries();
+        let grouped = state.grouped_filtered_entries();
 
-        assert_eq!(filtered.len(), 1);
+        assert_eq!(grouped.len(), 1);
     }
 
     #[test]
@@ -454,9 +427,9 @@ mod tests {
         let mut state = make_state(vec![make_entry("SELECT 1")]);
         state.filter_input.set_content("xyz_no_match".to_string());
 
-        let filtered = state.filtered_entries();
+        let grouped = state.grouped_filtered_entries();
 
-        assert!(filtered.is_empty());
+        assert!(grouped.is_empty());
     }
 
     mod grouping {
