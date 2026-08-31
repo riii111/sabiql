@@ -873,49 +873,26 @@ impl BrowseSession {
     }
 }
 
-#[cfg(any(test, feature = "test-support"))]
-pub mod test_support {
-    use super::{ActiveConnection, BrowseSession, ConnectionId, ConnectionOrigin, DatabaseType};
+#[cfg(test)]
+mod test_support {
+    use super::BrowseSession;
+    use crate::domain::MetadataState;
+    use crate::model::connection::state::ConnectionState;
 
     impl BrowseSession {
         #[doc(hidden)]
-        pub fn set_active_connection_identity_for_test(
-            &mut self,
-            id: &ConnectionId,
-            name: &str,
-            database_type: DatabaseType,
-        ) {
-            self.active_connection = Some(ActiveConnection {
-                id: id.clone(),
-                name: name.to_string(),
-                database_type,
-                origin: ConnectionOrigin::Profile,
-                database: None,
-            });
+        pub(crate) fn set_metadata_state(&mut self, state: MetadataState) {
+            self.metadata_state = state;
         }
-    }
 
-    #[cfg(test)]
-    mod unit_tests {
-        use super::BrowseSession;
-        use crate::domain::MetadataState;
-        use crate::model::connection::state::ConnectionState;
+        #[doc(hidden)]
+        pub(crate) fn set_connection_state(&mut self, state: ConnectionState) {
+            self.connection_state = state;
+        }
 
-        impl BrowseSession {
-            #[doc(hidden)]
-            pub(crate) fn set_metadata_state(&mut self, state: MetadataState) {
-                self.metadata_state = state;
-            }
-
-            #[doc(hidden)]
-            pub(crate) fn set_connection_state(&mut self, state: ConnectionState) {
-                self.connection_state = state;
-            }
-
-            #[doc(hidden)]
-            pub(crate) fn set_selection_generation(&mut self, value: u64) {
-                self.selection_generation = value;
-            }
+        #[doc(hidden)]
+        pub(crate) fn set_selection_generation(&mut self, value: u64) {
+            self.selection_generation = value;
         }
     }
 }
