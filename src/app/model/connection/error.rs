@@ -1,176 +1,109 @@
+use crate::domain::SqlitePathError;
 use crate::policy::password_masking::mask_password;
-use crate::policy::sqlite_path::connection_error_kind;
 use crate::ports::outbound::{
     ConnectionFailureKind, DatabaseCli, DbOperationError, SqliteCompatibilityKind,
-    UnsupportedOperationKind,
 };
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ConnectionErrorKind {
-    CliNotFound,
-    MySqlCliNotFound,
-    MySqlUnsupportedOperation(UnsupportedOperationKind),
-    MySqlConnectionFailure(ConnectionFailureKind),
-    SqliteCliNotFound,
-    HostUnreachable,
-    AuthFailed,
-    PermissionDenied,
-    DatabaseNotFound,
-    ConnectionLost,
-    Timeout,
-    ConnectionRefused,
-    SqliteVersionTooOld,
-    SqliteFileNotFound,
-    SqlitePathIsDirectory,
-    SqlitePathNotRegularFile,
-    SqliteNotDatabaseFile,
-    SqliteReadAccessDenied,
-    SqlitePathAccessDenied,
-    SqlitePathIo,
-    #[default]
-    Unknown,
-}
-
-impl ConnectionErrorKind {
-    fn presentation(self) -> (&'static str, &'static str) {
-        match self {
-            Self::CliNotFound => (
-                "Database CLI not found",
-                "Install the database CLI (e.g. psql) and add it to PATH",
-            ),
-            Self::MySqlCliNotFound => (
-                DatabaseCli::MySql.not_found_summary(),
-                DatabaseCli::MySql.not_found_hint(),
-            ),
-            Self::MySqlUnsupportedOperation(kind) => kind.presentation(),
-            Self::MySqlConnectionFailure(kind) => kind.presentation(),
-            Self::SqliteCliNotFound => (
-                DatabaseCli::Sqlite3.not_found_summary(),
-                DatabaseCli::Sqlite3.not_found_hint(),
-            ),
-            Self::HostUnreachable => ("Could not resolve host", "Check the hostname"),
-            Self::AuthFailed => ("Authentication failed", "Check username and password"),
-            Self::PermissionDenied => {
-                ("Permission denied", "Check the connected user's privileges")
-            }
-            Self::DatabaseNotFound => ("Database does not exist", "Check database name"),
-            Self::ConnectionLost => (
-                "Connection lost during operation",
-                "Reconnect and retry the operation",
-            ),
-            Self::Timeout => ("Connection timed out", "Check network connectivity"),
-            Self::ConnectionRefused => (
-                "Connection refused",
-                "Check the host, port, and server availability",
-            ),
-            Self::SqliteVersionTooOld => (
-                "SQLite 3.41.1 or later required",
-                "Upgrade sqlite3 to use SQLite safely",
-            ),
-            Self::SqliteFileNotFound => (
-                "SQLite database file not found",
-                "Check the file path — sabiql does not create new database files",
-            ),
-            Self::SqlitePathIsDirectory => (
-                "SQLite path is a directory",
-                "Enter a path to a database file, not a folder",
-            ),
-            Self::SqlitePathNotRegularFile => (
-                "SQLite path is not a regular file",
-                "Enter a path to a regular database file, not a pipe or special file",
-            ),
-            Self::SqliteNotDatabaseFile => (
-                "File is not a SQLite database",
-                "Choose a readable SQLite database file, or create one with sqlite3",
-            ),
-            Self::SqliteReadAccessDenied => (
-                "Cannot read SQLite database file",
-                "Check read permissions for the database file",
-            ),
-            Self::SqlitePathAccessDenied => (
-                "Cannot access SQLite database file",
-                "Check file permissions for the database file",
-            ),
-            Self::SqlitePathIo => (
-                "Cannot open SQLite database file",
-                "Check that the database file path is valid and accessible",
-            ),
-            Self::Unknown => ("Connection failed", "See details for more information"),
-        }
-    }
-
-    pub fn summary(self) -> &'static str {
-        self.presentation().0
-    }
-
-    pub fn hint(self) -> &'static str {
-        self.presentation().1
-    }
-
-    pub const fn is_retryable(self) -> bool {
-        matches!(
-            self,
-            Self::HostUnreachable | Self::ConnectionLost | Self::Timeout | Self::ConnectionRefused
-        )
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectionErrorInfo {
-    pub kind: ConnectionErrorKind,
+    summary: &'static str,
+    hint: &'static str,
+    retryable: bool,
     masked_details: String,
 }
 
 impl ConnectionErrorInfo {
-    pub fn with_kind(kind: ConnectionErrorKind, raw_stderr: impl Into<String>) -> Self {
-        let raw_details = raw_stderr.into();
-        let masked_details = mask_password(&raw_details);
-
-        Self {
-            kind,
-            masked_details,
-        }
-    }
-
     pub fn from_db_operation_error(error: &DbOperationError) -> Self {
         let raw_details = error.raw_details().into_owned();
-        let kind = match error {
+        let (summary, hint, retryable) = match error {
             DbOperationError::CommandNotFound {
                 command: DatabaseCli::Sqlite3,
                 ..
-            } => ConnectionErrorKind::SqliteCliNotFound,
+            } => (
+                DatabaseCli::Sqlite3.not_found_summary(),
+                DatabaseCli::Sqlite3.not_found_hint(),
+                false,
+            ),
             DbOperationError::CommandNotFound {
                 command: DatabaseCli::MySql,
                 ..
-            } => ConnectionErrorKind::MySqlCliNotFound,
-            DbOperationError::CommandNotFound { .. } => ConnectionErrorKind::CliNotFound,
-            DbOperationError::ConnectionLost(_) => ConnectionErrorKind::ConnectionLost,
-            DbOperationError::Timeout(_) => ConnectionErrorKind::Timeout,
-            DbOperationError::PermissionDenied(_) => ConnectionErrorKind::PermissionDenied,
+            } => (
+                DatabaseCli::MySql.not_found_summary(),
+                DatabaseCli::MySql.not_found_hint(),
+                false,
+            ),
+            DbOperationError::CommandNotFound { .. } => (
+                "Database CLI not found",
+                "Install the database CLI (e.g. psql) and add it to PATH",
+                false,
+            ),
+            DbOperationError::ConnectionLost(_) => (
+                "Connection lost during operation",
+                "Reconnect and retry the operation",
+                true,
+            ),
+            DbOperationError::Timeout(_) => {
+                ("Connection timed out", "Check network connectivity", true)
+            }
+            DbOperationError::PermissionDenied(_) => (
+                "Permission denied",
+                "Check the connected user's privileges",
+                false,
+            ),
             DbOperationError::UnsupportedOperationWithKind { kind, .. } => {
-                ConnectionErrorKind::MySqlUnsupportedOperation(*kind)
+                let (summary, hint) = kind.presentation();
+                (summary, hint, false)
             }
             DbOperationError::UnsupportedOperationWithSqliteKind {
                 kind: SqliteCompatibilityKind::SafeMode | SqliteCompatibilityKind::TableList,
                 ..
-            } => ConnectionErrorKind::SqliteVersionTooOld,
+            } => (
+                "SQLite 3.41.1 or later required",
+                "Upgrade sqlite3 to use SQLite safely",
+                false,
+            ),
             DbOperationError::ConnectionFailedWithKind { kind, .. } => match kind {
-                ConnectionFailureKind::HostUnreachable => ConnectionErrorKind::HostUnreachable,
-                ConnectionFailureKind::Auth => ConnectionErrorKind::AuthFailed,
-                ConnectionFailureKind::DatabaseNotFound => ConnectionErrorKind::DatabaseNotFound,
-                ConnectionFailureKind::ConnectionRefused => ConnectionErrorKind::ConnectionRefused,
+                ConnectionFailureKind::HostUnreachable => {
+                    ("Could not resolve host", "Check the hostname", true)
+                }
+                ConnectionFailureKind::Auth => (
+                    "Authentication failed",
+                    "Check username and password",
+                    false,
+                ),
+                ConnectionFailureKind::DatabaseNotFound => {
+                    ("Database does not exist", "Check database name", false)
+                }
+                ConnectionFailureKind::ConnectionRefused => (
+                    "Connection refused",
+                    "Check the host, port, and server availability",
+                    true,
+                ),
                 ConnectionFailureKind::TlsHandshake
                 | ConnectionFailureKind::TlsCaVerification
                 | ConnectionFailureKind::TlsHostnameVerification
                 | ConnectionFailureKind::TlsClientCertificateRejected
                 | ConnectionFailureKind::TlsCertificateVerification => {
-                    ConnectionErrorKind::MySqlConnectionFailure(*kind)
+                    let (summary, hint) = kind.presentation();
+                    (summary, hint, false)
                 }
             },
-            DbOperationError::SqlitePath(error) => connection_error_kind(error),
-            _ => ConnectionErrorKind::Unknown,
+            DbOperationError::SqlitePath(error) => sqlite_path_presentation(error),
+            _ => (
+                "Connection failed",
+                "See details for more information",
+                false,
+            ),
         };
-        Self::with_kind(kind, raw_details)
+        Self::from_presentation(summary, hint, retryable, raw_details)
+    }
+
+    pub fn summary(&self) -> &'static str {
+        self.summary
+    }
+
+    pub fn hint(&self) -> &'static str {
+        self.hint
     }
 
     pub fn masked_details(&self) -> &str {
@@ -178,93 +111,123 @@ impl ConnectionErrorInfo {
     }
 
     pub const fn is_retryable(&self) -> bool {
-        self.kind.is_retryable()
+        self.retryable
+    }
+
+    fn from_presentation(
+        summary: &'static str,
+        hint: &'static str,
+        retryable: bool,
+        raw_stderr: impl Into<String>,
+    ) -> Self {
+        let raw_details = raw_stderr.into();
+        let masked_details = mask_password(&raw_details);
+
+        Self {
+            summary,
+            hint,
+            retryable,
+            masked_details,
+        }
     }
 }
+
+fn sqlite_path_presentation(error: &SqlitePathError) -> (&'static str, &'static str, bool) {
+    match error {
+        SqlitePathError::FileNotFound(_) => (
+            "SQLite database file not found",
+            "Check the file path — sabiql does not create new database files",
+            false,
+        ),
+        SqlitePathError::IsDirectory(_) => (
+            "SQLite path is a directory",
+            "Enter a path to a database file, not a folder",
+            false,
+        ),
+        SqlitePathError::NotRegularFile(_) => (
+            "SQLite path is not a regular file",
+            "Enter a path to a regular database file, not a pipe or special file",
+            false,
+        ),
+        SqlitePathError::NotDatabaseFile(_) => (
+            "File is not a SQLite database",
+            "Choose a readable SQLite database file, or create one with sqlite3",
+            false,
+        ),
+        SqlitePathError::ReadAccessDenied(_) => (
+            "Cannot read SQLite database file",
+            "Check read permissions for the database file",
+            false,
+        ),
+        SqlitePathError::PathAccessDenied(_) => (
+            "Cannot access SQLite database file",
+            "Check file permissions for the database file",
+            false,
+        ),
+        SqlitePathError::Io(_) => (
+            "Cannot open SQLite database file",
+            "Check that the database file path is valid and accessible",
+            false,
+        ),
+    }
+}
+
+#[cfg(test)]
+#[path = "error_test_support.rs"]
+pub(crate) mod test_support;
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::domain::SqlitePathError;
+    use crate::ports::outbound::UnsupportedOperationKind;
     use rstest::rstest;
-
-    mod error_kind {
-        use super::*;
-
-        #[rstest]
-        #[case(ConnectionErrorKind::CliNotFound)]
-        #[case(ConnectionErrorKind::SqliteCliNotFound)]
-        #[case(ConnectionErrorKind::HostUnreachable)]
-        #[case(ConnectionErrorKind::AuthFailed)]
-        #[case(ConnectionErrorKind::PermissionDenied)]
-        #[case(ConnectionErrorKind::DatabaseNotFound)]
-        #[case(ConnectionErrorKind::ConnectionLost)]
-        #[case(ConnectionErrorKind::Timeout)]
-        #[case(ConnectionErrorKind::ConnectionRefused)]
-        #[case(ConnectionErrorKind::MySqlCliNotFound)]
-        #[case(ConnectionErrorKind::MySqlUnsupportedOperation(
-            UnsupportedOperationKind::ClientVersion
-        ))]
-        #[case(ConnectionErrorKind::MySqlUnsupportedOperation(
-            UnsupportedOperationKind::ServerVersion
-        ))]
-        #[case(ConnectionErrorKind::MySqlUnsupportedOperation(
-            UnsupportedOperationKind::SessionMode
-        ))]
-        #[case(ConnectionErrorKind::MySqlConnectionFailure(ConnectionFailureKind::TlsHandshake))]
-        #[case(ConnectionErrorKind::MySqlConnectionFailure(
-            ConnectionFailureKind::TlsCaVerification
-        ))]
-        #[case(ConnectionErrorKind::MySqlConnectionFailure(
-            ConnectionFailureKind::TlsHostnameVerification
-        ))]
-        #[case(ConnectionErrorKind::MySqlConnectionFailure(
-            ConnectionFailureKind::TlsClientCertificateRejected
-        ))]
-        #[case(ConnectionErrorKind::SqliteVersionTooOld)]
-        #[case(ConnectionErrorKind::SqliteFileNotFound)]
-        #[case(ConnectionErrorKind::SqlitePathIsDirectory)]
-        #[case(ConnectionErrorKind::SqlitePathNotRegularFile)]
-        #[case(ConnectionErrorKind::SqliteNotDatabaseFile)]
-        #[case(ConnectionErrorKind::SqliteReadAccessDenied)]
-        #[case(ConnectionErrorKind::SqlitePathAccessDenied)]
-        #[case(ConnectionErrorKind::SqlitePathIo)]
-        #[case(ConnectionErrorKind::Unknown)]
-        fn has_non_empty_summary_and_hint(#[case] kind: ConnectionErrorKind) {
-            assert!(!kind.summary().is_empty());
-            assert!(!kind.hint().is_empty());
-        }
-    }
 
     mod error_info {
         use super::*;
 
         #[test]
-        fn with_kind_uses_provided_kind() {
-            let info = ConnectionErrorInfo::with_kind(ConnectionErrorKind::Timeout, "error");
-            assert_eq!(info.kind, ConnectionErrorKind::Timeout);
+        fn from_parts_uses_provided_presentation() {
+            let info = test_support::from_parts(
+                "Connection timed out",
+                "Check network connectivity",
+                true,
+                "error",
+            );
+            assert_eq!(info.summary(), "Connection timed out");
+            assert_eq!(info.hint(), "Check network connectivity");
+            assert!(info.is_retryable());
         }
 
         #[rstest]
         #[case(
             ConnectionFailureKind::HostUnreachable,
-            ConnectionErrorKind::HostUnreachable,
+            "Could not resolve host",
+            "Check the hostname",
             true
         )]
-        #[case(ConnectionFailureKind::Auth, ConnectionErrorKind::AuthFailed, false)]
+        #[case(
+            ConnectionFailureKind::Auth,
+            "Authentication failed",
+            "Check username and password",
+            false
+        )]
         #[case(
             ConnectionFailureKind::DatabaseNotFound,
-            ConnectionErrorKind::DatabaseNotFound,
+            "Database does not exist",
+            "Check database name",
             false
         )]
         #[case(
             ConnectionFailureKind::ConnectionRefused,
-            ConnectionErrorKind::ConnectionRefused,
+            "Connection refused",
+            "Check the host, port, and server availability",
             true
         )]
         fn from_db_operation_error_maps_typed_connection_failures(
             #[case] kind: ConnectionFailureKind,
-            #[case] expected_kind: ConnectionErrorKind,
+            #[case] expected_summary: &str,
+            #[case] expected_hint: &str,
             #[case] expected_retryable: bool,
         ) {
             let info = ConnectionErrorInfo::from_db_operation_error(
@@ -274,29 +237,33 @@ mod tests {
                 },
             );
 
-            assert_eq!(info.kind, expected_kind);
+            assert_eq!(info.summary(), expected_summary);
+            assert_eq!(info.hint(), expected_hint);
             assert!(!info.masked_details().contains("secret"));
             assert_eq!(info.is_retryable(), expected_retryable);
         }
 
         #[test]
-        fn from_db_operation_error_preserves_connection_lost_kind() {
+        fn from_db_operation_error_preserves_connection_lost_presentation() {
             let info = ConnectionErrorInfo::from_db_operation_error(
                 &DbOperationError::ConnectionLost("connection to server was lost".to_string()),
             );
 
-            assert_eq!(info.kind, ConnectionErrorKind::ConnectionLost);
+            assert_eq!(info.summary(), "Connection lost during operation");
+            assert_eq!(info.hint(), "Reconnect and retry the operation");
+            assert!(info.is_retryable());
         }
 
         #[test]
-        fn from_db_operation_error_preserves_permission_denied_kind() {
+        fn from_db_operation_error_preserves_permission_denied_presentation() {
             let info =
                 ConnectionErrorInfo::from_db_operation_error(&DbOperationError::PermissionDenied(
                     "ERROR 1044 (42000): Access denied to database".to_string(),
                 ));
 
-            assert_eq!(info.kind, ConnectionErrorKind::PermissionDenied);
-            assert_eq!(info.kind.hint(), "Check the connected user's privileges");
+            assert_eq!(info.summary(), "Permission denied");
+            assert_eq!(info.hint(), "Check the connected user's privileges");
+            assert!(!info.is_retryable());
         }
 
         #[test]
@@ -305,8 +272,11 @@ mod tests {
                 SqlitePathError::FileNotFound("/tmp/missing.db".to_string()),
             ));
 
-            assert_eq!(info.kind, ConnectionErrorKind::SqliteFileNotFound);
-            assert_eq!(info.kind.summary(), "SQLite database file not found");
+            assert_eq!(info.summary(), "SQLite database file not found");
+            assert_eq!(
+                info.hint(),
+                "Check the file path — sabiql does not create new database files"
+            );
         }
 
         #[test]
@@ -317,20 +287,14 @@ mod tests {
                     details: "No such file or directory".to_string(),
                 });
 
-            assert_eq!(info.kind, ConnectionErrorKind::SqliteCliNotFound);
-            assert_eq!(info.kind.summary(), "sqlite3 not found");
-            assert_eq!(info.kind.hint(), "Install sqlite3 and add it to PATH");
+            assert_eq!(info.summary(), "sqlite3 not found");
+            assert_eq!(info.hint(), "Install sqlite3 and add it to PATH");
         }
 
         #[rstest]
-        #[case(
-            DatabaseCli::MySql,
-            ConnectionErrorKind::MySqlCliNotFound,
-            "mysql not found"
-        )]
+        #[case(DatabaseCli::MySql, "mysql not found")]
         fn from_db_operation_error_classifies_missing_mysql_cli(
             #[case] command: DatabaseCli,
-            #[case] expected_kind: ConnectionErrorKind,
             #[case] expected_summary: &str,
         ) {
             let info =
@@ -339,30 +303,29 @@ mod tests {
                     details: "No such file or directory".to_string(),
                 });
 
-            assert_eq!(info.kind, expected_kind);
-            assert_eq!(info.kind.summary(), expected_summary);
+            assert_eq!(info.summary(), expected_summary);
         }
 
         #[rstest]
         #[case(
             UnsupportedOperationKind::ClientVersion,
-            ConnectionErrorKind::MySqlUnsupportedOperation(
-                UnsupportedOperationKind::ClientVersion
-            )
+            "Unsupported MySQL CLI version",
+            "Install the Oracle MySQL 8.4 client"
         )]
         #[case(
             UnsupportedOperationKind::ServerVersion,
-            ConnectionErrorKind::MySqlUnsupportedOperation(
-                UnsupportedOperationKind::ServerVersion
-            )
+            "Unsupported MySQL server version",
+            "Connect to an Oracle MySQL 8.4 server"
         )]
         #[case(
             UnsupportedOperationKind::SessionMode,
-            ConnectionErrorKind::MySqlUnsupportedOperation(UnsupportedOperationKind::SessionMode)
+            "Unsupported MySQL sql_mode",
+            "Disable NO_BACKSLASH_ESCAPES and ANSI_QUOTES for this connection"
         )]
         fn from_db_operation_error_classifies_mysql_requirements(
             #[case] kind: UnsupportedOperationKind,
-            #[case] expected_kind: ConnectionErrorKind,
+            #[case] expected_summary: &str,
+            #[case] expected_hint: &str,
         ) {
             let info = ConnectionErrorInfo::from_db_operation_error(
                 &DbOperationError::UnsupportedOperationWithKind {
@@ -371,42 +334,41 @@ mod tests {
                 },
             );
 
-            assert_eq!(info.kind.summary(), expected_kind.summary());
-            assert_eq!(info.kind.hint(), expected_kind.hint());
+            assert_eq!(info.summary(), expected_summary);
+            assert_eq!(info.hint(), expected_hint);
             assert!(!info.is_retryable());
-            assert_eq!(info.kind, expected_kind);
         }
 
         #[rstest]
         #[case(
             ConnectionFailureKind::TlsHandshake,
-            ConnectionErrorKind::MySqlConnectionFailure(ConnectionFailureKind::TlsHandshake)
+            "MySQL TLS handshake failed",
+            "Check that the server and client support the selected TLS settings"
         )]
         #[case(
             ConnectionFailureKind::TlsCertificateVerification,
-            ConnectionErrorKind::MySqlConnectionFailure(
-                ConnectionFailureKind::TlsCertificateVerification
-            )
+            "MySQL TLS handshake failed",
+            "Check that the server and client support the selected TLS settings"
         )]
         #[case(
             ConnectionFailureKind::TlsCaVerification,
-            ConnectionErrorKind::MySqlConnectionFailure(ConnectionFailureKind::TlsCaVerification)
+            "MySQL server certificate could not be verified",
+            "Check the CA certificate path and server certificate"
         )]
         #[case(
             ConnectionFailureKind::TlsHostnameVerification,
-            ConnectionErrorKind::MySqlConnectionFailure(
-                ConnectionFailureKind::TlsHostnameVerification
-            )
+            "MySQL server hostname could not be verified",
+            "Use the hostname covered by the server certificate"
         )]
         #[case(
             ConnectionFailureKind::TlsClientCertificateRejected,
-            ConnectionErrorKind::MySqlConnectionFailure(
-                ConnectionFailureKind::TlsClientCertificateRejected
-            )
+            "MySQL client certificate was rejected",
+            "Check the client certificate, key, and server account requirements"
         )]
         fn from_db_operation_error_classifies_typed_mysql_tls(
             #[case] kind: ConnectionFailureKind,
-            #[case] expected_kind: ConnectionErrorKind,
+            #[case] expected_summary: &str,
+            #[case] expected_hint: &str,
         ) {
             let info = ConnectionErrorInfo::from_db_operation_error(
                 &DbOperationError::ConnectionFailedWithKind {
@@ -415,9 +377,8 @@ mod tests {
                 },
             );
 
-            assert_eq!(info.kind, expected_kind);
-            assert_eq!(info.kind.summary(), expected_kind.summary());
-            assert_eq!(info.kind.hint(), expected_kind.hint());
+            assert_eq!(info.summary(), expected_summary);
+            assert_eq!(info.hint(), expected_hint);
             assert!(!info.is_retryable());
         }
 
@@ -428,7 +389,8 @@ mod tests {
                     "hostname mismatch password=secret unexpected provider failure".to_string(),
                 ));
 
-            assert_eq!(info.kind, ConnectionErrorKind::Unknown);
+            assert_eq!(info.summary(), "Connection failed");
+            assert_eq!(info.hint(), "See details for more information");
             assert!(!info.masked_details().contains("secret"));
             assert!(!info.is_retryable());
         }
@@ -436,40 +398,40 @@ mod tests {
         #[rstest]
         #[case(
             SqlitePathError::IsDirectory("/tmp/dir.db".to_string()),
-            ConnectionErrorKind::SqlitePathIsDirectory
+            "SQLite path is a directory"
         )]
         #[case(
             SqlitePathError::NotRegularFile("/tmp/pipe.db".to_string()),
-            ConnectionErrorKind::SqlitePathNotRegularFile
+            "SQLite path is not a regular file"
         )]
         #[case(
             SqlitePathError::NotDatabaseFile("/tmp/not-db".to_string()),
-            ConnectionErrorKind::SqliteNotDatabaseFile
+            "File is not a SQLite database"
         )]
         #[case(
             SqlitePathError::ReadAccessDenied(
                 "/tmp/app.db: permission denied".to_string(),
             ),
-            ConnectionErrorKind::SqliteReadAccessDenied
+            "Cannot read SQLite database file"
         )]
         #[case(
             SqlitePathError::PathAccessDenied(
                 "/tmp/app.db: permission denied".to_string(),
             ),
-            ConnectionErrorKind::SqlitePathAccessDenied
+            "Cannot access SQLite database file"
         )]
         #[case(
             SqlitePathError::Io("/tmp/app.db: device offline".to_string()),
-            ConnectionErrorKind::SqlitePathIo
+            "Cannot open SQLite database file"
         )]
         fn from_db_operation_error_classifies_sqlite_path_errors(
             #[case] error: SqlitePathError,
-            #[case] expected_kind: ConnectionErrorKind,
+            #[case] expected_summary: &str,
         ) {
             let info =
                 ConnectionErrorInfo::from_db_operation_error(&DbOperationError::SqlitePath(error));
 
-            assert_eq!(info.kind, expected_kind);
+            assert_eq!(info.summary(), expected_summary);
         }
 
         #[test]
@@ -479,7 +441,7 @@ mod tests {
                     "SQLite database file not found: /tmp/missing.db".to_string(),
                 ));
 
-            assert_eq!(info.kind, ConnectionErrorKind::Unknown);
+            assert_eq!(info.summary(), "Connection failed");
         }
 
         #[test]
@@ -491,8 +453,8 @@ mod tests {
                 },
             );
 
-            assert_eq!(info.kind, ConnectionErrorKind::SqliteVersionTooOld);
-            assert_eq!(info.kind.summary(), "SQLite 3.41.1 or later required");
+            assert_eq!(info.summary(), "SQLite 3.41.1 or later required");
+            assert_eq!(info.hint(), "Upgrade sqlite3 to use SQLite safely");
             assert_eq!(
                 info.masked_details(),
                 "upgrade sqlite3 to version 3.41.1 or later"
@@ -508,9 +470,8 @@ mod tests {
                 },
             );
 
-            assert_eq!(info.kind, ConnectionErrorKind::SqliteVersionTooOld);
-            assert_eq!(info.kind.summary(), "SQLite 3.41.1 or later required");
-            assert_eq!(info.kind.hint(), "Upgrade sqlite3 to use SQLite safely");
+            assert_eq!(info.summary(), "SQLite 3.41.1 or later required");
+            assert_eq!(info.hint(), "Upgrade sqlite3 to use SQLite safely");
             assert_eq!(
                 info.masked_details(),
                 "sqlite3 3.41.1 or later is required for safe SQLite execution (found sqlite3 3.41.0)"
@@ -525,7 +486,7 @@ mod tests {
                 ),
             );
 
-            assert_eq!(info.kind, ConnectionErrorKind::Unknown);
+            assert_eq!(info.summary(), "Connection failed");
         }
     }
 
@@ -565,8 +526,10 @@ mod tests {
 
         #[test]
         fn info_keeps_only_masked_details() {
-            let info = ConnectionErrorInfo::with_kind(
-                ConnectionErrorKind::Unknown,
+            let info = test_support::from_parts(
+                "Connection failed",
+                "See details for more information",
+                false,
                 "postgres://user:secret@host",
             );
             assert!(!info.masked_details().contains("secret"));

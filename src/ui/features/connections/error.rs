@@ -66,7 +66,7 @@ impl ConnectionError {
         ])
         .split(inner);
 
-        Self::render_summary(frame, chunks[0], error_info.kind.summary(), theme);
+        Self::render_summary(frame, chunks[0], error_info.summary(), theme);
         Self::render_hint(frame, chunks[2], state, theme);
         Self::render_details_section(frame, chunks[4], error_state, details_expanded, theme);
         Self::render_actions(frame, chunks[6], state, now, theme);
@@ -89,7 +89,7 @@ impl ConnectionError {
         let hint = state
             .connection_error
             .error_info()
-            .map_or("", |e| e.kind.hint());
+            .map_or("", |error_info| error_info.hint());
         let mut spans = vec![
             Span::styled("Hint: ", Style::default().fg(theme.semantic.text.accent)),
             Span::styled(hint, Style::default().fg(theme.semantic.text.secondary)),

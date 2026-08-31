@@ -641,7 +641,6 @@ mod tests {
             DatabaseMetadata, MetadataState, QueryResult, QuerySource, TableSummary,
         };
         use crate::model::connection::cache::ConnectionCache;
-        use crate::model::connection::error::ConnectionErrorKind;
         use crate::ports::outbound::{ConnectionFailureKind, DbOperationError};
 
         fn fill_valid_form(state: &mut AppState) {
@@ -770,10 +769,8 @@ mod tests {
 
             assert_eq!(state.modal.active_mode(), InputMode::ConnectionError);
             assert_eq!(
-                state.connection_error.error_info().unwrap().kind,
-                ConnectionErrorKind::MySqlConnectionFailure(
-                    ConnectionFailureKind::TlsHostnameVerification
-                )
+                state.connection_error.error_info().unwrap().summary(),
+                "MySQL server hostname could not be verified"
             );
         }
 
@@ -785,21 +782,21 @@ mod tests {
                         "ERROR 1044 (42000): Access denied for user 'user' to database 'mysql'"
                             .to_string(),
                     ),
-                    ConnectionErrorKind::PermissionDenied,
+                    "Permission denied",
                 ),
                 (
                     DbOperationError::ConnectionFailedWithKind {
                         kind: ConnectionFailureKind::Auth,
                         details: "ERROR 1045 (28000): Access denied for user 'user'".to_string(),
                     },
-                    ConnectionErrorKind::AuthFailed,
+                    "Authentication failed",
                 ),
                 (
                     DbOperationError::ConnectionFailedWithKind {
                         kind: ConnectionFailureKind::DatabaseNotFound,
                         details: "ERROR 1049 (42000): Unknown database 'missing'".to_string(),
                     },
-                    ConnectionErrorKind::DatabaseNotFound,
+                    "Database does not exist",
                 ),
             ] {
                 let mut state = AppState::new("test".to_string());
@@ -823,9 +820,9 @@ mod tests {
                 );
 
                 let error_info = state.connection_error.error_info().unwrap();
-                assert_eq!(error_info.kind, expected);
-                if expected == ConnectionErrorKind::PermissionDenied {
-                    assert!(!error_info.kind.hint().contains("password"));
+                assert_eq!(error_info.summary(), expected);
+                if expected == "Permission denied" {
+                    assert!(!error_info.hint().contains("password"));
                 }
             }
         }

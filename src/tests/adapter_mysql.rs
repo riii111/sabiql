@@ -15,10 +15,9 @@ mod connection {
         MYSQL_FIXTURE_TABLE, mysql_cache_miss_config, mysql_integration_config, mysql_tls_config,
         with_mysql_test_db,
     };
-    use sabiql_app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
+    use sabiql_app::model::connection::error::ConnectionErrorInfo;
     use sabiql_app::ports::outbound::{
-        AccessMode, ConnectionFailureKind, DbOperationError, DsnBuilder, MySqlConnectionProbe,
-        QueryExecutor,
+        AccessMode, DbOperationError, DsnBuilder, MySqlConnectionProbe, QueryExecutor,
     };
     use sabiql_domain::QueryValue;
     use sabiql_domain::connection::{
@@ -182,8 +181,8 @@ mod connection {
         let error = adapter.probe(&dsn).await.unwrap_err();
         let error_info = ConnectionErrorInfo::from_db_operation_error(&error);
         assert_eq!(
-            error_info.kind,
-            ConnectionErrorKind::AuthFailed,
+            error_info.summary(),
+            "Authentication failed",
             "masked connection error details: {}",
             error_info.masked_details()
         );
@@ -204,8 +203,8 @@ mod connection {
         let dsn = adapter.build_dsn(&profile);
         let error = adapter.probe(&dsn).await.unwrap_err();
         assert_eq!(
-            ConnectionErrorInfo::from_db_operation_error(&error).kind,
-            ConnectionErrorKind::MySqlConnectionFailure(ConnectionFailureKind::TlsCaVerification)
+            ConnectionErrorInfo::from_db_operation_error(&error).summary(),
+            "MySQL server certificate could not be verified"
         );
     }
 
@@ -221,10 +220,8 @@ mod connection {
         let error = adapter.probe(&dsn).await.unwrap_err();
         let error_info = ConnectionErrorInfo::from_db_operation_error(&error);
         assert_eq!(
-            error_info.kind,
-            ConnectionErrorKind::MySqlConnectionFailure(
-                ConnectionFailureKind::TlsHostnameVerification
-            ),
+            error_info.summary(),
+            "MySQL server hostname could not be verified",
             "masked connection error details: {}",
             error_info.masked_details()
         );
@@ -242,8 +239,8 @@ mod connection {
         let permission_dsn = adapter.build_dsn(&permission_profile);
         let permission_error = adapter.probe(&permission_dsn).await.unwrap_err();
         assert_eq!(
-            ConnectionErrorInfo::from_db_operation_error(&permission_error).kind,
-            ConnectionErrorKind::PermissionDenied
+            ConnectionErrorInfo::from_db_operation_error(&permission_error).summary(),
+            "Permission denied"
         );
 
         let mut missing_config = base_config.clone();
@@ -254,8 +251,8 @@ mod connection {
         let missing_dsn = adapter.build_dsn(&missing_profile);
         let missing_error = adapter.probe(&missing_dsn).await.unwrap_err();
         assert_eq!(
-            ConnectionErrorInfo::from_db_operation_error(&missing_error).kind,
-            ConnectionErrorKind::DatabaseNotFound
+            ConnectionErrorInfo::from_db_operation_error(&missing_error).summary(),
+            "Database does not exist"
         );
 
         let mut auth_config = mysql_tls_config();
@@ -265,8 +262,8 @@ mod connection {
         let auth_error = adapter.probe(&auth_dsn).await.unwrap_err();
         let auth_info = ConnectionErrorInfo::from_db_operation_error(&auth_error);
         assert_eq!(
-            auth_info.kind,
-            ConnectionErrorKind::AuthFailed,
+            auth_info.summary(),
+            "Authentication failed",
             "MySQL authentication error: {auth_error:?}; masked details: {}",
             auth_info.masked_details()
         );

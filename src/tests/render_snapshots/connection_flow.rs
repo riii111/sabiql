@@ -400,9 +400,12 @@ fn connection_error_collapsed() {
     state.modal.set_mode(InputMode::ConnectionError);
     state
         .connection_error
-        .set_error(ConnectionErrorInfo::with_kind(
-            ConnectionErrorKind::HostUnreachable,
-            "psql: error: could not translate host name \"db.example.com\" to address",
+        .set_error(ConnectionErrorInfo::from_db_operation_error(
+            &DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::HostUnreachable,
+                details: "psql: error: could not translate host name \"db.example.com\" to address"
+                    .to_string(),
+            },
         ));
     state.connection_error.reset_view();
 
@@ -426,9 +429,11 @@ fn mysql_active_connection_retryable_error_shows_retry_action() {
     state.modal.set_mode(InputMode::ConnectionError);
     state
         .connection_error
-        .set_error(ConnectionErrorInfo::with_kind(
-            ConnectionErrorKind::Timeout,
-            "ERROR 2003 (HY000): Can't connect to MySQL server on 'localhost' (110)",
+        .set_error(ConnectionErrorInfo::from_db_operation_error(
+            &DbOperationError::Timeout(
+                "ERROR 2003 (HY000): Can't connect to MySQL server on 'localhost' (110)"
+                    .to_string(),
+            ),
         ));
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -449,19 +454,17 @@ fn render_service_error_without_service_file_hint(save_and_connect: bool) -> Str
         .runtime
         .set_service_file_path(Some(std::path::PathBuf::from("/etc/pg_service.conf")));
     if save_and_connect {
-        state
-            .connection_error
-            .set_save_and_connect_error(ConnectionErrorInfo::with_kind(
-                ConnectionErrorKind::Unknown,
-                "mysql save failed",
-            ));
+        state.connection_error.set_save_and_connect_error(
+            ConnectionErrorInfo::from_db_operation_error(&DbOperationError::ConnectionFailed(
+                "mysql save failed".to_string(),
+            )),
+        );
     } else {
-        state
-            .connection_error
-            .set_connection_switch_error(ConnectionErrorInfo::with_kind(
-                ConnectionErrorKind::Unknown,
-                "mysql switch failed",
-            ));
+        state.connection_error.set_connection_switch_error(
+            ConnectionErrorInfo::from_db_operation_error(&DbOperationError::ConnectionFailed(
+                "mysql switch failed".to_string(),
+            )),
+        );
     }
     state.modal.set_mode(InputMode::ConnectionError);
 
@@ -490,9 +493,8 @@ fn non_mysql_retryable_error_hides_retry_in_modal_and_footer() {
     state.modal.set_mode(InputMode::ConnectionError);
     state
         .connection_error
-        .set_error(ConnectionErrorInfo::with_kind(
-            ConnectionErrorKind::Timeout,
-            "connection timed out",
+        .set_error(ConnectionErrorInfo::from_db_operation_error(
+            &DbOperationError::Timeout("connection timed out".to_string()),
         ));
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -522,10 +524,14 @@ fn connection_error_expanded() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::ConnectionError);
-    state.connection_error.set_error(ConnectionErrorInfo::with_kind(
-        ConnectionErrorKind::Timeout,
-        "psql: error: connection to server at \"192.168.1.100\", port 5432 failed: timeout expired",
-    ));
+    state
+        .connection_error
+        .set_error(ConnectionErrorInfo::from_db_operation_error(
+            &DbOperationError::Timeout(
+                "psql: error: connection to server at \"192.168.1.100\", port 5432 failed: timeout expired"
+                    .to_string(),
+            ),
+        ));
     state.connection_error.toggle_details();
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -539,10 +545,14 @@ fn connection_error_expanded_with_tabs() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::ConnectionError);
-    state.connection_error.set_error(ConnectionErrorInfo::with_kind(
-        ConnectionErrorKind::Unknown,
-        "psql: error: connection to server at \"localhost\" (127.0.0.1), port 5433 failed: Connection refused\n\tIs the server running on that host and accepting TCP/IP connections?",
-    ));
+    state
+        .connection_error
+        .set_error(ConnectionErrorInfo::from_db_operation_error(
+            &DbOperationError::ConnectionFailed(
+                "psql: error: connection to server at \"localhost\" (127.0.0.1), port 5433 failed: Connection refused\n\tIs the server running on that host and accepting TCP/IP connections?"
+                    .to_string(),
+            ),
+        ));
     state.connection_error.toggle_details();
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -563,9 +573,8 @@ fn connection_error_expanded_long_details_capped() {
     state.modal.set_mode(InputMode::ConnectionError);
     state
         .connection_error
-        .set_error(ConnectionErrorInfo::with_kind(
-            ConnectionErrorKind::Unknown,
-            &long_details,
+        .set_error(ConnectionErrorInfo::from_db_operation_error(
+            &DbOperationError::ConnectionFailed(long_details),
         ));
     state.connection_error.toggle_details();
 
