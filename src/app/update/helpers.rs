@@ -76,10 +76,6 @@ pub enum EditGuardrailError {
     StableKeyColumnsMissing,
     #[error("No active cell edit session")]
     NoActiveCellEditSession,
-    #[error("No row selected for edit")]
-    NoRowSelectedForEdit,
-    #[error("No column selected for edit")]
-    NoColumnSelectedForEdit,
     #[error("Row index out of bounds")]
     RowIndexOutOfBounds,
     #[error("Column index out of bounds")]
