@@ -90,7 +90,7 @@ pub(super) fn save_current_connection_cache(state: &mut AppState) {
         state.query.current_result().cloned(),
         state.query.pagination.clone(),
     );
-    state.connection_caches.save(&current_id, cache);
+    state.connection_caches.insert(current_id, cache);
 }
 
 pub(super) fn cancel_connection_task_effects(state: &mut AppState) -> Vec<Effect> {
