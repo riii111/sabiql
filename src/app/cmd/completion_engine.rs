@@ -4119,6 +4119,7 @@ mod tests {
             );
 
             assert!(e.table_detail_cache.peek("public.t1").is_some());
+            assert!(e.has_cached_table("public.t1"));
 
             e.cache_table_detail(
                 "public.t3".to_string(),
