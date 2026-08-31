@@ -512,12 +512,6 @@ impl CompletionEngine {
         }
     }
 
-    fn previous_non_whitespace_index(tokens: &[Token], index: usize) -> Option<usize> {
-        tokens[..index]
-            .iter()
-            .rposition(|token| token.kind != TokenKind::Whitespace)
-    }
-
     fn insert_target_column_list_start(tokens: &[Token], cursor_pos: usize) -> Option<usize> {
         let mut insert_started = false;
         let mut list_depth = 0;
@@ -561,9 +555,6 @@ impl CompletionEngine {
             }
 
             if partition_pending {
-                if token.kind == TokenKind::Whitespace {
-                    continue;
-                }
                 if token.kind == TokenKind::Punctuation('(') {
                     partition_depth = 1;
                     partition_pending = false;
@@ -609,21 +600,19 @@ impl CompletionEngine {
                 continue;
             }
 
-            let Some(key_index) = Self::previous_non_whitespace_index(tokens, index) else {
+            let Some(key_index) = index.checked_sub(1) else {
                 continue;
             };
             if !Self::token_is_word(&tokens[key_index], "KEY") {
                 continue;
             }
-            let Some(duplicate_index) = Self::previous_non_whitespace_index(tokens, key_index)
-            else {
+            let Some(duplicate_index) = key_index.checked_sub(1) else {
                 continue;
             };
             if !Self::token_is_word(&tokens[duplicate_index], "DUPLICATE") {
                 continue;
             }
-            let Some(on_index) = Self::previous_non_whitespace_index(tokens, duplicate_index)
-            else {
+            let Some(on_index) = duplicate_index.checked_sub(1) else {
                 continue;
             };
             if Self::token_is_word(&tokens[on_index], "ON") {

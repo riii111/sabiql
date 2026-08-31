@@ -787,7 +787,7 @@ pub(crate) fn collect_top_level_tokens(
     tokens
 }
 
-fn unquote_simple(name: &str) -> String {
+pub(crate) fn unquote_simple(name: &str) -> String {
     if let Some(dot_pos) = find_unquoted_dot(name) {
         let schema = &name[..dot_pos];
         let table = &name[dot_pos + 1..];
