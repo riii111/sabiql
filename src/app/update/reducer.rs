@@ -206,7 +206,6 @@ mod tests {
     use crate::model::browse::session::TableDetailState;
     use crate::model::shared::ui_state::UiState;
     use crate::ports::outbound::DbOperationError;
-    use crate::ports::outbound::connection_store::ConnectionStoreError;
     use crate::update::action::ModalKind;
     use crate::update::action::QueryCompletionContext;
     use crate::update::action::{ConnectionSaveError, ConnectionTarget, SmartErRefreshError};
@@ -2095,9 +2094,7 @@ mod tests {
             let effects = reduce(
                 &mut state,
                 Action::ConnectionSaveFailed {
-                    error: ConnectionSaveError::Store(ConnectionStoreError::Io(Arc::new(
-                        std::io::Error::other("Write error"),
-                    ))),
+                    error: ConnectionSaveError::Store("IO error: Write error".to_string()),
                     run_id,
                 },
                 now,

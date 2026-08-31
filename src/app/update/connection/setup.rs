@@ -46,8 +46,8 @@ pub fn reduce_connection_setup(
             state.modal.set_mode(InputMode::ConnectionSetup);
             DispatchResult::handled_with(cancel_effects)
         }
-        Action::ConnectionEditLoadFailed(e) => {
-            state.messages.set_error(e.to_string());
+        Action::ConnectionEditLoadFailed(error) => {
+            state.messages.set_error(error.clone());
             DispatchResult::handled()
         }
         Action::CloseModal(ModalKind::ConnectionSetup) => {

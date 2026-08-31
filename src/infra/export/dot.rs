@@ -228,27 +228,27 @@ fn spawn_viewer(program: &str, args: &[&str], path: &Path) -> Result<(), ViewerE
     Ok(())
 }
 
-pub struct DotExporter<G = SystemGraphvizRunner, V = SystemViewerLauncher> {
-    graphviz: G,
-    viewer: V,
+pub struct DotExporter {
+    graphviz: Box<dyn GraphvizRunner>,
+    viewer: Box<dyn ViewerLauncher>,
 }
 
-impl Default for DotExporter<SystemGraphvizRunner, SystemViewerLauncher> {
+impl Default for DotExporter {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl DotExporter<SystemGraphvizRunner, SystemViewerLauncher> {
+impl DotExporter {
     pub fn new() -> Self {
         Self {
-            graphviz: SystemGraphvizRunner,
-            viewer: SystemViewerLauncher,
+            graphviz: Box::new(SystemGraphvizRunner),
+            viewer: Box::new(SystemViewerLauncher),
         }
     }
 }
 
-impl<G, V> DotExporter<G, V> {
+impl DotExporter {
     fn escape_dot_string(s: &str) -> String {
         s.replace('\\', "\\\\")
             .replace('"', "\\\"")
@@ -309,7 +309,7 @@ impl<G, V> DotExporter<G, V> {
     }
 }
 
-impl<G: GraphvizRunner, V: ViewerLauncher> DotExporter<G, V> {
+impl DotExporter {
     pub fn export(
         &self,
         dot_content: &str,
@@ -350,9 +350,7 @@ impl<G: GraphvizRunner, V: ViewerLauncher> DotExporter<G, V> {
     }
 }
 
-impl<G: GraphvizRunner + 'static, V: ViewerLauncher + 'static> ErDiagramExporter
-    for DotExporter<G, V>
-{
+impl ErDiagramExporter for DotExporter {
     fn generate_and_export(
         &self,
         tables: &[ErTableInfo],
@@ -370,9 +368,15 @@ mod tests {
     use super::*;
     use crate::domain::er::ErFkInfo;
 
-    impl<G: GraphvizRunner, V: ViewerLauncher> DotExporter<G, V> {
-        fn with_dependencies(graphviz: G, viewer: V) -> Self {
-            Self { graphviz, viewer }
+    impl DotExporter {
+        fn with_dependencies<G: GraphvizRunner + 'static, V: ViewerLauncher + 'static>(
+            graphviz: G,
+            viewer: V,
+        ) -> Self {
+            Self {
+                graphviz: Box::new(graphviz),
+                viewer: Box::new(viewer),
+            }
         }
     }
 
@@ -404,9 +408,7 @@ mod tests {
         fn tables_appear_as_nodes() {
             let tables = make_test_tables();
 
-            let dot = DotExporter::<SystemGraphvizRunner, SystemViewerLauncher>::generate_full_dot(
-                &tables,
-            );
+            let dot = DotExporter::generate_full_dot(&tables);
 
             assert!(dot.contains("\"public.users\""));
             assert!(dot.contains("\"public.orders\""));
@@ -416,9 +418,7 @@ mod tests {
         fn foreign_keys_appear_as_edges() {
             let tables = make_test_tables();
 
-            let dot = DotExporter::<SystemGraphvizRunner, SystemViewerLauncher>::generate_full_dot(
-                &tables,
-            );
+            let dot = DotExporter::generate_full_dot(&tables);
 
             assert!(dot.contains("\"public.orders\" -> \"public.users\""));
             assert!(dot.contains("label=\"fk_user\""));
@@ -441,9 +441,7 @@ mod tests {
                 },
             ];
 
-            let dot = DotExporter::<SystemGraphvizRunner, SystemViewerLauncher>::generate_full_dot(
-                &tables,
-            );
+            let dot = DotExporter::generate_full_dot(&tables);
 
             let first_pos = dot.find("\"a.first\"").unwrap();
             let last_pos = dot.find("\"z.last\"").unwrap();
@@ -453,7 +451,10 @@ mod tests {
 
     mod export {
         use super::*;
-        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::{
+            Arc, Mutex,
+            atomic::{AtomicBool, Ordering},
+        };
 
         enum GraphvizFailure {
             None,
@@ -462,28 +463,28 @@ mod tests {
         }
 
         struct MockGraphviz {
-            called: AtomicBool,
+            called: Arc<AtomicBool>,
             failure: GraphvizFailure,
         }
 
         impl MockGraphviz {
             fn new() -> Self {
                 Self {
-                    called: AtomicBool::new(false),
+                    called: Arc::new(AtomicBool::new(false)),
                     failure: GraphvizFailure::None,
                 }
             }
 
             fn not_installed() -> Self {
                 Self {
-                    called: AtomicBool::new(false),
+                    called: Arc::new(AtomicBool::new(false)),
                     failure: GraphvizFailure::NotInstalled,
                 }
             }
 
             fn command_failed(exit_code: i32) -> Self {
                 Self {
-                    called: AtomicBool::new(false),
+                    called: Arc::new(AtomicBool::new(false)),
                     failure: GraphvizFailure::CommandFailed(exit_code),
                 }
             }
@@ -507,25 +508,25 @@ mod tests {
         }
 
         struct MockViewer {
-            called: AtomicBool,
+            called: Arc<AtomicBool>,
             should_fail: bool,
-            browser: std::sync::Mutex<Option<String>>,
+            browser: Arc<Mutex<Option<String>>>,
         }
 
         impl MockViewer {
             fn new() -> Self {
                 Self {
-                    called: AtomicBool::new(false),
+                    called: Arc::new(AtomicBool::new(false)),
                     should_fail: false,
-                    browser: std::sync::Mutex::new(None),
+                    browser: Arc::new(Mutex::new(None)),
                 }
             }
 
             fn failing() -> Self {
                 Self {
-                    called: AtomicBool::new(false),
+                    called: Arc::new(AtomicBool::new(false)),
                     should_fail: true,
-                    browser: std::sync::Mutex::new(None),
+                    browser: Arc::new(Mutex::new(None)),
                 }
             }
         }
@@ -548,20 +549,23 @@ mod tests {
         fn calls_graphviz_and_viewer() {
             let graphviz = MockGraphviz::new();
             let viewer = MockViewer::new();
+            let graphviz_called = Arc::clone(&graphviz.called);
+            let viewer_called = Arc::clone(&viewer.called);
             let exporter = DotExporter::with_dependencies(graphviz, viewer);
             let temp_dir = tempfile::tempdir().unwrap();
 
             let result = exporter.export("digraph {}", "test.dot", temp_dir.path(), None);
 
             assert!(result.is_ok());
-            assert!(exporter.graphviz.called.load(Ordering::SeqCst));
-            assert!(exporter.viewer.called.load(Ordering::SeqCst));
+            assert!(graphviz_called.load(Ordering::SeqCst));
+            assert!(viewer_called.load(Ordering::SeqCst));
         }
 
         #[test]
         fn passes_browser_to_viewer() {
             let graphviz = MockGraphviz::new();
             let viewer = MockViewer::new();
+            let viewer_browser = Arc::clone(&viewer.browser);
             let exporter = DotExporter::with_dependencies(graphviz, viewer);
             let temp_dir = tempfile::tempdir().unwrap();
 
@@ -569,10 +573,7 @@ mod tests {
                 exporter.export("digraph {}", "test.dot", temp_dir.path(), Some("Firefox"));
 
             assert!(result.is_ok());
-            assert_eq!(
-                exporter.viewer.browser.lock().unwrap().as_deref(),
-                Some("Firefox")
-            );
+            assert_eq!(viewer_browser.lock().unwrap().as_deref(), Some("Firefox"));
         }
 
         #[test]
@@ -664,6 +665,7 @@ mod tests {
         fn graphviz_not_installed_returns_error() {
             let graphviz = MockGraphviz::not_installed();
             let viewer = MockViewer::new();
+            let viewer_called = Arc::clone(&viewer.called);
             let exporter = DotExporter::with_dependencies(graphviz, viewer);
             let temp_dir = tempfile::tempdir().unwrap();
 
@@ -672,13 +674,14 @@ mod tests {
             assert!(result.is_err());
             let err_msg = result.unwrap_err().to_string();
             assert!(err_msg.contains("Graphviz"));
-            assert!(!exporter.viewer.called.load(Ordering::SeqCst));
+            assert!(!viewer_called.load(Ordering::SeqCst));
         }
 
         #[test]
         fn graphviz_command_failed_includes_exit_code() {
             let graphviz = MockGraphviz::command_failed(1);
             let viewer = MockViewer::new();
+            let viewer_called = Arc::clone(&viewer.called);
             let exporter = DotExporter::with_dependencies(graphviz, viewer);
             let temp_dir = tempfile::tempdir().unwrap();
 
@@ -688,13 +691,14 @@ mod tests {
             let err_msg = result.unwrap_err().to_string();
             assert!(err_msg.contains("Graphviz failed"));
             assert!(err_msg.contains("exit code"));
-            assert!(!exporter.viewer.called.load(Ordering::SeqCst));
+            assert!(!viewer_called.load(Ordering::SeqCst));
         }
 
         #[test]
         fn viewer_failure_returns_error() {
             let graphviz = MockGraphviz::new();
             let viewer = MockViewer::failing();
+            let graphviz_called = Arc::clone(&graphviz.called);
             let exporter = DotExporter::with_dependencies(graphviz, viewer);
             let temp_dir = tempfile::tempdir().unwrap();
 
@@ -703,7 +707,7 @@ mod tests {
             assert!(result.is_err());
             let err_msg = result.unwrap_err().to_string();
             assert!(err_msg.contains("mock failure"));
-            assert!(exporter.graphviz.called.load(Ordering::SeqCst));
+            assert!(graphviz_called.load(Ordering::SeqCst));
         }
 
         #[test]
