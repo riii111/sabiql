@@ -27,32 +27,23 @@ pub fn highlight_sql_spans(
 
     let lexer = SqlLexer::new(database_type);
     let tokens = lexer.tokenize(text, text.chars().count());
+    let chars: Vec<char> = text.chars().collect();
     let mut lines: Vec<Vec<Span<'static>>> = vec![Vec::new()];
+    let mut rendered_end = 0;
+    let text_style = Style::default().fg(theme.component.syntax.sql_text);
 
     for token in tokens {
-        let style = token_style(&token.kind, theme);
-        let mut segment = String::new();
-
-        for ch in token.text.chars() {
-            if ch == '\n' {
-                if !segment.is_empty() {
-                    lines
-                        .last_mut()
-                        .expect("sql highlight should always keep one line")
-                        .push(Span::styled(std::mem::take(&mut segment), style));
-                }
-                lines.push(Vec::new());
-            } else {
-                segment.push(ch);
-            }
+        if rendered_end < token.start {
+            let gap: String = chars[rendered_end..token.start].iter().collect();
+            append_styled_text(&mut lines, &gap, text_style);
         }
+        append_styled_text(&mut lines, &token.text, token_style(&token.kind, theme));
+        rendered_end = token.end;
+    }
 
-        if !segment.is_empty() {
-            lines
-                .last_mut()
-                .expect("sql highlight should always keep one line")
-                .push(Span::styled(segment, style));
-        }
+    if rendered_end < chars.len() {
+        let gap: String = chars[rendered_end..].iter().collect();
+        append_styled_text(&mut lines, &gap, text_style);
     }
 
     // Drop the trailing empty line so the line count matches `str::lines()`.
@@ -62,6 +53,31 @@ pub fn highlight_sql_spans(
     }
 
     lines
+}
+
+fn append_styled_text(lines: &mut Vec<Vec<Span<'static>>>, text: &str, style: Style) {
+    let mut segment = String::new();
+
+    for ch in text.chars() {
+        if ch == '\n' {
+            if !segment.is_empty() {
+                lines
+                    .last_mut()
+                    .expect("sql highlight should always keep one line")
+                    .push(Span::styled(std::mem::take(&mut segment), style));
+            }
+            lines.push(Vec::new());
+        } else {
+            segment.push(ch);
+        }
+    }
+
+    if !segment.is_empty() {
+        lines
+            .last_mut()
+            .expect("sql highlight should always keep one line")
+            .push(Span::styled(segment, style));
+    }
 }
 
 fn token_style(kind: &TokenKind, theme: &ThemePalette) -> Style {
@@ -76,7 +92,6 @@ fn token_style(kind: &TokenKind, theme: &ThemePalette) -> Style {
         TokenKind::Identifier(_)
         | TokenKind::BacktickIdentifier(_)
         | TokenKind::Punctuation(_)
-        | TokenKind::Whitespace
         | TokenKind::Unknown => Style::default().fg(theme.component.syntax.sql_text),
     }
 }
