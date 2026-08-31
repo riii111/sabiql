@@ -138,15 +138,9 @@ impl MySqlMetadataProcess {
             .kill_on_drop(true);
         sanitize_mysql_command_environment(&mut command);
         let mut child = command.spawn().map_err(map_mysql_cli_spawn_error)?;
-        let stdin = child.stdin.take().ok_or_else(|| {
-            DbOperationError::QueryFailed("mysql stdin was not piped".to_string())
-        })?;
-        let stdout = child.stdout.take().ok_or_else(|| {
-            DbOperationError::QueryFailed("mysql stdout was not piped".to_string())
-        })?;
-        let stderr = child.stderr.take().ok_or_else(|| {
-            DbOperationError::QueryFailed("mysql stderr was not piped".to_string())
-        })?;
+        let stdin = child.stdin.take().expect("piped mysql stdin");
+        let stdout = child.stdout.take().expect("piped mysql stdout");
+        let stderr = child.stderr.take().expect("piped mysql stderr");
         Ok(Self {
             child,
             stdin: Some(stdin),
