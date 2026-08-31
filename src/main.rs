@@ -30,7 +30,7 @@ use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::input_mode::InputMode;
 use sabiql_app::ports::outbound::{
     ConnectionStore, ConnectionStoreError, MySqlConnectionProbe, PgServiceEntryReader,
-    ServiceFileError, SettingsStore, SqliteDiagnosticsProvider,
+    ServiceFileError, SqliteDiagnosticsProvider,
 };
 use sabiql_app::services::AppServices;
 use sabiql_app::update::action::Action;
