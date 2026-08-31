@@ -7,7 +7,7 @@ use crate::adapters::csv_export::export_to_downloads;
 use crate::app::ports::outbound::{AccessMode, DbOperationError, QueryExecutor};
 use crate::domain::{
     CommandTag, QueryResult, QuerySource, RefreshScope, TableKind, TableKindInfo,
-    WriteExecutionResult, sqlite_sql::is_sqlite_explain_query_plan_sql,
+    WriteExecutionResult,
 };
 
 use super::sqlite3::parser::{
@@ -66,7 +66,8 @@ impl QueryExecutor for SqliteAdapter {
         )]
         let start = Instant::now();
         let stdout = self
-            .execute_quote_for_query_plan(path, &execution_query, query, access_mode.is_read_only())
+            .cli
+            .execute_quote(path, &execution_query, access_mode.is_read_only())
             .await?;
         let elapsed = start.elapsed().as_millis() as u64;
         let (stdout, changes) = strip_sqlite_probes(&stdout, &marker)?;
@@ -185,23 +186,6 @@ impl SqliteAdapter {
         let stdout = self.cli.execute_quote(path, query, read_only).await?;
         let elapsed = start.elapsed().as_millis() as u64;
         quoted_to_query_result(query, &stdout, source, elapsed)
-    }
-
-    async fn execute_quote_for_query_plan(
-        &self,
-        path: &str,
-        execution_sql: &str,
-        source_sql: &str,
-        read_only: bool,
-    ) -> Result<String, DbOperationError> {
-        // Detect against source_sql because execution_sql may include probe statements.
-        if is_sqlite_explain_query_plan_sql(source_sql) {
-            self.cli
-                .execute_quote_with_explain_off(path, execution_sql, read_only)
-                .await
-        } else {
-            self.cli.execute_quote(path, execution_sql, read_only).await
-        }
     }
 
     async fn execute_changes_query(

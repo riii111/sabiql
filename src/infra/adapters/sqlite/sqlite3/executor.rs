@@ -80,28 +80,6 @@ impl SqliteCli {
         .await
     }
 
-    pub(in crate::adapters::sqlite) async fn execute_quote_with_explain_off(
-        &self,
-        path: &str,
-        sql: &str,
-        read_only: bool,
-    ) -> Result<String, DbOperationError> {
-        self.execute_text(
-            path,
-            &[
-                "-batch",
-                "-bail",
-                "-quote",
-                "-header",
-                "-cmd",
-                ".explain off",
-            ],
-            sql,
-            read_only,
-        )
-        .await
-    }
-
     async fn execute_text(
         &self,
         path: &str,
@@ -297,6 +275,7 @@ impl SqliteCli {
             cmd.arg("-readonly");
         }
         cmd.arg("-cmd").arg(format!(".timeout {BUSY_TIMEOUT_MS}"));
+        cmd.arg("-cmd").arg(".explain off");
     }
 
     fn apply_initialization_file(cmd: &mut Command) {
@@ -752,7 +731,7 @@ esac
         }
 
         #[test]
-        fn initialization_precedes_safe_read_only_and_timeout() {
+        fn session_options_include_safety_timeout_and_explain_output() {
             let mut cmd = Command::new("sqlite3");
             SqliteCli::apply_session_options(&mut cmd, true);
             let args = cmd
@@ -770,6 +749,8 @@ esac
                     "-readonly",
                     "-cmd",
                     &format!(".timeout {BUSY_TIMEOUT_MS}"),
+                    "-cmd",
+                    ".explain off",
                 ]
             );
         }
