@@ -286,11 +286,6 @@ async fn handle_smart_refresh_cache_and_diff(
     let old_names: HashSet<&str> = old_signatures.keys().map(String::as_str).collect();
     let new_names: HashSet<&str> = new_signatures.keys().map(String::as_str).collect();
 
-    let added_tables: Vec<String> = new_names
-        .difference(&old_names)
-        .filter(|name| !cached_tables.contains(**name))
-        .map(ToString::to_string)
-        .collect();
     let removed_tables: Vec<String> = old_names
         .difference(&new_names)
         .map(ToString::to_string)
@@ -318,7 +313,6 @@ async fn handle_smart_refresh_cache_and_diff(
             run_id,
             new_metadata,
             stale_tables,
-            added_tables,
             removed_tables,
             missing_in_cache,
             new_signatures,
@@ -410,8 +404,39 @@ mod tests {
         let Action::SmartErRefreshCompleted(result) = action_rx.recv().await.unwrap() else {
             panic!("expected smart refresh completion");
         };
-        assert!(result.added_tables.is_empty());
         assert!(result.missing_in_cache.is_empty());
+    }
+
+    #[tokio::test]
+    async fn uncached_new_tables_are_reported_as_missing_in_cache() {
+        let dsn = "mysql://user:password@localhost:3306/app";
+        let state = state_with_mysql_dsn(dsn);
+        let completion_engine = RefCell::new(CompletionEngine::new());
+        let (action_tx, mut action_rx) = mpsc::channel(1);
+
+        handle_smart_refresh_cache_and_diff(
+            &action_tx,
+            &state,
+            &completion_engine,
+            dsn.to_string(),
+            1,
+            Arc::new(DatabaseMetadata::new("app".to_string())),
+            Arc::new(TableSignatureSnapshot {
+                signatures: vec![TableSignature {
+                    schema: "app".to_string(),
+                    name: "new_table".to_string(),
+                    signature: "signature".to_string(),
+                }],
+                prefetched_table_details: vec![],
+            }),
+        )
+        .await
+        .unwrap();
+
+        let Action::SmartErRefreshCompleted(result) = action_rx.recv().await.unwrap() else {
+            panic!("expected smart refresh completion");
+        };
+        assert_eq!(result.missing_in_cache, vec!["app.new_table"]);
     }
 
     #[tokio::test]
