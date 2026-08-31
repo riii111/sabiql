@@ -10,7 +10,6 @@ pub enum TokenKind {
     StringLiteral,
     Number,
     Comment,
-    Whitespace,
     Unknown,
 }
 
@@ -299,16 +298,9 @@ impl SqlLexer {
             match state {
                 LexerState::Normal => {
                     if c.is_whitespace() {
-                        let start = pos;
                         while pos < end_pos && chars[pos].is_whitespace() {
                             pos += 1;
                         }
-                        tokens.push(Token {
-                            kind: TokenKind::Whitespace,
-                            text: chars[start..pos].iter().collect(),
-                            start,
-                            end: pos,
-                        });
                         continue;
                     }
 
@@ -743,10 +735,7 @@ impl SqlLexer {
             return false;
         }
 
-        let Some(for_index) = tokens[..scope_index]
-            .iter()
-            .rposition(|token| token.kind != TokenKind::Whitespace)
-        else {
+        let Some(for_index) = scope_index.checked_sub(1) else {
             return false;
         };
         let is_for = matches!(
@@ -758,10 +747,7 @@ impl SqlLexer {
             return false;
         }
 
-        let Some(index_hint_index) = tokens[..for_index]
-            .iter()
-            .rposition(|token| token.kind != TokenKind::Whitespace)
-        else {
+        let Some(index_hint_index) = for_index.checked_sub(1) else {
             return false;
         };
         matches!(
@@ -786,9 +772,6 @@ impl SqlLexer {
         }
 
         loop {
-            while index < tokens.len() && tokens[index].kind == TokenKind::Whitespace {
-                index += 1;
-            }
             let Some(token) = tokens.get(index) else {
                 return index;
             };
@@ -810,9 +793,6 @@ impl SqlLexer {
             && matches!(&tokens[index].kind, TokenKind::Keyword(k) if k == "ONLY")
         {
             index += 1;
-            while index < tokens.len() && tokens[index].kind == TokenKind::Whitespace {
-                index += 1;
-            }
         }
         index
     }
@@ -824,10 +804,7 @@ impl SqlLexer {
 
         let mut index = update_index;
         for expected in ["KEY", "DUPLICATE", "ON"] {
-            let Some(previous_index) = tokens[..index]
-                .iter()
-                .rposition(|token| token.kind != TokenKind::Whitespace)
-            else {
+            let Some(previous_index) = index.checked_sub(1) else {
                 return false;
             };
             index = previous_index;
@@ -877,9 +854,6 @@ impl SqlLexer {
                         in_for_clause = false;
                         can_start_straight_join = false;
                         i += 1;
-                        while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                            i += 1;
-                        }
                         // Skip ONLY keyword (PostgreSQL inheritance)
                         i = Self::skip_only_keyword(tokens, i);
                         if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
@@ -893,17 +867,11 @@ impl SqlLexer {
                         in_for_clause = false;
                         can_start_straight_join = false;
                         i += 1;
-                        while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                            i += 1;
-                        }
                         // Check for JOIN keyword
                         if i < tokens.len()
                             && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "JOIN")
                         {
                             i += 1;
-                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                                i += 1;
-                            }
                             if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
                                 refs.push(table_ref);
                                 can_start_straight_join = true;
@@ -913,10 +881,7 @@ impl SqlLexer {
                     }
                     // FOR starts a locking clause (FOR UPDATE, FOR NO KEY UPDATE, etc.)
                     "FOR" => {
-                        let mut next = i + 1;
-                        while next < tokens.len() && tokens[next].kind == TokenKind::Whitespace {
-                            next += 1;
-                        }
+                        let next = i + 1;
                         if next >= tokens.len() || !self.is_mysql_index_hint_scope(tokens, next) {
                             in_for_clause = true;
                             can_start_straight_join = false;
@@ -933,24 +898,15 @@ impl SqlLexer {
                         can_start_straight_join = false;
                         i += 1;
                         i = self.skip_mysql_modifiers(tokens, i, MYSQL_INSERT_MODIFIERS);
-                        while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                            i += 1;
-                        }
                         if i < tokens.len()
                             && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "INTO")
                         {
                             i += 1;
-                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                                i += 1;
-                            }
                         }
                         if i < tokens.len()
                             && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "ONLY")
                         {
                             i += 1;
-                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                                i += 1;
-                            }
                         }
                         if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
                             refs.push(table_ref);
@@ -967,9 +923,6 @@ impl SqlLexer {
                         can_start_straight_join = false;
                         i += 1;
                         i = self.skip_mysql_modifiers(tokens, i, MYSQL_UPDATE_MODIFIERS);
-                        while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                            i += 1;
-                        }
                         // Skip ONLY keyword (PostgreSQL inheritance)
                         i = Self::skip_only_keyword(tokens, i);
                         if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
@@ -1014,18 +967,9 @@ impl SqlLexer {
         }
         *i += 1;
 
-        // Skip whitespace
-        while *i < tokens.len() && tokens[*i].kind == TokenKind::Whitespace {
-            *i += 1;
-        }
-
         // Check for schema.table pattern
         if *i < tokens.len() && tokens[*i].kind == TokenKind::Punctuation('.') {
             *i += 1;
-            // Skip whitespace
-            while *i < tokens.len() && tokens[*i].kind == TokenKind::Whitespace {
-                *i += 1;
-            }
             let token = tokens.get(*i)?;
             if let TokenKind::Identifier(name)
             | TokenKind::BacktickIdentifier(name)
@@ -1039,22 +983,11 @@ impl SqlLexer {
             }
         }
 
-        // Skip whitespace
-        while *i < tokens.len() && tokens[*i].kind == TokenKind::Whitespace {
-            *i += 1;
-        }
-
         if self.is_mysql()
             && *i < tokens.len()
             && matches!(&tokens[*i].kind, TokenKind::Keyword(kw) if kw == "PARTITION")
         {
-            let mut partition_start = *i + 1;
-            while partition_start < tokens.len()
-                && tokens[partition_start].kind == TokenKind::Whitespace
-            {
-                partition_start += 1;
-            }
-
+            let partition_start = *i + 1;
             if partition_start < tokens.len()
                 && tokens[partition_start].kind == TokenKind::Punctuation('(')
             {
@@ -1073,10 +1006,6 @@ impl SqlLexer {
                         break;
                     }
                 }
-
-                while *i < tokens.len() && tokens[*i].kind == TokenKind::Whitespace {
-                    *i += 1;
-                }
             }
         }
 
@@ -1086,10 +1015,6 @@ impl SqlLexer {
             && kw == "AS"
         {
             *i += 1;
-            // Skip whitespace
-            while *i < tokens.len() && tokens[*i].kind == TokenKind::Whitespace {
-                *i += 1;
-            }
         }
 
         // Get alias if present (identifier that's not a keyword like ON, WHERE, etc.)
@@ -1157,9 +1082,6 @@ impl SqlLexer {
                 i += 1;
 
                 // Skip RECURSIVE if present
-                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                    i += 1;
-                }
                 if i < tokens.len()
                     && let TokenKind::Keyword(k) = &tokens[i].kind
                     && k == "RECURSIVE"
@@ -1169,11 +1091,6 @@ impl SqlLexer {
 
                 // Parse CTE definitions separated by commas
                 loop {
-                    // Skip whitespace
-                    while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                        i += 1;
-                    }
-
                     if i >= tokens.len() {
                         break;
                     }
@@ -1323,34 +1240,22 @@ impl SqlLexer {
                         "UPDATE" => {
                             i += 1;
                             i = self.skip_mysql_modifiers(tokens, i, MYSQL_UPDATE_MODIFIERS);
-                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                                i += 1;
-                            }
                             // Skip ONLY keyword (PostgreSQL inheritance)
                             if i < tokens.len()
                                 && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "ONLY")
                             {
                                 i += 1;
-                                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                                    i += 1;
-                                }
                             }
                             return self.parse_table_reference(tokens, &mut i);
                         }
                         "DELETE" => {
                             i += 1;
                             i = self.skip_mysql_modifiers(tokens, i, MYSQL_DELETE_MODIFIERS);
-                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                                i += 1;
-                            }
                             // Skip FROM if present
                             if i < tokens.len()
                                 && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "FROM")
                             {
                                 i += 1;
-                                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                                    i += 1;
-                                }
                             }
                             // Skip ONLY keyword (PostgreSQL inheritance)
                             i = Self::skip_only_keyword(tokens, i);
@@ -1359,17 +1264,11 @@ impl SqlLexer {
                         "INSERT" | "REPLACE" => {
                             i += 1;
                             i = self.skip_mysql_modifiers(tokens, i, MYSQL_INSERT_MODIFIERS);
-                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                                i += 1;
-                            }
                             // Skip INTO if present
                             if i < tokens.len()
                                 && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "INTO")
                             {
                                 i += 1;
-                                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                                    i += 1;
-                                }
                             }
                             // Skip ONLY keyword (PostgreSQL inheritance)
                             i = Self::skip_only_keyword(tokens, i);
@@ -1420,6 +1319,26 @@ mod tests {
                 })
                 .collect();
             assert_eq!(keywords, vec!["SELECT", "FROM"]);
+        }
+
+        #[test]
+        fn whitespace_advances_cursor_without_tokens_or_span_changes() {
+            let tokens = lexer().tokenize("SELECT * FROM users", 19);
+
+            let spans: Vec<_> = tokens
+                .iter()
+                .map(|token| (token.text.as_str(), token.start, token.end))
+                .collect();
+
+            assert_eq!(
+                spans,
+                vec![
+                    ("SELECT", 0, 6),
+                    ("*", 7, 8),
+                    ("FROM", 9, 13),
+                    ("users", 14, 19),
+                ]
+            );
         }
 
         #[test]
