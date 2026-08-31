@@ -27,7 +27,9 @@ pub fn spawn_query_history_load(
                             .ok();
                     }
                     Err(e) => {
-                        tx.send(Action::QueryHistoryLoadFailed(scope, e)).await.ok();
+                        tx.send(Action::QueryHistoryLoadFailed(scope, e.to_string()))
+                            .await
+                            .ok();
                     }
                 }
             });

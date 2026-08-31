@@ -54,14 +54,14 @@ pub(super) fn reduce_query_history_picker(state: &mut AppState, action: &Action)
             state.query_history_picker.replace_entries(entries);
             DispatchResult::handled()
         }
-        Action::QueryHistoryLoadFailed(scope, e) => {
+        Action::QueryHistoryLoadFailed(scope, error) => {
             if state.modal.active_mode() != InputMode::QueryHistoryPicker {
                 return DispatchResult::handled();
             }
             if state.session.query_history_scope().as_ref() != Some(scope) {
                 return DispatchResult::handled();
             }
-            state.messages.set_error(e.to_string());
+            state.messages.set_error(error.clone());
             DispatchResult::handled()
         }
         Action::TextInput {

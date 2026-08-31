@@ -28,8 +28,6 @@ pub(crate) fn dispatch_modal(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use super::*;
     use crate::cmd::effect::Effect;
     use crate::domain::{ConnectionId, DatabaseType, QueryValue};
@@ -1107,7 +1105,6 @@ mod tests {
             QueryHistoryEntry, QueryHistoryScope, QueryResultStatus,
         };
         use crate::model::shared::text_input::TextInputLike;
-        use crate::ports::outbound::query_history::QueryHistoryError;
 
         fn make_entry(query: &str, conn_id: &ConnectionId) -> QueryHistoryEntry {
             QueryHistoryEntry::new_with_database(
@@ -1353,7 +1350,7 @@ mod tests {
                     &mut state,
                     &Action::QueryHistoryLoadFailed(
                         scope(&ConnectionId::from_string("test-conn"), None),
-                        QueryHistoryError::Io(Arc::new(std::io::Error::other("disk error"))),
+                        "IO error: disk error".to_string(),
                     ),
                     now,
                 )
@@ -1375,7 +1372,7 @@ mod tests {
                     &mut state,
                     &Action::QueryHistoryLoadFailed(
                         scope(&ConnectionId::from_string("test-conn"), None),
-                        QueryHistoryError::Io(Arc::new(std::io::Error::other("stale error"))),
+                        "IO error: stale error".to_string(),
                     ),
                     now,
                 )
@@ -1394,7 +1391,7 @@ mod tests {
                     &mut state,
                     &Action::QueryHistoryLoadFailed(
                         scope(&ConnectionId::from_string("old-conn"), None),
-                        QueryHistoryError::Io(Arc::new(std::io::Error::other("stale error"))),
+                        "IO error: stale error".to_string(),
                     ),
                     now,
                 )
