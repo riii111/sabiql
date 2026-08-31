@@ -827,6 +827,7 @@ mod tests {
         #[rstest]
         #[case::update("UPDATE 1\n", 1)]
         #[case::delete("DELETE 3\n", 3)]
+        #[case::insert("INSERT 0 10\n", 10)]
         #[case::select("SELECT 1\n", 1)]
         #[case::zero_rows("UPDATE 0", 0)]
         #[case::large_number("DELETE 1000000", 1_000_000)]
