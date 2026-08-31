@@ -71,7 +71,7 @@ fn fake_mysql(mode: &str) -> (TempDir, PathBuf, PathBuf) {
     let user_response = if mode == "nonzero_exit" {
         "printf '%s\\n' '<resultset><row><field name=\"partial\">row</field></row></resultset>'"
     } else if mode == "failure" {
-        "printf '%s\\n' '<resultset><row><field name=\"partial\">row</field></row></resultset>'\n    exit_status=1\n    [ \"$adhoc\" -eq 0 ] && printf '%s\\n' 'ERROR 1064 (42000): syntax error' >&2"
+        "printf '%s\\n' '<resultset><row><field name=\"partial\">row</field></row></resultset>'\n    printf '%s\\n' 'ERROR 1064 (42000): syntax error' >&2\n    exit_status=1"
     } else if mode == "no_result_failure" {
         "printf '%s\\n' 'ERROR 1054 (42S22): Unknown column missing_column' >&2\n    exit 1"
     } else if mode == "connection_refused" {
@@ -87,12 +87,11 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>'"
     } else {
         ""
     };
-    let finish_error = if mode == "failure" {
-        "printf '%s\\n' 'ERROR 1064 (42000): syntax error' >&2"
+    let finish_status = if mode == "nonzero_exit" {
+        "exit_status=1\n        dd bs=1 count=1 >/dev/null 2>&1\n        break"
     } else {
         ""
     };
-    let finish_status = if mode == "nonzero_exit" { "exit 1" } else { "" };
     let settings_timeout = if mode == "timeout" {
         "while :; do :; done"
     } else {
@@ -104,10 +103,6 @@ option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
 log="$option.log"
 eof=$(printf '\004')
 exit_status=0
-adhoc=0
-case "$*" in
-  *--show-warnings*) adhoc=1 ;;
-esac
 while IFS= read -r line; do
   printf '%s\n' "$line" >> "$log"
   [ "$line" = "$eof" ] && break
@@ -125,7 +120,6 @@ while IFS= read -r line; do
         {session_response}
       else
         printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
-        {finish_error}
         {finish_status}
       fi
       ;;
