@@ -1828,7 +1828,7 @@ mod tests {
         #[test]
         fn metadata_failed_resets_er_waiting_to_idle() {
             let mut state = create_test_state();
-            state.er_preparation.mark_waiting_for_test();
+            let _ = state.er_preparation.start_waiting_run();
             let now = Instant::now();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             let run_id = state.session.begin_metadata_refresh();
@@ -3111,7 +3111,7 @@ mod tests {
             let mut state = state_with_metadata();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             let run_id = state.table_prefetch.begin_er_prefetch();
-            state.er_preparation.mark_waiting_for_test();
+            let _ = state.er_preparation.start_waiting_run();
             state
                 .er_preparation
                 .begin_all_prefetch(["public.users".to_string()]);
@@ -3149,7 +3149,7 @@ mod tests {
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             let now = Instant::now();
             let run_id = state.table_prefetch.begin_er_prefetch();
-            state.er_preparation.mark_waiting_for_test();
+            let _ = state.er_preparation.start_waiting_run();
             state
                 .er_preparation
                 .begin_all_prefetch(["public.posts".to_string(), "public.users".to_string()]);

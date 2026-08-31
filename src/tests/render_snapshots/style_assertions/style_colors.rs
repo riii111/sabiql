@@ -186,6 +186,7 @@ fn header_status_uses_success_warning_and_error_colors() {
     );
 
     let mut no_dsn = create_test_state();
+    no_dsn.session.clear_connection();
     let no_dsn_buffer = render_and_get_buffer_at(&mut terminal, &mut no_dsn, now);
     assert_header_status_color(
         &no_dsn_buffer,
