@@ -456,7 +456,6 @@ mod tests {
     use crate::app::model::shared::input_mode::InputMode;
     use crate::app::model::shared::settings::KeymapPreset;
     use crate::app::model::shared::ui_state::FocusMode;
-    use crate::app::model::sql_editor::modal::SqlModalStatus;
     use crate::app::ports::outbound::DbOperationError;
     use crate::app::update::input::keybindings::{
         connection_error, connection_setup, global, help, json_detail, json_edit, result_active,
@@ -683,7 +682,7 @@ mod tests {
             "postgres://localhost/test",
         );
         state.modal.set_mode(InputMode::SqlModal);
-        state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+        state.sql_modal.enter_editing();
         state.settings.load_keymap_preset(preset);
 
         let hints = Footer::get_context_hints(&state);
