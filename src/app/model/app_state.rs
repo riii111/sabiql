@@ -1504,7 +1504,7 @@ mod tests {
                     &Action::TableDetailLoaded {
                         dsn: "dsn://test".to_string(),
                         run_id,
-                        detail: Box::new(make_table_detail()),
+                        outcome: Ok(Box::new(make_table_detail())),
                         generation,
                     },
                     Instant::now(),

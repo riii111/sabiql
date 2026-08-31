@@ -3255,7 +3255,7 @@ mod tests {
                 Action::TableDetailLoaded {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id: detail_run_id,
-                    detail: Box::new(test_support::table::minimal("public", "users")),
+                    outcome: Ok(Box::new(test_support::table::minimal("public", "users"))),
                     generation,
                 },
                 now,
