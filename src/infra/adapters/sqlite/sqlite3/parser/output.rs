@@ -432,36 +432,26 @@ pub(in crate::adapters::sqlite) fn strip_sqlite_probes(
     Ok((kept.join("\n"), changes))
 }
 
-fn last_csv_cell(stdout: &str) -> Result<String, DbOperationError> {
-    let line = stdout
-        .lines()
-        .rev()
-        .find(|line| !line.trim().is_empty())
-        .ok_or_else(|| DbOperationError::EmptyResponse(stdout.to_string()))?;
+fn last_csv_cell(stdout: &str) -> Result<Option<String>, DbOperationError> {
+    let Some(line) = stdout.lines().rev().find(|line| !line.trim().is_empty()) else {
+        return Ok(None);
+    };
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(false)
         .from_reader(line.as_bytes());
     let mut records = reader.records();
-    let record = records
-        .next()
-        .transpose()?
-        .ok_or_else(|| DbOperationError::EmptyResponse(stdout.to_string()))?;
-    record
-        .get(0)
-        .map(ToString::to_string)
-        .ok_or_else(|| DbOperationError::EmptyResponse(stdout.to_string()))
+    let Some(record) = records.next().transpose()? else {
+        return Ok(None);
+    };
+    Ok(record.get(0).map(ToString::to_string))
 }
 
 pub(in crate::adapters::sqlite) fn parse_affected_rows(
     stdout: &str,
 ) -> Result<usize, DbOperationError> {
-    last_csv_cell(stdout)
-        .map_err(|error| match error {
-            DbOperationError::EmptyResponse(_) => {
-                DbOperationError::CommandTagParseFailed(stdout.to_string())
-            }
-            other => other,
-        })?
+    let value = last_csv_cell(stdout)?
+        .ok_or_else(|| DbOperationError::CommandTagParseFailed(stdout.to_string()))?;
+    value
         .parse::<usize>()
         .map_err(|error| DbOperationError::CommandTagParseFailed(error.to_string()))
 }
@@ -759,6 +749,38 @@ mod tests {
         #[test]
         fn parse_affected_rows_reads_trailing_changes_cell() {
             assert_eq!(parse_affected_rows("changes()\n3\n").unwrap(), 3);
+        }
+
+        #[test]
+        fn parse_affected_rows_rejects_empty_output_as_command_tag_failure() {
+            let error = parse_affected_rows("").unwrap_err();
+
+            assert!(matches!(
+                error,
+                DbOperationError::CommandTagParseFailed(details) if details.is_empty()
+            ));
+        }
+
+        #[test]
+        fn parse_affected_rows_rejects_header_only_output_as_invalid_count() {
+            let error = parse_affected_rows("changes()\n").unwrap_err();
+
+            assert!(matches!(
+                error,
+                DbOperationError::CommandTagParseFailed(details)
+                    if details.contains("invalid digit found in string")
+            ));
+        }
+
+        #[test]
+        fn parse_affected_rows_rejects_missing_first_field_as_invalid_count() {
+            let error = parse_affected_rows(",second\n").unwrap_err();
+
+            assert!(matches!(
+                error,
+                DbOperationError::CommandTagParseFailed(details)
+                    if details.contains("cannot parse integer from empty string")
+            ));
         }
 
         #[test]
