@@ -17,7 +17,7 @@ use crate::update::action::{
 use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
-use crate::update::input::command::{command_to_action, parse_command};
+use crate::update::input::command::action_for_command;
 
 use super::write;
 
@@ -174,8 +174,7 @@ pub fn reduce_execution(state: &mut AppState, action: &Action, now: Instant) -> 
         }
 
         Action::CommandLineSubmit => {
-            let cmd = parse_command(state.command_line_input.content());
-            let follow_up = command_to_action(cmd);
+            let follow_up = action_for_command(state.command_line_input.content());
             state.modal.pop_mode();
             state.command_line_input.clear();
 
