@@ -11,7 +11,11 @@ use crate::model::app_state::AppState;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn dispatch_explain(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub(in crate::update) fn dispatch_explain(
+    state: &mut AppState,
+    action: &Action,
+    now: Instant,
+) -> DispatchResult {
     request::reduce_request(state, action, now)
         .or_else(|| analyze::reduce_analyze(state, action, now))
         .or_else(|| output::reduce_output(state, action))

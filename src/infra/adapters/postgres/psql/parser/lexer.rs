@@ -19,7 +19,7 @@ fn skip_quoted(bytes: &[u8], mut i: usize, quote: u8) -> usize {
     i
 }
 
-pub(super) fn skip_dollar_quoted(sql: &str, bytes: &[u8], mut i: usize) -> usize {
+fn skip_dollar_quoted(sql: &str, bytes: &[u8], mut i: usize) -> usize {
     let tag_start = i;
     i += 1;
     while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {

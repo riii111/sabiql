@@ -1,7 +1,7 @@
 use crate::ports::outbound::{AppSettings, SettingsStore};
 use crate::update::action::Action;
 
-pub(crate) fn run(
+pub(in crate::cmd) fn run(
     settings: AppSettings,
     settings_store: &std::sync::Arc<dyn SettingsStore>,
 ) -> Action {

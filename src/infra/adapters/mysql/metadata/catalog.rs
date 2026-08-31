@@ -227,11 +227,7 @@ pub(super) fn validate_selected_schema_name(
     Ok(())
 }
 
-pub(super) fn mysql_database_names_match(
-    left: &str,
-    right: &str,
-    lower_case_table_names: u8,
-) -> bool {
+fn mysql_database_names_match(left: &str, right: &str, lower_case_table_names: u8) -> bool {
     match lower_case_table_names {
         0 => left == right,
         1 | 2 => left.to_lowercase() == right.to_lowercase(),

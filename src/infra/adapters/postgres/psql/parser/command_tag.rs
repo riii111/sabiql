@@ -236,13 +236,13 @@ impl PostgresAdapter {
 }
 
 #[cfg_attr(test, derive(Debug))]
-pub(in crate::adapters::postgres) struct ResolvedTags {
+struct ResolvedTags {
     all: Vec<CommandTag>,
     effective: Vec<CommandTag>,
 }
 
 impl ResolvedTags {
-    pub(in crate::adapters::postgres) fn resolve(stdout: &str, sql: &str) -> Option<Self> {
+    fn resolve(stdout: &str, sql: &str) -> Option<Self> {
         let parsed = PostgresAdapter::parse_all_tags(stdout)?;
         let corrected = PostgresAdapter::correct_ctas_tags(sql, parsed);
         let effective = PostgresAdapter::discard_rolled_back(&corrected);
@@ -252,7 +252,7 @@ impl ResolvedTags {
         })
     }
 
-    pub(in crate::adapters::postgres) fn aggregate(&self) -> Option<CommandTag> {
+    fn aggregate(&self) -> Option<CommandTag> {
         if let Some(tag) = self.effective.iter().find(|t| t.is_schema_modifying()) {
             return Some(tag.clone());
         }

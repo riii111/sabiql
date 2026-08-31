@@ -6,18 +6,23 @@ fn normalize_json_for_diff(value: &str) -> String {
         .unwrap_or_else(|| value.to_string())
 }
 
-pub fn normalize_structured_json_for_write(value: &str) -> Result<String, serde_json::Error> {
+pub(crate) fn normalize_structured_json_for_write(
+    value: &str,
+) -> Result<String, serde_json::Error> {
     serde_json::from_str::<serde_json::Value>(value).and_then(|value| serde_json::to_string(&value))
 }
 
-pub fn normalize_for_write_diff(value: &str, handling: PreviewCellTextDiffHandling) -> String {
+pub(crate) fn normalize_for_write_diff(
+    value: &str,
+    handling: PreviewCellTextDiffHandling,
+) -> String {
     match handling {
         PreviewCellTextDiffHandling::StructuredJson => normalize_json_for_diff(value),
         PreviewCellTextDiffHandling::RawText => value.to_string(),
     }
 }
 
-pub fn uses_structured_json_diff(handling: PreviewCellTextDiffHandling) -> bool {
+pub(crate) fn uses_structured_json_diff(handling: PreviewCellTextDiffHandling) -> bool {
     handling == PreviewCellTextDiffHandling::StructuredJson
 }
 
