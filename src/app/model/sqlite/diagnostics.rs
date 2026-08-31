@@ -43,12 +43,6 @@ impl DiagnosticFieldKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DiagnosticDisplayRow<'a> {
-    pub kind: DiagnosticFieldKind,
-    pub field: &'a DiagnosticField,
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct SqliteDiagnosticsState {
     next_run_id: u64,
@@ -196,7 +190,9 @@ impl SqliteDiagnosticsState {
     }
 }
 
-pub fn display_rows(snapshot: &SqliteDiagnosticsSnapshot) -> Vec<DiagnosticDisplayRow<'_>> {
+pub fn display_rows(
+    snapshot: &SqliteDiagnosticsSnapshot,
+) -> impl Iterator<Item = (DiagnosticFieldKind, &DiagnosticField)> {
     [
         (DiagnosticFieldKind::DbFile, &snapshot.db_file),
         (DiagnosticFieldKind::SqliteVersion, &snapshot.sqlite_version),
@@ -212,8 +208,6 @@ pub fn display_rows(snapshot: &SqliteDiagnosticsSnapshot) -> Vec<DiagnosticDispl
         (DiagnosticFieldKind::QuickCheck, &snapshot.quick_check),
     ]
     .into_iter()
-    .map(|(kind, field)| DiagnosticDisplayRow { kind, field })
-    .collect()
 }
 
 pub fn display_field(field: &DiagnosticField) -> String {
