@@ -13,7 +13,17 @@ pub struct ConnectionErrorInfo {
 }
 
 impl ConnectionErrorInfo {
+    #[cfg(test)]
     pub(crate) fn from_parts(
+        summary: &'static str,
+        hint: &'static str,
+        retryable: bool,
+        raw_stderr: impl Into<String>,
+    ) -> Self {
+        Self::from_presentation(summary, hint, retryable, raw_stderr)
+    }
+
+    fn from_presentation(
         summary: &'static str,
         hint: &'static str,
         retryable: bool,
@@ -112,7 +122,7 @@ impl ConnectionErrorInfo {
                 false,
             ),
         };
-        Self::from_parts(summary, hint, retryable, raw_details)
+        Self::from_presentation(summary, hint, retryable, raw_details)
     }
 
     pub fn summary(&self) -> &'static str {
