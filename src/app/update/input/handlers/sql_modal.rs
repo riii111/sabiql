@@ -13,7 +13,7 @@ use crate::update::input::vim::{
     SqlModalVimContext, VimSurfaceContext, action_for_input, action_for_key,
 };
 
-pub fn handle_sql_modal_keys_with_feature_policy(
+pub(crate) fn handle_sql_modal_keys_with_feature_policy(
     combo: KeyCombo,
     completion_visible: bool,
     status: &SqlModalStatus,

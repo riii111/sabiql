@@ -24,7 +24,11 @@ fn ensure_cell_visible(state: &mut AppState) {
     }
 }
 
-pub fn reduce_selection(state: &mut AppState, action: &Action, _now: Instant) -> DispatchResult {
+pub(crate) fn reduce_selection(
+    state: &mut AppState,
+    action: &Action,
+    _now: Instant,
+) -> DispatchResult {
     match action {
         Action::ResultActivateCell => {
             let rows = result_row_count(state);

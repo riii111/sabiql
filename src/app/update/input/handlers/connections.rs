@@ -3,7 +3,7 @@ use crate::model::shared::settings::KeymapPreset;
 use crate::update::action::{Action, InputTarget};
 use crate::update::input::keybindings::{self, Key, KeyCombo, Modifiers};
 
-pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action {
+pub(crate) fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action {
     use crate::model::connection::setup::ConnectionField;
     use crate::update::action::CursorMove;
 
@@ -89,13 +89,13 @@ pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action
     }
 }
 
-pub fn handle_connection_error_keys(combo: KeyCombo) -> Action {
+pub(crate) fn handle_connection_error_keys(combo: KeyCombo) -> Action {
     keybindings::CONNECTION_ERROR
         .resolve(&combo)
         .unwrap_or(Action::None)
 }
 
-pub fn handle_connection_selector_keys(combo: KeyCombo) -> Action {
+pub(crate) fn handle_connection_selector_keys(combo: KeyCombo) -> Action {
     keybindings::CONNECTION_SELECTOR
         .resolve(&combo)
         .unwrap_or(Action::None)

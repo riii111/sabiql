@@ -91,7 +91,11 @@ fn dispatch_rerunnable_csv_export(
     DispatchResult::handled()
 }
 
-pub fn reduce_pagination(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub(crate) fn reduce_pagination(
+    state: &mut AppState,
+    action: &Action,
+    now: Instant,
+) -> DispatchResult {
     match action {
         Action::RequestCsvExport => {
             if reject_pending_mysql_connection_probe(state) {

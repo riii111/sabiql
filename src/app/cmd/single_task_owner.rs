@@ -3,12 +3,12 @@ use std::sync::Mutex;
 use tokio::task::JoinHandle;
 
 #[derive(Default)]
-pub struct SingleTaskOwner {
+pub(crate) struct SingleTaskOwner {
     active: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl SingleTaskOwner {
-    pub async fn replace<F>(&self, task: F)
+    pub(crate) async fn replace<F>(&self, task: F)
     where
         F: Future<Output = ()> + Send + 'static,
     {
@@ -19,7 +19,7 @@ impl SingleTaskOwner {
         *self.active.lock().expect("single task owner lock poisoned") = Some(task);
     }
 
-    pub fn abort(&self) -> Option<JoinHandle<()>> {
+    pub(crate) fn abort(&self) -> Option<JoinHandle<()>> {
         let task = self
             .active
             .lock()
@@ -31,7 +31,7 @@ impl SingleTaskOwner {
         task
     }
 
-    pub async fn cancel(&self) {
+    pub(crate) async fn cancel(&self) {
         if let Some(task) = self.abort() {
             let _ = task.await;
         }

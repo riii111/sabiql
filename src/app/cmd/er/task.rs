@@ -59,7 +59,7 @@ impl Drop for SmartErRefreshTaskOwner {
     }
 }
 
-pub fn spawn_er_diagram_task(
+pub(crate) fn spawn_er_diagram_task(
     exporter: Arc<dyn ErDiagramExporter>,
     tables: Vec<ErTableInfo>,
     run_id: u64,

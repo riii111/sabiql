@@ -2,7 +2,7 @@ use crate::cmd::effect::Effect;
 use crate::model::browse::query_execution::QueryExecution;
 
 /// Adds runtime cancellation after the model has invalidated the query context.
-pub fn termination_effects(query: &QueryExecution, follow_up: Vec<Effect>) -> Vec<Effect> {
+pub(crate) fn termination_effects(query: &QueryExecution, follow_up: Vec<Effect>) -> Vec<Effect> {
     debug_assert!(
         !query.is_running(),
         "query context must be invalidated before cancelling its task"

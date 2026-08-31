@@ -13,7 +13,7 @@ use crate::policy::sqlite_path::to_db_operation_error;
 use crate::ports::outbound::{DbOperationError, MetadataProvider, SqlitePathValidator};
 use crate::update::action::Action;
 
-pub async fn run(
+pub(crate) async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,

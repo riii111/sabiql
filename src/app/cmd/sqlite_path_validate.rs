@@ -4,7 +4,7 @@ use std::sync::Arc;
 use crate::domain::SqlitePathError;
 use crate::ports::outbound::SqlitePathValidator;
 
-pub async fn validate_sqlite_database_path(
+pub(crate) async fn validate_sqlite_database_path(
     validator: &Arc<dyn SqlitePathValidator>,
     path: String,
 ) -> Result<(), SqlitePathError> {
@@ -14,7 +14,7 @@ pub async fn validate_sqlite_database_path(
         .map_err(|error| SqlitePathError::Io(format!("validation task failed: {error}")))?
 }
 
-pub async fn canonicalize_sqlite_database_path(
+pub(crate) async fn canonicalize_sqlite_database_path(
     validator: &Arc<dyn SqlitePathValidator>,
     path: String,
 ) -> Result<PathBuf, SqlitePathError> {

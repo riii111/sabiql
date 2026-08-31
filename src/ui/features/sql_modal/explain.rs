@@ -19,7 +19,7 @@ use crate::domain::sqlite_sql::SQLITE_EXPLAIN_QUERY_PLAN_PREFIX;
 use crate::primitives::atoms::{apply_yank_flash, text_cursor_spans};
 use crate::theme::ThemePalette;
 
-pub fn render(
+pub(crate) fn render(
     frame: &mut Frame,
     area: Rect,
     state: &AppState,

@@ -5,7 +5,7 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::update::action::Action;
 
-pub fn run(
+pub(crate) fn run(
     effect: Effect,
     state: &AppState,
     completion_engine: &RefCell<CompletionEngine>,

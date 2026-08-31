@@ -1,4 +1,4 @@
-pub mod metadata;
-pub mod navigation;
-pub mod query;
-pub mod result;
+pub(crate) mod metadata;
+pub(crate) mod navigation;
+pub(crate) mod query;
+pub(crate) mod result;

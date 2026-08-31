@@ -8,7 +8,7 @@ use crate::update::input::vim::{
     BrowseVimContext, VimSurfaceContext, action_for_input, action_for_key,
 };
 
-pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
+pub(crate) fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     let browse_ctx = BrowseVimContext::from(state);
     let result_navigation = browse_ctx.is_result();
     let inspector_navigation = browse_ctx.is_inspector();

@@ -66,9 +66,7 @@ fn decode_hex_text(hex: &str) -> Result<String, DbOperationError> {
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn parse_unistr_inner_sql_escapes(
-    value: &str,
-) -> Result<String, DbOperationError> {
+fn parse_unistr_inner_sql_escapes(value: &str) -> Result<String, DbOperationError> {
     let inner = parse_unistr_inner_sql_string(value)?;
     let mut decoded = String::new();
     let mut chars = inner.chars();
@@ -188,9 +186,7 @@ fn decode_sqlite_nul_text_transport(text: &str) -> Result<Option<String>, DbOper
     Ok(None)
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn decode_preview_transport_unistr(
-    value: &str,
-) -> Result<Option<String>, DbOperationError> {
+fn decode_preview_transport_unistr(value: &str) -> Result<Option<String>, DbOperationError> {
     let inner = parse_unistr_inner_sql_escapes(value)?;
     decode_sqlite_nul_text_transport(&inner)
 }
@@ -213,7 +209,7 @@ fn decode_hex_bytes(hex: &str) -> Result<Vec<u8>, DbOperationError> {
     Ok(bytes)
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn parse_quoted_value(
+fn parse_quoted_value(
     value: &str,
     source: QuerySource,
     decode_preview_transport: bool,

@@ -23,7 +23,7 @@ use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{validate_all, validate_field};
 use crate::update::query_context::termination_effects;
 
-pub fn reduce_connection_setup(
+pub(crate) fn reduce_connection_setup(
     state: &mut AppState,
     action: &Action,
     _now: Instant,

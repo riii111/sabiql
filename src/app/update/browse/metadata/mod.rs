@@ -39,7 +39,11 @@ pub(super) fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
     }]
 }
 
-pub fn dispatch_metadata(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub(crate) fn dispatch_metadata(
+    state: &mut AppState,
+    action: &Action,
+    now: Instant,
+) -> DispatchResult {
     loading::reduce_loading(state, action, now)
         .or_else(|| table_detail::reduce_table_detail(state, action))
         .or_else(|| prefetch::reduce_prefetch(state, action, now))

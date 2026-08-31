@@ -11,7 +11,7 @@ use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn dispatch_connection(
+pub(crate) fn dispatch_connection(
     state: &mut AppState,
     action: &Action,
     now: Instant,

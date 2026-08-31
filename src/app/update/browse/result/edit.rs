@@ -78,7 +78,7 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Edi
     Ok((row_idx, col_idx, cell_value))
 }
 
-pub fn reduce_edit(state: &mut AppState, action: &Action, _now: Instant) -> DispatchResult {
+pub(crate) fn reduce_edit(state: &mut AppState, action: &Action, _now: Instant) -> DispatchResult {
     match action {
         Action::ResultEnterCellEdit => {
             if state.session.is_read_only() {

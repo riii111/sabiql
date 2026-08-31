@@ -1,2 +1,2 @@
 pub(crate) mod handler;
-pub mod task;
+pub(crate) mod task;

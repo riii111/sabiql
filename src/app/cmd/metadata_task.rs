@@ -18,12 +18,12 @@ struct RegistryState {
 }
 
 #[derive(Default)]
-pub struct MetadataTaskRegistry {
+pub(crate) struct MetadataTaskRegistry {
     state: Mutex<RegistryState>,
 }
 
 impl MetadataTaskRegistry {
-    pub fn spawn<F>(registry: &Arc<Self>, task: F)
+    pub(crate) fn spawn<F>(registry: &Arc<Self>, task: F)
     where
         F: Future<Output = ()> + Send + 'static,
     {
@@ -31,13 +31,13 @@ impl MetadataTaskRegistry {
         command_tx.send(Command::Spawn(Box::pin(task))).ok();
     }
 
-    pub async fn cancel(&self) {
+    pub(crate) async fn cancel(&self) {
         if let Some(handle) = self.abort() {
             let _ = handle.await;
         }
     }
 
-    pub fn abort(&self) -> Option<JoinHandle<()>> {
+    pub(crate) fn abort(&self) -> Option<JoinHandle<()>> {
         let command_tx = self
             .state
             .lock()

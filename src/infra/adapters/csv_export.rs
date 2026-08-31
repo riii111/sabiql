@@ -6,7 +6,7 @@ use std::time::SystemTime;
 use sabiql_app::ports::outbound::DbOperationError;
 use tokio::io::{AsyncWriteExt, BufWriter};
 
-pub const CSV_FLUSH_THRESHOLD: usize = 64 * 1024;
+pub(crate) const CSV_FLUSH_THRESHOLD: usize = 64 * 1024;
 
 fn new_csv_writer() -> csv::Writer<Vec<u8>> {
     csv::WriterBuilder::new().from_writer(Vec::with_capacity(CSV_FLUSH_THRESHOLD))
@@ -32,7 +32,7 @@ fn download_directory() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
-pub fn download_export_path(file_name: &str) -> PathBuf {
+pub(crate) fn download_export_path(file_name: &str) -> PathBuf {
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or_default();
@@ -105,7 +105,7 @@ impl CsvOutputError {
     }
 }
 
-pub async fn export_to_downloads<F, Fut>(
+pub(crate) async fn export_to_downloads<F, Fut>(
     file_name: &str,
     write: F,
 ) -> Result<PathBuf, DbOperationError>
@@ -116,7 +116,7 @@ where
     export_to_path(download_export_path(file_name), write).await
 }
 
-pub async fn export_to_path<F, Fut>(
+pub(crate) async fn export_to_path<F, Fut>(
     final_path: PathBuf,
     write: F,
 ) -> Result<PathBuf, DbOperationError>
@@ -127,7 +127,7 @@ where
     export_to_path_with_cleanup(final_path, write, |path| std::fs::remove_file(path)).await
 }
 
-pub struct CsvFileWriter {
+pub(crate) struct CsvFileWriter {
     file: BufWriter<tokio::fs::File>,
     csv_writer: csv::Writer<Vec<u8>>,
 }

@@ -5,7 +5,7 @@ use crate::update::action::{Action, InputTarget, ListMotion, ListTarget};
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::input::palette::palette_command_count;
 
-pub fn reduce_input(state: &mut AppState, action: &Action) -> DispatchResult {
+pub(crate) fn reduce_input(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
         Action::Paste(text) => match state.modal.active_mode() {
             InputMode::TablePicker => {

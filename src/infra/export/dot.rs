@@ -255,7 +255,7 @@ impl DotExporter {
             .replace('\n', "\\n")
     }
 
-    pub fn generate_full_dot(tables: &[ErTableInfo]) -> String {
+    fn generate_full_dot(tables: &[ErTableInfo]) -> String {
         let mut dot = String::new();
         dot.push_str("digraph full_er {\n");
         dot.push_str("    rankdir=LR;\n");
@@ -310,7 +310,7 @@ impl DotExporter {
 }
 
 impl DotExporter {
-    pub fn export(
+    fn export(
         &self,
         dot_content: &str,
         filename: &str,

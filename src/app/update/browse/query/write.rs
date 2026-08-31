@@ -166,7 +166,7 @@ fn build_write_preview_fallback_message(preview: &WritePreview) -> String {
     lines.join("\n")
 }
 
-pub fn reduce_write(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub(crate) fn reduce_write(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::SubmitCellEditWrite => {
             if reject_pending_mysql_connection_probe(state) {

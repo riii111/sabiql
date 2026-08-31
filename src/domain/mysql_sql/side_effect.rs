@@ -131,7 +131,7 @@ fn has_mysql_read_only_side_effect_function(tokens: &[lexer::Token], index: usiz
         )
 }
 
-pub(super) fn has_mysql_version_comment(sql: &str) -> Result<bool, MySqlLexError> {
+fn has_mysql_version_comment(sql: &str) -> Result<bool, MySqlLexError> {
     let bytes = sql.as_bytes();
     let mut index = 0;
 

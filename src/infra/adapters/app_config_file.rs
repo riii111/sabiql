@@ -3,18 +3,18 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
-pub const CONFIG_FILE_NAME: &str = "connections.toml";
+pub(crate) const CONFIG_FILE_NAME: &str = "connections.toml";
 
 static WRITE_COUNTER: AtomicU64 = AtomicU64::new(0);
 static CONFIG_FILE_LOCK: Mutex<()> = Mutex::new(());
 
-pub fn lock() -> MutexGuard<'static, ()> {
+pub(crate) fn lock() -> MutexGuard<'static, ()> {
     CONFIG_FILE_LOCK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-pub fn get_config_dir() -> Result<PathBuf, std::io::Error> {
+pub(crate) fn get_config_dir() -> Result<PathBuf, std::io::Error> {
     let config_base = dirs::config_dir().ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::NotFound,
@@ -24,11 +24,11 @@ pub fn get_config_dir() -> Result<PathBuf, std::io::Error> {
     Ok(config_base.join("sabiql"))
 }
 
-pub fn config_file_path(config_dir: &Path) -> PathBuf {
+pub(crate) fn config_file_path(config_dir: &Path) -> PathBuf {
     config_dir.join(CONFIG_FILE_NAME)
 }
 
-pub fn write_config_file(config_dir: &Path, content: &str) -> Result<(), std::io::Error> {
+pub(crate) fn write_config_file(config_dir: &Path, content: &str) -> Result<(), std::io::Error> {
     if !config_dir.exists() {
         fs::create_dir_all(config_dir)?;
     }
@@ -59,7 +59,7 @@ pub fn write_config_file(config_dir: &Path, content: &str) -> Result<(), std::io
     Ok(())
 }
 
-pub fn render_config_file(content: &str) -> String {
+pub(crate) fn render_config_file(content: &str) -> String {
     format!(
         "# sabiql configuration\n# WARNING: Connection passwords are stored in plain text\n\n{content}"
     )

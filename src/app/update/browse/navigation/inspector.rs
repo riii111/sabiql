@@ -15,7 +15,7 @@ fn inspector_page_scroll_delta(
     amount.page_delta(view_model.visible_rows(pane_height))
 }
 
-pub fn reduce_inspector(
+pub(crate) fn reduce_inspector(
     state: &mut AppState,
     action: &Action,
     services: &AppServices,

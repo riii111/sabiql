@@ -9,7 +9,7 @@ use crate::app::model::shared::detail_view::DetailSearchState;
 use crate::primitives::atoms::{CursorKind, set_terminal_cursor, text_cursor_spans_with_kind};
 use crate::theme::ThemePalette;
 
-pub fn search_match_status(search: &DetailSearchState) -> String {
+pub(crate) fn search_match_status(search: &DetailSearchState) -> String {
     if search.matches().is_empty() {
         "0/0".to_string()
     } else {
@@ -17,7 +17,7 @@ pub fn search_match_status(search: &DetailSearchState) -> String {
     }
 }
 
-pub fn render_detail_search(
+pub(crate) fn render_detail_search(
     frame: &mut Frame,
     area: Rect,
     search: &DetailSearchState,
