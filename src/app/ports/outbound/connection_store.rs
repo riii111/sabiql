@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::domain::connection::{ConnectionId, ConnectionProfile, ConnectionProfileError};
@@ -42,8 +41,6 @@ impl From<toml::de::Error> for ConnectionStoreError {
 #[cfg_attr(test, mockall::automock)]
 pub trait ConnectionStore: Send + Sync {
     fn save(&self, profile: &ConnectionProfile) -> Result<(), ConnectionStoreError>;
-
-    fn storage_path(&self) -> PathBuf;
 
     fn load_all(&self) -> Result<Vec<ConnectionProfile>, ConnectionStoreError>;
 
