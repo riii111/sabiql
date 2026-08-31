@@ -22,7 +22,6 @@ pub(in crate::adapters::sqlite) struct RawColumn {
     pub(in crate::adapters::sqlite) notnull: i64,
     pub(in crate::adapters::sqlite) dflt_value: Option<String>,
     pub(in crate::adapters::sqlite) pk: i64,
-    #[serde(default)]
     pub(in crate::adapters::sqlite) hidden: i64,
 }
 
@@ -70,7 +69,6 @@ pub(in crate::adapters::sqlite) struct RawTableKindInfo {
 
 #[derive(Debug, Deserialize)]
 pub(in crate::adapters::sqlite) struct RawPreviewMetadata {
-    #[serde(default)]
     pub(in crate::adapters::sqlite) columns: Vec<RawColumn>,
     pub(in crate::adapters::sqlite) table: Option<RawTableKindInfo>,
 }
@@ -81,9 +79,7 @@ pub(in crate::adapters::sqlite) struct RawBatchIndex {
     pub(in crate::adapters::sqlite) unique: i64,
     #[serde(default)]
     pub(in crate::adapters::sqlite) origin: String,
-    #[serde(default)]
     pub(in crate::adapters::sqlite) partial: i64,
-    #[serde(default)]
     pub(in crate::adapters::sqlite) columns: Vec<RawIndexColumn>,
     pub(in crate::adapters::sqlite) definition: Option<String>,
 }
@@ -91,22 +87,16 @@ pub(in crate::adapters::sqlite) struct RawBatchIndex {
 #[derive(Debug, Deserialize)]
 pub(in crate::adapters::sqlite) struct RawReferencedColumns {
     pub(in crate::adapters::sqlite) name: String,
-    #[serde(default)]
     pub(in crate::adapters::sqlite) columns: Vec<RawColumn>,
 }
 
 #[derive(Debug, Deserialize)]
 pub(in crate::adapters::sqlite) struct RawTableMetadata {
     pub(in crate::adapters::sqlite) table: Option<RawTableKindInfo>,
-    #[serde(default)]
     pub(in crate::adapters::sqlite) columns: Vec<RawColumn>,
-    #[serde(default)]
     pub(in crate::adapters::sqlite) indexes: Vec<RawBatchIndex>,
-    #[serde(default)]
     pub(in crate::adapters::sqlite) foreign_keys: Vec<RawForeignKey>,
-    #[serde(default)]
     pub(in crate::adapters::sqlite) triggers: Vec<RawTrigger>,
-    #[serde(default)]
     pub(in crate::adapters::sqlite) referenced_columns: Vec<RawReferencedColumns>,
     pub(in crate::adapters::sqlite) row_count: Option<i64>,
     pub(in crate::adapters::sqlite) source_ddl: Option<String>,
