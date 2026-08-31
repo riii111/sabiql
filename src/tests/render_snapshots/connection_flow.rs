@@ -450,9 +450,7 @@ fn render_service_error_without_service_file_hint(save_and_connect: bool) -> Str
         DatabaseType::PostgreSQL,
         "service=mydb",
     );
-    state
-        .runtime
-        .set_service_file_path(Some(std::path::PathBuf::from("/etc/pg_service.conf")));
+    state.set_service_file_path(Some(std::path::PathBuf::from("/etc/pg_service.conf")));
     if save_and_connect {
         state.connection_error.set_save_and_connect_error(
             ConnectionErrorInfo::from_db_operation_error(&DbOperationError::ConnectionFailed(
