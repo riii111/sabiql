@@ -172,28 +172,18 @@ async fn fetch_table_detail(
 
     table_detail_tasks
         .replace(async move {
-            match provider.fetch_table_detail(&dsn, &schema, &table).await {
-                Ok(detail) => {
-                    tx.send(Action::TableDetailLoaded {
-                        dsn,
-                        run_id,
-                        detail: Box::new(detail),
-                        generation,
-                    })
-                    .await
-                    .ok();
-                }
-                Err(e) => {
-                    tx.send(Action::TableDetailFailed {
-                        dsn,
-                        run_id,
-                        error: e,
-                        generation,
-                    })
-                    .await
-                    .ok();
-                }
-            }
+            let outcome = provider
+                .fetch_table_detail(&dsn, &schema, &table)
+                .await
+                .map(Box::new);
+            tx.send(Action::TableDetailLoaded {
+                dsn,
+                run_id,
+                outcome,
+                generation,
+            })
+            .await
+            .ok();
         })
         .await;
 }
@@ -561,6 +551,7 @@ mod tests {
                         ref dsn,
                         run_id: 9,
                         generation: 1,
+                        outcome: Ok(_),
                         ..
                     } if dsn == "dsn://test"
                 ),
