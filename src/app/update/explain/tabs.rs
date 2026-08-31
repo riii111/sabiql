@@ -1,10 +1,8 @@
-use std::time::Instant;
-
 use crate::model::app_state::AppState;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub(super) fn reduce_tabs(state: &mut AppState, action: &Action, _now: Instant) -> DispatchResult {
+pub(super) fn reduce_tabs(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
         Action::CompareEditQuery => {
             if let Some(ref right) = state.explain.right {

@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use crate::catalog::HelpDocument;
 use crate::model::app_state::AppState;
 use crate::model::shared::help::HelpOrigin;
@@ -46,7 +44,7 @@ fn close_help(state: &mut AppState) {
     state.ui.help_mut().close();
 }
 
-pub(super) fn reduce_help(state: &mut AppState, action: &Action, _now: Instant) -> DispatchResult {
+pub(super) fn reduce_help(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
         Action::ToggleModal(ModalKind::Help) => {
             if state.modal.active_mode() == InputMode::Help {

@@ -14,9 +14,9 @@ use crate::update::dispatch_result::DispatchResult;
 pub fn dispatch_explain(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     request::reduce_request(state, action, now)
         .or_else(|| analyze::reduce_analyze(state, action, now))
-        .or_else(|| output::reduce_output(state, action, now))
-        .or_else(|| scroll::reduce_scroll(state, action, now))
-        .or_else(|| tabs::reduce_tabs(state, action, now))
+        .or_else(|| output::reduce_output(state, action))
+        .or_else(|| scroll::reduce_scroll(state, action))
+        .or_else(|| tabs::reduce_tabs(state, action))
 }
 
 #[cfg(test)]

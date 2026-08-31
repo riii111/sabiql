@@ -1,16 +1,11 @@
 use std::sync::Arc;
-use std::time::Instant;
 
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::update::action::{Action, SmartErRefreshError};
 use crate::update::dispatch_result::DispatchResult;
 
-pub(super) fn reduce_smart_refresh_failed(
-    state: &mut AppState,
-    action: &Action,
-    _now: Instant,
-) -> DispatchResult {
+pub(super) fn reduce_smart_refresh_failed(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
         Action::SmartErRefreshFailed(SmartErRefreshError {
             dsn,
