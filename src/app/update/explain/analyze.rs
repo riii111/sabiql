@@ -58,15 +58,7 @@ pub(super) fn reduce_analyze(
                 risk
             } else {
                 let kind = statement_classifier::classify(&content);
-                let Some(risk) = evaluate_sql_risk_for_database(database_type, &kind, &content)
-                else {
-                    show_explain_error_on_plan(
-                        state,
-                        "EXPLAIN ANALYZE risk evaluation is not supported for this database",
-                    );
-                    return DispatchResult::handled();
-                };
-                risk
+                evaluate_sql_risk_for_database(database_type, &kind, &content)
             };
 
             if state.session.is_read_only() && !risk.read_only_allowed {
