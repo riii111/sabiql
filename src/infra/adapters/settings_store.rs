@@ -25,6 +25,12 @@ impl TomlSettingsStore {
         Self { config_dir }
     }
 
+    pub fn load(&self) -> Result<AppSettings, SettingsStoreError> {
+        Ok(self
+            .load_config_file_lenient()?
+            .map_or_else(AppSettings::default, app_settings))
+    }
+
     fn load_config_file_lenient(&self) -> Result<Option<ConnectionConfigFile>, SettingsStoreError> {
         let path = config_file_path(&self.config_dir);
         if !path.exists() {
@@ -67,12 +73,6 @@ impl TomlSettingsStore {
 }
 
 impl SettingsStore for TomlSettingsStore {
-    fn load(&self) -> Result<AppSettings, SettingsStoreError> {
-        Ok(self
-            .load_config_file_lenient()?
-            .map_or_else(AppSettings::default, app_settings))
-    }
-
     fn save(&self, settings: AppSettings) -> Result<(), SettingsStoreError> {
         let _guard = app_config_file::lock();
 

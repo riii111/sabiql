@@ -31,10 +31,10 @@ pub(in crate::adapters::mysql::cli) async fn mysql_metadata_columns_with_diagnos
     access_mode: AccessMode,
 ) -> Result<(Vec<String>, Vec<DatabaseDiagnostic>), DbOperationError> {
     let query = match kind {
-        MySqlMetadataFallbackKind::Select | MySqlMetadataFallbackKind::Table => {
+        MySqlMetadataFallbackKind::Session => {
             return mysql_metadata_select_columns_with_diagnostics(process, query).await;
         }
-        MySqlMetadataFallbackKind::Show | MySqlMetadataFallbackKind::Describe => {
+        MySqlMetadataFallbackKind::External => {
             query.trim().trim_end_matches(';').trim_end().to_string()
         }
     };
