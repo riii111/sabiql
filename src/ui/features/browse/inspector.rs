@@ -1136,7 +1136,11 @@ mod tests {
 
         let rows: Vec<_> = (0..51)
             .map(|index| InspectorColumnRow {
-                name: format!("column_{index}"),
+                name: if index == 50 {
+                    format!("tail_{}", "x".repeat(200))
+                } else {
+                    format!("column_{index}")
+                },
                 data_type: "integer".to_string(),
                 nullable: true,
                 primary_key: false,
@@ -1155,6 +1159,22 @@ mod tests {
             collation: false,
             generation: false,
         };
+        let headers = ["Name", "Type", "Null", "PK", "Default", "Comment"];
+        let sampled_widths = calculate_column_widths(
+            &headers,
+            &rows[..50]
+                .iter()
+                .map(|row| column_row_cells(row, options))
+                .collect::<Vec<_>>(),
+        );
+        let all_widths = calculate_column_widths(
+            &headers,
+            &rows
+                .iter()
+                .map(|row| column_row_cells(row, options))
+                .collect::<Vec<_>>(),
+        );
+        assert_eq!(sampled_widths, all_widths);
         let mut terminal = Terminal::new(TestBackend::new(80, 12)).unwrap();
         let theme = palette_for(ThemeId::Default);
 
@@ -1182,7 +1202,7 @@ mod tests {
             })
             .collect();
 
-        assert!(rendered.contains("column_50"));
+        assert!(rendered.contains("tail_x"));
     }
 
     #[test]
