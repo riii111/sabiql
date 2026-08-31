@@ -153,7 +153,7 @@ pub(crate) async fn run(
                                 }
                                 Some(Err(e)) => {
                                     tx.blocking_send(Action::ConnectionSaveFailed {
-                                        error: e.into(),
+                                        error: ConnectionSaveError::Store(e.to_string()),
                                         run_id,
                                     })
                                     .ok();
@@ -197,7 +197,7 @@ pub(crate) async fn run(
                                     }
                                     Some(Err(e)) => {
                                         tx.send(Action::ConnectionSaveFailed {
-                                            error: e.into(),
+                                            error: ConnectionSaveError::Store(e.to_string()),
                                             run_id,
                                         })
                                         .await
@@ -245,7 +245,7 @@ pub(crate) async fn run(
                                 }
                                 Some(Err(e)) => {
                                     tx.send(Action::ConnectionSaveFailed {
-                                        error: e.into(),
+                                        error: ConnectionSaveError::Store(e.to_string()),
                                         run_id,
                                     })
                                     .await
@@ -305,12 +305,13 @@ pub(crate) async fn run(
                 }
                 Ok(None) => {
                     tx.blocking_send(Action::ConnectionEditLoadFailed(
-                        ConnectionStoreError::NotFound(id.to_string()),
+                        ConnectionStoreError::NotFound(id.to_string()).to_string(),
                     ))
                     .ok();
                 }
                 Err(e) => {
-                    tx.blocking_send(Action::ConnectionEditLoadFailed(e)).ok();
+                    tx.blocking_send(Action::ConnectionEditLoadFailed(e.to_string()))
+                        .ok();
                 }
             });
         }
@@ -352,7 +353,8 @@ pub(crate) async fn run(
                     tx.blocking_send(Action::ConnectionDeleted(id)).ok();
                 }
                 Err(e) => {
-                    tx.blocking_send(Action::ConnectionDeleteFailed(e)).ok();
+                    tx.blocking_send(Action::ConnectionDeleteFailed(e.to_string()))
+                        .ok();
                 }
             });
         }
@@ -820,7 +822,10 @@ mod tests {
 
             assert!(matches!(
                 run.actions.into_iter().next(),
-                Some(Action::ConnectionSaveFailed { run_id: 1, .. })
+                Some(Action::ConnectionSaveFailed {
+                    error: ConnectionSaveError::Store(error),
+                    run_id: 1,
+                }) if error == "IO error: save failed"
             ));
         }
 
@@ -1081,9 +1086,53 @@ mod tests {
 
             let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
-                matches!(action, Action::ConnectionDeleteFailed(_)),
+                matches!(
+                    action,
+                    Action::ConnectionDeleteFailed(ref error)
+                        if error == "Connection not found: id"
+                ),
                 "expected ConnectionDeleteFailed, got {action:?}"
             );
+        }
+    }
+
+    mod load_connection_for_edit {
+        use super::*;
+
+        #[tokio::test]
+        async fn missing_connection_returns_display_error() {
+            let mut mock_store = MockConnectionStore::new();
+            mock_store
+                .expect_find_by_id()
+                .once()
+                .returning(|_| Ok(None));
+
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(mock_store),
+                tx,
+            );
+
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::LoadConnectionForEdit {
+                    id: ConnectionId::from_string("id"),
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
+
+            assert!(matches!(
+                run.actions.into_iter().next(),
+                Some(Action::ConnectionEditLoadFailed(error))
+                    if error == "Connection not found: id"
+            ));
         }
     }
 
