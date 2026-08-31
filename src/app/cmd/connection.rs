@@ -98,7 +98,6 @@ pub(crate) async fn run(
             run_id,
             run_guard,
         } => {
-            let database_type = config.database_type();
             let id = id.unwrap_or_else(ConnectionId::new);
             let profile = ConnectionProfile::with_id_and_config(id, name, config);
             let profile = match profile {
@@ -107,7 +106,6 @@ pub(crate) async fn run(
                     action_tx
                         .send(Action::ConnectionSaveFailed {
                             error: e.into(),
-                            database_type,
                             run_id,
                         })
                         .await
@@ -130,7 +128,6 @@ pub(crate) async fn run(
                         action_tx
                             .send(Action::ConnectionSaveFailed {
                                 error: error.into(),
-                                database_type,
                                 run_id,
                             })
                             .await
@@ -140,7 +137,6 @@ pub(crate) async fn run(
                 };
                 let dsn = connection.dsn_builder.build_dsn(&profile);
                 let target = ConnectionTarget::from_profile(&profile, dsn);
-                let database_type = target.database_type;
 
                 connection_task
                     .replace(async move {
@@ -157,8 +153,7 @@ pub(crate) async fn run(
                                 }
                                 Some(Err(e)) => {
                                     tx.blocking_send(Action::ConnectionSaveFailed {
-                                        error: e.into(),
-                                        database_type,
+                                        error: ConnectionSaveError::Store(e.to_string()),
                                         run_id,
                                     })
                                     .ok();
@@ -174,9 +169,8 @@ pub(crate) async fn run(
             }
 
             let dsn = connection.dsn_builder.build_dsn(&profile);
-            let database_type = profile.database_type();
 
-            if database_type == DatabaseType::MySQL {
+            if profile.database_type() == DatabaseType::MySQL {
                 let target = ConnectionTarget::from_profile(&profile, dsn);
                 let probe = Arc::clone(&connection.mysql_connection_probe);
                 connection_task
@@ -203,8 +197,7 @@ pub(crate) async fn run(
                                     }
                                     Some(Err(e)) => {
                                         tx.send(Action::ConnectionSaveFailed {
-                                            error: e.into(),
-                                            database_type,
+                                            error: ConnectionSaveError::Store(e.to_string()),
                                             run_id,
                                         })
                                         .await
@@ -215,11 +208,7 @@ pub(crate) async fn run(
                             }
                             Err(e) => {
                                 tx.send(Action::ConnectionSaveFailed {
-                                    error: ConnectionSaveError::Probe {
-                                        error: e,
-                                        dsn: target.dsn.clone(),
-                                    },
-                                    database_type,
+                                    error: ConnectionSaveError::Probe { error: e },
                                     run_id,
                                 })
                                 .await
@@ -256,8 +245,7 @@ pub(crate) async fn run(
                                 }
                                 Some(Err(e)) => {
                                     tx.send(Action::ConnectionSaveFailed {
-                                        error: e.into(),
-                                        database_type,
+                                        error: ConnectionSaveError::Store(e.to_string()),
                                         run_id,
                                     })
                                     .await
@@ -269,7 +257,6 @@ pub(crate) async fn run(
                         Err(e) => {
                             tx.send(Action::ConnectionSaveFailed {
                                 error: e.into(),
-                                database_type,
                                 run_id,
                             })
                             .await
@@ -318,12 +305,13 @@ pub(crate) async fn run(
                 }
                 Ok(None) => {
                     tx.blocking_send(Action::ConnectionEditLoadFailed(
-                        ConnectionStoreError::NotFound(id.to_string()),
+                        ConnectionStoreError::NotFound(id.to_string()).to_string(),
                     ))
                     .ok();
                 }
                 Err(e) => {
-                    tx.blocking_send(Action::ConnectionEditLoadFailed(e)).ok();
+                    tx.blocking_send(Action::ConnectionEditLoadFailed(e.to_string()))
+                        .ok();
                 }
             });
         }
@@ -365,7 +353,8 @@ pub(crate) async fn run(
                     tx.blocking_send(Action::ConnectionDeleted(id)).ok();
                 }
                 Err(e) => {
-                    tx.blocking_send(Action::ConnectionDeleteFailed(e)).ok();
+                    tx.blocking_send(Action::ConnectionDeleteFailed(e.to_string()))
+                        .ok();
                 }
             });
         }
@@ -629,10 +618,9 @@ mod tests {
             assert!(matches!(
                 action,
                 Action::ConnectionSaveFailed {
-                    error: ConnectionSaveError::Probe { dsn, .. },
-                    database_type: DatabaseType::MySQL,
+                    error: ConnectionSaveError::Probe { .. },
                     run_id: 1,
-                } if dsn == "mysql://user:secret@localhost:3306?ssl-mode=REQUIRED"
+                }
             ));
         }
 
@@ -835,10 +823,9 @@ mod tests {
             assert!(matches!(
                 run.actions.into_iter().next(),
                 Some(Action::ConnectionSaveFailed {
-                    database_type: DatabaseType::PostgreSQL,
+                    error: ConnectionSaveError::Store(error),
                     run_id: 1,
-                    ..
-                })
+                }) if error == "IO error: save failed"
             ));
         }
 
@@ -1026,7 +1013,6 @@ mod tests {
                         error: ConnectionSaveError::Validation(ConnectionProfileError::SqlitePath(
                             SqlitePathError::FileNotFound(_)
                         ),),
-                        database_type: DatabaseType::SQLite,
                         run_id: 1,
                     }
                 ),
@@ -1100,9 +1086,53 @@ mod tests {
 
             let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
-                matches!(action, Action::ConnectionDeleteFailed(_)),
+                matches!(
+                    action,
+                    Action::ConnectionDeleteFailed(ref error)
+                        if error == "Connection not found: id"
+                ),
                 "expected ConnectionDeleteFailed, got {action:?}"
             );
+        }
+    }
+
+    mod load_connection_for_edit {
+        use super::*;
+
+        #[tokio::test]
+        async fn missing_connection_returns_display_error() {
+            let mut mock_store = MockConnectionStore::new();
+            mock_store
+                .expect_find_by_id()
+                .once()
+                .returning(|_| Ok(None));
+
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(mock_store),
+                tx,
+            );
+
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::LoadConnectionForEdit {
+                    id: ConnectionId::from_string("id"),
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
+
+            assert!(matches!(
+                run.actions.into_iter().next(),
+                Some(Action::ConnectionEditLoadFailed(error))
+                    if error == "Connection not found: id"
+            ));
         }
     }
 

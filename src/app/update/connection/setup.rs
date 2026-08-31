@@ -46,8 +46,8 @@ pub fn reduce_connection_setup(
             state.modal.set_mode(InputMode::ConnectionSetup);
             DispatchResult::handled_with(cancel_effects)
         }
-        Action::ConnectionEditLoadFailed(e) => {
-            state.messages.set_error(e.to_string());
+        Action::ConnectionEditLoadFailed(error) => {
+            state.messages.set_error(error.clone());
             DispatchResult::handled()
         }
         Action::CloseModal(ModalKind::ConnectionSetup) => {
@@ -284,11 +284,7 @@ pub fn reduce_connection_setup(
                 metadata.clone(),
             ))
         }
-        Action::ConnectionSaveFailed {
-            error: e,
-            database_type,
-            run_id,
-        } => {
+        Action::ConnectionSaveFailed { error: e, run_id } => {
             if !state.session.is_current_connection_save(*run_id) {
                 return DispatchResult::handled();
             }
@@ -302,9 +298,7 @@ pub fn reduce_connection_setup(
                 state.session.mark_disconnected();
             }
             let mysql_error = match e {
-                ConnectionSaveError::Probe { error, dsn }
-                    if *database_type == DatabaseType::MySQL =>
-                {
+                ConnectionSaveError::Probe { error } => {
                     Some(ConnectionErrorInfo::from_db_operation_error(error))
                 }
                 _ => None,
@@ -753,14 +747,12 @@ mod tests {
                 kind: ConnectionFailureKind::TlsHostnameVerification,
                 details: "certificate verification failed".to_string(),
             };
-            let dsn = "mysql://user:password@localhost:3306/app?ssl-mode=PREFERRED".to_string();
             let run_id = state.session.begin_connection_save();
 
             reduce(
                 &mut state,
                 &Action::ConnectionSaveFailed {
-                    error: ConnectionSaveError::Probe { error, dsn },
-                    database_type: DatabaseType::MySQL,
+                    error: ConnectionSaveError::Probe { error },
                     run_id,
                 },
                 Instant::now(),
@@ -807,12 +799,7 @@ mod tests {
                 reduce(
                     &mut state,
                     &Action::ConnectionSaveFailed {
-                        error: ConnectionSaveError::Probe {
-                            error,
-                            dsn: "mysql://user:password@localhost:3306/app?ssl-mode=PREFERRED"
-                                .to_string(),
-                        },
-                        database_type: DatabaseType::MySQL,
+                        error: ConnectionSaveError::Probe { error },
                         run_id,
                     },
                     Instant::now(),
@@ -972,9 +959,7 @@ mod tests {
                 &Action::ConnectionSaveFailed {
                     error: ConnectionSaveError::Probe {
                         error: DbOperationError::ConnectionFailed("connection refused".to_string()),
-                        dsn: "mysql://user@localhost:3306/app?ssl-mode=PREFERRED".to_string(),
                     },
-                    database_type: DatabaseType::MySQL,
                     run_id,
                 },
                 Instant::now(),
@@ -1017,7 +1002,6 @@ mod tests {
                     &mut state,
                     &Action::ConnectionSaveFailed {
                         error: ConnectionSaveError::Metadata(error),
-                        database_type: DatabaseType::PostgreSQL,
                         run_id,
                     },
                     Instant::now(),

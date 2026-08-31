@@ -97,8 +97,8 @@ pub(super) fn reduce_connection_selector(
                 vec![]
             })
         }
-        Action::ConnectionDeleteFailed(e) => {
-            state.messages.set_error(e.to_string());
+        Action::ConnectionDeleteFailed(error) => {
+            state.messages.set_error(error.clone());
             DispatchResult::handled()
         }
 

@@ -53,7 +53,7 @@ pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -
         }
         Action::CellDetailYankAll => DispatchResult::handled_with(vec![Effect::CopyToClipboard {
             content: state.cell_detail.content().to_string(),
-            on_success: Some(Box::new(Action::CellDetailYankSuccess)),
+            on_success: Box::new(Action::CellDetailYankSuccess),
             on_failure: Some(Box::new(clipboard_unavailable())),
         }]),
         Action::CellDetailYankSuccess => {
