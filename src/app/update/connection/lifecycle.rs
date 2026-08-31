@@ -119,9 +119,7 @@ pub fn reduce_connection_lifecycle(
                 return DispatchResult::handled();
             }
             let cached = state.connection_caches.get(id).cloned();
-            if let Some(cached) =
-                cached.filter(|cache| cache.is_valid_mysql_snapshot(dsn, database.as_deref()))
-            {
+            if let Some(cached) = cached.filter(|cache| cache.is_valid_mysql_snapshot(dsn)) {
                 restore_cache(state, &cached, target);
                 state
                     .session
@@ -679,12 +677,7 @@ mod tests {
             );
 
             let cache = &state.connection_caches[&current_id];
-            assert!(
-                cache.is_valid_mysql_snapshot(
-                    "mysql://user@localhost:3306/current",
-                    Some("current")
-                )
-            );
+            assert!(cache.is_valid_mysql_snapshot("mysql://user@localhost:3306/current"));
             assert_eq!(cache.explorer_selected, 5);
             assert_eq!(cache.inspector_tab, InspectorTab::Indexes);
             assert!(cache.query_result.is_some());
@@ -1045,8 +1038,6 @@ mod tests {
             pagination.set_page_result(2, false);
             ConnectionCache {
                 connection_dsn: Some(dsn.to_string()),
-                database_type: Some(DatabaseType::MySQL),
-                database: Some(database.to_string()),
                 metadata: Some(Arc::new(DatabaseMetadata::new(database.to_string()))),
                 effective_user: Some("user@localhost".to_string()),
                 selected_table_key: Some("app.users".to_string()),
@@ -1168,46 +1159,41 @@ mod tests {
         }
 
         #[test]
-        fn mysql_switch_ignores_cache_for_stale_dsn_or_database() {
-            for (cached_dsn, cached_database) in [
-                ("mysql://user@localhost:3306/old", "app"),
-                ("mysql://user@localhost:3306/app", "old"),
-            ] {
-                let mut state = AppState::new("test".to_string());
-                let target_id = ConnectionId::from_string("mysql-target");
-                let target = mysql_target(&target_id, "mysql://user@localhost:3306/app", "app");
-                state.connection_caches.insert(
-                    target_id.clone(),
-                    valid_mysql_cache(cached_dsn, cached_database),
-                );
+        fn mysql_switch_ignores_cache_for_stale_dsn() {
+            let cached_dsn = "mysql://user@localhost:3306/old";
+            let mut state = AppState::new("test".to_string());
+            let target_id = ConnectionId::from_string("mysql-target");
+            let target = mysql_target(&target_id, "mysql://user@localhost:3306/app", "app");
+            state
+                .connection_caches
+                .insert(target_id.clone(), valid_mysql_cache(cached_dsn, "app"));
 
-                let probe_effects =
-                    reduce(&mut state, &Action::SwitchConnection(target.clone())).unwrap();
-                let probe_run_id = probe_effects
-                    .iter()
-                    .find_map(|effect| match effect {
-                        Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
-                        _ => None,
-                    })
-                    .unwrap();
-                let effects = reduce(
-                    &mut state,
-                    &Action::MySqlConnectionProbeCompleted {
-                        target,
-                        run_id: probe_run_id,
-                        lower_case_table_names: 0,
-                    },
-                )
+            let probe_effects =
+                reduce(&mut state, &Action::SwitchConnection(target.clone())).unwrap();
+            let probe_run_id = probe_effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
                 .unwrap();
+            let effects = reduce(
+                &mut state,
+                &Action::MySqlConnectionProbeCompleted {
+                    target,
+                    run_id: probe_run_id,
+                    lower_case_table_names: 0,
+                },
+            )
+            .unwrap();
 
-                assert!(
-                    effects
-                        .iter()
-                        .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
-                );
-                assert!(state.session.connection_state().is_connecting());
-                assert!(!state.connection_caches.contains_key(&target_id));
-            }
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
+            );
+            assert!(state.session.connection_state().is_connecting());
+            assert!(!state.connection_caches.contains_key(&target_id));
         }
 
         #[test]
