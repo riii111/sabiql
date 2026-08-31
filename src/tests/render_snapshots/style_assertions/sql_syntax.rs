@@ -1,4 +1,22 @@
 use super::*;
+use sabiql_ui::theme::SyntaxTokens;
+
+fn contrast_theme() -> ThemePalette {
+    ThemePalette {
+        component: ComponentTokens {
+            syntax: SyntaxTokens {
+                sql_keyword: Color::Rgb(0x7d, 0xc4, 0xff),
+                sql_string: Color::Rgb(0x9b, 0xf0, 0x8f),
+                sql_number: Color::Rgb(0xff, 0xb8, 0x6b),
+                sql_comment: Color::Rgb(0x7c, 0x8a, 0xa5),
+                sql_operator: Color::Rgb(0x5e, 0xe0, 0xd5),
+                ..DEFAULT_THEME.component.syntax
+            },
+            ..DEFAULT_THEME.component
+        },
+        ..DEFAULT_THEME
+    }
+}
 
 #[test]
 fn sql_modal_keyword_and_number_use_syntax_colors() {
@@ -81,48 +99,45 @@ fn test_contrast_theme_applies_sql_syntax_colors() {
         .set_content("SELECT 'x' + 42 -- note".to_string());
     state.sql_modal.enter_editing();
 
-    let buffer = render_and_get_buffer_at_with_theme(
-        &mut terminal,
-        &mut state,
-        Instant::now(),
-        &TEST_CONTRAST_THEME,
-    );
+    let theme = contrast_theme();
+    let buffer =
+        render_and_get_buffer_at_with_theme(&mut terminal, &mut state, Instant::now(), &theme);
 
     let has_keyword = has_cell(&buffer, |cell| {
-        cell.symbol() == "S" && cell.fg == TEST_CONTRAST_THEME.component.syntax.sql_keyword
+        cell.symbol() == "S" && cell.fg == theme.component.syntax.sql_keyword
     });
     let has_string = has_cell(&buffer, |cell| {
-        cell.symbol() == "'" && cell.fg == TEST_CONTRAST_THEME.component.syntax.sql_string
+        cell.symbol() == "'" && cell.fg == theme.component.syntax.sql_string
     });
     let has_comment = has_cell(&buffer, |cell| {
-        cell.symbol() == "-" && cell.fg == TEST_CONTRAST_THEME.component.syntax.sql_comment
+        cell.symbol() == "-" && cell.fg == theme.component.syntax.sql_comment
     });
     let has_number = has_cell(&buffer, |cell| {
-        cell.symbol() == "4" && cell.fg == TEST_CONTRAST_THEME.component.syntax.sql_number
+        cell.symbol() == "4" && cell.fg == theme.component.syntax.sql_number
     });
     let has_operator = has_cell(&buffer, |cell| {
-        cell.symbol() == "+" && cell.fg == TEST_CONTRAST_THEME.component.syntax.sql_operator
+        cell.symbol() == "+" && cell.fg == theme.component.syntax.sql_operator
     });
 
     assert!(
         has_keyword,
-        "Expected SQL keyword color to resolve from TEST_CONTRAST_THEME"
+        "Expected SQL keyword color to resolve from the contrast theme"
     );
     assert!(
         has_string,
-        "Expected SQL string color to resolve from TEST_CONTRAST_THEME"
+        "Expected SQL string color to resolve from the contrast theme"
     );
     assert!(
         has_comment,
-        "Expected SQL comment color to resolve from TEST_CONTRAST_THEME"
+        "Expected SQL comment color to resolve from the contrast theme"
     );
     assert!(
         has_number,
-        "Expected SQL number color to resolve from TEST_CONTRAST_THEME"
+        "Expected SQL number color to resolve from the contrast theme"
     );
     assert!(
         has_operator,
-        "Expected SQL operator color to resolve from TEST_CONTRAST_THEME"
+        "Expected SQL operator color to resolve from the contrast theme"
     );
 }
 
