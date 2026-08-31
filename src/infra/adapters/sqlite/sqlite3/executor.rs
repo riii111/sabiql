@@ -9,7 +9,7 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::adapters::csv_export::CsvOutputError;
-use crate::app::ports::outbound::{DbOperationError, SqliteCompatibilityKind};
+use crate::app::ports::outbound::DbOperationError;
 
 use super::super::path_validation;
 use super::error::{classify_cli_spawn_error, classify_query_error};
