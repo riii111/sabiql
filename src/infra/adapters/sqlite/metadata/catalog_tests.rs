@@ -1,4 +1,4 @@
-use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
+use crate::app::ports::outbound::{DbOperationError, MetadataProvider, SqliteCompatibilityKind};
 use crate::domain::{Schema, SqlitePathError, TableKind, TableKindInfo};
 
 use super::super::super::sqlite3::metadata::RawTable;
@@ -37,6 +37,26 @@ mod metadata {
             empty_result,
             Err(DbOperationError::ConnectionFailed(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn rejects_sqlite_before_safe_mode_minimum_at_connection() {
+        let (_dir, dsn) = test_support::make_sqlite_db("");
+        let adapter = SqliteAdapter::new();
+        let expects_rejection =
+            std::env::var_os("SABIQL_EXPECT_SQLITE_SAFE_MODE_REJECTION").is_some();
+
+        match adapter.fetch_metadata(&dsn).await {
+            Err(DbOperationError::UnsupportedOperationWithSqliteKind {
+                kind: SqliteCompatibilityKind::SafeMode,
+                details,
+            }) if expects_rejection => {
+                assert!(details.contains("3.41.1"));
+                assert!(!details.contains("SQLITE_SAFE_MODE_REQUIRED"));
+            }
+            Ok(_) if !expects_rejection => {}
+            result => panic!("unexpected SQLite safe mode connection result: {result:?}"),
+        }
     }
 
     #[tokio::test]

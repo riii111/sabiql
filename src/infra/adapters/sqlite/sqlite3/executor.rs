@@ -150,6 +150,8 @@ impl SqliteCli {
         )?;
         let sql = sqlite_session_sql(sql, read_only);
 
+        #[cfg(test)]
+        super::tests::record_process_start(path);
         let mut child = cmd
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -262,6 +264,8 @@ impl SqliteCli {
     ) -> Result<SqliteOutput, DbOperationError> {
         let mut cmd = Self::build_command("sqlite3", path, args, read_only)?;
         let sql = sqlite_session_sql(sql, read_only);
+        #[cfg(test)]
+        super::tests::record_process_start(path);
         Self::collect_output(&mut cmd, self.timeout_secs, &sql).await
     }
 

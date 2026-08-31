@@ -37,9 +37,17 @@ mod tests {
         let Some(config) = configs.get_mut(path) else {
             return;
         };
-        config.process_count += 1;
         for (key, value) in &config.environment {
             command.env(key, value);
+        }
+    }
+
+    pub(super) fn record_process_start(path: &str) {
+        let mut configs = command_configs()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(config) = configs.get_mut(path) {
+            config.process_count += 1;
         }
     }
 

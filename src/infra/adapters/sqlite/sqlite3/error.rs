@@ -1,5 +1,14 @@
 use crate::app::ports::outbound::{DatabaseCli, DbOperationError, SqliteCompatibilityKind};
 
+const SQLITE_SAFE_MODE_MIN_VERSION: SqliteVersion = SqliteVersion::new(3, 41, 1);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct SqliteVersion {
+    major: u16,
+    minor: u16,
+    patch: u16,
+}
+
 pub(in crate::adapters::sqlite) fn classify_cli_spawn_error(
     error: std::io::Error,
 ) -> DbOperationError {
@@ -11,6 +20,21 @@ pub(in crate::adapters::sqlite) fn classify_cli_spawn_error(
     } else {
         DbOperationError::QueryFailed(error.to_string())
     }
+}
+
+pub(super) fn validate_safe_mode_version(version: &str) -> Result<(), DbOperationError> {
+    let version = SqliteVersion::parse(version).ok_or_else(|| {
+        safe_mode_required_error("could not determine the installed sqlite3 version")
+    })?;
+
+    if version >= SQLITE_SAFE_MODE_MIN_VERSION {
+        return Ok(());
+    }
+
+    Err(safe_mode_required_error(&format!(
+        "found sqlite3 {}.{}.{}",
+        version.major, version.minor, version.patch
+    )))
 }
 
 pub(in crate::adapters::sqlite) fn classify_query_error(stderr: &str) -> DbOperationError {
@@ -70,6 +94,27 @@ fn safe_mode_required_error(details: &str) -> DbOperationError {
         details: format!(
             "sqlite3 3.41.1 or later is required for safe SQLite execution ({details})"
         ),
+    }
+}
+
+impl SqliteVersion {
+    const fn new(major: u16, minor: u16, patch: u16) -> Self {
+        Self {
+            major,
+            minor,
+            patch,
+        }
+    }
+
+    fn parse(output: &str) -> Option<Self> {
+        let mut components = output.split_whitespace().next()?.split('.');
+        let major = components.next()?.parse().ok()?;
+        let minor = components.next()?.parse().ok()?;
+        let patch = components.next()?.parse().ok()?;
+        components
+            .next()
+            .is_none()
+            .then_some(Self::new(major, minor, patch))
     }
 }
 
@@ -231,5 +276,59 @@ mod tests {
             error,
             DbOperationError::QueryFailed(details) if details == "permission denied"
         ));
+    }
+
+    mod safe_mode_version {
+        use super::*;
+
+        #[rstest]
+        #[case("3.41.1 2023-03-10 12:13:52", Some(SqliteVersion::new(3, 41, 1)))]
+        #[case("3.40.1", Some(SqliteVersion::new(3, 40, 1)))]
+        #[case("3.41", None)]
+        #[case("sqlite 3.41.1", None)]
+        fn parses_sqlite_version(#[case] output: &str, #[case] expected: Option<SqliteVersion>) {
+            assert_eq!(SqliteVersion::parse(output), expected);
+        }
+
+        #[test]
+        fn safe_mode_requires_sqlite_3_41_1_or_later() {
+            assert!(SqliteVersion::new(3, 41, 0) < SQLITE_SAFE_MODE_MIN_VERSION);
+            assert!(SqliteVersion::new(3, 41, 1) >= SQLITE_SAFE_MODE_MIN_VERSION);
+        }
+
+        #[rstest]
+        #[case("3.41.1", true)]
+        #[case("3.51.0", true)]
+        #[case("3.41.0", false)]
+        #[case("3.40.1", false)]
+        fn validates_sqlite_safe_mode_version(#[case] version: &str, #[case] supported: bool) {
+            assert_eq!(validate_safe_mode_version(version).is_ok(), supported);
+        }
+
+        #[test]
+        fn rejects_unparseable_version_as_safe_mode_requirement() {
+            let error = validate_safe_mode_version("sqlite 3.41.1").unwrap_err();
+
+            assert!(matches!(
+                error,
+                DbOperationError::UnsupportedOperationWithSqliteKind {
+                    kind: SqliteCompatibilityKind::SafeMode,
+                    details,
+                } if details == "sqlite3 3.41.1 or later is required for safe SQLite execution (could not determine the installed sqlite3 version)"
+            ));
+        }
+
+        #[test]
+        fn safe_mode_required_error_keeps_details_without_marker() {
+            let error = validate_safe_mode_version("3.41.0").unwrap_err();
+
+            assert!(matches!(
+                error,
+                DbOperationError::UnsupportedOperationWithSqliteKind {
+                    kind: SqliteCompatibilityKind::SafeMode,
+                    details,
+                } if details == "sqlite3 3.41.1 or later is required for safe SQLite execution (found sqlite3 3.41.0)"
+            ));
+        }
     }
 }
