@@ -156,7 +156,7 @@ mod tests {
                 &Action::TableDetailLoaded {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id,
-                    detail: empty_table("public", "users"),
+                    outcome: Ok(empty_table("public", "users")),
                     generation: current_generation,
                 },
                 Instant::now(),
@@ -175,10 +175,10 @@ mod tests {
 
             dispatch_metadata(
                 &mut state,
-                &Action::TableDetailFailed {
+                &Action::TableDetailLoaded {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id,
-                    error: DbOperationError::PermissionDenied("denied".to_string()),
+                    outcome: Err(DbOperationError::PermissionDenied("denied".to_string())),
                     generation,
                 },
                 Instant::now(),
@@ -222,7 +222,7 @@ mod tests {
                 &Action::TableDetailLoaded {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id: detail_run_id,
-                    detail: empty_table("public", "users"),
+                    outcome: Ok(empty_table("public", "users")),
                     generation,
                 },
                 Instant::now(),
@@ -249,10 +249,10 @@ mod tests {
 
             dispatch_metadata(
                 &mut state,
-                &Action::TableDetailFailed {
+                &Action::TableDetailLoaded {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id: current_run_id,
-                    error: DbOperationError::PermissionDenied("denied".to_string()),
+                    outcome: Err(DbOperationError::PermissionDenied("denied".to_string())),
                     generation: stale_generation,
                 },
                 Instant::now(),

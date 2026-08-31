@@ -14,7 +14,7 @@ pub(super) fn reduce_table_detail(
         Action::TableDetailLoaded {
             dsn,
             run_id,
-            detail,
+            outcome,
             generation,
         } => {
             if !state.session.dsn_matches(dsn)
@@ -23,33 +23,26 @@ pub(super) fn reduce_table_detail(
                 return DispatchResult::handled();
             }
 
-            if state.session.set_table_detail(*detail.clone(), *generation) {
-                state.ui.set_inspector_scroll_offset(0);
-                return DispatchResult::handled_with(reveal_pending_preview(state, *generation));
-            }
-            DispatchResult::handled()
-        }
-        Action::TableDetailFailed {
-            dsn,
-            run_id,
-            error,
-            generation,
-        } => {
-            if !state.session.dsn_matches(dsn)
-                || !state.session.is_current_table_detail_run(*run_id)
-            {
-                return DispatchResult::handled();
-            }
-
-            let message = error.user_message();
-            if state
-                .session
-                .mark_table_detail_failed(*generation, message.clone())
-            {
-                state.messages.set_error(message);
-                return DispatchResult::handled_with(reveal_pending_preview(state, *generation));
-            }
-            DispatchResult::handled()
+            let effects = match outcome {
+                Ok(detail) if state.session.set_table_detail(*detail.clone(), *generation) => {
+                    state.ui.set_inspector_scroll_offset(0);
+                    reveal_pending_preview(state, *generation)
+                }
+                Ok(_) => Vec::new(),
+                Err(error) => {
+                    let message = error.user_message();
+                    if state
+                        .session
+                        .mark_table_detail_failed(*generation, message.clone())
+                    {
+                        state.messages.set_error(message);
+                        reveal_pending_preview(state, *generation)
+                    } else {
+                        Vec::new()
+                    }
+                }
+            };
+            DispatchResult::handled_with(effects)
         }
         _ => DispatchResult::pass(),
     }
