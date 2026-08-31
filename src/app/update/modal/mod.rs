@@ -268,7 +268,6 @@ mod tests {
     mod settings {
         use super::*;
         use crate::model::shared::theme_id::ThemeId;
-        use crate::ports::outbound::SettingsStoreError;
 
         mod theme_selection {
             use super::*;
@@ -460,9 +459,7 @@ mod tests {
 
             let effects = super::dispatch_modal(
                 &mut state,
-                &Action::SettingsSaveFailed(SettingsStoreError::Io(std::sync::Arc::new(
-                    std::io::Error::other("disk full"),
-                ))),
+                &Action::SettingsSaveFailed("I/O error: disk full".to_string()),
                 Instant::now(),
             )
             .unwrap();

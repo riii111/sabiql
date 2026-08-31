@@ -16,7 +16,7 @@ pub(crate) async fn run(
     let result = settings_store.save(settings.clone());
     let action = match result {
         Ok(()) => Action::SettingsSaved(settings),
-        Err(error) => Action::SettingsSaveFailed(error),
+        Err(error) => Action::SettingsSaveFailed(error.to_string()),
     };
     let _ = action_tx.send(action).await;
 }
@@ -117,7 +117,7 @@ mod tests {
 
         assert!(matches!(
             rx.recv().await,
-            Some(Action::SettingsSaveFailed(_))
+            Some(Action::SettingsSaveFailed(error)) if error == "I/O error: disk full"
         ));
     }
 }

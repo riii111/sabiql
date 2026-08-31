@@ -14,7 +14,6 @@ use crate::model::sql_editor::completion::CompletionCandidate;
 use crate::policy::{FeatureRequirement, mask_password};
 use crate::ports::outbound::clipboard::ClipboardError;
 use crate::ports::outbound::connection_store::ConnectionStoreError;
-use crate::ports::outbound::settings_store::SettingsStoreError;
 use crate::ports::outbound::{AppSettings, DbOperationError};
 use std::collections::HashMap;
 
@@ -449,7 +448,7 @@ pub enum Action {
     SettingsApply,
     SettingsCancel,
     SettingsSaved(AppSettings),
-    SettingsSaveFailed(SettingsStoreError),
+    SettingsSaveFailed(String),
 
     // Database structure
     ReloadMetadata,
