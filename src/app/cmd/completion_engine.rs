@@ -43,13 +43,11 @@ pub struct CompletionEngine {
     table_detail_cache: LruCache<String, Table>,
 }
 
-impl Default for CompletionEngine {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl CompletionEngine {
+    #[allow(
+        clippy::new_without_default,
+        reason = "new() is the only default construction API"
+    )]
     pub fn new() -> Self {
         Self {
             table_detail_cache: LruCache::new(
