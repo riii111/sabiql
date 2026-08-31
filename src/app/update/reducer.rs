@@ -2700,7 +2700,7 @@ mod tests {
                 metadata: Some(Arc::new(DatabaseMetadata::new("cached_db".to_string()))),
                 ..Default::default()
             };
-            state.connection_caches.save(&conn_b, cached);
+            state.connection_caches.insert(conn_b.clone(), cached);
             let now = Instant::now();
 
             let effects = reduce(

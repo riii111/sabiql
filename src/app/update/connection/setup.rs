@@ -1269,8 +1269,8 @@ mod tests {
         fn save_completed_removes_stale_connection_cache_for_saved_profile() {
             let mut state = AppState::new("test".to_string());
             let saved_id = ConnectionId::new();
-            state.connection_caches.save(
-                &saved_id,
+            state.connection_caches.insert(
+                saved_id.clone(),
                 ConnectionCache {
                     metadata: Some(Arc::new({
                         let mut metadata = DatabaseMetadata::new("stale".to_string());
