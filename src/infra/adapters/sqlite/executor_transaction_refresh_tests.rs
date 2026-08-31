@@ -732,57 +732,21 @@ mod dml_command_tags {
         assert_eq!(result.command_tag, Some(CommandTag::Insert(2)));
     }
 
+    #[rstest::rstest]
+    #[case::unquoted("returning_log")]
+    #[case::backtick_quoted("`my returning`")]
+    #[case::bracket_quoted("[my returning]")]
     #[tokio::test]
-    async fn dml_table_name_containing_returning_reports_affected_rows() {
-        let (_dir, dsn) = test_support::make_sqlite_db(
-            "CREATE TABLE returning_log(id INTEGER PRIMARY KEY, name TEXT);",
-        );
+    async fn identifier_containing_returning_reports_affected_rows(#[case] identifier: &str) {
+        let (_dir, dsn) = test_support::make_sqlite_db(&format!(
+            "CREATE TABLE {identifier}(id INTEGER PRIMARY KEY, name TEXT);"
+        ));
         let adapter = SqliteAdapter::new();
 
         let result = adapter
             .execute_adhoc(
                 &dsn,
-                "INSERT INTO returning_log(name) VALUES ('a')",
-                AccessMode::ReadWrite,
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(result.row_count(), 1);
-        assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
-    }
-
-    #[tokio::test]
-    async fn dml_backtick_quoted_identifier_containing_returning_reports_affected_rows() {
-        let (_dir, dsn) = test_support::make_sqlite_db(
-            "CREATE TABLE `my returning`(id INTEGER PRIMARY KEY, name TEXT);",
-        );
-        let adapter = SqliteAdapter::new();
-
-        let result = adapter
-            .execute_adhoc(
-                &dsn,
-                "INSERT INTO `my returning`(name) VALUES ('a')",
-                AccessMode::ReadWrite,
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(result.row_count(), 1);
-        assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
-    }
-
-    #[tokio::test]
-    async fn dml_bracket_quoted_identifier_containing_returning_reports_affected_rows() {
-        let (_dir, dsn) = test_support::make_sqlite_db(
-            "CREATE TABLE [my returning](id INTEGER PRIMARY KEY, name TEXT);",
-        );
-        let adapter = SqliteAdapter::new();
-
-        let result = adapter
-            .execute_adhoc(
-                &dsn,
-                "INSERT INTO [my returning](name) VALUES ('a')",
+                &format!("INSERT INTO {identifier}(name) VALUES ('a')"),
                 AccessMode::ReadWrite,
             )
             .await
