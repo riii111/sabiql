@@ -448,14 +448,16 @@ mod tests {
         });
 
         assert!(status_height(&state, 80) > 1);
-        for status in [
-            SqlModalStatus::Normal,
-            SqlModalStatus::Editing,
-            SqlModalStatus::Running,
-            SqlModalStatus::Error("error".to_string()),
-        ] {
-            state.sql_modal.set_status_for_test(status);
-            assert_eq!(status_height(&state, 80), 1);
-        }
+        state.sql_modal.enter_normal();
+        assert_eq!(status_height(&state, 80), 1);
+
+        state.sql_modal.enter_editing();
+        assert_eq!(status_height(&state, 80), 1);
+
+        state.sql_modal.begin_adhoc_running();
+        assert_eq!(status_height(&state, 80), 1);
+
+        state.sql_modal.finish_adhoc_error("error".to_string());
+        assert_eq!(status_height(&state, 80), 1);
     }
 }

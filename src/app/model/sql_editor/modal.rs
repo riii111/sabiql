@@ -306,23 +306,6 @@ impl SqlModalContext {
     }
 }
 
-#[cfg(any(test, feature = "test-support"))]
-pub mod test_support {
-    use super::{CompletionState, SqlModalContext, SqlModalStatus};
-
-    impl SqlModalContext {
-        #[doc(hidden)]
-        pub fn set_status_for_test(&mut self, status: SqlModalStatus) {
-            self.status = status;
-        }
-
-        #[doc(hidden)]
-        pub fn completion_mut_for_test(&mut self) -> &mut CompletionState {
-            &mut self.completion
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
