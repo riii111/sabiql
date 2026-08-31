@@ -151,7 +151,7 @@ pub enum Effect {
 
     CopyToClipboard {
         content: String,
-        on_success: Option<Box<Action>>,
+        on_success: Box<Action>,
         on_failure: Option<Box<Action>>,
     },
     OpenFolder {

@@ -54,7 +54,7 @@ pub(super) fn reduce_connection_error(
             if let Some(content) = state.connection_error.masked_details() {
                 DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                     content: content.to_string(),
-                    on_success: Some(Box::new(Action::ConnectionErrorCopied)),
+                    on_success: Box::new(Action::ConnectionErrorCopied),
                     on_failure: None,
                 }])
             } else {
