@@ -556,6 +556,40 @@ mod tests {
                 dsn: "postgres://localhost/test".to_string(),
                 run_id: 1,
                 new_metadata: make_metadata(2),
+                stale_tables: vec![],
+                removed_tables: vec![],
+                missing_in_cache: vec!["public.uncached".to_string()],
+                new_signatures: HashMap::new(),
+            });
+
+            let effects = reduce_er(&mut state, &action, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            let Some(Effect::DispatchActions(actions)) = effects.iter().find(|effect| {
+                matches!(effect, Effect::DispatchActions(actions) if actions.iter().any(
+                    |action| matches!(action, Action::StartErPrefetchScoped { .. })
+                ))
+            }) else {
+                panic!("expected scoped prefetch");
+            };
+            assert!(matches!(
+                actions.as_slice(),
+                [Action::StartErPrefetchScoped { tables }] if tables == &["public.uncached"]
+            ));
+        }
+
+        #[test]
+        fn stale_and_missing_tables_are_prefetched_once() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            set_active_run_id(&mut state, 1);
+            state.er_preparation.mark_waiting_for_test();
+            state.session.set_metadata(Some(make_metadata(0)));
+
+            let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
+                dsn: "postgres://localhost/test".to_string(),
+                run_id: 1,
+                new_metadata: make_metadata(2),
                 stale_tables: vec!["public.uncached".to_string()],
                 removed_tables: vec![],
                 missing_in_cache: vec!["public.uncached".to_string()],
