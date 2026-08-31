@@ -36,14 +36,14 @@ pub(crate) fn clipboard_unavailable() -> Action {
 pub(crate) fn metadata_reload_effects(state: &mut AppState, dsn: &str) -> Vec<Effect> {
     let run_id = state.session.begin_reload();
 
-    vec![Effect::Sequence(vec![
+    vec![
         Effect::CancelMetadataTasks,
         Effect::ClearCompletionEngineCache,
         Effect::FetchMetadata {
             dsn: dsn.to_string(),
             run_id,
         },
-    ])]
+    ]
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

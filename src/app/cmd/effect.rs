@@ -177,9 +177,6 @@ pub enum Effect {
         run_id: u64,
     },
 
-    // Executes effects in order (each awaits before the next),
-    // but spawned async tasks (e.g. FetchMetadata) may complete out of order.
-    Sequence(Vec<Self>),
     DispatchActions(Vec<Action>),
     SwitchConnection {
         connection_index: usize,

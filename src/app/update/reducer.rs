@@ -1260,16 +1260,13 @@ mod tests {
                 Instant::now(),
                 &AppServices::stub(),
             );
-            let reload_run_id = match &reload_effects[0] {
-                Effect::Sequence(effects) => effects
-                    .iter()
-                    .find_map(|effect| match effect {
-                        Effect::FetchMetadata { run_id, .. } => Some(*run_id),
-                        _ => None,
-                    })
-                    .expect("reload should start metadata fetch"),
-                other => panic!("expected reload sequence, got {other:?}"),
-            };
+            let reload_run_id = reload_effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::FetchMetadata { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .expect("reload should start metadata fetch");
 
             reduce(
                 &mut state,
@@ -1635,7 +1632,7 @@ mod tests {
         use crate::domain::DatabaseMetadata;
 
         #[test]
-        fn reload_metadata_returns_sequence_effect() {
+        fn reload_metadata_returns_effects_in_execution_order() {
             let mut state = create_test_state();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             let now = Instant::now();
@@ -1647,15 +1644,14 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(effects[0], Effect::Sequence(_)));
-
-            if let Effect::Sequence(seq) = &effects[0] {
-                assert_eq!(seq.len(), 3);
-                assert!(matches!(seq[0], Effect::CancelMetadataTasks));
-                assert!(matches!(seq[1], Effect::ClearCompletionEngineCache));
-                assert!(matches!(seq[2], Effect::FetchMetadata { .. }));
-            }
+            assert!(matches!(
+                effects.as_slice(),
+                [
+                    Effect::CancelMetadataTasks,
+                    Effect::ClearCompletionEngineCache,
+                    Effect::FetchMetadata { .. },
+                ]
+            ));
         }
 
         #[test]
@@ -3455,7 +3451,7 @@ mod tests {
         }
 
         #[test]
-        fn confirm_selection_with_reload_emits_sequence_effect() {
+        fn confirm_selection_with_reload_emits_effects_in_order() {
             let mut state = state_in_palette_mode(KeymapPreset::Ide);
             let entry_index = palette_index_of(&state, |a| matches!(a, Action::ReloadMetadata));
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
@@ -3469,10 +3465,14 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(
-                effects.iter().any(|e| matches!(e, Effect::Sequence(_))),
-                "expected Sequence effect for ReloadMetadata, got {effects:?}"
-            );
+            assert!(matches!(
+                effects.as_slice(),
+                [
+                    Effect::CancelMetadataTasks,
+                    Effect::ClearCompletionEngineCache,
+                    Effect::FetchMetadata { .. },
+                ]
+            ));
         }
 
         #[test]

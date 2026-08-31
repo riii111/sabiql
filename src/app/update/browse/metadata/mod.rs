@@ -306,7 +306,11 @@ mod tests {
                 .into_effects()
                 .unwrap();
 
-            assert!(effects.iter().any(contains_fetch_metadata));
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
+            );
             assert!(state.messages.last_error().is_none());
         }
 
@@ -386,14 +390,6 @@ mod tests {
                 state.messages.last_error(),
                 Some("Connection switch in progress")
             );
-        }
-
-        fn contains_fetch_metadata(effect: &Effect) -> bool {
-            match effect {
-                Effect::FetchMetadata { .. } => true,
-                Effect::Sequence(effects) => effects.iter().any(contains_fetch_metadata),
-                _ => false,
-            }
         }
     }
 
