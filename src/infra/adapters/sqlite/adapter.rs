@@ -6,15 +6,13 @@ pub struct SqliteAdapter {
 }
 
 impl SqliteAdapter {
+    #[allow(
+        clippy::new_without_default,
+        reason = "new() is the only default construction API"
+    )]
     pub fn new() -> Self {
         Self {
             cli: SqliteCli::new(),
         }
-    }
-}
-
-impl Default for SqliteAdapter {
-    fn default() -> Self {
-        Self::new()
     }
 }
