@@ -1125,7 +1125,7 @@ mod tests {
                 DatabaseType::PostgreSQL,
                 "postgres://localhost/test",
             );
-            state.runtime.project_name = "test-project".to_string();
+            state.project_name = "test-project".to_string();
             state
         }
 
@@ -1139,7 +1139,7 @@ mod tests {
                 Some(database),
             );
             state.session.mark_probe_connected();
-            state.runtime.project_name = "test-project".to_string();
+            state.project_name = "test-project".to_string();
             state
         }
 

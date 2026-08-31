@@ -1,8 +1,8 @@
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use super::explain_context::ExplainContext;
-use super::runtime_state::RuntimeState;
 use crate::domain::connection::{ConnectionId, ConnectionProfile, ServiceEntry};
 use crate::domain::{Column, DatabaseType, TableSummary, mysql_sql::mysql_export_plan};
 use crate::model::browse::inspector_view_model::InspectorViewModel;
@@ -49,7 +49,8 @@ pub struct AppState {
     pub render_dirty: bool,
 
     pub session: BrowseSession,
-    pub runtime: RuntimeState,
+    pub(crate) project_name: String,
+    pub(crate) service_file_path: Option<PathBuf>,
     pub ui: UiState,
     pub query: QueryExecution,
     pub sql_modal: SqlModalContext,
@@ -84,7 +85,8 @@ impl AppState {
             kill_buffer: None,
             render_dirty: true,
             session: BrowseSession::default(),
-            runtime: RuntimeState::new(project_name),
+            project_name,
+            service_file_path: None,
             ui: UiState::new(),
             query: QueryExecution::default(),
             sql_modal: SqlModalContext::default(),
@@ -109,6 +111,18 @@ impl AppState {
             service_entries: Vec::new(),
             connection_list_items: Vec::new(),
         }
+    }
+
+    pub fn project_name(&self) -> &str {
+        &self.project_name
+    }
+
+    pub fn service_file_path(&self) -> Option<&Path> {
+        self.service_file_path.as_deref()
+    }
+
+    pub fn set_service_file_path(&mut self, path: Option<PathBuf>) {
+        self.service_file_path = path;
     }
 
     pub fn input_mode(&self) -> InputMode {
@@ -495,6 +509,13 @@ mod tests {
     use rstest::rstest;
     fn make_state() -> AppState {
         AppState::new("test".to_string())
+    }
+
+    #[test]
+    fn new_stores_project_name() {
+        let state = AppState::new("my_project".to_string());
+
+        assert_eq!(state.project_name(), "my_project");
     }
 
     fn activate_postgres_connection(state: &mut AppState, dsn: &str) {
