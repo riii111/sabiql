@@ -14,7 +14,6 @@ use crate::model::sql_editor::completion::CompletionCandidate;
 use crate::policy::{FeatureRequirement, mask_password};
 use crate::ports::outbound::clipboard::ClipboardError;
 use crate::ports::outbound::connection_store::ConnectionStoreError;
-use crate::ports::outbound::query_history::QueryHistoryError;
 use crate::ports::outbound::{AppSettings, DbOperationError};
 use std::collections::HashMap;
 
@@ -620,7 +619,7 @@ pub enum Action {
 
     // Query history
     QueryHistoryLoaded(QueryHistoryScope, Vec<QueryHistoryEntry>),
-    QueryHistoryLoadFailed(QueryHistoryScope, QueryHistoryError),
+    QueryHistoryLoadFailed(QueryHistoryScope, String),
     QueryHistoryConfirmSelection,
 
     // CSV export
