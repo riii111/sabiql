@@ -8,7 +8,7 @@ use harness::{
     with_current_result,
 };
 use ratatui::buffer::{Buffer, Cell};
-use ratatui::layout::{Constraint, Flex, Layout, Rect};
+use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier};
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::input_mode::InputMode;
