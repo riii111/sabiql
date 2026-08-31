@@ -54,7 +54,7 @@ enum LexerState {
     InEscapeString,
 }
 
-const POSTGRESQL_KEYWORDS: &[&str] = &[
+pub(crate) const POSTGRESQL_KEYWORDS: &[&str] = &[
     "SELECT",
     "FROM",
     "WHERE",
@@ -151,7 +151,7 @@ const POSTGRESQL_KEYWORDS: &[&str] = &[
     "RELEASE",
 ];
 
-const MYSQL_KEYWORDS: &[&str] = &[
+pub(crate) const MYSQL_KEYWORDS: &[&str] = &[
     "SELECT",
     "FROM",
     "WHERE",
