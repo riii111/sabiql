@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use crate::model::app_state::AppState;
 use crate::model::shared::key_sequence::KeySequenceState;
-use crate::model::shared::text_input::{TextInputEditing, TextInputLike, TextInputState};
+use crate::model::shared::text_input::TextInputState;
 use crate::model::sql_editor::modal::{
     HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalContext, SqlModalStatus,
 };

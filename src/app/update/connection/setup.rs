@@ -11,7 +11,6 @@ use crate::model::connection::setup::{
 use crate::model::connection::state::ConnectionState;
 use crate::model::shared::confirm_dialog::ConfirmIntent;
 use crate::model::shared::input_mode::InputMode;
-use crate::model::shared::text_input::TextInputEditing;
 use crate::update::action::{
     Action, ConnectionSaveError, ConnectionTarget, InputTarget, ModalKind,
 };

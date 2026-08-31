@@ -374,7 +374,6 @@ mod tests {
         use crate::model::er_state::ErStatus;
         use crate::model::shared::flash_timer::FlashId;
         use crate::model::shared::key_sequence::Prefix;
-        use crate::model::shared::text_input::TextInputLike;
         use crate::update::action::{ErDiagramInfo, ScrollAmount, ScrollDirection, ScrollTarget};
 
         fn sqlite_state() -> AppState {
@@ -976,7 +975,6 @@ mod tests {
 
     mod sql_modal_debounce {
         use super::*;
-        use crate::model::shared::text_input::TextInputLike;
         use crate::model::sql_editor::modal::SqlModalStatus;
         use std::time::Duration;
 
@@ -1070,7 +1068,6 @@ mod tests {
 
     mod completion_ui {
         use super::*;
-        use crate::model::shared::text_input::TextInputLike;
         use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
 
         fn make_candidate(text: &str) -> CompletionCandidate {
