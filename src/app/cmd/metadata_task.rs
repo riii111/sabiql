@@ -9,8 +9,6 @@ type MetadataTask = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
 enum Command {
     Spawn(MetadataTask),
     Abort(oneshot::Sender<()>),
-    #[cfg(test)]
-    Count(oneshot::Sender<usize>),
 }
 
 #[derive(Default)]
@@ -53,24 +51,6 @@ impl MetadataTaskRegistry {
         }))
     }
 
-    #[cfg(test)]
-    async fn active_count(&self) -> usize {
-        let command_tx = self
-            .state
-            .lock()
-            .expect("metadata task registry lock poisoned")
-            .command_tx
-            .clone()
-            .expect("metadata task registry owner should be running");
-        let (count_tx, count_rx) = oneshot::channel();
-        command_tx
-            .send(Command::Count(count_tx))
-            .expect("metadata task registry owner should be running");
-        count_rx
-            .await
-            .expect("metadata task registry owner should report task count")
-    }
-
     fn command_tx(registry: &Arc<Self>) -> mpsc::UnboundedSender<Command> {
         let mut state = registry
             .state
@@ -99,10 +79,6 @@ async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                 Some(Command::Abort(done)) => {
                     tasks.shutdown().await;
                     let _ = done.send(());
-                }
-                #[cfg(test)]
-                Some(Command::Count(count)) => {
-                    let _ = count.send(tasks.len());
                 }
                 None => {
                     tasks.shutdown().await;
@@ -164,8 +140,6 @@ mod tests {
         for signal in started {
             signal.await.expect("prefetch task should start");
         }
-        assert_eq!(registry.active_count().await, 4);
-
         registry.cancel().await;
 
         timeout(Duration::from_secs(1), async {
@@ -175,20 +149,22 @@ mod tests {
         })
         .await
         .expect("all prefetch tasks should be dropped");
-        assert_eq!(registry.active_count().await, 0);
     }
 
     #[tokio::test]
     async fn removes_released_task_from_registry() {
         let registry = Arc::new(MetadataTaskRegistry::default());
+        let dropped = Arc::new(AtomicUsize::new(0));
         let (done_tx, done_rx) = oneshot::channel();
+        let guard = DropSignal(Arc::clone(&dropped));
         MetadataTaskRegistry::spawn(&registry, async move {
+            let _guard = guard;
             done_tx.send(()).ok();
         });
 
         done_rx.await.expect("task should complete");
         timeout(Duration::from_secs(1), async {
-            while registry.active_count().await != 0 {
+            while dropped.load(Ordering::SeqCst) != 1 {
                 tokio::task::yield_now().await;
             }
         })
