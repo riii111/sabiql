@@ -1,16 +1,10 @@
-use std::time::Instant;
-
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget};
 use crate::update::dispatch_result::DispatchResult;
 
-pub(super) fn reduce_sqlite_diagnostics(
-    state: &mut AppState,
-    action: &Action,
-    _now: Instant,
-) -> DispatchResult {
+pub(super) fn reduce_sqlite_diagnostics(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::SqliteDiagnostics) => {
             let Some(dsn) = state.session.dsn().map(String::from) else {
@@ -80,6 +74,8 @@ pub(super) fn reduce_sqlite_diagnostics(
 
 #[cfg(test)]
 mod tests {
+    use std::time::Instant;
+
     use super::*;
     use crate::domain::connection::DatabaseType;
     use crate::domain::{ConnectionId, DiagnosticField, SqliteDiagnosticsSnapshot};
@@ -182,12 +178,8 @@ mod tests {
             "postgres://localhost/db",
         );
 
-        let effects = reduce_sqlite_diagnostics(
-            &mut state,
-            &Action::RunSqliteDiagnosticsQuickCheck,
-            Instant::now(),
-        )
-        .unwrap();
+        let effects =
+            reduce_sqlite_diagnostics(&mut state, &Action::RunSqliteDiagnosticsQuickCheck).unwrap();
 
         assert!(effects.is_empty());
         assert!(!state.sqlite_diagnostics.is_quick_check_running());
@@ -245,7 +237,6 @@ mod tests {
                 run_id: stale_quick_check_run_id,
                 quick_check: DiagnosticField::ok("ok"),
             },
-            Instant::now(),
         )
         .unwrap();
 
@@ -277,7 +268,6 @@ mod tests {
                 run_id: stale_run_id,
                 snapshot: Box::new(SqliteDiagnosticsSnapshot::default()),
             },
-            Instant::now(),
         )
         .unwrap();
 
@@ -301,7 +291,6 @@ mod tests {
                 direction: ScrollDirection::Down,
                 amount: ScrollAmount::Line,
             },
-            Instant::now(),
         )
         .unwrap();
 

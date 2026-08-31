@@ -1,8 +1,9 @@
+use std::collections::HashMap;
 use std::time::Instant;
 
 use super::explain_context::ExplainContext;
 use super::runtime_state::RuntimeState;
-use crate::domain::connection::{ConnectionProfile, ServiceEntry};
+use crate::domain::connection::{ConnectionId, ConnectionProfile, ServiceEntry};
 use crate::domain::{Column, DatabaseType, TableSummary, mysql_sql::mysql_export_plan};
 use crate::model::browse::inspector_view_model::InspectorViewModel;
 use crate::model::browse::json_detail::JsonDetailState;
@@ -10,7 +11,7 @@ use crate::model::browse::query_execution::{QueryExecution, VisibleResultKind};
 use crate::model::browse::result_interaction::ResultInteraction;
 use crate::model::browse::row_detail::RowDetailState;
 use crate::model::browse::session::BrowseSession;
-use crate::model::connection::cache::ConnectionCacheStore;
+use crate::model::connection::cache::ConnectionCache;
 use crate::model::connection::error_state::ConnectionErrorState;
 use crate::model::connection::list::{self, ConnectionListItem};
 use crate::model::connection::setup::ConnectionSetupState;
@@ -68,7 +69,7 @@ pub struct AppState {
     pub explain: ExplainContext,
     pub modal: ModalState,
     pub flash_timers: FlashTimerStore,
-    pub connection_caches: ConnectionCacheStore,
+    pub connection_caches: HashMap<ConnectionId, ConnectionCache>,
     connections: Vec<ConnectionProfile>,
     service_entries: Vec<ServiceEntry>,
     connection_list_items: Vec<ConnectionListItem>,
@@ -103,7 +104,7 @@ impl AppState {
             explain: ExplainContext::default(),
             modal: ModalState::default(),
             flash_timers: FlashTimerStore::default(),
-            connection_caches: ConnectionCacheStore::default(),
+            connection_caches: HashMap::default(),
             connections: Vec::new(),
             service_entries: Vec::new(),
             connection_list_items: Vec::new(),

@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
@@ -8,11 +6,7 @@ use crate::update::action::{Action, InputTarget, ListMotion, ListTarget, ModalKi
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 
-pub(super) fn reduce_query_history_picker(
-    state: &mut AppState,
-    action: &Action,
-    _now: Instant,
-) -> DispatchResult {
+pub(super) fn reduce_query_history_picker(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::QueryHistoryPicker) => {
             if state.modal.active_mode() == InputMode::QueryHistoryPicker {

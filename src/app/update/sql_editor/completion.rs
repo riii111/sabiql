@@ -1,16 +1,10 @@
-use std::time::Instant;
-
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::sql_editor::modal::sql_modal_visible_rows;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub(super) fn reduce_completion(
-    state: &mut AppState,
-    action: &Action,
-    _now: Instant,
-) -> DispatchResult {
+pub(super) fn reduce_completion(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
         // Completion navigation
         Action::CompletionNext => {
@@ -109,7 +103,6 @@ mod tests {
                 database_generation: old_scope.2,
                 metadata_generation: old_scope.3,
             },
-            Instant::now(),
         );
 
         assert!(!state.sql_modal.completion().visible);

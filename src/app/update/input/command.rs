@@ -1,43 +1,15 @@
 use crate::update::action::{Action, ModalKind};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Command {
-    Quit,
-    Help,
-    Sql,
-    Erd,
-    Settings,
-    Theme,
-    Palette,
-    Write,
-    Unknown(String),
-}
-
-pub fn parse_command(input: &str) -> Command {
-    let trimmed = input.trim();
-    match trimmed {
-        "q" | "quit" => Command::Quit,
-        "?" | "help" => Command::Help,
-        "sql" => Command::Sql,
-        "erd" => Command::Erd,
-        "settings" => Command::Settings,
-        "theme" => Command::Theme,
-        "palette" => Command::Palette,
-        "w" | "write" => Command::Write,
-        other => Command::Unknown(other.to_string()),
-    }
-}
-
-pub fn command_to_action(cmd: Command) -> Action {
-    match cmd {
-        Command::Quit => Action::Quit,
-        Command::Help => Action::ToggleModal(ModalKind::Help),
-        Command::Sql => Action::OpenModal(ModalKind::SqlModal),
-        Command::Erd => Action::OpenModal(ModalKind::ErTablePicker),
-        Command::Settings | Command::Theme => Action::OpenModal(ModalKind::Settings),
-        Command::Palette => Action::OpenModal(ModalKind::CommandPalette),
-        Command::Write => Action::SubmitCellEditWrite,
-        Command::Unknown(_) => Action::None,
+pub fn action_for_command(input: &str) -> Action {
+    match input.trim() {
+        "q" | "quit" => Action::Quit,
+        "?" | "help" => Action::ToggleModal(ModalKind::Help),
+        "sql" => Action::OpenModal(ModalKind::SqlModal),
+        "erd" => Action::OpenModal(ModalKind::ErTablePicker),
+        "settings" | "theme" => Action::OpenModal(ModalKind::Settings),
+        "palette" => Action::OpenModal(ModalKind::CommandPalette),
+        "w" | "write" => Action::SubmitCellEditWrite,
+        _ => Action::None,
     }
 }
 
@@ -45,184 +17,87 @@ pub fn command_to_action(cmd: Command) -> Action {
 mod tests {
     use super::*;
 
-    mod parse_command {
+    mod action_for_command {
         use super::*;
         use rstest::rstest;
 
-        // Aliases with equivalent behavior
         #[rstest]
-        #[case("q", Command::Quit)]
-        #[case("quit", Command::Quit)]
-        fn quit_aliases(#[case] input: &str, #[case] expected: Command) {
-            let result = parse_command(input);
-
-            assert_eq!(result, expected);
+        #[case("q")]
+        #[case("quit")]
+        fn quit_aliases(#[case] input: &str) {
+            assert!(matches!(action_for_command(input), Action::Quit));
         }
 
         #[rstest]
-        #[case("?", Command::Help)]
-        #[case("help", Command::Help)]
-        fn help_aliases(#[case] input: &str, #[case] expected: Command) {
-            let result = parse_command(input);
-
-            assert_eq!(result, expected);
-        }
-
-        #[test]
-        fn sql_returns_sql() {
-            let result = parse_command("sql");
-
-            assert_eq!(result, Command::Sql);
-        }
-
-        #[test]
-        fn erd_returns_erd() {
-            let result = parse_command("erd");
-
-            assert_eq!(result, Command::Erd);
-        }
-
-        #[test]
-        fn settings_returns_settings() {
-            let result = parse_command("settings");
-
-            assert_eq!(result, Command::Settings);
-        }
-
-        #[test]
-        fn theme_returns_theme() {
-            let result = parse_command("theme");
-
-            assert_eq!(result, Command::Theme);
-        }
-
-        #[test]
-        fn palette_returns_palette() {
-            let result = parse_command("palette");
-
-            assert_eq!(result, Command::Palette);
-        }
-
-        #[rstest]
-        #[case("w", Command::Write)]
-        #[case("write", Command::Write)]
-        fn write_aliases(#[case] input: &str, #[case] expected: Command) {
-            let result = parse_command(input);
-            assert_eq!(result, expected);
-        }
-
-        #[test]
-        fn unknown_command_returns_unknown() {
-            let result = parse_command("foo");
-
-            assert_eq!(result, Command::Unknown("foo".to_string()));
-        }
-
-        #[test]
-        fn whitespace_is_trimmed() {
-            let result = parse_command("  sql  ");
-
-            assert_eq!(result, Command::Sql);
-        }
-
-        #[test]
-        fn numeric_string_returns_unknown() {
-            let result = parse_command("5");
-
-            assert_eq!(result, Command::Unknown("5".to_string()));
-        }
-
-        #[test]
-        fn numeric_string_with_whitespace_returns_unknown() {
-            let result = parse_command("  42  ");
-
-            assert_eq!(result, Command::Unknown("42".to_string()));
-        }
-
-        #[test]
-        fn non_numeric_string_returns_unknown() {
-            let result = parse_command("42foo");
-
-            assert_eq!(result, Command::Unknown("42foo".to_string()));
-        }
-
-        #[test]
-        fn empty_string_returns_unknown() {
-            let result = parse_command("");
-
-            assert_eq!(result, Command::Unknown(String::new()));
-        }
-    }
-
-    mod command_to_action {
-        use super::*;
-
-        #[test]
-        fn quit_returns_quit_action() {
-            let result = command_to_action(Command::Quit);
-
-            assert!(matches!(result, Action::Quit));
-        }
-
-        #[test]
-        fn help_returns_open_help_action() {
-            let result = command_to_action(Command::Help);
-
-            assert!(matches!(result, Action::ToggleModal(ModalKind::Help)));
-        }
-
-        #[test]
-        fn sql_returns_open_sql_modal_action() {
-            let result = command_to_action(Command::Sql);
-
-            assert!(matches!(result, Action::OpenModal(ModalKind::SqlModal)));
-        }
-
-        #[test]
-        fn erd_returns_open_er_table_picker_action() {
-            let result = command_to_action(Command::Erd);
-
+        #[case("?")]
+        #[case("help")]
+        fn help_aliases(#[case] input: &str) {
             assert!(matches!(
-                result,
+                action_for_command(input),
+                Action::ToggleModal(ModalKind::Help)
+            ));
+        }
+
+        #[test]
+        fn sql_opens_sql_modal() {
+            assert!(matches!(
+                action_for_command("sql"),
+                Action::OpenModal(ModalKind::SqlModal)
+            ));
+        }
+
+        #[test]
+        fn erd_opens_er_table_picker() {
+            assert!(matches!(
+                action_for_command("erd"),
                 Action::OpenModal(ModalKind::ErTablePicker)
             ));
         }
 
-        #[test]
-        fn settings_returns_open_settings_action() {
-            let result = command_to_action(Command::Settings);
-
-            assert!(matches!(result, Action::OpenModal(ModalKind::Settings)));
-        }
-
-        #[test]
-        fn theme_returns_open_settings_action() {
-            let result = command_to_action(Command::Theme);
-
-            assert!(matches!(result, Action::OpenModal(ModalKind::Settings)));
-        }
-
-        #[test]
-        fn palette_returns_open_command_palette_action() {
-            let result = command_to_action(Command::Palette);
-
+        #[rstest]
+        #[case("settings")]
+        #[case("theme")]
+        fn settings_aliases_open_settings(#[case] input: &str) {
             assert!(matches!(
-                result,
-                Action::OpenModal(ModalKind::CommandPalette)
+                action_for_command(input),
+                Action::OpenModal(ModalKind::Settings)
             ));
         }
 
         #[test]
-        fn write_returns_submit_cell_edit_write_action() {
-            let result = command_to_action(Command::Write);
-            assert!(matches!(result, Action::SubmitCellEditWrite));
+        fn palette_opens_command_palette() {
+            assert!(matches!(
+                action_for_command("palette"),
+                Action::OpenModal(ModalKind::CommandPalette)
+            ));
+        }
+
+        #[rstest]
+        #[case("w")]
+        #[case("write")]
+        fn write_aliases(#[case] input: &str) {
+            assert!(matches!(
+                action_for_command(input),
+                Action::SubmitCellEditWrite
+            ));
+        }
+
+        #[rstest]
+        #[case("foo")]
+        #[case("5")]
+        #[case("  42  ")]
+        #[case("42foo")]
+        #[case("")]
+        fn unknown_commands_return_none(#[case] input: &str) {
+            assert!(matches!(action_for_command(input), Action::None));
         }
 
         #[test]
-        fn unknown_returns_none_action() {
-            let result = command_to_action(Command::Unknown("foo".to_string()));
-
-            assert!(matches!(result, Action::None));
+        fn whitespace_is_trimmed() {
+            assert!(matches!(
+                action_for_command("  sql  "),
+                Action::OpenModal(ModalKind::SqlModal)
+            ));
         }
     }
 }

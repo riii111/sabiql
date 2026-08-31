@@ -13,9 +13,9 @@ use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
 pub fn dispatch_sql_modal(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
-    completion::reduce_completion(state, action, now)
+    completion::reduce_completion(state, action)
         .or_else(|| editing::reduce_editing(state, action, now))
-        .or_else(|| mode::reduce_mode(state, action, now))
+        .or_else(|| mode::reduce_mode(state, action))
         .or_else(|| submit::reduce_submit(state, action, now))
         .or_else(|| high_risk::reduce_high_risk_confirmation(state, action, now))
         .or_else(|| yank::reduce_yank(state, action, now))
