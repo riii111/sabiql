@@ -564,7 +564,7 @@ mod tests {
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    detail: empty_table("public", "users"),
+                    detail: Some(empty_table("public", "users")),
                 },
                 Instant::now(),
             )
@@ -921,7 +921,7 @@ mod tests {
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    detail: empty_table("public", "users"),
+                    detail: Some(empty_table("public", "users")),
                 },
                 Instant::now(),
             )
@@ -1371,7 +1371,7 @@ mod tests {
         }
 
         #[test]
-        fn cached_table_retriggers_sql_completion_without_er_state() {
+        fn fetched_table_retriggers_sql_completion_without_er_state() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.modal.set_mode(InputMode::SqlModal);
             let run_id = state.table_prefetch.begin_completion_prefetch();
@@ -1386,7 +1386,7 @@ mod tests {
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    detail: empty_table("public", "users"),
+                    detail: Some(empty_table("public", "users")),
                 },
                 Instant::now(),
             )
