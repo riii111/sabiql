@@ -44,12 +44,10 @@ pub(crate) async fn run(
                 .replace(async move {
                     let action = match provider.fetch_core_diagnostics(&dsn).await {
                         Ok(snapshot) => Action::SqliteDiagnosticsCoreLoaded {
-                            dsn,
                             run_id,
                             snapshot: Box::new(snapshot),
                         },
                         Err(error) => Action::SqliteDiagnosticsCoreLoaded {
-                            dsn,
                             run_id,
                             snapshot: Box::new(SqliteDiagnosticsSnapshot::core_fetch_failed(
                                 DiagnosticField::err(error.masked_details()),
@@ -69,7 +67,6 @@ pub(crate) async fn run(
                     let quick_check = provider.fetch_quick_check(&dsn).await;
                     let _ = action_tx
                         .send(Action::SqliteDiagnosticsQuickCheckLoaded {
-                            dsn,
                             run_id,
                             quick_check,
                         })

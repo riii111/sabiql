@@ -491,7 +491,6 @@ mod tests {
             assert_unsupported_action_is_a_noop(
                 &mut explain_state,
                 Action::ExplainCompleted {
-                    dsn: "sqlite://test.db".to_string(),
                     database_type: DatabaseType::SQLite,
                     database_generation: 0,
                     run_id: 1,
@@ -505,7 +504,6 @@ mod tests {
             assert_unsupported_action_is_a_noop(
                 &mut explain_state,
                 Action::ExplainFailed {
-                    dsn: "sqlite://test.db".to_string(),
                     database_generation: 0,
                     run_id: 1,
                     error: DbOperationError::QueryFailed("error".to_string()),
@@ -518,7 +516,6 @@ mod tests {
             assert_unsupported_action_is_a_noop(
                 &mut diagnostics_state,
                 Action::SqliteDiagnosticsCoreLoaded {
-                    dsn: "postgres://localhost/test".to_string(),
                     run_id,
                     snapshot: Box::new(SqliteDiagnosticsSnapshot {
                         quick_check: DiagnosticField::ok("ok"),
@@ -1159,7 +1156,6 @@ mod tests {
             test_fixtures::activate_postgres_connection(state, "postgres://localhost/test");
             let run_id = state.session.begin_metadata_refresh();
             Action::MetadataLoaded {
-                dsn: "postgres://localhost/test".to_string(),
                 run_id,
                 metadata: Arc::new(metadata),
             }
@@ -1168,11 +1164,7 @@ mod tests {
         fn metadata_failed_action(state: &mut AppState, error: DbOperationError) -> Action {
             test_fixtures::activate_postgres_connection(state, "postgres://localhost/test");
             let run_id = state.session.begin_metadata_refresh();
-            Action::MetadataFailed {
-                dsn: "postgres://localhost/test".to_string(),
-                run_id,
-                error,
-            }
+            Action::MetadataFailed { run_id, error }
         }
 
         #[test]
@@ -1213,7 +1205,6 @@ mod tests {
             reduce(
                 &mut state,
                 Action::EffectiveUserLoaded {
-                    dsn: "postgres://localhost/test".to_string(),
                     run_id,
                     effective_user: Some("postgres".to_string()),
                 },
@@ -1234,7 +1225,6 @@ mod tests {
             reduce(
                 &mut state,
                 Action::EffectiveUserLoaded {
-                    dsn: "postgres://localhost/test".to_string(),
                     run_id: old_run_id,
                     effective_user: Some("old_user".to_string()),
                 },
@@ -1284,7 +1274,6 @@ mod tests {
             reduce(
                 &mut state,
                 Action::MetadataFailed {
-                    dsn: "postgres://localhost/test".to_string(),
                     run_id: reload_run_id,
                     error: DbOperationError::ConnectionFailed("reload failed".to_string()),
                 },
@@ -1298,7 +1287,6 @@ mod tests {
             reduce(
                 &mut state,
                 Action::EffectiveUserLoaded {
-                    dsn: "postgres://localhost/test".to_string(),
                     run_id: user_run_id,
                     effective_user: Some("postgres".to_string()),
                 },
@@ -1369,7 +1357,6 @@ mod tests {
             reduce(
                 &mut state,
                 Action::MetadataFailed {
-                    dsn: "postgres://localhost/test".to_string(),
                     run_id,
                     error: DbOperationError::ConnectionFailed("connection refused".to_string()),
                 },
@@ -1710,7 +1697,6 @@ mod tests {
             // Metadata loaded
             let metadata = DatabaseMetadata::new("test".to_string());
             let action = Action::MetadataLoaded {
-                dsn: "postgres://localhost/test".to_string(),
                 run_id: 1,
                 metadata: Arc::new(metadata),
             };
@@ -1851,7 +1837,6 @@ mod tests {
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             let run_id = state.session.begin_metadata_refresh();
             let action = Action::MetadataFailed {
-                dsn: "postgres://localhost/test".to_string(),
                 run_id,
                 error: DbOperationError::ConnectionFailed("connection refused".to_string()),
             };
@@ -2274,7 +2259,6 @@ mod tests {
             let effects = reduce(
                 &mut state,
                 Action::ExecuteWriteSucceeded {
-                    dsn: "postgres://localhost/test".to_string(),
                     run_id: 1,
                     affected_rows: 1,
                     diagnostics: Vec::new(),
@@ -2347,7 +2331,6 @@ mod tests {
             reduce(
                 &mut state,
                 Action::ExecuteWriteFailed {
-                    dsn: "postgres://localhost/test".to_string(),
                     run_id: 1,
                     error: DbOperationError::QueryFailed("connection lost".to_string()),
                 },
@@ -2470,7 +2453,6 @@ mod tests {
             reduce(
                 &mut state,
                 Action::MetadataLoaded {
-                    dsn: "postgres://localhost/test".to_string(),
                     run_id,
                     metadata: Arc::new(metadata),
                 },
@@ -2498,7 +2480,6 @@ mod tests {
             reduce(
                 &mut state,
                 Action::MetadataFailed {
-                    dsn: "postgres://localhost/test".to_string(),
                     run_id,
                     error: DbOperationError::ConnectionFailed("connection refused".to_string()),
                 },
@@ -2534,7 +2515,6 @@ mod tests {
             reduce(
                 &mut state,
                 Action::MetadataFailed {
-                    dsn: "postgres://localhost/test".to_string(),
                     run_id,
                     error: DbOperationError::QueryFailed("permission denied".to_string()),
                 },
@@ -2866,7 +2846,6 @@ mod tests {
             reduce(
                 &mut state,
                 Action::EffectiveUserLoaded {
-                    dsn: dsn_a.clone(),
                     run_id: old_a_run_id,
                     effective_user: Some("old_a_user".to_string()),
                 },
@@ -2878,7 +2857,6 @@ mod tests {
             reduce(
                 &mut state,
                 Action::EffectiveUserLoaded {
-                    dsn: dsn_a,
                     run_id: new_a_run_id,
                     effective_user: Some("a_user".to_string()),
                 },
@@ -2967,7 +2945,6 @@ mod tests {
             test_fixtures::activate_postgres_connection(state, "postgres://localhost/test");
             let run_id = state.session.begin_metadata_refresh();
             Action::MetadataLoaded {
-                dsn: "postgres://localhost/test".to_string(),
                 run_id,
                 metadata: sample_metadata(),
             }
@@ -3240,7 +3217,6 @@ mod tests {
             reduce(
                 &mut state,
                 Action::MetadataLoaded {
-                    dsn: "postgres://localhost/test".to_string(),
                     run_id,
                     metadata: Arc::new(metadata),
                 },

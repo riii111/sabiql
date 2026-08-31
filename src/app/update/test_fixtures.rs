@@ -84,7 +84,6 @@ pub fn state_after_delete_success() -> AppState {
     let effects = reduce(
         &mut state,
         Action::ExecuteWriteSucceeded {
-            dsn: "postgres://localhost/test".to_string(),
             run_id,
             affected_rows: 1,
             diagnostics: Vec::new(),

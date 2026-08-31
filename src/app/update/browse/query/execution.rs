@@ -1805,11 +1805,7 @@ mod tests {
 
             let metadata = make_metadata(vec![("public", "orders"), ("public", "users")]);
             let run_id = state.session.begin_metadata_refresh();
-            let action = Action::MetadataLoaded {
-                dsn: "postgres://localhost/test".to_string(),
-                run_id,
-                metadata,
-            };
+            let action = Action::MetadataLoaded { run_id, metadata };
             let meta_effects = dispatch_metadata(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(state.ui.explorer_selected(), 1);
@@ -1842,11 +1838,7 @@ mod tests {
 
             let metadata = make_metadata(vec![("public", "orders")]);
             let run_id = state.session.begin_metadata_refresh();
-            let action = Action::MetadataLoaded {
-                dsn: "postgres://localhost/test".to_string(),
-                run_id,
-                metadata,
-            };
+            let action = Action::MetadataLoaded { run_id, metadata };
             dispatch_metadata(&mut state, &action, Instant::now());
 
             assert!(state.query.pagination.table().is_empty());

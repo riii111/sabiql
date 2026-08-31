@@ -52,11 +52,7 @@ pub(super) fn connection_save_fetch_effects(
     metadata: Option<Arc<DatabaseMetadata>>,
 ) -> Vec<Effect> {
     let metadata_effect = if let Some(metadata) = metadata {
-        Effect::DispatchActions(vec![Action::MetadataLoaded {
-            dsn: dsn.to_string(),
-            run_id,
-            metadata,
-        }])
+        Effect::DispatchActions(vec![Action::MetadataLoaded { run_id, metadata }])
     } else {
         Effect::FetchMetadata {
             dsn: dsn.to_string(),

@@ -37,13 +37,8 @@ pub(super) fn reduce_sqlite_diagnostics(
             state.modal.set_mode(InputMode::Normal);
             DispatchResult::handled_with(vec![Effect::CancelSqliteDiagnostics])
         }
-        Action::SqliteDiagnosticsCoreLoaded {
-            dsn,
-            run_id,
-            snapshot,
-        } => {
-            if !state.session.dsn_matches(dsn) || !state.sqlite_diagnostics.is_current_run(*run_id)
-            {
+        Action::SqliteDiagnosticsCoreLoaded { run_id, snapshot } => {
+            if !state.sqlite_diagnostics.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
             state
@@ -52,12 +47,10 @@ pub(super) fn reduce_sqlite_diagnostics(
             DispatchResult::handled()
         }
         Action::SqliteDiagnosticsQuickCheckLoaded {
-            dsn,
             run_id,
             quick_check,
         } => {
-            if !state.session.dsn_matches(dsn) || !state.sqlite_diagnostics.is_current_run(*run_id)
-            {
+            if !state.sqlite_diagnostics.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
             state
@@ -222,34 +215,77 @@ mod tests {
     fn quick_check_loaded_ignores_stale_run_id() {
         let mut state = AppState::new("test".to_string());
         test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
-        let run_id = state.sqlite_diagnostics.begin_core_fetch();
+        state.modal.set_mode(InputMode::SqliteDiagnostics);
+        let stale_run_id = state.sqlite_diagnostics.begin_core_fetch();
         state.sqlite_diagnostics.set_core_loaded(
-            run_id,
+            stale_run_id,
             SqliteDiagnosticsSnapshot {
                 quick_check: DiagnosticField::Pending,
                 ..Default::default()
             },
         );
+        let stale_quick_check_run_id = state
+            .sqlite_diagnostics
+            .begin_quick_check()
+            .expect("loaded diagnostics should start quick check");
+        state.sqlite_diagnostics.clear();
+        let current_run_id = state.sqlite_diagnostics.begin_core_fetch();
+        let current_snapshot = SqliteDiagnosticsSnapshot {
+            quick_check: DiagnosticField::ok("current result"),
+            ..Default::default()
+        };
+        state
+            .sqlite_diagnostics
+            .set_core_loaded(current_run_id, current_snapshot.clone());
+        let quick_check_running_before = state.sqlite_diagnostics.is_quick_check_running();
 
         reduce_sqlite_diagnostics(
             &mut state,
             &Action::SqliteDiagnosticsQuickCheckLoaded {
-                dsn: "sqlite:///tmp/app.db".to_string(),
-                run_id: run_id + 1,
+                run_id: stale_quick_check_run_id,
                 quick_check: DiagnosticField::ok("ok"),
             },
             Instant::now(),
         )
         .unwrap();
 
-        assert!(
-            state
-                .sqlite_diagnostics
-                .snapshot()
-                .unwrap()
-                .quick_check
-                .is_pending()
+        assert!(stale_run_id < current_run_id);
+        assert!(stale_quick_check_run_id < current_run_id);
+        assert_eq!(state.sqlite_diagnostics.snapshot(), Some(&current_snapshot));
+        assert_eq!(
+            state.sqlite_diagnostics.is_quick_check_running(),
+            quick_check_running_before
         );
+        assert_eq!(state.input_mode(), InputMode::SqliteDiagnostics);
+    }
+
+    #[test]
+    fn core_loaded_ignores_stale_run_id_after_new_fetch() {
+        let mut state = AppState::new("test".to_string());
+        test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
+        state.modal.set_mode(InputMode::SqliteDiagnostics);
+        let stale_run_id = state.sqlite_diagnostics.begin_core_fetch();
+        state
+            .sqlite_diagnostics
+            .set_core_loaded(stale_run_id, SqliteDiagnosticsSnapshot::default());
+        state.sqlite_diagnostics.clear();
+        let current_run_id = state.sqlite_diagnostics.begin_core_fetch();
+
+        reduce_sqlite_diagnostics(
+            &mut state,
+            &Action::SqliteDiagnosticsCoreLoaded {
+                run_id: stale_run_id,
+                snapshot: Box::new(SqliteDiagnosticsSnapshot::default()),
+            },
+            Instant::now(),
+        )
+        .unwrap();
+
+        assert!(stale_run_id < current_run_id);
+        assert!(state.sqlite_diagnostics.snapshot().is_none());
+        assert!(state.sqlite_diagnostics.is_loading());
+        assert!(!state.sqlite_diagnostics.is_quick_check_running());
+        assert_eq!(state.input_mode(), InputMode::SqliteDiagnostics);
     }
 
     #[test]

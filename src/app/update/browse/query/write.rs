@@ -207,12 +207,11 @@ pub fn reduce_write(state: &mut AppState, action: &Action, now: Instant) -> Disp
         }
 
         Action::ExecuteWriteSucceeded {
-            dsn,
             run_id,
             affected_rows,
             diagnostics,
         } => {
-            if state.is_stale_query_run(dsn, *run_id) {
+            if !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -304,8 +303,8 @@ pub fn reduce_write(state: &mut AppState, action: &Action, now: Instant) -> Disp
             }
         }
 
-        Action::ExecuteWriteFailed { dsn, run_id, error } => {
-            if state.is_stale_query_run(dsn, *run_id) {
+        Action::ExecuteWriteFailed { run_id, error } => {
+            if !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -431,13 +430,8 @@ mod tests {
         affected_rows: usize,
         diagnostics: Vec<DatabaseDiagnostic>,
     ) -> Action {
-        let dsn = state
-            .session
-            .dsn()
-            .map_or_else(|| "postgres://localhost/test".to_string(), str::to_string);
         let run_id = begin_query_run(state);
         Action::ExecuteWriteSucceeded {
-            dsn,
             run_id,
             affected_rows,
             diagnostics,
@@ -446,11 +440,7 @@ mod tests {
 
     fn write_failed_action(state: &mut AppState, error: DbOperationError) -> Action {
         let run_id = begin_query_run(state);
-        Action::ExecuteWriteFailed {
-            dsn: "postgres://localhost/test".to_string(),
-            run_id,
-            error,
-        }
+        Action::ExecuteWriteFailed { run_id, error }
     }
 
     mod write_flow {
@@ -1297,7 +1287,6 @@ mod tests {
             let effects = dispatch_query(
                 &mut state,
                 &Action::ExecuteWriteSucceeded {
-                    dsn: "mysql://localhost/test".to_string(),
                     run_id,
                     affected_rows: 0,
                     diagnostics: Vec::new(),
@@ -1423,7 +1412,6 @@ mod tests {
             let effects = dispatch_query(
                 &mut state,
                 &Action::ExecuteWriteSucceeded {
-                    dsn: "postgres://localhost/test".to_string(),
                     run_id: old_run_id,
                     affected_rows: 1,
                     diagnostics: Vec::new(),
@@ -1435,6 +1423,41 @@ mod tests {
             assert!(effects.is_empty());
             assert!(state.messages.last_success.is_none());
             assert!(state.query.is_running());
+        }
+
+        #[test]
+        fn stale_write_failure_does_not_change_error_modal_or_refresh_target() {
+            let mut state = editable_state();
+            let target = DeleteRefreshTarget {
+                target_page: 1,
+                target_row: Some(2),
+                expected_delete_count: 1,
+            };
+            state.query.set_delete_refresh_target(
+                target.target_page,
+                target.target_row,
+                target.expected_delete_count,
+            );
+            let stale_run_id = begin_query_run(&mut state);
+            let current_run_id = begin_query_run(&mut state);
+            let input_mode = state.input_mode();
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::ExecuteWriteFailed {
+                    run_id: stale_run_id,
+                    error: DbOperationError::QueryFailed("stale write".to_string()),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(stale_run_id < current_run_id);
+            assert!(effects.is_empty());
+            assert!(state.query.is_running());
+            assert_eq!(state.input_mode(), input_mode);
+            assert_eq!(state.query.pending_delete_refresh_target(), Some(target));
+            assert!(state.messages.last_error.is_none());
         }
     }
 

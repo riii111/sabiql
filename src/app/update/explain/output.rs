@@ -13,7 +13,6 @@ pub(super) fn reduce_output(
 ) -> DispatchResult {
     match action {
         Action::ExplainCompleted {
-            dsn,
             database_type,
             database_generation,
             run_id,
@@ -22,7 +21,7 @@ pub(super) fn reduce_output(
             is_analyze,
             execution_time_ms,
         } => {
-            if state.is_stale_explain_run(dsn, *database_generation, *run_id) {
+            if state.is_stale_explain_run(*database_generation, *run_id) {
                 return DispatchResult::handled();
             }
             finish_explain_success(
@@ -37,13 +36,12 @@ pub(super) fn reduce_output(
         }
 
         Action::ExplainFailed {
-            dsn,
             database_generation,
             run_id,
             error,
             ..
         } => {
-            if state.is_stale_explain_run(dsn, *database_generation, *run_id) {
+            if state.is_stale_explain_run(*database_generation, *run_id) {
                 return DispatchResult::handled();
             }
             finish_explain_error(state, error.user_message());

@@ -1163,7 +1163,6 @@ mod tests {
             let refresh_effects = reduce_app(
                 &mut state,
                 Action::MetadataLoaded {
-                    dsn: "mysql://user@localhost:3306/app".to_string(),
                     run_id: metadata_run_id,
                     metadata: refreshed_metadata,
                 },
@@ -1279,7 +1278,7 @@ mod tests {
             reduce(
                 &mut state,
                 &Action::MySqlConnectionProbeCompleted {
-                    target: target.clone(),
+                    target,
                     run_id: probe_run_id,
                     lower_case_table_names: 0,
                 },
@@ -1288,7 +1287,6 @@ mod tests {
             reduce_app(
                 &mut state,
                 Action::MetadataLoaded {
-                    dsn: target.dsn,
                     run_id: stale_run_id,
                     metadata: Arc::new(DatabaseMetadata::new("stale".to_string())),
                 },
@@ -1608,7 +1606,7 @@ mod tests {
             let effects = reduce(
                 &mut state,
                 &Action::MySqlConnectionProbeCompleted {
-                    target: target.clone(),
+                    target,
                     run_id: probe_run_id,
                     lower_case_table_names: 0,
                 },
@@ -1635,7 +1633,6 @@ mod tests {
             let error_effects = reduce_app(
                 &mut state,
                 Action::MetadataFailed {
-                    dsn: target.dsn,
                     run_id: metadata_run_id,
                     error: DbOperationError::ConnectionFailed("connection refused".to_string()),
                 },
@@ -1662,8 +1659,7 @@ mod tests {
                 database_type: DatabaseType::PostgreSQL,
                 database: None,
             };
-            let postgres_effects =
-                reduce(&mut state, &Action::SwitchConnection(postgres.clone())).unwrap();
+            let postgres_effects = reduce(&mut state, &Action::SwitchConnection(postgres)).unwrap();
             let postgres_run_id = postgres_effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -1692,7 +1688,6 @@ mod tests {
             reduce(
                 &mut state,
                 &Action::MetadataFailed {
-                    dsn: postgres.dsn,
                     run_id: postgres_run_id,
                     error: DbOperationError::ConnectionFailed("stale postgres".to_string()),
                 },

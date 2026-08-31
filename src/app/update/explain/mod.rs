@@ -989,7 +989,6 @@ mod tests {
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {
-                    dsn: "dsn://test".to_string(),
                     database_type: DatabaseType::PostgreSQL,
                     database_generation,
                     run_id: 1,
@@ -1018,7 +1017,6 @@ mod tests {
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {
-                    dsn: "mysql://test".to_string(),
                     database_type: DatabaseType::MySQL,
                     database_generation,
                     run_id: 1,
@@ -1040,10 +1038,11 @@ mod tests {
         }
 
         #[test]
-        fn mismatched_dsn_does_not_replace_plan() {
+        fn stale_run_does_not_replace_plan() {
             let mut state = sql_modal_state();
             test_fixtures::activate_postgres_connection(&mut state, "dsn://current");
-            let _ = state.query.begin_running(Instant::now());
+            let stale_run_id = state.query.begin_running(Instant::now());
+            let _current_run_id = state.query.begin_running(Instant::now());
             state.sql_modal.set_status_for_test(SqlModalStatus::Running);
             let database_generation = state.session.database_generation();
             state.explain.set_plan(
@@ -1057,10 +1056,9 @@ mod tests {
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {
-                    dsn: "dsn://stale".to_string(),
                     database_type: DatabaseType::PostgreSQL,
                     database_generation,
-                    run_id: 1,
+                    run_id: stale_run_id,
                     query: "SELECT stale".to_string(),
                     plan_text: "Stale".to_string(),
                     is_analyze: false,
@@ -1102,7 +1100,6 @@ mod tests {
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {
-                    dsn: "mysql://test".to_string(),
                     database_type: DatabaseType::MySQL,
                     database_generation,
                     run_id,
@@ -1134,7 +1131,6 @@ mod tests {
             reduce_explain(
                 &mut state,
                 &Action::ExplainFailed {
-                    dsn: "dsn://test".to_string(),
                     database_generation,
                     run_id: 1,
                     error: DbOperationError::QueryFailed("syntax error".to_string()),
@@ -1153,10 +1149,11 @@ mod tests {
         }
 
         #[test]
-        fn mismatched_dsn_does_not_replace_plan_with_error() {
+        fn stale_run_does_not_replace_plan_with_error() {
             let mut state = sql_modal_state();
             test_fixtures::activate_postgres_connection(&mut state, "dsn://current");
-            let _ = state.query.begin_running(Instant::now());
+            let stale_run_id = state.query.begin_running(Instant::now());
+            let _current_run_id = state.query.begin_running(Instant::now());
             state.sql_modal.set_status_for_test(SqlModalStatus::Running);
             let database_generation = state.session.database_generation();
             state.explain.set_plan(
@@ -1170,9 +1167,8 @@ mod tests {
             reduce_explain(
                 &mut state,
                 &Action::ExplainFailed {
-                    dsn: "dsn://stale".to_string(),
                     database_generation,
-                    run_id: 1,
+                    run_id: stale_run_id,
                     error: DbOperationError::QueryFailed("syntax error".to_string()),
                     is_analyze: false,
                 },
@@ -1221,7 +1217,6 @@ mod tests {
             reduce_explain(
                 &mut state,
                 &Action::ExplainFailed {
-                    dsn: "mysql://test".to_string(),
                     database_generation,
                     run_id,
                     error: DbOperationError::QueryFailed("stale error".to_string()),
@@ -1287,7 +1282,6 @@ mod tests {
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {
-                    dsn: "dsn://test".to_string(),
                     database_type: DatabaseType::PostgreSQL,
                     database_generation,
                     run_id: 1,
@@ -1308,7 +1302,6 @@ mod tests {
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {
-                    dsn: "dsn://test".to_string(),
                     database_type: DatabaseType::PostgreSQL,
                     database_generation,
                     run_id: 2,

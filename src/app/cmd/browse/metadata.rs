@@ -108,7 +108,6 @@ async fn fetch_metadata(
     {
         action_tx
             .send(Action::MetadataFailed {
-                dsn,
                 run_id,
                 error: to_db_operation_error(&error),
             })
@@ -124,22 +123,14 @@ async fn fetch_metadata(
         match provider.fetch_metadata(&dsn).await {
             Ok(metadata) => {
                 let metadata = Arc::new(metadata);
-                tx.send(Action::MetadataLoaded {
-                    dsn,
-                    run_id,
-                    metadata,
-                })
-                .await
-                .ok();
+                tx.send(Action::MetadataLoaded { run_id, metadata })
+                    .await
+                    .ok();
             }
             Err(e) => {
-                tx.send(Action::MetadataFailed {
-                    dsn,
-                    run_id,
-                    error: e,
-                })
-                .await
-                .ok();
+                tx.send(Action::MetadataFailed { run_id, error: e })
+                    .await
+                    .ok();
             }
         }
     });
@@ -158,7 +149,6 @@ fn fetch_effective_user(
     MetadataTaskRegistry::spawn(metadata_tasks, async move {
         let effective_user = provider.fetch_effective_user(&dsn).await.ok().flatten();
         tx.send(Action::EffectiveUserLoaded {
-            dsn,
             run_id,
             effective_user,
         })
@@ -310,8 +300,6 @@ mod tests {
             let dir = tempdir().unwrap();
             let path = dir.path().join("missing.db");
             let dsn = format!("sqlite://{}", path.display());
-            let expected_dsn = dsn.clone();
-
             let mut mock_provider = MockMetadataProvider::new();
             mock_provider.expect_fetch_metadata().never();
 
@@ -342,12 +330,11 @@ mod tests {
                 matches!(
                     action,
                     Action::MetadataFailed {
-                        ref dsn,
                         run_id: 7,
                         error: DbOperationError::SqlitePath(SqlitePathError::FileNotFound(
                             ref file_path,
                         )),
-                    } if *dsn == expected_dsn && file_path == &path.display().to_string()
+                    } if file_path == &path.display().to_string()
                 ),
                 "expected MetadataFailed, got {action:?}"
             );
@@ -363,8 +350,6 @@ mod tests {
             let path = dir.path().join("app.db");
             fs::write(&path, b"").unwrap();
             let dsn = format!("sqlite://{}", path.display());
-            let expected_dsn = dsn.clone();
-
             let mut mock_provider = MockMetadataProvider::new();
             mock_provider
                 .expect_fetch_metadata()
@@ -395,14 +380,7 @@ mod tests {
 
             let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
-                matches!(
-                    action,
-                    Action::MetadataLoaded {
-                        ref dsn,
-                        run_id: 7,
-                        ..
-                    } if *dsn == expected_dsn
-                ),
+                matches!(action, Action::MetadataLoaded { run_id: 7, .. }),
                 "expected MetadataLoaded, got {action:?}"
             );
         }
@@ -439,14 +417,7 @@ mod tests {
 
             let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
-                matches!(
-                    action,
-                    Action::MetadataLoaded {
-                        ref dsn,
-                        run_id: 7,
-                        ..
-                    } if dsn == "dsn://miss"
-                ),
+                matches!(action, Action::MetadataLoaded { run_id: 7, .. }),
                 "expected MetadataLoaded, got {action:?}"
             );
         }
@@ -484,14 +455,7 @@ mod tests {
 
             let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
-                matches!(
-                    action,
-                    Action::MetadataFailed {
-                        ref dsn,
-                        run_id: 7,
-                        ..
-                    } if dsn == "dsn://err"
-                ),
+                matches!(action, Action::MetadataFailed { run_id: 7, .. }),
                 "expected MetadataFailed, got {action:?}"
             );
         }
@@ -534,10 +498,9 @@ mod tests {
             assert!(matches!(
                 action,
                 Action::EffectiveUserLoaded {
-                    ref dsn,
                     run_id: 7,
                     effective_user: None,
-                } if dsn == "dsn://test"
+                }
             ));
         }
     }
