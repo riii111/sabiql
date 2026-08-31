@@ -298,7 +298,7 @@ fn connection_setup_cursor_matrix() {
 
 #[test]
 fn cell_edit_cursor_matrix() {
-    for (cursor, expected_symbol) in [(0, "b"), (7, "m"), (15, " ")] {
+    for (cursor, expected_symbol) in [(0, "a"), (7, "h"), (14, "o")] {
         let mut state = table_detail_loaded_state();
         let mut terminal = create_test_terminal();
 
@@ -308,7 +308,7 @@ fn cell_edit_cursor_matrix() {
         state.modal.set_mode(InputMode::CellEdit);
         state
             .result_interaction
-            .begin_cell_edit(1, 2, "bob@example.com".to_string());
+            .begin_cell_edit(1, 2, "abcdefghijklmno".to_string());
         state.result_interaction.cell_edit_set_cursor(cursor);
 
         let buffer = render_and_get_buffer(&mut terminal, &mut state);
