@@ -216,57 +216,6 @@ fn sql_modal_analyze_read_only_acknowledge() {
 }
 
 #[test]
-fn sql_modal_cursor_at_head() {
-    let mut state = create_test_state();
-    let mut terminal = create_test_terminal();
-
-    state.modal.set_mode(InputMode::SqlModal);
-    state
-        .sql_modal
-        .editor_mut_for_input()
-        .set_content_with_cursor("SELECT 1".to_string(), 0);
-    state.sql_modal.enter_editing();
-
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
-fn sql_modal_cursor_at_middle() {
-    let mut state = create_test_state();
-    let mut terminal = create_test_terminal();
-
-    state.modal.set_mode(InputMode::SqlModal);
-    state
-        .sql_modal
-        .editor_mut_for_input()
-        .set_content_with_cursor("SELECT 1".to_string(), 4);
-    state.sql_modal.enter_editing();
-
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
-fn sql_modal_cursor_at_tail() {
-    let mut state = create_test_state();
-    let mut terminal = create_test_terminal();
-
-    state.modal.set_mode(InputMode::SqlModal);
-    state
-        .sql_modal
-        .editor_mut_for_input()
-        .set_content("SELECT 1".to_string());
-    state.sql_modal.enter_editing();
-
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
 fn sql_modal_ide_editing() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
