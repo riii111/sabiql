@@ -27,10 +27,6 @@ use super::catalog::{
     parse_unique_column_metadata, primary_key_names, required_text, selected_database,
 };
 
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "MySQL index metadata flags are independent index attributes"
-)]
 #[derive(Debug, Clone)]
 struct MySqlIndexMetadata {
     name: String,
@@ -42,7 +38,6 @@ struct MySqlIndexMetadata {
     expression: Option<String>,
     descending: bool,
     invisible: bool,
-    primary: bool,
 }
 
 pub(super) async fn fetch_table_detail(
@@ -356,7 +351,6 @@ fn parse_index_metadata(
                 expression,
                 descending,
                 invisible,
-                primary: parse_boolean_flag(&row[9], "IS_PRIMARY")?,
             })
         })
         .collect()
@@ -391,7 +385,8 @@ fn indexes_from_metadata(mut raw: Vec<MySqlIndexMetadata>) -> Vec<Index> {
             }
             continue;
         }
-        let mut attributes = IndexAttributes::from_parts(!column.non_unique, column.primary);
+        let mut attributes =
+            IndexAttributes::from_parts(!column.non_unique, column.name == "PRIMARY");
         if column.expression.is_some() {
             attributes = attributes | IndexAttributes::EXPRESSION;
         }
@@ -433,7 +428,7 @@ fn unique_single_columns_from_metadata(raw: &[MySqlIndexMetadata]) -> HashSet<St
     let mut indexes_by_name: HashMap<&str, Vec<&MySqlIndexMetadata>> = HashMap::new();
     for index in raw
         .iter()
-        .filter(|index| !index.non_unique && !index.primary)
+        .filter(|index| !index.non_unique && index.name != "PRIMARY")
     {
         indexes_by_name
             .entry(index.name.as_str())
@@ -530,7 +525,7 @@ while IFS= read -r line; do
       printf '%s\n' '<resultset></resultset>'
       ;;
     *STATISTICS*)
-      printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="INDEX_NAME">PRIMARY</field><field name="NON_UNIQUE">0</field><field name="INDEX_TYPE">BTREE</field><field name="SEQ_IN_INDEX">1</field><field name="COLUMN_NAME" xsi:nil="true"/><field name="SUB_PART" xsi:nil="true"/><field name="EXPRESSION">expr</field><field name="COLLATION" xsi:nil="true"/><field name="IS_VISIBLE">YES</field><field name="IS_PRIMARY">YES</field></row></resultset>'
+      printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="INDEX_NAME">PRIMARY</field><field name="NON_UNIQUE">0</field><field name="INDEX_TYPE">BTREE</field><field name="SEQ_IN_INDEX">1</field><field name="COLUMN_NAME" xsi:nil="true"/><field name="SUB_PART" xsi:nil="true"/><field name="EXPRESSION">expr</field><field name="COLLATION" xsi:nil="true"/><field name="IS_VISIBLE">YES</field></row></resultset>'
       ;;
     *FOREIGN*)
       printf '%s\n' '<resultset><row><field name="CONSTRAINT_NAME">fk_items_self</field><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items</field><field name="COLUMN_NAME">id</field><field name="REFERENCED_TABLE_SCHEMA">app</field><field name="REFERENCED_TABLE_NAME">items</field><field name="REFERENCED_COLUMN_NAME">id</field><field name="ORDINAL_POSITION">1</field><field name="UPDATE_RULE">CASCADE</field><field name="DELETE_RULE">CASCADE</field></row></resultset>'
@@ -974,7 +969,6 @@ mod tests {
                 "EXPRESSION",
                 "COLLATION",
                 "IS_VISIBLE",
-                "IS_PRIMARY",
             ],
             vec![
                 vec![
@@ -987,7 +981,6 @@ mod tests {
                     QueryValue::Null,
                     QueryValue::Null,
                     QueryValue::Text("YES".to_string()),
-                    QueryValue::Text("YES".to_string()),
                 ],
                 vec![
                     QueryValue::Text("PRIMARY".to_string()),
@@ -998,7 +991,6 @@ mod tests {
                     QueryValue::Null,
                     QueryValue::Null,
                     QueryValue::Null,
-                    QueryValue::Text("YES".to_string()),
                     QueryValue::Text("YES".to_string()),
                 ],
                 vec![
@@ -1011,7 +1003,6 @@ mod tests {
                     QueryValue::Null,
                     QueryValue::Null,
                     QueryValue::Text("YES".to_string()),
-                    QueryValue::Text("NO".to_string()),
                 ],
             ],
         );
@@ -1043,7 +1034,6 @@ mod tests {
                     QueryValue::Null,
                     QueryValue::Text("D".to_string()),
                     QueryValue::Text("NO".to_string()),
-                    QueryValue::Text("NO".to_string()),
                 ],
                 vec![
                     QueryValue::Text("idx_email_created".to_string()),
@@ -1054,7 +1044,6 @@ mod tests {
                     QueryValue::Null,
                     QueryValue::Null,
                     QueryValue::Text("A".to_string()),
-                    QueryValue::Text("NO".to_string()),
                     QueryValue::Text("NO".to_string()),
                 ],
             ],
@@ -1085,7 +1074,6 @@ mod tests {
                     QueryValue::Null,
                     QueryValue::Null,
                     QueryValue::Text("YES".to_string()),
-                    QueryValue::Text("NO".to_string()),
                 ],
                 vec![
                     QueryValue::Text("uq_email_prefix".to_string()),
@@ -1097,7 +1085,6 @@ mod tests {
                     QueryValue::Null,
                     QueryValue::Null,
                     QueryValue::Text("YES".to_string()),
-                    QueryValue::Text("NO".to_string()),
                 ],
                 vec![
                     QueryValue::Text("uq_prefix_pair".to_string()),
@@ -1109,7 +1096,6 @@ mod tests {
                     QueryValue::Null,
                     QueryValue::Null,
                     QueryValue::Text("YES".to_string()),
-                    QueryValue::Text("NO".to_string()),
                 ],
                 vec![
                     QueryValue::Text("uq_prefix_pair".to_string()),
@@ -1121,7 +1107,6 @@ mod tests {
                     QueryValue::Null,
                     QueryValue::Null,
                     QueryValue::Text("YES".to_string()),
-                    QueryValue::Text("NO".to_string()),
                 ],
                 vec![
                     QueryValue::Text("uq_pair".to_string()),
@@ -1133,7 +1118,6 @@ mod tests {
                     QueryValue::Null,
                     QueryValue::Null,
                     QueryValue::Text("YES".to_string()),
-                    QueryValue::Text("NO".to_string()),
                 ],
                 vec![
                     QueryValue::Text("uq_pair".to_string()),
@@ -1145,7 +1129,6 @@ mod tests {
                     QueryValue::Null,
                     QueryValue::Null,
                     QueryValue::Text("YES".to_string()),
-                    QueryValue::Text("NO".to_string()),
                 ],
                 vec![
                     QueryValue::Text("PRIMARY".to_string()),
@@ -1156,7 +1139,6 @@ mod tests {
                     QueryValue::Null,
                     QueryValue::Null,
                     QueryValue::Null,
-                    QueryValue::Text("YES".to_string()),
                     QueryValue::Text("YES".to_string()),
                 ],
                 vec![
@@ -1169,7 +1151,6 @@ mod tests {
                     QueryValue::Null,
                     QueryValue::Null,
                     QueryValue::Text("YES".to_string()),
-                    QueryValue::Text("NO".to_string()),
                 ],
                 vec![
                     QueryValue::Text("uq_expression".to_string()),
@@ -1181,7 +1162,6 @@ mod tests {
                     QueryValue::Text("lower(`email`)".to_string()),
                     QueryValue::Null,
                     QueryValue::Text("YES".to_string()),
-                    QueryValue::Text("NO".to_string()),
                 ],
             ],
         );
@@ -1214,7 +1194,6 @@ mod tests {
                 "EXPRESSION",
                 "COLLATION",
                 "IS_VISIBLE",
-                "IS_PRIMARY",
             ],
             vec![
                 vec![
@@ -1227,7 +1206,6 @@ mod tests {
                     QueryValue::Null,
                     QueryValue::Null,
                     QueryValue::Text("YES".to_string()),
-                    QueryValue::Text("NO".to_string()),
                 ],
                 vec![
                     QueryValue::Text("idx_functional".to_string()),
@@ -1239,7 +1217,6 @@ mod tests {
                     QueryValue::Text("lower(`payload`->>'$.code')".to_string()),
                     QueryValue::Null,
                     QueryValue::Text("YES".to_string()),
-                    QueryValue::Text("NO".to_string()),
                 ],
                 vec![
                     QueryValue::Text("idx_mixed".to_string()),
@@ -1251,7 +1228,6 @@ mod tests {
                     QueryValue::Text("lower(`payload`->>'$.code')".to_string()),
                     QueryValue::Null,
                     QueryValue::Text("YES".to_string()),
-                    QueryValue::Text("NO".to_string()),
                 ],
             ],
         );
@@ -1298,7 +1274,6 @@ mod tests {
                 "EXPRESSION",
                 "COLLATION",
                 "IS_VISIBLE",
-                "IS_PRIMARY",
             ],
             vec![vec![
                 QueryValue::Text("idx_invalid".to_string()),
@@ -1310,7 +1285,6 @@ mod tests {
                 QueryValue::Null,
                 QueryValue::Null,
                 QueryValue::Text("YES".to_string()),
-                QueryValue::Text("NO".to_string()),
             ]],
         );
 
