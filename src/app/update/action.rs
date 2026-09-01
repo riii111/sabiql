@@ -537,7 +537,6 @@ pub enum Action {
 
     // Query results
     ExecutePreview(TableTarget),
-    ExecuteAdhoc(String),
     QueryCompleted {
         run_id: u64,
         result: Arc<QueryResult>,

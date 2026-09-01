@@ -10,7 +10,7 @@ use crate::model::browse::query_execution::{
 use crate::model::shared::help::HelpOrigin;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::AdhocSuccessSnapshot;
-use crate::ports::outbound::{AccessMode, DbOperationError};
+use crate::ports::outbound::DbOperationError;
 use crate::update::action::{
     Action, ModalKind, QueryCompletionContext, QueryFailureContext, TableTarget,
 };
@@ -231,23 +231,6 @@ pub(in crate::update) fn reduce_execution(
             match preview_effect_for_current_table(state, now, 0, *generation) {
                 Some(effect) => DispatchResult::handled_with(vec![effect]),
                 None => DispatchResult::handled(),
-            }
-        }
-
-        Action::ExecuteAdhoc(query) => {
-            if reject_pending_mysql_connection_probe(state) {
-                return DispatchResult::handled();
-            }
-            if let Some(dsn) = state.session.dsn().map(String::from) {
-                let run_id = state.query.begin_non_preview_running(now);
-                DispatchResult::handled_with(vec![Effect::ExecuteAdhoc {
-                    dsn,
-                    run_id,
-                    query: query.clone(),
-                    access_mode: AccessMode::from_read_only(state.session.is_read_only()),
-                }])
-            } else {
-                DispatchResult::handled()
             }
         }
 
@@ -761,11 +744,13 @@ mod tests {
         #[test]
         fn delete_success_then_adhoc_then_preview_completion_clears_selection() {
             let mut state = update_test_fixtures::state_after_delete_success();
+            state.modal.set_mode(InputMode::SqlModal);
+            state.sql_modal.editor.set_content("SELECT 1".to_string());
             let now = Instant::now();
 
             let effects = reduce(
                 &mut state,
-                Action::ExecuteAdhoc("SELECT 1".to_string()),
+                Action::SqlModalSubmit,
                 now,
                 &AppServices::stub(),
             );
@@ -781,7 +766,7 @@ mod tests {
         }
 
         #[test]
-        fn pending_probe_blocks_preview_and_adhoc_on_old_connection() {
+        fn pending_probe_blocks_preview_on_old_connection() {
             let mut state = create_test_state();
             let _ = state.session.begin_mysql_connection_probe(
                 &ConnectionId::new(),
@@ -801,16 +786,8 @@ mod tests {
             )
             .into_effects()
             .expect("preview should be handled");
-            let adhoc_effects = dispatch_query(
-                &mut state,
-                &Action::ExecuteAdhoc("SELECT 1".to_string()),
-                Instant::now(),
-            )
-            .into_effects()
-            .expect("adhoc should be handled");
 
             assert!(preview_effects.is_empty());
-            assert!(adhoc_effects.is_empty());
             assert!(!state.query.is_running());
         }
     }
