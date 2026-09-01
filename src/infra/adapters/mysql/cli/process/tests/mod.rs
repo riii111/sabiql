@@ -4,7 +4,8 @@ use std::path::PathBuf;
 
 use tempfile::TempDir;
 
-use super::super::export::run_mysql_export_process;
+use super::super::super::capability::MySqlServerCapabilities;
+use super::super::export::run_mysql_export_process_with_capabilities;
 use super::super::policy::MySqlExecutionResult;
 use super::super::xml::MySqlResultSet;
 use super::adhoc::run_mysql_adhoc_with_program_and_statements;
@@ -23,13 +24,23 @@ async fn export_mysql_csv_with_program(
     query: &str,
     path: PathBuf,
     execution_timeout: Duration,
+    capabilities: MySqlServerCapabilities,
 ) -> Result<(), DbOperationError> {
     let mut process = MySqlProcess::spawn_with_program(program, option_file)?;
     run_mysql_process_with_timeout(
         execution_timeout,
         &mut process,
         RefreshScope::None,
-        async |process| run_mysql_export_process(process, option_file, query, path).await,
+        async |process| {
+            run_mysql_export_process_with_capabilities(
+                process,
+                option_file,
+                query,
+                path,
+                capabilities,
+            )
+            .await
+        },
     )
     .await
 }
@@ -303,7 +314,7 @@ while IFS= read -r line; do
       ;;
     *__sabiql_probe*)
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_probe.*/\\1/")
-      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_lower_case_table_names">0</field></row></resultset>'
+      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_server_version">8.4.10</field><field name="__sabiql_lower_case_table_names">0</field></row></resultset>'
       ;;
     "SET SESSION autocommit=1, completion_type=NO_CHAIN"|"SET SESSION TRANSACTION READ ONLY")
       ;;
@@ -319,6 +330,9 @@ while IFS= read -r line; do
       ;;
     *__sabiql_marker*)
       {marker_response}
+      ;;
+    "SELECT __sabiql_metadata_source_"*)
+      printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="value" xsi:nil="true"/></row></resultset>'
       ;;
     *"WITH "*__sabiql_metadata_source*)
       case "$line" in

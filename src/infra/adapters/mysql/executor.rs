@@ -10,7 +10,8 @@ use async_trait::async_trait;
 
 use super::adapter::MySqlAdapter;
 use super::cli::{
-    export_mysql_csv_to_file, probe_mysql_server, run_mysql_adhoc, run_mysql_single_statement,
+    export_mysql_csv_to_file, mysql_server_capabilities, probe_mysql_server, run_mysql_adhoc,
+    run_mysql_adhoc_with_server_capabilities, run_mysql_single_statement,
     validate_mysql_export_query, validate_mysql_multi_query,
     validate_mysql_multi_query_with_lower_case_table_names,
 };
@@ -47,15 +48,16 @@ async fn execute_adhoc_with_target(
     }
 
     let option_file = MySqlOptionFile::create(target)?;
-    let lower_case_table_names = probe_mysql_server(&option_file.path)
+    let probe = probe_mysql_server(&option_file.path)
         .await
-        .map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))?
-        .lower_case_table_names;
+        .map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))?;
+    let capabilities =
+        mysql_server_capabilities(&probe.server_version, probe.lower_case_table_names);
     let statements = validate_mysql_multi_query_with_lower_case_table_names(
         query,
         target.database.as_deref(),
         access_mode,
-        lower_case_table_names,
+        capabilities.lower_case_table_names,
     )?;
 
     #[expect(
@@ -63,7 +65,13 @@ async fn execute_adhoc_with_target(
         reason = "infra measures mysql execution time at the I/O boundary"
     )]
     let start = Instant::now();
-    let result = run_mysql_adhoc(&option_file.path, &statements, access_mode).await;
+    let result = run_mysql_adhoc_with_server_capabilities(
+        &option_file.path,
+        &statements,
+        access_mode,
+        capabilities,
+    )
+    .await;
     drop(option_file);
     let execution = result.map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))?;
     let elapsed = start.elapsed().as_millis() as u64;

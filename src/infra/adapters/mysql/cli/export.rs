@@ -14,6 +14,7 @@ use quick_xml::events::Event;
 use tokio::io::{AsyncRead, BufReader, ReadBuf};
 
 use super::super::{
+    capability::MySqlServerCapabilities,
     dsn::{MySqlDsn, map_mysql_tls_failure},
     option_file::MySqlOptionFile,
 };
@@ -21,6 +22,7 @@ use super::error::{classify_mysql_query_failure_with_packet_limit, has_mysql_cli
 #[cfg(not(unix))]
 use super::pipe::MySqlExportPipeSource;
 use super::policy::mysql_metadata_fallback_kind;
+use super::probe::{mysql_server_capabilities, probe_mysql_server};
 use super::process::metadata::mysql_metadata_columns_with_diagnostics;
 use super::process::{
     MYSQL_QUERY_TIMEOUT, MySqlProcess, configure_mysql_session, finish_mysql_session,
@@ -351,22 +353,37 @@ pub(in crate::adapters::mysql) async fn export_mysql_csv_to_file(
     path: PathBuf,
 ) -> Result<(), DbOperationError> {
     let option_file = MySqlOptionFile::create(&target)?;
+    let probe = probe_mysql_server(&option_file.path)
+        .await
+        .map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))?;
+    let capabilities =
+        mysql_server_capabilities(&probe.server_version, probe.lower_case_table_names);
     let mut process = MySqlProcess::spawn_with_program(OsStr::new("mysql"), &option_file.path)?;
     let result = run_mysql_process_with_timeout(
         MYSQL_EXPORT_TIMEOUT,
         &mut process,
         RefreshScope::None,
-        async |process| run_mysql_export_process(process, &option_file.path, query, path).await,
+        async |process| {
+            run_mysql_export_process_with_capabilities(
+                process,
+                &option_file.path,
+                query,
+                path,
+                capabilities,
+            )
+            .await
+        },
     )
     .await;
     result.map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))
 }
 
-pub(super) async fn run_mysql_export_process(
+pub(super) async fn run_mysql_export_process_with_capabilities(
     process: &mut MySqlProcess,
     option_file: &std::path::Path,
     query: &str,
     path: PathBuf,
+    capabilities: MySqlServerCapabilities,
 ) -> Result<(), DbOperationError> {
     configure_mysql_session(process, AccessMode::ReadOnly).await?;
     write_mysql_statement(process, query).await?;
@@ -386,6 +403,7 @@ pub(super) async fn run_mysql_export_process(
             query,
             fallback_kind,
             AccessMode::ReadOnly,
+            capabilities,
         )
         .await?
         .0;

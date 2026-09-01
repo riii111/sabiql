@@ -1,3 +1,4 @@
+use super::super::capability::MySqlServerCapabilities;
 use super::literal::{quote_identifier, quote_string};
 use crate::domain::{Column, TableKind};
 
@@ -38,6 +39,18 @@ pub(in crate::adapters::mysql) const COLUMN_METADATA_RESULT_COLUMNS: &[&str] = &
     "COLLATION_NAME",
     "GENERATION_EXPRESSION",
 ];
+pub(in crate::adapters::mysql) const COLUMN_METADATA_RESULT_COLUMNS_WITHOUT_GENERATION: &[&str] = &[
+    "COLUMN_NAME",
+    "COLUMN_TYPE",
+    "IS_NULLABLE",
+    "COLUMN_DEFAULT",
+    "EXTRA",
+    "COLUMN_COMMENT",
+    "ORDINAL_POSITION",
+    "PRIMARY_KEY_POSITION",
+    "CHARACTER_SET_NAME",
+    "COLLATION_NAME",
+];
 pub(in crate::adapters::mysql) const PREVIEW_COLUMN_METADATA_RESULT_COLUMNS: &[&str] = &[
     "COLUMN_NAME",
     "COLUMN_TYPE",
@@ -71,9 +84,28 @@ pub(in crate::adapters::mysql) fn table_query(schema: &str, table: &str) -> Stri
     )
 }
 
-pub(in crate::adapters::mysql) fn columns_query(schema: &str, table: &str) -> String {
+pub(in crate::adapters::mysql) fn column_metadata_result_columns(
+    capabilities: MySqlServerCapabilities,
+) -> &'static [&'static str] {
+    if capabilities.supports_generation_expression() {
+        COLUMN_METADATA_RESULT_COLUMNS
+    } else {
+        COLUMN_METADATA_RESULT_COLUMNS_WITHOUT_GENERATION
+    }
+}
+
+pub(in crate::adapters::mysql) fn columns_query_for_capabilities(
+    schema: &str,
+    table: &str,
+    capabilities: MySqlServerCapabilities,
+) -> String {
+    let generation_expression = if capabilities.supports_generation_expression() {
+        ", c.GENERATION_EXPRESSION"
+    } else {
+        ""
+    };
     format!(
-        "SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION, c.CHARACTER_SET_NAME, c.COLLATION_NAME, c.GENERATION_EXPRESSION FROM INFORMATION_SCHEMA.COLUMNS AS c LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = c.TABLE_SCHEMA AND tc.TABLE_NAME = c.TABLE_NAME AND tc.CONSTRAINT_NAME = 'PRIMARY' AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.COLUMN_NAME = c.COLUMN_NAME WHERE c.TABLE_SCHEMA = {} AND c.TABLE_NAME = {} ORDER BY ORDINAL_POSITION",
+        "SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION, c.CHARACTER_SET_NAME, c.COLLATION_NAME{generation_expression} FROM INFORMATION_SCHEMA.COLUMNS AS c LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = c.TABLE_SCHEMA AND tc.TABLE_NAME = c.TABLE_NAME AND tc.CONSTRAINT_NAME = 'PRIMARY' AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.COLUMN_NAME = c.COLUMN_NAME WHERE c.TABLE_SCHEMA = {} AND c.TABLE_NAME = {} ORDER BY ORDINAL_POSITION",
         quote_string(schema),
         quote_string(table),
     )
@@ -133,6 +165,25 @@ pub(in crate::adapters::mysql) const INDEX_RESULT_COLUMNS: &[&str] = &[
     "COLLATION",
     "IS_VISIBLE",
 ];
+pub(in crate::adapters::mysql) const INDEX_RESULT_COLUMNS_WITHOUT_EXPRESSION: &[&str] = &[
+    "INDEX_NAME",
+    "NON_UNIQUE",
+    "INDEX_TYPE",
+    "SEQ_IN_INDEX",
+    "COLUMN_NAME",
+    "SUB_PART",
+    "COLLATION",
+    "IS_VISIBLE",
+];
+pub(in crate::adapters::mysql) const INDEX_RESULT_COLUMNS_LEGACY: &[&str] = &[
+    "INDEX_NAME",
+    "NON_UNIQUE",
+    "INDEX_TYPE",
+    "SEQ_IN_INDEX",
+    "COLUMN_NAME",
+    "SUB_PART",
+    "COLLATION",
+];
 pub(in crate::adapters::mysql) const TRIGGER_RESULT_COLUMNS: &[&str] = &[
     "TRIGGER_NAME",
     "ACTION_ORDER",
@@ -149,9 +200,36 @@ pub(in crate::adapters::mysql) const TRIGGER_RESULT_COLUMNS: &[&str] = &[
 const TABLE_SHOW_CREATE_RESULT_COLUMNS: &[&str] = &["Table", "Create Table"];
 const VIEW_SHOW_CREATE_RESULT_COLUMNS: &[&str] = &["View", "Create View"];
 
-pub(in crate::adapters::mysql) fn indexes_query(schema: &str, table: &str) -> String {
+pub(in crate::adapters::mysql) fn index_result_columns(
+    capabilities: MySqlServerCapabilities,
+) -> &'static [&'static str] {
+    match (
+        capabilities.supports_statistics_expression(),
+        capabilities.supports_statistics_visibility(),
+    ) {
+        (true, _) => INDEX_RESULT_COLUMNS,
+        (false, true) => INDEX_RESULT_COLUMNS_WITHOUT_EXPRESSION,
+        (false, false) => INDEX_RESULT_COLUMNS_LEGACY,
+    }
+}
+
+pub(in crate::adapters::mysql) fn indexes_query_for_capabilities(
+    schema: &str,
+    table: &str,
+    capabilities: MySqlServerCapabilities,
+) -> String {
+    let expression = if capabilities.supports_statistics_expression() {
+        ", s.EXPRESSION"
+    } else {
+        ""
+    };
+    let visibility = if capabilities.supports_statistics_visibility() {
+        ", s.IS_VISIBLE"
+    } else {
+        ""
+    };
     format!(
-        "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.SUB_PART, s.EXPRESSION, s.COLLATION, s.IS_VISIBLE FROM INFORMATION_SCHEMA.STATISTICS AS s WHERE s.TABLE_SCHEMA = {} AND s.TABLE_NAME = {} ORDER BY INDEX_NAME, SEQ_IN_INDEX",
+        "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.SUB_PART{expression}, s.COLLATION{visibility} FROM INFORMATION_SCHEMA.STATISTICS AS s WHERE s.TABLE_SCHEMA = {} AND s.TABLE_NAME = {} ORDER BY INDEX_NAME, SEQ_IN_INDEX",
         quote_string(schema),
         quote_string(table),
     )
@@ -248,6 +326,16 @@ pub(in crate::adapters::mysql) fn build_metadata_select_query(
     )
 }
 
+pub(in crate::adapters::mysql) fn build_legacy_metadata_select_query(
+    query: &str,
+    source_alias: &str,
+    marker_alias: &str,
+) -> String {
+    format!(
+        "SELECT {source_alias}.* FROM (SELECT * FROM ({query}) AS __sabiql_metadata_inner LIMIT 0) AS {source_alias} RIGHT JOIN (SELECT 1 AS {marker_alias}) AS __sabiql_metadata_marker ON TRUE"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::super::metadata_test_support::column;
@@ -287,7 +375,8 @@ mod tests {
             )
         );
 
-        let columns_sql = columns_query(schema, table);
+        let columns_sql =
+            columns_query_for_capabilities(schema, table, MySqlServerCapabilities::default());
         assert_eq!(
             columns_sql,
             format!(
@@ -319,7 +408,8 @@ mod tests {
             )
         );
 
-        let indexes_sql = indexes_query(schema, table);
+        let indexes_sql =
+            indexes_query_for_capabilities(schema, table, MySqlServerCapabilities::default());
         assert_eq!(
             indexes_sql,
             format!(
@@ -517,6 +607,52 @@ mod tests {
         assert_eq!(
             build_preview_query("app", "items", &[], &visible_columns, &[], 10, 0,),
             "SELECT `payload` FROM `app`.`items` LIMIT 10 OFFSET 0"
+        );
+    }
+
+    #[test]
+    fn metadata_queries_follow_server_catalog_capabilities() {
+        let mysql_57 = MySqlServerCapabilities::from_version("5.7.44", 0);
+        assert_eq!(
+            column_metadata_result_columns(mysql_57),
+            COLUMN_METADATA_RESULT_COLUMNS
+        );
+        let columns = columns_query_for_capabilities("app", "items", mysql_57);
+        assert!(columns.contains("GENERATION_EXPRESSION"));
+        assert_eq!(index_result_columns(mysql_57), INDEX_RESULT_COLUMNS_LEGACY);
+        let indexes = indexes_query_for_capabilities("app", "items", mysql_57);
+        assert!(!indexes.contains("EXPRESSION"));
+        assert!(!indexes.contains("IS_VISIBLE"));
+
+        let mysql_80 = MySqlServerCapabilities::from_version("8.0.12", 1);
+        assert_eq!(
+            index_result_columns(mysql_80),
+            INDEX_RESULT_COLUMNS_WITHOUT_EXPRESSION
+        );
+        let indexes = indexes_query_for_capabilities("app", "items", mysql_80);
+        assert!(!indexes.contains("s.EXPRESSION"));
+        assert!(indexes.contains("s.IS_VISIBLE"));
+
+        let mysql_84 = MySqlServerCapabilities::from_version("8.4.10", 0);
+        assert_eq!(
+            column_metadata_result_columns(mysql_84),
+            COLUMN_METADATA_RESULT_COLUMNS
+        );
+        assert_eq!(index_result_columns(mysql_84), INDEX_RESULT_COLUMNS);
+        assert!(
+            columns_query_for_capabilities("app", "items", mysql_84)
+                .contains("GENERATION_EXPRESSION")
+        );
+        assert!(indexes_query_for_capabilities("app", "items", mysql_84).contains("s.EXPRESSION"));
+    }
+
+    #[test]
+    fn legacy_metadata_fallback_uses_derived_tables_instead_of_ctes() {
+        let query = build_legacy_metadata_select_query("SELECT id FROM items", "source", "marker");
+        assert!(query.starts_with("SELECT source.* FROM (SELECT * FROM (SELECT id FROM items)"));
+        assert!(!query.starts_with("WITH "));
+        assert!(
+            query.ends_with("RIGHT JOIN (SELECT 1 AS marker) AS __sabiql_metadata_marker ON TRUE")
         );
     }
 }

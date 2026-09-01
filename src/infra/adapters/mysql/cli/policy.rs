@@ -11,6 +11,7 @@ use crate::domain::{
     },
 };
 
+use super::super::capability::MySqlServerCapabilities;
 use super::super::sql;
 use super::probe::validate_sql_mode;
 use super::xml::MySqlResultSet;
@@ -129,10 +130,11 @@ pub(super) fn mysql_metadata_fallback_has_unsupported_session_state(
     false
 }
 
-pub(super) fn mysql_metadata_select_query(
+pub(super) fn mysql_metadata_select_query_for_capabilities(
     query: &str,
     source_alias: &str,
     marker_alias: &str,
+    capabilities: MySqlServerCapabilities,
 ) -> Result<String, DbOperationError> {
     let query = query.trim().trim_end_matches(';').trim_end();
     if query.is_empty() {
@@ -149,11 +151,12 @@ pub(super) fn mysql_metadata_select_query(
                 .to_string(),
         ));
     }
-    Ok(sql::build_metadata_select_query(
-        &query,
-        source_alias,
-        marker_alias,
-    ))
+    let build_query = if capabilities.supports_common_table_expressions() {
+        sql::build_metadata_select_query
+    } else {
+        sql::build_legacy_metadata_select_query
+    };
+    Ok(build_query(&query, source_alias, marker_alias))
 }
 
 fn strip_mysql_sql_calc_found_rows(query: &str) -> String {
@@ -503,6 +506,19 @@ mod tests {
 
     use super::*;
 
+    fn mysql_metadata_select_query(
+        query: &str,
+        source_alias: &str,
+        marker_alias: &str,
+    ) -> Result<String, DbOperationError> {
+        super::mysql_metadata_select_query_for_capabilities(
+            query,
+            source_alias,
+            marker_alias,
+            MySqlServerCapabilities::default(),
+        )
+    }
+
     #[test]
     fn csv_export_accepts_one_read_only_result_query() {
         assert!(validate_mysql_export_query("SELECT 1", Some("app")).is_ok());
@@ -734,6 +750,22 @@ mod tests {
             )
         );
         assert_eq!(fallback_query.matches("SELECT SLEEP(10)").count(), 1);
+    }
+
+    #[test]
+    fn metadata_fallback_uses_the_server_supported_wrapper() {
+        let mysql_57 =
+            super::super::super::capability::MySqlServerCapabilities::from_version("5.7.44", 0);
+        let fallback_query = mysql_metadata_select_query_for_capabilities(
+            "SELECT id FROM items",
+            "__source",
+            "__marker",
+            mysql_57,
+        )
+        .unwrap();
+
+        assert!(fallback_query.starts_with("SELECT __source.* FROM (SELECT * FROM (SELECT"));
+        assert!(!fallback_query.starts_with("WITH "));
     }
 
     #[test]

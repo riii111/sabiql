@@ -91,7 +91,8 @@ async fn execute_preview_with_session(
     limit: usize,
     offset: usize,
 ) -> Result<PreviewExecution, DbOperationError> {
-    let lower_case_table_names = session.prepare_read_only_and_probe().await?;
+    let capabilities = session.prepare_read_only_and_probe().await?;
+    let lower_case_table_names = capabilities.lower_case_table_names;
     validate_selected_schema_name(database, schema, lower_case_table_names)?;
 
     let column_result = session
@@ -430,7 +431,7 @@ while IFS= read -r line; do
     ";") ;;
     *__sabiql_probe*)
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\([^']*\)'.*/\1/")
-      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_lower_case_table_names">0</field></row></resultset>'
+      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_server_version">8.4.10</field><field name="__sabiql_lower_case_table_names">0</field></row></resultset>'
       ;;
     *"SET SESSION TRANSACTION READ ONLY"*) ;;
     *__sabiql_session_marker*)

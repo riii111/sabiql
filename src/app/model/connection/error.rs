@@ -310,12 +310,12 @@ mod tests {
         #[case(
             UnsupportedOperationKind::ClientVersion,
             "Unsupported MySQL CLI version",
-            "Install the Oracle MySQL 8.4 client"
+            "Install the Oracle MySQL 8.4 client; the MySQL CLI is required"
         )]
         #[case(
-            UnsupportedOperationKind::ServerVersion,
-            "Unsupported MySQL server version",
-            "Connect to an Oracle MySQL 8.4 server"
+            UnsupportedOperationKind::ServerProduct,
+            "Unsupported MySQL server product",
+            "Connect to an Oracle MySQL server; 8.4 is continuously validated, other versions are not fully guaranteed"
         )]
         #[case(
             UnsupportedOperationKind::SessionMode,

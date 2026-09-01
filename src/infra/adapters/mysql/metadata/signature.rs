@@ -42,7 +42,7 @@ async fn fetch_table_signatures_with_program(
 ) -> Result<TableSignatureSnapshot, DbOperationError> {
     let target = parse_and_validate_mysql_dsn(dsn)?;
     let database = selected_database(&target)?;
-    let (lower_case_table_names, results) = execute_metadata_queries_in_session_with_program(
+    let (capabilities, results) = execute_metadata_queries_in_session_with_program(
         &target,
         &[
             (TABLES_QUERY, TABLES_RESULT_COLUMNS),
@@ -57,6 +57,7 @@ async fn fetch_table_signatures_with_program(
         timeout,
     )
     .await?;
+    let lower_case_table_names = capabilities.lower_case_table_names;
     let tables =
         metadata_snapshot_from_result(database, None, &results[0], lower_case_table_names)?;
     table_signatures_from_metadata(
@@ -708,7 +709,7 @@ while IFS= read -r line; do
     case "$line" in
     *__sabiql_probe*)
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\([^']*\)' AS __sabiql_probe.*/\1/")
-      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_lower_case_table_names">0</field></row></resultset>'
+      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_server_version">8.4.10</field><field name="__sabiql_lower_case_table_names">0</field></row></resultset>'
       ;;
     *"SET SESSION TRANSACTION READ ONLY")
       ;;
