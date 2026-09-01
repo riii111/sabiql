@@ -51,7 +51,6 @@ pub enum ScrollTarget {
     ExplainCompare,
     ExplainConfirm,
     Explorer,
-    JsonDetail,
     CellDetail,
     SqliteDiagnostics,
     RowDetail,
