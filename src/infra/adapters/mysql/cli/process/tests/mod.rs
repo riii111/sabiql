@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use tempfile::TempDir;
 
-use super::super::export::run_mysql_export_process;
+use super::super::export::run_mysql_export_process_with_capabilities;
 use super::super::policy::MySqlExecutionResult;
 use super::super::xml::MySqlResultSet;
 use super::adhoc::run_mysql_adhoc_with_program_and_statements;
@@ -29,7 +29,16 @@ async fn export_mysql_csv_with_program(
         execution_timeout,
         &mut process,
         RefreshScope::None,
-        async |process| run_mysql_export_process(process, option_file, query, path).await,
+        async |process| {
+            run_mysql_export_process_with_capabilities(
+                process,
+                option_file,
+                query,
+                path,
+                super::super::super::capability::MySqlServerCapabilities::default(),
+            )
+            .await
+        },
     )
     .await
 }
