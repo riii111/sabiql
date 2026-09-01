@@ -67,16 +67,16 @@ impl MetadataProvider for SqliteAdapter {
         let rows = self
             .fetch_table_signature_rows(Self::path_from_dsn(dsn)?)
             .await?;
-        let signatures = rows
-            .into_iter()
-            .map(|RawNamedTableMetadata { name, metadata }| {
-                let detail = table_from_metadata(&name, TableDetailMode::Signature, metadata)?;
-                Ok(signature::signature_for_table(&detail))
-            })
-            .collect::<Result<Vec<_>, DbOperationError>>()?;
+        let mut signatures = Vec::with_capacity(rows.len());
+        let mut prefetched_table_details = Vec::with_capacity(rows.len());
+        for RawNamedTableMetadata { name, metadata } in rows {
+            let detail = table_from_metadata(&name, TableDetailMode::Signature, metadata)?;
+            signatures.push(signature::signature_for_table(&detail));
+            prefetched_table_details.push(detail);
+        }
         Ok(TableSignatureSnapshot {
             signatures,
-            prefetched_table_details: Vec::new(),
+            prefetched_table_details,
         })
     }
 }
