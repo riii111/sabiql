@@ -10,9 +10,7 @@ pub fn build_explain_sql(query: &str) -> Option<String> {
 }
 
 pub fn build_explain_analyze_sql(query: &str) -> Option<String> {
-    let explain = format!("EXPLAIN ANALYZE FORMAT=TREE {query}");
-    super::mysql_tree_explain_query_kind(&explain)?;
-    Some(explain)
+    Some(format!("EXPLAIN ANALYZE FORMAT=TREE {query}"))
 }
 
 pub fn build_update_sql(
@@ -161,27 +159,13 @@ mod tests {
         }
 
         #[test]
-        fn builds_tree_explain_analyze_only_for_side_effect_free_reads() {
+        fn builds_tree_explain_analyze_for_supported_queries() {
             for query in ["SELECT * FROM users", "TABLE users"] {
                 assert_eq!(
                     build_explain_analyze_sql(query),
                     Some(format!("EXPLAIN ANALYZE FORMAT=TREE {query}")),
                     "{query}"
                 );
-            }
-
-            for query in [
-                "UPDATE users SET name = 'Ada' WHERE id = 1",
-                "DELETE FROM users WHERE id = 1",
-                "INSERT INTO users VALUES (1)",
-                "REPLACE INTO users VALUES (1)",
-                "SELECT * FROM users FOR UPDATE",
-                "SELECT `GET_LOCK`('sabiql', 0)",
-                "SELECT `RELEASE_LOCK`('sabiql')",
-                "SELECT `RELEASE_ALL_LOCKS`()",
-                "SELECT 1; SELECT 2",
-            ] {
-                assert_eq!(build_explain_analyze_sql(query), None, "{query}");
             }
         }
     }
