@@ -1541,6 +1541,30 @@ mod tests {
         }
 
         #[test]
+        fn copy_failure_does_not_schedule_feedback_deadline() {
+            let mut state = state_with_error();
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::CopyConnectionError,
+                now,
+                &AppServices::stub(),
+            );
+
+            let Effect::CopyToClipboard { on_failure, .. } = &effects[0] else {
+                panic!("expected clipboard effect");
+            };
+            assert!(on_failure.is_none());
+            assert!(
+                state
+                    .connection_error
+                    .copied_feedback_expires_at()
+                    .is_none()
+            );
+        }
+
+        #[test]
         fn copied_marks_feedback_visible() {
             let mut state = state_with_error();
             let now = Instant::now();

@@ -23,6 +23,11 @@ pub fn next_animation_deadline(state: &AppState, now: Instant) -> Option<Instant
         earliest = min_instant(earliest, Some(highlight_until));
     }
 
+    earliest = min_instant(
+        earliest,
+        state.connection_error.copied_feedback_expires_at(),
+    );
+
     if let Some(debounce_until) = state.sql_modal.completion_debounce() {
         earliest = min_instant(earliest, Some(debounce_until));
     }
@@ -132,6 +137,30 @@ mod tests {
             let mut state = create_test_state();
             let now = Instant::now();
             let highlight_until = now + Duration::from_millis(500);
+            state.query.set_result_highlight(highlight_until);
+
+            let deadline = next_animation_deadline(&state, now);
+
+            assert_eq!(deadline, Some(highlight_until));
+        }
+
+        #[test]
+        fn connection_error_copied_feedback_returns_expiration() {
+            let mut state = create_test_state();
+            let now = Instant::now();
+            state.connection_error.mark_copied_at(now);
+
+            let deadline = next_animation_deadline(&state, now);
+
+            assert_eq!(deadline, Some(now + Duration::from_secs(3)));
+        }
+
+        #[test]
+        fn earlier_deadline_takes_priority_over_connection_error_copied_feedback() {
+            let mut state = create_test_state();
+            let now = Instant::now();
+            let highlight_until = now + Duration::from_millis(100);
+            state.connection_error.mark_copied_at(now);
             state.query.set_result_highlight(highlight_until);
 
             let deadline = next_animation_deadline(&state, now);
