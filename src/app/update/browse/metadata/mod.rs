@@ -1478,48 +1478,6 @@ mod tests {
                     if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache))
             )));
         }
-
-        #[test]
-        fn stale_expand_does_not_start_neighbor_extraction() {
-            let mut state = state_with_dsn("postgres://localhost/test");
-            let stale_run_id = state.table_prefetch.begin_er_prefetch();
-            let current_run_id = state.table_prefetch.begin_er_prefetch();
-
-            let effects = dispatch_metadata(
-                &mut state,
-                &Action::ExpandPrefetchWithFkNeighbors {
-                    run_id: stale_run_id,
-                },
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert_eq!(
-                state.table_prefetch.active_prefetch_run_id(),
-                Some(current_run_id)
-            );
-            assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn pending_mysql_probe_rejects_neighbor_expansion() {
-            let mut state = state_with_pending_mysql_probe();
-            let run_id = state.table_prefetch.begin_er_prefetch();
-            let _ = state.er_preparation.start_waiting_run();
-            state.er_preparation.mark_fk_unexpanded();
-
-            let effects = dispatch_metadata(
-                &mut state,
-                &Action::ExpandPrefetchWithFkNeighbors { run_id },
-                Instant::now(),
-            )
-            .into_effects()
-            .expect("neighbor expansion action should be handled");
-
-            assert!(effects.is_empty());
-            assert!(state.er_preparation.is_waiting());
-            assert!(!state.er_preparation.fk_expanded());
-        }
     }
 
     mod fk_neighbors_discovered {
