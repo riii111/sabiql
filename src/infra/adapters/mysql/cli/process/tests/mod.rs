@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use tempfile::TempDir;
 
+use super::super::super::capability::MySqlServerCapabilities;
 use super::super::export::run_mysql_export_process_with_capabilities;
 use super::super::policy::MySqlExecutionResult;
 use super::super::xml::MySqlResultSet;
@@ -23,6 +24,7 @@ async fn export_mysql_csv_with_program(
     query: &str,
     path: PathBuf,
     execution_timeout: Duration,
+    capabilities: MySqlServerCapabilities,
 ) -> Result<(), DbOperationError> {
     let mut process = MySqlProcess::spawn_with_program(program, option_file)?;
     run_mysql_process_with_timeout(
@@ -35,7 +37,7 @@ async fn export_mysql_csv_with_program(
                 option_file,
                 query,
                 path,
-                super::super::super::capability::MySqlServerCapabilities::default(),
+                capabilities,
             )
             .await
         },
@@ -328,6 +330,9 @@ while IFS= read -r line; do
       ;;
     *__sabiql_marker*)
       {marker_response}
+      ;;
+    "SELECT __sabiql_metadata_source_"*)
+      printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="value" xsi:nil="true"/></row></resultset>'
       ;;
     *"WITH "*__sabiql_metadata_source*)
       case "$line" in

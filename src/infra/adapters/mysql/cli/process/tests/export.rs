@@ -11,6 +11,7 @@ async fn exports_mysql_xml_rows_through_the_shared_csv_writer() {
         "SELECT 1",
         path.clone(),
         Duration::from_secs(5),
+        MySqlServerCapabilities::default(),
     )
     .await
     .unwrap();
@@ -30,6 +31,7 @@ async fn configures_read_only_session_before_user_sql() {
         "SELECT 1",
         path,
         Duration::from_secs(5),
+        MySqlServerCapabilities::default(),
     )
     .await
     .unwrap();
@@ -54,6 +56,7 @@ async fn ignores_cli_error_text_inside_resultset_fields() {
         "SELECT 1",
         path.clone(),
         Duration::from_secs(5),
+        MySqlServerCapabilities::default(),
     )
     .await
     .unwrap();
@@ -78,6 +81,7 @@ async fn read_only_session_failure_never_writes_user_sql_or_partial_file() {
             "SELECT 123",
             path,
             Duration::from_secs(5),
+            MySqlServerCapabilities::default(),
         )
     })
     .await;
@@ -103,6 +107,7 @@ async fn failure_removes_the_partial_file() {
             "SELECT 1",
             path,
             Duration::from_secs(5),
+            MySqlServerCapabilities::default(),
         )
     })
     .await;
@@ -125,6 +130,7 @@ async fn timeout_kills_the_process_and_removes_the_partial_file() {
             "SELECT 1",
             path,
             Duration::from_millis(50),
+            MySqlServerCapabilities::default(),
         )
     })
     .await;
@@ -132,4 +138,27 @@ async fn timeout_kills_the_process_and_removes_the_partial_file() {
     assert!(matches!(result, Err(DbOperationError::Timeout(_))));
     assert!(!final_path.exists());
     assert_eq!(output_directory.path().read_dir().unwrap().count(), 0);
+}
+
+#[tokio::test]
+async fn exports_empty_mysql_57_select_with_derived_metadata_fallback() {
+    let (_directory, program, option_file) = fake_mysql_multi();
+    let log_file = PathBuf::from(format!("{}.log", option_file.display()));
+    let path = option_file.with_file_name("export.csv");
+
+    export_mysql_csv_with_program(
+        OsStr::new(&program),
+        &option_file,
+        "SELECT 1 WHERE FALSE",
+        path.clone(),
+        Duration::from_secs(5),
+        MySqlServerCapabilities::from_version("5.7.44", 0),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(fs::read_to_string(path).unwrap(), "value\n");
+    let log = fs::read_to_string(log_file).unwrap();
+    assert!(log.contains("SELECT __sabiql_metadata_source_"), "{log}");
+    assert!(!log.contains("WITH __sabiql_metadata_source_"), "{log}");
 }
