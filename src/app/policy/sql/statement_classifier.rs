@@ -26,7 +26,7 @@ pub enum StatementKind {
 
 pub fn classify(sql: &str) -> StatementKind {
     let trimmed = sql.trim();
-    if let Some(kind) = leading_cte_write_kind(trimmed) {
+    if let Some(kind) = executed_data_modifying_cte_kind(trimmed) {
         return kind;
     }
     let statement = statement_after_leading_ctes(trimmed);
@@ -38,69 +38,32 @@ pub fn classify(sql: &str) -> StatementKind {
     classify_inner(&lower, &chars)
 }
 
-pub fn has_executed_data_modifying_cte(sql: &str) -> bool {
-    let lower = sql.trim().to_lowercase();
-    if lower.is_empty() {
-        return false;
-    }
-    let chars: Vec<(usize, char)> = lower.char_indices().collect();
-    if matches!(
-        explain_executes_inner_statement(&lower, &chars),
-        Some(false)
-    ) {
-        return false;
-    }
+fn executed_data_modifying_cte_kind(sql: &str) -> Option<StatementKind> {
+    let trimmed = sql.trim();
+    let chars: Vec<(usize, char)> = trimmed.char_indices().collect();
+    let tokens = collect_top_level_tokens(trimmed, &chars);
+    let lowers: Vec<String> = tokens
+        .iter()
+        .map(|(_, token)| token.to_ascii_lowercase())
+        .collect();
 
-    let mut i = 0;
-    let mut depth: i32 = 0;
-    let mut in_string = false;
-    let mut in_cte = false;
-
-    while i < chars.len() {
-        let (byte_pos, ch) = chars[i];
-
-        if let Some(next_i) = skip_line_comment(&chars, i, ch) {
-            i = next_i;
-            continue;
-        }
-        if let Some(next_i) = skip_block_comment(&chars, i, ch) {
-            i = next_i;
-            continue;
-        }
-        if let Some(next_i) = advance_single_quote(&chars, i, ch, &mut in_string) {
-            i = next_i;
-            continue;
-        }
-        if in_string {
-            i += 1;
-            continue;
-        }
-        if let Some(next_i) = skip_double_quoted_identifier(&chars, i, ch) {
-            i = next_i;
-            continue;
-        }
-        if let Some(next_i) = skip_dollar_quoted_string(&lower, &chars, i, byte_pos, ch) {
-            i = next_i;
-            continue;
-        }
-
-        update_parentheses_depth(ch, &mut depth);
-
-        if (ch.is_alphabetic() || ch == '_') && is_word_start(&chars, i) {
-            let rest = &lower[byte_pos..];
-            if depth == 0 && is_keyword(rest, "with") {
-                in_cte = true;
-            } else if in_cte && depth == 0 && match_keyword(rest).is_some() {
-                return false;
-            } else if in_cte && depth > 0 && is_data_modifying_keyword(rest) {
-                return true;
+    let with_index = match lowers.first().map(String::as_str) {
+        Some("with") => 0,
+        Some("explain") => {
+            let lower = trimmed.to_ascii_lowercase();
+            let lower_chars: Vec<(usize, char)> = lower.char_indices().collect();
+            if !matches!(
+                explain_executes_inner_statement(&lower, &lower_chars),
+                Some(true)
+            ) {
+                return None;
             }
+            lowers.iter().position(|token| token == "with")?
         }
+        _ => return None,
+    };
 
-        i += 1;
-    }
-
-    false
+    leading_cte_write_kind(&trimmed[tokens[with_index].0..])
 }
 
 fn explain_executes_inner_statement(lower: &str, chars: &[(usize, char)]) -> Option<bool> {
@@ -161,13 +124,6 @@ fn explain_executes_inner_statement(lower: &str, chars: &[(usize, char)]) -> Opt
     }
 
     None
-}
-
-fn is_data_modifying_keyword(rest: &str) -> bool {
-    is_keyword(rest, "insert")
-        || is_keyword(rest, "update")
-        || is_keyword(rest, "delete")
-        || is_keyword(rest, "merge")
 }
 
 pub fn drop_subtype(sql: &str) -> Option<String> {
@@ -980,6 +936,10 @@ mod tests {
         #[case::explain_costs_off("EXPLAIN COSTS OFF SELECT * FROM users", StatementKind::Select)]
         #[case::explain_update("EXPLAIN UPDATE users SET x = 1", StatementKind::Select)]
         #[case::explain_delete("EXPLAIN DELETE FROM users", StatementKind::Select)]
+        #[case::explain_cte_update(
+            "EXPLAIN WITH changed AS (UPDATE users SET x = 1 RETURNING *) SELECT * FROM changed",
+            StatementKind::Select
+        )]
         #[case::explain_merge(
             "EXPLAIN MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET x = 1",
             StatementKind::Select
@@ -1010,6 +970,10 @@ mod tests {
         #[case::explain_analyze_insert(
             "EXPLAIN ANALYZE INSERT INTO users VALUES (1)",
             StatementKind::Insert
+        )]
+        #[case::explain_analyze_cte_update(
+            "EXPLAIN ANALYZE WITH changed AS (UPDATE users SET x = 1 RETURNING *) SELECT * FROM changed",
+            StatementKind::Update { has_where: false }
         )]
         #[case::explain_paren_analyze_update(
             "EXPLAIN (ANALYZE) UPDATE users SET x = 1",
