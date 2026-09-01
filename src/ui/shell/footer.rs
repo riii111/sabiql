@@ -99,6 +99,7 @@ impl Footer {
                         vec![
                             result_active::EDIT.as_hint(),
                             cell_edit::WRITE.as_hint(),
+                            global::CONNECTIONS.as_hint(),
                             global::HELP.as_hint(),
                             result_active::DRAFT_DISCARD.as_hint(),
                             global::QUIT.as_hint(),
@@ -117,6 +118,7 @@ impl Footer {
                             hints.push(result_active::STAGE_DELETE.as_hint());
                         }
                         hints.extend([
+                            global::CONNECTIONS.as_hint(),
                             global::HELP.as_hint(),
                             result_active::ESC_BACK.as_hint(),
                             global::QUIT.as_hint(),
@@ -127,6 +129,7 @@ impl Footer {
                             result_active::STAGE_DELETE.as_hint(),
                             result_active::UNSTAGE_DELETE.as_hint(),
                             cell_edit::WRITE.as_hint(),
+                            global::CONNECTIONS.as_hint(),
                             global::HELP.as_hint(),
                             result_active::ESC_BACK.as_hint(),
                             global::QUIT.as_hint(),
@@ -135,6 +138,7 @@ impl Footer {
                 } else if state.ui.is_focus_mode() {
                     // Actions → Navigation → Help → Close/Cancel → Quit
                     let mut list = vec![result_active::ENTER_DEEPEN.as_hint()];
+                    list.push(global::CONNECTIONS.as_hint());
                     if !state.result_interaction.staged_delete_rows().is_empty() {
                         list.push(result_active::UNSTAGE_DELETE.as_hint());
                         list.push(result_active::CLEAR_STAGED_DELETE.as_hint());
@@ -164,9 +168,7 @@ impl Footer {
                     if feature_policy.is_enabled(FeatureRequirement::SqliteDiagnostics) {
                         list.push(sqlite_diagnostics(keymap_preset).as_hint());
                     }
-                    if state.ui.focused_pane() == FocusedPane::Explorer {
-                        list.push(global::CONNECTIONS.as_hint());
-                    }
+                    list.push(global::CONNECTIONS.as_hint());
                     list.push(table_picker_key(keymap_preset).as_hint());
                     list.push(query_history(keymap_preset).as_hint());
                     if state.connection_error.has_error() {
@@ -481,6 +483,37 @@ mod tests {
         state.modal.set_mode(InputMode::Normal);
         state.ui.set_focused_pane(FocusedPane::Result);
         state
+    }
+
+    #[rstest]
+    #[case(FocusedPane::Explorer)]
+    #[case(FocusedPane::Inspector)]
+    #[case(FocusedPane::Result)]
+    fn normal_footer_shows_connections_for_every_pane(#[case] focused_pane: FocusedPane) {
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::Normal);
+        state.ui.set_focused_pane(focused_pane);
+
+        let hints = Footer::get_context_hints(&state);
+
+        assert!(hints.contains(&global::CONNECTIONS.as_hint()));
+    }
+
+    #[rstest]
+    #[case(false)]
+    #[case(true)]
+    fn focus_mode_footer_shows_connections(#[case] result_active: bool) {
+        let mut state = result_focused_state();
+        state
+            .ui
+            .set_focus_mode(FocusMode::focused(FocusedPane::Explorer));
+        if result_active {
+            state.result_interaction.activate_cell(0, 0);
+        }
+
+        let hints = Footer::get_context_hints(&state);
+
+        assert!(hints.contains(&global::CONNECTIONS.as_hint()));
     }
 
     #[rstest]

@@ -128,7 +128,7 @@ pub(super) fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         Key::Char('e') if feature_policy.is_enabled(FeatureRequirement::ErDiagram) => {
             Action::OpenModal(ModalKind::ErTablePicker)
         }
-        Key::Char('c') if state.ui.focused_pane() == FocusedPane::Explorer => {
+        Key::Char('c') if kb::global::CONNECTIONS.combos.contains(&combo) => {
             Action::OpenModal(ModalKind::ConnectionSelector)
         }
 
@@ -748,12 +748,15 @@ mod tests {
             }
 
             #[test]
-            fn c_noop() {
+            fn c_opens_connection_selector() {
                 let state = inspector_focused_state();
 
                 let result = handle_normal_mode(combo(Key::Char('c')), &state);
 
-                assert!(matches!(result, Action::None));
+                assert!(matches!(
+                    result,
+                    Action::OpenModal(ModalKind::ConnectionSelector)
+                ));
             }
         }
 
@@ -905,12 +908,31 @@ mod tests {
             }
 
             #[test]
-            fn c_noop() {
+            fn c_opens_connection_selector() {
                 let state = result_focused_state();
 
                 let result = handle_normal_mode(combo(Key::Char('c')), &state);
 
-                assert!(matches!(result, Action::None));
+                assert!(matches!(
+                    result,
+                    Action::OpenModal(ModalKind::ConnectionSelector)
+                ));
+            }
+        }
+
+        mod focus_mode {
+            use super::*;
+
+            #[test]
+            fn c_opens_connection_selector() {
+                let state = focus_mode_state();
+
+                let result = handle_normal_mode(combo(Key::Char('c')), &state);
+
+                assert!(matches!(
+                    result,
+                    Action::OpenModal(ModalKind::ConnectionSelector)
+                ));
             }
         }
 

@@ -40,4 +40,4 @@ test_project ▸ test_db ▸ -                                                  
 │                          ││                                                                                │
 │                          ││                                                                                │
 └──────────────────────────┘└────────────────────────────────────────────────────────────────────────────────┘
-r:Reload  s:SQL  e:ER Diagram  ^P:Tables  ^O:History  ^R:Read-Only  f:Focus  Tab/⇧Tab:InsTabs  ?:Help  F1:Pale
+r:Reload  s:SQL  e:ER Diagram  c:Connections  ^P:Tables  ^O:History  ^R:Read-Only  f:Focus  Tab/⇧Tab:InsTabs
