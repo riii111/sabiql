@@ -109,9 +109,22 @@ impl ConnectionErrorState {
         self.copied_feedback_expires = Some(now + Duration::from_secs(Self::FEEDBACK_TIMEOUT_SECS));
     }
 
+    pub fn copied_feedback_expires_at(&self) -> Option<Instant> {
+        self.copied_feedback_expires
+    }
+
     pub fn is_copied_visible_at(&self, now: Instant) -> bool {
         self.copied_feedback_expires
             .is_some_and(|expires| now < expires)
+    }
+
+    pub fn clear_copied_feedback_if_expired(&mut self, now: Instant) {
+        if self
+            .copied_feedback_expires
+            .is_some_and(|expires| expires <= now)
+        {
+            self.clear_copied_feedback();
+        }
     }
 
     pub fn clear_copied_feedback(&mut self) {
