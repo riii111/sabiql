@@ -32,9 +32,9 @@ pub(super) fn reduce_confirm_dialog(
                     state.should_quit = true;
                     DispatchResult::handled_with(vec![Effect::CancelTrackedTasks])
                 }
-                Some(ConfirmIntent::DeleteConnection(id)) => {
-                    DispatchResult::handled_with(vec![Effect::DeleteConnection { id }])
-                }
+                Some(ConfirmIntent::DeleteConnection(id)) => DispatchResult::handled_with(vec![
+                    Effect::DispatchActions(vec![Action::DeleteConnection(id)]),
+                ]),
                 Some(ConfirmIntent::ExecuteWrite { blocked: true, .. }) => {
                     state.result_interaction.clear_write_preview();
                     state.query.clear_delete_refresh_target();
