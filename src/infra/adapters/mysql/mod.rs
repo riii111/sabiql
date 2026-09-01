@@ -1,4 +1,5 @@
 mod adapter;
+mod capability;
 mod cli;
 mod connection;
 mod dsn;

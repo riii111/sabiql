@@ -3,31 +3,36 @@ use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
 
-use serde::Deserialize;
 use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::app::ports::outbound::{
-    ConnectionFailureKind, DbOperationError, MySqlConnectionProbeResult, UnsupportedOperationKind,
+    ConnectionFailureKind, DbOperationError, UnsupportedOperationKind,
 };
 
+use super::super::capability::MySqlServerCapabilities;
 use super::args::mysql_connection_args;
 use super::error::{
     clean_mysql_stderr, is_mysql_connect_timeout_message, map_mysql_cli_spawn_error,
 };
 use super::sanitize_mysql_command_environment;
+use super::xml::{MySqlResultSet, parse_mysql_xml};
 
 const MYSQL_PROBE_TIMEOUT: Duration = Duration::from_secs(11);
-const MYSQL_PROBE_QUERY: &str = "SELECT JSON_OBJECT('version', VERSION(), 'sql_mode', @@SESSION.sql_mode, 'lower_case_table_names', @@lower_case_table_names)";
+const MYSQL_PROBE_QUERY: &str = "SELECT VERSION() AS __sabiql_server_version, @@SESSION.sql_mode AS __sabiql_sql_mode, @@lower_case_table_names AS __sabiql_lower_case_table_names";
+const MYSQL_PROBE_RESULT_COLUMNS: [&str; 3] = [
+    "__sabiql_server_version",
+    "__sabiql_sql_mode",
+    "__sabiql_lower_case_table_names",
+];
 const MYSQL_VERSION_ARGS: [&str; 3] = ["--no-defaults", "--no-login-paths", "--version"];
 const MYSQL_SUPPORTED_MAJOR: u32 = 8;
 const MYSQL_SUPPORTED_MINOR: u32 = 4;
 
-#[derive(Debug, Deserialize)]
-struct MySqlProbeResponse {
-    version: String,
-    sql_mode: String,
-    lower_case_table_names: u8,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::adapters::mysql) struct MySqlServerProbeResult {
+    pub(in crate::adapters::mysql) lower_case_table_names: u8,
+    pub(in crate::adapters::mysql) server_version: String,
 }
 
 pub(in crate::adapters::mysql) async fn check_mysql_cli_version() -> Result<(), DbOperationError> {
@@ -71,7 +76,7 @@ async fn run_mysql_version_command(
 
 pub(in crate::adapters::mysql) async fn probe_mysql_server(
     option_file: &Path,
-) -> Result<MySqlConnectionProbeResult, DbOperationError> {
+) -> Result<MySqlServerProbeResult, DbOperationError> {
     let output = run_mysql_command_with_timeout(
         mysql_probe_args(option_file),
         MYSQL_PROBE_TIMEOUT,
@@ -85,13 +90,49 @@ pub(in crate::adapters::mysql) async fn probe_mysql_server(
         )));
     }
 
-    let response: MySqlProbeResponse = serde_json::from_slice(&output.stdout)?;
-    validate_server_version(&response.version)?;
-    validate_sql_mode(&response.sql_mode)?;
-    validate_lower_case_table_names(response.lower_case_table_names)?;
-    Ok(MySqlConnectionProbeResult {
-        lower_case_table_names: response.lower_case_table_names,
+    let result = parse_mysql_xml(&output.stdout)?;
+    let (version, sql_mode, lower_case_table_names) = parse_mysql_probe_result(&result)?;
+    validate_server_product(version)?;
+    validate_sql_mode(sql_mode)?;
+    validate_lower_case_table_names(lower_case_table_names)?;
+    Ok(MySqlServerProbeResult {
+        lower_case_table_names,
+        server_version: version.to_string(),
     })
+}
+
+fn parse_mysql_probe_result(result: &MySqlResultSet) -> Result<(&str, &str, u8), DbOperationError> {
+    if result.columns != MYSQL_PROBE_RESULT_COLUMNS
+        || result.values.len() != 1
+        || result.values[0].len() != MYSQL_PROBE_RESULT_COLUMNS.len()
+    {
+        return Err(DbOperationError::QueryFailed(
+            "mysql connection probe returned an unexpected result".to_string(),
+        ));
+    }
+    let values = &result.values[0];
+    let version = values[0].as_str().ok_or_else(|| {
+        DbOperationError::QueryFailed(
+            "mysql connection probe returned no server version".to_string(),
+        )
+    })?;
+    let sql_mode = values[1].as_str().ok_or_else(|| {
+        DbOperationError::QueryFailed("mysql connection probe returned no sql_mode".to_string())
+    })?;
+    let lower_case_table_names = values[2]
+        .as_str()
+        .ok_or_else(|| {
+            DbOperationError::QueryFailed(
+                "mysql connection probe returned no lower_case_table_names".to_string(),
+            )
+        })?
+        .parse::<u8>()
+        .map_err(|_| {
+            DbOperationError::MetadataParseFailed(
+                "invalid MySQL lower_case_table_names value".to_string(),
+            )
+        })?;
+    Ok((version, sql_mode, lower_case_table_names))
 }
 
 pub(super) fn validate_lower_case_table_names(value: u8) -> Result<(), DbOperationError> {
@@ -121,15 +162,22 @@ fn is_oracle_mysql_84_version(value: &str) -> bool {
         && version_major_minor(value) == Some((MYSQL_SUPPORTED_MAJOR, MYSQL_SUPPORTED_MINOR))
 }
 
-fn validate_server_version(version: &str) -> Result<(), DbOperationError> {
-    if is_oracle_mysql_84_version(version) {
-        Ok(())
-    } else {
+pub(super) fn validate_server_product(version: &str) -> Result<(), DbOperationError> {
+    if contains_unsupported_mysql_product(version) {
         Err(DbOperationError::UnsupportedOperationWithKind {
-            kind: UnsupportedOperationKind::ServerVersion,
+            kind: UnsupportedOperationKind::ServerProduct,
             details: version.to_string(),
         })
+    } else {
+        Ok(())
     }
+}
+
+pub(in crate::adapters::mysql) fn mysql_server_capabilities(
+    version: &str,
+    lower_case_table_names: u8,
+) -> MySqlServerCapabilities {
+    MySqlServerCapabilities::from_version(version, lower_case_table_names)
 }
 
 pub(super) fn validate_sql_mode(sql_mode: &str) -> Result<(), DbOperationError> {
@@ -158,10 +206,11 @@ fn version_major_minor(value: &str) -> Option<(u32, u32)> {
 fn mysql_probe_args(option_file: &std::path::Path) -> Vec<String> {
     let mut args = mysql_connection_args(option_file);
     args.extend([
-        "--batch".to_string(),
-        "--raw".to_string(),
-        "--skip-column-names".to_string(),
+        "--xml".to_string(),
         "--binary-mode".to_string(),
+        "--batch".to_string(),
+        "--silent".to_string(),
+        "--prompt=".to_string(),
     ]);
     args.push(format!("--execute={MYSQL_PROBE_QUERY}"));
     args
@@ -281,13 +330,24 @@ mod probe_tests {
         assert!(is_oracle_mysql_84_version("8.4.3"));
         assert!(!is_oracle_mysql_84_version("8.4.3-TiDB"));
         assert!(!is_oracle_mysql_84_version("8.4.3-Percona"));
-        assert!(matches!(
-            validate_server_version("8.0.36"),
-            Err(DbOperationError::UnsupportedOperationWithKind {
-                kind: UnsupportedOperationKind::ServerVersion,
-                ..
-            })
-        ));
+        assert!(validate_server_product("5.7.44").is_ok());
+        assert!(validate_server_product("8.0.36").is_ok());
+        assert!(validate_server_product("8.4.10").is_ok());
+        for product_version in [
+            "8.4.10-MariaDB",
+            "8.4.10-Percona",
+            "8.4.10-TiDB",
+            "8.4.10-Vitess",
+            "8.4.10-Aurora",
+        ] {
+            assert!(matches!(
+                validate_server_product(product_version),
+                Err(DbOperationError::UnsupportedOperationWithKind {
+                    kind: UnsupportedOperationKind::ServerProduct,
+                    ..
+                })
+            ));
+        }
         assert!(validate_sql_mode("STRICT_TRANS_TABLES").is_ok());
         assert!(validate_sql_mode("").is_ok());
         assert!(matches!(
@@ -297,6 +357,22 @@ mod probe_tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn parses_representative_versions_from_the_shared_mysql_xml_result() {
+        for version in ["5.7.44", "8.0.36", "8.4.10"] {
+            let xml = format!(
+                "<resultset><row><field name=\"__sabiql_server_version\">{version}</field><field name=\"__sabiql_sql_mode\">STRICT_TRANS_TABLES</field><field name=\"__sabiql_lower_case_table_names\">0</field></row></resultset>"
+            );
+            let result = parse_mysql_xml(xml.as_bytes()).unwrap();
+
+            assert_eq!(
+                parse_mysql_probe_result(&result).unwrap(),
+                (version, "STRICT_TRANS_TABLES", 0)
+            );
+            validate_server_product(version).unwrap();
+        }
     }
 
     #[test]
@@ -333,13 +409,15 @@ mod probe_tests {
                 "--no-login-paths".to_string(),
                 "--connect-timeout=10".to_string(),
                 "--skip-reconnect".to_string(),
-                "--batch".to_string(),
-                "--raw".to_string(),
-                "--skip-column-names".to_string(),
+                "--xml".to_string(),
                 "--binary-mode".to_string(),
+                "--batch".to_string(),
+                "--silent".to_string(),
+                "--prompt=".to_string(),
                 format!("--execute={MYSQL_PROBE_QUERY}"),
             ]
         );
+        assert!(!args.iter().any(|argument| argument.contains("JSON_OBJECT")));
         assert!(!args.iter().any(|argument| argument == "--quick"));
     }
 

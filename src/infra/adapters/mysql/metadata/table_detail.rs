@@ -9,12 +9,13 @@ use crate::domain::{
 };
 
 use super::super::sql::{
-    COLUMN_METADATA_RESULT_COLUMNS, FOREIGN_KEY_RESULT_COLUMNS, INDEX_RESULT_COLUMNS,
-    TABLES_RESULT_COLUMNS, TRIGGER_RESULT_COLUMNS, UNIQUE_COLUMN_RESULT_COLUMNS, columns_query,
-    foreign_keys_query, indexes_query, show_create_query, show_create_result_columns, table_query,
-    triggers_query, unique_columns_query,
+    FOREIGN_KEY_RESULT_COLUMNS, TABLES_RESULT_COLUMNS, TRIGGER_RESULT_COLUMNS,
+    UNIQUE_COLUMN_RESULT_COLUMNS, column_metadata_result_columns, columns_query_for_capabilities,
+    foreign_keys_query, index_result_columns, indexes_query_for_capabilities, show_create_query,
+    show_create_result_columns, table_query, triggers_query, unique_columns_query,
 };
 use super::super::{
+    capability::MySqlServerCapabilities,
     cli::{MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, MySqlResultSet},
     dsn::{map_mysql_tls_failure, parse_and_validate_mysql_dsn},
     option_file::MySqlOptionFile,
@@ -22,9 +23,9 @@ use super::super::{
 use super::catalog::{
     MySqlColumnMetadata, MySqlTableMetadata, column_from_metadata, expect_columns, find_table,
     foreign_keys_from_metadata, mark_single_column_unique, metadata_shape_error,
-    metadata_snapshot_from_result, optional_text, parse_boolean_flag, parse_columns_for_table,
-    parse_foreign_key_metadata, parse_optional_positive_i32, parse_positive_i32,
-    parse_unique_column_metadata, primary_key_names, required_text, selected_database,
+    metadata_snapshot_from_result, optional_text, parse_boolean_flag, parse_foreign_key_metadata,
+    parse_optional_positive_i32, parse_positive_i32, parse_unique_column_metadata,
+    primary_key_names, required_text, selected_database,
 };
 
 #[derive(Debug, Clone)]
@@ -73,31 +74,57 @@ async fn fetch_table_columns_and_fks_with_program(
 ) -> Result<Table, DbOperationError> {
     let target = parse_and_validate_mysql_dsn(dsn)?;
     let database = selected_database(&target)?;
-    let table_query = table_query(schema, table);
-    let columns_query = columns_query(schema, table);
-    let unique_columns_query = unique_columns_query(schema, table);
-    let foreign_keys_query = foreign_keys_query(schema, table);
-    let (lower_case_table_names, results) =
-        super::catalog::execute_metadata_queries_in_session_with_program(
-            &target,
-            &[
-                (table_query.as_str(), TABLES_RESULT_COLUMNS),
-                (columns_query.as_str(), COLUMN_METADATA_RESULT_COLUMNS),
-                (unique_columns_query.as_str(), UNIQUE_COLUMN_RESULT_COLUMNS),
-                (foreign_keys_query.as_str(), FOREIGN_KEY_RESULT_COLUMNS),
-            ],
-            program,
-            timeout,
-        )
-        .await?;
-    let table_metadata =
-        table_metadata_from_result(database, schema, table, &results[0], lower_case_table_names)?;
-    let mut columns = parse_columns_for_table(&results[1], schema, table)?;
+    let option_file = MySqlOptionFile::create(&target)?;
+    let mut session = MySqlMetadataSession::spawn_with_metadata_program(program, option_file)?;
+    let result = tokio::time::timeout(timeout, async {
+        let capabilities = session.prepare_read_only_and_probe().await?;
+        let table_query = table_query(schema, table);
+        let columns_query = columns_query_for_capabilities(schema, table, capabilities);
+        let unique_columns_query = unique_columns_query(schema, table);
+        let foreign_keys_query = foreign_keys_query(schema, table);
+        let results = vec![
+            session
+                .execute_with_expected_columns(&table_query, TABLES_RESULT_COLUMNS)
+                .await?,
+            session
+                .execute_with_expected_columns(
+                    &columns_query,
+                    column_metadata_result_columns(capabilities),
+                )
+                .await?,
+            session
+                .execute_with_expected_columns(&unique_columns_query, UNIQUE_COLUMN_RESULT_COLUMNS)
+                .await?,
+            session
+                .execute_with_expected_columns(&foreign_keys_query, FOREIGN_KEY_RESULT_COLUMNS)
+                .await?,
+        ];
+        session.finish().await?;
+        Ok((capabilities, results))
+    })
+    .await;
+    let (capabilities, results) = session
+        .resolve_timed_result(result)
+        .await
+        .map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))?;
+    let table_metadata = table_metadata_from_result(
+        database,
+        schema,
+        table,
+        &results[0],
+        capabilities.lower_case_table_names,
+    )?;
+    let mut columns = super::catalog::parse_columns_for_table_with_capabilities(
+        &results[1],
+        schema,
+        table,
+        capabilities,
+    )?;
     mark_single_column_unique(&mut columns, &parse_unique_column_metadata(&results[2])?);
     let foreign_keys = foreign_keys_from_metadata(
         parse_foreign_key_metadata(&results[3])?,
         database,
-        lower_case_table_names,
+        capabilities.lower_case_table_names,
     )?;
     Ok(table_from_columns_and_foreign_keys(
         table_metadata,
@@ -134,7 +161,7 @@ async fn fetch_table_detail_with_session(
     schema: &str,
     table: &str,
 ) -> Result<Table, DbOperationError> {
-    let lower_case_table_names = session.prepare_read_only_and_probe().await?;
+    let capabilities = session.prepare_read_only_and_probe().await?;
     let tables_result = session
         .execute_with_expected_columns(&table_query(schema, table), TABLES_RESULT_COLUMNS)
         .await?;
@@ -143,23 +170,28 @@ async fn fetch_table_detail_with_session(
         schema,
         table,
         &tables_result,
-        lower_case_table_names,
+        capabilities.lower_case_table_names,
     )?;
 
-    let mut columns = parse_columns_for_table(
+    let mut columns = super::catalog::parse_columns_for_table_with_capabilities(
         &session
             .execute_with_expected_columns(
-                &columns_query(schema, table),
-                COLUMN_METADATA_RESULT_COLUMNS,
+                &columns_query_for_capabilities(schema, table, capabilities),
+                column_metadata_result_columns(capabilities),
             )
             .await?,
         schema,
         table,
+        capabilities,
     )?;
-    let raw_indexes = parse_index_metadata(
+    let raw_indexes = parse_index_metadata_with_capabilities(
         &session
-            .execute_with_expected_columns(&indexes_query(schema, table), INDEX_RESULT_COLUMNS)
+            .execute_with_expected_columns(
+                &indexes_query_for_capabilities(schema, table, capabilities),
+                index_result_columns(capabilities),
+            )
             .await?,
+        capabilities,
     )?;
     let unique_single_columns = unique_single_columns_from_metadata(&raw_indexes);
     mark_single_column_unique(&mut columns, &unique_single_columns);
@@ -174,7 +206,7 @@ async fn fetch_table_detail_with_session(
                 .await?,
         )?,
         database,
-        lower_case_table_names,
+        capabilities.lower_case_table_names,
     )?;
     let triggers = parse_trigger_metadata(
         &session
@@ -298,21 +330,32 @@ fn parse_source_ddl(result: &MySqlResultSet, kind: TableKind) -> Result<String, 
     Ok(ddl.to_string())
 }
 
-fn parse_index_metadata(
+fn parse_index_metadata_with_capabilities(
     result: &MySqlResultSet,
+    capabilities: MySqlServerCapabilities,
 ) -> Result<Vec<MySqlIndexMetadata>, DbOperationError> {
-    expect_columns(result, INDEX_RESULT_COLUMNS)?;
+    let expected_columns = index_result_columns(capabilities);
+    expect_columns(result, expected_columns)?;
     result
         .values
         .iter()
         .map(|row| {
-            if row.len() != INDEX_RESULT_COLUMNS.len() {
+            if row.len() != expected_columns.len() {
                 return Err(metadata_shape_error("STATISTICS row"));
             }
             let column_name = optional_text(&row[4], "COLUMN_NAME")?;
             let sub_part = parse_optional_positive_i32(&row[5], "SUB_PART")?;
-            let expression = optional_text(&row[6], "EXPRESSION")?;
-            let descending = match optional_text(&row[7], "COLLATION")? {
+            let expression = if capabilities.supports_statistics_expression() {
+                optional_text(&row[6], "EXPRESSION")?
+            } else {
+                None
+            };
+            let collation_index = if capabilities.supports_statistics_expression() {
+                7
+            } else {
+                6
+            };
+            let descending = match optional_text(&row[collation_index], "COLLATION")? {
                 None => false,
                 Some(value) if value.eq_ignore_ascii_case("A") => false,
                 Some(value) if value.eq_ignore_ascii_case("D") => true,
@@ -322,7 +365,11 @@ fn parse_index_metadata(
                     ));
                 }
             };
-            let invisible = !parse_boolean_flag(&row[8], "IS_VISIBLE")?;
+            let invisible = if capabilities.supports_statistics_visibility() {
+                !parse_boolean_flag(&row[collation_index + 1], "IS_VISIBLE")?
+            } else {
+                false
+            };
             let (column_name, expression) = match (column_name, expression) {
                 (Some(column_name), None) => (column_name.to_string(), None),
                 (None, Some(expression)) => {
@@ -480,7 +527,7 @@ while IFS= read -r line; do
       printf '%s\n' '<resultset><row><field name="wrong">x</field></row></resultset>'
     else
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\([^']*\)'.*/\1/")
-      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_lower_case_table_names">0</field></row></resultset>'
+      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_server_version">8.4.10</field><field name="__sabiql_lower_case_table_names">0</field></row></resultset>'
     fi
     continue
   fi
@@ -855,9 +902,17 @@ done
 
 #[cfg(test)]
 mod tests {
+    use crate::adapters::mysql::sql::INDEX_RESULT_COLUMNS;
+
     use super::super::test_support::result;
     use super::*;
     use crate::domain::QueryValue;
+
+    fn parse_index_metadata(
+        result: &MySqlResultSet,
+    ) -> Result<Vec<MySqlIndexMetadata>, DbOperationError> {
+        super::parse_index_metadata_with_capabilities(result, MySqlServerCapabilities::default())
+    }
 
     #[test]
     fn trigger_metadata_preserves_action_order_context_and_definition() {
@@ -1294,5 +1349,40 @@ mod tests {
             DbOperationError::MetadataParseFailed(message)
                 if message.contains("neither COLUMN_NAME nor EXPRESSION")
         ));
+    }
+
+    #[test]
+    fn parses_mysql_57_indexes_without_expression_or_visibility_columns() {
+        let capabilities = MySqlServerCapabilities::from_version("5.7.44", 0);
+        let raw = parse_index_metadata_with_capabilities(
+            &result(
+                &[
+                    "INDEX_NAME",
+                    "NON_UNIQUE",
+                    "INDEX_TYPE",
+                    "SEQ_IN_INDEX",
+                    "COLUMN_NAME",
+                    "SUB_PART",
+                    "COLLATION",
+                ],
+                vec![vec![
+                    QueryValue::Text("idx_payload".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("BTREE".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("payload".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("D".to_string()),
+                ]],
+            ),
+            capabilities,
+        )
+        .unwrap();
+
+        let indexes = indexes_from_metadata(raw);
+        assert_eq!(indexes[0].name, "idx_payload");
+        assert_eq!(indexes[0].columns, ["payload DESC"]);
+        assert!(indexes[0].has_descending_key());
+        assert!(!indexes[0].is_invisible());
     }
 }

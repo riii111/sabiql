@@ -17,6 +17,10 @@ impl MySqlConnectionProbe for MySqlAdapter {
         let option_file = MySqlOptionFile::create(&target)?;
         let result = super::cli::probe_mysql_server(&option_file.path).await;
         drop(option_file);
-        result.map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))
+        result
+            .map(|probe| MySqlConnectionProbeResult {
+                lower_case_table_names: probe.lower_case_table_names,
+            })
+            .map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))
     }
 }

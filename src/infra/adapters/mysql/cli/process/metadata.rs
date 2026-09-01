@@ -10,12 +10,15 @@ use uuid::Uuid;
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{DatabaseDiagnostic, QueryValue};
 
+use super::super::super::capability::MySqlServerCapabilities;
 use super::super::args::mysql_metadata_args;
 use super::super::error::{
     classify_mysql_query_failure, has_mysql_cli_error, is_mysql_batch_diagnostic,
     map_mysql_cli_spawn_error,
 };
-use super::super::policy::{MySqlMetadataFallbackKind, mysql_metadata_select_query};
+use super::super::policy::{
+    MySqlMetadataFallbackKind, mysql_metadata_select_query_for_capabilities,
+};
 use super::super::probe::{run_mysql_command_with_timeout, validate_sql_mode};
 use super::super::sanitize_mysql_command_environment;
 use super::{
@@ -29,10 +32,12 @@ pub(in crate::adapters::mysql::cli) async fn mysql_metadata_columns_with_diagnos
     query: &str,
     kind: MySqlMetadataFallbackKind,
     access_mode: AccessMode,
+    capabilities: MySqlServerCapabilities,
 ) -> Result<(Vec<String>, Vec<DatabaseDiagnostic>), DbOperationError> {
     let query = match kind {
         MySqlMetadataFallbackKind::Session => {
-            return mysql_metadata_select_columns_with_diagnostics(process, query).await;
+            return mysql_metadata_select_columns_with_diagnostics(process, query, capabilities)
+                .await;
         }
         MySqlMetadataFallbackKind::External => {
             query.trim().trim_end_matches(';').trim_end().to_string()
@@ -53,11 +58,17 @@ pub(in crate::adapters::mysql::cli) async fn mysql_metadata_columns_with_diagnos
 async fn mysql_metadata_select_columns_with_diagnostics(
     process: &mut MySqlProcess,
     query: &str,
+    capabilities: MySqlServerCapabilities,
 ) -> Result<(Vec<String>, Vec<DatabaseDiagnostic>), DbOperationError> {
     let suffix = Uuid::new_v4().simple().to_string();
     let source_alias = format!("__sabiql_metadata_source_{suffix}");
     let marker_alias = format!("__sabiql_metadata_marker_{suffix}");
-    let query = mysql_metadata_select_query(query, &source_alias, &marker_alias)?;
+    let query = mysql_metadata_select_query_for_capabilities(
+        query,
+        &source_alias,
+        &marker_alias,
+        capabilities,
+    )?;
     write_mysql_statement(process, &query).await?;
     let (xml, diagnostics) = match read_one_mysql_resultset_with_diagnostics(process).await {
         Err(DbOperationError::QueryFailed(details))

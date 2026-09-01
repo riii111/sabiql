@@ -9,13 +9,14 @@ use crate::domain::{
 };
 
 use super::super::{
+    capability::MySqlServerCapabilities,
     cli::{MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, MySqlResultSet},
     dsn::{MySqlDsn, map_mysql_tls_failure},
     option_file::MySqlOptionFile,
     sql::{
-        COLUMN_METADATA_BASE_RESULT_COLUMNS, COLUMN_METADATA_RESULT_COLUMNS,
-        FOREIGN_KEY_RESULT_COLUMNS, PREVIEW_COLUMN_METADATA_RESULT_COLUMNS, TABLES_QUERY,
-        TABLES_RESULT_COLUMNS, UNIQUE_COLUMN_RESULT_COLUMNS,
+        COLUMN_METADATA_BASE_RESULT_COLUMNS, FOREIGN_KEY_RESULT_COLUMNS,
+        PREVIEW_COLUMN_METADATA_RESULT_COLUMNS, TABLES_QUERY, TABLES_RESULT_COLUMNS,
+        UNIQUE_COLUMN_RESULT_COLUMNS, column_metadata_result_columns,
     },
 };
 
@@ -108,12 +109,13 @@ pub(super) fn find_table(
         .ok_or_else(|| mysql_table_not_found(schema, table))
 }
 
-pub(super) fn parse_columns_for_table(
+pub(super) fn parse_columns_for_table_with_capabilities(
     result: &MySqlResultSet,
     schema: &str,
     table: &str,
+    capabilities: MySqlServerCapabilities,
 ) -> Result<Vec<MySqlColumnMetadata>, DbOperationError> {
-    let columns = parse_column_metadata(result)?;
+    let columns = parse_column_metadata_with_capabilities(result, capabilities)?;
     if columns.is_empty() {
         return Err(mysql_table_not_found(schema, table));
     }
@@ -155,20 +157,20 @@ pub(super) async fn execute_metadata_query(
     query: &str,
     expected_columns: &[&str],
 ) -> Result<(u8, MySqlResultSet), DbOperationError> {
-    let (lower_case_table_names, results) =
+    let (capabilities, results) =
         execute_metadata_queries_in_session(target, &[(query, expected_columns)]).await?;
     let result = results.into_iter().next().ok_or_else(|| {
         DbOperationError::MetadataParseFailed(
             "MySQL metadata query returned no result set".to_string(),
         )
     })?;
-    Ok((lower_case_table_names, result))
+    Ok((capabilities.lower_case_table_names, result))
 }
 
 pub(super) async fn execute_metadata_queries_in_session(
     target: &MySqlDsn,
     queries: &[(&str, &[&str])],
-) -> Result<(u8, Vec<MySqlResultSet>), DbOperationError> {
+) -> Result<(MySqlServerCapabilities, Vec<MySqlResultSet>), DbOperationError> {
     execute_metadata_queries_in_session_with_program(
         target,
         queries,
@@ -183,11 +185,11 @@ pub(super) async fn execute_metadata_queries_in_session_with_program(
     queries: &[(&str, &[&str])],
     program: &OsStr,
     timeout: Duration,
-) -> Result<(u8, Vec<MySqlResultSet>), DbOperationError> {
+) -> Result<(MySqlServerCapabilities, Vec<MySqlResultSet>), DbOperationError> {
     let option_file = MySqlOptionFile::create(target)?;
     let mut session = MySqlMetadataSession::spawn_with_metadata_program(program, option_file)?;
     let result = tokio::time::timeout(timeout, async {
-        let lower_case_table_names = session.prepare_read_only_and_probe().await?;
+        let capabilities = session.prepare_read_only_and_probe().await?;
         let mut results = Vec::with_capacity(queries.len());
         for (query, expected_columns) in queries {
             results.push(
@@ -197,7 +199,7 @@ pub(super) async fn execute_metadata_queries_in_session_with_program(
             );
         }
         session.finish().await?;
-        Ok((lower_case_table_names, results))
+        Ok((capabilities, results))
     })
     .await;
     session
@@ -307,18 +309,20 @@ fn parse_table_metadata(
         .collect()
 }
 
-fn parse_column_metadata(
+fn parse_column_metadata_with_capabilities(
     result: &MySqlResultSet,
+    capabilities: MySqlServerCapabilities,
 ) -> Result<Vec<MySqlColumnMetadata>, DbOperationError> {
-    expect_columns(result, COLUMN_METADATA_RESULT_COLUMNS)?;
+    let expected_columns = column_metadata_result_columns(capabilities);
+    expect_columns(result, expected_columns)?;
     result
         .values
         .iter()
         .map(|row| {
-            if row.len() != COLUMN_METADATA_RESULT_COLUMNS.len() {
+            if row.len() != expected_columns.len() {
                 return Err(metadata_shape_error("COLUMNS row"));
             }
-            parse_column_metadata_row_with_details(row, "COLUMNS row")
+            parse_column_metadata_row_with_details(row, "COLUMNS row", capabilities)
         })
         .collect()
 }
@@ -358,15 +362,21 @@ pub(super) fn parse_column_metadata_row(
 fn parse_column_metadata_row_with_details(
     row: &[QueryValue],
     field: &str,
+    capabilities: MySqlServerCapabilities,
 ) -> Result<MySqlColumnMetadata, DbOperationError> {
-    if row.len() != COLUMN_METADATA_RESULT_COLUMNS.len() {
+    let expected_columns = column_metadata_result_columns(capabilities);
+    if row.len() != expected_columns.len() {
         return Err(metadata_shape_error(field));
     }
     let mut column =
         parse_column_metadata_row(&row[..COLUMN_METADATA_BASE_RESULT_COLUMNS.len()], field)?;
     column.character_set_name = optional_nonempty_string(&row[8], "CHARACTER_SET_NAME")?;
     column.collation_name = optional_nonempty_string(&row[9], "COLLATION_NAME")?;
-    column.generation_expression = optional_nonempty_string(&row[10], "GENERATION_EXPRESSION")?;
+    column.generation_expression = if capabilities.supports_generation_expression() {
+        optional_nonempty_string(&row[10], "GENERATION_EXPRESSION")?
+    } else {
+        None
+    };
     column.generation_kind = generation_kind(required_text(&row[4], "EXTRA")?);
     Ok(column)
 }
@@ -647,8 +657,29 @@ pub(super) fn metadata_shape_error(field: &str) -> DbOperationError {
 
 #[cfg(test)]
 mod tests {
+    use crate::adapters::mysql::sql::COLUMN_METADATA_RESULT_COLUMNS;
+
     use super::super::test_support::result;
     use super::*;
+
+    fn parse_column_metadata(
+        result: &MySqlResultSet,
+    ) -> Result<Vec<MySqlColumnMetadata>, DbOperationError> {
+        super::parse_column_metadata_with_capabilities(result, MySqlServerCapabilities::default())
+    }
+
+    fn parse_columns_for_table(
+        result: &MySqlResultSet,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<MySqlColumnMetadata>, DbOperationError> {
+        super::parse_columns_for_table_with_capabilities(
+            result,
+            schema,
+            table,
+            MySqlServerCapabilities::default(),
+        )
+    }
 
     #[test]
     fn optional_nonempty_string_preserves_catalog_value_boundaries() {
@@ -1199,5 +1230,53 @@ mod tests {
         }
         let unicode_case_insensitive = foreign_keys_from_metadata(unicode_raw, "äpp", 1).unwrap();
         assert!(unicode_case_insensitive[0].is_reference_resolved());
+    }
+
+    #[test]
+    fn parses_generation_expression_for_mysql_57_capabilities() {
+        let capabilities = MySqlServerCapabilities::from_version("5.7.44", 0);
+        let columns = parse_columns_for_table_with_capabilities(
+            &result(
+                &[
+                    "COLUMN_NAME",
+                    "COLUMN_TYPE",
+                    "IS_NULLABLE",
+                    "COLUMN_DEFAULT",
+                    "EXTRA",
+                    "COLUMN_COMMENT",
+                    "ORDINAL_POSITION",
+                    "PRIMARY_KEY_POSITION",
+                    "CHARACTER_SET_NAME",
+                    "COLLATION_NAME",
+                    "GENERATION_EXPRESSION",
+                ],
+                vec![vec![
+                    QueryValue::Text("generated_value".to_string()),
+                    QueryValue::Text("int".to_string()),
+                    QueryValue::Text("YES".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("STORED GENERATED".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Text("value + 1".to_string()),
+                ]],
+            ),
+            "app",
+            "items",
+            capabilities,
+        )
+        .unwrap();
+
+        assert_eq!(
+            columns[0].generation_expression.as_deref(),
+            Some("value + 1")
+        );
+        assert_eq!(
+            columns[0].generation_kind,
+            Some(ColumnGenerationKind::Stored)
+        );
     }
 }

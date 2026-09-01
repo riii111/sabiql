@@ -68,7 +68,7 @@ curl -fsSL https://raw.githubusercontent.com/riii111/sabiql/main/install.sh | sh
 sabiql uses the CLI for the database you want to open:
 
 - **To use PostgreSQL:** install `psql`
-- **To use MySQL:** install `mysql`
+- **To use MySQL:** install the Oracle MySQL `mysql` CLI 8.4.x. Oracle MySQL servers 5.7, 8.0, and 8.4 can be connected to; 8.4 is the continuously validated server version and older or newer Oracle server versions are not fully guaranteed.
 - **To use SQLite:** install `sqlite3` version 3.41.1 or later
 
 Graphviz is optional and enables ER diagrams for PostgreSQL and MySQL.

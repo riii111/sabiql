@@ -134,7 +134,7 @@ pub mod connection_error {
         key_short: "d",
         key: "d",
         desc_short: "Details",
-        description: "Toggle error details",
+        description: "Toggle error details and requirements",
         bindings: &[ExecBinding {
             action: Action::ToggleConnectionErrorDetails,
             combos: &[KeyCombo::plain(Key::Char('d'))],

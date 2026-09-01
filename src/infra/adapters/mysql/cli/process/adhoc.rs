@@ -14,6 +14,7 @@ use crate::domain::{
     },
 };
 
+use super::super::super::capability::MySqlServerCapabilities;
 use super::super::policy::{
     MySqlExecutionResult, is_mysql_single_marker, mysql_command_tag,
     mysql_metadata_fallback_has_unsupported_session_state, mysql_possible_refresh_scope,
@@ -32,22 +33,61 @@ pub(in crate::adapters::mysql) async fn run_mysql_adhoc(
     statements: &[MySqlStatement],
     access_mode: AccessMode,
 ) -> Result<MySqlExecutionResult, DbOperationError> {
-    run_mysql_adhoc_with_program_and_statements(
+    run_mysql_adhoc_with_server_capabilities(
+        option_file,
+        statements,
+        access_mode,
+        MySqlServerCapabilities::default(),
+    )
+    .await
+}
+
+pub(in crate::adapters::mysql) async fn run_mysql_adhoc_with_server_capabilities(
+    option_file: &Path,
+    statements: &[MySqlStatement],
+    access_mode: AccessMode,
+    capabilities: MySqlServerCapabilities,
+) -> Result<MySqlExecutionResult, DbOperationError> {
+    run_mysql_adhoc_with_program_and_capabilities(
         OsStr::new("mysql"),
         option_file,
         statements,
         access_mode,
         MYSQL_QUERY_TIMEOUT,
+        capabilities,
     )
     .await
 }
 
+#[allow(
+    dead_code,
+    reason = "shared by MySQL process tests and the test-support feature"
+)]
 pub(super) async fn run_mysql_adhoc_with_program_and_statements(
     program: &OsStr,
     option_file: &Path,
     statements: &[MySqlStatement],
     access_mode: AccessMode,
     execution_timeout: Duration,
+) -> Result<MySqlExecutionResult, DbOperationError> {
+    run_mysql_adhoc_with_program_and_capabilities(
+        program,
+        option_file,
+        statements,
+        access_mode,
+        execution_timeout,
+        MySqlServerCapabilities::default(),
+    )
+    .await
+}
+
+async fn run_mysql_adhoc_with_program_and_capabilities(
+    program: &OsStr,
+    option_file: &Path,
+    statements: &[MySqlStatement],
+    access_mode: AccessMode,
+    execution_timeout: Duration,
+    capabilities: MySqlServerCapabilities,
 ) -> Result<MySqlExecutionResult, DbOperationError> {
     if mysql_metadata_fallback_has_unsupported_session_state(statements) {
         return Err(DbOperationError::UnsupportedOperation(
@@ -62,7 +102,8 @@ pub(super) async fn run_mysql_adhoc_with_program_and_statements(
         &mut process,
         possible_refresh_scope,
         async |process| {
-            run_mysql_adhoc_process(process, option_file, statements, access_mode).await
+            run_mysql_adhoc_process(process, option_file, statements, access_mode, capabilities)
+                .await
         },
     )
     .await
@@ -81,6 +122,7 @@ async fn fill_mysql_empty_result_columns(
     query: &str,
     kind: &MySqlStatementKind,
     access_mode: AccessMode,
+    capabilities: MySqlServerCapabilities,
     diagnostics: &mut Vec<DatabaseDiagnostic>,
 ) -> Result<MySqlResultSet, DbOperationError> {
     if !result.columns.is_empty() || !result.values.is_empty() {
@@ -98,6 +140,7 @@ async fn fill_mysql_empty_result_columns(
         query,
         fallback_kind,
         access_mode,
+        capabilities,
     )
     .await?;
     diagnostics.extend(metadata_diagnostics);
@@ -181,6 +224,7 @@ async fn fill_mysql_last_result_columns(
     last_result_set: &mut Option<MySqlResultSet>,
     last_result_statement: Option<&MySqlStatement>,
     access_mode: AccessMode,
+    capabilities: MySqlServerCapabilities,
     refresh_scope: RefreshScope,
     diagnostics: &mut Vec<DatabaseDiagnostic>,
 ) -> Result<(), DbOperationError> {
@@ -198,6 +242,7 @@ async fn fill_mysql_last_result_columns(
         statement.sql(),
         statement.kind(),
         access_mode,
+        capabilities,
         diagnostics,
     )
     .await
@@ -211,6 +256,7 @@ async fn run_mysql_adhoc_process(
     option_file: &Path,
     statements: &[MySqlStatement],
     access_mode: AccessMode,
+    capabilities: MySqlServerCapabilities,
 ) -> Result<MySqlExecutionResult, DbOperationError> {
     configure_mysql_session(process, access_mode).await?;
     let mut last_result_set = None;
@@ -232,6 +278,7 @@ async fn run_mysql_adhoc_process(
                 &mut last_result_set,
                 last_result_statement,
                 access_mode,
+                capabilities,
                 refresh_scope,
                 &mut diagnostics,
             )
@@ -252,6 +299,7 @@ async fn run_mysql_adhoc_process(
         &mut last_result_set,
         last_result_statement,
         access_mode,
+        capabilities,
         refresh_scope,
         &mut diagnostics,
     )

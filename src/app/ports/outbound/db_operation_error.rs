@@ -33,7 +33,7 @@ impl DatabaseCli {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedOperationKind {
     ClientVersion,
-    ServerVersion,
+    ServerProduct,
     SessionMode,
 }
 
@@ -42,11 +42,11 @@ impl UnsupportedOperationKind {
         match self {
             Self::ClientVersion => (
                 "Unsupported MySQL CLI version",
-                "Install the Oracle MySQL 8.4 client",
+                "Install the Oracle MySQL 8.4 client; the MySQL CLI is required",
             ),
-            Self::ServerVersion => (
-                "Unsupported MySQL server version",
-                "Connect to an Oracle MySQL 8.4 server",
+            Self::ServerProduct => (
+                "Unsupported MySQL server product",
+                "Connect to an Oracle MySQL server; 8.4 is continuously validated, other versions are not fully guaranteed",
             ),
             Self::SessionMode => (
                 "Unsupported MySQL sql_mode",

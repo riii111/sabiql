@@ -2,13 +2,23 @@
 
 Use this page to check whether your MySQL server, connection method, and expected workflow are supported.
 
-sabiql supports Oracle MySQL server 8.4 LTS through the Oracle `mysql` CLI from the 8.4 series. MariaDB, Percona Server, TiDB, and other MySQL-compatible products are not formally supported.
+sabiql requires the Oracle MySQL `mysql` CLI from the 8.4 series. The server may be Oracle MySQL 5.7, 8.0, or 8.4; 8.4 is the continuously validated server version, while other Oracle server versions are not fully guaranteed. MariaDB, Percona Server, TiDB, Vitess, Aurora, and other MySQL-compatible products are not supported; the named products are rejected separately when `VERSION()` identifies them.
 
 ## Connection requirements
 
 MySQL connections can use TCP, a Unix socket file on Unix-like systems, or a Windows named pipe. Select the transport explicitly and provide its socket or pipe path when required. Shared-memory transport and automatic transport fallback are not supported. When connecting to a remote server, install the local `mysql` CLI; a local MySQL server is not required.
 
 Passphrase-protected TLS client keys are not supported. An unencrypted PEM private key can be used, but it weakens at-rest protection; store it with restrictive file permissions.
+
+## Version differences
+
+The Explorer, Inspector, and query-result panes select metadata and empty-result queries from the server version reported by `VERSION()`:
+
+- MySQL 5.7 uses `GENERATION_EXPRESSION` where available, but the legacy `STATISTICS` shape without functional-index expressions or index visibility. Empty `SELECT` column names use a derived-table fallback because common table expressions are unavailable.
+- MySQL 8.0 uses `GENERATION_EXPRESSION` and `IS_VISIBLE` where available. Functional-index expressions are selected from MySQL 8.0.13 onward, and common table expressions from 8.0.1 onward.
+- MySQL 8.4 uses the complete metadata shape, including functional-index expressions and invisible-index state.
+
+The Oracle MySQL 8.4 CLI remains required for local execution and XML result parsing. These version differences do not expand support for version-specific `EXPLAIN`, `EXPLAIN ANALYZE`, or `TABLE` behavior.
 
 ## SQL and session behavior
 

@@ -4,10 +4,13 @@ use uuid::Uuid;
 
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 
+use super::super::super::capability::MySqlServerCapabilities;
 use super::super::super::option_file::MySqlOptionFile;
 use super::super::args::{mysql_metadata_session_args, mysql_query_args};
 use super::super::policy::is_mysql_single_marker;
-use super::super::probe::validate_lower_case_table_names;
+use super::super::probe::{
+    mysql_server_capabilities, validate_lower_case_table_names, validate_server_product,
+};
 use super::super::xml::{MySqlResultSet, parse_mysql_preview_xml, parse_mysql_xml};
 use super::{
     MySqlProcess, cleanup_mysql_process, configure_mysql_session, finish_mysql_session,
@@ -55,11 +58,11 @@ impl MySqlMetadataSession {
 
     pub(in crate::adapters::mysql) async fn prepare_read_only_and_probe(
         &mut self,
-    ) -> Result<u8, DbOperationError> {
+    ) -> Result<MySqlServerCapabilities, DbOperationError> {
         configure_mysql_session(&mut self.process, AccessMode::ReadOnly).await?;
         let marker = Uuid::new_v4().simple().to_string();
         let query = format!(
-            "SELECT '{marker}' AS __sabiql_probe, @@lower_case_table_names AS __sabiql_lower_case_table_names"
+            "SELECT '{marker}' AS __sabiql_probe, VERSION() AS __sabiql_server_version, @@lower_case_table_names AS __sabiql_lower_case_table_names"
         );
         let result = self.execute(&query).await?;
         validate_metadata_probe(&result, &marker)
@@ -173,21 +176,33 @@ fn normalize_empty_result_columns(result: &mut MySqlResultSet, expected_columns:
     }
 }
 
-fn validate_metadata_probe(result: &MySqlResultSet, marker: &str) -> Result<u8, DbOperationError> {
+fn validate_metadata_probe(
+    result: &MySqlResultSet,
+    marker: &str,
+) -> Result<MySqlServerCapabilities, DbOperationError> {
     if result.values.len() != 1
-        || result.columns != ["__sabiql_probe", "__sabiql_lower_case_table_names"]
+        || result.columns
+            != [
+                "__sabiql_probe",
+                "__sabiql_server_version",
+                "__sabiql_lower_case_table_names",
+            ]
     {
         return Err(DbOperationError::QueryFailed(
             "mysql metadata probe returned an unexpected result".to_string(),
         ));
     }
     let values = &result.values[0];
-    if values.len() != 2 || values[0].as_str() != Some(marker) {
+    if values.len() != 3 || values[0].as_str() != Some(marker) {
         return Err(DbOperationError::QueryFailed(
             "mysql metadata probe returned an unexpected result".to_string(),
         ));
     }
-    let lower_case_table_names = values[1]
+    let server_version = values[1].as_str().ok_or_else(|| {
+        DbOperationError::QueryFailed("mysql metadata probe returned no server version".to_string())
+    })?;
+    validate_server_product(server_version)?;
+    let lower_case_table_names = values[2]
         .as_str()
         .ok_or_else(|| {
             DbOperationError::QueryFailed(
@@ -201,5 +216,8 @@ fn validate_metadata_probe(result: &MySqlResultSet, marker: &str) -> Result<u8, 
             )
         })?;
     validate_lower_case_table_names(lower_case_table_names)?;
-    Ok(lower_case_table_names)
+    Ok(mysql_server_capabilities(
+        server_version,
+        lower_case_table_names,
+    ))
 }

@@ -386,6 +386,7 @@ pub(super) async fn run_mysql_export_process(
             query,
             fallback_kind,
             AccessMode::ReadOnly,
+            super::super::capability::MySqlServerCapabilities::default(),
         )
         .await?
         .0;

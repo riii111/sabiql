@@ -25,9 +25,10 @@ pub(super) use policy::{
     validate_mysql_export_query, validate_mysql_multi_query,
     validate_mysql_multi_query_with_lower_case_table_names,
 };
-pub(super) use probe::{check_mysql_cli_version, probe_mysql_server};
+pub(super) use probe::{check_mysql_cli_version, mysql_server_capabilities, probe_mysql_server};
 pub(super) use process::{
-    MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, run_mysql_adhoc, run_mysql_single_statement,
+    MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, run_mysql_adhoc,
+    run_mysql_adhoc_with_server_capabilities, run_mysql_single_statement,
 };
 
 pub(super) use xml::MySqlResultSet;
