@@ -1,7 +1,7 @@
 use crate::domain::CommandTag;
+use crate::domain::postgres_sql::{has_select_into, split_statements as split_sql_statements};
 
 use super::super::super::PostgresAdapter;
-use super::lexer::{has_select_into, split_sql_statements};
 
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 pub(in crate::adapters::postgres) enum ParseCommandTagError {
