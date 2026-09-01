@@ -77,6 +77,29 @@ mod table_signatures {
     }
 
     #[tokio::test]
+    async fn returns_signature_details_for_completion_cache_seed() {
+        let (_dir, dsn) = test_support::make_sqlite_db(
+            r"
+            CREATE TABLE users(id INTEGER PRIMARY KEY, email TEXT UNIQUE);
+            CREATE INDEX idx_users_email ON users(email);
+            CREATE TRIGGER users_audit AFTER INSERT ON users BEGIN SELECT 1; END;
+            ",
+        );
+        let adapter = SqliteAdapter::new();
+
+        let snapshot = adapter.fetch_table_signatures(&dsn).await.unwrap();
+
+        assert_eq!(snapshot.signatures.len(), 1);
+        assert_eq!(snapshot.prefetched_table_details.len(), 1);
+        let detail = &snapshot.prefetched_table_details[0];
+        assert_eq!(detail.qualified_name(), "main.users");
+        assert!(detail.row_count_estimate.is_none());
+        assert_eq!(detail.indexes.len(), 2);
+        assert_eq!(detail.triggers.len(), 1);
+        assert!(detail.source_ddl().is_some());
+    }
+
+    #[tokio::test]
     async fn include_foreign_key_update_action() {
         let (_dir, dsn) = test_support::make_sqlite_db(
             r"
