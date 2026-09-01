@@ -34,7 +34,7 @@ Press `?` inside sabiql to see all commands and keybindings.
 
 ```bash
 # macOS / Linux
-brew install riii111/sabiql/sabiql
+brew install sabiql
 
 # Cargo (crates.io)
 cargo install sabiql
