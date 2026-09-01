@@ -406,25 +406,8 @@ impl BrowseSession {
         }
     }
 
-    pub fn is_current_mysql_connection_probe(
-        &self,
-        id: &ConnectionId,
-        name: &str,
-        dsn: &str,
-        database: Option<&str>,
-        run_id: u64,
-    ) -> bool {
+    pub fn is_current_mysql_connection_probe(&self, run_id: u64) -> bool {
         self.mysql_connection_probe_run.is_current(run_id)
-            && self
-                .pending_mysql_connection_probe
-                .as_ref()
-                .is_some_and(|pending| {
-                    pending.run_id == run_id
-                        && pending.id == *id
-                        && pending.name == name
-                        && pending.dsn == dsn
-                        && pending.database.as_deref() == database
-                })
     }
 
     pub fn pending_mysql_connection_probe(&self) -> Option<&PendingMySqlConnectionProbe> {

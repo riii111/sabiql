@@ -103,18 +103,11 @@ pub(in crate::update) fn reduce_connection_lifecycle(
             let ConnectionTarget {
                 id,
                 dsn,
-                name,
                 database_type,
-                database,
+                ..
             } = target;
             if *database_type != DatabaseType::MySQL
-                || !state.session.is_current_mysql_connection_probe(
-                    id,
-                    name,
-                    dsn,
-                    database.as_deref(),
-                    *run_id,
-                )
+                || !state.session.is_current_mysql_connection_probe(*run_id)
             {
                 return DispatchResult::handled();
             }
@@ -145,13 +138,7 @@ pub(in crate::update) fn reduce_connection_lifecycle(
             error,
         } => {
             if target.database_type != DatabaseType::MySQL
-                || !state.session.is_current_mysql_connection_probe(
-                    &target.id,
-                    &target.name,
-                    &target.dsn,
-                    target.database.as_deref(),
-                    *run_id,
-                )
+                || !state.session.is_current_mysql_connection_probe(*run_id)
             {
                 return DispatchResult::handled();
             }
