@@ -1,7 +1,7 @@
 # sabiql
 ![hero](https://github.com/user-attachments/assets/745ab18f-915c-4017-81a6-465c5c5ee11c)
 
-A fast, driver-less TUI for browsing, querying, and editing PostgreSQL, MySQL, and SQLite databases from the terminal. It works with the database CLI you already use: `psql`, `mysql`, or `sqlite3`.
+Fast, safe-by-design, driverless, Vim-first DB TUI with ER diagrams.
 
 [![CI](https://github.com/riii111/sabiql/actions/workflows/ci.yml/badge.svg)](https://github.com/riii111/sabiql/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -69,9 +69,9 @@ sabiql uses the CLI for the database you want to open:
 
 - **To use PostgreSQL:** install `psql`
 - **To use MySQL:** install the Oracle MySQL `mysql` CLI 8.4.x. Oracle MySQL servers 5.7, 8.0, and 8.4 can be connected to; 8.4 is the continuously validated server version and older or newer Oracle server versions are not fully guaranteed.
-- **To use SQLite:** install `sqlite3` version 3.41.1 or later
+- **To use SQLite:** macOS includes `sqlite3` by default. Check that it is version 3.41.1 or later; additional installation is usually unnecessary. On Linux and other platforms, install `sqlite3` version 3.41.1 or later.
 
-Graphviz is optional and enables ER diagrams for PostgreSQL and MySQL.
+Graphviz is required only for PostgreSQL and MySQL ER diagrams. The Homebrew Core formula installs it automatically; other installation methods may require installing it separately.
 
 Windows support is experimental.
 
