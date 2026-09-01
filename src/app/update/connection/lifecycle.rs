@@ -520,9 +520,14 @@ mod tests {
             assert!(matches!(state.sql_modal.status(), SqlModalStatus::Normal));
             assert!(state.confirm_dialog.intent().is_none());
 
+            state.modal.set_mode(InputMode::SqlModal);
+            state
+                .sql_modal
+                .editor
+                .set_content("DROP TABLE accounts".to_string());
             let effects = reduce_app(
                 &mut state,
-                Action::ExecuteAdhoc("DROP TABLE accounts".to_string()),
+                Action::SqlModalSubmit,
                 std::time::Instant::now(),
                 &AppServices::stub(),
             );

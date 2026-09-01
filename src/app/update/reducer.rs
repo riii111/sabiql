@@ -1726,23 +1726,6 @@ mod tests {
             assert!(!state.session.is_reloading());
             assert_eq!(state.messages.last_success, Some("Reloaded!".to_string()));
         }
-
-        #[test]
-        fn execute_adhoc_with_dsn_returns_effect() {
-            let mut state = create_test_state();
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let now = Instant::now();
-
-            let effects = reduce(
-                &mut state,
-                Action::ExecuteAdhoc("SELECT 1".to_string()),
-                now,
-                &AppServices::stub(),
-            );
-
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(effects[0], Effect::ExecuteAdhoc { .. }));
-        }
     }
 
     mod er_diagram {
