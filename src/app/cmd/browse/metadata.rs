@@ -9,6 +9,7 @@ use crate::cmd::metadata_task::MetadataTaskRegistry;
 use crate::cmd::single_task_owner::SingleTaskOwner;
 use crate::cmd::sqlite_path_validate::validate_sqlite_database_path;
 use crate::domain::sqlite_path_from_dsn;
+use crate::model::table_prefetch::PrefetchTableTarget;
 use crate::policy::sqlite_path::to_db_operation_error;
 use crate::ports::outbound::{DbOperationError, MetadataProvider, SqlitePathValidator};
 use crate::update::action::Action;
@@ -198,8 +199,8 @@ async fn prefetch_table_detail(
     schema: String,
     table: String,
 ) {
-    let qualified_name = format!("{schema}.{table}");
-    let already_cached = completion_engine.borrow().has_cached_table(&qualified_name);
+    let target = PrefetchTableTarget::qualified(&schema, &table);
+    let already_cached = completion_engine.borrow().has_cached_table_target(&target);
 
     if already_cached {
         action_tx

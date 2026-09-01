@@ -41,7 +41,7 @@ pub(crate) struct PreparedCompletion {
 }
 
 pub struct CompletionEngine {
-    table_detail_cache: LruCache<String, Table>,
+    table_detail_cache: LruCache<PrefetchTableTarget, Table>,
 }
 
 impl CompletionEngine {
@@ -57,17 +57,33 @@ impl CompletionEngine {
         }
     }
 
-    pub(crate) fn cache_table_detail(&mut self, qualified_name: String, table: Table) {
-        let _ = self.table_detail_cache.put(qualified_name, table);
+    pub(crate) fn cache_table_detail(&mut self, _qualified_name: String, table: Table) {
+        let target = PrefetchTableTarget::qualified(&table.schema, &table.name);
+        let _ = self.table_detail_cache.put(target, table);
     }
 
+    #[cfg(test)]
     pub(crate) fn has_cached_table(&self, qualified_name: &str) -> bool {
-        self.table_detail_cache.contains(qualified_name)
+        self.table_detail_cache
+            .iter()
+            .any(|(target, _)| target.qualified_name() == qualified_name)
+    }
+
+    pub(crate) fn has_cached_table_target(&self, target: &PrefetchTableTarget) -> bool {
+        self.table_detail_cache.contains(target)
     }
 
     pub(crate) fn evict_tables(&mut self, tables: &[String]) {
         for table in tables {
-            let _ = self.table_detail_cache.pop(table);
+            let keys: Vec<_> = self
+                .table_detail_cache
+                .iter()
+                .filter(|(target, _)| target.qualified_name() == *table)
+                .map(|(target, _)| target.clone())
+                .collect();
+            for key in keys {
+                let _ = self.table_detail_cache.pop(&key);
+            }
         }
     }
 
@@ -80,7 +96,9 @@ impl CompletionEngine {
             .resize(NonZeroUsize::new(new_capacity).expect("capacity must be > 0"));
     }
 
-    pub(crate) fn table_details_iter(&self) -> impl Iterator<Item = (&String, &Table)> {
+    pub(crate) fn table_details_iter(
+        &self,
+    ) -> impl Iterator<Item = (&PrefetchTableTarget, &Table)> {
         self.table_detail_cache.iter()
     }
 
@@ -147,8 +165,7 @@ impl CompletionEngine {
             else {
                 continue;
             };
-            let qualified_name = target.qualified_name();
-            if seen.contains(&target) || self.table_detail_cache.contains(&qualified_name) {
+            if seen.contains(&target) || self.has_cached_table_target(&target) {
                 continue;
             }
             seen.insert(target.clone());
@@ -212,27 +229,27 @@ impl CompletionEngine {
                 let after_comma = before_token.ends_with(',');
 
                 let target_qualified = prep.candidate_context.target_table.as_ref().and_then(|t| {
-                    self.qualified_name_from_ref_for_database(t, metadata, scope.database_type)
+                    self.table_target_from_ref_for_database(t, metadata, scope.database_type)
                 });
 
                 let mut columns = self.column_candidates_with_fk(table_detail, &current_token);
 
                 // UPDATE/DELETE/INSERT target table columns get priority
                 if let (Some(detail), Some(target)) = (table_detail, &target_qualified)
-                    && detail.qualified_name() == *target
+                    && PrefetchTableTarget::qualified(&detail.schema, &detail.name) == *target
                 {
                     for col in &mut columns {
                         col.score += 200;
                     }
                 }
 
-                let referenced_tables: HashSet<String> = prep
+                let referenced_tables: HashSet<PrefetchTableTarget> = prep
                     .candidate_context
                     .tables
                     .iter()
                     .filter(|t| !prep.cte_names.contains(&t.table.to_lowercase()))
                     .filter_map(|t| {
-                        self.qualified_name_from_ref_for_database(t, metadata, scope.database_type)
+                        self.table_target_from_ref_for_database(t, metadata, scope.database_type)
                     })
                     .collect();
                 let has_unresolved_reference = prep
@@ -241,22 +258,23 @@ impl CompletionEngine {
                     .iter()
                     .filter(|t| !prep.cte_names.contains(&t.table.to_lowercase()))
                     .any(|t| {
-                        self.qualified_name_from_ref_for_database(t, metadata, scope.database_type)
+                        self.table_target_from_ref_for_database(t, metadata, scope.database_type)
                             .is_none()
                     });
 
-                let selected_qualified = table_detail.map(Table::qualified_name);
+                let selected_qualified = table_detail
+                    .map(|table| PrefetchTableTarget::qualified(&table.schema, &table.name));
                 let use_all_cache = referenced_tables.is_empty() && !has_unresolved_reference;
-                for (qualified_name, cached_table) in &self.table_detail_cache {
-                    if selected_qualified.as_ref() == Some(qualified_name) {
+                for (target, cached_table) in &self.table_detail_cache {
+                    if selected_qualified.as_ref() == Some(target) {
                         continue;
                     }
-                    if !use_all_cache && !referenced_tables.contains(qualified_name) {
+                    if !use_all_cache && !referenced_tables.contains(target) {
                         continue;
                     }
                     let mut cached_columns =
                         self.column_candidates_with_fk(Some(cached_table), &current_token);
-                    if target_qualified.as_ref() == Some(qualified_name) {
+                    if target_qualified.as_ref() == Some(target) {
                         for col in &mut cached_columns {
                             col.score += 200;
                         }
@@ -982,11 +1000,10 @@ impl CompletionEngine {
         };
 
         // Try to find the table in cache
-        let qualified_name =
-            self.qualified_name_from_ref_for_database(table_ref, metadata, database_type);
+        let target = self.table_target_from_ref_for_database(table_ref, metadata, database_type);
 
-        if let Some(qualified_name) = qualified_name
-            && let Some(table) = self.table_detail_cache.peek(&qualified_name)
+        if let Some(target) = target
+            && let Some(table) = self.table_detail_cache.peek(&target)
         {
             return self.column_candidates(Some(table), prefix);
         }
@@ -1172,16 +1189,6 @@ impl CompletionEngine {
                     |table| PrefetchTableTarget::qualified(&table.schema, &table.name),
                 ),
         )
-    }
-
-    fn qualified_name_from_ref_for_database(
-        &self,
-        table_ref: &TableReference,
-        metadata: Option<&DatabaseMetadata>,
-        database_type: DatabaseType,
-    ) -> Option<String> {
-        self.table_target_from_ref_for_database(table_ref, metadata, database_type)
-            .map(|target| target.qualified_name())
     }
 }
 
@@ -1516,6 +1523,16 @@ mod tests {
         fn insert_target_column_list_returns_column_context() {
             let e = engine();
             let (token, ctx) = e.analyze("INSERT INTO users (na", 21);
+
+            assert_eq!(token, "na");
+            assert_eq!(ctx, CompletionContext::Column);
+        }
+
+        #[test]
+        fn quoted_keyword_table_does_not_end_insert_column_context() {
+            let e = engine();
+            let sql = r#"INSERT INTO "VALUES" (na"#;
+            let (token, ctx) = e.analyze(sql, sql.chars().count());
 
             assert_eq!(token, "na");
             assert_eq!(ctx, CompletionContext::Column);
@@ -3006,6 +3023,41 @@ mod tests {
         }
 
         #[test]
+        fn dotted_cache_identity_does_not_use_another_table_for_alias_columns() {
+            let mut e = engine();
+            e.cache_table_detail(
+                "sales.region.orders".to_string(),
+                create_table("sales.region", "orders", &["wrong_table"]),
+            );
+            let sql_context = SqlContext {
+                tables: vec![TableReference {
+                    schema: Some("sales".to_string()),
+                    table: "region.orders".to_string(),
+                    alias: Some("o".to_string()),
+                }],
+                ctes: vec![],
+                target_table: None,
+            };
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.table_summaries = vec![TableSummary::new(
+                "sales".to_string(),
+                "region.orders".to_string(),
+                None,
+                false,
+            )];
+
+            let candidates = e.alias_column_candidates(
+                "o",
+                &sql_context,
+                Some(&metadata),
+                "",
+                DatabaseType::PostgreSQL,
+            );
+
+            assert!(candidates.is_empty());
+        }
+
+        #[test]
         fn non_cached_table_returns_empty() {
             let e = engine();
 
@@ -3354,6 +3406,55 @@ mod tests {
                     "Orders.Archive"
                 )]
             );
+        }
+
+        #[test]
+        fn cache_identity_does_not_collide_on_qualified_name() {
+            let mut e = engine();
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.table_summaries = vec![
+                TableSummary::new(
+                    "sales.region".to_string(),
+                    "orders".to_string(),
+                    None,
+                    false,
+                ),
+                TableSummary::new(
+                    "sales".to_string(),
+                    "region.orders".to_string(),
+                    None,
+                    false,
+                ),
+            ];
+            e.cache_table_detail(
+                "sales.region.orders".to_string(),
+                create_table("sales.region", "orders", &["first"]),
+            );
+
+            let sql =
+                r#"SELECT * FROM "sales.region"."orders" JOIN "sales"."region.orders" ON 1 = 1"#;
+            let prep = e.prepare_for_database(sql, sql.len(), DatabaseType::PostgreSQL);
+
+            assert_eq!(
+                e.missing_tables_prepared(&prep, Some(&metadata)),
+                vec![PrefetchTableTarget::qualified("sales", "region.orders")]
+            );
+        }
+
+        #[test]
+        fn quoted_keyword_cte_is_not_prefetched_as_a_table() {
+            let e = engine();
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.table_summaries = vec![TableSummary::new(
+                "public".to_string(),
+                "SELECT".to_string(),
+                None,
+                false,
+            )];
+            let sql = r#"WITH "SELECT" AS (SELECT 1) SELECT * FROM "SELECT""#;
+            let prep = e.prepare_for_database(sql, sql.len(), DatabaseType::PostgreSQL);
+
+            assert!(e.missing_tables_prepared(&prep, Some(&metadata)).is_empty());
         }
 
         #[test]
@@ -3988,7 +4089,10 @@ mod tests {
             e.cache_table_detail("public.t1".to_string(), t1);
             e.cache_table_detail("public.t2".to_string(), t2);
 
-            let names: Vec<_> = e.table_details_iter().map(|(k, _)| k.clone()).collect();
+            let names: Vec<_> = e
+                .table_details_iter()
+                .map(|(k, _)| k.qualified_name())
+                .collect();
             assert_eq!(names.len(), 2);
             assert!(names.contains(&"public.t1".to_string()));
             assert!(names.contains(&"public.t2".to_string()));
@@ -4050,7 +4154,8 @@ mod tests {
                 create_table("public", "t2", &["id"]),
             );
 
-            assert!(e.table_detail_cache.peek("public.t1").is_some());
+            let target = PrefetchTableTarget::qualified("public", "t1");
+            assert!(e.table_detail_cache.peek(&target).is_some());
             assert!(e.has_cached_table("public.t1"));
 
             e.cache_table_detail(

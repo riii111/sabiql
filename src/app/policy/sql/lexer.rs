@@ -518,12 +518,8 @@ impl SqlLexer {
                         }
                         // End of identifier
                         let text: String = chars[token_start..=pos].iter().collect();
-                        let name = chars[token_start + 1..pos]
-                            .iter()
-                            .collect::<String>()
-                            .replace("\"\"", "\"");
                         tokens.push(Token {
-                            kind: TokenKind::Identifier(name),
+                            kind: TokenKind::Identifier(text.clone()),
                             text,
                             start: token_start,
                             end: pos + 1,
@@ -671,11 +667,7 @@ impl SqlLexer {
                 | LexerState::InDoubleQuoteString
                 | LexerState::InDollarQuote
                 | LexerState::InEscapeString => TokenKind::StringLiteral,
-                LexerState::InDoubleQuoteIdentifier => TokenKind::Identifier(
-                    text.strip_prefix('"')
-                        .unwrap_or(&text)
-                        .replace("\"\"", "\""),
-                ),
+                LexerState::InDoubleQuoteIdentifier => TokenKind::Identifier(text.clone()),
                 LexerState::InBacktickIdentifier => {
                     TokenKind::BacktickIdentifier(text[1..].to_string())
                 }
@@ -965,26 +957,16 @@ impl SqlLexer {
         let mut alias = None;
 
         // Get first identifier (could be schema or table)
-        match &tokens[*i].kind {
-            TokenKind::Identifier(name)
-            | TokenKind::BacktickIdentifier(name)
-            | TokenKind::Keyword(name) => {
-                table = name.clone();
-            }
-            _ => return None,
-        }
+        table = Self::identifier_value(&tokens[*i])?;
         *i += 1;
 
         // Check for schema.table pattern
         if *i < tokens.len() && tokens[*i].kind == TokenKind::Punctuation('.') {
             *i += 1;
             let token = tokens.get(*i)?;
-            if let TokenKind::Identifier(name)
-            | TokenKind::BacktickIdentifier(name)
-            | TokenKind::Keyword(name) = &token.kind
-            {
+            if let Some(name) = Self::identifier_value(token) {
                 schema = Some(table);
-                table = name.clone();
+                table = name;
                 *i += 1;
             } else {
                 return None;
@@ -1027,16 +1009,13 @@ impl SqlLexer {
 
         // Get alias if present (identifier that's not a keyword like ON, WHERE, etc.)
         if *i < tokens.len() {
-            match &tokens[*i].kind {
-                TokenKind::Identifier(name) | TokenKind::BacktickIdentifier(name) => {
-                    alias = Some(name.clone());
-                    *i += 1;
-                }
-                TokenKind::Keyword(kw) if !Self::is_clause_keyword(kw) => {
-                    alias = Some(kw.clone());
-                    *i += 1;
-                }
-                _ => {}
+            let is_clause_keyword = matches!(
+                &tokens[*i].kind,
+                TokenKind::Keyword(kw) if Self::is_clause_keyword(kw)
+            );
+            if !is_clause_keyword && let Some(name) = Self::identifier_value(&tokens[*i]) {
+                alias = Some(name);
+                *i += 1;
             }
         }
 
@@ -1045,6 +1024,20 @@ impl SqlLexer {
             table,
             alias,
         })
+    }
+
+    fn identifier_value(token: &Token) -> Option<String> {
+        match &token.kind {
+            TokenKind::Identifier(_)
+                if token.text.starts_with('"') && token.text.ends_with('"') =>
+            {
+                Some(token.text[1..token.text.len() - 1].replace("\"\"", "\""))
+            }
+            TokenKind::Identifier(name)
+            | TokenKind::BacktickIdentifier(name)
+            | TokenKind::Keyword(name) => Some(name.clone()),
+            _ => None,
+        }
     }
 
     fn is_clause_keyword(kw: &str) -> bool {
@@ -1104,13 +1097,15 @@ impl SqlLexer {
                     }
 
                     // Get CTE name
-                    if let TokenKind::Identifier(name)
-                    | TokenKind::BacktickIdentifier(name)
-                    | TokenKind::Keyword(name) = &tokens[i].kind
-                    {
-                        // Don't treat SELECT as a CTE name
-                        if name != "SELECT" {
-                            ctes.push(name.clone());
+                    if let Some(name) = Self::identifier_value(&tokens[i]) {
+                        // Don't treat the SELECT keyword as a CTE name. A quoted
+                        // identifier named SELECT is a valid CTE name.
+                        let is_select_keyword = matches!(
+                            &tokens[i].kind,
+                            TokenKind::Keyword(keyword) if keyword == "SELECT"
+                        );
+                        if !is_select_keyword {
+                            ctes.push(name);
                         }
                         i += 1;
 
@@ -1885,6 +1880,22 @@ mod tests {
         }
 
         #[test]
+        fn sqlite_double_quoted_schema_and_table_preserve_identity() {
+            let l = SqlLexer::new(DatabaseType::SQLite);
+            let sql = r#"SELECT * FROM "Sales.Region"."Orders.Archive""#;
+            let tokens = l.tokenize(sql, sql.chars().count());
+
+            assert_eq!(
+                l.extract_table_references(&tokens),
+                vec![TableReference {
+                    schema: Some("Sales.Region".to_string()),
+                    table: "Orders.Archive".to_string(),
+                    alias: None,
+                }]
+            );
+        }
+
+        #[test]
         fn join_returns_multiple_references() {
             let l = lexer();
             let tokens = l.tokenize("SELECT * FROM users u JOIN posts p ON u.id = p.user_id", 54);
@@ -2057,6 +2068,26 @@ mod tests {
 
             assert_eq!(ctes.len(), 1);
             assert_eq!(ctes[0], "tree");
+        }
+
+        #[test]
+        fn quoted_keyword_is_a_cte_name() {
+            let l = lexer();
+            let sql = r#"WITH "SELECT" AS (SELECT 1) SELECT * FROM "SELECT""#;
+            let tokens = l.tokenize(sql, sql.len());
+
+            assert_eq!(
+                l.extract_cte_definitions(&tokens),
+                vec!["SELECT".to_string()]
+            );
+            assert_eq!(
+                l.extract_table_references(&tokens),
+                vec![TableReference {
+                    schema: None,
+                    table: "SELECT".to_string(),
+                    alias: None,
+                }]
+            );
         }
 
         #[test]

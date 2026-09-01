@@ -326,7 +326,10 @@ fn collect_cached_er_tables(completion_engine: &RefCell<CompletionEngine>) -> Ve
     let engine = completion_engine.borrow();
     engine
         .table_details_iter()
-        .map(|(name, table)| ErTableInfo::from_table(name, table))
+        .map(|(name, table)| {
+            let qualified_name = name.qualified_name();
+            ErTableInfo::from_table(&qualified_name, table)
+        })
         .collect()
 }
 
@@ -337,12 +340,15 @@ fn collect_seed_and_cached_names(
     let engine = completion_engine.borrow();
     let seeds = engine
         .table_details_iter()
-        .filter(|(name, _)| seed_set.contains(name.as_str()))
-        .map(|(name, table)| ErTableInfo::from_table(name, table))
+        .filter(|(name, _)| seed_set.contains(name.qualified_name().as_str()))
+        .map(|(name, table)| {
+            let qualified_name = name.qualified_name();
+            ErTableInfo::from_table(&qualified_name, table)
+        })
         .collect();
     let all_cached = engine
         .table_details_iter()
-        .map(|(name, _)| name.clone())
+        .map(|(name, _)| name.qualified_name())
         .collect();
     (seeds, all_cached)
 }
@@ -351,7 +357,7 @@ fn collect_cached_table_names(completion_engine: &RefCell<CompletionEngine>) -> 
     let engine = completion_engine.borrow();
     engine
         .table_details_iter()
-        .map(|(name, _)| name.clone())
+        .map(|(name, _)| name.qualified_name())
         .collect()
 }
 

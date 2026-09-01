@@ -3,6 +3,7 @@
     reason = "metadata dispatch is re-exported through the crate-local update facade and used by AppState tests"
 )]
 
+use std::collections::HashMap;
 use std::time::Instant;
 
 mod er_neighbors;
@@ -45,23 +46,32 @@ pub(super) fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
     }]
 }
 
-pub(super) fn table_target_for_qualified_name(
+pub(super) fn table_targets_for_qualified_names(
     state: &AppState,
-    qualified_name: &str,
-) -> PrefetchTableTarget {
-    state
-        .session
-        .metadata()
-        .and_then(|metadata| {
-            metadata
-                .table_summaries
-                .iter()
-                .find(|table| table.qualified_name() == qualified_name)
+    qualified_names: &[String],
+) -> Vec<PrefetchTableTarget> {
+    let metadata_targets = state.session.metadata().map(|metadata| {
+        metadata
+            .table_summaries
+            .iter()
+            .map(|table| {
+                (
+                    table.qualified_name(),
+                    PrefetchTableTarget::qualified(&table.schema, &table.name),
+                )
+            })
+            .collect::<HashMap<_, _>>()
+    });
+
+    qualified_names
+        .iter()
+        .filter_map(|qualified_name| {
+            metadata_targets
+                .as_ref()
+                .and_then(|targets| targets.get(qualified_name).cloned())
+                .or_else(|| PrefetchTableTarget::from_unambiguous_qualified_name(qualified_name))
         })
-        .map_or_else(
-            || PrefetchTableTarget::from_qualified_name(qualified_name),
-            |table| PrefetchTableTarget::qualified(&table.schema, &table.name),
-        )
+        .collect()
 }
 
 pub(crate) fn dispatch_metadata(
@@ -1347,6 +1357,24 @@ mod tests {
         }
 
         #[test]
+        fn ambiguous_dotted_name_without_metadata_is_not_prefetched() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let tables = vec!["Sales.Region.Orders.Archive".to_string()];
+
+            dispatch_metadata(
+                &mut state,
+                &Action::StartErPrefetchScoped {
+                    tables: tables.clone(),
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.er_preparation.seed_tables(), tables);
+            assert!(!state.table_prefetch.has_pending_prefetch());
+            assert_eq!(state.table_prefetch.prefetch_in_flight_count(), 0);
+        }
+
+        #[test]
         fn resizes_to_total_table_count_before_processing_scoped_queue() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.session.set_metadata(Some(make_metadata(560)));
@@ -1441,6 +1469,68 @@ mod tests {
                 state
                     .table_prefetch
                     .is_table_prefetching("sales.region.Orders.Archive")
+            );
+        }
+
+        #[test]
+        fn cached_dotted_target_clears_in_flight_and_keeps_cache_key() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let run_id = state.table_prefetch.begin_completion_prefetch();
+            let target = PrefetchTableTarget::qualified("sales.region", "Orders.Archive");
+            state.table_prefetch.start_table_prefetch_target(target);
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::TableDetailCached {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
+                    schema: "sales.region".to_string(),
+                    table: "Orders.Archive".to_string(),
+                    detail: Some(empty_table("sales.region", "Orders.Archive")),
+                },
+                Instant::now(),
+            )
+            .into_effects()
+            .expect("cached detail should be handled");
+
+            assert_eq!(state.table_prefetch.prefetch_in_flight_count(), 0);
+            assert!(effects.iter().any(|effect| matches!(
+                effect,
+                Effect::CacheTableInCompletionEngine { qualified_name, .. }
+                    if qualified_name == "sales.region.Orders.Archive"
+            )));
+        }
+
+        #[test]
+        fn failed_dotted_target_requeues_without_leaving_in_flight() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let run_id = state.table_prefetch.begin_completion_prefetch();
+            let target = PrefetchTableTarget::qualified("sales.region", "Orders.Archive");
+            state.table_prefetch.start_table_prefetch_target(target);
+
+            dispatch_metadata(
+                &mut state,
+                &Action::TableDetailCacheFailed {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
+                    schema: "sales.region".to_string(),
+                    table: "Orders.Archive".to_string(),
+                    error: DbOperationError::ConnectionFailed("timeout".to_string()),
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.table_prefetch.prefetch_in_flight_count(), 0);
+            assert!(
+                state
+                    .table_prefetch
+                    .is_prefetch_queued("sales.region.Orders.Archive")
+            );
+            assert!(
+                state
+                    .table_prefetch
+                    .failed_prefetch("sales.region.Orders.Archive")
+                    .is_some()
             );
         }
 

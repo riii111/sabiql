@@ -39,13 +39,8 @@ pub(super) fn reduce_er_neighbors(state: &mut AppState, action: &Action) -> Disp
                 return DispatchResult::handled_with(check_er_completion(state));
             }
 
-            for qualified_name in tables {
-                state
-                    .table_prefetch
-                    .queue_pending_table(super::table_target_for_qualified_name(
-                        state,
-                        qualified_name,
-                    ));
+            for target in super::table_targets_for_qualified_names(state, tables) {
+                state.table_prefetch.queue_pending_table_target(target);
             }
             DispatchResult::handled_with(vec![Effect::SchedulePrefetchQueueProcessing {
                 run_id: *run_id,

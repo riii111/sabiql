@@ -62,7 +62,9 @@ fn prefetch_table_detail(
         let elapsed = now.saturating_duration_since(entry.failed_at).as_secs();
         if elapsed < backoff_secs {
             let remaining = backoff_secs - elapsed;
-            state.table_prefetch.queue_table_prefetch(target.clone());
+            state
+                .table_prefetch
+                .queue_table_prefetch_target(target.clone());
             return vec![Effect::DelayedProcessPrefetchQueue {
                 run_id,
                 delay_secs: remaining,
@@ -71,11 +73,15 @@ fn prefetch_table_detail(
     }
 
     let Some(dsn) = state.session.dsn().map(String::from) else {
-        state.table_prefetch.defer_table_prefetch(target.clone());
+        state
+            .table_prefetch
+            .defer_table_prefetch_target(target.clone());
         return vec![];
     };
 
-    state.table_prefetch.start_table_prefetch(target.clone());
+    state
+        .table_prefetch
+        .start_table_prefetch_target(target.clone());
 
     vec![Effect::PrefetchTableColumnsAndFks {
         dsn,
@@ -123,12 +129,9 @@ pub(super) fn reduce_prefetch(
                 let resize_capacity = completion_cache_capacity(metadata.table_summaries.len());
 
                 for table in &metadata.table_summaries {
-                    state
-                        .table_prefetch
-                        .queue_table_prefetch(PrefetchTableTarget::qualified(
-                            &table.schema,
-                            &table.name,
-                        ));
+                    state.table_prefetch.queue_table_prefetch_target(
+                        PrefetchTableTarget::qualified(&table.schema, &table.name),
+                    );
                 }
                 DispatchResult::handled_with(vec![
                     Effect::ResizeCompletionCache {
@@ -150,10 +153,8 @@ pub(super) fn reduce_prefetch(
                 let run_id = state.table_prefetch.begin_er_prefetch();
                 state.er_preparation.begin_scoped_prefetch(tables);
 
-                for qualified_name in tables {
-                    state.table_prefetch.queue_table_prefetch(
-                        super::table_target_for_qualified_name(state, qualified_name),
-                    );
+                for target in super::table_targets_for_qualified_names(state, tables) {
+                    state.table_prefetch.queue_table_prefetch_target(target);
                 }
                 let mut effects = Vec::with_capacity(2);
                 if let Some(metadata) = state.session.metadata() {
@@ -177,7 +178,9 @@ pub(super) fn reduce_prefetch(
                 state.table_prefetch.begin_completion_prefetch()
             };
             for target in tables {
-                state.table_prefetch.queue_table_prefetch(target.clone());
+                state
+                    .table_prefetch
+                    .queue_table_prefetch_target(target.clone());
             }
             DispatchResult::handled_with(vec![Effect::SchedulePrefetchQueueProcessing { run_id }])
         }
@@ -198,7 +201,7 @@ pub(super) fn reduce_prefetch(
                     break;
                 };
                 if !processed_tables.insert(target.clone()) {
-                    state.table_prefetch.defer_table_prefetch(target);
+                    state.table_prefetch.defer_table_prefetch_target(target);
                     break;
                 }
                 effects.extend(prefetch_table_detail(state, *run_id, &target, now));
@@ -232,7 +235,7 @@ pub(super) fn reduce_prefetch(
             }
             let target = PrefetchTableTarget::qualified(schema, table);
             let qualified_name = target.qualified_name();
-            state.table_prefetch.complete_table_prefetch(target);
+            state.table_prefetch.complete_table_prefetch_target(target);
 
             let mut effects = Vec::new();
             if let Some(detail) = detail {
@@ -273,14 +276,15 @@ pub(super) fn reduce_prefetch(
                 .table_prefetch
                 .failed_prefetch_target(&target)
                 .map_or(0, |e| e.retry_count);
-            let had_other_pending_before_requeue = state.table_prefetch.retry_table_prefetch(
-                target,
-                FailedPrefetchEntry {
-                    failed_at: now,
-                    error: error.user_message(),
-                    retry_count: prev_count + 1,
-                },
-            );
+            let had_other_pending_before_requeue =
+                state.table_prefetch.retry_table_prefetch_target(
+                    target,
+                    FailedPrefetchEntry {
+                        failed_at: now,
+                        error: error.user_message(),
+                        retry_count: prev_count + 1,
+                    },
+                );
             let mut effects = Vec::new();
 
             if had_other_pending_before_requeue {
