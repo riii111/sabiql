@@ -5,6 +5,59 @@ use crate::model::shared::async_run::AsyncRun;
 
 pub(crate) const MAX_PREFETCH_RETRIES: u32 = 3;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PrefetchTableTarget {
+    pub(crate) schema: Option<String>,
+    pub(crate) table: String,
+}
+
+impl PrefetchTableTarget {
+    pub(crate) fn qualified(schema: impl Into<String>, table: impl Into<String>) -> Self {
+        Self {
+            schema: Some(schema.into()),
+            table: table.into(),
+        }
+    }
+
+    pub(crate) fn from_qualified_name(name: impl Into<String>) -> Self {
+        let name = name.into();
+        let (schema, table) = name
+            .split_once('.')
+            .map_or((None, name.as_str()), |(schema, table)| {
+                (Some(schema), table)
+            });
+        Self {
+            schema: schema.map(str::to_string),
+            table: table.to_string(),
+        }
+    }
+
+    pub(crate) fn qualified_name(&self) -> String {
+        self.schema.as_ref().map_or_else(
+            || self.table.clone(),
+            |schema| format!("{schema}.{}", self.table),
+        )
+    }
+}
+
+impl From<String> for PrefetchTableTarget {
+    fn from(name: String) -> Self {
+        Self::from_qualified_name(name)
+    }
+}
+
+impl From<&str> for PrefetchTableTarget {
+    fn from(name: &str) -> Self {
+        Self::from_qualified_name(name)
+    }
+}
+
+impl From<&String> for PrefetchTableTarget {
+    fn from(name: &String) -> Self {
+        Self::from_qualified_name(name)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FailedPrefetchEntry {
     pub failed_at: Instant,
@@ -14,9 +67,9 @@ pub struct FailedPrefetchEntry {
 
 #[derive(Debug, Clone, Default)]
 pub struct TablePrefetchState {
-    prefetch_queue: VecDeque<String>,
-    prefetching_tables: HashSet<String>,
-    failed_prefetch_tables: HashMap<String, FailedPrefetchEntry>,
+    prefetch_queue: VecDeque<PrefetchTableTarget>,
+    prefetching_tables: HashSet<PrefetchTableTarget>,
+    failed_prefetch_tables: HashMap<PrefetchTableTarget, FailedPrefetchEntry>,
     prefetch_tracks_er: bool,
     prefetch_run: AsyncRun,
 }
@@ -69,11 +122,15 @@ impl TablePrefetchState {
     }
 
     pub fn is_prefetch_queued(&self, table: &str) -> bool {
-        self.prefetch_queue.iter().any(|queued| queued == table)
+        self.prefetch_queue
+            .iter()
+            .any(|queued| queued.qualified_name() == table)
     }
 
     pub fn is_table_prefetching(&self, table: &str) -> bool {
-        self.prefetching_tables.contains(table)
+        self.prefetching_tables
+            .iter()
+            .any(|prefetching| prefetching.qualified_name() == table)
     }
 
     pub fn prefetch_in_flight_count(&self) -> usize {
@@ -81,6 +138,24 @@ impl TablePrefetchState {
     }
 
     pub fn failed_prefetch(&self, table: &str) -> Option<&FailedPrefetchEntry> {
+        self.failed_prefetch_tables
+            .iter()
+            .find(|(failed, _)| failed.qualified_name() == table)
+            .map(|(_, entry)| entry)
+    }
+
+    pub(crate) fn is_prefetch_target_queued(&self, table: &PrefetchTableTarget) -> bool {
+        self.prefetch_queue.iter().any(|queued| queued == table)
+    }
+
+    pub(crate) fn is_prefetch_target_in_flight(&self, table: &PrefetchTableTarget) -> bool {
+        self.prefetching_tables.contains(table)
+    }
+
+    pub(crate) fn failed_prefetch_target(
+        &self,
+        table: &PrefetchTableTarget,
+    ) -> Option<&FailedPrefetchEntry> {
         self.failed_prefetch_tables.get(table)
     }
 
@@ -88,7 +163,7 @@ impl TablePrefetchState {
         self.failed_prefetch_tables
             .iter()
             .filter(|(table, entry)| self.is_permanent_failure(table, entry))
-            .map(|(table, entry)| (table.clone(), entry.error.clone()))
+            .map(|(table, entry)| (table.qualified_name(), entry.error.clone()))
             .collect()
     }
 
@@ -103,15 +178,17 @@ impl TablePrefetchState {
             .count()
     }
 
-    pub fn queue_table_prefetch(&mut self, table: String) {
-        if self.prefetching_tables.contains(&table) || self.is_prefetch_queued(&table) {
+    pub fn queue_table_prefetch(&mut self, table: impl Into<PrefetchTableTarget>) {
+        let table = table.into();
+        if self.prefetching_tables.contains(&table) || self.is_prefetch_target_queued(&table) {
             return;
         }
         self.prefetch_queue.push_back(table);
     }
 
-    pub fn queue_pending_table(&mut self, table: String) -> bool {
-        if self.prefetching_tables.contains(&table) || self.is_prefetch_queued(&table) {
+    pub fn queue_pending_table(&mut self, table: impl Into<PrefetchTableTarget>) -> bool {
+        let table = table.into();
+        if self.prefetching_tables.contains(&table) || self.is_prefetch_target_queued(&table) {
             return false;
         }
         self.failed_prefetch_tables.remove(&table);
@@ -119,35 +196,53 @@ impl TablePrefetchState {
         true
     }
 
-    pub fn defer_table_prefetch(&mut self, table: String) {
-        if self.prefetching_tables.contains(&table) || self.is_prefetch_queued(&table) {
+    pub fn defer_table_prefetch(&mut self, table: impl Into<PrefetchTableTarget>) {
+        let table = table.into();
+        if self.prefetching_tables.contains(&table) || self.is_prefetch_target_queued(&table) {
             return;
         }
         self.prefetch_queue.push_front(table);
     }
 
     pub fn take_next_prefetch(&mut self) -> Option<String> {
+        self.take_next_prefetch_target()
+            .map(|table| table.qualified_name())
+    }
+
+    pub(crate) fn take_next_prefetch_target(&mut self) -> Option<PrefetchTableTarget> {
         self.prefetch_queue.pop_front()
     }
 
-    pub fn start_table_prefetch(&mut self, table: String) {
+    pub fn start_table_prefetch(&mut self, table: impl Into<PrefetchTableTarget>) {
+        let table = table.into();
         self.prefetch_queue.retain(|queued| queued != &table);
         self.prefetching_tables.insert(table);
     }
 
-    pub fn complete_table_prefetch(&mut self, table: &str) {
-        self.prefetch_queue.retain(|queued| queued != table);
-        self.prefetching_tables.remove(table);
-        self.failed_prefetch_tables.remove(table);
+    pub fn complete_table_prefetch(&mut self, table: impl Into<PrefetchTableTarget>) {
+        let table = table.into();
+        self.prefetch_queue.retain(|queued| queued != &table);
+        self.prefetching_tables.remove(&table);
+        self.failed_prefetch_tables.remove(&table);
     }
 
-    pub fn fail_table_prefetch(&mut self, table: String, entry: FailedPrefetchEntry) {
+    pub fn fail_table_prefetch(
+        &mut self,
+        table: impl Into<PrefetchTableTarget>,
+        entry: FailedPrefetchEntry,
+    ) {
+        let table = table.into();
         self.prefetch_queue.retain(|queued| queued != &table);
         self.prefetching_tables.remove(&table);
         self.failed_prefetch_tables.insert(table, entry);
     }
 
-    pub fn retry_table_prefetch(&mut self, table: String, entry: FailedPrefetchEntry) -> bool {
+    pub fn retry_table_prefetch(
+        &mut self,
+        table: impl Into<PrefetchTableTarget>,
+        entry: FailedPrefetchEntry,
+    ) -> bool {
+        let table = table.into();
         let had_other_pending_before_requeue = self.has_pending_prefetch();
         self.fail_table_prefetch(table.clone(), entry);
         self.queue_table_prefetch(table);
@@ -166,9 +261,13 @@ impl TablePrefetchState {
         self.prefetch_queue.is_empty() && self.prefetching_tables.is_empty()
     }
 
-    fn is_permanent_failure(&self, table: &str, entry: &FailedPrefetchEntry) -> bool {
+    fn is_permanent_failure(
+        &self,
+        table: &PrefetchTableTarget,
+        entry: &FailedPrefetchEntry,
+    ) -> bool {
         entry.retry_count >= MAX_PREFETCH_RETRIES
-            && !self.is_prefetch_queued(table)
+            && !self.is_prefetch_target_queued(table)
             && !self.prefetching_tables.contains(table)
     }
 }

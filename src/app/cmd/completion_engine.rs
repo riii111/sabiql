@@ -1,9 +1,10 @@
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
 
-use crate::domain::{DatabaseMetadata, DatabaseType, Table, TableSummary};
+use crate::domain::{DatabaseMetadata, DatabaseType, Table};
 use crate::model::shared::text_input::char_to_byte_index;
 use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
+use crate::model::table_prefetch::PrefetchTableTarget;
 use crate::policy::sql::lexer::{
     MYSQL_KEYWORDS, POSTGRESQL_KEYWORDS, SqlContext, SqlLexer, TableReference, Token, TokenKind,
 };
@@ -131,26 +132,27 @@ impl CompletionEngine {
         &self,
         prep: &PreparedCompletion,
         metadata: Option<&DatabaseMetadata>,
-    ) -> Vec<String> {
+    ) -> Vec<PrefetchTableTarget> {
         const MAX_MISSING_TABLES: usize = 10;
 
         let mut missing = Vec::new();
-        let mut seen = HashSet::new();
+        let mut seen: HashSet<PrefetchTableTarget> = HashSet::new();
 
         for table_ref in &prep.candidate_context.tables {
             if prep.cte_names.contains(&table_ref.table.to_lowercase()) {
                 continue;
             }
-            let Some(qualified_name) =
-                self.qualified_name_from_ref_for_database(table_ref, metadata, prep.database_type)
+            let Some(target) =
+                self.table_target_from_ref_for_database(table_ref, metadata, prep.database_type)
             else {
                 continue;
             };
-            if seen.contains(&qualified_name) || self.table_detail_cache.contains(&qualified_name) {
+            let qualified_name = target.qualified_name();
+            if seen.contains(&target) || self.table_detail_cache.contains(&qualified_name) {
                 continue;
             }
-            seen.insert(qualified_name.clone());
-            missing.push(qualified_name);
+            seen.insert(target.clone());
+            missing.push(target);
             if missing.len() >= MAX_MISSING_TABLES {
                 break;
             }
@@ -1094,19 +1096,19 @@ impl CompletionEngine {
             .collect()
     }
 
-    fn qualified_name_from_ref_for_database(
+    fn table_target_from_ref_for_database(
         &self,
         table_ref: &TableReference,
         metadata: Option<&DatabaseMetadata>,
         database_type: DatabaseType,
-    ) -> Option<String> {
+    ) -> Option<PrefetchTableTarget> {
         if let Some(ref schema) = table_ref.schema {
             if database_type != DatabaseType::MySQL {
-                return Some(format!("{}.{}", schema, table_ref.table));
+                return Some(PrefetchTableTarget::qualified(schema, &table_ref.table));
             }
 
             let Some(metadata) = metadata else {
-                return Some(format!("{}.{}", schema, table_ref.table));
+                return Some(PrefetchTableTarget::qualified(schema, &table_ref.table));
             };
 
             if let Some(table) = metadata
@@ -1114,7 +1116,7 @@ impl CompletionEngine {
                 .iter()
                 .find(|t| t.schema == *schema && t.name == table_ref.table)
             {
-                return Some(table.qualified_name());
+                return Some(PrefetchTableTarget::qualified(&table.schema, &table.name));
             }
 
             let schema_lower = schema.to_lowercase();
@@ -1126,11 +1128,14 @@ impl CompletionEngine {
             return case_insensitive
                 .next()
                 .is_none()
-                .then(|| table.qualified_name());
+                .then(|| PrefetchTableTarget::qualified(&table.schema, &table.name));
         }
 
         let Some(metadata) = metadata else {
-            return Some(table_ref.table.clone());
+            return Some(PrefetchTableTarget {
+                schema: None,
+                table: table_ref.table.clone(),
+            });
         };
 
         if database_type == DatabaseType::MySQL {
@@ -1139,7 +1144,7 @@ impl CompletionEngine {
                 .iter()
                 .find(|t| t.name == table_ref.table)
             {
-                return Some(table.qualified_name());
+                return Some(PrefetchTableTarget::qualified(&table.schema, &table.name));
             }
 
             let table_lower = table_ref.table.to_lowercase();
@@ -1151,7 +1156,7 @@ impl CompletionEngine {
             return case_insensitive
                 .next()
                 .is_none()
-                .then(|| table.qualified_name());
+                .then(|| PrefetchTableTarget::qualified(&table.schema, &table.name));
         }
 
         Some(
@@ -1159,8 +1164,24 @@ impl CompletionEngine {
                 .table_summaries
                 .iter()
                 .find(|t| t.name.to_lowercase() == table_ref.table.to_lowercase())
-                .map_or_else(|| table_ref.table.clone(), TableSummary::qualified_name),
+                .map_or_else(
+                    || PrefetchTableTarget {
+                        schema: None,
+                        table: table_ref.table.clone(),
+                    },
+                    |table| PrefetchTableTarget::qualified(&table.schema, &table.name),
+                ),
         )
+    }
+
+    fn qualified_name_from_ref_for_database(
+        &self,
+        table_ref: &TableReference,
+        metadata: Option<&DatabaseMetadata>,
+        database_type: DatabaseType,
+    ) -> Option<String> {
+        self.table_target_from_ref_for_database(table_ref, metadata, database_type)
+            .map(|target| target.qualified_name())
     }
 }
 
@@ -1247,6 +1268,7 @@ fn sort_candidates(candidates: &mut [CompletionCandidate]) {
 mod tests {
     use crate::domain::Column;
     use crate::domain::ColumnAttributes;
+    use crate::domain::TableSummary;
     use crate::test_support;
 
     use super::*;
@@ -1375,6 +1397,9 @@ mod tests {
         ) -> Vec<String> {
             let prep = self.prepare_for_database(content, content.len(), DatabaseType::PostgreSQL);
             self.missing_tables_prepared(&prep, metadata)
+                .into_iter()
+                .map(|target| target.qualified_name())
+                .collect()
         }
     }
 
@@ -3265,8 +3290,8 @@ mod tests {
                 assert_eq!(
                     missing,
                     vec![
-                        "public.nested_table".to_string(),
-                        "public.current_table".to_string(),
+                        PrefetchTableTarget::qualified("public", "nested_table"),
+                        PrefetchTableTarget::qualified("public", "current_table"),
                     ]
                 );
             }
@@ -3291,7 +3316,7 @@ mod tests {
             );
             assert_eq!(
                 engine().missing_tables_prepared(&before_prep, Some(&metadata)),
-                vec!["public.first_table".to_string()]
+                vec![PrefetchTableTarget::qualified("public", "first_table")]
             );
 
             let after_prep = engine().prepare_for_database(
@@ -3312,7 +3337,22 @@ mod tests {
 
             assert_eq!(
                 engine().missing_tables_prepared(&comment_prep, Some(&metadata)),
-                vec!["public.current_table".to_string()]
+                vec![PrefetchTableTarget::qualified("public", "current_table")]
+            );
+        }
+
+        #[test]
+        fn quoted_schema_and_table_keep_dots_inside_each_identifier() {
+            let e = engine();
+            let sql = r#"SELECT * FROM "sales.region"."Orders.Archive""#;
+            let prep = e.prepare_for_database(sql, sql.len(), DatabaseType::PostgreSQL);
+
+            assert_eq!(
+                e.missing_tables_prepared(&prep, None),
+                vec![PrefetchTableTarget::qualified(
+                    "sales.region",
+                    "Orders.Archive"
+                )]
             );
         }
 

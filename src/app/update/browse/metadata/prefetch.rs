@@ -5,7 +5,7 @@ use crate::cmd::effect::Effect;
 use crate::domain::TableSummary;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
-use crate::model::table_prefetch::FailedPrefetchEntry;
+use crate::model::table_prefetch::{FailedPrefetchEntry, PrefetchTableTarget};
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
@@ -29,20 +29,20 @@ fn completion_cache_capacity(table_count: usize) -> usize {
 fn prefetch_table_detail(
     state: &mut AppState,
     run_id: u64,
-    schema: &str,
-    table: &str,
+    target: &PrefetchTableTarget,
     now: Instant,
 ) -> Vec<Effect> {
     if !state.table_prefetch.is_current_prefetch_run(run_id) {
         return vec![];
     }
-    let qualified_name = format!("{schema}.{table}");
-
-    if state.table_prefetch.is_table_prefetching(&qualified_name) {
+    let Some(schema) = target.schema.as_deref() else {
+        return vec![];
+    };
+    if state.table_prefetch.is_prefetch_target_in_flight(target) {
         return vec![];
     }
 
-    if let Some(entry) = state.table_prefetch.failed_prefetch(&qualified_name) {
+    if let Some(entry) = state.table_prefetch.failed_prefetch_target(target) {
         if entry.retry_count >= MAX_PREFETCH_RETRIES {
             let mut effects = if state.table_prefetch.prefetch_tracks_er() {
                 check_er_completion(state)
@@ -62,7 +62,7 @@ fn prefetch_table_detail(
         let elapsed = now.saturating_duration_since(entry.failed_at).as_secs();
         if elapsed < backoff_secs {
             let remaining = backoff_secs - elapsed;
-            state.table_prefetch.queue_table_prefetch(qualified_name);
+            state.table_prefetch.queue_table_prefetch(target.clone());
             return vec![Effect::DelayedProcessPrefetchQueue {
                 run_id,
                 delay_secs: remaining,
@@ -71,17 +71,17 @@ fn prefetch_table_detail(
     }
 
     let Some(dsn) = state.session.dsn().map(String::from) else {
-        state.table_prefetch.defer_table_prefetch(qualified_name);
+        state.table_prefetch.defer_table_prefetch(target.clone());
         return vec![];
     };
 
-    state.table_prefetch.start_table_prefetch(qualified_name);
+    state.table_prefetch.start_table_prefetch(target.clone());
 
     vec![Effect::PrefetchTableColumnsAndFks {
         dsn,
         run_id,
         schema: schema.to_string(),
-        table: table.to_string(),
+        table: target.table.clone(),
     }]
 }
 
@@ -122,8 +122,13 @@ pub(super) fn reduce_prefetch(
 
                 let resize_capacity = completion_cache_capacity(metadata.table_summaries.len());
 
-                for qualified_name in qualified_names {
-                    state.table_prefetch.queue_table_prefetch(qualified_name);
+                for table in &metadata.table_summaries {
+                    state
+                        .table_prefetch
+                        .queue_table_prefetch(PrefetchTableTarget::qualified(
+                            &table.schema,
+                            &table.name,
+                        ));
                 }
                 DispatchResult::handled_with(vec![
                     Effect::ResizeCompletionCache {
@@ -146,9 +151,9 @@ pub(super) fn reduce_prefetch(
                 state.er_preparation.begin_scoped_prefetch(tables);
 
                 for qualified_name in tables {
-                    state
-                        .table_prefetch
-                        .queue_table_prefetch(qualified_name.clone());
+                    state.table_prefetch.queue_table_prefetch(
+                        super::table_target_for_qualified_name(state, qualified_name),
+                    );
                 }
                 let mut effects = Vec::with_capacity(2);
                 if let Some(metadata) = state.session.metadata() {
@@ -171,10 +176,8 @@ pub(super) fn reduce_prefetch(
             } else {
                 state.table_prefetch.begin_completion_prefetch()
             };
-            for qualified_name in tables {
-                state
-                    .table_prefetch
-                    .queue_table_prefetch(qualified_name.clone());
+            for target in tables {
+                state.table_prefetch.queue_table_prefetch(target.clone());
             }
             DispatchResult::handled_with(vec![Effect::SchedulePrefetchQueueProcessing { run_id }])
         }
@@ -191,17 +194,14 @@ pub(super) fn reduce_prefetch(
 
             let mut effects = Vec::new();
             for _ in 0..batch_size {
-                let Some(qualified_name) = state.table_prefetch.take_next_prefetch() else {
+                let Some(target) = state.table_prefetch.take_next_prefetch_target() else {
                     break;
                 };
-                if !processed_tables.insert(qualified_name.clone()) {
-                    state.table_prefetch.defer_table_prefetch(qualified_name);
+                if !processed_tables.insert(target.clone()) {
+                    state.table_prefetch.defer_table_prefetch(target);
                     break;
                 }
-                let Some((schema, table)) = qualified_name.split_once('.') else {
-                    continue;
-                };
-                effects.extend(prefetch_table_detail(state, *run_id, schema, table, now));
+                effects.extend(prefetch_table_detail(state, *run_id, &target, now));
             }
 
             DispatchResult::handled_with(effects)
@@ -211,9 +211,12 @@ pub(super) fn reduce_prefetch(
             run_id,
             schema,
             table,
-        } => {
-            DispatchResult::handled_with(prefetch_table_detail(state, *run_id, schema, table, now))
-        }
+        } => DispatchResult::handled_with(prefetch_table_detail(
+            state,
+            *run_id,
+            &PrefetchTableTarget::qualified(schema, table),
+            now,
+        )),
 
         Action::TableDetailCached {
             dsn,
@@ -227,10 +230,9 @@ pub(super) fn reduce_prefetch(
             {
                 return DispatchResult::handled();
             }
-            let qualified_name = format!("{schema}.{table}");
-            state
-                .table_prefetch
-                .complete_table_prefetch(&qualified_name);
+            let target = PrefetchTableTarget::qualified(schema, table);
+            let qualified_name = target.qualified_name();
+            state.table_prefetch.complete_table_prefetch(target);
 
             let mut effects = Vec::new();
             if let Some(detail) = detail {
@@ -265,14 +267,14 @@ pub(super) fn reduce_prefetch(
             {
                 return DispatchResult::handled();
             }
-            let qualified_name = format!("{schema}.{table}");
+            let target = PrefetchTableTarget::qualified(schema, table);
 
             let prev_count = state
                 .table_prefetch
-                .failed_prefetch(&qualified_name)
+                .failed_prefetch_target(&target)
                 .map_or(0, |e| e.retry_count);
             let had_other_pending_before_requeue = state.table_prefetch.retry_table_prefetch(
-                qualified_name,
+                target,
                 FailedPrefetchEntry {
                     failed_at: now,
                     error: error.user_message(),

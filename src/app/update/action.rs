@@ -11,6 +11,7 @@ use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::Prefix;
 use crate::model::sql_editor::completion::CompletionCandidate;
+use crate::model::table_prefetch::PrefetchTableTarget;
 use crate::policy::{FeatureRequirement, mask_password};
 use crate::ports::outbound::clipboard::ClipboardError;
 use crate::ports::outbound::{AppSettings, DbOperationError};
@@ -473,7 +474,7 @@ pub enum Action {
         tables: Vec<String>,
     },
     StartCompletionPrefetch {
-        tables: Vec<String>,
+        tables: Vec<PrefetchTableTarget>,
     },
     ExpandPrefetchWithFkNeighbors {
         run_id: u64,

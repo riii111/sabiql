@@ -518,8 +518,12 @@ impl SqlLexer {
                         }
                         // End of identifier
                         let text: String = chars[token_start..=pos].iter().collect();
+                        let name = chars[token_start + 1..pos]
+                            .iter()
+                            .collect::<String>()
+                            .replace("\"\"", "\"");
                         tokens.push(Token {
-                            kind: TokenKind::Identifier(text.clone()),
+                            kind: TokenKind::Identifier(name),
                             text,
                             start: token_start,
                             end: pos + 1,
@@ -667,7 +671,11 @@ impl SqlLexer {
                 | LexerState::InDoubleQuoteString
                 | LexerState::InDollarQuote
                 | LexerState::InEscapeString => TokenKind::StringLiteral,
-                LexerState::InDoubleQuoteIdentifier => TokenKind::Identifier(text.clone()),
+                LexerState::InDoubleQuoteIdentifier => TokenKind::Identifier(
+                    text.strip_prefix('"')
+                        .unwrap_or(&text)
+                        .replace("\"\"", "\""),
+                ),
                 LexerState::InBacktickIdentifier => {
                     TokenKind::BacktickIdentifier(text[1..].to_string())
                 }
@@ -1858,6 +1866,22 @@ mod tests {
             assert_eq!(refs.len(), 1);
             assert_eq!(refs[0].schema, Some("public".to_string()));
             assert_eq!(refs[0].table, "users");
+        }
+
+        #[test]
+        fn double_quoted_schema_and_table_preserve_case_and_embedded_dots() {
+            let l = lexer();
+            let sql = r#"SELECT * FROM "Sales.Region"."Orders.Archive""#;
+            let tokens = l.tokenize(sql, sql.chars().count());
+
+            assert_eq!(
+                l.extract_table_references(&tokens),
+                vec![TableReference {
+                    schema: Some("Sales.Region".to_string()),
+                    table: "Orders.Archive".to_string(),
+                    alias: None,
+                }]
+            );
         }
 
         #[test]

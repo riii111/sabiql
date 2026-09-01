@@ -13,6 +13,7 @@ mod table_detail;
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::er_state::ErStatus;
+use crate::model::table_prefetch::PrefetchTableTarget;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
@@ -44,6 +45,25 @@ pub(super) fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
     }]
 }
 
+pub(super) fn table_target_for_qualified_name(
+    state: &AppState,
+    qualified_name: &str,
+) -> PrefetchTableTarget {
+    state
+        .session
+        .metadata()
+        .and_then(|metadata| {
+            metadata
+                .table_summaries
+                .iter()
+                .find(|table| table.qualified_name() == qualified_name)
+        })
+        .map_or_else(
+            || PrefetchTableTarget::from_qualified_name(qualified_name),
+            |table| PrefetchTableTarget::qualified(&table.schema, &table.name),
+        )
+}
+
 pub(crate) fn dispatch_metadata(
     state: &mut AppState,
     action: &Action,
@@ -65,7 +85,7 @@ mod tests {
     use crate::model::app_state::AppState;
     use crate::model::browse::session::TableDetailState;
     use crate::model::shared::input_mode::InputMode;
-    use crate::model::table_prefetch::FailedPrefetchEntry;
+    use crate::model::table_prefetch::{FailedPrefetchEntry, PrefetchTableTarget};
     use crate::ports::outbound::DbOperationError;
     use crate::update::action::Action;
     use std::sync::Arc;
@@ -1356,7 +1376,10 @@ mod tests {
         #[test]
         fn queues_only_referenced_tables_without_er_state() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let tables = vec!["public.users".to_string(), "public.orders".to_string()];
+            let tables = vec![
+                PrefetchTableTarget::qualified("public", "users"),
+                PrefetchTableTarget::qualified("public", "orders"),
+            ];
 
             let effects = dispatch_metadata(
                 &mut state,
@@ -1376,6 +1399,48 @@ mod tests {
                 effects
                     .iter()
                     .all(|effect| !matches!(effect, Effect::ResizeCompletionCache { .. }))
+            );
+        }
+
+        #[test]
+        fn process_queue_preserves_quoted_schema_and_table_identity() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let run_id = state.table_prefetch.begin_completion_prefetch();
+
+            dispatch_metadata(
+                &mut state,
+                &Action::StartCompletionPrefetch {
+                    tables: vec![PrefetchTableTarget::qualified(
+                        "sales.region",
+                        "Orders.Archive",
+                    )],
+                },
+                Instant::now(),
+            );
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::ProcessPrefetchQueue { run_id },
+                Instant::now(),
+            )
+            .into_effects()
+            .expect("prefetch queue should be handled");
+
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::PrefetchTableColumnsAndFks {
+                    run_id: actual_run_id,
+                    schema,
+                    table,
+                    ..
+                }] if *actual_run_id == run_id
+                    && schema == "sales.region"
+                    && table == "Orders.Archive"
+            ));
+            assert!(
+                state
+                    .table_prefetch
+                    .is_table_prefetching("sales.region.Orders.Archive")
             );
         }
 

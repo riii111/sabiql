@@ -42,7 +42,10 @@ pub(super) fn reduce_er_neighbors(state: &mut AppState, action: &Action) -> Disp
             for qualified_name in tables {
                 state
                     .table_prefetch
-                    .queue_pending_table(qualified_name.clone());
+                    .queue_pending_table(super::table_target_for_qualified_name(
+                        state,
+                        qualified_name,
+                    ));
             }
             DispatchResult::handled_with(vec![Effect::SchedulePrefetchQueueProcessing {
                 run_id: *run_id,

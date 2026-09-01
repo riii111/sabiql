@@ -52,16 +52,15 @@ pub(in crate::cmd) fn run(
             let mut actions = Vec::new();
             if !missing.is_empty() {
                 if let Some(run_id) = state.table_prefetch.active_prefetch_run_id() {
-                    for action in missing.into_iter().filter_map(|qualified_name| {
-                        qualified_name.split_once('.').map(|(schema, table)| {
-                            Action::PrefetchTableDetail {
-                                run_id,
-                                schema: schema.to_string(),
-                                table: table.to_string(),
-                            }
-                        })
-                    }) {
-                        actions.push(action);
+                    for target in missing {
+                        let Some(schema) = target.schema else {
+                            continue;
+                        };
+                        actions.push(Action::PrefetchTableDetail {
+                            run_id,
+                            schema,
+                            table: target.table,
+                        });
                     }
                 } else {
                     actions.push(Action::StartCompletionPrefetch { tables: missing });
@@ -107,6 +106,7 @@ mod tests {
     use super::*;
     use crate::domain::{DatabaseMetadata, TableSummary};
     use crate::model::shared::input_mode::InputMode;
+    use crate::model::table_prefetch::PrefetchTableTarget;
     use std::sync::Arc;
 
     #[test]
@@ -135,7 +135,38 @@ mod tests {
         assert!(matches!(
             actions.as_slice(),
             [Action::StartCompletionPrefetch { tables }, Action::CompletionUpdated { .. }]
-                if *tables == vec!["public.users".to_string()]
+                if *tables == vec![PrefetchTableTarget::qualified("public", "users")]
+        ));
+    }
+
+    #[test]
+    fn active_prefetch_preserves_quoted_schema_and_table_identity() {
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::SqlModal);
+        state
+            .sql_modal
+            .editor_mut_for_input()
+            .set_content(r#"SELECT * FROM "sales.region"."Orders.Archive""#.to_string());
+        let run_id = state.table_prefetch.begin_completion_prefetch();
+
+        let actions = run(
+            Effect::TriggerCompletion,
+            &state,
+            &RefCell::new(CompletionEngine::new()),
+        );
+
+        assert!(matches!(
+            actions.as_slice(),
+            [
+                Action::PrefetchTableDetail {
+                    run_id: actual_run_id,
+                    schema,
+                    table,
+                },
+                Action::CompletionUpdated { .. }
+            ] if *actual_run_id == run_id
+                && schema == "sales.region"
+                && table == "Orders.Archive"
         ));
     }
 }
