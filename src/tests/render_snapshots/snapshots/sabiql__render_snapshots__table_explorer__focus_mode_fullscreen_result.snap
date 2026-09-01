@@ -51,4 +51,4 @@ test_project ▸ test_db ▸ -                                                  
 │                                                                                                                                                                   │
 │                                                                                                                                                                   │
 └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-Enter:Select  ^E:Export  ]/[:Page  ?:Help  ,:Settings  f:Exit Focus  q:Quit
+Enter:Select  c:Connections  ^E:Export  ]/[:Page  ?:Help  ,:Settings  f:Exit Focus  q:Quit

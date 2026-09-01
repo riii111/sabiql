@@ -222,6 +222,7 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
             &result_active::STAGE_DELETE,
             &result_active::UNSTAGE_DELETE,
             &cell_edit::WRITE,
+            &global::CONNECTIONS,
             &result_active::ESC_BACK,
         ]),
         HelpOrigin::Normal {
@@ -235,6 +236,7 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
             &result_active::UNSTAGE_DELETE,
             &result_active::CLEAR_STAGED_DELETE,
             &cell_edit::WRITE,
+            &global::CONNECTIONS,
             &footer_nav::PAGE_NAV,
             csv_export(keymap_preset),
         ]),
@@ -254,6 +256,7 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
                 rows.push(&result_active::STAGE_DELETE);
                 rows.push(&result_active::EDIT);
             }
+            rows.push(&global::CONNECTIONS);
             rows.push(&result_active::ESC_BACK);
             rows_from_binding_refs(&rows)
         }
@@ -263,13 +266,18 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
             ..
         } => rows_from_binding_refs(&[
             &result_active::ENTER_DEEPEN,
+            &global::CONNECTIONS,
             &footer_nav::PAGE_NAV,
             csv_export(keymap_preset),
         ]),
         HelpOrigin::Normal {
             focused_pane: FocusedPane::Inspector,
             ..
-        } => rows_from_binding_refs(&[&global::INSPECTOR_TABS, &inspector_ddl::YANK]),
+        } => rows_from_binding_refs(&[
+            &global::CONNECTIONS,
+            &global::INSPECTOR_TABS,
+            &inspector_ddl::YANK,
+        ]),
         HelpOrigin::Normal {
             focused_pane: FocusedPane::Explorer,
             keymap_preset,
@@ -706,6 +714,7 @@ mod tests {
     use super::*;
     use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::shared::input_mode::InputMode;
+    use crate::model::shared::ui_state::FocusMode;
     use crate::model::sql_editor::modal::SqlModalTab;
 
     fn row_descriptions(document: &HelpDocument) -> Vec<&str> {
@@ -736,6 +745,54 @@ mod tests {
                 .rows()
                 .iter()
                 .any(|row| row.description().contains("active row"))
+        );
+    }
+
+    #[test]
+    fn normal_help_includes_connections_for_every_pane_state() {
+        for (focused_pane, result_active, staged_delete_in_progress) in [
+            (FocusedPane::Explorer, false, false),
+            (FocusedPane::Inspector, false, false),
+            (FocusedPane::Result, false, false),
+            (FocusedPane::Result, true, false),
+            (FocusedPane::Result, false, true),
+            (FocusedPane::Result, true, true),
+        ] {
+            let document = HelpDocument::new(
+                HelpOrigin::Normal {
+                    focused_pane,
+                    result_active,
+                    staged_delete_in_progress,
+                    can_write_preview: true,
+                    keymap_preset: KeymapPreset::default(),
+                },
+                "",
+            );
+
+            assert!(
+                document.sections()[0]
+                    .rows()
+                    .iter()
+                    .any(|row| row.description() == "Open Connection Selector"),
+                "missing Connections hint for {focused_pane:?} ({result_active}, {staged_delete_in_progress})"
+            );
+        }
+    }
+
+    #[test]
+    fn focus_mode_help_includes_connections() {
+        let mut state = AppState::new("test".to_string());
+        state
+            .ui
+            .set_focus_mode(FocusMode::focused(FocusedPane::Explorer));
+
+        let document = HelpDocument::new(HelpOrigin::from_state(&state), "");
+
+        assert!(
+            document.sections()[0]
+                .rows()
+                .iter()
+                .any(|row| row.description() == "Open Connection Selector")
         );
     }
 

@@ -51,4 +51,4 @@ test_project ▸ test_db ▸ -                                                  
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-dd:Stage Del  u:Unstage  :w:Write  ?:Help  Esc:Back  q:Quit
+dd:Stage Del  u:Unstage  :w:Write  c:Connections  ?:Help  Esc:Back  q:Quit
