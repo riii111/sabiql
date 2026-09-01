@@ -475,9 +475,6 @@ pub enum Action {
     StartCompletionPrefetch {
         tables: Vec<String>,
     },
-    ExpandPrefetchWithFkNeighbors {
-        run_id: u64,
-    },
     FkNeighborsDiscovered {
         run_id: u64,
         tables: Vec<String>,
