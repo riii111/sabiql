@@ -7,6 +7,7 @@ use crate::domain::{
         has_mysql_read_only_side_effect, split_mysql_statements,
         statement_contains_unsupported_mysql_control,
     },
+    postgres_sql,
     sql_lex::{
         advance_single_quote, skip_block_comment, skip_double_quoted_identifier, skip_line_comment,
         skip_sqlite_quoted_identifier,
@@ -295,72 +296,10 @@ pub fn split_statements_for_database(
             .collect());
     }
 
-    Ok(split_postgres_statements(sql))
-}
-
-fn split_postgres_statements(sql: &str) -> Vec<String> {
-    let chars: Vec<(usize, char)> = sql.char_indices().collect();
-    let mut statements = Vec::new();
-    let mut start = 0;
-    let mut i = 0;
-    let mut depth: i32 = 0;
-    let mut in_string = false;
-
-    while i < chars.len() {
-        let (byte_pos, ch) = chars[i];
-
-        if let Some(next_i) = skip_line_comment(&chars, i, ch) {
-            i = next_i;
-            continue;
-        }
-        if let Some(next_i) = skip_block_comment(&chars, i, ch) {
-            i = next_i;
-            continue;
-        }
-        if let Some(next_i) = advance_single_quote(&chars, i, ch, &mut in_string) {
-            i = next_i;
-            continue;
-        }
-        if in_string {
-            i += 1;
-            continue;
-        }
-        if let Some(next_i) = skip_double_quoted_identifier(&chars, i, ch) {
-            i = next_i;
-            continue;
-        }
-        if let Some(next_i) = skip_dollar_quoted_string(sql, &chars, i, byte_pos, ch) {
-            i = next_i;
-            continue;
-        }
-
-        if ch == '(' {
-            depth += 1;
-        } else if ch == ')' {
-            depth -= 1;
-        }
-
-        if depth == 0 && ch == ';' {
-            let fragment = sql[start..byte_pos].trim();
-            if !fragment.is_empty() {
-                statements.push(fragment.to_string());
-            }
-            start = byte_pos + 1;
-        }
-
-        i += 1;
-    }
-
-    if start < sql.len() {
-        let fragment = sql[start..].trim();
-        if !fragment.is_empty() {
-            statements.push(fragment.to_string());
-        }
-    }
-
-    statements.retain(|s| !is_comment_only(s));
-
-    statements
+    Ok(postgres_sql::split_statements(sql)
+        .into_iter()
+        .map(str::to_owned)
+        .collect())
 }
 
 fn is_comment_only(sql: &str) -> bool {
