@@ -69,10 +69,10 @@ pub fn explorer_table_label(summary: &TableSummary, database_type: DatabaseType)
     } else {
         table_display_name(database_type, &summary.schema, &summary.name)
     };
-    if database_type != DatabaseType::SQLite {
-        if let Some(suffix) = explorer_kind_suffix(&summary.kind_info) {
-            label.push_str(&suffix);
-        }
+    if database_type != DatabaseType::SQLite
+        && let Some(suffix) = explorer_kind_suffix(&summary.kind_info)
+    {
+        label.push_str(&suffix);
     }
     label
 }
