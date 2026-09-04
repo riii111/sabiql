@@ -4,9 +4,9 @@ expression: output
 ---
 test_project ▸ test_db ▸ -       connected | local
 ┌ [1] Explor┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]
-│> public.u │┌ [2] Inspector ────────────────────┐
-│  public.p ││(select a table)                   │
-│  public.c ││                                   │
+│> users    │┌ [2] Inspector ────────────────────┐
+│  posts    ││(select a table)                   │
+│  comments ││                                   │
 │       ╭ SQLite Diagnostics ─────────────╮      │
 │       │                                 │      │
 │       │SQLite features: FTS5: available │      │

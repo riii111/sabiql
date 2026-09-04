@@ -30,45 +30,12 @@ pub fn table_key_display_name(
         .to_string()
 }
 
-fn has_list_annotation(kind_info: &TableKindInfo) -> bool {
-    kind_info.kind != TableKind::Table
-        || kind_info.is_strict
-        || kind_info.without_rowid
-        || kind_info.virtual_module.is_some()
-}
-
-pub fn explorer_kind_suffix(kind_info: &TableKindInfo) -> Option<String> {
-    if !has_list_annotation(kind_info) {
-        return None;
-    }
-
-    let mut parts = Vec::new();
-    match kind_info.kind {
-        TableKind::Table => parts.push("table".to_string()),
-        TableKind::Virtual => {
-            if let Some(module) = &kind_info.virtual_module {
-                parts.push(format!("virtual/{module}"));
-            } else {
-                parts.push("virtual".to_string());
-            }
-        }
-        TableKind::View => parts.push("view".to_string()),
-    }
-    if kind_info.is_strict {
-        parts.push("strict".to_string());
-    }
-    if kind_info.without_rowid {
-        parts.push("no-rowid".to_string());
-    }
-    Some(format!(" [{}]", parts.join("+")))
-}
-
 pub fn explorer_table_label(summary: &TableSummary, database_type: DatabaseType) -> String {
-    let mut label = table_display_name(database_type, &summary.schema, &summary.name);
-    if let Some(suffix) = explorer_kind_suffix(&summary.kind_info) {
-        label.push_str(&suffix);
+    if database_type == DatabaseType::SQLite {
+        summary.name.clone()
+    } else {
+        table_display_name(database_type, &summary.schema, &summary.name)
     }
-    label
 }
 
 pub fn explorer_table_label_width(summary: &TableSummary, database_type: DatabaseType) -> usize {
@@ -115,18 +82,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ordinary_table_has_no_explorer_suffix() {
+    fn sqlite_explorer_shows_table_name_without_schema() {
         let summary = TableSummary::new("main".to_string(), "users".to_string(), None, false);
 
-        assert_eq!(explorer_kind_suffix(&summary.kind_info), None);
         assert_eq!(
             explorer_table_label(&summary, DatabaseType::SQLite),
-            "main.users"
+            "users"
         );
     }
 
     #[test]
-    fn virtual_table_shows_module_in_explorer_suffix() {
+    fn sqlite_explorer_hides_virtual_table_suffix_but_inspector_keeps_kind() {
         let summary = TableSummary::new("main".to_string(), "notes_fts".to_string(), None, false)
             .with_kind_info(TableKindInfo {
                 kind: TableKind::Virtual,
@@ -135,12 +101,8 @@ mod tests {
             });
 
         assert_eq!(
-            explorer_kind_suffix(&summary.kind_info),
-            Some(" [virtual/fts5]".to_string())
-        );
-        assert_eq!(
             explorer_table_label(&summary, DatabaseType::SQLite),
-            "main.notes_fts [virtual/fts5]"
+            "notes_fts"
         );
         assert_eq!(
             inspector_kind_label(&summary.kind_info),
@@ -149,7 +111,7 @@ mod tests {
     }
 
     #[test]
-    fn strict_without_rowid_table_shows_flags() {
+    fn sqlite_explorer_hides_table_flags_but_inspector_keeps_flags() {
         let summary = TableSummary::new("main".to_string(), "settings".to_string(), None, false)
             .with_kind_info(TableKindInfo {
                 is_strict: true,
@@ -158,8 +120,8 @@ mod tests {
             });
 
         assert_eq!(
-            explorer_kind_suffix(&summary.kind_info),
-            Some(" [table+strict+no-rowid]".to_string())
+            explorer_table_label(&summary, DatabaseType::SQLite),
+            "settings"
         );
         assert_eq!(
             inspector_flags_label(&summary.kind_info),
@@ -168,7 +130,7 @@ mod tests {
     }
 
     #[test]
-    fn view_shows_read_only_kind_labels() {
+    fn sqlite_explorer_hides_view_suffix_but_inspector_keeps_kind() {
         let summary =
             TableSummary::new("main".to_string(), "active_users".to_string(), None, false)
                 .with_kind_info(TableKindInfo {
@@ -177,8 +139,8 @@ mod tests {
                 });
 
         assert_eq!(
-            explorer_kind_suffix(&summary.kind_info),
-            Some(" [view]".to_string())
+            explorer_table_label(&summary, DatabaseType::SQLite),
+            "active_users"
         );
         assert_eq!(inspector_kind_label(&summary.kind_info), "View");
     }

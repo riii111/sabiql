@@ -1,14 +1,13 @@
 ---
 source: src/tests/render_snapshots/table_explorer.rs
-assertion_line: 120
 expression: output
 ---
 test_project ▸ app.db ▸ -                                                                                                                          connected | app.db
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]                                                                                       
-│> main.users                           │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│  main.settings [table+no-rowid]       ││(select a table)                                                                                                          │
-│  main.notes_fts [virtual/fts5]        ││                                                                                                                          │
-│  main.typed_users [table+strict]      ││                                                                                                                          │
+│> users                                │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  settings                             ││(select a table)                                                                                                          │
+│  notes_fts                            ││                                                                                                                          │
+│  typed_users                          ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
