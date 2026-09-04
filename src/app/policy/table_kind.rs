@@ -30,12 +30,51 @@ pub fn table_key_display_name(
         .to_string()
 }
 
+fn has_list_annotation(kind_info: &TableKindInfo) -> bool {
+    kind_info.kind != TableKind::Table
+        || kind_info.is_strict
+        || kind_info.without_rowid
+        || kind_info.virtual_module.is_some()
+}
+
+fn explorer_kind_suffix(kind_info: &TableKindInfo) -> Option<String> {
+    if !has_list_annotation(kind_info) {
+        return None;
+    }
+
+    let mut parts = Vec::new();
+    match kind_info.kind {
+        TableKind::Table => parts.push("table".to_string()),
+        TableKind::Virtual => {
+            if let Some(module) = &kind_info.virtual_module {
+                parts.push(format!("virtual/{module}"));
+            } else {
+                parts.push("virtual".to_string());
+            }
+        }
+        TableKind::View => parts.push("view".to_string()),
+    }
+    if kind_info.is_strict {
+        parts.push("strict".to_string());
+    }
+    if kind_info.without_rowid {
+        parts.push("no-rowid".to_string());
+    }
+    Some(format!(" [{}]", parts.join("+")))
+}
+
 pub fn explorer_table_label(summary: &TableSummary, database_type: DatabaseType) -> String {
-    if database_type == DatabaseType::SQLite {
+    let mut label = if database_type == DatabaseType::SQLite {
         summary.name.clone()
     } else {
         table_display_name(database_type, &summary.schema, &summary.name)
+    };
+    if database_type != DatabaseType::SQLite {
+        if let Some(suffix) = explorer_kind_suffix(&summary.kind_info) {
+            label.push_str(&suffix);
+        }
     }
+    label
 }
 
 pub fn explorer_table_label_width(summary: &TableSummary, database_type: DatabaseType) -> usize {
@@ -153,6 +192,20 @@ mod tests {
         assert_eq!(
             explorer_table_label(&summary, DatabaseType::PostgreSQL),
             "app.users"
+        );
+    }
+
+    #[test]
+    fn mysql_view_keeps_explorer_kind_suffix() {
+        let summary = TableSummary::new("app".to_string(), "active_users".to_string(), None, false)
+            .with_kind_info(TableKindInfo {
+                kind: TableKind::View,
+                ..TableKindInfo::default()
+            });
+
+        assert_eq!(
+            explorer_table_label(&summary, DatabaseType::MySQL),
+            "active_users [view]"
         );
     }
 
