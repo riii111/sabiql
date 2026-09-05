@@ -6,7 +6,7 @@ use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::render_output::PickerLayout;
-use crate::app::policy::table_kind::table_display_name;
+use crate::app::policy::table_kind::{table_display_name, table_key_display_name};
 use crate::app::update::input::keybindings;
 use crate::domain::er::er_output_filename;
 use crate::primitives::molecules::{FooterHintBar, render_filter_input_line, render_modal};
@@ -33,7 +33,11 @@ impl ErTablePicker {
                 theme.semantic.text.muted,
             )
         } else if selected_count == 1 {
-            let name = state.ui.er_selected_tables().iter().next().unwrap().clone();
+            let name = table_key_display_name(
+                state.session.active_database_type_or_default(),
+                state.session.database_name(),
+                state.ui.er_selected_tables().iter().next().unwrap(),
+            );
             (
                 "Partial ER".to_string(),
                 name,
