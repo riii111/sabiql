@@ -134,6 +134,34 @@ fn sqlite_explorer_shows_table_names_without_schema_or_kind_suffixes() {
 }
 
 #[test]
+fn sqlite_header_shows_table_name_without_schema() {
+    let mut state = create_test_state();
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::from_string("sqlite-test"),
+        "app.db",
+        DatabaseType::SQLite,
+        "sqlite:///tmp/app.db",
+    );
+    let mut metadata = DatabaseMetadata::new("app.db".to_string());
+    metadata.schemas = vec![Schema::new("main")];
+    metadata.table_summaries = vec![TableSummary::new(
+        "main".to_string(),
+        "users".to_string(),
+        None,
+        false,
+    )];
+    state.session.mark_connected(Arc::new(metadata));
+    let _ = state
+        .session
+        .select_table("main", "users", &mut state.query);
+
+    let mut terminal = create_test_terminal();
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn mysql_header_and_explorer_show_table_names() {
     let mut state = create_test_state();
     state.session.activate_connection_with_target(

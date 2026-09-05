@@ -6,6 +6,7 @@ use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::render_output::PickerLayout;
+use crate::app::policy::table_kind::table_display_name;
 use crate::app::update::input::keybindings;
 use crate::domain::er::er_output_filename;
 use crate::primitives::molecules::{FooterHintBar, render_filter_input_line, render_modal};
@@ -121,12 +122,17 @@ impl ErTablePicker {
                 let qn = t.qualified_name();
                 let is_selected = state.ui.er_selected_tables().contains(&qn);
                 let mark = if is_selected { "✔ " } else { "  " };
+                let display_name = table_display_name(
+                    state.session.active_database_type_or_default(),
+                    &t.schema,
+                    &t.name,
+                );
                 let style = if is_selected {
                     Style::default().fg(theme.semantic.surface.focus_border)
                 } else {
                     Style::default().fg(theme.semantic.text.secondary)
                 };
-                ListItem::new(format!("  {mark}{qn}")).style(style)
+                ListItem::new(format!("  {mark}{display_name}")).style(style)
             })
             .collect();
 
