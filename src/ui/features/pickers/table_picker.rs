@@ -6,6 +6,7 @@ use ratatui::widgets::{List, ListItem, ListState};
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::render_output::PickerLayout;
 use crate::app::policy::table_kind::table_display_name;
+use crate::app::update::input::keybindings::table_picker;
 use crate::primitives::molecules::{FooterHintBar, render_filter_input_line, render_modal};
 use crate::theme::ThemePalette;
 
@@ -20,7 +21,10 @@ impl TablePicker {
             Constraint::Percentage(60),
             Constraint::Percentage(70),
             " Table Picker ",
-            FooterHintBar::with_prefix(format!("{filtered_count} tables"), [("Enter", "Select")]),
+            FooterHintBar::with_prefix(
+                format!("{filtered_count} tables"),
+                [table_picker::ENTER_SELECT.as_hint()],
+            ),
             theme,
         );
 

@@ -24,4 +24,4 @@ test_project ▸ test_db ▸ -       connected | local
 │           ││                                   │
 │           ││                                   │
 └───────────┘└───────────────────────────────────┘
-↑↓:Scroll  r:Run check  ?:Help  Esc:Close
+?:Help

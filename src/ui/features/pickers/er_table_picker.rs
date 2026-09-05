@@ -63,10 +63,10 @@ impl ErTablePicker {
             FooterHintBar::with_prefix(
                 format!("{selected_count}/{total_count} selected"),
                 [
-                    ("Space", "Select"),
+                    keybindings::er_picker::SELECT.as_hint(),
                     select_all_hint,
-                    ("Enter", "Generate"),
-                    ("Esc", "Cancel"),
+                    keybindings::er_picker::ENTER_GENERATE.as_hint(),
+                    keybindings::er_picker::ESC_CLOSE.as_hint(),
                 ],
             ),
             theme,

@@ -1,11 +1,11 @@
 ---
-source: src/tests/render_snapshots/connection_flow.rs
+source: src/tests/render_snapshots/initial_state.rs
 expression: output
 ---
-test_project ▸ - ▸ -                                                                                                                 not loaded | localhost:5432/test
+test_project ▸ test_db ▸ -                                                                                                                error | localhost:5432/test
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
-│ Press 'r' to load metadata            │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                       ││(select a table)                                                                                                          │
+│ Metadata load failed                  │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ (r: retry, Enter: details)            ││(select a table)                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -22,17 +22,17 @@ test_project ▸ - ▸ -                                                        
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
-│                        ╭ Connection Error ───────────────────────────────────────────────────────────────────────────────────────────────╮                        │
-│                        │✗ Connection failed                                                                                              │                        │
-│                        │                                                                                                                 │                        │
-│                        │Hint: See details for more information                                                                           │                        │
-│                        │                                                                                                                 │────────────────────────┘
-│                        │▼ Details                                                                                                        │────────────────────────┐
-│                        │psql: error: connection to server at "localhost" (127.0.0.1), port 5433 failed: Connection refused               │                        │
-│                        │    Is the server running on that host and accepting TCP/IP connections?                                         │                        │
-│                        │                                                                                                                 │                        │
-│                        │Actions:  e  Edit   s  Switch   d  Details   y  Copy                                                             │                        │
-│                        ╰ Esc: Close ─────────────────────────────────────────────────────────────────────────────────────────────────────╯                        │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       │└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+│                                       │┌ [3] Result ──────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                       ││(select a table to preview)                                                                                               │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -51,4 +51,4 @@ test_project ▸ - ▸ -                                                        
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-e:Edit  s:Switch  d:Details  y:Copy
+r:Reload  s:SQL  e:ER Diagram  c:Connections  ^P:Tables  ^O:History  ^R:Read-Only  f:Focus  ?:Help  F1:Palette  ,:Settings  q:Quit
