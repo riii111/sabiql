@@ -1,7 +1,7 @@
 # sabiql
 ![hero](https://github.com/user-attachments/assets/745ab18f-915c-4017-81a6-465c5c5ee11c)
 
-Fast, safe-by-design, driverless, Vim-first DB TUI with ER diagrams.
+Fast, safe-by-design, Vim-first DB TUI with ER diagrams.
 
 [![CI](https://github.com/riii111/sabiql/actions/workflows/ci.yml/badge.svg)](https://github.com/riii111/sabiql/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -10,7 +10,7 @@ Fast, safe-by-design, driverless, Vim-first DB TUI with ER diagrams.
 
 > Vim-first · Safe by design · Oil-and-vinegar UI · Fast and lightweight
 
-sabiql brings database browsing, querying, and editing into the terminal without replacing your existing database setup. PostgreSQL connections continue to use your `psql` configuration, `.pgpass`, and SSL settings.
+sabiql brings database browsing, querying, and editing into the terminal while using the native CLI for each database. PostgreSQL connections can reuse existing libpq connection settings such as `.pgpass`, `pg_service.conf`, and SSL settings.
 
 Like [oil.nvim](https://github.com/stevearc/oil.nvim), sabiql keeps its interface out of your way. Following oil.nvim's "oil and vinegar" philosophy, UI elements appear only when needed. Vim-native keybindings such as `j/k`, `dd`, and `/` keep navigation and editing familiar.
 
@@ -107,7 +107,7 @@ Use `Ctrl+R` before browsing data when you want to block writes. Press `?` for h
 - [x] SQLite support
 - [x] MySQL support
 - [ ] Neovim integration (`sabiql.nvim`)
-- [ ] Zero-config connection (env vars, `.pgpass`, URI auto-detect)
+- [ ] Connection auto-detection (environment variables, URI)
 - [ ] Google Cloud SQL / AlloyDB support
 
 Have a feature request? [Open an issue](https://github.com/riii111/sabiql/issues/new). Feedback is welcome!

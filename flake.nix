@@ -74,7 +74,7 @@
             '';
 
             meta = {
-              description = "A fast, driver-less TUI for browsing and editing PostgreSQL and SQLite databases";
+              description = "Fast, safe-by-design, Vim-first DB TUI with ER diagrams";
               homepage = "https://github.com/riii111/sabiql";
               license = pkgs.lib.licenses.mit;
               mainProgram = "sabiql";
