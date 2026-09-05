@@ -12,10 +12,9 @@ fn parse_mysql_cli_diagnostic_line(line: &[u8]) -> Option<DatabaseDiagnostic> {
     let line = line.trim();
     let (level, rest) = if let Some(rest) = line.strip_prefix("Warning (Code ") {
         (DiagnosticLevel::Warning, rest)
-    } else if let Some(rest) = line.strip_prefix("Note (Code ") {
-        (DiagnosticLevel::Note, rest)
     } else {
-        return None;
+        let rest = line.strip_prefix("Note (Code ")?;
+        (DiagnosticLevel::Note, rest)
     };
     let (code, message) = rest.split_once("): ")?;
     Some(DatabaseDiagnostic {
