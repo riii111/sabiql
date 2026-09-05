@@ -7,6 +7,7 @@ use crate::theme::ThemePalette;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::connection::error_state::ConnectionErrorState;
+use crate::app::update::input::keybindings::connection_error;
 use crate::primitives::atoms::key_chip;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::primitives::utils::text_utils::wrapped_line_count;
@@ -51,7 +52,7 @@ impl ConnectionError {
             Constraint::Percentage(70),
             height,
             " Connection Error ",
-            FooterHintBar::new([("Esc", "Close")]),
+            FooterHintBar::new([connection_error::ESC_CLOSE.as_hint()]),
             theme,
         );
 
@@ -164,27 +165,32 @@ impl ConnectionError {
         theme: &ThemePalette,
     ) {
         let error_state = &state.connection_error;
+        let first = if state.can_retry_connection_error() {
+            connection_error::RETRY.as_hint()
+        } else {
+            connection_error::EDIT.as_hint()
+        };
         let mut spans = vec![Span::styled(
             "Actions: ",
             Style::default().fg(theme.semantic.text.muted),
         )];
-
-        if state.can_retry_connection_error() {
-            spans.push(key_chip("r", theme));
-            spans.push(Span::raw(" Retry  "));
-        } else {
-            spans.push(key_chip("e", theme));
-            spans.push(Span::raw(" Re-enter  "));
+        spans.push(key_chip(first.0, theme));
+        spans.push(Span::raw(format!(" {}  ", first.1)));
+        for (index, (key, desc)) in [
+            connection_error::SWITCH.as_hint(),
+            connection_error::DETAILS.as_hint(),
+            connection_error::COPY.as_hint(),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            spans.push(key_chip(key, theme));
+            spans.push(Span::raw(if index == 2 {
+                format!(" {desc}")
+            } else {
+                format!(" {desc}  ")
+            }));
         }
-
-        spans.extend([
-            key_chip("s", theme),
-            Span::raw(" Switch  "),
-            key_chip("d", theme),
-            Span::raw(" Details  "),
-            key_chip("y", theme),
-            Span::raw(" Copy"),
-        ]);
 
         if error_state.is_copied_visible_at(now) {
             spans.push(Span::raw("   "));

@@ -9,6 +9,7 @@ use crate::app::model::browse::json_detail::JsonDetailMode;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::shared::render_output::JsonDetailLayout;
 use crate::app::policy::{FeaturePolicy, FeatureRequirement};
+use crate::app::update::input::keybindings::{json_detail, json_edit, json_search};
 use crate::features::browse::detail_view::render_detail_search;
 use crate::primitives::atoms::scroll_indicator::{
     VerticalScrollParams, clamp_scroll_offset, render_vertical_scroll_indicator_bar,
@@ -46,15 +47,19 @@ impl JsonDetail {
             )
         };
         let hints = if is_editing {
-            vec![("Esc", "Normal")]
+            vec![json_edit::ESC_NORMAL.as_hint()]
+        } else if matches!(state.json_detail.mode(), JsonDetailMode::Searching) {
+            vec![
+                json_search::CONFIRM.as_hint(),
+                json_search::CANCEL.as_hint(),
+            ]
         } else {
             let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
-            let mut hints = vec![("y", "Copy")];
-            hints.push(("/", "Search"));
+            let mut hints = vec![json_detail::YANK.as_hint()];
             if feature_policy.is_enabled(FeatureRequirement::JsonDocumentEdit) {
-                hints.push(("i", "Insert"));
+                hints.push(json_detail::INSERT.as_hint());
             }
-            hints.push(("Esc", "Close"));
+            hints.extend([json_detail::SEARCH.as_hint(), json_detail::CLOSE.as_hint()]);
             hints
         };
 

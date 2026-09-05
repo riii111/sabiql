@@ -18,7 +18,8 @@ use crate::app::model::sql_editor::modal::{SQL_MODAL_HEIGHT_PERCENT, SqlModalSta
 use crate::app::policy::write::sql_risk::AcknowledgeReason;
 use crate::app::policy::{FeaturePolicy, FeatureRequirement};
 use crate::app::update::input::keybindings::{
-    sql_modal, sql_modal_compare, sql_modal_normal, sql_modal_plan, sql_modal_plan_explain,
+    sql_modal, sql_modal_compare, sql_modal_confirming, sql_modal_normal, sql_modal_plan,
+    sql_modal_plan_explain,
 };
 use crate::primitives::molecules::overlay::{centered_rect, render_scrim};
 use crate::primitives::molecules::{FooterHintBar, render_modal_with_border_color};
@@ -59,9 +60,12 @@ impl SqlModal {
                     );
                     let is_match = input.content() == target_name.as_str();
                     let footer = if is_match {
-                        FooterHintBar::new([("Enter", "Execute"), ("Esc", "Back")])
+                        FooterHintBar::new([
+                            sql_modal_confirming::ENTER_EXECUTE.as_hint(),
+                            sql_modal_confirming::CANCEL_CONFIRM.as_hint(),
+                        ])
                     } else {
-                        FooterHintBar::new([("Esc", "Back")])
+                        FooterHintBar::new([sql_modal_confirming::CANCEL_CONFIRM.as_hint()])
                     };
                     render_modal_with_border_color(
                         frame,
@@ -97,7 +101,10 @@ impl SqlModal {
                         Constraint::Percentage(80),
                         Constraint::Percentage(SQL_MODAL_HEIGHT_PERCENT),
                         title,
-                        FooterHintBar::new([("Enter", "Execute"), ("Esc", "Back")]),
+                        FooterHintBar::new([
+                            sql_modal_confirming::ENTER_EXECUTE.as_hint(),
+                            sql_modal_confirming::CANCEL_CONFIRM.as_hint(),
+                        ]),
                         border_color,
                         theme,
                     )

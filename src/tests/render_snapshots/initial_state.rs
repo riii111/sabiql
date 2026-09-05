@@ -12,6 +12,17 @@ fn initial_state_no_metadata() {
 }
 
 #[test]
+fn explorer_shows_retry_when_metadata_reload_fails() {
+    let mut state = postgres_connected_state();
+    state.session.mark_connection_failed();
+    let mut terminal = create_test_terminal();
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn explorer_shows_not_connected_when_no_active_connection() {
     let mut state = create_test_state();
     state.session.clear_connection();

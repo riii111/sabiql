@@ -1,6 +1,5 @@
 ---
 source: src/tests/render_snapshots/connection_flow.rs
-assertion_line: 114
 expression: output
 ---
 test_project ▸ - ▸ -                                                                                                                 not loaded | localhost:5432/test
@@ -52,4 +51,3 @@ test_project ▸ - ▸ -                                                        
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-Enter:Toggle  ^S:Connect  Tab/⇧Tab:Field  Esc:Cancel

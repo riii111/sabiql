@@ -3,8 +3,8 @@ use crate::model::shared::ui_state::text_display_width;
 
 pub fn table_display_name(database_type: DatabaseType, schema: &str, name: &str) -> String {
     match database_type {
-        DatabaseType::MySQL => name.to_string(),
-        DatabaseType::PostgreSQL | DatabaseType::SQLite => format!("{schema}.{name}"),
+        DatabaseType::MySQL | DatabaseType::SQLite => name.to_string(),
+        DatabaseType::PostgreSQL => format!("{schema}.{name}"),
     }
 }
 
@@ -13,21 +13,24 @@ pub fn table_key_display_name(
     database: Option<&str>,
     qualified_name: &str,
 ) -> String {
-    if database_type != DatabaseType::MySQL {
-        return qualified_name.to_string();
+    match database_type {
+        DatabaseType::MySQL => database
+            .and_then(|database| {
+                let qualified_database = qualified_name.get(..database.len())?;
+                let suffix = qualified_name.get(database.len()..)?;
+                qualified_database
+                    .eq_ignore_ascii_case(database)
+                    .then(|| suffix.strip_prefix('.'))
+                    .flatten()
+            })
+            .unwrap_or(qualified_name)
+            .to_string(),
+        DatabaseType::SQLite => qualified_name
+            .strip_prefix("main.")
+            .unwrap_or(qualified_name)
+            .to_string(),
+        DatabaseType::PostgreSQL => qualified_name.to_string(),
     }
-
-    database
-        .and_then(|database| {
-            let qualified_database = qualified_name.get(..database.len())?;
-            let suffix = qualified_name.get(database.len()..)?;
-            qualified_database
-                .eq_ignore_ascii_case(database)
-                .then(|| suffix.strip_prefix('.'))
-                .flatten()
-        })
-        .unwrap_or(qualified_name)
-        .to_string()
 }
 
 fn has_list_annotation(kind_info: &TableKindInfo) -> bool {
@@ -190,6 +193,10 @@ mod tests {
 
         assert_eq!(explorer_table_label(&summary, DatabaseType::MySQL), "users");
         assert_eq!(
+            table_display_name(DatabaseType::SQLite, "main", "users"),
+            "users"
+        );
+        assert_eq!(
             explorer_table_label(&summary, DatabaseType::PostgreSQL),
             "app.users"
         );
@@ -226,6 +233,10 @@ mod tests {
         assert_eq!(
             table_key_display_name(DatabaseType::PostgreSQL, Some("app"), "app.users"),
             "app.users"
+        );
+        assert_eq!(
+            table_key_display_name(DatabaseType::SQLite, Some("app.db"), "main.users"),
+            "users"
         );
     }
 }

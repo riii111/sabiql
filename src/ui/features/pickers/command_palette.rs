@@ -4,6 +4,7 @@ use ratatui::style::Style;
 use ratatui::widgets::{List, ListItem};
 
 use crate::app::model::app_state::AppState;
+use crate::app::update::input::keybindings::command_palette;
 use crate::app::update::input::palette::palette_commands;
 use crate::theme::ThemePalette;
 
@@ -18,7 +19,10 @@ impl CommandPalette {
             Constraint::Percentage(50),
             Constraint::Percentage(50),
             " Command Palette ",
-            FooterHintBar::new([("Enter", "Select"), ("Esc", "Close")]),
+            FooterHintBar::new([
+                command_palette::ENTER_EXECUTE.as_hint(),
+                command_palette::ESC_CLOSE.as_hint(),
+            ]),
             theme,
         );
 

@@ -6,6 +6,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::sqlite::diagnostics::{DiagnosticFieldKind, display_field, display_rows};
+use crate::app::update::input::keybindings::sqlite_diagnostics;
 use crate::domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::primitives::utils::text_utils::wrapped_line_count;
@@ -25,9 +26,16 @@ impl SqliteDiagnosticsOverlay {
         theme: &ThemePalette,
     ) -> SqliteDiagnosticsRenderMetrics {
         let hint_bar = if state.sqlite_diagnostics.can_run_quick_check() {
-            FooterHintBar::new([("Esc", "Close"), ("↑↓", "Scroll"), ("r", "Run check")])
+            FooterHintBar::new([
+                sqlite_diagnostics::ESC_CLOSE.as_hint(),
+                sqlite_diagnostics::SCROLL.as_hint(),
+                sqlite_diagnostics::RUN_QUICK_CHECK.as_hint(),
+            ])
         } else {
-            FooterHintBar::new([("Esc", "Close"), ("↑↓", "Scroll")])
+            FooterHintBar::new([
+                sqlite_diagnostics::ESC_CLOSE.as_hint(),
+                sqlite_diagnostics::SCROLL.as_hint(),
+            ])
         };
         let (_, inner) = render_modal(
             frame,
