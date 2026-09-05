@@ -23,7 +23,10 @@ impl TablePicker {
             " Table Picker ",
             FooterHintBar::with_prefix(
                 format!("{filtered_count} tables"),
-                [table_picker::ENTER_SELECT.as_hint()],
+                [
+                    table_picker::ENTER_SELECT.as_hint(),
+                    table_picker::ESC_CLOSE.as_hint(),
+                ],
             ),
             theme,
         );

@@ -13,8 +13,8 @@ use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::policy::{FeaturePolicy, FeatureRequirement};
 use crate::app::update::input::keybindings::{
     cell_detail, cell_detail_search, cell_edit, command_palette as command_palette_key,
-    connection_error, csv_export, exit_read_only, footer_nav, global, inspector_ddl, json_detail,
-    json_edit, json_search, overlay, query_history, query_history_picker, read_only, result_active,
+    connection_error, csv_export, er_picker, exit_read_only, footer_nav, global, inspector_ddl,
+    json_detail, json_edit, json_search, overlay, query_history, read_only, result_active,
     settings, sql_modal, sqlite_diagnostics, table_picker, table_picker as table_picker_key,
 };
 use crate::primitives::atoms::key_text;
@@ -222,17 +222,14 @@ impl Footer {
                 cell_edit::ESC_CANCEL.as_hint(),
                 global::QUIT.as_hint(),
             ],
-            InputMode::TablePicker => vec![
-                table_picker::TYPE_FILTER.as_hint(),
-                table_picker::ESC_CLOSE.as_hint(),
-            ],
+            InputMode::TablePicker => vec![table_picker::TYPE_FILTER.as_hint()],
             InputMode::CommandPalette
             | InputMode::Help
             | InputMode::ConfirmDialog
             | InputMode::ConnectionSetup
-            | InputMode::ErTablePicker
             | InputMode::RowDetail
-            | InputMode::ConnectionSelector => vec![],
+            | InputMode::ConnectionSelector
+            | InputMode::QueryHistoryPicker => vec![],
             InputMode::Settings => {
                 if state.settings.is_editing_custom_er_browser() {
                     vec![]
@@ -269,10 +266,15 @@ impl Footer {
                     vec![]
                 }
             }
-            InputMode::QueryHistoryPicker => vec![
-                query_history_picker::TYPE_FILTER.as_hint(),
-                query_history_picker::ESC_CLOSE.as_hint(),
-            ],
+            InputMode::ErTablePicker => {
+                let feature_policy =
+                    FeaturePolicy::new(&state.session.active_engine_feature_profile());
+                if feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
+                    vec![er_picker::TYPE_FILTER.as_hint()]
+                } else {
+                    vec![]
+                }
+            }
             InputMode::JsonDetail => {
                 let feature_policy =
                     FeaturePolicy::new(&state.session.active_engine_feature_profile());
@@ -352,8 +354,8 @@ mod tests {
     use crate::app::model::shared::ui_state::FocusMode;
     use crate::app::ports::outbound::DbOperationError;
     use crate::app::update::input::keybindings::{
-        connection_error, global, json_detail, query_history_picker, result_active, settings,
-        sql_modal, table_picker,
+        connection_error, er_picker, global, json_detail, result_active, settings, sql_modal,
+        table_picker,
     };
     use rstest::rstest;
 
@@ -548,32 +550,39 @@ mod tests {
     }
 
     #[test]
-    fn picker_footer_keeps_filter_and_close_hints() {
+    fn picker_footer_keeps_table_filter_hint() {
         let mut state = AppState::new("test".to_string());
 
         state.modal.set_mode(InputMode::TablePicker);
         assert_eq!(
             Footer::get_context_hints(&state),
-            vec![
-                table_picker::TYPE_FILTER.as_hint(),
-                table_picker::ESC_CLOSE.as_hint()
-            ]
+            vec![table_picker::TYPE_FILTER.as_hint()]
         );
 
         state.modal.set_mode(InputMode::QueryHistoryPicker);
+        assert!(Footer::get_context_hints(&state).is_empty());
+    }
+
+    #[test]
+    fn er_table_picker_footer_keeps_filter_hint() {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            DatabaseType::PostgreSQL,
+            "test://database",
+        );
+        state.modal.set_mode(InputMode::ErTablePicker);
+
         assert_eq!(
             Footer::get_context_hints(&state),
-            vec![
-                query_history_picker::TYPE_FILTER.as_hint(),
-                query_history_picker::ESC_CLOSE.as_hint(),
-            ]
+            vec![er_picker::TYPE_FILTER.as_hint()]
         );
     }
 
     #[rstest]
     #[case(InputMode::ConnectionSelector)]
     #[case(InputMode::CommandPalette)]
-    #[case(InputMode::ErTablePicker)]
     #[case(InputMode::ConnectionSetup)]
     fn modal_footer_hides_hints_rendered_in_modal_frame(#[case] mode: InputMode) {
         let mut state = AppState::new("test".to_string());
@@ -598,7 +607,7 @@ mod tests {
     }
 
     #[test]
-    fn settings_custom_browser_edit_hint_shows_done_and_typing() {
+    fn settings_custom_browser_edit_footer_hides_modal_hints() {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::Settings);
         state.settings.switch_next_section();

@@ -112,7 +112,10 @@ impl QueryHistoryPicker {
             " Query History ",
             FooterHintBar::with_prefix(
                 format!("{grouped_count} entries │ type to filter"),
-                [query_history_picker::ENTER_SELECT.as_hint()],
+                [
+                    query_history_picker::ENTER_SELECT.as_hint(),
+                    query_history_picker::ESC_CLOSE.as_hint(),
+                ],
             ),
             theme,
         );
