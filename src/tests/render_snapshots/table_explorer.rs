@@ -92,7 +92,7 @@ fn empty_query_result() {
 }
 
 #[test]
-fn sqlite_explorer_shows_table_kind_suffixes() {
+fn sqlite_explorer_shows_table_names_without_schema_or_kind_suffixes() {
     let mut state = create_test_state();
     state.session.activate_connection_with_dsn(
         &ConnectionId::from_string("sqlite-test"),

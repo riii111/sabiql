@@ -666,7 +666,7 @@ mod tests {
 
     mod horizontal_scroll {
         use super::*;
-        use crate::domain::TableKindInfo;
+        use crate::domain::{ConnectionId, DatabaseType, TableKindInfo};
         use crate::policy::table_kind::{explorer_table_label, explorer_table_label_width};
 
         #[rstest]
@@ -768,10 +768,16 @@ mod tests {
         }
 
         #[test]
-        fn right_scroll_includes_storage_suffix_width() {
+        fn right_scroll_uses_sqlite_table_name_width() {
             let mut state = AppState::new("test".to_string());
             state.ui.set_focused_pane(FocusedPane::Explorer);
-            state.ui.set_explorer_content_width(10);
+            state.ui.set_explorer_content_width(4);
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::from_string("sqlite-test"),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/test.db",
+            );
             let summary =
                 TableSummary::new("main".to_string(), "settings".to_string(), None, false)
                     .with_kind_info(TableKindInfo {
@@ -788,7 +794,7 @@ mod tests {
                 &state.tables()[0],
                 state.session.active_database_type_or_default(),
             )
-            .saturating_sub(10);
+            .saturating_sub(4);
             for _ in 0..32 {
                 dispatch_navigation(
                     &mut state,
@@ -803,12 +809,13 @@ mod tests {
             }
 
             assert_eq!(state.ui.explorer_horizontal_offset(), expected);
+            assert_eq!(expected, 4);
             assert_eq!(
                 explorer_table_label(
                     &state.tables()[0],
                     state.session.active_database_type_or_default(),
                 ),
-                "main.settings [table+no-rowid]"
+                "settings"
             );
         }
     }

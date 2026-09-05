@@ -4,9 +4,9 @@ expression: output
 ---
 test_project ▸ test_db ▸ -                                                                                                                         connected | app.db
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]
-│> public.users                         │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│  public.posts                         ││Name              Columns   Unique                                                                                        │
-│  public.comments                      ││users_pkey        id        ✓                                                                                             │
+│> users                                │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  posts                                ││Name              Columns   Unique                                                                                        │
+│  comments                             ││users_pkey        id        ✓                                                                                             │
 │                                       ││idx_users_email   email     ✓                                                                                             │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
