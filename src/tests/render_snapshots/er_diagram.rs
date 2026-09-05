@@ -95,3 +95,51 @@ fn er_table_picker_all_selected() {
 
     insta::assert_snapshot!(output);
 }
+
+#[test]
+fn mysql_er_table_picker_shows_table_names_without_database() {
+    let mut state = super::harness::create_test_state();
+    state.session.activate_connection_with_target(
+        &sabiql_domain::ConnectionId::from_string("mysql-test"),
+        "mysql",
+        sabiql_domain::DatabaseType::MySQL,
+        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+        Some("app"),
+    );
+    state.session.mark_connected(std::sync::Arc::new(
+        super::harness::fixtures::sample_metadata(),
+    ));
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::ErTablePicker);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn mysql_er_table_picker_single_select_shows_table_name_without_database() {
+    let mut state = super::harness::create_test_state();
+    state.session.activate_connection_with_target(
+        &sabiql_domain::ConnectionId::from_string("mysql-test"),
+        "mysql",
+        sabiql_domain::DatabaseType::MySQL,
+        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+        Some("app"),
+    );
+    let mut metadata = super::harness::fixtures::sample_metadata();
+    for table in &mut metadata.table_summaries {
+        table.schema = "app".to_string();
+    }
+    state.session.mark_connected(std::sync::Arc::new(metadata));
+    state.modal.set_mode(InputMode::ErTablePicker);
+    state
+        .ui
+        .replace_er_selected_tables(["app.users".to_string()]);
+    let mut terminal = create_test_terminal();
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}

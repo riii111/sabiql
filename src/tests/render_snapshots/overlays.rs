@@ -640,6 +640,19 @@ fn mysql_table_picker_shows_table_names_without_database() {
 }
 
 #[test]
+fn sqlite_table_picker_shows_table_names_without_database() {
+    let mut state = sqlite_connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::TablePicker);
+    state.ui.table_picker_mut().insert_filter_str("user");
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn command_line_input() {
     let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
