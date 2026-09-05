@@ -10,7 +10,7 @@ resolver = "3"
 [workspace.package]
 version = "3.0.0"
 edition = "2024"
-rust-version = "1.96"
+rust-version = "1.98"
 license = "MIT"
 repository = "https://github.com/riii111/sabiql"
 
@@ -64,7 +64,7 @@ name = "sabiql"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "A fast, driver-less TUI for browsing and editing PostgreSQL, MySQL, and SQLite databases"
+description = "Fast, safe-by-design, driverless, Vim-first DB TUI with ER diagrams"
 license.workspace = true
 repository.workspace = true
 homepage = "https://github.com/riii111/sabiql"

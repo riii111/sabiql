@@ -198,8 +198,7 @@ fn decode_hex_bytes(hex: &str) -> Result<Vec<u8>, DbOperationError> {
         ));
     }
     let mut bytes = Vec::with_capacity(hex.len() / 2);
-    let mut chars = hex.as_bytes().chunks_exact(2);
-    for pair in &mut chars {
+    for pair in hex.as_bytes().as_chunks::<2>().0 {
         let raw = std::str::from_utf8(pair)
             .map_err(|error| DbOperationError::MetadataParseFailed(error.to_string()))?;
         let byte = u8::from_str_radix(raw, 16)

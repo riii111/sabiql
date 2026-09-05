@@ -51,7 +51,6 @@ pub enum ScrollTarget {
     ExplainCompare,
     ExplainConfirm,
     Explorer,
-    JsonDetail,
     CellDetail,
     SqliteDiagnostics,
     RowDetail,
@@ -475,9 +474,6 @@ pub enum Action {
     StartCompletionPrefetch {
         tables: Vec<String>,
     },
-    ExpandPrefetchWithFkNeighbors {
-        run_id: u64,
-    },
     FkNeighborsDiscovered {
         run_id: u64,
         tables: Vec<String>,
@@ -541,7 +537,6 @@ pub enum Action {
 
     // Query results
     ExecutePreview(TableTarget),
-    ExecuteAdhoc(String),
     QueryCompleted {
         run_id: u64,
         result: Arc<QueryResult>,

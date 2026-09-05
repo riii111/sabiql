@@ -154,6 +154,7 @@ impl AppState {
         self.query.clear_expired_highlight(now);
         self.result_interaction.clear_expired_flash(now);
         self.flash_timers.clear_expired(now);
+        self.connection_error.clear_copied_feedback_if_expired(now);
     }
 
     /// Applies layout data produced during a draw. Inspector viewport plans are
@@ -509,6 +510,34 @@ mod tests {
     use rstest::rstest;
     fn make_state() -> AppState {
         AppState::new("test".to_string())
+    }
+
+    #[test]
+    fn clear_expired_timers_clears_connection_error_copied_feedback() {
+        let mut state = make_state();
+        let now = Instant::now();
+        state.connection_error.mark_copied_at(now);
+
+        state.clear_expired_timers(now + std::time::Duration::from_secs(2));
+        assert!(
+            state
+                .connection_error
+                .is_copied_visible_at(now + std::time::Duration::from_secs(2))
+        );
+
+        state.clear_expired_timers(now + std::time::Duration::from_secs(3));
+
+        assert!(
+            !state
+                .connection_error
+                .is_copied_visible_at(now + std::time::Duration::from_secs(3))
+        );
+        assert!(
+            state
+                .connection_error
+                .copied_feedback_expires_at()
+                .is_none()
+        );
     }
 
     #[test]

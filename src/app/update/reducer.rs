@@ -1541,6 +1541,30 @@ mod tests {
         }
 
         #[test]
+        fn copy_failure_does_not_schedule_feedback_deadline() {
+            let mut state = state_with_error();
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::CopyConnectionError,
+                now,
+                &AppServices::stub(),
+            );
+
+            let Effect::CopyToClipboard { on_failure, .. } = &effects[0] else {
+                panic!("expected clipboard effect");
+            };
+            assert!(on_failure.is_none());
+            assert!(
+                state
+                    .connection_error
+                    .copied_feedback_expires_at()
+                    .is_none()
+            );
+        }
+
+        #[test]
         fn copied_marks_feedback_visible() {
             let mut state = state_with_error();
             let now = Instant::now();
@@ -1701,23 +1725,6 @@ mod tests {
             // Check reloading flag is cleared and message is shown
             assert!(!state.session.is_reloading());
             assert_eq!(state.messages.last_success, Some("Reloaded!".to_string()));
-        }
-
-        #[test]
-        fn execute_adhoc_with_dsn_returns_effect() {
-            let mut state = create_test_state();
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let now = Instant::now();
-
-            let effects = reduce(
-                &mut state,
-                Action::ExecuteAdhoc("SELECT 1".to_string()),
-                now,
-                &AppServices::stub(),
-            );
-
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(effects[0], Effect::ExecuteAdhoc { .. }));
         }
     }
 
