@@ -44,11 +44,11 @@ test_project ▸ app ▸ -                                                      
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
-│                                ╰ 1/3 selected │ Space: Select │ ⌥A: All │ Enter: Generate │ Esc: Cancel ─────────────────────────╯                                │
+│                                ╰ 1/3 selected │ Space: Select │ ⌥A: All │ Enter: Generate │ Esc: Close ──────────────────────────╯                                │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-Enter:Generate  Space:Select  ⌥A:All  type:Filter  Esc:Close
+type:Filter

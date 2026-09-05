@@ -6,23 +6,17 @@ use ratatui::widgets::Paragraph;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::browse::json_detail::JsonDetailMode;
-use crate::app::model::connection::list as connection_list;
-use crate::app::model::connection::setup::ConnectionField;
 use crate::app::model::er_state::ErStatus;
-use crate::app::model::shared::help::HelpMode;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::policy::{FeaturePolicy, FeatureRequirement};
 use crate::app::update::input::keybindings::{
-    ModeRow, ROW_DETAIL_FOOTER_ROWS, cell_detail, cell_detail_search, cell_edit, command_palette,
-    command_palette as command_palette_key, connection_error, connection_selector,
-    connection_setup, connection_setup_save, csv_export, er_picker, er_picker_select_all,
-    exit_read_only, footer_nav, global, help, inspector_ddl, json_detail, json_edit, json_search,
-    overlay, query_history, query_history_picker, read_only, result_active, settings, sql_modal,
-    sql_modal_confirming, sqlite_diagnostics, table_picker, table_picker as table_picker_key,
+    cell_detail, cell_detail_search, cell_edit, command_palette as command_palette_key,
+    connection_error, csv_export, er_picker, exit_read_only, footer_nav, global, inspector_ddl,
+    json_detail, json_edit, json_search, overlay, query_history, read_only, result_active,
+    settings, sql_modal, sqlite_diagnostics, table_picker, table_picker as table_picker_key,
 };
-use crate::features::settings::hints::settings_hints;
 use crate::primitives::atoms::key_text;
 use crate::primitives::atoms::spinner_char;
 use crate::primitives::atoms::status_message::{MessageType, StatusMessage};
@@ -161,7 +155,10 @@ impl Footer {
                     let feature_policy = FeaturePolicy::new(&capabilities);
                     let active_inspector_tab =
                         capabilities.normalize_inspector_tab(state.ui.inspector_tab());
-                    let mut list = vec![global::RELOAD.as_hint(), global::SQL.as_hint()];
+                    let mut list = vec![global::SQL.as_hint()];
+                    if state.session.dsn().is_some() {
+                        list.insert(0, global::RELOAD.as_hint());
+                    }
                     if feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
                         list.push(global::ER_DIAGRAM.as_hint());
                     }
@@ -225,75 +222,27 @@ impl Footer {
                 cell_edit::ESC_CANCEL.as_hint(),
                 global::QUIT.as_hint(),
             ],
-            InputMode::TablePicker => vec![
-                table_picker::ENTER_SELECT.as_hint(),
-                table_picker::TYPE_FILTER.as_hint(),
-                table_picker::ESC_CLOSE.as_hint(),
-            ],
-            InputMode::CommandPalette => {
-                vec![
-                    command_palette::ENTER_EXECUTE.as_hint(),
-                    command_palette::ESC_CLOSE.as_hint(),
-                ]
-            }
-            InputMode::Help => match state.ui.help().mode() {
-                HelpMode::Viewing => vec![help::START_FILTER.as_hint(), help::CLOSE.as_hint()],
-                HelpMode::EditingFilter => vec![help::ESC_VIEWING.as_hint()],
-            },
-            InputMode::Settings => settings_hints(state),
-            InputMode::ConfirmDialog => vec![],
-            InputMode::SqlModal => {
-                if matches!(
-                    state.sql_modal.status(),
-                    SqlModalStatus::ConfirmingRisk { .. }
-                ) {
-                    vec![
-                        sql_modal_confirming::ENTER_EXECUTE.as_hint(),
-                        sql_modal_confirming::CANCEL_CONFIRM.as_hint(),
-                    ]
-                } else if matches!(
-                    state.sql_modal.status(),
-                    SqlModalStatus::ConfirmingHigh { .. }
-                ) {
-                    vec![sql_modal_confirming::CANCEL_CONFIRM.as_hint()]
-                } else if matches!(
-                    state.sql_modal.status(),
-                    SqlModalStatus::Normal
-                        | SqlModalStatus::Success(_)
-                        | SqlModalStatus::Error(_)
-                        | SqlModalStatus::ConfirmingAnalyzeHigh { .. }
-                        | SqlModalStatus::ConfirmingAnalyzeRisk { .. }
-                ) {
-                    // Hints are shown on the modal's bottom border, not the main footer.
+            InputMode::TablePicker => vec![table_picker::TYPE_FILTER.as_hint()],
+            InputMode::CommandPalette
+            | InputMode::Help
+            | InputMode::ConfirmDialog
+            | InputMode::ConnectionSetup
+            | InputMode::RowDetail
+            | InputMode::ConnectionSelector
+            | InputMode::QueryHistoryPicker => vec![],
+            InputMode::Settings => {
+                if state.settings.is_editing_custom_er_browser() {
                     vec![]
                 } else {
-                    // Editing / Running
-                    vec![
-                        sql_modal::RUN.as_hint(),
-                        sql_modal::MOVE.as_hint(),
-                        sql_modal::ESC_NORMAL.as_hint(),
-                    ]
+                    vec![settings::SELECT.as_hint()]
                 }
             }
-            InputMode::ConnectionSetup => {
-                let mut hints = if matches!(
-                    state.connection_setup.focused_field(),
-                    ConnectionField::DatabaseType
-                        | ConnectionField::Transport
-                        | ConnectionField::SslMode
-                ) {
-                    vec![
-                        connection_setup::ENTER_DROPDOWN.as_hint(),
-                        connection_setup::SAVE.as_hint(),
-                    ]
+            InputMode::SqlModal => {
+                if matches!(state.sql_modal.status(), SqlModalStatus::Editing) {
+                    vec![sql_modal::MOVE.as_hint()]
                 } else {
-                    vec![connection_setup_save(state.settings.saved_keymap_preset()).as_hint()]
-                };
-                hints.extend([
-                    connection_setup::TAB_NAV.as_hint(),
-                    connection_setup::ESC_CANCEL.as_hint(),
-                ]);
-                hints
+                    vec![]
+                }
             }
             InputMode::ConnectionError => {
                 let first = if state.can_retry_connection_error() {
@@ -306,117 +255,62 @@ impl Footer {
                     connection_error::SWITCH.as_hint(),
                     connection_error::DETAILS.as_hint(),
                     connection_error::COPY.as_hint(),
-                    connection_error::ESC_CLOSE.as_hint(),
                 ]
             }
             InputMode::SqliteDiagnostics => {
                 let feature_policy =
                     FeaturePolicy::new(&state.session.active_engine_feature_profile());
-                let mut hints = Vec::new();
                 if feature_policy.is_enabled(FeatureRequirement::SqliteDiagnostics) {
-                    hints.push(sqlite_diagnostics::SCROLL.as_hint());
-                    if state.sqlite_diagnostics.can_run_quick_check() {
-                        hints.push(sqlite_diagnostics::RUN_QUICK_CHECK.as_hint());
-                    }
+                    vec![sqlite_diagnostics::HELP.as_hint()]
+                } else {
+                    vec![]
                 }
-                hints.extend([
-                    sqlite_diagnostics::HELP.as_hint(),
-                    sqlite_diagnostics::ESC_CLOSE.as_hint(),
-                ]);
-                hints
             }
             InputMode::ErTablePicker => {
                 let feature_policy =
                     FeaturePolicy::new(&state.session.active_engine_feature_profile());
-                let mut hints = Vec::new();
                 if feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
-                    hints.extend([
-                        er_picker::ENTER_GENERATE.as_hint(),
-                        er_picker::SELECT.as_hint(),
-                        er_picker_select_all(state.settings.saved_keymap_preset()).as_hint(),
-                        er_picker::TYPE_FILTER.as_hint(),
-                    ]);
+                    vec![er_picker::TYPE_FILTER.as_hint()]
+                } else {
+                    vec![]
                 }
-                hints.push(er_picker::ESC_CLOSE.as_hint());
-                hints
             }
-            InputMode::QueryHistoryPicker => vec![
-                query_history_picker::ENTER_SELECT.as_hint(),
-                query_history_picker::TYPE_FILTER.as_hint(),
-                query_history_picker::ESC_CLOSE.as_hint(),
-            ],
             InputMode::JsonDetail => {
                 let feature_policy =
                     FeaturePolicy::new(&state.session.active_engine_feature_profile());
-                if !feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail) {
-                    vec![json_detail::CLOSE.as_hint()]
-                } else if matches!(state.json_detail.mode(), JsonDetailMode::Searching) {
-                    vec![
-                        json_search::TYPE_SEARCH.as_hint(),
-                        json_search::CONFIRM.as_hint(),
-                        json_search::CANCEL.as_hint(),
-                    ]
-                } else {
-                    let mut hints = vec![json_detail::YANK.as_hint()];
-                    if feature_policy.is_enabled(FeatureRequirement::JsonDocumentEdit) {
-                        hints.push(json_detail::INSERT.as_hint());
+                if matches!(state.json_detail.mode(), JsonDetailMode::Searching) {
+                    if feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail) {
+                        vec![json_search::TYPE_SEARCH.as_hint()]
+                    } else {
+                        vec![]
                     }
-                    hints.extend([
-                        json_detail::SEARCH.as_hint(),
+                } else if !feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail) {
+                    vec![]
+                } else {
+                    vec![
                         json_detail::NEXT_PREV.as_hint(),
                         json_detail::MOVE.as_hint(),
-                        json_detail::CLOSE.as_hint(),
-                    ]);
-                    hints
+                    ]
                 }
             }
             InputMode::JsonEdit => {
                 let feature_policy =
                     FeaturePolicy::new(&state.session.active_engine_feature_profile());
                 if feature_policy.is_enabled(FeatureRequirement::JsonDocumentEdit) {
-                    vec![
-                        json_edit::ESC_NORMAL.as_hint(),
-                        json_edit::MOVE.as_hint(),
-                        json_edit::HOME_END.as_hint(),
-                    ]
+                    vec![json_edit::MOVE.as_hint(), json_edit::HOME_END.as_hint()]
                 } else {
-                    vec![json_edit::ESC_NORMAL.as_hint()]
+                    vec![]
                 }
             }
             InputMode::CellDetail => {
                 if state.cell_detail.search().is_active() {
-                    vec![
-                        cell_detail_search::TYPE_SEARCH.as_hint(),
-                        cell_detail_search::CONFIRM.as_hint(),
-                        cell_detail_search::CANCEL.as_hint(),
-                    ]
+                    vec![cell_detail_search::TYPE_SEARCH.as_hint()]
                 } else {
                     vec![
-                        cell_detail::YANK.as_hint(),
-                        cell_detail::SEARCH.as_hint(),
                         cell_detail::NEXT_PREV.as_hint(),
                         cell_detail::SCROLL.as_hint(),
-                        cell_detail::CLOSE.as_hint(),
                     ]
                 }
-            }
-            InputMode::RowDetail => ROW_DETAIL_FOOTER_ROWS
-                .iter()
-                .map(ModeRow::as_hint)
-                .collect(),
-            InputMode::ConnectionSelector => {
-                use connection_selector as cs;
-                let is_service_selected = connection_list::is_service_selected(
-                    state.connection_list_items(),
-                    state.ui.connection_list_selected(),
-                );
-                let mut list = vec![cs::CONFIRM.as_hint(), cs::NEW.as_hint()];
-                if !is_service_selected {
-                    list.push(cs::EDIT.as_hint());
-                    list.push(cs::DELETE.as_hint());
-                }
-                list.push(cs::CLOSE.as_hint());
-                list
             }
         }
     }
@@ -460,8 +354,8 @@ mod tests {
     use crate::app::model::shared::ui_state::FocusMode;
     use crate::app::ports::outbound::DbOperationError;
     use crate::app::update::input::keybindings::{
-        connection_error, connection_setup, global, help, json_detail, json_edit, result_active,
-        row_detail,
+        connection_error, er_picker, global, json_detail, result_active, settings, sql_modal,
+        table_picker,
     };
     use rstest::rstest;
 
@@ -496,6 +390,17 @@ mod tests {
 
         let hints = Footer::get_context_hints(&state);
 
+        assert!(hints.contains(&global::CONNECTIONS.as_hint()));
+    }
+
+    #[test]
+    fn unconnected_normal_footer_hides_reload() {
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::Normal);
+
+        let hints = Footer::get_context_hints(&state);
+
+        assert!(!hints.contains(&global::RELOAD.as_hint()));
         assert!(hints.contains(&global::CONNECTIONS.as_hint()));
     }
 
@@ -565,7 +470,7 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_json_modes_keep_exit_hints() {
+    fn unsupported_json_modes_hide_modal_hints() {
         let mut state = AppState::new("test".to_string());
         state.session.activate_connection_with_dsn(
             &ConnectionId::new(),
@@ -575,20 +480,14 @@ mod tests {
         );
 
         state.modal.set_mode(InputMode::JsonDetail);
-        assert_eq!(
-            Footer::get_context_hints(&state),
-            vec![json_detail::CLOSE.as_hint()]
-        );
+        assert!(Footer::get_context_hints(&state).is_empty());
 
         state.modal.set_mode(InputMode::JsonEdit);
-        assert_eq!(
-            Footer::get_context_hints(&state),
-            vec![json_edit::ESC_NORMAL.as_hint()]
-        );
+        assert!(Footer::get_context_hints(&state).is_empty());
     }
 
     #[test]
-    fn mysql_json_detail_shows_edit_hint() {
+    fn mysql_json_detail_footer_keeps_non_modal_hints() {
         let mut state = AppState::new("test".to_string());
         state.session.activate_connection_with_dsn(
             &ConnectionId::new(),
@@ -600,9 +499,13 @@ mod tests {
 
         let hints = Footer::get_context_hints(&state);
 
-        assert!(hints.contains(&json_detail::INSERT.as_hint()));
-        assert!(hints.contains(&json_detail::YANK.as_hint()));
-        assert!(hints.contains(&json_detail::SEARCH.as_hint()));
+        assert_eq!(
+            hints,
+            vec![
+                json_detail::NEXT_PREV.as_hint(),
+                json_detail::MOVE.as_hint()
+            ]
+        );
     }
 
     #[test]
@@ -637,24 +540,59 @@ mod tests {
     }
 
     #[test]
-    fn row_detail_footer_omits_navigation_hints() {
+    fn row_detail_footer_hides_modal_hints() {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::RowDetail);
 
         let hints = Footer::get_context_hints(&state);
 
-        assert_eq!(
-            hints,
-            vec![
-                row_detail::YANK.as_hint(),
-                row_detail::YANK_JSON.as_hint(),
-                row_detail::CLOSE.as_hint(),
-            ]
-        );
+        assert!(hints.is_empty());
     }
 
     #[test]
-    fn settings_custom_browser_hint_shows_edit_when_selected() {
+    fn picker_footer_keeps_table_filter_hint() {
+        let mut state = AppState::new("test".to_string());
+
+        state.modal.set_mode(InputMode::TablePicker);
+        assert_eq!(
+            Footer::get_context_hints(&state),
+            vec![table_picker::TYPE_FILTER.as_hint()]
+        );
+
+        state.modal.set_mode(InputMode::QueryHistoryPicker);
+        assert!(Footer::get_context_hints(&state).is_empty());
+    }
+
+    #[test]
+    fn er_table_picker_footer_keeps_filter_hint() {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            DatabaseType::PostgreSQL,
+            "test://database",
+        );
+        state.modal.set_mode(InputMode::ErTablePicker);
+
+        assert_eq!(
+            Footer::get_context_hints(&state),
+            vec![er_picker::TYPE_FILTER.as_hint()]
+        );
+    }
+
+    #[rstest]
+    #[case(InputMode::ConnectionSelector)]
+    #[case(InputMode::CommandPalette)]
+    #[case(InputMode::ConnectionSetup)]
+    fn modal_footer_hides_hints_rendered_in_modal_frame(#[case] mode: InputMode) {
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(mode);
+
+        assert!(Footer::get_context_hints(&state).is_empty());
+    }
+
+    #[test]
+    fn settings_footer_keeps_only_selection_hint() {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::Settings);
         state.settings.switch_next_section();
@@ -662,15 +600,14 @@ mod tests {
         state.settings.start_custom_browser_edit();
         state.settings.stop_custom_browser_edit();
 
-        let hints = Footer::get_context_hints(&state);
-
-        assert!(hints.contains(&("i", "Edit")));
-        assert!(hints.contains(&("Tab/⇧Tab", "Section")));
-        assert!(hints.contains(&("Esc", "Cancel")));
+        assert_eq!(
+            Footer::get_context_hints(&state),
+            vec![settings::SELECT.as_hint()]
+        );
     }
 
     #[test]
-    fn settings_custom_browser_edit_hint_shows_done_and_typing() {
+    fn settings_custom_browser_edit_footer_hides_modal_hints() {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::Settings);
         state.settings.switch_next_section();
@@ -679,10 +616,7 @@ mod tests {
 
         let hints = Footer::get_context_hints(&state);
 
-        assert_eq!(
-            hints,
-            vec![("Enter", "Apply"), ("Esc", "Done"), ("Type", "Browser")]
-        );
+        assert!(hints.is_empty());
     }
 
     #[test]
@@ -692,14 +626,14 @@ mod tests {
 
         assert_eq!(
             Footer::get_context_hints(&state),
-            vec![help::START_FILTER.as_hint(), help::CLOSE.as_hint()]
+            Vec::<(&str, &str)>::new()
         );
 
         state.ui.help_mut().enter_filter_editing();
 
         assert_eq!(
             Footer::get_context_hints(&state),
-            vec![help::ESC_VIEWING.as_hint()]
+            Vec::<(&str, &str)>::new()
         );
     }
 
@@ -720,20 +654,16 @@ mod tests {
 
         let hints = Footer::get_context_hints(&state);
 
-        assert!(!hints.contains(&("^E", "Explain")));
+        assert_eq!(hints, vec![sql_modal::MOVE.as_hint()]);
     }
 
     #[test]
-    fn connection_setup_footer_shows_toggle_and_connect_on_ssl_field() {
+    fn connection_setup_footer_hides_modal_hints() {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::ConnectionSetup);
         focus_connection_field(&mut state, ConnectionField::SslMode);
 
-        let hints = Footer::get_context_hints(&state);
-
-        assert!(hints.contains(&connection_setup::ENTER_DROPDOWN.as_hint()));
-        assert!(hints.contains(&connection_setup::SAVE.as_hint()));
-        assert!(!hints.contains(&("Enter", "Connect")));
+        assert!(Footer::get_context_hints(&state).is_empty());
     }
 
     #[test]
@@ -755,5 +685,6 @@ mod tests {
         let hints = Footer::get_context_hints(&state);
 
         assert_eq!(hints[0], connection_error::EDIT.as_hint());
+        assert!(!hints.contains(&connection_error::ESC_CLOSE.as_hint()));
     }
 }

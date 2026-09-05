@@ -10,6 +10,7 @@ use crate::app::model::shared::ui_state::{
     explorer_content_width_from_inner_width, scroll_max_offset, text_display_width,
 };
 use crate::app::policy::table_kind::{explorer_table_label, max_explorer_table_label_width};
+use crate::app::update::input::keybindings::global;
 use crate::domain::MetadataState;
 use crate::theme::ThemePalette;
 
@@ -71,16 +72,29 @@ impl Explorer {
                     vec![ListItem::new(" Loading metadata...")]
                 }
                 MetadataState::Error => {
+                    let action_hint = if state.session.dsn().is_some() {
+                        " (r: retry, Enter: details)".to_string()
+                    } else {
+                        format!(" ({}: select connection)", global::CONNECTIONS.key_short)
+                    };
                     vec![
                         ListItem::new(" Metadata load failed"),
-                        ListItem::new(" (r: retry, Enter: details)"),
+                        ListItem::new(action_hint),
                     ]
                 }
                 MetadataState::Loaded => {
                     vec![ListItem::new(" No tables found")]
                 }
                 MetadataState::NotLoaded => {
-                    vec![ListItem::new(" Press 'r' to load metadata")]
+                    let action_hint = if state.session.dsn().is_some() {
+                        " Press 'r' to load metadata".to_string()
+                    } else {
+                        format!(
+                            " Press '{}' to select a connection",
+                            global::CONNECTIONS.key_short
+                        )
+                    };
+                    vec![ListItem::new(action_hint)]
                 }
             }
         };

@@ -31,7 +31,7 @@ test_project ▸ - ▸ -                                                        
 │                        │▼ Details                                                                                                        │                        │
 │                        │psql: error: connection to server at "192.168.1.100", port 5432 failed: timeout expired                          │                        │
 │                        │                                                                                                                 │                        │
-│                        │Actions:  e  Re-enter   s  Switch   d  Details   y  Copy                                                         │                        │
+│                        │Actions:  e  Edit   s  Switch   d  Details   y  Copy                                                             │                        │
 │                        ╰ Esc: Close ─────────────────────────────────────────────────────────────────────────────────────────────────────╯                        │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -51,4 +51,4 @@ test_project ▸ - ▸ -                                                        
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-e:Edit  s:Switch  d:Details  y:Copy  Esc:Close
+e:Edit  s:Switch  d:Details  y:Copy

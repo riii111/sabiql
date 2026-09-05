@@ -31,7 +31,7 @@ test_project ▸ - ▸ -                                                        
 │                        │psql: error: connection to server at "localhost" (127.0.0.1), port 5433 failed: Connection refused               │                        │
 │                        │    Is the server running on that host and accepting TCP/IP connections?                                         │                        │
 │                        │                                                                                                                 │                        │
-│                        │Actions:  e  Re-enter   s  Switch   d  Details   y  Copy                                                         │                        │
+│                        │Actions:  e  Edit   s  Switch   d  Details   y  Copy                                                             │                        │
 │                        ╰ Esc: Close ─────────────────────────────────────────────────────────────────────────────────────────────────────╯                        │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -51,4 +51,4 @@ test_project ▸ - ▸ -                                                        
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-e:Edit  s:Switch  d:Details  y:Copy  Esc:Close
+e:Edit  s:Switch  d:Details  y:Copy

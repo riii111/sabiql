@@ -8,6 +8,7 @@ use unicode_casefold::UnicodeCaseFold;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::detail_view::DetailDisplayMode;
 use crate::app::model::shared::flash_timer::FlashId;
+use crate::app::update::input::keybindings::{cell_detail, cell_detail_search};
 use crate::features::browse::detail_view::{render_detail_search, search_match_status};
 use crate::primitives::atoms::apply_yank_flash;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
@@ -35,7 +36,18 @@ impl CellDetail {
             " Cell Detail \u{2500}\u{2500} {}",
             state.cell_detail.column_name()
         );
-        let hints = vec![("y", "Copy"), ("/", "Search"), ("Esc", "Close")];
+        let hints = if state.cell_detail.search().is_active() {
+            vec![
+                cell_detail_search::CONFIRM.as_hint(),
+                cell_detail_search::CANCEL.as_hint(),
+            ]
+        } else {
+            vec![
+                cell_detail::YANK.as_hint(),
+                cell_detail::SEARCH.as_hint(),
+                cell_detail::CLOSE.as_hint(),
+            ]
+        };
         let (_area, inner) = render_modal(
             frame,
             Constraint::Percentage(80),

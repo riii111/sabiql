@@ -22,7 +22,7 @@ test_project ▸ test_db ▸ -                                           connect
 │         │  "key_19": "value_19",                                                      ││         │
 │         │  "key_2": "value_2",                                                        ▼│         │
 │         │✓ Valid JSON                                                                  │         │
-│         ╰ y: Copy │ /: Search │ i: Insert │ Esc: Close ────────────────────────────────╯         │
+│         ╰ y: Copy │ i: Insert │ /: Search │ Esc: Close ────────────────────────────────╯         │
 │                       ││ col   0% ◀︎════════════════════════════════════════════════════════════▶︎ │
 └───────────────────────┘└─────────────────────────────────────────────────────────────────────────┘
-y:Copy  i:Insert  /:Search  n/N:Next/Prev  hjkl/↑↓←→:Move  Esc:Close
+n/N:Next/Prev  hjkl/↑↓←→:Move
