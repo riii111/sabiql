@@ -207,6 +207,7 @@ mod tests {
 
     mod connections_loaded {
         use super::*;
+        use crate::domain::connection::ServiceEntry;
 
         #[test]
         fn sorts_connections_by_name_case_insensitive() {
@@ -263,7 +264,7 @@ mod tests {
                 &mut state,
                 &Action::ConnectionsLoaded(ConnectionsLoadedPayload {
                     profiles: vec![],
-                    services: vec![crate::domain::connection::ServiceEntry {
+                    services: vec![ServiceEntry {
                         service_name: "system".into(),
                         source_path: path.clone(),
                     }],

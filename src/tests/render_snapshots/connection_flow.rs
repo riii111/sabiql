@@ -5,6 +5,7 @@ use crate::tests::harness::{
 use sabiql_app::model::shared::settings::KeymapPreset;
 use sabiql_app::ports::outbound::DsnBuilder;
 use sabiql_domain::ConnectionProfile;
+use sabiql_domain::connection::ServiceEntry;
 
 struct EmptyPasswordDsnBuilder;
 
@@ -396,7 +397,7 @@ fn render_service_error_without_service_file_hint(save_and_connect: bool) -> Str
         DatabaseType::PostgreSQL,
         "service=mydb",
     );
-    state.set_service_entries(vec![sabiql_domain::connection::ServiceEntry {
+    state.set_service_entries(vec![ServiceEntry {
         service_name: "mydb".into(),
         source_path: "/etc/pg_service.conf".into(),
     }]);
@@ -546,8 +547,6 @@ fn footer_shows_success_message() {
 
 #[test]
 fn service_connection_error_shows_selected_source_path() {
-    use sabiql_domain::connection::ServiceEntry;
-
     let entries = vec![
         ServiceEntry {
             service_name: "user".into(),
