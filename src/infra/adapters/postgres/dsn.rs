@@ -49,12 +49,28 @@ fn push_conninfo_part(parts: &mut Vec<String>, key: &str, value: &str) {
     }
 }
 
-fn quote_conninfo_value(value: &str) -> String {
+pub(super) fn quote_conninfo_value(value: &str) -> String {
     let escaped = value.replace('\\', "\\\\").replace('\'', "\\'");
     format!("'{escaped}'")
 }
 
 fn find_conninfo_value(dsn: &str, key: &str) -> Option<String> {
+    find_conninfo_part(dsn, key).map(|(value, _)| value)
+}
+
+// This scanner serves the quoted conninfo emitted by build_dsn, not arbitrary libpq input.
+pub(super) fn take_explicit_password(dsn: &str) -> Option<(String, String)> {
+    let (password, range) = find_conninfo_part(dsn, "password")?;
+    if password.is_empty() {
+        return None;
+    }
+    let mut connection = dsn.to_string();
+    // An explicit empty password suppresses service/environment defaults while allowing passfile.
+    connection.replace_range(range, "password=''");
+    Some((connection, password))
+}
+
+fn find_conninfo_part(dsn: &str, key: &str) -> Option<(String, std::ops::Range<usize>)> {
     let bytes = dsn.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
@@ -78,7 +94,7 @@ fn find_conninfo_value(dsn: &str, key: &str) -> Option<String> {
         i += 1;
         let (value, next) = parse_conninfo_value(dsn, i);
         if candidate.eq_ignore_ascii_case(key) {
-            return Some(value);
+            return Some((value, key_start..next));
         }
         i = next;
     }
