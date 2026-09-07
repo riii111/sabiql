@@ -1019,7 +1019,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn authentication_and_tls_rejection_stay_normal_errors() {
+        async fn authentication_and_certificate_rejection_stay_normal_errors() {
             let auth = run_fake_write(
                 "printf 'FATAL:  28P01: password authentication failed\\n' >&2; exit 2",
                 1,
@@ -1041,6 +1041,21 @@ mod tests {
             )
             .await;
             assert!(matches!(tls, Err(DbOperationError::QueryFailed(_))));
+        }
+
+        #[tokio::test]
+        async fn tls_transport_drop_is_result_unknown() {
+            let result = run_fake_write(
+                "printf 'psql: error: SSL SYSCALL error: EOF detected\\n' >&2; exit 2",
+                1,
+                false,
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange { .. })
+            ));
         }
 
         #[tokio::test]

@@ -54,12 +54,16 @@ fn is_definitive_connection_rejection(error: &DbOperationError) -> bool {
     match error {
         DbOperationError::ConnectionFailed(_)
         | DbOperationError::ConnectionFailedWithKind { .. } => true,
-        DbOperationError::QueryFailed(details) => {
-            let lower = details.to_lowercase();
-            lower.contains("ssl") || lower.contains("tls") || lower.contains("certificate")
-        }
+        DbOperationError::QueryFailed(details) => is_certificate_verification_failure(details),
         _ => false,
     }
+}
+
+fn is_certificate_verification_failure(details: &str) -> bool {
+    let lower = details.to_lowercase();
+    lower.contains("certificate verify failed")
+        || lower.contains("certificate verification failed")
+        || (lower.contains("server certificate") && lower.contains("does not match host name"))
 }
 
 fn exit_status_details(status: ExitStatus) -> String {
