@@ -12,10 +12,10 @@ pub(super) struct Passfile {
 
 impl Passfile {
     pub(super) fn create(password: &str) -> Result<Self, DbOperationError> {
-        // libpq reads one physical line; escaping LF cannot preserve the password.
-        if password.contains(['\n', '\0']) {
+        // libpq reads physical lines and strips trailing CR; neither can be escaped losslessly.
+        if password.contains(['\n', '\0']) || password.ends_with('\r') {
             return Err(DbOperationError::ConnectionFailed(
-                "PostgreSQL passwords containing LF or NUL cannot be passed through a password file"
+                "PostgreSQL passwords containing LF, NUL, or a trailing CR cannot be passed through a password file"
                     .to_string(),
             ));
         }
@@ -51,8 +51,7 @@ fn write_password(mut file: File, password: &str) -> std::io::Result<()> {
     crate::adapters::windows_file_security::restrict_to_current_user(&file)?;
     let escaped = password.replace('\\', "\\\\").replace(':', "\\:");
     // A per-process wildcard retains libpq's socket, host list and default-user semantics.
-    // The final delimiter prevents libpq from stripping a password's trailing CR.
-    writeln!(file, "*:*:*:*:{escaped}:")
+    writeln!(file, "*:*:*:*:{escaped}")
 }
 
 fn passfile_error(error: std::io::Error) -> DbOperationError {
@@ -66,13 +65,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn escapes_password_and_preserves_trailing_carriage_return() {
-        let file = Passfile::create("p:a\\ss '日本語'\t\r").unwrap();
+    fn escapes_password_and_preserves_embedded_carriage_return() {
+        let file = Passfile::create("p:a\\ss '日本語'\t\rend").unwrap();
         let path = file.path.clone();
 
         assert_eq!(
             fs::read_to_string(&path).unwrap(),
-            "*:*:*:*:p\\:a\\\\ss '日本語'\t\r:\n"
+            "*:*:*:*:p\\:a\\\\ss '日本語'\t\rend\n"
         );
         #[cfg(unix)]
         {
@@ -88,9 +87,12 @@ mod tests {
         assert!(!path.exists());
     }
 
-    #[test]
-    fn nul_is_rejected_without_echoing_password() {
-        let error = Passfile::create("private\0value").err().unwrap();
+    #[rstest::rstest]
+    #[case("private\0value")]
+    #[case("private\nvalue")]
+    #[case("private\r")]
+    fn unrepresentable_password_is_rejected_without_echoing_secret(#[case] password: &str) {
+        let error = Passfile::create(password).err().unwrap();
 
         assert!(!error.to_string().contains("private"));
         assert!(matches!(error, DbOperationError::ConnectionFailed(_)));
