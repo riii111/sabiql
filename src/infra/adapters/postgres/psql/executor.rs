@@ -20,24 +20,47 @@ use super::passfile::Passfile;
 #[derive(Debug)]
 enum PsqlExecutionFailure {
     BeforeSpawn(DbOperationError),
-    Transport(DbOperationError),
+    Transport {
+        error: DbOperationError,
+        stdout: String,
+    },
     Definitive(DbOperationError),
 }
 
 impl PsqlExecutionFailure {
     fn into_db_operation_error(self) -> DbOperationError {
         match self {
-            Self::BeforeSpawn(error) | Self::Transport(error) | Self::Definitive(error) => error,
+            Self::BeforeSpawn(error) | Self::Definitive(error) | Self::Transport { error, .. } => {
+                error
+            }
         }
     }
 
     fn into_write_error(self, read_only: bool) -> DbOperationError {
         match self {
             Self::BeforeSpawn(error) | Self::Definitive(error) => error,
-            Self::Transport(error) if read_only => error,
-            Self::Transport(error) => DbOperationError::QueryFailedAfterChange {
+            Self::Transport { error, .. } if read_only => error,
+            Self::Transport { error, .. } => DbOperationError::QueryFailedAfterChange {
                 source: Arc::new(error),
                 refresh_scope: RefreshScope::Data,
+            },
+        }
+    }
+
+    fn into_query_error(
+        self,
+        query: &str,
+        read_only: bool,
+        marker: Option<&str>,
+    ) -> DbOperationError {
+        match self {
+            Self::BeforeSpawn(error) | Self::Definitive(error) => error,
+            Self::Transport { error, .. } if read_only => error,
+            Self::Transport { error, stdout } => DbOperationError::QueryFailedAfterChange {
+                source: Arc::new(error),
+                refresh_scope: PostgresAdapter::uncertain_query_refresh_scope(
+                    &stdout, query, marker,
+                ),
             },
         }
     }
@@ -294,15 +317,19 @@ impl PostgresAdapter {
             process.stop().await;
         }
         let (status, stdout, stderr) = result
-            .map_err(|e| PsqlExecutionFailure::Transport(DbOperationError::Timeout(e.to_string())))?
-            .map_err(|e| {
-                PsqlExecutionFailure::Transport(DbOperationError::QueryFailed(e.to_string()))
+            .map_err(|e| PsqlExecutionFailure::Transport {
+                error: DbOperationError::Timeout(e.to_string()),
+                stdout: String::new(),
+            })?
+            .map_err(|e| PsqlExecutionFailure::Transport {
+                error: DbOperationError::QueryFailed(e.to_string()),
+                stdout: String::new(),
             })?;
         if !status.success() {
             let error = classify_query_error(&stderr, status);
             return Err(
                 if is_transport_interruption(&error, status, !stdout.trim().is_empty()) {
-                    PsqlExecutionFailure::Transport(error)
+                    PsqlExecutionFailure::Transport { error, stdout }
                 } else {
                     PsqlExecutionFailure::Definitive(error)
                 },
@@ -351,7 +378,16 @@ impl PostgresAdapter {
         )]
         let start = Instant::now();
 
-        let output = self.run_psql(dsn, &["--csv"], query, read_only).await?;
+        let (mut cmd, passfile) =
+            Self::build_psql_command(dsn, &["--csv"], &["-c", query], read_only).map_err(
+                |error| {
+                    PsqlExecutionFailure::BeforeSpawn(error)
+                        .into_query_error(query, read_only, None)
+                },
+            )?;
+        let output = Self::collect_output_with_phase(&mut cmd, passfile, self.timeout_secs)
+            .await
+            .map_err(|error| error.into_query_error(query, read_only, None))?;
 
         let elapsed = start.elapsed().as_millis() as u64;
 
@@ -390,9 +426,17 @@ impl PostgresAdapter {
         let marker = boundary_marker();
         let args = segmented_query_args(statements, &marker);
         let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        let output = self
-            .run_psql_args(dsn, &["--csv"], &arg_refs, read_only)
-            .await?;
+        let (mut cmd, passfile) = Self::build_psql_command(dsn, &["--csv"], &arg_refs, read_only)
+            .map_err(|error| {
+            PsqlExecutionFailure::BeforeSpawn(error).into_query_error(
+                query,
+                read_only,
+                Some(&marker),
+            )
+        })?;
+        let output = Self::collect_output_with_phase(&mut cmd, passfile, self.timeout_secs)
+            .await
+            .map_err(|error| error.into_query_error(query, read_only, Some(&marker)))?;
 
         let elapsed = start.elapsed().as_millis() as u64;
 
@@ -435,6 +479,28 @@ impl PostgresAdapter {
         QueryResult::success(query.to_string(), Vec::new(), Vec::new(), elapsed, source)
             .with_row_count(row_count)
             .with_command_tag(tag)
+    }
+
+    fn uncertain_query_refresh_scope(
+        stdout: &str,
+        query: &str,
+        marker: Option<&str>,
+    ) -> RefreshScope {
+        let output = if let Some(marker) = marker {
+            let segments = split_marker_segments(stdout, marker);
+            let expected = split_sql_statements(query).len();
+            if segments.len() != expected
+                || segments.iter().any(|segment| segment.trim().is_empty())
+            {
+                return RefreshScope::Metadata;
+            }
+            segments.join("\n")
+        } else {
+            stdout.to_string()
+        };
+
+        Self::parse_aggregate_command_tag(&output, query)
+            .map_or(RefreshScope::Metadata, |tag| tag.refresh_scope())
     }
 
     fn csv_result(
@@ -966,6 +1032,245 @@ mod tests {
                 result,
                 Err(DbOperationError::QueryFailed(details))
                     if details == "psql terminated by signal 15"
+            ));
+        }
+    }
+
+    #[cfg(unix)]
+    mod adhoc_execution {
+        use std::process::Stdio;
+
+        use tokio::process::Command;
+
+        use crate::app::ports::outbound::{ConnectionFailureKind, DbOperationError};
+        use crate::domain::RefreshScope;
+
+        use super::super::PostgresAdapter;
+
+        async fn run_fake_adhoc(
+            script: &str,
+            query: &str,
+            timeout_secs: u64,
+            read_only: bool,
+            marker: Option<&str>,
+        ) -> Result<(), DbOperationError> {
+            let mut command = Command::new("sh");
+            command
+                .args(["-c", script])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+
+            PostgresAdapter::collect_output_with_phase(&mut command, None, timeout_secs)
+                .await
+                .map(|_| ())
+                .map_err(|error| error.into_query_error(query, read_only, marker))
+        }
+
+        #[tokio::test]
+        async fn spawn_failure_stays_a_normal_error() {
+            let mut command = Command::new("/nonexistent/sabiql-cf03-psql");
+            let error = PostgresAdapter::collect_output_with_phase(&mut command, None, 1)
+                .await
+                .expect_err("spawn should fail")
+                .into_query_error("UPDATE users SET name = 'new'", false, None);
+
+            assert!(matches!(error, DbOperationError::CommandNotFound { .. }));
+        }
+
+        #[tokio::test]
+        async fn authentication_and_tls_rejection_stay_normal_errors() {
+            let auth = run_fake_adhoc(
+                "printf 'FATAL:  28P01: password authentication failed\\n' >&2; exit 2",
+                "UPDATE users SET name = 'new'",
+                1,
+                false,
+                None,
+            )
+            .await;
+            assert!(matches!(
+                auth,
+                Err(DbOperationError::ConnectionFailedWithKind {
+                    kind: ConnectionFailureKind::Auth,
+                    ..
+                })
+            ));
+
+            let tls = run_fake_adhoc(
+                "printf 'psql: error: SSL error: certificate verify failed\\n' >&2; exit 2",
+                "UPDATE users SET name = 'new'",
+                1,
+                false,
+                None,
+            )
+            .await;
+            assert!(matches!(tls, Err(DbOperationError::QueryFailed(_))));
+        }
+
+        #[tokio::test]
+        async fn read_only_transport_failure_stays_a_normal_error() {
+            let result = run_fake_adhoc(
+                "printf 'connection to server was lost\\n' >&2; exit 1",
+                "SELECT pg_sleep(30)",
+                1,
+                true,
+                None,
+            )
+            .await;
+
+            assert!(matches!(result, Err(DbOperationError::ConnectionLost(_))));
+        }
+
+        #[tokio::test]
+        async fn bare_status_two_is_result_unknown_with_conservative_scope() {
+            let result =
+                run_fake_adhoc("exit 2", "UPDATE users SET name = 'new'", 1, false, None).await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    refresh_scope: RefreshScope::Metadata,
+                    ..
+                })
+            ));
+        }
+
+        #[tokio::test]
+        async fn signal_after_start_is_result_unknown() {
+            let result = run_fake_adhoc(
+                "kill -TERM $$",
+                "UPDATE users SET name = 'new'",
+                1,
+                false,
+                None,
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    refresh_scope: RefreshScope::Metadata,
+                    ..
+                })
+            ));
+        }
+
+        #[tokio::test]
+        async fn timeout_after_start_is_result_unknown() {
+            let result = run_fake_adhoc(
+                "exec sleep 30",
+                "UPDATE users SET name = 'new'",
+                0,
+                false,
+                None,
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    refresh_scope: RefreshScope::Metadata,
+                    source,
+                }) if matches!(source.as_ref(), DbOperationError::Timeout(_))
+            ));
+        }
+
+        #[tokio::test]
+        async fn known_dml_tag_narrows_result_unknown_to_data() {
+            let result = run_fake_adhoc(
+                "printf 'UPDATE 1\\n'; exit 7",
+                "UPDATE users SET name = 'new'",
+                1,
+                false,
+                None,
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    refresh_scope: RefreshScope::Data,
+                    ..
+                })
+            ));
+        }
+
+        #[tokio::test]
+        async fn known_select_tag_is_used_instead_of_query_prefix() {
+            let result = run_fake_adhoc(
+                "printf 'SELECT 1\\n'; exit 7",
+                "SELECT pg_sleep(30)",
+                1,
+                false,
+                None,
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    refresh_scope: RefreshScope::None,
+                    ..
+                })
+            ));
+        }
+
+        #[tokio::test]
+        async fn unknown_tag_uses_metadata_scope() {
+            let result = run_fake_adhoc(
+                "printf 'MERGE 1\\n'; exit 7",
+                "MERGE INTO users USING incoming ON users.id = incoming.id WHEN MATCHED THEN UPDATE SET name = incoming.name",
+                1,
+                false,
+                None,
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    refresh_scope: RefreshScope::Metadata,
+                    ..
+                })
+            ));
+        }
+
+        #[tokio::test]
+        async fn complete_explicit_commit_uses_observed_dml_tag() {
+            let result = run_fake_adhoc(
+                "printf 'M\\nBEGIN\\nM\\nUPDATE 1\\nM\\nCOMMIT\\n'; exit 7",
+                "BEGIN; UPDATE users SET name = 'new'; COMMIT",
+                1,
+                false,
+                Some("M"),
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    refresh_scope: RefreshScope::Data,
+                    ..
+                })
+            ));
+        }
+
+        #[tokio::test]
+        async fn incomplete_multi_statement_response_uses_metadata_scope() {
+            let result = run_fake_adhoc(
+                "printf 'M\\nBEGIN\\nM\\nUPDATE 1\\n'; printf 'connection to server was lost\\n' >&2; exit 1",
+                "BEGIN; UPDATE users SET name = 'new'; COMMIT",
+                1,
+                false,
+                Some("M"),
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    refresh_scope: RefreshScope::Metadata,
+                    source,
+                }) if matches!(source.as_ref(), DbOperationError::ConnectionLost(_))
             ));
         }
     }
