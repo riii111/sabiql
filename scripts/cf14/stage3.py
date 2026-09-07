@@ -293,8 +293,12 @@ class Observer:
         self.thread.start()
         deadline = time.monotonic() + 10
         while not self.events and time.monotonic() < deadline:
+            if self.error:
+                raise RuntimeError(f"observer failed before baseline: {self.error}")
             time.sleep(0.01)
         if not self.events:
+            if self.error:
+                raise RuntimeError(f"observer failed before baseline: {self.error}")
             raise RuntimeError(f"observer did not produce a baseline: {self.fixture.kind}")
 
     def _poll(self, query):
@@ -305,7 +309,12 @@ class Observer:
                 ready, _, _ = select.select([self.process.stdout], [], [], 0.5)
                 if not ready:
                     continue
-                line = self.process.stdout.readline().strip()
+                line = self.process.stdout.readline()
+                if line == "":
+                    if self.process.poll() is not None:
+                        raise OSError("observer CLI exited unexpectedly")
+                    continue
+                line = line.strip()
                 if not line:
                     continue
                 fields = line.split("|")
@@ -331,7 +340,8 @@ class Observer:
                 self.events.append(event)
                 time.sleep(POLL_INTERVAL_SECONDS)
             except (BrokenPipeError, OSError, ValueError, IndexError) as error:
-                self.error = str(error)
+                if not self.stop_event.is_set():
+                    self.error = str(error)
                 return
 
     def stop(self):
@@ -450,9 +460,31 @@ class TcpProxy:
             server.setblocking(False)
             buffers = {client: bytearray(), server: bytearray()}
             protocol_state = {"postgres_startup_done": False}
+            pending = []
             sockets = [client, server]
-            while sockets and not self.stop_event.is_set():
-                readable, _, _ = select.select(sockets, [], [], 0.2)
+            while (sockets or pending) and not self.stop_event.is_set():
+                next_delivery = min((item[0] for item in pending), default=None)
+                timeout = 0.2
+                if next_delivery is not None:
+                    timeout = max(0, min(timeout, next_delivery - time.monotonic()))
+                readable, _, _ = (
+                    select.select(sockets, [], [], timeout) if sockets else ([], [], [])
+                )
+                current = time.monotonic()
+                ready = [item for item in pending if item[0] <= current]
+                pending = [item for item in pending if item[0] > current]
+                for _, destination, direction, data, sql_messages in ready:
+                    destination.sendall(data)
+                    self._append(
+                        {
+                            "kind": "traffic",
+                            "connection": connection_id,
+                            "direction": direction,
+                            "bytes": len(data),
+                            "sql_messages": sql_messages,
+                            "ns": now_ns(),
+                        }
+                    )
                 for source in readable:
                     try:
                         data = source.recv(65536)
@@ -466,18 +498,14 @@ class TcpProxy:
                     sql_messages = self.sql_messages(
                         buffers[source], data, direction, protocol_state
                     )
-                    if self.delay_seconds:
-                        time.sleep(self.delay_seconds)
-                    destination.sendall(data)
-                    self._append(
-                        {
-                            "kind": "traffic",
-                            "connection": connection_id,
-                            "direction": direction,
-                            "bytes": len(data),
-                            "sql_messages": sql_messages,
-                            "ns": now_ns(),
-                        }
+                    pending.append(
+                        (
+                            time.monotonic() + self.delay_seconds,
+                            destination,
+                            direction,
+                            data,
+                            sql_messages,
+                        )
                     )
             server.close()
         except (OSError, TimeoutError):
@@ -623,30 +651,36 @@ def sample_case(case, fixture, binary, output_root, deadline):
     case_name = "-".join(str(case[key]) for key in ("database", "tables", "delay_ms", "operation", "repetition"))
     case_dir = output_root / "raw" / case_name
     case_dir.mkdir(parents=True, exist_ok=False)
-    fixture.restart()
-    proxy = TcpProxy(fixture.kind, fixture.port, case["delay_ms"], case_dir)
-    proxy.start()
-    observer = Observer(fixture, case_dir)
-    observer.start()
-    cli_log = case_dir / "cli.jsonl"
-    wrapper_dir = case_dir / "wrappers"
-    wrapper_dir.mkdir()
-    real_cli = shutil.which("mysql" if fixture.kind == "mysql" else "psql")
-    wrapper_env = write_cli_wrappers(
-        wrapper_dir,
-        {"mysql" if fixture.kind == "mysql" else "psql": real_cli},
-        cli_log,
-    )
-    environment = dict(
-        os.environ,
-        PATH=wrapper_env["PATH"] + os.pathsep + os.environ.get("PATH", ""),
-        CF14_DSN=fixture.dsn(proxy.port),
-        CF14_CLI_LOG=wrapper_env["CF14_CLI_LOG"],
-        CF14_REAL_CLI=real_cli,
-        CF14_CLI_KIND=fixture.kind,
-    )
-    monitor = ProcessMonitor(case_dir)
+    proxy = None
+    observer = None
+    monitor = None
+    process = None
+    stdout = ""
+    stderr = ""
     try:
+        fixture.restart()
+        proxy = TcpProxy(fixture.kind, fixture.port, case["delay_ms"], case_dir)
+        proxy.start()
+        observer = Observer(fixture, case_dir)
+        observer.start()
+        cli_log = case_dir / "cli.jsonl"
+        wrapper_dir = case_dir / "wrappers"
+        wrapper_dir.mkdir()
+        real_cli = shutil.which("mysql" if fixture.kind == "mysql" else "psql")
+        wrapper_env = write_cli_wrappers(
+            wrapper_dir,
+            {"mysql" if fixture.kind == "mysql" else "psql": real_cli},
+            cli_log,
+        )
+        environment = dict(
+            os.environ,
+            PATH=wrapper_env["PATH"] + os.pathsep + os.environ.get("PATH", ""),
+            CF14_DSN=fixture.dsn(proxy.port),
+            CF14_CLI_LOG=wrapper_env["CF14_CLI_LOG"],
+            CF14_REAL_CLI=real_cli,
+            CF14_CLI_KIND=fixture.kind,
+        )
+        monitor = ProcessMonitor(case_dir)
         process = subprocess.Popen(
             [str(binary), case["operation"]],
             env=environment,
@@ -664,9 +698,20 @@ def sample_case(case, fixture, binary, output_root, deadline):
             stdout, stderr = process.communicate()
             raise RuntimeError(f"case timed out after {CASE_TIMEOUT_SECONDS}s: {case_name}")
     finally:
-        monitor.stop()
-        observer.stop()
-        proxy.stop()
+        if process is not None and process.poll() is None:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.wait(timeout=3)
+        if monitor is not None:
+            monitor.stop()
+        if observer is not None:
+            observer.stop()
+        if proxy is not None:
+            proxy.stop()
+    if observer is not None and observer.error:
+        raise RuntimeError(f"observer failed during case {case_name}: {observer.error}")
     write_json(case_dir / "app.json", {"returncode": process.returncode, "stdout": stdout, "stderr": stderr})
     cli_events = [json.loads(line) for line in cli_log.read_text().splitlines()] if cli_log.exists() else []
     app_samples = [json.loads(line) for line in stdout.splitlines() if line.strip()]
