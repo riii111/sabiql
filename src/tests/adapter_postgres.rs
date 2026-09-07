@@ -297,6 +297,28 @@ mod error_paths {
             .await;
 
         assert!(
+            matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    refresh_scope: sabiql_app::domain::RefreshScope::Metadata,
+                    ..
+                })
+            ),
+            "Expected result-unknown error, got: {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires PostgreSQL, tracked: #133"]
+    async fn read_only_timeout_with_pg_sleep_stays_a_timeout_error() {
+        let adapter = PostgresAdapter::with_timeout(1);
+        let dsn = postgres_integration_dsn();
+
+        let result = adapter
+            .execute_adhoc(&dsn, "SELECT pg_sleep(5)", AccessMode::ReadOnly)
+            .await;
+
+        assert!(
             matches!(result, Err(DbOperationError::Timeout(_))),
             "Expected Timeout error, got: {result:?}"
         );

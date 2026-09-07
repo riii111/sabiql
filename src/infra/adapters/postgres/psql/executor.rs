@@ -24,21 +24,24 @@ enum PsqlExecutionFailure {
         error: DbOperationError,
         stdout: String,
     },
-    Definitive(DbOperationError),
+    Definitive {
+        error: DbOperationError,
+        stdout: String,
+    },
 }
 
 impl PsqlExecutionFailure {
     fn into_db_operation_error(self) -> DbOperationError {
         match self {
-            Self::BeforeSpawn(error) | Self::Definitive(error) | Self::Transport { error, .. } => {
-                error
-            }
+            Self::BeforeSpawn(error)
+            | Self::Definitive { error, .. }
+            | Self::Transport { error, .. } => error,
         }
     }
 
     fn into_write_error(self, read_only: bool) -> DbOperationError {
         match self {
-            Self::BeforeSpawn(error) | Self::Definitive(error) => error,
+            Self::BeforeSpawn(error) | Self::Definitive { error, .. } => error,
             Self::Transport { error, .. } if read_only => error,
             Self::Transport { error, .. } => DbOperationError::QueryFailedAfterChange {
                 source: Arc::new(error),
@@ -54,7 +57,17 @@ impl PsqlExecutionFailure {
         marker: Option<&str>,
     ) -> DbOperationError {
         match self {
-            Self::BeforeSpawn(error) | Self::Definitive(error) => error,
+            Self::Definitive { error, stdout }
+                if !read_only
+                    && let Some(refresh_scope) =
+                        PostgresAdapter::committed_refresh_scope(&stdout, query, marker) =>
+            {
+                DbOperationError::QueryFailedAfterChange {
+                    source: Arc::new(error),
+                    refresh_scope,
+                }
+            }
+            Self::BeforeSpawn(error) | Self::Definitive { error, .. } => error,
             Self::Transport { error, .. } if read_only => error,
             Self::Transport { error, stdout } => DbOperationError::QueryFailedAfterChange {
                 source: Arc::new(error),
@@ -331,7 +344,7 @@ impl PostgresAdapter {
                 if is_transport_interruption(&error, status, !stdout.trim().is_empty()) {
                     PsqlExecutionFailure::Transport { error, stdout }
                 } else {
-                    PsqlExecutionFailure::Definitive(error)
+                    PsqlExecutionFailure::Definitive { error, stdout }
                 },
             );
         }
@@ -501,6 +514,30 @@ impl PostgresAdapter {
 
         Self::parse_aggregate_command_tag(&output, query)
             .map_or(RefreshScope::Metadata, |tag| tag.refresh_scope())
+    }
+
+    fn committed_refresh_scope(
+        stdout: &str,
+        query: &str,
+        marker: Option<&str>,
+    ) -> Option<RefreshScope> {
+        let marker = marker?;
+        let segments = split_marker_segments(stdout, marker);
+        let expected = split_sql_statements(query).len();
+        if segments.is_empty() || segments.len() > expected {
+            return None;
+        }
+
+        let saw_commit = segments
+            .iter()
+            .any(|segment| matches!(Self::parse_command_tag(segment), Ok(CommandTag::Commit)));
+        if !saw_commit {
+            return None;
+        }
+
+        let output = segments.join("\n");
+        let refresh_scope = Self::parse_aggregate_command_tag(&output, query)?.refresh_scope();
+        (refresh_scope != RefreshScope::None).then_some(refresh_scope)
     }
 
     fn csv_result(
@@ -1272,6 +1309,40 @@ mod tests {
                     source,
                 }) if matches!(source.as_ref(), DbOperationError::ConnectionLost(_))
             ));
+        }
+
+        #[tokio::test]
+        async fn committed_change_is_refreshed_before_a_later_definitive_error() {
+            let result = run_fake_adhoc(
+                "printf 'M\\nBEGIN\\nM\\nUPDATE 1\\nM\\nCOMMIT\\nM\\n'; printf 'ERROR:  23505: duplicate key value violates unique constraint\\n' >&2; exit 1",
+                "BEGIN; UPDATE users SET name = 'new'; COMMIT; INSERT INTO users(id) VALUES (1)",
+                1,
+                false,
+                Some("M"),
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    refresh_scope: RefreshScope::Data,
+                    source,
+                }) if matches!(source.as_ref(), DbOperationError::UniqueViolation(_))
+            ));
+        }
+
+        #[tokio::test]
+        async fn rolled_back_change_stays_a_definitive_error() {
+            let result = run_fake_adhoc(
+                "printf 'M\\nBEGIN\\nM\\nUPDATE 1\\nM\\nROLLBACK\\nM\\n'; printf 'ERROR:  23505: duplicate key value violates unique constraint\\n' >&2; exit 1",
+                "BEGIN; UPDATE users SET name = 'new'; ROLLBACK; INSERT INTO users(id) VALUES (1)",
+                1,
+                false,
+                Some("M"),
+            )
+            .await;
+
+            assert!(matches!(result, Err(DbOperationError::UniqueViolation(_))));
         }
     }
 
