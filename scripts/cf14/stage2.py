@@ -9,11 +9,28 @@ import platform
 import signal
 import statistics
 import subprocess
+import sys
 import tempfile
 import time
 
 TESTS = {'csv': 'tests::cf14_measurements::csv_export_records_rows_bytes_and_failure_cleanup',
          'connection': 'tests::cf14_measurements::connection_switch_records_metadata_and_testbackend_draw'}
+
+
+def reclaim_process_group(group):
+    try:
+        os.killpg(group, signal.SIGKILL)
+    except ProcessLookupError:
+        return False
+    deadline = time.monotonic() + 2
+    while True:
+        try:
+            os.killpg(group, 0)
+        except ProcessLookupError:
+            return False
+        if time.monotonic() >= deadline:
+            return True
+        time.sleep(0.05)
 
 
 def main():
@@ -26,7 +43,8 @@ def main():
     args.output.mkdir(parents=True, exist_ok=False)
     binary = args.binary.resolve()
     manifest = dict(base=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip(),
-                    platform=platform.platform(), repetitions=1 if args.observe else 3,
+                    platform=platform.platform(), python_executable=sys.executable, python_version=sys.version,
+                    repetitions=1 if args.observe else 3,
                     delay_ms=[0] if args.observe else [0, 50, 200], tables=[10] if args.observe else [10, 100, 1000],
                     csv_rows=[50] if args.observe else [50, 1000], deadline_seconds=600,
                     byte_limit=10*1024*1024, process_deadline_seconds=60,
@@ -77,7 +95,10 @@ def main():
                         pass
                 (args.output/(key+'-cleanup.json')).write_text(json.dumps(dict(residual_pids_after_500ms=residual))+'\n')
                 if child.returncode or residual:
-                    raise RuntimeError(f'{key}: return code {child.returncode}; residual {residual}; raw retained')
+                    group_remaining = reclaim_process_group(child.pid)
+                    (args.output/(key+'-reclaim.json')).write_text(
+                        json.dumps(dict(owned_process_group=child.pid, group_exists_after_cleanup=group_remaining))+'\n')
+                    raise RuntimeError(f'{key}: return code {child.returncode}; residual {residual}; group remaining {group_remaining}; raw retained')
                 measurements = [json.loads(line) for line in sample_path.read_text().splitlines()]
                 assert len(measurements) == (1 if operation == 'csv' else 3)
                 for measurement in measurements:
