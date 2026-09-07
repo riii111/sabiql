@@ -1,9 +1,0 @@
-{"kind": "start", "pid": 39688, "ns": 1788787637823860000}
-{"kind": "sql", "pid": 39688, "ns": 1788787637824120000, "sql": "SELECT VERSION() AS __sabiql_server_version, @@SESSION.sql_mode AS __sabiql_sql_mode, @@lower_case_table_names AS __sabiql_lower_case_table_names", "input_bytes": 145, "output_bytes": 255}
-{"kind": "exit", "pid": 39688, "ns": 1788787637884437000}
-{"kind": "start", "pid": 39689, "ns": 1788787637944995000}
-{"kind": "sql", "pid": 39689, "ns": 1788787637945277000, "sql": "SET SESSION autocommit=1, completion_type=NO_CHAIN", "input_bytes": 50, "output_bytes": 0}
-{"kind": "sql", "pid": 39689, "ns": 1788787637945667000, "sql": "SET SESSION TRANSACTION READ ONLY", "input_bytes": 33, "output_bytes": 0}
-{"kind": "sql", "pid": 39689, "ns": 1788787637945745000, "sql": "SELECT '<marker>' AS __sabiql_session_marker, @@SESSION.sql_mode AS __sabiql_sql_mode", "input_bytes": 109, "output_bytes": 226}
-{"kind": "sql", "pid": 39689, "ns": 1788787638007164000, "sql": "SELECT id FROM `app`.`items`", "input_bytes": 28, "output_bytes": 38955}
-{"kind": "exit", "pid": 39689, "ns": 1788787638069677000}

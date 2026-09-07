@@ -1,8 +1,0 @@
-{"kind": "start", "pid": 41145, "ns": 1788787805355817000}
-{"kind": "sql", "pid": 41145, "ns": 1788787805356095000, "sql": "SELECT VERSION() AS __sabiql_server_version, @@SESSION.sql_mode AS __sabiql_sql_mode, @@lower_case_table_names AS __sabiql_lower_case_table_names", "input_bytes": 145, "output_bytes": 255}
-{"kind": "exit", "pid": 41145, "ns": 1788787805416297000}
-{"kind": "start", "pid": 41146, "ns": 1788787805471125000}
-{"kind": "sql", "pid": 41146, "ns": 1788787805471384000, "sql": "SET SESSION autocommit=1, completion_type=NO_CHAIN", "input_bytes": 50, "output_bytes": 0}
-{"kind": "sql", "pid": 41146, "ns": 1788787805471789000, "sql": "SET SESSION TRANSACTION READ ONLY", "input_bytes": 33, "output_bytes": 0}
-{"kind": "sql", "pid": 41146, "ns": 1788787805471908000, "sql": "SELECT '<marker>' AS __sabiql_session_marker, @@SESSION.sql_mode AS __sabiql_sql_mode", "input_bytes": 109, "output_bytes": 226}
-{"kind": "sql", "pid": 41146, "ns": 1788787805533294000, "sql": "SELECT id FROM `app`.`items`", "input_bytes": 28, "output_bytes": 38968}
