@@ -36,6 +36,16 @@ pub(in crate::adapters::postgres) fn classify_query_error(
     classify_by_stderr(details)
 }
 
+pub(in crate::adapters::postgres) fn is_transport_interruption(
+    error: &DbOperationError,
+    status: ExitStatus,
+    has_stdout: bool,
+) -> bool {
+    status.code().is_none()
+        || matches!(error, DbOperationError::ConnectionLost(_))
+        || (has_stdout && matches!(error, DbOperationError::QueryFailed(_)))
+}
+
 fn exit_status_details(status: ExitStatus) -> String {
     if let Some(code) = status.code() {
         return format!("psql exited with status code {code}");
