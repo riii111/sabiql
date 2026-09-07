@@ -41,9 +41,25 @@ pub(in crate::adapters::postgres) fn is_transport_interruption(
     status: ExitStatus,
     has_stdout: bool,
 ) -> bool {
+    if status.code() == Some(2) {
+        return !is_definitive_connection_rejection(error);
+    }
+
     status.code().is_none()
         || matches!(error, DbOperationError::ConnectionLost(_))
         || (has_stdout && matches!(error, DbOperationError::QueryFailed(_)))
+}
+
+fn is_definitive_connection_rejection(error: &DbOperationError) -> bool {
+    match error {
+        DbOperationError::ConnectionFailed(_)
+        | DbOperationError::ConnectionFailedWithKind { .. } => true,
+        DbOperationError::QueryFailed(details) => {
+            let lower = details.to_lowercase();
+            lower.contains("ssl") || lower.contains("tls") || lower.contains("certificate")
+        }
+        _ => false,
+    }
 }
 
 fn exit_status_details(status: ExitStatus) -> String {

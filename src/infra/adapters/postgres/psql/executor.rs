@@ -1044,6 +1044,16 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn bare_psql_connection_failure_status_is_result_unknown() {
+            let result = run_fake_write("exit 2", 1, false).await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange { .. })
+            ));
+        }
+
+        #[tokio::test]
         async fn constraint_violation_stays_a_normal_error() {
             let result = run_fake_write(
                 "printf 'ERROR:  23503: violates foreign key constraint\\n' >&2; exit 1",
