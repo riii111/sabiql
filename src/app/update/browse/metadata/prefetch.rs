@@ -6,6 +6,7 @@ use crate::domain::TableSummary;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::table_prefetch::FailedPrefetchEntry;
+use crate::ports::outbound::DbOperationError;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
@@ -43,7 +44,7 @@ fn prefetch_table_detail(
     }
 
     if let Some(entry) = state.table_prefetch.failed_prefetch(&qualified_name) {
-        if entry.retry_count >= MAX_PREFETCH_RETRIES {
+        if !entry.retryable || entry.retry_count >= MAX_PREFETCH_RETRIES {
             let mut effects = if state.table_prefetch.prefetch_tracks_er() {
                 check_er_completion(state)
             } else {
@@ -265,29 +266,65 @@ pub(super) fn reduce_prefetch(
             {
                 return DispatchResult::handled();
             }
+            if matches!(
+                error,
+                DbOperationError::ConnectionLost(_)
+                    | DbOperationError::ConnectionFailed(_)
+                    | DbOperationError::ConnectionFailedWithKind { .. }
+            ) {
+                let tracks_er = state.table_prefetch.prefetch_tracks_er();
+                state.table_prefetch.reset_prefetch();
+                if tracks_er {
+                    state.er_preparation.invalidate_run();
+                }
+                state.messages.set_error(format!(
+                    "Metadata prefetch stopped: {}{}",
+                    error.user_message(),
+                    if tracks_er {
+                        " 'e' to retry after recovery."
+                    } else {
+                        ""
+                    }
+                ));
+                return DispatchResult::handled();
+            }
             let qualified_name = format!("{schema}.{table}");
 
             let prev_count = state
                 .table_prefetch
                 .failed_prefetch(&qualified_name)
                 .map_or(0, |e| e.retry_count);
-            let had_other_pending_before_requeue = state.table_prefetch.retry_table_prefetch(
-                qualified_name,
-                FailedPrefetchEntry {
-                    failed_at: now,
-                    error: error.user_message(),
-                    retry_count: prev_count + 1,
-                },
+            let retryable = matches!(
+                error,
+                DbOperationError::Timeout(_) | DbOperationError::LockTimeout(_)
             );
+            let entry = FailedPrefetchEntry {
+                failed_at: now,
+                error: error.user_message(),
+                retry_count: prev_count + 1,
+                retryable,
+            };
             let mut effects = Vec::new();
-
-            if had_other_pending_before_requeue {
-                effects.push(Effect::SchedulePrefetchQueueProcessing { run_id: *run_id });
+            if retryable && entry.retry_count < MAX_PREFETCH_RETRIES {
+                let delay_secs = backoff_secs_for(entry.retry_count);
+                let had_other_pending = state
+                    .table_prefetch
+                    .retry_table_prefetch(qualified_name, entry);
+                if had_other_pending {
+                    effects.push(Effect::SchedulePrefetchQueueProcessing { run_id: *run_id });
+                }
+                effects.push(Effect::DelayedProcessPrefetchQueue {
+                    run_id: *run_id,
+                    delay_secs,
+                });
+            } else {
+                state
+                    .table_prefetch
+                    .fail_table_prefetch(qualified_name, entry);
+                if state.table_prefetch.has_pending_prefetch() {
+                    effects.push(Effect::SchedulePrefetchQueueProcessing { run_id: *run_id });
+                }
             }
-            effects.push(Effect::DelayedProcessPrefetchQueue {
-                run_id: *run_id,
-                delay_secs: backoff_secs_for(prev_count + 1),
-            });
 
             if state.table_prefetch.prefetch_tracks_er() {
                 effects.extend(check_er_completion(state));

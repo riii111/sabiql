@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
+use crate::ports::outbound::DbOperationError;
 use crate::update::action::{Action, SmartErRefreshError};
 use crate::update::dispatch_result::DispatchResult;
 
@@ -17,19 +18,16 @@ pub(super) fn reduce_smart_refresh_failed(state: &mut AppState, action: &Action)
                 return DispatchResult::handled();
             }
 
-            let mut effects = Vec::new();
-
-            if let Some(md) = new_metadata {
-                state.session.set_metadata(Some(Arc::clone(md)));
-            }
-
-            let Some(metadata) = &state.session.metadata() else {
-                state.er_preparation.mark_idle();
-                state
-                    .messages
-                    .set_error("Metadata not loaded yet".to_string());
-                return DispatchResult::handled_with(effects);
+            let (DbOperationError::ObjectMissing(_), Some(metadata)) = (error, new_metadata) else {
+                state.er_preparation.invalidate_run();
+                state.messages.set_error(format!(
+                    "ER refresh failed: {} 'e' to retry after recovery.",
+                    error.user_message()
+                ));
+                return DispatchResult::handled();
             };
+
+            state.session.set_metadata(Some(Arc::clone(metadata)));
             state
                 .er_preparation
                 .invalidate_refresh_signatures(metadata.table_summaries.len());
@@ -37,11 +35,10 @@ pub(super) fn reduce_smart_refresh_failed(state: &mut AppState, action: &Action)
             state.messages.set_error(format!(
                 "Smart refresh failed ({error}), falling back to full refresh"
             ));
-            effects.extend([
+            DispatchResult::handled_with(vec![
                 Effect::ClearCompletionEngineCache,
                 Effect::DispatchActions(vec![Action::StartErPrefetchAll]),
-            ]);
-            DispatchResult::handled_with(effects)
+            ])
         }
         _ => DispatchResult::pass(),
     }

@@ -732,11 +732,69 @@ mod tests {
     }
 
     mod smart_er_refresh_failed {
+        use std::ptr;
+
         use super::*;
-        use crate::ports::outbound::DbOperationError;
+        use crate::ports::outbound::{ConnectionFailureKind, DbOperationError};
+
+        #[rstest::rstest]
+        #[case(DbOperationError::Timeout("timed out".to_string()))]
+        #[case(DbOperationError::ConnectionLost("disconnected".to_string()))]
+        #[case(DbOperationError::PermissionDenied("denied".to_string()))]
+        #[case(DbOperationError::ConnectionFailedWithKind {
+            kind: ConnectionFailureKind::Auth,
+            details: "password=secret".to_string(),
+        })]
+        #[case(DbOperationError::QueryFailed("unknown failure".to_string()))]
+        #[case(DbOperationError::MetadataParseFailed("invalid metadata".to_string()))]
+        fn operation_failure_preserves_cache_and_allows_explicit_retry(
+            #[case] error: DbOperationError,
+            #[values(false, true)] metadata_fetched: bool,
+        ) {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let metadata = make_metadata(5);
+            state.session.set_metadata(Some(Arc::clone(&metadata)));
+            let signatures = HashMap::from([("public.old".to_string(), "sig".to_string())]);
+            state
+                .er_preparation
+                .apply_refresh_metadata(signatures.clone(), 5);
+            let run_id = state.er_preparation.start_waiting_run();
+
+            let effects = reduce_er(
+                &mut state,
+                &Action::SmartErRefreshFailed(SmartErRefreshError {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
+                    error,
+                    new_metadata: metadata_fetched.then(|| make_metadata(20)),
+                }),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+            assert!(!state.er_preparation.is_current_run(run_id));
+            assert!(ptr::eq(
+                state.session.metadata().unwrap(),
+                metadata.as_ref()
+            ));
+            assert_eq!(state.er_preparation.last_signatures(), &signatures);
+            assert!(state.table_prefetch.is_complete());
+            let message = state.messages.last_error.as_deref().unwrap();
+            assert!(message.contains("'e' to retry"));
+            assert!(!message.contains("secret"));
+
+            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
+
+            assert!(
+                matches!(effects.as_slice(), [Effect::SmartErRefresh { run_id: next_run, .. }] if *next_run > run_id)
+            );
+            assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
+        }
 
         #[test]
-        fn falls_back_to_full_prefetch() {
+        fn missing_object_after_metadata_fetch_falls_back_to_full_prefetch() {
             let mut state = state_with_dsn("postgres://localhost/test");
             set_waiting_run_id(&mut state, 1);
             state.session.set_metadata(Some(make_metadata(5)));
@@ -750,8 +808,8 @@ mod tests {
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id: 1,
-                    error: DbOperationError::Timeout("timed out".to_string()),
-                    new_metadata: None,
+                    error: DbOperationError::ObjectMissing("table removed".to_string()),
+                    new_metadata: Some(make_metadata(5)),
                 }),
                 Instant::now(),
             )
@@ -878,7 +936,7 @@ mod tests {
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id: 1,
-                    error: DbOperationError::QueryFailed("sig fetch failed".to_string()),
+                    error: DbOperationError::ObjectMissing("table removed".to_string()),
                     new_metadata: Some(make_metadata(20)),
                 }),
                 Instant::now(),
