@@ -1,12 +1,17 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
+
+use super::clipboard::{ArboardClipboard, Osc52Clipboard};
 
 use super::app_config_file::{
     self, config_file_path, get_config_dir as app_config_dir, render_config_file, write_config_file,
 };
 use crate::app::model::shared::settings::KeymapPreset;
 use crate::app::model::shared::theme_id::ThemeId;
-use crate::app::ports::outbound::{AppSettings, SettingsStore, SettingsStoreError};
+use crate::app::ports::outbound::{
+    AppSettings, ClipboardWriter, SettingsStore, SettingsStoreError,
+};
 use crate::config::{
     CURRENT_VERSION, ConfigVersionCheck, ConnectionConfigFile, is_supported_config_version,
 };
@@ -29,6 +34,22 @@ impl TomlSettingsStore {
         Ok(self
             .load_config_file_lenient()?
             .map_or_else(AppSettings::default, app_settings))
+    }
+
+    pub fn load_clipboard(&self) -> Result<Arc<dyn ClipboardWriter>, SettingsStoreError> {
+        let config = self.load_config_file_lenient()?;
+        match config
+            .as_ref()
+            .and_then(|config| config.clipboard_backend.as_deref())
+        {
+            None | Some("native") => Ok(Arc::new(ArboardClipboard)),
+            Some("osc52") => Ok(Arc::new(Osc52Clipboard)),
+            Some(_) => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "clipboard_backend must be native or osc52",
+            )
+            .into()),
+        }
     }
 
     fn load_config_file_lenient(&self) -> Result<Option<ConnectionConfigFile>, SettingsStoreError> {
@@ -83,6 +104,7 @@ impl SettingsStore for TomlSettingsStore {
                 theme: None,
                 keymap_preset: None,
                 er_browser: None,
+                clipboard_backend: None,
                 connections: vec![],
             });
         set_app_settings(&mut config, settings);
@@ -122,6 +144,56 @@ mod tests {
 
     use super::*;
     use tempfile::TempDir;
+
+    #[rstest::rstest]
+    #[case(2, "")]
+    #[case(3, "")]
+    #[case(3, "clipboard_backend = \"native\"\n")]
+    #[case(3, "clipboard_backend = \"osc52\"\n")]
+    fn loads_clipboard_with_legacy_or_explicit_configuration(
+        #[case] version: u32,
+        #[case] backend: &str,
+    ) {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join(CONFIG_FILE_NAME),
+            format!("version = {version}\n{backend}connections = []\n"),
+        )
+        .unwrap();
+        let store = TomlSettingsStore::with_config_dir(dir.path().to_path_buf());
+
+        assert!(store.load_clipboard().is_ok());
+    }
+
+    #[test]
+    fn unknown_clipboard_backend_is_rejected() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join(CONFIG_FILE_NAME),
+            "version = 3\nclipboard_backend = \"auto\"\nconnections = []\n",
+        )
+        .unwrap();
+        let store = TomlSettingsStore::with_config_dir(dir.path().to_path_buf());
+
+        assert!(store.load_clipboard().is_err());
+    }
+
+    #[test]
+    fn saving_ui_settings_preserves_explicit_clipboard_backend() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join(CONFIG_FILE_NAME),
+            "version = 3\nclipboard_backend = \"osc52\"\nconnections = []\n",
+        )
+        .unwrap();
+        let store = TomlSettingsStore::with_config_dir(dir.path().to_path_buf());
+
+        store.save(AppSettings::default()).unwrap();
+
+        let content = fs::read_to_string(dir.path().join(CONFIG_FILE_NAME)).unwrap();
+        let config: ConnectionConfigFile = toml::from_str(&content).unwrap();
+        assert_eq!(config.clipboard_backend.as_deref(), Some("osc52"));
+    }
 
     #[test]
     fn missing_file_returns_default_settings() {

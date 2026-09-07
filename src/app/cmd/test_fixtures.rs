@@ -21,12 +21,12 @@ use crate::model::app_state::AppState;
 use crate::model::browse::session::ConnectionSaveGuard;
 use crate::ports::outbound::DbOperationError;
 use crate::ports::outbound::{
-    AppSettings, CachedResultExporter, ClipboardError, ClipboardWriter, ConfigWriter,
-    ConfigWriterError, ConnectionStore, DsnBuilder, ErDiagramExporter, ErExportResult, ErLogWriter,
-    FolderOpener, MetadataProvider, MySqlConnectionProbe, MySqlConnectionProbeResult,
-    PgServiceEntryReader, QueryExecutor, QueryHistoryError, QueryHistoryStore, RenderOutput,
-    RenderResult, Renderer, ServiceFileContents, ServiceFileError, SettingsStore,
-    SettingsStoreError, SqliteDiagnosticsProvider, SqlitePathValidator,
+    AppSettings, CachedResultExporter, ClipboardError, ClipboardOutcome, ClipboardWriter,
+    ConfigWriter, ConfigWriterError, ConnectionStore, DsnBuilder, ErDiagramExporter,
+    ErExportResult, ErLogWriter, FolderOpener, MetadataProvider, MySqlConnectionProbe,
+    MySqlConnectionProbeResult, PgServiceEntryReader, QueryExecutor, QueryHistoryError,
+    QueryHistoryStore, RenderOutput, RenderResult, Renderer, ServiceFileContents, ServiceFileError,
+    SettingsStore, SettingsStoreError, SqliteDiagnosticsProvider, SqlitePathValidator,
 };
 use crate::services::AppServices;
 use crate::update::action::Action;
@@ -152,8 +152,8 @@ impl PgServiceEntryReader for NoopPgServiceEntryReader {
 
 pub struct NoopClipboardWriter;
 impl ClipboardWriter for NoopClipboardWriter {
-    fn copy_text(&self, _content: &str) -> Result<(), ClipboardError> {
-        Ok(())
+    fn copy_text(&self, _content: &str) -> Result<ClipboardOutcome, ClipboardError> {
+        Ok(ClipboardOutcome::Copied)
     }
 }
 

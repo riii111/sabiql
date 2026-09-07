@@ -53,6 +53,7 @@ impl TomlConnectionStore {
             config.theme = existing_config.theme;
             config.keymap_preset = existing_config.keymap_preset;
             config.er_browser = existing_config.er_browser;
+            config.clipboard_backend = existing_config.clipboard_backend;
         }
         let content = toml::to_string_pretty(&config)?;
         let content_with_header = render_config_file(&content);
@@ -320,7 +321,7 @@ ssl_mode = "prefer"
             let config_path = temp_dir.path().join(CONFIG_FILE_NAME);
             fs::write(
                 &config_path,
-                "version = 2\ntheme = \"light\"\nkeymap_preset = \"ide\"\ner_browser = \"Firefox\"\nconnections = []\n",
+                "version = 2\ntheme = \"light\"\nkeymap_preset = \"ide\"\ner_browser = \"Firefox\"\nclipboard_backend = \"osc52\"\nconnections = []\n",
             )
             .unwrap();
             let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
@@ -332,6 +333,7 @@ ssl_mode = "prefer"
             assert!(content.contains("theme = \"light\""));
             assert!(content.contains("keymap_preset = \"ide\""));
             assert!(content.contains("er_browser = \"Firefox\""));
+            assert!(content.contains("clipboard_backend = \"osc52\""));
             assert!(content.contains("[[connections]]"));
         }
 

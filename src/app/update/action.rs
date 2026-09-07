@@ -585,6 +585,7 @@ pub enum Action {
     ResultCancelCellEdit,
     ResultDiscardCellEdit,
     SubmitCellEditWrite,
+    ClipboardSentToTerminal,
     CopyFailed(ClipboardError),
     OpenFolderFailed {
         message_revision: u64,

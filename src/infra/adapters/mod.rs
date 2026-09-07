@@ -16,7 +16,6 @@ pub(crate) mod sqlite;
 #[cfg(test)]
 pub(crate) mod test_support;
 pub use cached_result_exporter::CsvCachedResultExporter;
-pub use clipboard::ArboardClipboard;
 pub use config_writer::FileConfigWriter;
 pub use connection_store::TomlConnectionStore;
 pub use er_log_writer::FsErLogWriter;

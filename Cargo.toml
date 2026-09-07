@@ -21,6 +21,7 @@ sabiql-app = { path = "src/app", version = "3.0.1" }
 sabiql-infra = { path = "src/infra", version = "3.0.1" }
 sabiql-ui = { path = "src/ui", version = "3.0.1" }
 arboard = "3"
+base64 = "0.22"
 async-trait = "0.1"
 clap = { version = "4", features = ["derive"] }
 color-eyre = "0.6"
@@ -89,6 +90,7 @@ default = []
 self-update = ["dep:self_update"]
 
 [dev-dependencies]
+libc.workspace = true
 sabiql-domain.workspace = true
 sabiql-app = { workspace = true, features = ["test-support"] }
 sabiql-infra = { workspace = true, features = ["test-support"] }

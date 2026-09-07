@@ -126,6 +126,13 @@ pub(in crate::update) fn reduce_yank(
             state.flash_timers.set(FlashId::Ddl, now);
             DispatchResult::handled()
         }
+        Action::ClipboardSentToTerminal => {
+            state.messages.set_success_at(
+                "Sent via OSC 52; clipboard acceptance unverified".into(),
+                now,
+            );
+            DispatchResult::handled()
+        }
         Action::CopyFailed(e) => {
             state.messages.set_error(e.to_string());
             DispatchResult::handled()
@@ -142,6 +149,25 @@ mod tests {
     };
     use crate::ports::outbound::ddl_generator::DdlGenerator;
     use std::sync::Arc;
+
+    #[test]
+    fn terminal_send_reports_unverified_acceptance_without_copy_feedback() {
+        let mut state = AppState::new("test".into());
+        let now = Instant::now();
+
+        reduce_yank(
+            &mut state,
+            &Action::ClipboardSentToTerminal,
+            &AppServices::stub(),
+            now,
+        );
+
+        assert_eq!(
+            state.messages.last_success(),
+            Some("Sent via OSC 52; clipboard acceptance unverified")
+        );
+        assert!(!state.connection_error.is_copied_visible_at(now));
+    }
 
     mod cell_yank {
         use super::*;

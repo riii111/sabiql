@@ -2799,6 +2799,7 @@ dependencies = [
  "crossterm",
  "dotenvy",
  "insta",
+ "libc",
  "ratatui",
  "sabiql-app",
  "sabiql-domain",
@@ -2849,6 +2850,7 @@ version = "3.0.1"
 dependencies = [
  "arboard",
  "async-trait",
+ "base64 0.22.1",
  "csv",
  "dirs",
  "libc",
