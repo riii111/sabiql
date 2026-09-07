@@ -2,6 +2,7 @@ use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Default)]
 pub struct MessageState {
+    revision: u64,
     pub(crate) last_error: Option<String>,
     pub(crate) last_success: Option<String>,
     pub(crate) expires_at: Option<Instant>,
@@ -22,13 +23,26 @@ impl MessageState {
         self.expires_at
     }
 
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    pub fn keep_success_with_detail(&mut self, revision: u64, message: String) {
+        if self.revision == revision {
+            self.last_success = Some(message);
+            self.expires_at = None;
+        }
+    }
+
     pub fn set_error(&mut self, msg: String) {
+        self.revision += 1;
         self.last_error = Some(msg);
         self.last_success = None;
         self.expires_at = None;
     }
 
     pub fn set_success_at(&mut self, msg: String, now: Instant) {
+        self.revision += 1;
         self.last_success = Some(msg);
         self.last_error = None;
         self.expires_at = Some(now + Duration::from_secs(Self::SUCCESS_TIMEOUT_SECS));
@@ -48,6 +62,7 @@ impl MessageState {
     }
 
     pub fn clear(&mut self) {
+        self.revision += 1;
         self.last_error = None;
         self.last_success = None;
         self.expires_at = None;
@@ -133,6 +148,19 @@ mod tests {
 
         state.clear_error();
 
+        assert!(state.last_error().is_none());
+    }
+
+    #[test]
+    fn cleared_notification_rejects_delayed_success_detail() {
+        let mut state = MessageState::default();
+        state.set_success_at("Saved".to_string(), fixed_instant());
+        let revision = state.revision();
+        state.clear();
+
+        state.keep_success_with_detail(revision, "Saved; opener failed".to_string());
+
+        assert!(state.last_success().is_none());
         assert!(state.last_error().is_none());
     }
 

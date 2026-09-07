@@ -174,11 +174,15 @@ pub(in crate::update) fn reduce_pagination(
                 Some(n) => format!("Exported {n} rows → {path}"),
                 None => format!("Exported → {path}"),
             };
-            state.messages.set_success_at(msg, now);
+            state.messages.set_success_at(msg.clone(), now);
             let folder = Path::new(path)
                 .parent()
                 .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
-            DispatchResult::handled_with(vec![Effect::OpenFolder { path: folder }])
+            DispatchResult::handled_with(vec![Effect::OpenFolder {
+                path: folder,
+                message_revision: state.messages.revision(),
+                export_message: msg,
+            }])
         }
 
         Action::CsvExportFailed { run_id, error } => {
@@ -191,10 +195,15 @@ pub(in crate::update) fn reduce_pagination(
             DispatchResult::handled()
         }
 
-        Action::OpenFolderFailed(error) => {
-            state
-                .messages
-                .set_error(format!("Failed to open folder: {error}"));
+        Action::OpenFolderFailed {
+            message_revision,
+            export_message,
+            error,
+        } => {
+            state.messages.keep_success_with_detail(
+                *message_revision,
+                format!("{export_message}; folder could not be opened: {error}"),
+            );
 
             DispatchResult::handled()
         }
@@ -640,6 +649,98 @@ mod tests {
                     .unwrap()
                     .contains("/tmp/export.csv")
             );
+        }
+
+        fn folder_failure(effects: Vec<Effect>) -> Action {
+            let Effect::OpenFolder {
+                path,
+                message_revision,
+                export_message,
+            } = effects.into_iter().next().unwrap()
+            else {
+                panic!("expected folder opener");
+            };
+            assert_eq!(path, PathBuf::from("/tmp"));
+            Action::OpenFolderFailed {
+                message_revision,
+                export_message,
+                error: Arc::new(std::io::Error::other("opener unavailable")),
+            }
+        }
+
+        #[test]
+        fn folder_failure_keeps_saved_path_and_idle_after_success_expires() {
+            let mut state = create_test_state();
+            let now = Instant::now();
+            let action = csv_succeeded_action(&mut state, "/tmp/export.csv", Some(42));
+            let failure = folder_failure(dispatch_query(&mut state, &action, now).unwrap());
+            let later = now + std::time::Duration::from_secs(10);
+            state.messages.clear_expired_at(later);
+
+            let effects = dispatch_query(&mut state, &failure, later).unwrap();
+
+            assert!(effects.is_empty());
+            assert!(!state.query.is_running());
+            assert!(state.messages.last_error().is_none());
+            assert_eq!(
+                state.messages.last_success(),
+                Some(
+                    "Exported 42 rows → /tmp/export.csv; folder could not be opened: opener unavailable"
+                )
+            );
+            assert!(state.messages.expires_at().is_none());
+        }
+
+        #[test]
+        fn old_folder_failure_preserves_new_export_to_same_path() {
+            let mut state = create_test_state();
+            let now = Instant::now();
+            let action = csv_succeeded_action(&mut state, "/tmp/export.csv", Some(42));
+            let failure = folder_failure(dispatch_query(&mut state, &action, now).unwrap());
+            let action = csv_succeeded_action(&mut state, "/tmp/export.csv", Some(42));
+            dispatch_query(&mut state, &action, now).unwrap();
+
+            dispatch_query(&mut state, &failure, now).unwrap();
+
+            assert_eq!(
+                state.messages.last_success(),
+                Some("Exported 42 rows → /tmp/export.csv")
+            );
+            assert!(state.messages.last_error().is_none());
+            assert!(!state.query.is_running());
+        }
+
+        #[test]
+        fn old_folder_failure_preserves_unrelated_success() {
+            let mut state = create_test_state();
+            let now = Instant::now();
+            let action = csv_succeeded_action(&mut state, "/tmp/export.csv", None);
+            let failure = folder_failure(dispatch_query(&mut state, &action, now).unwrap());
+            state.messages.set_success_at("Copied".to_string(), now);
+
+            dispatch_query(&mut state, &failure, now).unwrap();
+
+            assert_eq!(state.messages.last_success(), Some("Copied"));
+        }
+
+        #[test]
+        fn old_folder_failure_preserves_new_export_error() {
+            let mut state = create_test_state();
+            let now = Instant::now();
+            let action = csv_succeeded_action(&mut state, "/tmp/export.csv", None);
+            let failure = folder_failure(dispatch_query(&mut state, &action, now).unwrap());
+            let action = csv_failed_action(
+                &mut state,
+                DbOperationError::QueryFailed("export failed".to_string()),
+            );
+            assert!(dispatch_query(&mut state, &action, now).unwrap().is_empty());
+            let error = state.messages.last_error().unwrap().to_string();
+
+            dispatch_query(&mut state, &failure, now).unwrap();
+
+            assert_eq!(state.messages.last_error(), Some(error.as_str()));
+            assert!(state.messages.last_success().is_none());
+            assert!(!state.query.is_running());
         }
 
         #[test]

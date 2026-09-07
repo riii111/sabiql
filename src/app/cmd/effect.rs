@@ -156,6 +156,8 @@ pub enum Effect {
     },
     OpenFolder {
         path: std::path::PathBuf,
+        message_revision: u64,
+        export_message: String,
     },
 
     LoadQueryHistory {

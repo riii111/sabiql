@@ -33,10 +33,18 @@ pub(in crate::cmd) async fn run(
                 }
             });
         }
-        Effect::OpenFolder { path } => {
+        Effect::OpenFolder {
+            path,
+            message_revision,
+            export_message,
+        } => {
             if let Err(e) = folder_opener.open(&path) {
                 action_tx
-                    .send(Action::OpenFolderFailed(Arc::new(e)))
+                    .send(Action::OpenFolderFailed {
+                        message_revision,
+                        export_message,
+                        error: Arc::new(e),
+                    })
                     .await
                     .ok();
             }
@@ -193,6 +201,8 @@ mod tests {
             run(
                 Effect::OpenFolder {
                     path: PathBuf::from("/tmp/export"),
+                    message_revision: 7,
+                    export_message: "Exported → /tmp/export/data.csv".to_string(),
                 },
                 &tx,
                 &clipboard,
@@ -215,6 +225,8 @@ mod tests {
             run(
                 Effect::OpenFolder {
                     path: PathBuf::from("/nonexistent"),
+                    message_revision: 7,
+                    export_message: "Exported → /nonexistent/data.csv".to_string(),
                 },
                 &tx,
                 &clipboard,
@@ -227,8 +239,14 @@ mod tests {
                 .expect("action timeout")
                 .expect("channel closed");
             match action {
-                Action::OpenFolderFailed(e) => {
-                    assert_eq!(e.to_string(), "No such file or directory");
+                Action::OpenFolderFailed {
+                    message_revision,
+                    export_message,
+                    error,
+                } => {
+                    assert_eq!(message_revision, 7);
+                    assert_eq!(export_message, "Exported → /nonexistent/data.csv");
+                    assert_eq!(error.to_string(), "No such file or directory");
                 }
                 other => panic!("expected OpenFolderFailed, got {other:?}"),
             }

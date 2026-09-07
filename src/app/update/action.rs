@@ -587,7 +587,11 @@ pub enum Action {
     ResultDiscardCellEdit,
     SubmitCellEditWrite,
     CopyFailed(ClipboardError),
-    OpenFolderFailed(Arc<std::io::Error>),
+    OpenFolderFailed {
+        message_revision: u64,
+        export_message: String,
+        error: Arc<std::io::Error>,
+    },
     ToggleFocus,
     ToggleReadOnly,
 
