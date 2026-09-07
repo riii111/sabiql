@@ -37,7 +37,6 @@ pub(in crate::update) fn reduce_connection_list(
         Action::ConnectionsLoaded(ConnectionsLoadedPayload {
             profiles,
             services,
-            service_file_path,
             profile_load_warning,
             service_load_warning,
         }) => {
@@ -48,7 +47,6 @@ pub(in crate::update) fn reduce_connection_list(
                     .cmp(&b.display_name().to_lowercase())
             });
             state.set_connections_and_services(sorted, services.clone());
-            state.set_service_file_path(service_file_path.clone());
 
             if let Some(warning) = profile_load_warning {
                 state.messages.set_error(warning.clone());
@@ -224,7 +222,6 @@ mod tests {
                 &Action::ConnectionsLoaded(ConnectionsLoadedPayload {
                     profiles,
                     services: vec![],
-                    service_file_path: None,
                     profile_load_warning: None,
                     service_load_warning: None,
                 }),
@@ -247,7 +244,6 @@ mod tests {
                 &Action::ConnectionsLoaded(ConnectionsLoadedPayload {
                     profiles,
                     services: vec![],
-                    service_file_path: None,
                     profile_load_warning: None,
                     service_load_warning: None,
                 }),
@@ -267,8 +263,10 @@ mod tests {
                 &mut state,
                 &Action::ConnectionsLoaded(ConnectionsLoadedPayload {
                     profiles: vec![],
-                    services: vec![],
-                    service_file_path: Some(path.clone()),
+                    services: vec![crate::domain::connection::ServiceEntry {
+                        service_name: "system".into(),
+                        source_path: path.clone(),
+                    }],
                     profile_load_warning: None,
                     service_load_warning: None,
                 }),
@@ -276,7 +274,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.service_file_path(), Some(path.as_path()));
+            assert_eq!(state.service_entries()[0].source_path, path);
         }
 
         #[test]
@@ -288,7 +286,6 @@ mod tests {
                 &Action::ConnectionsLoaded(ConnectionsLoadedPayload {
                     profiles: vec![],
                     services: vec![],
-                    service_file_path: None,
                     profile_load_warning: None,
                     service_load_warning: Some("parse error at line 5".to_string()),
                 }),

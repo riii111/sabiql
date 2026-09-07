@@ -1,4 +1,5 @@
 use std::fmt;
+use std::path::PathBuf;
 
 use super::ConnectionId;
 
@@ -7,6 +8,7 @@ const SERVICE_ID_PREFIX: &str = "service:";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServiceEntry {
     pub service_name: String,
+    pub source_path: PathBuf,
 }
 
 impl ServiceEntry {
@@ -32,6 +34,7 @@ mod tests {
     fn sample() -> ServiceEntry {
         ServiceEntry {
             service_name: "mydb".to_string(),
+            source_path: "/etc/pg_service.conf".into(),
         }
     }
 

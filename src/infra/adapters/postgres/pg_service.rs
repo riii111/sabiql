@@ -1,7 +1,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::app::ports::outbound::service_file::{PgServiceEntryReader, ServiceFileError};
+use crate::app::ports::outbound::service_file::{
+    PgServiceEntryReader, ServiceFileContents, ServiceFileError,
+};
 use crate::domain::connection::ServiceEntry;
 
 #[derive(Default)]
@@ -14,62 +16,91 @@ impl PgServiceFileReader {
 }
 
 impl PgServiceEntryReader for PgServiceFileReader {
-    fn read_services(&self) -> Result<(Vec<ServiceEntry>, PathBuf), ServiceFileError> {
-        let path = find_service_file()?;
-        let content =
-            std::fs::read_to_string(&path).map_err(|source| ServiceFileError::ReadAt {
-                path: path.clone(),
-                source: Arc::new(source),
-            })?;
-        let entries = parse(&content);
-        Ok((entries, path))
+    fn read_services(&self) -> Result<ServiceFileContents, ServiceFileError> {
+        let service_file = std::env::var_os("PGSERVICEFILE").map(PathBuf::from);
+        let sysconfdir = std::env::var_os("PGSYSCONFDIR").map(PathBuf::from);
+        let (user, system) = service_file_paths(
+            service_file.clone(),
+            user_service_file_path(),
+            sysconfdir,
+            || {
+                std::process::Command::new("pg_config")
+                    .arg("--sysconfdir")
+                    .output()
+                    .ok()
+                    .filter(|output| output.status.success())
+                    .map(|output| PathBuf::from(String::from_utf8_lossy(&output.stdout).trim()))
+            },
+        );
+        read_service_files(user.as_deref(), service_file.is_some(), system.as_deref())
     }
 }
 
-fn find_service_file() -> Result<PathBuf, ServiceFileError> {
-    if let Ok(val) = std::env::var("PGSERVICEFILE") {
-        let path = PathBuf::from(&val);
-        if path.is_file() {
-            return Ok(path);
+fn service_file_paths(
+    service_file: Option<PathBuf>,
+    default_user: Option<PathBuf>,
+    sysconfdir: Option<PathBuf>,
+    default_sysconfdir: impl FnOnce() -> Option<PathBuf>,
+) -> (Option<PathBuf>, Option<PathBuf>) {
+    (
+        service_file.or(default_user),
+        sysconfdir
+            .or_else(default_sysconfdir)
+            .map(|dir| dir.join("pg_service.conf")),
+    )
+}
+
+fn read_service_files(
+    user: Option<&Path>,
+    explicit_user: bool,
+    system: Option<&Path>,
+) -> Result<ServiceFileContents, ServiceFileError> {
+    let mut entries = Vec::new();
+    let mut found = false;
+    if let Some(path) = user
+        && let Some(content) = read_service_file(path, explicit_user)?
+    {
+        found = true;
+        entries = parse(&content, path);
+    }
+    let mut warning = None;
+    if let Some(path) = system {
+        match read_service_file(path, false) {
+            Ok(Some(content)) => {
+                found = true;
+                for entry in parse(&content, path) {
+                    if !entries
+                        .iter()
+                        .any(|user| user.service_name == entry.service_name)
+                    {
+                        entries.push(entry);
+                    }
+                }
+            }
+            Ok(None) => {}
+            Err(error) if !entries.is_empty() => warning = Some(error),
+            Err(error) => return Err(error),
         }
+    }
+    if !found {
         return Err(ServiceFileError::NotFound(format!(
-            "PGSERVICEFILE={val} does not exist"
+            "No pg_service.conf found (user: {}, system: {}; PGSERVICEFILE / PGSYSCONFDIR or pg_config --sysconfdir)",
+            user.map_or_else(|| "unavailable".into(), |path| path.display().to_string()),
+            system.map_or_else(|| "unavailable".into(), |path| path.display().to_string()),
         )));
     }
-
-    let user_service_path = user_service_file_path();
-    if let Some(path) = &user_service_path
-        && path.is_file()
-    {
-        return Ok(path.clone());
-    }
-
-    if let Some(output) = std::process::Command::new("pg_config")
-        .arg("--sysconfdir")
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-    {
-        let sysconfdir = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        let path = PathBuf::from(&sysconfdir).join("pg_service.conf");
-        if path.is_file() {
-            return Ok(path);
-        }
-    }
-
-    Err(ServiceFileError::NotFound(service_file_not_found_message(
-        user_service_path.as_deref(),
-    )))
+    Ok(ServiceFileContents { entries, warning })
 }
 
-fn service_file_not_found_message(user_service_path: Option<&Path>) -> String {
-    let user_path_hint = user_service_path.map_or_else(
-        || "the platform user config path".to_string(),
-        |path| path.display().to_string(),
-    );
-    format!(
-        "No pg_service.conf found (checked PGSERVICEFILE, {user_path_hint}, and pg_config --sysconfdir)"
-    )
+fn read_service_file(path: &Path, required: bool) -> Result<Option<String>, ServiceFileError> {
+    match std::fs::read_to_string(path) {
+        Ok(content) => Ok(Some(content)),
+        Err(error) if !required && error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(source) => Err(ServiceFileError::ReadAt {
+            path: path.to_path_buf(),
+            source: Arc::new(source),
+        }),
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -92,7 +123,7 @@ fn unix_user_service_file_path(home_dir: &Path) -> PathBuf {
     home_dir.join(".pg_service.conf")
 }
 
-fn parse(content: &str) -> Vec<ServiceEntry> {
+fn parse(content: &str, path: &Path) -> Vec<ServiceEntry> {
     let mut entries: Vec<ServiceEntry> = Vec::new();
     let mut current: Option<ServiceEntry> = None;
 
@@ -108,7 +139,10 @@ fn parse(content: &str) -> Vec<ServiceEntry> {
                 entries.push(entry);
             }
             let name = line[1..line.len() - 1].trim().to_string();
-            current = Some(ServiceEntry { service_name: name });
+            current = Some(ServiceEntry {
+                service_name: name,
+                source_path: path.to_path_buf(),
+            });
         }
     }
 
@@ -116,10 +150,10 @@ fn parse(content: &str) -> Vec<ServiceEntry> {
         entries.push(entry);
     }
 
-    // Duplicate sections: last one wins (PostgreSQL convention)
+    // libpq uses the first matching section.
     let mut seen = std::collections::HashMap::new();
     for (i, entry) in entries.iter().enumerate() {
-        seen.insert(entry.service_name.clone(), i);
+        seen.entry(entry.service_name.clone()).or_insert(i);
     }
     let mut unique_indices: Vec<usize> = seen.into_values().collect();
     unique_indices.sort_unstable();
@@ -132,14 +166,10 @@ fn parse(content: &str) -> Vec<ServiceEntry> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
-
-    /// Guards env-var–mutating tests so they don't race each other.
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn empty_content_returns_no_entries() {
-        assert_eq!(parse(""), Vec::new());
+        assert_eq!(parse("", Path::new("/test")), Vec::new());
     }
 
     #[test]
@@ -151,7 +181,7 @@ port=5432
 dbname=mydb
 user=admin
 ";
-        let entries = parse(content);
+        let entries = parse(content, Path::new("/test"));
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].service_name, "mydb");
     }
@@ -168,7 +198,7 @@ host=prod.example.com
 dbname=proddb
 port=5433
 ";
-        let entries = parse(content);
+        let entries = parse(content, Path::new("/test"));
         assert_eq!(entries.len(), 2);
         assert_eq!(
             entries
@@ -191,7 +221,7 @@ host=localhost
 # inline section comment
 port=5432
 ";
-        let entries = parse(content);
+        let entries = parse(content, Path::new("/test"));
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].service_name, "mydb");
     }
@@ -204,25 +234,29 @@ host=localhost
 this is not a valid line
 port=5432
 ";
-        let entries = parse(content);
+        let entries = parse(content, Path::new("/test"));
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].service_name, "mydb");
     }
 
     #[test]
-    fn duplicate_sections_are_collapsed() {
+    fn duplicate_sections_preserve_first_occurrence_order() {
         let content = "\
 [mydb]
 host=first.example.com
 port=5432
 
+[other]
+host=other.example.com
+
 [mydb]
 host=second.example.com
 port=5433
 ";
-        let entries = parse(content);
-        assert_eq!(entries.len(), 1);
+        let entries = parse(content, Path::new("/test"));
+        assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].service_name, "mydb");
+        assert_eq!(entries[1].service_name, "other");
     }
 
     #[test]
@@ -230,7 +264,7 @@ port=5433
         let content = "\
 [empty]
 ";
-        let entries = parse(content);
+        let entries = parse(content, Path::new("/test"));
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].service_name, "empty");
     }
@@ -244,7 +278,7 @@ port=1234
 [mydb]
 host=localhost
 ";
-        let entries = parse(content);
+        let entries = parse(content, Path::new("/test"));
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].service_name, "mydb");
     }
@@ -258,7 +292,7 @@ sslmode=require
 connect_timeout=10
 application_name=myapp
 ";
-        let entries = parse(content);
+        let entries = parse(content, Path::new("/test"));
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].service_name, "mydb");
     }
@@ -282,59 +316,159 @@ application_name=myapp
     }
 
     #[test]
-    fn not_found_message_includes_resolved_user_service_file_path() {
-        let path = Path::new(r"C:\Users\test\AppData\Roaming\postgresql\.pg_service.conf");
+    fn user_services_override_duplicates_and_keep_system_only_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let user = dir.path().join("user");
+        let system = dir.path().join("system");
+        std::fs::write(&user, "[shared]\nhost=user\n[user_only]\n").unwrap();
+        std::fs::write(&system, "[shared]\nhost=system\n[system_only]\n").unwrap();
 
-        let message = service_file_not_found_message(Some(path));
+        let result = read_service_files(Some(&user), false, Some(&system)).unwrap();
 
-        assert!(message.contains(&path.display().to_string()));
+        assert_eq!(
+            result
+                .entries
+                .iter()
+                .map(|e| e.service_name.as_str())
+                .collect::<Vec<_>>(),
+            ["shared", "user_only", "system_only"]
+        );
+        assert_eq!(result.entries[0].source_path, user);
+        assert_eq!(result.entries[2].source_path, system);
+        assert_eq!(result.entries[2].to_string(), "service=system_only");
+        assert!(result.warning.is_none());
     }
 
     #[test]
-    fn find_service_file_uses_pgservicefile_env() {
-        let _guard = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+    fn missing_default_user_still_lists_system_services() {
+        let dir = tempfile::tempdir().unwrap();
+        let system = dir.path().join("system");
+        std::fs::write(&system, "[system_only]\n").unwrap();
 
-        let tmpdir = std::env::temp_dir();
-        let path = tmpdir.join("test_pg_service.conf");
-        std::fs::write(&path, "[test]\nhost=localhost\n").unwrap();
+        let result =
+            read_service_files(Some(&dir.path().join("missing")), false, Some(&system)).unwrap();
 
-        let original = std::env::var("PGSERVICEFILE").ok();
-        // SAFETY: test-only, serialized by ENV_LOCK
-        unsafe { std::env::set_var("PGSERVICEFILE", &path) };
-
-        let result = find_service_file();
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), path);
-
-        unsafe {
-            match original {
-                Some(val) => std::env::set_var("PGSERVICEFILE", val),
-                None => std::env::remove_var("PGSERVICEFILE"),
-            }
-        }
-        std::fs::remove_file(&path).ok();
+        assert_eq!(result.entries[0].service_name, "system_only");
+        assert_eq!(result.entries[0].source_path, system);
     }
 
     #[test]
-    fn find_service_file_errors_when_pgservicefile_missing() {
-        let _guard = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+    fn missing_explicit_user_does_not_fall_back_to_system() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("missing");
+        let system = dir.path().join("system");
+        std::fs::write(&system, "[system_only]\n").unwrap();
 
-        let original = std::env::var("PGSERVICEFILE").ok();
-        // SAFETY: test-only, serialized by ENV_LOCK
-        unsafe { std::env::set_var("PGSERVICEFILE", "/nonexistent/path/pg_service.conf") };
+        let result = read_service_files(Some(&missing), true, Some(&system));
 
-        let result = find_service_file();
-        assert!(result.is_err());
+        assert!(matches!(result, Err(ServiceFileError::ReadAt {path, ..}) if path == missing));
+    }
 
-        unsafe {
-            match original {
-                Some(val) => std::env::set_var("PGSERVICEFILE", val),
-                None => std::env::remove_var("PGSERVICEFILE"),
-            }
+    #[test]
+    fn absent_files_report_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let result = read_service_files(
+            Some(&dir.path().join("user")),
+            false,
+            Some(&dir.path().join("system")),
+        );
+
+        assert!(matches!(result, Err(ServiceFileError::NotFound(_))));
+    }
+
+    #[test]
+    fn unreadable_user_reports_source_path_without_system_fallback() {
+        let dir = tempfile::tempdir().unwrap();
+        let user = dir.path().join("user");
+        std::fs::write(&user, [0xff]).unwrap();
+
+        let result = read_service_files(Some(&user), false, None);
+
+        assert!(matches!(result, Err(ServiceFileError::ReadAt {path, ..}) if path == user));
+    }
+
+    #[test]
+    fn unreadable_system_preserves_user_services_with_warning() {
+        let dir = tempfile::tempdir().unwrap();
+        let user = dir.path().join("user");
+        let system = dir.path().join("system");
+        std::fs::write(&user, "[user_only]\n").unwrap();
+        std::fs::write(&system, [0xff]).unwrap();
+
+        let result = read_service_files(Some(&user), false, Some(&system)).unwrap();
+
+        assert_eq!(result.entries[0].service_name, "user_only");
+        assert!(
+            matches!(result.warning, Some(ServiceFileError::ReadAt {path, ..}) if path == system)
+        );
+    }
+
+    #[test]
+    fn environment_paths_replace_defaults_without_pg_config_lookup() {
+        let (user, system) = service_file_paths(
+            Some("/custom/user".into()),
+            Some("/home/default".into()),
+            Some("/custom/system".into()),
+            || panic!("pg_config must not run"),
+        );
+
+        assert_eq!(user, Some("/custom/user".into()));
+        assert_eq!(
+            system,
+            Some(PathBuf::from("/custom/system/pg_service.conf"))
+        );
+    }
+
+    #[test]
+    fn absent_environment_uses_platform_user_and_pg_config_directory() {
+        let (user, system) = service_file_paths(None, Some("/home/default".into()), None, || {
+            Some("/postgres/etc".into())
+        });
+
+        assert_eq!(user, Some("/home/default".into()));
+        assert_eq!(system, Some(PathBuf::from("/postgres/etc/pg_service.conf")));
+    }
+    #[test]
+    fn environment_overrides_load_both_files_through_reader() {
+        const CHILD: &str = "SABIQL_CF06_SERVICE_READER_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            let result = PgServiceFileReader::new().read_services().unwrap();
+            assert_eq!(
+                result
+                    .entries
+                    .iter()
+                    .map(|e| e.service_name.as_str())
+                    .collect::<Vec<_>>(),
+                ["custom_user", "custom_system"]
+            );
+            assert_eq!(
+                result.entries[0].source_path,
+                PathBuf::from(std::env::var_os("PGSERVICEFILE").unwrap())
+            );
+            assert_eq!(
+                result.entries[1].source_path,
+                PathBuf::from(std::env::var_os("PGSYSCONFDIR").unwrap()).join("pg_service.conf")
+            );
+            return;
         }
+        let dir = tempfile::tempdir().unwrap();
+        let user = dir.path().join("custom.conf");
+        std::fs::write(&user, "[custom_user]\n").unwrap();
+        std::fs::write(dir.path().join("pg_service.conf"), "[custom_system]\n").unwrap();
+
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "adapters::postgres::pg_service::tests::environment_overrides_load_both_files_through_reader", "--nocapture"])
+            .env(CHILD, "1")
+            .env("PGSERVICEFILE", &user)
+            .env("PGSYSCONFDIR", dir.path())
+            .output().unwrap();
+
+        assert!(
+            output.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 }
