@@ -1,0 +1,200 @@
+[
+  {
+    "operation": "db_selection",
+    "delay_ms": 0,
+    "tables": 10,
+    "phase": "fresh-harness",
+    "n": 5,
+    "median_ms": 405.080833,
+    "p95_ms": 410.685833,
+    "min_ms": 396.516125,
+    "max_ms": 410.685833
+  },
+  {
+    "operation": "db_selection",
+    "delay_ms": 0,
+    "tables": 10,
+    "phase": "repeated-harness",
+    "n": 5,
+    "median_ms": 401.232333,
+    "p95_ms": 413.29804199999995,
+    "min_ms": 393.11,
+    "max_ms": 413.29804199999995
+  },
+  {
+    "operation": "db_selection",
+    "delay_ms": 0,
+    "tables": 100,
+    "phase": "fresh-harness",
+    "n": 5,
+    "median_ms": 397.70270800000003,
+    "p95_ms": 424.494583,
+    "min_ms": 386.748542,
+    "max_ms": 424.494583
+  },
+  {
+    "operation": "db_selection",
+    "delay_ms": 0,
+    "tables": 100,
+    "phase": "repeated-harness",
+    "n": 5,
+    "median_ms": 395.49,
+    "p95_ms": 415.091791,
+    "min_ms": 389.76875,
+    "max_ms": 415.091791
+  },
+  {
+    "operation": "db_selection",
+    "delay_ms": 0,
+    "tables": 1000,
+    "phase": "fresh-harness",
+    "n": 5,
+    "median_ms": 425.532833,
+    "p95_ms": 428.37404200000003,
+    "min_ms": 418.049291,
+    "max_ms": 428.37404200000003
+  },
+  {
+    "operation": "db_selection",
+    "delay_ms": 0,
+    "tables": 1000,
+    "phase": "repeated-harness",
+    "n": 5,
+    "median_ms": 419.362292,
+    "p95_ms": 439.190625,
+    "min_ms": 417.271625,
+    "max_ms": 439.190625
+  },
+  {
+    "operation": "db_selection",
+    "delay_ms": 50,
+    "tables": 10,
+    "phase": "fresh-harness",
+    "n": 5,
+    "median_ms": 828.543083,
+    "p95_ms": 852.827334,
+    "min_ms": 809.7657499999999,
+    "max_ms": 852.827334
+  },
+  {
+    "operation": "db_selection",
+    "delay_ms": 50,
+    "tables": 10,
+    "phase": "repeated-harness",
+    "n": 5,
+    "median_ms": 829.972042,
+    "p95_ms": 857.542459,
+    "min_ms": 808.854583,
+    "max_ms": 857.542459
+  },
+  {
+    "operation": "db_selection",
+    "delay_ms": 50,
+    "tables": 100,
+    "phase": "fresh-harness",
+    "n": 5,
+    "median_ms": 838.1633750000001,
+    "p95_ms": 872.420792,
+    "min_ms": 821.5074169999999,
+    "max_ms": 872.420792
+  },
+  {
+    "operation": "db_selection",
+    "delay_ms": 50,
+    "tables": 100,
+    "phase": "repeated-harness",
+    "n": 5,
+    "median_ms": 838.039417,
+    "p95_ms": 910.8172079999999,
+    "min_ms": 801.472042,
+    "max_ms": 910.8172079999999
+  },
+  {
+    "operation": "db_selection",
+    "delay_ms": 50,
+    "tables": 1000,
+    "phase": "fresh-harness",
+    "n": 5,
+    "median_ms": 901.673083,
+    "p95_ms": 925.329417,
+    "min_ms": 866.871666,
+    "max_ms": 925.329417
+  },
+  {
+    "operation": "db_selection",
+    "delay_ms": 50,
+    "tables": 1000,
+    "phase": "repeated-harness",
+    "n": 5,
+    "median_ms": 916.833041,
+    "p95_ms": 931.83875,
+    "min_ms": 838.827167,
+    "max_ms": 931.83875
+  },
+  {
+    "operation": "db_selection",
+    "delay_ms": 200,
+    "tables": 10,
+    "phase": "fresh-harness",
+    "n": 5,
+    "median_ms": 1928.048333,
+    "p95_ms": 1957.157041,
+    "min_ms": 1888.845667,
+    "max_ms": 1957.157041
+  },
+  {
+    "operation": "db_selection",
+    "delay_ms": 200,
+    "tables": 10,
+    "phase": "repeated-harness",
+    "n": 5,
+    "median_ms": 1955.148791,
+    "p95_ms": 1967.9379999999999,
+    "min_ms": 1889.2260840000001,
+    "max_ms": 1967.9379999999999
+  },
+  {
+    "operation": "db_selection",
+    "delay_ms": 200,
+    "tables": 100,
+    "phase": "fresh-harness",
+    "n": 5,
+    "median_ms": 1873.5054579999999,
+    "p95_ms": 1950.4467920000002,
+    "min_ms": 1841.981166,
+    "max_ms": 1950.4467920000002
+  },
+  {
+    "operation": "db_selection",
+    "delay_ms": 200,
+    "tables": 100,
+    "phase": "repeated-harness",
+    "n": 5,
+    "median_ms": 1905.2766669999999,
+    "p95_ms": 1959.573666,
+    "min_ms": 1865.340166,
+    "max_ms": 1959.573666
+  },
+  {
+    "operation": "db_selection",
+    "delay_ms": 200,
+    "tables": 1000,
+    "phase": "fresh-harness",
+    "n": 5,
+    "median_ms": 1994.2102080000002,
+    "p95_ms": 1998.9937909999999,
+    "min_ms": 1963.849542,
+    "max_ms": 1998.9937909999999
+  },
+  {
+    "operation": "db_selection",
+    "delay_ms": 200,
+    "tables": 1000,
+    "phase": "repeated-harness",
+    "n": 5,
+    "median_ms": 2001.4988749999998,
+    "p95_ms": 2018.509958,
+    "min_ms": 1982.160458,
+    "max_ms": 2018.509958
+  }
+]

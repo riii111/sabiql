@@ -1,0 +1,10 @@
+{"kind": "start", "pid": 20927, "ns": 1788785961574929000}
+{"kind": "exit", "pid": 20927, "ns": 1788785961575045000}
+{"kind": "start", "pid": 20928, "ns": 1788785961620515000}
+{"kind": "sql", "pid": 20928, "ns": 1788785961620709000, "sql": "SELECT VERSION() AS __sabiql_server_version, @@SESSION.sql_mode AS __sabiql_sql_mode, @@lower_case_table_names AS __sabiql_lower_case_table_names", "input_bytes": 145, "output_bytes": 255}
+{"kind": "exit", "pid": 20928, "ns": 1788785961680865000}
+{"kind": "start", "pid": 20929, "ns": 1788785961730404000}
+{"kind": "exit", "pid": 20929, "ns": 1788785961730493000}
+{"kind": "start", "pid": 20930, "ns": 1788785961774441000}
+{"kind": "sql", "pid": 20930, "ns": 1788785961774618000, "sql": "SELECT VERSION() AS __sabiql_server_version, @@SESSION.sql_mode AS __sabiql_sql_mode, @@lower_case_table_names AS __sabiql_lower_case_table_names", "input_bytes": 145, "output_bytes": 255}
+{"kind": "exit", "pid": 20930, "ns": 1788785961834768000}

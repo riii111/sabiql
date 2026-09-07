@@ -1,0 +1,24 @@
+{
+  "base": "a5e22c7a1e6c89c091d0e3ef267c17dddaaa208d",
+  "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "python": "3.14.6",
+  "repetitions": 5,
+  "delay_ms": [
+    0,
+    50,
+    200
+  ],
+  "tables": [
+    10,
+    100,
+    1000
+  ],
+  "operations": [
+    "db_selection"
+  ],
+  "delay_location": "before each nonempty XML response; SET has no delay",
+  "phase_definition": "first and second operation in the same fresh harness; no app/DB cache",
+  "p95": "nearest rank; n=5 means maximum",
+  "deadline_seconds": 1200,
+  "byte_limit": 20971520
+}
