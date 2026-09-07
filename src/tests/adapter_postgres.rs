@@ -9,6 +9,7 @@
 //! The database user must be able to create and drop schemas.
 
 use sabiql_app::ports::outbound::{AccessMode, DbOperationError, MetadataProvider, QueryExecutor};
+use sabiql_domain::RefreshScope;
 use sabiql_infra::adapters::PostgresAdapter;
 
 use crate::tests::harness::postgres::{
@@ -288,12 +289,34 @@ mod error_paths {
 
     #[tokio::test]
     #[ignore = "requires PostgreSQL, tracked: #133"]
-    async fn timeout_with_pg_sleep_returns_timeout_error() {
+    async fn timeout_with_pg_sleep_returns_result_unknown() {
         let adapter = PostgresAdapter::with_timeout(1);
         let dsn = postgres_integration_dsn();
 
         let result = adapter
             .execute_adhoc(&dsn, "SELECT pg_sleep(5)", AccessMode::ReadWrite)
+            .await;
+
+        assert!(
+            matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    refresh_scope: RefreshScope::Metadata,
+                    ..
+                })
+            ),
+            "Expected result-unknown error, got: {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires PostgreSQL, tracked: #133"]
+    async fn read_only_timeout_with_pg_sleep_stays_a_timeout_error() {
+        let adapter = PostgresAdapter::with_timeout(1);
+        let dsn = postgres_integration_dsn();
+
+        let result = adapter
+            .execute_adhoc(&dsn, "SELECT pg_sleep(5)", AccessMode::ReadOnly)
             .await;
 
         assert!(
