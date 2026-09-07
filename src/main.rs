@@ -45,9 +45,9 @@ use sabiql_app::update::input::handle_event;
 use sabiql_app::update::reducer::reduce;
 use sabiql_infra::adapters::mysql::MySqlAdapter;
 use sabiql_infra::adapters::{
-    ArboardClipboard, CsvCachedResultExporter, DbAdapterRegistry, FileConfigWriter,
-    FileQueryHistoryStore, FsErLogWriter, FsSqlitePathValidator, NativeFolderOpener,
-    PgServiceFileReader, SqliteAdapter, TomlConnectionStore, TomlSettingsStore,
+    CsvCachedResultExporter, DbAdapterRegistry, FileConfigWriter, FileQueryHistoryStore,
+    FsErLogWriter, FsSqlitePathValidator, NativeFolderOpener, PgServiceFileReader, SqliteAdapter,
+    TomlConnectionStore, TomlSettingsStore,
 };
 use sabiql_infra::config::project_root::{find_project_root, get_project_name};
 use sabiql_infra::export::DotExporter;
@@ -140,6 +140,7 @@ async fn main() -> Result<()> {
     let connection_store = TomlConnectionStore::new()?;
     let settings_store = TomlSettingsStore::new()?;
     let app_settings = settings_store.load().unwrap_or_default();
+    let clipboard = settings_store.load_clipboard()?;
     let connection_store = Arc::new(connection_store);
     let settings_store = Arc::new(settings_store);
 
@@ -167,7 +168,7 @@ async fn main() -> Result<()> {
             er_log_writer: Arc::new(FsErLogWriter),
         },
         UtilityDeps {
-            clipboard: Arc::new(ArboardClipboard),
+            clipboard,
             folder_opener: Arc::new(NativeFolderOpener),
         },
         Arc::clone(&settings_store) as _,

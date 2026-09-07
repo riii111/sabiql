@@ -6,6 +6,8 @@ pub enum ClipboardError {
     Backend(#[source] Arc<dyn std::error::Error + Send + Sync>),
     #[error("{0}")]
     Unavailable(String),
+    #[error("{0}")]
+    Terminal(String),
 }
 
 impl ClipboardError {
@@ -14,6 +16,12 @@ impl ClipboardError {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClipboardOutcome {
+    Copied,
+    SentToTerminal,
+}
+
 pub trait ClipboardWriter: Send + Sync {
-    fn copy_text(&self, content: &str) -> Result<(), ClipboardError>;
+    fn copy_text(&self, content: &str) -> Result<ClipboardOutcome, ClipboardError>;
 }

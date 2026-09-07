@@ -26,7 +26,7 @@ pub mod sqlite_path_validator;
 
 pub use access_mode::AccessMode;
 pub use cached_result_exporter::CachedResultExporter;
-pub use clipboard::{ClipboardError, ClipboardWriter};
+pub use clipboard::{ClipboardError, ClipboardOutcome, ClipboardWriter};
 pub use config_writer::{ConfigWriter, ConfigWriterError};
 pub use connection_store::{ConnectionStore, ConnectionStoreError};
 pub use db_operation_error::{

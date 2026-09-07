@@ -1,5 +1,7 @@
 mod adapter_mysql;
 mod adapter_postgres;
+#[cfg(unix)]
+mod clipboard;
 pub mod harness;
 
 use clap::Parser;

@@ -93,6 +93,8 @@ sabiql /path/to/app.db
 
 Use `Ctrl+R` before browsing data when you want to block writes. Press `?` for help, or open Settings with `,` to change the theme and keymap.
 
+For copying from SSH or a headless host, see [OSC 52 clipboard configuration](docs/clipboard.md).
+
 ## Roadmap
 
 - [x] Connection management UI

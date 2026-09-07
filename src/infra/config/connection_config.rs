@@ -33,6 +33,8 @@ pub(crate) struct ConnectionConfigFile {
     pub keymap_preset: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub er_browser: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clipboard_backend: Option<String>,
     pub connections: Vec<ConnectionConfigEntry>,
 }
 
@@ -81,6 +83,7 @@ impl From<&[ConnectionProfile]> for ConnectionConfigFile {
             theme: None,
             keymap_preset: None,
             er_browser: None,
+            clipboard_backend: None,
             connections: profiles.iter().map(ConnectionConfigEntry::from).collect(),
         }
     }
