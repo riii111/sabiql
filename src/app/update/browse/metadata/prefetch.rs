@@ -6,7 +6,7 @@ use crate::domain::TableSummary;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::table_prefetch::FailedPrefetchEntry;
-use crate::ports::outbound::{ConnectionFailureKind, DbOperationError};
+use crate::ports::outbound::DbOperationError;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
@@ -266,6 +266,28 @@ pub(super) fn reduce_prefetch(
             {
                 return DispatchResult::handled();
             }
+            if matches!(
+                error,
+                DbOperationError::ConnectionLost(_)
+                    | DbOperationError::ConnectionFailed(_)
+                    | DbOperationError::ConnectionFailedWithKind { .. }
+            ) {
+                let tracks_er = state.table_prefetch.prefetch_tracks_er();
+                state.table_prefetch.reset_prefetch();
+                if tracks_er {
+                    state.er_preparation.invalidate_run();
+                }
+                state.messages.set_error(format!(
+                    "Metadata prefetch stopped: {}{}",
+                    error.user_message(),
+                    if tracks_er {
+                        " 'e' to retry after recovery."
+                    } else {
+                        ""
+                    }
+                ));
+                return DispatchResult::handled();
+            }
             let qualified_name = format!("{schema}.{table}");
 
             let prev_count = state
@@ -274,16 +296,7 @@ pub(super) fn reduce_prefetch(
                 .map_or(0, |e| e.retry_count);
             let retryable = matches!(
                 error,
-                DbOperationError::Timeout(_)
-                    | DbOperationError::LockTimeout(_)
-                    | DbOperationError::ConnectionLost(_)
-                    | DbOperationError::ConnectionFailed(_)
-                    | DbOperationError::QueryFailed(_)
-                    | DbOperationError::ConnectionFailedWithKind {
-                        kind: ConnectionFailureKind::HostUnreachable
-                            | ConnectionFailureKind::ConnectionRefused,
-                        ..
-                    }
+                DbOperationError::Timeout(_) | DbOperationError::LockTimeout(_)
             );
             let entry = FailedPrefetchEntry {
                 failed_at: now,

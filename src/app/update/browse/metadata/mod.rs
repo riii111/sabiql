@@ -778,10 +778,7 @@ mod tests {
 
         #[rstest::rstest]
         #[case(DbOperationError::PermissionDenied("denied".to_string()))]
-        #[case(DbOperationError::ConnectionFailedWithKind {
-            kind: ConnectionFailureKind::Auth,
-            details: "invalid password".to_string(),
-        })]
+        #[case(DbOperationError::QueryFailed("unknown SQL failure".to_string()))]
         #[case(DbOperationError::ObjectMissing("table dropped".to_string()))]
         #[case(DbOperationError::UnsupportedOperation("unsupported".to_string()))]
         fn permanent_failure_finishes_er_without_requeue_and_new_run_can_retry(
@@ -857,6 +854,96 @@ mod tests {
                 effects.as_slice(),
                 [Effect::PrefetchTableColumnsAndFks { .. }]
             ));
+        }
+
+        #[rstest::rstest]
+        #[case(DbOperationError::ConnectionLost("disconnected".to_string()))]
+        #[case(DbOperationError::ConnectionFailed("invalid connection".to_string()))]
+        #[case(DbOperationError::ConnectionFailedWithKind {
+            kind: ConnectionFailureKind::Auth, details: "invalid password".to_string(),
+        })]
+        #[case(DbOperationError::ConnectionFailedWithKind {
+            kind: ConnectionFailureKind::HostUnreachable, details: "unreachable".to_string(),
+        })]
+        #[case(DbOperationError::ConnectionFailedWithKind {
+            kind: ConnectionFailureKind::ConnectionRefused, details: "refused".to_string(),
+        })]
+        fn connection_failure_stops_queue_rejects_late_results_and_allows_new_run(
+            #[case] error: DbOperationError,
+            #[values(false, true)] tracks_er: bool,
+        ) {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let run_id = if tracks_er {
+                let _ = state.er_preparation.start_waiting_run();
+                state.table_prefetch.begin_er_prefetch()
+            } else {
+                state.table_prefetch.begin_completion_prefetch()
+            };
+            let tables: Vec<String> = (0..10).map(|i| format!("public.table{i}")).collect();
+            for table in &tables {
+                state.table_prefetch.queue_table_prefetch(table.clone());
+            }
+            let now = Instant::now();
+            let effects =
+                dispatch_metadata(&mut state, &Action::ProcessPrefetchQueue { run_id }, now)
+                    .unwrap();
+            assert_eq!(effects.len(), 4);
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::TableDetailCacheFailed {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
+                    schema: "public".to_string(),
+                    table: "table0".to_string(),
+                    error,
+                },
+                now,
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert!(state.table_prefetch.is_complete());
+            assert!(!state.table_prefetch.is_current_prefetch_run(run_id));
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+            for action in [
+                Action::ProcessPrefetchQueue { run_id },
+                Action::TableDetailCached {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
+                    schema: "public".to_string(),
+                    table: "table1".to_string(),
+                    detail: Some(empty_table("public", "table1")),
+                },
+                Action::TableDetailCacheFailed {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
+                    schema: "public".to_string(),
+                    table: "table2".to_string(),
+                    error: DbOperationError::Timeout("late timeout".to_string()),
+                },
+            ] {
+                assert!(
+                    dispatch_metadata(&mut state, &action, now)
+                        .unwrap()
+                        .is_empty()
+                );
+            }
+            dispatch_metadata(&mut state, &Action::StartErPrefetchScoped { tables }, now);
+            let next_run = state.table_prefetch.active_prefetch_run_id().unwrap();
+            assert!(next_run > run_id);
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::ProcessPrefetchQueue { run_id: next_run },
+                now,
+            )
+            .unwrap();
+            assert_eq!(effects.len(), 4);
+            assert!(
+                effects
+                    .iter()
+                    .all(|effect| matches!(effect, Effect::PrefetchTableColumnsAndFks { .. }))
+            );
         }
 
         #[test]
