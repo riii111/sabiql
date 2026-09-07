@@ -1,0 +1,34 @@
+{"kind": "start", "pid": 25572, "ns": 1788786191124196000}
+{"kind": "exit", "pid": 25572, "ns": 1788786191124391000}
+{"kind": "start", "pid": 25573, "ns": 1788786191174494000}
+{"kind": "sql", "pid": 25573, "ns": 1788786191174751000, "sql": "SELECT VERSION() AS __sabiql_server_version, @@SESSION.sql_mode AS __sabiql_sql_mode, @@lower_case_table_names AS __sabiql_lower_case_table_names", "input_bytes": 145, "output_bytes": 255}
+{"kind": "exit", "pid": 25573, "ns": 1788786191385878000}
+{"kind": "start", "pid": 25574, "ns": 1788786191462969000}
+{"kind": "sql", "pid": 25574, "ns": 1788786191463294000, "sql": "SET SESSION autocommit=1, completion_type=NO_CHAIN", "input_bytes": 50, "output_bytes": 0}
+{"kind": "sql", "pid": 25574, "ns": 1788786191463606000, "sql": "SET SESSION TRANSACTION READ ONLY", "input_bytes": 33, "output_bytes": 0}
+{"kind": "sql", "pid": 25574, "ns": 1788786191463676000, "sql": "SELECT '<marker>' AS __sabiql_session_marker, @@SESSION.sql_mode AS __sabiql_sql_mode", "input_bytes": 109, "output_bytes": 226}
+{"kind": "sql", "pid": 25574, "ns": 1788786191675446000, "sql": "SELECT '<marker>' AS __sabiql_probe, VERSION() AS __sabiql_server_version, @@lower_case_table_names AS __sabiql_lower_case_table_names", "input_bytes": 158, "output_bytes": 265}
+{"kind": "sql", "pid": 25574, "ns": 1788786191881598000, "sql": "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, TABLE_ROWS, TABLE_COMMENT, ENGINE, ROW_FORMAT, TABLE_COLLATION, CREATE_OPTIONS FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_SCHEMA, TABLE_NAME", "input_bytes": 250, "output_bytes": 3778}
+{"kind": "start", "pid": 25575, "ns": 1788786192270667000}
+{"kind": "sql", "pid": 25575, "ns": 1788786192270979000, "sql": "SET SESSION autocommit=1, completion_type=NO_CHAIN", "input_bytes": 50, "output_bytes": 0}
+{"kind": "sql", "pid": 25575, "ns": 1788786192271033000, "sql": "SET SESSION TRANSACTION READ ONLY", "input_bytes": 33, "output_bytes": 0}
+{"kind": "sql", "pid": 25575, "ns": 1788786192271187000, "sql": "SELECT '<marker>' AS __sabiql_session_marker, @@SESSION.sql_mode AS __sabiql_sql_mode", "input_bytes": 109, "output_bytes": 226}
+{"kind": "sql", "pid": 25575, "ns": 1788786192481664000, "sql": "SELECT '<marker>' AS __sabiql_probe, VERSION() AS __sabiql_server_version, @@lower_case_table_names AS __sabiql_lower_case_table_names", "input_bytes": 158, "output_bytes": 265}
+{"kind": "sql", "pid": 25575, "ns": 1788786192693203000, "sql": "SELECT CURRENT_USER()", "input_bytes": 21, "output_bytes": 143}
+{"kind": "start", "pid": 25585, "ns": 1788786193084109000}
+{"kind": "exit", "pid": 25585, "ns": 1788786193084313000}
+{"kind": "start", "pid": 25586, "ns": 1788786193134835000}
+{"kind": "sql", "pid": 25586, "ns": 1788786193135074000, "sql": "SELECT VERSION() AS __sabiql_server_version, @@SESSION.sql_mode AS __sabiql_sql_mode, @@lower_case_table_names AS __sabiql_lower_case_table_names", "input_bytes": 145, "output_bytes": 255}
+{"kind": "exit", "pid": 25586, "ns": 1788786193346162000}
+{"kind": "start", "pid": 25587, "ns": 1788786193429380000}
+{"kind": "sql", "pid": 25587, "ns": 1788786193429634000, "sql": "SET SESSION autocommit=1, completion_type=NO_CHAIN", "input_bytes": 50, "output_bytes": 0}
+{"kind": "sql", "pid": 25587, "ns": 1788786193429685000, "sql": "SET SESSION TRANSACTION READ ONLY", "input_bytes": 33, "output_bytes": 0}
+{"kind": "sql", "pid": 25587, "ns": 1788786193429818000, "sql": "SELECT '<marker>' AS __sabiql_session_marker, @@SESSION.sql_mode AS __sabiql_sql_mode", "input_bytes": 109, "output_bytes": 226}
+{"kind": "sql", "pid": 25587, "ns": 1788786193640955000, "sql": "SELECT '<marker>' AS __sabiql_probe, VERSION() AS __sabiql_server_version, @@lower_case_table_names AS __sabiql_lower_case_table_names", "input_bytes": 158, "output_bytes": 265}
+{"kind": "sql", "pid": 25587, "ns": 1788786193853152000, "sql": "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, TABLE_ROWS, TABLE_COMMENT, ENGINE, ROW_FORMAT, TABLE_COLLATION, CREATE_OPTIONS FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_SCHEMA, TABLE_NAME", "input_bytes": 250, "output_bytes": 3778}
+{"kind": "start", "pid": 25593, "ns": 1788786194245316000}
+{"kind": "sql", "pid": 25593, "ns": 1788786194245586000, "sql": "SET SESSION autocommit=1, completion_type=NO_CHAIN", "input_bytes": 50, "output_bytes": 0}
+{"kind": "sql", "pid": 25593, "ns": 1788786194245644000, "sql": "SET SESSION TRANSACTION READ ONLY", "input_bytes": 33, "output_bytes": 0}
+{"kind": "sql", "pid": 25593, "ns": 1788786194245705000, "sql": "SELECT '<marker>' AS __sabiql_session_marker, @@SESSION.sql_mode AS __sabiql_sql_mode", "input_bytes": 109, "output_bytes": 226}
+{"kind": "sql", "pid": 25593, "ns": 1788786194457511000, "sql": "SELECT '<marker>' AS __sabiql_probe, VERSION() AS __sabiql_server_version, @@lower_case_table_names AS __sabiql_lower_case_table_names", "input_bytes": 158, "output_bytes": 265}
+{"kind": "sql", "pid": 25593, "ns": 1788786194666222000, "sql": "SELECT CURRENT_USER()", "input_bytes": 21, "output_bytes": 143}

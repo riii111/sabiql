@@ -1,0 +1,44 @@
+{
+  "mode": "metadata_timeout",
+  "operation": "metadata_reload",
+  "samples": [
+    {
+      "elapsed_ms": 31005.310709,
+      "end_ns": 1788786100047213000,
+      "error": "DbOperationError { kind: \"Operation timed out\", details: \"mysql query exceeded the execution timeout\" }",
+      "phase": "fresh-harness",
+      "start_ns": 1788786069041269000
+    },
+    {
+      "elapsed_ms": 31010.120042000002,
+      "end_ns": 1788786131058013000,
+      "error": "DbOperationError { kind: \"Operation timed out\", details: \"mysql query exceeded the execution timeout\" }",
+      "phase": "repeated-harness",
+      "start_ns": 1788786100047260000
+    }
+  ],
+  "returncode": 0,
+  "stderr": "",
+  "loopback_events": [
+    {
+      "kind": "accept",
+      "ns": 1788786069088286000
+    },
+    {
+      "kind": "eof",
+      "ns": 1788786100047056000
+    },
+    {
+      "kind": "accept",
+      "ns": 1788786100095098000
+    },
+    {
+      "kind": "eof",
+      "ns": 1788786131057086000
+    }
+  ],
+  "loopback_accepts": 2,
+  "db_connections": null,
+  "residual_pids_after_500ms": [],
+  "stage": "synthetic peer holds first XML response"
+}

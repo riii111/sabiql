@@ -1,0 +1,8 @@
+{
+  "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "profile": "dev",
+  "measurement_base": "a5e22c7a1e6c89c091d0e3ef267c17dddaaa208d",
+  "review_base": "6ee9e8032d78ecd0b8922f6a3a1cf32c474f3ab6",
+  "normal_matrix_wall_seconds": 514.830071,
+  "maximum_concurrency": "unmeasured; invalid event-difference estimates replaced by null"
+}

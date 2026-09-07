@@ -1,0 +1,10 @@
+{"kind": "start", "pid": 24909, "ns": 1788786131744227000}
+{"kind": "sql", "pid": 24909, "ns": 1788786131744516000, "sql": "SET SESSION autocommit=1, completion_type=NO_CHAIN", "input_bytes": 50, "output_bytes": 0}
+{"kind": "sql", "pid": 24909, "ns": 1788786131744572000, "sql": "SET SESSION TRANSACTION READ ONLY", "input_bytes": 33, "output_bytes": 0}
+{"kind": "sql", "pid": 24909, "ns": 1788786131744634000, "sql": "SELECT '<marker>' AS __sabiql_session_marker, @@SESSION.sql_mode AS __sabiql_sql_mode", "input_bytes": 109, "output_bytes": 226}
+{"kind": "loopback_connected", "pid": 24909, "ns": 1788786131747428000}
+{"kind": "start", "pid": 24910, "ns": 1788786132006131000}
+{"kind": "sql", "pid": 24910, "ns": 1788786132006399000, "sql": "SET SESSION autocommit=1, completion_type=NO_CHAIN", "input_bytes": 50, "output_bytes": 0}
+{"kind": "sql", "pid": 24910, "ns": 1788786132006454000, "sql": "SET SESSION TRANSACTION READ ONLY", "input_bytes": 33, "output_bytes": 0}
+{"kind": "sql", "pid": 24910, "ns": 1788786132006513000, "sql": "SELECT '<marker>' AS __sabiql_session_marker, @@SESSION.sql_mode AS __sabiql_sql_mode", "input_bytes": 109, "output_bytes": 226}
+{"kind": "loopback_connected", "pid": 24910, "ns": 1788786132008634000}
