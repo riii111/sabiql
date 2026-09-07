@@ -2806,7 +2806,6 @@ dependencies = [
  "sabiql-infra",
  "sabiql-ui",
  "self_update",
- "serde_json",
  "tempfile",
  "tokio",
 ]

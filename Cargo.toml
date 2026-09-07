@@ -90,7 +90,6 @@ default = []
 self-update = ["dep:self_update"]
 
 [dev-dependencies]
-serde_json.workspace = true
 libc.workspace = true
 sabiql-domain.workspace = true
 sabiql-app = { workspace = true, features = ["test-support"] }
