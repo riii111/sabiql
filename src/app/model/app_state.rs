@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Instant;
 
 use super::explain_context::ExplainContext;
@@ -50,7 +50,6 @@ pub struct AppState {
 
     pub session: BrowseSession,
     project_name: String,
-    service_file_path: Option<PathBuf>,
     pub ui: UiState,
     pub query: QueryExecution,
     pub sql_modal: SqlModalContext,
@@ -86,7 +85,6 @@ impl AppState {
             render_dirty: true,
             session: BrowseSession::default(),
             project_name,
-            service_file_path: None,
             ui: UiState::new(),
             query: QueryExecution::default(),
             sql_modal: SqlModalContext::default(),
@@ -118,11 +116,11 @@ impl AppState {
     }
 
     pub fn service_file_path(&self) -> Option<&Path> {
-        self.service_file_path.as_deref()
-    }
-
-    pub fn set_service_file_path(&mut self, path: Option<PathBuf>) {
-        self.service_file_path = path;
+        let id = self.session.active_connection_id()?;
+        self.service_entries
+            .iter()
+            .find(|entry| &entry.connection_id() == id)
+            .map(|entry| entry.source_path.as_path())
     }
 
     pub fn input_mode(&self) -> InputMode {
@@ -1596,6 +1594,7 @@ mod tests {
         fn make_service(name: &str) -> ServiceEntry {
             ServiceEntry {
                 service_name: name.to_string(),
+                source_path: "/etc/pg_service.conf".into(),
             }
         }
 

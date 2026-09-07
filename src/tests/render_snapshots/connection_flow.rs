@@ -5,6 +5,7 @@ use crate::tests::harness::{
 use sabiql_app::model::shared::settings::KeymapPreset;
 use sabiql_app::ports::outbound::DsnBuilder;
 use sabiql_domain::ConnectionProfile;
+use sabiql_domain::connection::ServiceEntry;
 
 struct EmptyPasswordDsnBuilder;
 
@@ -391,12 +392,15 @@ fn render_service_error_without_service_file_hint(save_and_connect: bool) -> Str
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
     state.session.activate_connection_with_dsn(
-        &sabiql_domain::ConnectionId::from_string("service"),
+        &sabiql_domain::ConnectionId::from_string("service:mydb"),
         "service",
         DatabaseType::PostgreSQL,
         "service=mydb",
     );
-    state.set_service_file_path(Some(std::path::PathBuf::from("/etc/pg_service.conf")));
+    state.set_service_entries(vec![ServiceEntry {
+        service_name: "mydb".into(),
+        source_path: "/etc/pg_service.conf".into(),
+    }]);
     if save_and_connect {
         state.connection_error.set_save_and_connect_error(
             ConnectionErrorInfo::from_db_operation_error(&DbOperationError::ConnectionFailed(
@@ -539,4 +543,47 @@ fn footer_shows_success_message() {
     let output = render_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
+}
+
+#[test]
+fn service_connection_error_shows_selected_source_path() {
+    let entries = vec![
+        ServiceEntry {
+            service_name: "user".into(),
+            source_path: "/home/me/.pg_service.conf".into(),
+        },
+        ServiceEntry {
+            service_name: "system".into(),
+            source_path: "/etc/pg_service.conf".into(),
+        },
+    ];
+    for selected in &entries {
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+        state.set_service_entries(entries.clone());
+        state.session.activate_connection_with_dsn(
+            &selected.connection_id(),
+            &selected.service_name,
+            DatabaseType::PostgreSQL,
+            &selected.to_string(),
+        );
+        state
+            .connection_error
+            .set_error(ConnectionErrorInfo::from_db_operation_error(
+                &DbOperationError::ConnectionFailed("connection refused".into()),
+            ));
+        state.modal.set_mode(InputMode::ConnectionError);
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        assert!(
+            output.contains(&format!("(edit {})", selected.source_path.display())),
+            "{output}"
+        );
+        let other = entries
+            .iter()
+            .find(|entry| entry.service_name != selected.service_name)
+            .unwrap();
+        assert!(!output.contains(&other.source_path.display().to_string()));
+    }
 }

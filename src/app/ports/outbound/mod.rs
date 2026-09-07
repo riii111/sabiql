@@ -43,7 +43,7 @@ pub use mysql_connection_probe::{MySqlConnectionProbe, MySqlConnectionProbeResul
 pub use query_executor::QueryExecutor;
 pub use query_history::{QueryHistoryError, QueryHistoryStore};
 pub use renderer::{CellDetailViewport, RenderError, RenderOutput, RenderResult, Renderer};
-pub use service_file::{PgServiceEntryReader, ServiceFileError};
+pub use service_file::{PgServiceEntryReader, ServiceFileContents, ServiceFileError};
 pub use settings_store::{AppSettings, SettingsStore, SettingsStoreError};
 pub use sqlite_diagnostics::SqliteDiagnosticsProvider;
 pub use sqlite_path_validator::SqlitePathValidator;

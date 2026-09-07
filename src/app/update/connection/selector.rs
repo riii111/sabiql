@@ -644,6 +644,7 @@ mod tests {
                 vec![profile],
                 vec![ServiceEntry {
                     service_name: "mydb".to_string(),
+                    source_path: "/etc/pg_service.conf".into(),
                 }],
             );
             state.modal.set_mode(InputMode::Normal);

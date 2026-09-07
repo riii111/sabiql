@@ -15,7 +15,12 @@ pub enum ServiceFileError {
     },
 }
 
+pub struct ServiceFileContents {
+    pub entries: Vec<ServiceEntry>,
+    pub warning: Option<ServiceFileError>,
+}
+
 #[cfg_attr(test, mockall::automock)]
 pub trait PgServiceEntryReader: Send + Sync {
-    fn read_services(&self) -> Result<(Vec<ServiceEntry>, PathBuf), ServiceFileError>;
+    fn read_services(&self) -> Result<ServiceFileContents, ServiceFileError>;
 }
