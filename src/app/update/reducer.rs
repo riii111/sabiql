@@ -3076,7 +3076,7 @@ mod tests {
         }
 
         #[test]
-        fn failed_refresh_prefetches_source_and_selected_tables() {
+        fn schema_race_prefetches_source_and_selected_tables() {
             let mut state = state_with_metadata();
             state
                 .er_preparation
@@ -3088,8 +3088,12 @@ mod tests {
                 Action::SmartErRefreshFailed(SmartErRefreshError {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id,
-                    error: DbOperationError::Timeout("timed out".to_string()),
-                    new_metadata: None,
+                    error: DbOperationError::ObjectMissing("table removed".to_string()),
+                    new_metadata: state_with_metadata()
+                        .session
+                        .metadata()
+                        .cloned()
+                        .map(Arc::new),
                 }),
                 Instant::now(),
                 &AppServices::stub(),
@@ -3167,6 +3171,7 @@ mod tests {
                     failed_at: now,
                     error: "timeout".to_string(),
                     retry_count: 3,
+                    retryable: true,
                 },
             );
             let effects = reduce(

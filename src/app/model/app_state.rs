@@ -1268,6 +1268,7 @@ mod tests {
                     failed_at: now,
                     error: "connection timeout".to_string(),
                     retry_count: 0,
+                    retryable: true,
                 },
             );
 
@@ -1299,6 +1300,7 @@ mod tests {
                     failed_at: Instant::now(),
                     error: "timeout".to_string(),
                     retry_count: 0,
+                    retryable: true,
                 },
             );
             state

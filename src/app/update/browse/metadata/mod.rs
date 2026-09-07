@@ -66,7 +66,7 @@ mod tests {
     use crate::model::browse::session::TableDetailState;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::table_prefetch::FailedPrefetchEntry;
-    use crate::ports::outbound::DbOperationError;
+    use crate::ports::outbound::{ConnectionFailureKind, DbOperationError};
     use crate::update::action::Action;
     use std::sync::Arc;
     use std::time::{Duration, Instant};
@@ -420,6 +420,7 @@ mod tests {
                     failed_at: Instant::now(),
                     error: "timeout".to_string(),
                     retry_count: 1,
+                    retryable: true,
                 },
             );
 
@@ -459,6 +460,7 @@ mod tests {
                     failed_at,
                     error: "timeout".to_string(),
                     retry_count: 1,
+                    retryable: true,
                 },
             );
 
@@ -492,6 +494,7 @@ mod tests {
                     failed_at: Instant::now(),
                     error: "timeout".to_string(),
                     retry_count: 1,
+                    retryable: true,
                 },
             );
             state.table_prefetch.queue_table_prefetch(qualified.clone());
@@ -596,6 +599,7 @@ mod tests {
                     failed_at: Instant::now(),
                     error: "timeout".to_string(),
                     retry_count: MAX_PREFETCH_RETRIES,
+                    retryable: true,
                 },
             );
 
@@ -628,6 +632,7 @@ mod tests {
                     failed_at: Instant::now(),
                     error: "timeout".to_string(),
                     retry_count: MAX_PREFETCH_RETRIES,
+                    retryable: true,
                 },
             );
 
@@ -667,6 +672,7 @@ mod tests {
                     failed_at: Instant::now(),
                     error: "timeout".to_string(),
                     retry_count: MAX_PREFETCH_RETRIES,
+                    retryable: true,
                 },
             );
 
@@ -703,6 +709,7 @@ mod tests {
                     failed_at: Instant::now(),
                     error: "timeout".to_string(),
                     retry_count: MAX_PREFETCH_RETRIES,
+                    retryable: true,
                 },
             );
             state.table_prefetch.queue_table_prefetch(failed);
@@ -741,6 +748,7 @@ mod tests {
                     failed_at: Instant::now().checked_sub(Duration::from_secs(10)).unwrap(),
                     error: "timeout".to_string(),
                     retry_count: 1,
+                    retryable: true,
                 },
             );
 
@@ -768,6 +776,187 @@ mod tests {
     mod table_detail_cache_failed {
         use super::*;
 
+        #[rstest::rstest]
+        #[case(DbOperationError::PermissionDenied("denied".to_string()))]
+        #[case(DbOperationError::ConnectionFailedWithKind {
+            kind: ConnectionFailureKind::Auth,
+            details: "invalid password".to_string(),
+        })]
+        #[case(DbOperationError::ObjectMissing("table dropped".to_string()))]
+        #[case(DbOperationError::UnsupportedOperation("unsupported".to_string()))]
+        fn permanent_failure_finishes_er_without_requeue_and_new_run_can_retry(
+            #[case] error: DbOperationError,
+        ) {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let run_id = state.table_prefetch.begin_er_prefetch();
+            let _ = state.er_preparation.start_waiting_run();
+            state.er_preparation.mark_fk_expanded();
+            state
+                .table_prefetch
+                .start_table_prefetch("public.users".to_string());
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::TableDetailCacheFailed {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    error,
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(state.table_prefetch.is_complete());
+            assert_eq!(state.table_prefetch.failed_prefetch_count(), 1);
+            assert_eq!(
+                state
+                    .table_prefetch
+                    .failed_prefetch("public.users")
+                    .unwrap()
+                    .retry_count,
+                1
+            );
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::WriteErFailureLog { .. }]
+            ));
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::PrefetchTableDetail {
+                    run_id,
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+            assert!(effects.is_empty());
+
+            state.table_prefetch.invalidate_prefetch();
+            let _ = state.er_preparation.start_waiting_run();
+            dispatch_metadata(
+                &mut state,
+                &Action::StartErPrefetchScoped {
+                    tables: vec!["public.users".to_string()],
+                },
+                Instant::now(),
+            );
+            let next_run = state.table_prefetch.active_prefetch_run_id().unwrap();
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::ProcessPrefetchQueue { run_id: next_run },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(next_run > run_id);
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::PrefetchTableColumnsAndFks { .. }]
+            ));
+        }
+
+        #[test]
+        fn permission_failure_keeps_four_slots_and_ignores_stale_failure() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let old_run = state.table_prefetch.begin_er_prefetch();
+            state.table_prefetch.invalidate_prefetch();
+            let run_id = state.table_prefetch.begin_er_prefetch();
+            for index in 0..10 {
+                state
+                    .table_prefetch
+                    .queue_table_prefetch(format!("public.table{index}"));
+            }
+            let now = Instant::now();
+            let effects =
+                dispatch_metadata(&mut state, &Action::ProcessPrefetchQueue { run_id }, now)
+                    .unwrap();
+            assert_eq!(effects.len(), 4);
+            assert_eq!(state.table_prefetch.prefetch_in_flight_count(), 4);
+
+            for failed_run in [old_run, run_id] {
+                let effects = dispatch_metadata(
+                    &mut state,
+                    &Action::TableDetailCacheFailed {
+                        dsn: "postgres://localhost/test".to_string(),
+                        run_id: failed_run,
+                        schema: "public".to_string(),
+                        table: "table0".to_string(),
+                        error: DbOperationError::PermissionDenied("denied".to_string()),
+                    },
+                    now,
+                )
+                .unwrap();
+                if failed_run == old_run {
+                    assert!(effects.is_empty());
+                    assert_eq!(state.table_prefetch.prefetch_in_flight_count(), 4);
+                    assert!(
+                        state
+                            .table_prefetch
+                            .failed_prefetch("public.table0")
+                            .is_none()
+                    );
+                } else {
+                    assert!(matches!(
+                        effects.as_slice(),
+                        [Effect::SchedulePrefetchQueueProcessing { .. }]
+                    ));
+                    assert_eq!(state.table_prefetch.prefetch_in_flight_count(), 3);
+                }
+            }
+            let effects =
+                dispatch_metadata(&mut state, &Action::ProcessPrefetchQueue { run_id }, now)
+                    .unwrap();
+            assert_eq!(effects.len(), 1);
+            assert_eq!(state.table_prefetch.prefetch_in_flight_count(), 4);
+            assert_eq!(state.table_prefetch.failed_prefetch_count(), 1);
+        }
+
+        #[test]
+        fn third_transient_failure_finishes_without_another_delayed_retry() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let run_id = state.table_prefetch.begin_er_prefetch();
+            let _ = state.er_preparation.start_waiting_run();
+            state.er_preparation.mark_fk_expanded();
+            let now = Instant::now();
+
+            for attempt in 1..=3 {
+                state
+                    .table_prefetch
+                    .start_table_prefetch("public.users".to_string());
+                let effects = dispatch_metadata(
+                    &mut state,
+                    &Action::TableDetailCacheFailed {
+                        dsn: "postgres://localhost/test".to_string(),
+                        run_id,
+                        schema: "public".to_string(),
+                        table: "users".to_string(),
+                        error: DbOperationError::Timeout("timed out".to_string()),
+                    },
+                    now,
+                )
+                .unwrap();
+                if attempt < 3 {
+                    assert!(matches!(
+                        effects.as_slice(),
+                        [Effect::DelayedProcessPrefetchQueue { .. }]
+                    ));
+                    assert!(state.table_prefetch.is_prefetch_queued("public.users"));
+                } else {
+                    assert!(matches!(
+                        effects.as_slice(),
+                        [Effect::WriteErFailureLog { .. }]
+                    ));
+                    assert!(state.table_prefetch.is_complete());
+                    assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+                    assert_eq!(state.table_prefetch.failed_prefetch_count(), 1);
+                }
+            }
+        }
+
         #[test]
         fn increments_retry_count() {
             let mut state = state_with_dsn("postgres://localhost/test");
@@ -779,6 +968,7 @@ mod tests {
                     failed_at: Instant::now().checked_sub(Duration::from_mins(1)).unwrap(),
                     error: "old error".to_string(),
                     retry_count: 1,
+                    retryable: true,
                 },
             );
             state.table_prefetch.start_table_prefetch(qualified.clone());
@@ -1659,6 +1849,7 @@ mod tests {
                     failed_at: Instant::now(),
                     error: "timeout".to_string(),
                     retry_count: MAX_PREFETCH_RETRIES,
+                    retryable: true,
                 },
             );
 

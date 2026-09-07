@@ -10,6 +10,7 @@ pub struct FailedPrefetchEntry {
     pub failed_at: Instant,
     pub error: String,
     pub retry_count: u32,
+    pub retryable: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -167,7 +168,7 @@ impl TablePrefetchState {
     }
 
     fn is_permanent_failure(&self, table: &str, entry: &FailedPrefetchEntry) -> bool {
-        entry.retry_count >= MAX_PREFETCH_RETRIES
+        (!entry.retryable || entry.retry_count >= MAX_PREFETCH_RETRIES)
             && !self.is_prefetch_queued(table)
             && !self.prefetching_tables.contains(table)
     }
@@ -189,6 +190,7 @@ mod tests {
                 failed_at: Instant::now(),
                 error: "error".to_string(),
                 retry_count: 0,
+                retryable: true,
             },
         );
 
@@ -226,6 +228,7 @@ mod tests {
                 failed_at,
                 error: "timeout".to_string(),
                 retry_count: 1,
+                retryable: true,
             },
         );
 
@@ -246,6 +249,7 @@ mod tests {
                 failed_at: Instant::now(),
                 error: "timeout".to_string(),
                 retry_count: 3,
+                retryable: true,
             },
         );
 
@@ -263,6 +267,7 @@ mod tests {
                 failed_at: Instant::now(),
                 error: "timeout".to_string(),
                 retry_count: 1,
+                retryable: true,
             },
         );
 
@@ -276,6 +281,7 @@ mod tests {
                 failed_at: Instant::now(),
                 error: "timeout".to_string(),
                 retry_count: MAX_PREFETCH_RETRIES,
+                retryable: true,
             },
         );
 
