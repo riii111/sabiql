@@ -425,6 +425,7 @@ class TcpProxy:
         self.thread = None
         self.port = None
         self.connection_id = 0
+        self.error = None
 
     def start(self):
         self.listener = socket.socket()
@@ -474,7 +475,11 @@ class TcpProxy:
                 ready = [item for item in pending if item[0] <= current]
                 pending = [item for item in pending if item[0] > current]
                 for _, destination, direction, data, sql_messages in ready:
-                    destination.sendall(data)
+                    destination.settimeout(10)
+                    try:
+                        destination.sendall(data)
+                    finally:
+                        destination.setblocking(False)
                     self._append(
                         {
                             "kind": "traffic",
@@ -508,8 +513,9 @@ class TcpProxy:
                         )
                     )
             server.close()
-        except (OSError, TimeoutError):
-            pass
+        except (OSError, TimeoutError) as error:
+            if not self.stop_event.is_set():
+                self.error = str(error)
         finally:
             client.close()
             self._append({"kind": "connection_end", "connection": connection_id, "ns": now_ns()})
@@ -712,11 +718,15 @@ def sample_case(case, fixture, binary, output_root, deadline):
             proxy.stop()
     if observer is not None and observer.error:
         raise RuntimeError(f"observer failed during case {case_name}: {observer.error}")
+    if proxy is not None and proxy.error:
+        raise RuntimeError(f"proxy failed during case {case_name}: {proxy.error}")
     write_json(case_dir / "app.json", {"returncode": process.returncode, "stdout": stdout, "stderr": stderr})
     cli_events = [json.loads(line) for line in cli_log.read_text().splitlines()] if cli_log.exists() else []
     app_samples = [json.loads(line) for line in stdout.splitlines() if line.strip()]
-    if process.returncode != 0 or len(app_samples) != 2:
-        raise RuntimeError(f"case failed: {case_name}: {stderr[-1000:]}")
+    sample_errors = [sample["error"] for sample in app_samples if sample.get("error")]
+    if process.returncode != 0 or len(app_samples) != 2 or sample_errors:
+        detail = "; ".join(sample_errors) or stderr[-1000:]
+        raise RuntimeError(f"case failed: {case_name}: {detail}")
     proxy_events = proxy.events
     observer_events = observer.events
     process_events = monitor.events
