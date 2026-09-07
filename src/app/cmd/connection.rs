@@ -329,17 +329,15 @@ pub(in crate::cmd) async fn run(
                     Ok(p) => (p, None),
                     Err(e) => (vec![], Some(e.to_string())),
                 };
-                let (services, service_file_path, service_load_warning) =
-                    match reader.read_services() {
-                        Ok((s, p)) => (s, Some(p), None),
-                        Err(ServiceFileError::NotFound(_)) => (vec![], None, None),
-                        Err(e) => (vec![], None, Some(e.to_string())),
-                    };
+                let (services, service_load_warning) = match reader.read_services() {
+                    Ok(contents) => (contents.entries, contents.warning.map(|e| e.to_string())),
+                    Err(ServiceFileError::NotFound(_)) => (vec![], None),
+                    Err(e) => (vec![], Some(e.to_string())),
+                };
 
                 tx.blocking_send(Action::ConnectionsLoaded(ConnectionsLoadedPayload {
                     profiles,
                     services,
-                    service_file_path,
                     profile_load_warning,
                     service_load_warning,
                 }))
@@ -1280,6 +1278,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.set_service_entries(vec![ServiceEntry {
                 service_name: "analytics".to_string(),
+                source_path: "/etc/pg_service.conf".into(),
             }]);
             let expected_id = state.service_entries()[0].connection_id();
             let mut renderer = NoopRenderer;

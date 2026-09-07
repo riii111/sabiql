@@ -11,7 +11,7 @@ use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::effect::Effect;
 use crate::cmd::runner::{ConnectionDeps, EffectRunner, ErDeps, QueryDeps, UtilityDeps};
 use crate::domain::SqliteDiagnosticsSnapshot;
-use crate::domain::connection::{ConnectionProfile, ServiceEntry};
+use crate::domain::connection::ConnectionProfile;
 use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
 use crate::domain::{
     DatabaseMetadata, DiagnosticField, ErTableInfo, QueryResult, QuerySource, QueryValue,
@@ -25,8 +25,8 @@ use crate::ports::outbound::{
     ConfigWriterError, ConnectionStore, DsnBuilder, ErDiagramExporter, ErExportResult, ErLogWriter,
     FolderOpener, MetadataProvider, MySqlConnectionProbe, MySqlConnectionProbeResult,
     PgServiceEntryReader, QueryExecutor, QueryHistoryError, QueryHistoryStore, RenderOutput,
-    RenderResult, Renderer, ServiceFileError, SettingsStore, SettingsStoreError,
-    SqliteDiagnosticsProvider, SqlitePathValidator,
+    RenderResult, Renderer, ServiceFileContents, ServiceFileError, SettingsStore,
+    SettingsStoreError, SqliteDiagnosticsProvider, SqlitePathValidator,
 };
 use crate::services::AppServices;
 use crate::update::action::Action;
@@ -142,8 +142,11 @@ impl MySqlConnectionProbe for NoopMySqlConnectionProbe {
 
 pub struct NoopPgServiceEntryReader;
 impl PgServiceEntryReader for NoopPgServiceEntryReader {
-    fn read_services(&self) -> Result<(Vec<ServiceEntry>, PathBuf), ServiceFileError> {
-        Ok((vec![], PathBuf::new()))
+    fn read_services(&self) -> Result<ServiceFileContents, ServiceFileError> {
+        Ok(ServiceFileContents {
+            entries: vec![],
+            warning: None,
+        })
     }
 }
 

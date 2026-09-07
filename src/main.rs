@@ -457,11 +457,13 @@ fn dispatch_overflow_fallback(
 
 fn load_service_entries(state: &mut AppState, reader: &dyn PgServiceEntryReader) {
     match reader.read_services() {
-        Ok((services, path)) if !services.is_empty() => {
-            state.set_service_entries(services);
-            state.set_service_file_path(Some(path));
+        Ok(contents) => {
+            state.set_service_entries(contents.entries);
+            if let Some(warning) = contents.warning {
+                state.messages.set_error(warning.to_string());
+            }
         }
-        Ok(_) | Err(ServiceFileError::NotFound(_)) => {}
+        Err(ServiceFileError::NotFound(_)) => {}
         Err(e) => {
             state.messages.set_error(e.to_string());
         }
