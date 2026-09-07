@@ -1,5 +1,8 @@
 # CF-14: MySQL adapter measurement, stage 1
 
+Stage 2 CSV and application-cache/TestBackend measurements are documented separately
+in [STAGE2.md](STAGE2.md). The results below describe stage 1 only.
+
 This is an exploratory synthetic measurement of the production MySQL adapter at
 `a5e22c7a1e6c89c091d0e3ef267c17dddaaa208d`. It is not a TUI benchmark, a DB benchmark,
 a GCP acceptance result, or a completed CF-14 optimization decision. No production

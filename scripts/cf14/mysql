@@ -69,6 +69,14 @@ def response(sql):
     if sql.startswith('SHOW CREATE TABLE'):
         return xml([{'Table': 'items', 'Create Table': 'CREATE TABLE items (id int PRIMARY KEY)'}])
     if 'FROM `app`.`items`' in sql:
+        if sql == 'SELECT id FROM `app`.`items`':
+            rows = int(os.environ.get('CF14_CSV_ROWS', '50'))
+            if not 0 < rows <= 1000:
+                raise RuntimeError('CSV fixture row budget exceeded')
+            output = xml([dict(id=str(i)) for i in range(rows)])
+            if os.environ.get('CF14_CSV_FAULT') == 'truncate':
+                return output.rsplit('</resultset>', 1)[0]
+            return output
         aliases = re.findall(r'AS `([^`]+)`', sql)
         offset = 50 if 'OFFSET 50' in sql else 0
         return xml([dict(id=str(i), **{alias: str(i) for alias in aliases}) for i in range(offset, offset + 50)])
@@ -92,6 +100,9 @@ def execute(sql):
         time.sleep(DELAY)
         sys.stdout.write(output)
         sys.stdout.flush()
+        if sql == 'SELECT id FROM `app`.`items`' and os.environ.get('CF14_CSV_FAULT') == 'truncate':
+            print('ERROR 2013 (HY000): synthetic CSV truncation', file=sys.stderr)
+            sys.exit(1)
 
 
 event('start')

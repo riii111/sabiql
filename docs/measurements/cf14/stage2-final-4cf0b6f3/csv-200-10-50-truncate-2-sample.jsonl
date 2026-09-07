@@ -1,0 +1,1 @@
+{"csv_bytes":null,"csv_rows":null,"elapsed_ms":785.405708,"end_ns":1788787817701425000,"error":"DbOperationError { kind: \"Query failed\", details: \"unexpected text in MySQL XML result\" }","final_exists":false,"part_residual_count":0,"phase":"csv","start_ns":1788787816915807000}

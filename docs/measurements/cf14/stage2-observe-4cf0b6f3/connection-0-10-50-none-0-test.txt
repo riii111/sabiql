@@ -1,0 +1,15 @@
+
+running 1 test
+
+thread 'tests::cf14_measurements::connection_switch_records_metadata_and_testbackend_draw' (99412376) panicked at src/tests/cf14_measurements.rs:174:13:
+unexpected effects: [CancelTrackedTasks, CancelMetadataTasks, ClearCompletionEngineCache, FetchMetadata { dsn: "mysql://fixture@127.0.0.1:1/app?ssl-mode=DISABLED", run_id: 3 }]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test tests::cf14_measurements::connection_switch_records_metadata_and_testbackend_draw ... FAILED
+
+failures:
+
+failures:
+    tests::cf14_measurements::connection_switch_records_metadata_and_testbackend_draw
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 271 filtered out; finished in 0.97s
+
