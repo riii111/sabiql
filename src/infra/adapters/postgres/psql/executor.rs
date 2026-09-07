@@ -13,9 +13,35 @@ use crate::domain::{CommandTag, QueryResult, QuerySource, RefreshScope, WriteExe
 
 use super::super::PostgresAdapter;
 use super::super::dsn::{quote_conninfo_value, take_explicit_password};
-use super::error::{classify_cli_spawn_error, classify_query_error};
+use super::error::{classify_cli_spawn_error, classify_query_error, is_transport_interruption};
 use super::parser::{ParseCommandTagError, split_sql_statements};
 use super::passfile::Passfile;
+
+#[derive(Debug)]
+enum PsqlExecutionFailure {
+    BeforeSpawn(DbOperationError),
+    Transport(DbOperationError),
+    Definitive(DbOperationError),
+}
+
+impl PsqlExecutionFailure {
+    fn into_db_operation_error(self) -> DbOperationError {
+        match self {
+            Self::BeforeSpawn(error) | Self::Transport(error) | Self::Definitive(error) => error,
+        }
+    }
+
+    fn into_write_error(self, read_only: bool) -> DbOperationError {
+        match self {
+            Self::BeforeSpawn(error) | Self::Definitive(error) => error,
+            Self::Transport(error) if read_only => error,
+            Self::Transport(error) => DbOperationError::QueryFailedAfterChange {
+                source: Arc::new(error),
+                refresh_scope: RefreshScope::Data,
+            },
+        }
+    }
+}
 
 async fn collect_csv_output(
     mut process: PsqlProcess,
@@ -226,7 +252,18 @@ impl PostgresAdapter {
         passfile: Option<Passfile>,
         timeout_secs: u64,
     ) -> Result<String, DbOperationError> {
-        let mut process = PsqlProcess::spawn(cmd, passfile)?;
+        Self::collect_output_with_phase(cmd, passfile, timeout_secs)
+            .await
+            .map_err(PsqlExecutionFailure::into_db_operation_error)
+    }
+
+    async fn collect_output_with_phase(
+        cmd: &mut Command,
+        passfile: Option<Passfile>,
+        timeout_secs: u64,
+    ) -> Result<String, PsqlExecutionFailure> {
+        let mut process =
+            PsqlProcess::spawn(cmd, passfile).map_err(PsqlExecutionFailure::BeforeSpawn)?;
         let child = process.child.as_mut().expect("owned psql child");
 
         let mut stdout_handle = child.stdout.take().expect("piped psql stdout");
@@ -257,10 +294,19 @@ impl PostgresAdapter {
             process.stop().await;
         }
         let (status, stdout, stderr) = result
-            .map_err(|e| DbOperationError::Timeout(e.to_string()))?
-            .map_err(|e| DbOperationError::QueryFailed(e.to_string()))?;
+            .map_err(|e| PsqlExecutionFailure::Transport(DbOperationError::Timeout(e.to_string())))?
+            .map_err(|e| {
+                PsqlExecutionFailure::Transport(DbOperationError::QueryFailed(e.to_string()))
+            })?;
         if !status.success() {
-            return Err(classify_query_error(&stderr, status));
+            let error = classify_query_error(&stderr, status);
+            return Err(
+                if is_transport_interruption(&error, status, !stdout.trim().is_empty()) {
+                    PsqlExecutionFailure::Transport(error)
+                } else {
+                    PsqlExecutionFailure::Definitive(error)
+                },
+            );
         }
         Ok(stdout)
     }
@@ -425,9 +471,19 @@ impl PostgresAdapter {
         query: &str,
         read_only: bool,
     ) -> Result<WriteExecutionResult, DbOperationError> {
-        let output = self.run_psql(dsn, &[], query, read_only).await?;
+        let (mut cmd, passfile) = Self::build_psql_command(dsn, &[], &["-c", query], read_only)
+            .map_err(|error| {
+                PsqlExecutionFailure::BeforeSpawn(error).into_write_error(read_only)
+            })?;
+        let output = Self::collect_output_with_phase(&mut cmd, passfile, self.timeout_secs)
+            .await
+            .map_err(|error| error.into_write_error(read_only))?;
 
-        let affected_rows = Self::parse_affected_rows_with_source(&output).map_err(
+        Self::write_result_from_output(&output)
+    }
+
+    fn write_result_from_output(output: &str) -> Result<WriteExecutionResult, DbOperationError> {
+        let affected_rows = Self::parse_affected_rows_with_source(output).map_err(
             |error: ParseCommandTagError| DbOperationError::QueryFailedAfterChange {
                 source: Arc::new(DbOperationError::CommandTagParseFailed(error.to_string())),
                 refresh_scope: RefreshScope::Data,
@@ -910,6 +966,198 @@ mod tests {
                 result,
                 Err(DbOperationError::QueryFailed(details))
                     if details == "psql terminated by signal 15"
+            ));
+        }
+    }
+
+    #[cfg(unix)]
+    mod write_execution {
+        use std::process::Stdio;
+
+        use tokio::process::Command;
+
+        use crate::app::ports::outbound::{ConnectionFailureKind, DbOperationError};
+        use crate::domain::WriteExecutionResult;
+
+        use crate::adapters::postgres::PostgresAdapter;
+
+        async fn run_fake_write(
+            script: &str,
+            timeout_secs: u64,
+            read_only: bool,
+        ) -> Result<WriteExecutionResult, DbOperationError> {
+            let mut command = Command::new("sh");
+            command
+                .args(["-c", script])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+
+            let output =
+                PostgresAdapter::collect_output_with_phase(&mut command, None, timeout_secs)
+                    .await
+                    .map_err(|error| error.into_write_error(read_only))?;
+            PostgresAdapter::write_result_from_output(&output)
+        }
+
+        #[tokio::test]
+        async fn spawn_failure_stays_a_normal_error() {
+            let mut command = Command::new("/nonexistent/sabiql-cf03-psql");
+            let error = PostgresAdapter::collect_output_with_phase(&mut command, None, 1)
+                .await
+                .expect_err("spawn should fail");
+
+            assert!(matches!(
+                &error,
+                super::super::PsqlExecutionFailure::BeforeSpawn(
+                    DbOperationError::CommandNotFound { .. }
+                )
+            ));
+            assert!(matches!(
+                error.into_write_error(false),
+                DbOperationError::CommandNotFound { .. }
+            ));
+        }
+
+        #[tokio::test]
+        async fn authentication_and_certificate_rejection_stay_normal_errors() {
+            let auth = run_fake_write(
+                "printf 'FATAL:  28P01: password authentication failed\\n' >&2; exit 2",
+                1,
+                false,
+            )
+            .await;
+            assert!(matches!(
+                auth,
+                Err(DbOperationError::ConnectionFailedWithKind {
+                    kind: ConnectionFailureKind::Auth,
+                    ..
+                })
+            ));
+
+            let tls = run_fake_write(
+                "printf 'psql: error: SSL error: certificate verify failed\\n' >&2; exit 2",
+                1,
+                false,
+            )
+            .await;
+            assert!(matches!(tls, Err(DbOperationError::QueryFailed(_))));
+        }
+
+        #[tokio::test]
+        async fn tls_transport_drop_is_result_unknown() {
+            let result = run_fake_write(
+                "printf 'psql: error: SSL SYSCALL error: EOF detected\\n' >&2; exit 2",
+                1,
+                false,
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange { .. })
+            ));
+        }
+
+        #[tokio::test]
+        async fn bare_psql_connection_failure_status_is_result_unknown() {
+            let result = run_fake_write("exit 2", 1, false).await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange { .. })
+            ));
+        }
+
+        #[tokio::test]
+        async fn constraint_violation_stays_a_normal_error() {
+            let result = run_fake_write(
+                "printf 'ERROR:  23503: violates foreign key constraint\\n' >&2; exit 1",
+                1,
+                false,
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::ForeignKeyViolation(_))
+            ));
+        }
+
+        #[tokio::test]
+        async fn statement_timeout_stays_a_normal_error() {
+            let result = run_fake_write(
+                "printf 'ERROR:  57014: canceling statement due to statement timeout\\n' >&2; exit 1",
+                1,
+                false,
+            )
+            .await;
+
+            assert!(matches!(result, Err(DbOperationError::Timeout(_))));
+        }
+
+        #[tokio::test]
+        async fn connection_lost_sqlstate_is_result_unknown() {
+            let result = run_fake_write(
+                "printf 'ERROR:  08006: connection to server was lost\\n' >&2; exit 1",
+                1,
+                false,
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange { .. })
+            ));
+        }
+
+        #[tokio::test]
+        async fn output_followed_by_nonzero_exit_is_result_unknown() {
+            let result = run_fake_write("printf 'UPDATE 1\\n'; exit 7", 1, false).await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange { .. })
+            ));
+        }
+
+        #[tokio::test]
+        async fn signal_after_start_is_result_unknown() {
+            let result = run_fake_write("kill -TERM $$", 1, false).await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange { .. })
+            ));
+        }
+
+        #[tokio::test]
+        async fn outer_timeout_is_result_unknown() {
+            let result = run_fake_write("exec sleep 30", 0, false).await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange { .. })
+            ));
+        }
+
+        #[tokio::test]
+        async fn read_only_outer_timeout_does_not_refresh_a_write() {
+            let result = run_fake_write("exec sleep 30", 0, true).await;
+
+            assert!(matches!(result, Err(DbOperationError::Timeout(_))));
+        }
+
+        #[tokio::test]
+        async fn normal_tag_succeeds_and_parse_failure_is_result_unknown() {
+            let success = run_fake_write("printf 'UPDATE 1\\n'", 1, false)
+                .await
+                .expect("command tag should parse");
+            assert_eq!(success.affected_rows, 1);
+
+            let parse_failure = run_fake_write("printf 'not a command tag\\n'", 1, false).await;
+            assert!(matches!(
+                parse_failure,
+                Err(DbOperationError::QueryFailedAfterChange { .. })
             ));
         }
     }

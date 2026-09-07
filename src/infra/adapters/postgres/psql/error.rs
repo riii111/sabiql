@@ -36,6 +36,36 @@ pub(in crate::adapters::postgres) fn classify_query_error(
     classify_by_stderr(details)
 }
 
+pub(in crate::adapters::postgres) fn is_transport_interruption(
+    error: &DbOperationError,
+    status: ExitStatus,
+    has_stdout: bool,
+) -> bool {
+    if status.code() == Some(2) {
+        return !is_definitive_connection_rejection(error);
+    }
+
+    status.code().is_none()
+        || matches!(error, DbOperationError::ConnectionLost(_))
+        || (has_stdout && matches!(error, DbOperationError::QueryFailed(_)))
+}
+
+fn is_definitive_connection_rejection(error: &DbOperationError) -> bool {
+    match error {
+        DbOperationError::ConnectionFailed(_)
+        | DbOperationError::ConnectionFailedWithKind { .. } => true,
+        DbOperationError::QueryFailed(details) => is_certificate_verification_failure(details),
+        _ => false,
+    }
+}
+
+fn is_certificate_verification_failure(details: &str) -> bool {
+    let lower = details.to_lowercase();
+    lower.contains("certificate verify failed")
+        || lower.contains("certificate verification failed")
+        || (lower.contains("server certificate") && lower.contains("does not match host name"))
+}
+
 fn exit_status_details(status: ExitStatus) -> String {
     if let Some(code) = status.code() {
         return format!("psql exited with status code {code}");

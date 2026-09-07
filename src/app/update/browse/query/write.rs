@@ -1408,6 +1408,51 @@ mod tests {
         }
 
         #[test]
+        fn read_only_write_timeout_preserves_draft_without_refresh() {
+            let mut state = editable_state();
+            state.session.enable_read_only();
+            let action = write_failed_action(
+                &mut state,
+                DbOperationError::Timeout("outer timeout".to_string()),
+            );
+
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::CellEdit);
+            assert!(state.result_interaction.cell_edit().is_active());
+            assert_eq!(state.query.current_result().unwrap().data_row_count(), 1);
+        }
+
+        #[test]
+        fn stale_write_failure_after_change_does_not_clear_draft_or_refresh() {
+            let mut state = editable_state();
+            let stale_run_id = begin_query_run(&mut state);
+            let current_run_id = begin_query_run(&mut state);
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::ExecuteWriteFailed {
+                    run_id: stale_run_id,
+                    error: DbOperationError::QueryFailedAfterChange {
+                        source: Arc::new(DbOperationError::ConnectionLost(
+                            "connection lost".to_string(),
+                        )),
+                        refresh_scope: RefreshScope::Data,
+                    },
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(stale_run_id < current_run_id);
+            assert!(effects.is_empty());
+            assert!(state.query.is_running());
+            assert_eq!(state.input_mode(), InputMode::CellEdit);
+            assert!(state.result_interaction.cell_edit().is_active());
+        }
+
+        #[test]
         fn stale_write_success_does_not_refresh_or_set_message() {
             let mut state = editable_state();
             let old_run_id = begin_query_run(&mut state);
