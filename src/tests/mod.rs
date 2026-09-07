@@ -1,5 +1,6 @@
 mod adapter_mysql;
 mod adapter_postgres;
+mod cf14_measurements;
 #[cfg(unix)]
 mod clipboard;
 pub mod harness;
