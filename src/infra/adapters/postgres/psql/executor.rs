@@ -12,20 +12,27 @@ use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{CommandTag, QueryResult, QuerySource, RefreshScope, WriteExecutionResult};
 
 use super::super::PostgresAdapter;
+use super::super::dsn::{quote_conninfo_value, take_explicit_password};
 use super::error::{classify_cli_spawn_error, classify_query_error};
 use super::parser::{ParseCommandTagError, split_sql_statements};
+use super::passfile::Passfile;
 
 async fn collect_csv_output(
-    mut child: tokio::process::Child,
+    mut process: PsqlProcess,
     path: &Path,
     timeout_duration: Duration,
 ) -> Result<(), DbOperationError> {
+    let file = match tokio::fs::File::create(path).await {
+        Ok(file) => file,
+        Err(error) => {
+            process.stop().await;
+            return Err(DbOperationError::ExportIo(Arc::new(error)));
+        }
+    };
+    let child = process.child.as_mut().expect("owned psql child");
     let mut stdout = child.stdout.take().expect("piped psql stdout");
     let mut stderr_handle = child.stderr.take().expect("piped psql stderr");
 
-    let file = tokio::fs::File::create(path)
-        .await
-        .map_err(|e| DbOperationError::ExportIo(Arc::new(e)))?;
     let mut writer = tokio::io::BufWriter::new(file);
 
     let result = timeout(timeout_duration, async {
@@ -58,6 +65,9 @@ async fn collect_csv_output(
     .await;
 
     drop(writer);
+    if !matches!(&result, Ok(Ok(_))) {
+        process.stop().await;
+    }
     match result {
         Ok(Ok((status, _))) if status.success() => Ok(()),
         Ok(Ok((status, stderr))) => {
@@ -154,9 +164,9 @@ impl PostgresAdapter {
         query_args: &[&str],
         read_only: bool,
     ) -> Result<String, DbOperationError> {
-        let mut cmd = Self::build_psql_command(dsn, extra_args, query_args, read_only);
+        let (mut cmd, passfile) = Self::build_psql_command(dsn, extra_args, query_args, read_only)?;
 
-        Self::collect_output(&mut cmd, self.timeout_secs).await
+        Self::collect_output(&mut cmd, passfile, self.timeout_secs).await
     }
 
     fn build_psql_command(
@@ -164,14 +174,14 @@ impl PostgresAdapter {
         extra_args: &[&str],
         query_args: &[&str],
         read_only: bool,
-    ) -> Command {
+    ) -> Result<(Command, Option<Passfile>), DbOperationError> {
         let mut cmd = Command::new("psql");
         if read_only {
             Self::apply_read_only_pgoptions(&mut cmd);
         }
-        Self::apply_psql_base_args(&mut cmd, dsn);
+        let passfile = Self::apply_psql_base_args(&mut cmd, dsn)?;
         cmd.args(extra_args).args(query_args);
-        cmd
+        Ok((cmd, passfile))
     }
 
     fn apply_read_only_pgoptions(cmd: &mut Command) {
@@ -182,27 +192,42 @@ impl PostgresAdapter {
         cmd.env("PGOPTIONS", merged);
     }
 
-    fn apply_psql_base_args(cmd: &mut Command, dsn: &str) {
-        cmd.arg(dsn)
-            .arg("-X")
+    fn apply_psql_base_args(
+        cmd: &mut Command,
+        dsn: &str,
+    ) -> Result<Option<Passfile>, DbOperationError> {
+        let passfile = if let Some((mut connection, password)) = take_explicit_password(dsn) {
+            let passfile = Passfile::create(&password)?;
+            let path = passfile.path.to_str().ok_or_else(|| {
+                DbOperationError::ConnectionFailed(
+                    "PostgreSQL password file path is not UTF-8".into(),
+                )
+            })?;
+            connection.push_str(" passfile=");
+            connection.push_str(&quote_conninfo_value(path));
+            cmd.arg(connection).env_remove("PGPASSWORD");
+            Some(passfile)
+        } else {
+            cmd.arg(dsn);
+            None
+        };
+        cmd.arg("-X")
             .arg("-v")
             .arg("ON_ERROR_STOP=1")
             .arg("-v")
             .arg("VERBOSITY=verbose")
             .arg("-v")
             .arg("SHOW_CONTEXT=never");
+        Ok(passfile)
     }
 
     async fn collect_output(
         cmd: &mut Command,
+        passfile: Option<Passfile>,
         timeout_secs: u64,
     ) -> Result<String, DbOperationError> {
-        let mut child = cmd
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(classify_cli_spawn_error)?;
+        let mut process = PsqlProcess::spawn(cmd, passfile)?;
+        let child = process.child.as_mut().expect("owned psql child");
 
         let mut stdout_handle = child.stdout.take().expect("piped psql stdout");
         let mut stderr_handle = child.stderr.take().expect("piped psql stderr");
@@ -227,11 +252,13 @@ impl PostgresAdapter {
 
             Ok::<_, std::io::Error>((status, stdout, stderr))
         })
-        .await
-        .map_err(|e| DbOperationError::Timeout(e.to_string()))?
-        .map_err(|e| DbOperationError::QueryFailed(e.to_string()))?;
-
-        let (status, stdout, stderr) = result;
+        .await;
+        if !matches!(&result, Ok(Ok(_))) {
+            process.stop().await;
+        }
+        let (status, stdout, stderr) = result
+            .map_err(|e| DbOperationError::Timeout(e.to_string()))?
+            .map_err(|e| DbOperationError::QueryFailed(e.to_string()))?;
         if !status.success() {
             return Err(classify_query_error(&stderr, status));
         }
@@ -420,16 +447,11 @@ impl PostgresAdapter {
         path: &std::path::Path,
         read_only: bool,
     ) -> Result<(), DbOperationError> {
-        let mut cmd = Self::build_psql_command(dsn, &["--csv"], &["-c", query], read_only);
+        let (mut cmd, passfile) =
+            Self::build_psql_command(dsn, &["--csv"], &["-c", query], read_only)?;
+        let process = PsqlProcess::spawn(&mut cmd, passfile)?;
 
-        let child = cmd
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(classify_cli_spawn_error)?;
-
-        collect_csv_output(child, path, Duration::from_secs(self.timeout_secs * 10)).await?;
+        collect_csv_output(process, path, Duration::from_secs(self.timeout_secs * 10)).await?;
 
         Ok(())
     }
@@ -459,6 +481,54 @@ impl PostgresAdapter {
             })
     }
 }
+
+struct PsqlProcess {
+    child: Option<tokio::process::Child>,
+    passfile: Option<Passfile>,
+}
+
+impl PsqlProcess {
+    async fn stop(&mut self) {
+        if let Some(child) = self.child.as_mut() {
+            let _ = child.kill().await;
+        }
+    }
+
+    fn spawn(cmd: &mut Command, passfile: Option<Passfile>) -> Result<Self, DbOperationError> {
+        let child = cmd
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(classify_cli_spawn_error)?;
+        Ok(Self {
+            child: Some(child),
+            passfile,
+        })
+    }
+}
+
+impl Drop for PsqlProcess {
+    fn drop(&mut self) {
+        let Some(mut child) = self.child.take() else {
+            return;
+        };
+        if matches!(child.try_wait(), Ok(Some(_))) {
+            return;
+        }
+        let _ = child.start_kill();
+        let passfile = self.passfile.take();
+        // Cancellation must keep the secret file owned until the child has been reaped.
+        tokio::spawn(async move {
+            let _ = child.wait().await;
+            drop(passfile);
+        });
+    }
+}
+
+#[cfg(test)]
+#[path = "password_tests.rs"]
+mod password_tests;
 
 #[cfg(test)]
 mod tests {
@@ -700,9 +770,16 @@ mod tests {
                 .spawn()
                 .unwrap();
 
-            collect_csv_output(child, &path, std::time::Duration::from_secs(2))
-                .await
-                .unwrap();
+            collect_csv_output(
+                super::super::PsqlProcess {
+                    child: Some(child),
+                    passfile: None,
+                },
+                &path,
+                std::time::Duration::from_secs(2),
+            )
+            .await
+            .unwrap();
 
             assert_eq!(
                 tokio::fs::read_to_string(path).await.unwrap(),
@@ -725,7 +802,15 @@ mod tests {
                 .spawn()
                 .unwrap();
 
-            let result = collect_csv_output(child, &path, std::time::Duration::from_secs(2)).await;
+            let result = collect_csv_output(
+                super::super::PsqlProcess {
+                    child: Some(child),
+                    passfile: None,
+                },
+                &path,
+                std::time::Duration::from_secs(2),
+            )
+            .await;
 
             assert!(matches!(result, Err(DbOperationError::PermissionDenied(_))));
             assert!(!path.exists());
@@ -744,7 +829,15 @@ mod tests {
                 .spawn()
                 .unwrap();
 
-            let result = collect_csv_output(child, &path, std::time::Duration::from_secs(2)).await;
+            let result = collect_csv_output(
+                super::super::PsqlProcess {
+                    child: Some(child),
+                    passfile: None,
+                },
+                &path,
+                std::time::Duration::from_secs(2),
+            )
+            .await;
 
             assert!(matches!(
                 result,
@@ -767,7 +860,7 @@ mod tests {
             let mut command = Command::new("sh");
             command.args(["-c", "exit 7"]);
 
-            let result = PostgresAdapter::collect_output(&mut command, 2).await;
+            let result = PostgresAdapter::collect_output(&mut command, None, 2).await;
 
             assert!(matches!(
                 result,
@@ -784,7 +877,7 @@ mod tests {
                 "printf 'ERROR:  42501: permission denied\\n' >&2; exit 7",
             ]);
 
-            let result = PostgresAdapter::collect_output(&mut command, 2).await;
+            let result = PostgresAdapter::collect_output(&mut command, None, 2).await;
 
             assert!(matches!(
                 result,
@@ -799,7 +892,7 @@ mod tests {
             command.args(["-c", "exit 0"]);
 
             assert_eq!(
-                PostgresAdapter::collect_output(&mut command, 2)
+                PostgresAdapter::collect_output(&mut command, None, 2)
                     .await
                     .unwrap(),
                 ""
@@ -811,7 +904,7 @@ mod tests {
             let mut command = Command::new("sh");
             command.args(["-c", "kill -TERM $$"]);
 
-            let result = PostgresAdapter::collect_output(&mut command, 2).await;
+            let result = PostgresAdapter::collect_output(&mut command, None, 2).await;
 
             assert!(matches!(
                 result,

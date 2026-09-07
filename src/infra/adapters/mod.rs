@@ -15,6 +15,8 @@ pub(crate) mod settings_store;
 pub(crate) mod sqlite;
 #[cfg(test)]
 pub(crate) mod test_support;
+#[cfg(windows)]
+mod windows_file_security;
 pub use cached_result_exporter::CsvCachedResultExporter;
 pub use config_writer::FileConfigWriter;
 pub use connection_store::TomlConnectionStore;
