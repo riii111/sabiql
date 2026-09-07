@@ -1,10 +1,10 @@
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use sabiql_app::ports::outbound::{MetadataProvider, MySqlConnectionProbe, QueryExecutor};
-use sabiql_infra::adapters::mysql::MySqlAdapter;
+use sabiql_app::ports::outbound::{MetadataProvider, QueryExecutor};
+use sabiql_infra::adapters::PostgresAdapter;
 use serde_json::json;
 
-const DEFAULT_DSN: &str = "mysql://fixture@127.0.0.1:1/app?ssl-mode=DISABLED";
+const DEFAULT_DSN: &str = "postgres://fixture@127.0.0.1:1/app?sslmode=disable";
 
 fn dsn() -> String {
     std::env::var("CF14_DSN").unwrap_or_else(|_| DEFAULT_DSN.to_string())
@@ -18,7 +18,7 @@ fn dsn() -> String {
 async fn main() {
     let operation = std::env::args().nth(1).expect("operation");
     let dsn = dsn();
-    let adapter = MySqlAdapter::new();
+    let adapter = PostgresAdapter::new();
     for phase in ["fresh-harness", "repeated-harness"] {
         let start_ns = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -27,22 +27,9 @@ async fn main() {
         #[expect(clippy::disallowed_methods, reason = "benchmark wall-clock boundary")]
         let start = Instant::now();
         let result = match operation.as_str() {
-            "cancel" => {
-                let task_dsn = dsn.clone();
-                let task =
-                    tokio::spawn(
-                        async move { MySqlAdapter::new().fetch_metadata(&task_dsn).await },
-                    );
-                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-                task.abort();
-                let outcome = task.await;
-                assert!(outcome.unwrap_err().is_cancelled());
-                Ok(())
-            }
-            "startup" => adapter.probe(&dsn).await.map(|_| ()),
+            "startup" => adapter.fetch_effective_user(&dsn).await.map(|_| ()),
             "db_selection" => {
                 async {
-                    adapter.probe(&dsn).await?;
                     adapter.fetch_metadata(&dsn).await?;
                     adapter.fetch_effective_user(&dsn).await?;
                     Ok(())
