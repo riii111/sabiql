@@ -232,7 +232,7 @@ class Fixture:
             }
         return {
             "program": shutil.which("mysql"),
-            "query": "SELECT (SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE USER = 'cf14_app'), (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Threads_connected'), (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Connections'), (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Bytes_received'), (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Bytes_sent');",
+            "query": "SELECT CONCAT_WS('|', (SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE USER = 'cf14_app'), (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Threads_connected'), (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Connections'), (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Bytes_received'), (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Bytes_sent'));",
         }
 
     def cleanup(self):
@@ -249,6 +249,7 @@ class Observer:
         self.thread = None
         self.process = None
         self.passfile = None
+        self.error = None
 
     def start(self):
         config = self.fixture.observer_config()
@@ -310,6 +311,8 @@ class Observer:
                 fields = line.split("|")
                 event = {"ns": now_ns(), "raw": line}
                 if self.fixture.kind == "postgres":
+                    if len(fields) != 2:
+                        raise ValueError(f"observer returned {len(fields)} PostgreSQL fields")
                     event.update(
                         active_app_sessions=int(fields[0]),
                         total_sessions=int(fields[1]),
@@ -322,9 +325,13 @@ class Observer:
                         "bytes_received_status",
                         "bytes_sent_status",
                     ]
+                    if len(fields) != len(names):
+                        raise ValueError(f"observer returned {len(fields)} MySQL fields")
                     event.update({name: int(value) for name, value in zip(names, fields)})
                 self.events.append(event)
-            except (BrokenPipeError, OSError, ValueError, IndexError):
+                time.sleep(POLL_INTERVAL_SECONDS)
+            except (BrokenPipeError, OSError, ValueError, IndexError) as error:
+                self.error = str(error)
                 return
 
     def stop(self):
