@@ -250,6 +250,7 @@ pub(in crate::update) fn reduce_connection_setup(
             run_id,
             mysql_lower_case_table_names,
             metadata,
+            effective_user,
         } => {
             if !state.session.is_current_connection_save(*run_id) {
                 return DispatchResult::handled();
@@ -282,6 +283,7 @@ pub(in crate::update) fn reduce_connection_setup(
                 dsn,
                 run_id,
                 metadata.clone(),
+                effective_user.clone(),
             ))
         }
         Action::ConnectionSaveFailed { error: e, run_id } => {
@@ -887,6 +889,7 @@ mod tests {
                     run_id,
                     mysql_lower_case_table_names: None,
                     metadata: None,
+                    effective_user: None,
                 },
                 Instant::now(),
             );
@@ -926,6 +929,7 @@ mod tests {
                     run_id: save_run_id,
                     mysql_lower_case_table_names: None,
                     metadata: None,
+                    effective_user: None,
                 },
                 Instant::now(),
             );
@@ -1160,6 +1164,7 @@ mod tests {
                 run_id,
                 mysql_lower_case_table_names: None,
                 metadata: None,
+                effective_user: None,
             };
             reduce(&mut state, &action, Instant::now());
 
@@ -1206,6 +1211,7 @@ mod tests {
                 run_id,
                 mysql_lower_case_table_names: None,
                 metadata: None,
+                effective_user: None,
             };
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();
 
@@ -1281,6 +1287,7 @@ mod tests {
                 run_id,
                 mysql_lower_case_table_names: None,
                 metadata: None,
+                effective_user: None,
             };
             reduce(&mut state, &action, Instant::now());
 
@@ -1303,6 +1310,7 @@ mod tests {
                 run_id,
                 mysql_lower_case_table_names: None,
                 metadata: None,
+                effective_user: None,
             };
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();
 
@@ -1340,6 +1348,7 @@ mod tests {
                 run_id,
                 mysql_lower_case_table_names: None,
                 metadata: None,
+                effective_user: None,
             };
             reduce(&mut state, &action, Instant::now());
 
@@ -1363,6 +1372,7 @@ mod tests {
                 run_id,
                 mysql_lower_case_table_names: None,
                 metadata: None,
+                effective_user: None,
             };
 
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();

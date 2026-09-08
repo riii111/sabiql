@@ -30,13 +30,19 @@ mod metadata_fetch {
                     .await
                     .map_err(|err| err.to_string())?;
 
-                if !metadata.schemas.iter().any(|s| s.name == db.schema()) {
+                if !metadata
+                    .metadata
+                    .schemas
+                    .iter()
+                    .any(|s| s.name == db.schema())
+                {
                     return Err(format!(
                         "expected fixture schema '{}' in metadata",
                         db.schema()
                     ));
                 }
                 if !metadata
+                    .metadata
                     .table_summaries
                     .iter()
                     .any(|table| table.schema == db.schema() && table.name == db.table())

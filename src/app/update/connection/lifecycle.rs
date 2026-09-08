@@ -69,14 +69,7 @@ pub(in crate::update) fn reduce_connection_lifecycle(
 
             if let Some(cached) = state.connection_caches.get(id).cloned() {
                 restore_cache(state, &cached, target);
-                let mut effects = vec![Effect::ClearCompletionEngineCache];
-                if state.session.effective_user().is_none() {
-                    let run_id = state.session.begin_effective_user_fetch();
-                    effects.push(Effect::FetchEffectiveUser {
-                        dsn: dsn.clone(),
-                        run_id,
-                    });
-                }
+                let effects = vec![Effect::ClearCompletionEngineCache];
                 DispatchResult::handled_with(termination_effects(&state.query, effects))
             } else {
                 // No cache: reset and fetch metadata
@@ -648,9 +641,10 @@ mod tests {
             state
                 .session
                 .mark_connected(Arc::new(DatabaseMetadata::new("current".to_string())));
+            let metadata = state.session.metadata().cloned().expect("metadata");
             state
                 .session
-                .mark_effective_user_loaded(Some("user@localhost".to_string()));
+                .mark_connected_with_user(Arc::new(metadata), Some("user@localhost".to_string()));
             state.ui.set_explorer_selected_raw(5);
             state.ui.set_inspector_tab(InspectorTab::Indexes);
             state
@@ -1092,11 +1086,6 @@ mod tests {
                     .iter()
                     .any(|effect| matches!(effect, Effect::CancelTrackedTasks))
             );
-            assert!(
-                !effects
-                    .iter()
-                    .any(|effect| matches!(effect, Effect::FetchEffectiveUser { .. }))
-            );
             let metadata_run_id = effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -1137,6 +1126,7 @@ mod tests {
                 Action::MetadataLoaded {
                     run_id: metadata_run_id,
                     metadata: refreshed_metadata,
+                    effective_user: None,
                 },
                 std::time::Instant::now(),
                 &AppServices::stub(),
@@ -1257,6 +1247,7 @@ mod tests {
                 Action::MetadataLoaded {
                     run_id: stale_run_id,
                     metadata: Arc::new(DatabaseMetadata::new("stale".to_string())),
+                    effective_user: None,
                 },
                 std::time::Instant::now(),
                 &AppServices::stub(),

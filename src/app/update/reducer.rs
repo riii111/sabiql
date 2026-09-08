@@ -1158,6 +1158,7 @@ mod tests {
             Action::MetadataLoaded {
                 run_id,
                 metadata: Arc::new(metadata),
+                effective_user: None,
             }
         }
 
@@ -1182,30 +1183,16 @@ mod tests {
         }
 
         #[test]
-        fn metadata_loaded_starts_effective_user_fetch() {
-            let mut state = create_test_state();
-            let action =
-                metadata_loaded_action(&mut state, DatabaseMetadata::new("test".to_string()));
-
-            let effects = reduce(&mut state, action, Instant::now(), &AppServices::stub());
-
-            assert!(
-                effects
-                    .iter()
-                    .any(|effect| matches!(effect, Effect::FetchEffectiveUser { .. }))
-            );
-        }
-
-        #[test]
-        fn effective_user_loaded_updates_session_state() {
+        fn metadata_loaded_updates_effective_user_without_extra_effect() {
             let mut state = create_test_state();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let run_id = state.session.begin_effective_user_fetch();
+            let run_id = state.session.begin_metadata_refresh();
 
-            reduce(
+            let effects = reduce(
                 &mut state,
-                Action::EffectiveUserLoaded {
+                Action::MetadataLoaded {
                     run_id,
+                    metadata: Arc::new(DatabaseMetadata::new("test".to_string())),
                     effective_user: Some("postgres".to_string()),
                 },
                 Instant::now(),
@@ -1213,85 +1200,11 @@ mod tests {
             );
 
             assert_eq!(state.session.effective_user(), Some("postgres"));
-        }
-
-        #[test]
-        fn stale_effective_user_loaded_does_not_replace_current_state() {
-            let mut state = create_test_state();
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let old_run_id = state.session.begin_effective_user_fetch();
-            let _ = state.session.begin_effective_user_fetch();
-
-            reduce(
-                &mut state,
-                Action::EffectiveUserLoaded {
-                    run_id: old_run_id,
-                    effective_user: Some("old_user".to_string()),
-                },
-                Instant::now(),
-                &AppServices::stub(),
+            assert!(
+                !effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
             );
-
-            assert!(state.session.effective_user().is_none());
-        }
-
-        #[test]
-        fn reload_failure_keeps_pending_effective_user_fetch_alive() {
-            let mut state = create_test_state();
-            let metadata_action =
-                metadata_loaded_action(&mut state, DatabaseMetadata::new("test".to_string()));
-            let metadata_effects = reduce(
-                &mut state,
-                metadata_action,
-                Instant::now(),
-                &AppServices::stub(),
-            );
-            let user_run_id = metadata_effects
-                .iter()
-                .find_map(|effect| match effect {
-                    Effect::FetchEffectiveUser { run_id, .. } => Some(*run_id),
-                    _ => None,
-                })
-                .expect("metadata load should start user fetch");
-
-            let reload_effects = reduce(
-                &mut state,
-                Action::ReloadMetadata,
-                Instant::now(),
-                &AppServices::stub(),
-            );
-            let reload_run_id = reload_effects
-                .iter()
-                .find_map(|effect| match effect {
-                    Effect::FetchMetadata { run_id, .. } => Some(*run_id),
-                    _ => None,
-                })
-                .expect("reload should start metadata fetch");
-
-            reduce(
-                &mut state,
-                Action::MetadataFailed {
-                    run_id: reload_run_id,
-                    error: DbOperationError::ConnectionFailed("reload failed".to_string()),
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert!(state.session.connection_state().is_connected());
-            assert!(state.session.is_current_effective_user_run(user_run_id));
-
-            reduce(
-                &mut state,
-                Action::EffectiveUserLoaded {
-                    run_id: user_run_id,
-                    effective_user: Some("postgres".to_string()),
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert_eq!(state.session.effective_user(), Some("postgres"));
         }
 
         #[test]
@@ -1719,6 +1632,7 @@ mod tests {
             let action = Action::MetadataLoaded {
                 run_id: 1,
                 metadata: Arc::new(metadata),
+                effective_user: None,
             };
             reduce(&mut state, action, now, &AppServices::stub());
 
@@ -2080,6 +1994,7 @@ mod tests {
                     run_id,
                     mysql_lower_case_table_names: None,
                     metadata: Some(Arc::new(DatabaseMetadata::new("validated".to_string()))),
+                    effective_user: None,
                 },
                 now,
                 &AppServices::stub(),
@@ -2455,6 +2370,7 @@ mod tests {
                 Action::MetadataLoaded {
                     run_id,
                     metadata: Arc::new(metadata),
+                    effective_user: None,
                 },
                 now,
                 &AppServices::stub(),
@@ -2611,6 +2527,7 @@ mod tests {
                     run_id,
                     mysql_lower_case_table_names: None,
                     metadata: Some(Arc::new(DatabaseMetadata::new("validated".to_string()))),
+                    effective_user: None,
                 },
                 now,
                 &AppServices::stub(),
@@ -2725,8 +2642,7 @@ mod tests {
                 effects.as_slice(),
                 [
                     Effect::CancelTrackedTasks,
-                    Effect::ClearCompletionEngineCache,
-                    Effect::FetchEffectiveUser { .. }
+                    Effect::ClearCompletionEngineCache
                 ]
             ));
             assert!(
@@ -2777,86 +2693,6 @@ mod tests {
                     .iter()
                     .any(|effect| matches!(effect, Effect::CancelSqliteDiagnostics))
             );
-        }
-
-        #[test]
-        fn switch_connection_reloads_missing_effective_user_after_round_trip() {
-            let mut state = create_test_state();
-            let conn_a = ConnectionId::new();
-            let conn_b = ConnectionId::new();
-            let dsn_a = "postgres://localhost/a".to_string();
-
-            state.session.activate_connection_with_dsn(
-                &conn_a,
-                "A",
-                DatabaseType::PostgreSQL,
-                &dsn_a,
-            );
-            state
-                .session
-                .mark_connected(Arc::new(DatabaseMetadata::new("a".to_string())));
-            let old_a_run_id = state.session.begin_effective_user_fetch();
-
-            reduce(
-                &mut state,
-                Action::SwitchConnection(ConnectionTarget {
-                    id: conn_b,
-                    dsn: "postgres://localhost/b".to_string(),
-                    name: "B".to_string(),
-                    database_type: DatabaseType::PostgreSQL,
-                    database: None,
-                }),
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            let effects = reduce(
-                &mut state,
-                Action::SwitchConnection(ConnectionTarget {
-                    id: conn_a,
-                    dsn: dsn_a.clone(),
-                    name: "A".to_string(),
-                    database_type: DatabaseType::PostgreSQL,
-                    database: None,
-                }),
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            let new_a_run_id = effects
-                .iter()
-                .find_map(|effect| match effect {
-                    Effect::FetchEffectiveUser { dsn, run_id }
-                        if dsn.as_str() == dsn_a.as_str() =>
-                    {
-                        Some(run_id.to_owned())
-                    }
-                    _ => None,
-                })
-                .expect("cached user miss should trigger a refetch");
-            assert_ne!(new_a_run_id, old_a_run_id);
-
-            reduce(
-                &mut state,
-                Action::EffectiveUserLoaded {
-                    run_id: old_a_run_id,
-                    effective_user: Some("old_a_user".to_string()),
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
-            assert!(state.session.effective_user().is_none());
-
-            reduce(
-                &mut state,
-                Action::EffectiveUserLoaded {
-                    run_id: new_a_run_id,
-                    effective_user: Some("a_user".to_string()),
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
-            assert_eq!(state.session.effective_user(), Some("a_user"));
         }
     }
 
@@ -2940,6 +2776,7 @@ mod tests {
             Action::MetadataLoaded {
                 run_id,
                 metadata: sample_metadata(),
+                effective_user: None,
             }
         }
 
@@ -3224,6 +3061,7 @@ mod tests {
                 Action::MetadataLoaded {
                     run_id,
                     metadata: Arc::new(metadata),
+                    effective_user: None,
                 },
                 now,
                 &AppServices::stub(),

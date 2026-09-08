@@ -38,7 +38,7 @@ pub use dsn_builder::DsnBuilder;
 pub use er_exporter::{ErDiagramExporter, ErExportError, ErExportResult};
 pub use er_log_writer::ErLogWriter;
 pub use folder_opener::FolderOpener;
-pub use metadata::MetadataProvider;
+pub use metadata::{MetadataFetchResult, MetadataProvider};
 pub use mysql_connection_probe::{MySqlConnectionProbe, MySqlConnectionProbeResult};
 pub use query_executor::QueryExecutor;
 pub use query_history::{QueryHistoryError, QueryHistoryStore};

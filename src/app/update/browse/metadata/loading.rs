@@ -18,7 +18,11 @@ pub(super) fn reduce_loading(
     now: Instant,
 ) -> DispatchResult {
     match action {
-        Action::MetadataLoaded { run_id, metadata } => {
+        Action::MetadataLoaded {
+            run_id,
+            metadata,
+            effective_user,
+        } => {
             if !state.session.is_current_metadata_run(*run_id) {
                 return DispatchResult::handled();
             }
@@ -27,13 +31,11 @@ pub(super) fn reduce_loading(
             };
 
             let has_tables = !metadata.table_summaries.is_empty();
-            state.session.mark_connected(Arc::clone(metadata));
-            let effective_user_run_id = state.session.begin_effective_user_fetch();
+            state
+                .session
+                .mark_connected_with_user(Arc::clone(metadata), effective_user.clone());
 
-            let mut effects = vec![Effect::FetchEffectiveUser {
-                dsn: dsn.clone(),
-                run_id: effective_user_run_id,
-            }];
+            let mut effects = Vec::new();
 
             if state.query.pagination.table().is_empty() {
                 state
@@ -88,19 +90,6 @@ pub(super) fn reduce_loading(
             }
 
             DispatchResult::handled_with(effects)
-        }
-        Action::EffectiveUserLoaded {
-            run_id,
-            effective_user,
-        } => {
-            if !state.session.is_current_effective_user_run(*run_id) {
-                return DispatchResult::handled();
-            }
-
-            state
-                .session
-                .mark_effective_user_loaded(effective_user.clone());
-            DispatchResult::handled()
         }
         Action::MetadataFailed { run_id, error } => {
             if !state.session.is_current_metadata_run(*run_id) {

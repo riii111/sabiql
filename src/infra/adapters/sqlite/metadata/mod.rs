@@ -7,8 +7,8 @@ mod trigger;
 
 use async_trait::async_trait;
 
-use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
-use crate::domain::{DatabaseMetadata, Table, TableSignatureSnapshot};
+use crate::app::ports::outbound::{DbOperationError, MetadataFetchResult, MetadataProvider};
+use crate::domain::{Table, TableSignatureSnapshot};
 
 use super::sqlite3::metadata::RawNamedTableMetadata;
 use super::{SqliteAdapter, schema::MAIN_SCHEMA};
@@ -22,10 +22,13 @@ fn sqlite_table_not_found(table: &str) -> DbOperationError {
 
 #[async_trait]
 impl MetadataProvider for SqliteAdapter {
-    async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
+    async fn fetch_metadata(&self, dsn: &str) -> Result<MetadataFetchResult, DbOperationError> {
         let path = Self::path_from_dsn(dsn)?;
         let tables = self.fetch_catalog_rows(path).await?;
-        Ok(metadata_from_catalog(path, &tables))
+        Ok(MetadataFetchResult {
+            metadata: metadata_from_catalog(path, &tables),
+            effective_user: None,
+        })
     }
 
     async fn fetch_table_detail(

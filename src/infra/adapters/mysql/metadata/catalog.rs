@@ -15,7 +15,7 @@ use super::super::{
     option_file::MySqlOptionFile,
     sql::{
         COLUMN_METADATA_BASE_RESULT_COLUMNS, FOREIGN_KEY_RESULT_COLUMNS,
-        PREVIEW_COLUMN_METADATA_RESULT_COLUMNS, TABLES_QUERY, TABLES_RESULT_COLUMNS,
+        PREVIEW_COLUMN_METADATA_RESULT_COLUMNS, TABLES_RESULT_COLUMNS,
         UNIQUE_COLUMN_RESULT_COLUMNS, column_metadata_result_columns,
     },
 };
@@ -78,15 +78,6 @@ impl MySqlTableMetadata {
             create_options: self.create_options.clone(),
         }
     }
-}
-
-pub(super) async fn fetch_metadata_snapshot(
-    target: &MySqlDsn,
-    database: &str,
-) -> Result<Vec<MySqlTableMetadata>, DbOperationError> {
-    let (lower_case_table_names, result) =
-        execute_metadata_query(target, TABLES_QUERY, TABLES_RESULT_COLUMNS).await?;
-    metadata_snapshot_from_result(database, None, &result, lower_case_table_names)
 }
 
 fn mysql_table_not_found(schema: &str, table: &str) -> DbOperationError {
@@ -152,32 +143,83 @@ pub(super) fn parse_preview_columns_for_table(
     Ok(columns)
 }
 
-pub(super) async fn execute_metadata_query(
+pub(super) async fn execute_table_query_with_optional_effective_user(
     target: &MySqlDsn,
-    query: &str,
-    expected_columns: &[&str],
-) -> Result<(u8, MySqlResultSet), DbOperationError> {
-    let (capabilities, results) =
-        execute_metadata_queries_in_session(target, &[(query, expected_columns)]).await?;
-    let result = results.into_iter().next().ok_or_else(|| {
-        DbOperationError::MetadataParseFailed(
-            "MySQL metadata query returned no result set".to_string(),
-        )
-    })?;
-    Ok((capabilities.lower_case_table_names, result))
-}
-
-pub(super) async fn execute_metadata_queries_in_session(
-    target: &MySqlDsn,
-    queries: &[(&str, &[&str])],
-) -> Result<(MySqlServerCapabilities, Vec<MySqlResultSet>), DbOperationError> {
-    execute_metadata_queries_in_session_with_program(
+    table_query: &str,
+    table_columns: &[&str],
+    effective_user_query: &str,
+    effective_user_columns: &[&str],
+) -> Result<
+    (
+        MySqlServerCapabilities,
+        MySqlResultSet,
+        Option<MySqlResultSet>,
+    ),
+    DbOperationError,
+> {
+    execute_table_query_with_optional_effective_user_with_program(
         target,
-        queries,
+        table_query,
+        table_columns,
+        effective_user_query,
+        effective_user_columns,
         OsStr::new("mysql"),
         MYSQL_QUERY_TIMEOUT,
     )
     .await
+}
+
+pub(super) async fn execute_table_query_with_optional_effective_user_with_program(
+    target: &MySqlDsn,
+    table_query: &str,
+    table_columns: &[&str],
+    effective_user_query: &str,
+    effective_user_columns: &[&str],
+    program: &OsStr,
+    timeout: Duration,
+) -> Result<
+    (
+        MySqlServerCapabilities,
+        MySqlResultSet,
+        Option<MySqlResultSet>,
+    ),
+    DbOperationError,
+> {
+    let option_file = MySqlOptionFile::create(target)?;
+    let mut session = MySqlMetadataSession::spawn_with_metadata_program(program, option_file)?;
+    let deadline = tokio::time::Instant::now() + timeout;
+    let remaining_timeout = || deadline.saturating_duration_since(tokio::time::Instant::now());
+    let required_result = tokio::time::timeout(remaining_timeout(), async {
+        let capabilities = session.prepare_read_only_and_probe().await?;
+        let table_result = session
+            .execute_with_expected_columns(table_query, table_columns)
+            .await?;
+        Ok((capabilities, table_result))
+    })
+    .await;
+    let (capabilities, table_result) = session
+        .resolve_timed_result(required_result)
+        .await
+        .map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))?;
+    let effective_user_result = if let Ok(Ok(result)) = tokio::time::timeout(
+        remaining_timeout(),
+        session.execute_with_expected_columns(effective_user_query, effective_user_columns),
+    )
+    .await
+    {
+        Some(result)
+    } else {
+        session.cleanup().await;
+        None
+    };
+    if effective_user_result.is_some() {
+        let finish_result = tokio::time::timeout(remaining_timeout(), session.finish()).await;
+        session
+            .resolve_timed_result(finish_result)
+            .await
+            .map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))?;
+    }
+    Ok((capabilities, table_result, effective_user_result))
 }
 
 pub(super) async fn execute_metadata_queries_in_session_with_program(
@@ -657,6 +699,11 @@ pub(super) fn metadata_shape_error(field: &str) -> DbOperationError {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use std::fs;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+
     use crate::adapters::mysql::sql::COLUMN_METADATA_RESULT_COLUMNS;
 
     use super::super::test_support::result;
@@ -779,6 +826,90 @@ mod tests {
         );
         assert_eq!(tables[0].create_options.as_deref(), Some("partitioned"));
     }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn effective_user_failure_keeps_table_metadata() {
+        let directory = tempfile::tempdir().unwrap();
+        let program = directory.path().join("mysql");
+        fs::write(&program, OPTIONAL_EFFECTIVE_USER_FAILURE_PROGRAM).unwrap();
+        fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let target =
+            super::super::super::dsn::parse_and_validate_mysql_dsn("mysql://app@localhost/app")
+                .unwrap();
+        let result = execute_table_query_with_optional_effective_user_with_program(
+            &target,
+            "SELECT TABLES",
+            TABLES_RESULT_COLUMNS,
+            "SELECT CURRENT_USER()",
+            &["CURRENT_USER()"],
+            program.as_os_str(),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.0.lower_case_table_names, 0);
+        assert_eq!(result.1.values.len(), 1);
+        assert!(result.2.is_none());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn effective_user_timeout_keeps_table_metadata() {
+        let directory = tempfile::tempdir().unwrap();
+        let program = directory.path().join("mysql");
+        fs::write(&program, OPTIONAL_EFFECTIVE_USER_FAILURE_PROGRAM).unwrap();
+        fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let target =
+            super::super::super::dsn::parse_and_validate_mysql_dsn("mysql://app@localhost/app")
+                .unwrap();
+        let result = execute_table_query_with_optional_effective_user_with_program(
+            &target,
+            "SELECT TABLES",
+            TABLES_RESULT_COLUMNS,
+            "SELECT CURRENT_USER() /* sabiql_hang */",
+            &["CURRENT_USER()"],
+            program.as_os_str(),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.0.lower_case_table_names, 0);
+        assert_eq!(result.1.values.len(), 1);
+        assert!(result.2.is_none());
+    }
+
+    #[cfg(unix)]
+    const OPTIONAL_EFFECTIVE_USER_FAILURE_PROGRAM: &str = r#"#!/bin/sh
+eof=$(printf '\004')
+while IFS= read -r line; do
+  case "$line" in
+    *"$eof"*) exit 0 ;;
+    *"SET SESSION autocommit=1, completion_type=NO_CHAIN"*|*"SET SESSION TRANSACTION READ ONLY"*) ;;
+    *__sabiql_session_marker*)
+      marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\([^']*\)' AS __sabiql_session_marker.*/\1/")
+      printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field></row></resultset>'
+      ;;
+    *__sabiql_probe*)
+      marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\([^']*\)' AS __sabiql_probe.*/\1/")
+      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_server_version">8.4.10</field><field name="__sabiql_lower_case_table_names">0</field></row></resultset>'
+      ;;
+    *"SELECT TABLES"*)
+      printf '%s\n' '<resultset><row><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">users</field><field name="TABLE_TYPE">BASE TABLE</field><field name="TABLE_ROWS">1</field><field name="TABLE_COMMENT"></field><field name="ENGINE">InnoDB</field><field name="ROW_FORMAT">Dynamic</field><field name="TABLE_COLLATION">utf8mb4_bin</field><field name="CREATE_OPTIONS"></field></row></resultset>'
+      ;;
+    *"SELECT CURRENT_USER()"*)
+      case "$line" in
+        *sabiql_hang*) read -r ignored ;;
+        *) printf '%s\n' 'ERROR 1142 (42000): access denied' >&2; exit 1 ;;
+      esac
+      ;;
+  esac
+done
+"#;
 
     #[test]
     fn metadata_rejects_database_with_different_case() {

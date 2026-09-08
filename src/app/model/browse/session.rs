@@ -155,7 +155,6 @@ pub struct BrowseSession {
     metadata_run: AsyncRun,
     metadata_detail_generation: Option<u64>,
     effective_user: Option<String>,
-    effective_user_run: AsyncRun,
     table_detail_run: AsyncRun,
     connection_save_run: AsyncRun,
     connection_save_guard: Arc<ConnectionSaveGuard>,
@@ -184,7 +183,6 @@ impl Default for BrowseSession {
             metadata_run: AsyncRun::default(),
             metadata_detail_generation: None,
             effective_user: None,
-            effective_user_run: AsyncRun::default(),
             table_detail_run: AsyncRun::default(),
             connection_save_run: AsyncRun::default(),
             connection_save_guard: Arc::new(ConnectionSaveGuard::default()),
@@ -320,7 +318,6 @@ impl BrowseSession {
         self.connection_state = ConnectionState::Connecting;
         self.metadata_state = MetadataState::Loading;
         self.effective_user = None;
-        self.effective_user_run.clear_active();
     }
 
     #[must_use]
@@ -387,7 +384,6 @@ impl BrowseSession {
 
     fn invalidate_inflight_state_for_mysql_probe(&mut self) {
         self.metadata_run.clear_active();
-        self.effective_user_run.clear_active();
         self.table_detail_run.clear_active();
         self.is_reloading = false;
         match self.connection_state {
@@ -492,13 +488,20 @@ impl BrowseSession {
     }
 
     pub fn mark_connected(&mut self, metadata: Arc<DatabaseMetadata>) {
+        self.mark_connected_with_user(metadata, None);
+    }
+
+    pub fn mark_connected_with_user(
+        &mut self,
+        metadata: Arc<DatabaseMetadata>,
+        effective_user: Option<String>,
+    ) {
         self.connection_state = ConnectionState::Connected;
         self.metadata_state = MetadataState::Loaded;
         self.metadata = Some(metadata);
         self.metadata_run.clear_active();
         self.metadata_detail_generation = None;
-        self.effective_user = None;
-        self.effective_user_run.clear_active();
+        self.effective_user = effective_user;
     }
 
     pub fn mark_probe_connected(&mut self) {
@@ -508,7 +511,6 @@ impl BrowseSession {
         self.metadata_run.clear_active();
         self.metadata_detail_generation = None;
         self.effective_user = None;
-        self.effective_user_run.clear_active();
     }
 
     // On reload failure (already Connected), keeps Connected to preserve
@@ -519,7 +521,6 @@ impl BrowseSession {
         self.metadata_run.clear_active();
         if !self.connection_state.is_connected() {
             self.effective_user = None;
-            self.effective_user_run.clear_active();
             self.connection_state = ConnectionState::Failed;
         }
     }
@@ -540,7 +541,6 @@ impl BrowseSession {
         self.is_reloading = false;
         self.metadata_run.clear_active();
         self.effective_user = None;
-        self.effective_user_run.clear_active();
         self.table_detail_run.clear_active();
         self.clear_mysql_connection_probe();
     }
@@ -594,20 +594,6 @@ impl BrowseSession {
             && self.metadata_generation() == metadata_generation
     }
 
-    #[must_use]
-    pub fn begin_effective_user_fetch(&mut self) -> u64 {
-        self.effective_user_run.begin()
-    }
-
-    pub fn is_current_effective_user_run(&self, run_id: u64) -> bool {
-        self.effective_user_run.is_current(run_id)
-    }
-
-    pub fn mark_effective_user_loaded(&mut self, effective_user: Option<String>) {
-        self.effective_user = effective_user;
-        self.effective_user_run.clear_active();
-    }
-
     // ── Cache operations ─────────────────────────────────────────────
 
     pub fn to_cache(
@@ -647,7 +633,6 @@ impl BrowseSession {
         self.metadata_detail_generation = None;
         self.is_reloading = false;
         self.metadata_run.clear_active();
-        self.effective_user_run.clear_active();
         self.table_detail_run.clear_active();
         self.clear_mysql_connection_probe();
         match &cache.query_result {
@@ -682,7 +667,6 @@ impl BrowseSession {
         self.metadata_run.clear_active();
         self.metadata_detail_generation = None;
         self.effective_user = None;
-        self.effective_user_run.clear_active();
         self.table_detail_run.clear_active();
         self.clear_connection();
         self.read_only = false;
@@ -1386,7 +1370,7 @@ mod tests {
                 DatabaseType::PostgreSQL,
                 "postgres://localhost/test",
             );
-            session.mark_effective_user_loaded(Some("old_user".to_string()));
+            session.mark_connected_with_user(make_metadata("test"), Some("old_user".to_string()));
 
             session.mark_connecting();
 
@@ -1447,9 +1431,8 @@ mod tests {
         #[test]
         fn mark_connection_failed_when_connected_keeps_connected() {
             let mut session = BrowseSession::default();
-            session.mark_connected(make_metadata("db"));
+            session.mark_connected_with_user(make_metadata("db"), Some("postgres".to_string()));
             let _ = session.begin_reload();
-            session.mark_effective_user_loaded(Some("postgres".to_string()));
 
             session.mark_connection_failed();
 
@@ -1460,15 +1443,11 @@ mod tests {
         }
 
         #[test]
-        fn effective_user_completion_updates_state() {
+        fn metadata_completion_updates_effective_user() {
             let mut session = BrowseSession::default();
-            let run_id = session.begin_effective_user_fetch();
-
-            assert!(session.is_current_effective_user_run(run_id));
-            session.mark_effective_user_loaded(Some("postgres".to_string()));
+            session.mark_connected_with_user(make_metadata("db"), Some("postgres".to_string()));
 
             assert_eq!(session.effective_user(), Some("postgres"));
-            assert!(!session.is_current_effective_user_run(run_id));
         }
 
         #[test]
@@ -1541,8 +1520,10 @@ mod tests {
         #[test]
         fn round_trip_preserves_state() {
             let mut session = BrowseSession::default();
-            session.mark_connected(make_metadata("round_trip_db"));
-            session.mark_effective_user_loaded(Some("postgres".to_string()));
+            session.mark_connected_with_user(
+                make_metadata("round_trip_db"),
+                Some("postgres".to_string()),
+            );
             let mut query = QueryExecution::default();
             let _ = session.select_table("public", "users", &mut query);
             let _ = session.set_table_detail(make_table_detail(), session.selection_generation());

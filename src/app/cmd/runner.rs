@@ -219,7 +219,6 @@ impl EffectRunner {
             }
 
             e @ (Effect::FetchMetadata { .. }
-            | Effect::FetchEffectiveUser { .. }
             | Effect::FetchTableDetail { .. }
             | Effect::PrefetchTableColumnsAndFks { .. }
             | Effect::SchedulePrefetchQueueProcessing { .. }
@@ -354,7 +353,9 @@ mod tests {
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
-    use crate::ports::outbound::{MySqlConnectionProbeResult, RenderOutput, RenderResult};
+    use crate::ports::outbound::{
+        MetadataFetchResult, MySqlConnectionProbeResult, RenderOutput, RenderResult,
+    };
     use crate::services::AppServices;
     use tokio::sync::mpsc;
 
@@ -899,7 +900,7 @@ mod tests {
             async fn fetch_metadata(
                 &self,
                 _dsn: &str,
-            ) -> Result<DatabaseMetadata, DbOperationError> {
+            ) -> Result<MetadataFetchResult, DbOperationError> {
                 unreachable!("test only starts table detail")
             }
 
@@ -1118,7 +1119,6 @@ mod tests {
 
         struct PendingMetadataProvider {
             metadata_started: Mutex<Option<oneshot::Sender<()>>>,
-            effective_user_started: Mutex<Option<oneshot::Sender<()>>>,
             dropped: Arc<AtomicUsize>,
         }
 
@@ -1127,28 +1127,13 @@ mod tests {
             async fn fetch_metadata(
                 &self,
                 _dsn: &str,
-            ) -> Result<DatabaseMetadata, DbOperationError> {
+            ) -> Result<MetadataFetchResult, DbOperationError> {
                 let _guard = DropSignal(Arc::clone(&self.dropped));
                 self.metadata_started
                     .lock()
                     .expect("metadata started signal lock poisoned")
                     .take()
                     .expect("metadata should start once")
-                    .send(())
-                    .ok();
-                pending().await
-            }
-
-            async fn fetch_effective_user(
-                &self,
-                _dsn: &str,
-            ) -> Result<Option<String>, DbOperationError> {
-                let _guard = DropSignal(Arc::clone(&self.dropped));
-                self.effective_user_started
-                    .lock()
-                    .expect("effective user started signal lock poisoned")
-                    .take()
-                    .expect("effective user should start once")
                     .send(())
                     .ok();
                 pending().await
@@ -1211,7 +1196,6 @@ mod tests {
             let dropped = Arc::new(AtomicUsize::new(0));
             let metadata_provider = PendingMetadataProvider {
                 metadata_started: Mutex::new(Some(metadata_started_tx)),
-                effective_user_started: Mutex::new(None),
                 dropped: Arc::clone(&dropped),
             };
             let probe = ProbeThatObservesDrop {
@@ -1275,13 +1259,10 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn quit_drops_effective_user_and_delayed_prefetch_tasks() {
-            let (effective_user_started_tx, effective_user_started_rx) = oneshot::channel();
-            let dropped = Arc::new(AtomicUsize::new(0));
+        async fn quit_drops_delayed_prefetch_task() {
             let provider = PendingMetadataProvider {
                 metadata_started: Mutex::new(None),
-                effective_user_started: Mutex::new(Some(effective_user_started_tx)),
-                dropped: Arc::clone(&dropped),
+                dropped: Arc::new(AtomicUsize::new(0)),
             };
             let (action_tx, mut action_rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner(
@@ -1296,16 +1277,10 @@ mod tests {
 
             runner
                 .execute_effects(
-                    vec![
-                        Effect::FetchEffectiveUser {
-                            dsn: "postgres://localhost/current".to_string(),
-                            run_id: 1,
-                        },
-                        Effect::DelayedProcessPrefetchQueue {
-                            run_id: 1,
-                            delay_secs: 60,
-                        },
-                    ],
+                    vec![Effect::DelayedProcessPrefetchQueue {
+                        run_id: 1,
+                        delay_secs: 60,
+                    }],
                     &mut renderer,
                     &mut state,
                     &completion_engine,
@@ -1313,10 +1288,6 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            effective_user_started_rx
-                .await
-                .expect("effective user should start");
-
             let shutdown_effects = reduce(
                 &mut state,
                 Action::Quit,
@@ -1334,7 +1305,6 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(dropped.load(Ordering::SeqCst), 1);
             assert!(
                 timeout(Duration::from_millis(100), action_rx.recv())
                     .await
@@ -1399,7 +1369,7 @@ mod tests {
             async fn fetch_metadata(
                 &self,
                 dsn: &str,
-            ) -> Result<DatabaseMetadata, DbOperationError> {
+            ) -> Result<MetadataFetchResult, DbOperationError> {
                 let _drop_signal = DropSignal(Arc::clone(&self.dropped));
                 self.started
                     .send(dsn.to_string())
@@ -1824,7 +1794,7 @@ mod tests {
             async fn fetch_metadata(
                 &self,
                 dsn: &str,
-            ) -> Result<DatabaseMetadata, DbOperationError> {
+            ) -> Result<MetadataFetchResult, DbOperationError> {
                 let _guard = DropSignal(Arc::clone(&self.dropped));
                 self.started.send(dsn.to_string()).ok();
                 pending().await

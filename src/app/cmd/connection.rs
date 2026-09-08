@@ -148,6 +148,7 @@ pub(in crate::cmd) async fn run(
                                         run_id,
                                         mysql_lower_case_table_names: None,
                                         metadata: None,
+                                        effective_user: None,
                                     })
                                     .ok();
                                 }
@@ -191,6 +192,7 @@ pub(in crate::cmd) async fn run(
                                                 probe_result.lower_case_table_names,
                                             ),
                                             metadata: None,
+                                            effective_user: None,
                                         })
                                         .await
                                         .ok();
@@ -226,7 +228,7 @@ pub(in crate::cmd) async fn run(
             connection_task
                 .replace(async move {
                     match provider.fetch_metadata(&dsn).await {
-                        Ok(metadata) => {
+                        Ok(metadata_result) => {
                             let save_result = tokio::task::spawn_blocking(move || {
                                 claim_and_save(&run_guard, run_id, || store.save(&profile))
                             })
@@ -238,7 +240,8 @@ pub(in crate::cmd) async fn run(
                                         target,
                                         run_id,
                                         mysql_lower_case_table_names: None,
-                                        metadata: Some(Arc::new(metadata)),
+                                        metadata: Some(Arc::new(metadata_result.metadata)),
+                                        effective_user: metadata_result.effective_user,
                                     })
                                     .await
                                     .ok();
@@ -438,7 +441,8 @@ mod tests {
     use crate::ports::outbound::mysql_connection_probe::MockMySqlConnectionProbe;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
     use crate::ports::outbound::{
-        ConnectionStoreError, DbOperationError, DsnBuilder, MySqlConnectionProbeResult,
+        ConnectionStoreError, DbOperationError, DsnBuilder, MetadataFetchResult,
+        MySqlConnectionProbeResult,
     };
     use crate::services::AppServices;
     use crate::update::action::{
@@ -687,7 +691,10 @@ mod tests {
                 .once()
                 .returning(move |_| {
                     guard_for_provider.cancel();
-                    Ok(DatabaseMetadata::new("app".to_string()))
+                    Ok(MetadataFetchResult {
+                        metadata: DatabaseMetadata::new("app".to_string()),
+                        effective_user: None,
+                    })
                 });
 
             let mut store = MockConnectionStore::new();
@@ -733,7 +740,12 @@ mod tests {
                 .expect_fetch_metadata()
                 .with(eq(dsn.clone()))
                 .once()
-                .returning(|_| Ok(DatabaseMetadata::new("app".to_string())));
+                .returning(|_| {
+                    Ok(MetadataFetchResult {
+                        metadata: DatabaseMetadata::new("app".to_string()),
+                        effective_user: Some("app_user".to_string()),
+                    })
+                });
 
             let mut store = MockConnectionStore::new();
             store.expect_save().once().returning(|_| Ok(()));
@@ -781,7 +793,12 @@ mod tests {
                 .expect_fetch_metadata()
                 .with(eq(dsn.clone()))
                 .once()
-                .returning(|_| Ok(DatabaseMetadata::new("app".to_string())));
+                .returning(|_| {
+                    Ok(MetadataFetchResult {
+                        metadata: DatabaseMetadata::new("app".to_string()),
+                        effective_user: None,
+                    })
+                });
 
             let mut store = MockConnectionStore::new();
             store.expect_save().once().returning(|_| {

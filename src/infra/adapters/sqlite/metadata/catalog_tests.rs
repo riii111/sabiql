@@ -69,15 +69,23 @@ mod metadata {
             let adapter = SqliteAdapter::new();
             let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
             let table_names: Vec<_> = metadata
+                .metadata
                 .table_summaries
                 .iter()
                 .map(|summary| summary.name.as_str())
                 .collect();
 
-            assert_eq!(metadata.schemas, vec![Schema::new("main")]);
+            assert_eq!(metadata.metadata.schemas, vec![Schema::new("main")]);
             assert_eq!(table_names, vec!["users"]);
-            assert_eq!(metadata.table_summaries[0].qualified_name(), "main.users");
-            assert!(metadata.table_summaries[0].row_count_estimate.is_none());
+            assert_eq!(
+                metadata.metadata.table_summaries[0].qualified_name(),
+                "main.users"
+            );
+            assert!(
+                metadata.metadata.table_summaries[0]
+                    .row_count_estimate
+                    .is_none()
+            );
             return;
         }
 
@@ -102,15 +110,23 @@ mod metadata {
         #[cfg(not(unix))]
         {
             let table_names: Vec<_> = metadata
+                .metadata
                 .table_summaries
                 .iter()
                 .map(|summary| summary.name.as_str())
                 .collect();
 
-            assert_eq!(metadata.schemas, vec![Schema::new("main")]);
+            assert_eq!(metadata.metadata.schemas, vec![Schema::new("main")]);
             assert_eq!(table_names, vec!["users"]);
-            assert_eq!(metadata.table_summaries[0].qualified_name(), "main.users");
-            assert!(metadata.table_summaries[0].row_count_estimate.is_none());
+            assert_eq!(
+                metadata.metadata.table_summaries[0].qualified_name(),
+                "main.users"
+            );
+            assert!(
+                metadata.metadata.table_summaries[0]
+                    .row_count_estimate
+                    .is_none()
+            );
             assert_eq!(process_counter.count(), 1);
         }
     }
@@ -176,8 +192,12 @@ mod metadata {
 
         let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
 
-        assert_eq!(metadata.table_summaries.len(), 1);
-        assert!(metadata.table_summaries[0].row_count_estimate.is_none());
+        assert_eq!(metadata.metadata.table_summaries.len(), 1);
+        assert!(
+            metadata.metadata.table_summaries[0]
+                .row_count_estimate
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -187,8 +207,8 @@ mod metadata {
 
         let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
 
-        assert_eq!(metadata.schemas, vec![Schema::new("main")]);
-        assert!(metadata.table_summaries.is_empty());
+        assert_eq!(metadata.metadata.schemas, vec![Schema::new("main")]);
+        assert!(metadata.metadata.table_summaries.is_empty());
     }
 
     #[tokio::test]
@@ -203,6 +223,7 @@ mod metadata {
 
         let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
         let table_names: Vec<_> = metadata
+            .metadata
             .table_summaries
             .iter()
             .map(|summary| summary.name.as_str())
@@ -233,6 +254,7 @@ mod metadata {
             let adapter = SqliteAdapter::new();
             let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
             let kind_info_by_name = metadata
+                .metadata
                 .table_summaries
                 .iter()
                 .map(|summary| (summary.name.clone(), summary.kind_info.clone()))
@@ -288,6 +310,7 @@ mod metadata {
 
         let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
         let table_names: Vec<_> = metadata
+            .metadata
             .table_summaries
             .iter()
             .map(|summary| summary.name.as_str())
