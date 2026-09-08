@@ -59,7 +59,7 @@ fn find_conninfo_value(dsn: &str, key: &str) -> Option<String> {
 }
 
 // Keep credentials out of child argv for generated conninfo and PostgreSQL URIs.
-pub(super) fn take_explicit_password(dsn: &str) -> Result<Option<(String, String)>, ()> {
+pub(super) fn take_explicit_password(dsn: &str) -> Result<Option<(String, String)>, &'static str> {
     if let Some((password, range)) = find_conninfo_part(dsn, "password") {
         if password.is_empty() {
             return Ok(None);
@@ -72,7 +72,7 @@ pub(super) fn take_explicit_password(dsn: &str) -> Result<Option<(String, String
     take_uri_password(dsn)
 }
 
-fn take_uri_password(dsn: &str) -> Result<Option<(String, String)>, ()> {
+fn take_uri_password(dsn: &str) -> Result<Option<(String, String)>, &'static str> {
     if !(dsn.starts_with("postgres://") || dsn.starts_with("postgresql://")) {
         return Ok(None);
     }
@@ -95,7 +95,10 @@ fn take_uri_password(dsn: &str) -> Result<Option<(String, String)>, ()> {
             let password_end = authority_start + at_offset;
             let encoded_password = &dsn[password_start..password_end];
             if !encoded_password.is_empty() {
-                password = Some(decode_uri_component(encoded_password)?);
+                password = Some(
+                    decode_uri_component(encoded_password)
+                        .map_err(|()| "Invalid PostgreSQL URI password encoding")?,
+                );
                 ranges.push((authority_start + colon_offset, password_end));
             }
         }
@@ -111,20 +114,26 @@ fn take_uri_password(dsn: &str) -> Result<Option<(String, String)>, ()> {
         for segment in query.split('&') {
             let segment_end = segment_start + segment.len();
             if let Some(equal_offset) = segment.find('=') {
-                let key = &segment[..equal_offset];
-                let is_password =
-                    decode_uri_component(key).is_ok_and(|key| key.eq_ignore_ascii_case("password"));
-                if is_password {
-                    let value_start = segment_start + equal_offset + 1;
-                    let encoded_password = &dsn[value_start..segment_end];
-                    if !encoded_password.is_empty() {
-                        let decoded_password = decode_uri_component(encoded_password)?;
-                        if !decoded_password.is_empty() {
-                            // libpq applies later non-empty URI keywords last.
-                            password = Some(decoded_password);
-                        }
-                        ranges.push((value_start, segment_end));
+                let key = decode_uri_component(&segment[..equal_offset])
+                    .map_err(|()| "Invalid PostgreSQL URI parameter encoding")?;
+                let value_start = segment_start + equal_offset + 1;
+                let encoded_value = &dsn[value_start..segment_end];
+                if key.eq_ignore_ascii_case("sslpassword") {
+                    if !encoded_value.is_empty()
+                        && !decode_uri_component(encoded_value)
+                            .map_err(|()| "Invalid PostgreSQL URI password encoding")?
+                            .is_empty()
+                    {
+                        return Err("PostgreSQL URI sslpassword cannot be passed securely to psql");
                     }
+                } else if key.eq_ignore_ascii_case("password") && !encoded_value.is_empty() {
+                    let decoded_password = decode_uri_component(encoded_value)
+                        .map_err(|()| "Invalid PostgreSQL URI password encoding")?;
+                    if !decoded_password.is_empty() {
+                        // libpq applies later non-empty URI keywords last.
+                        password = Some(decoded_password);
+                    }
+                    ranges.push((value_start, segment_end));
                 }
             }
             segment_start = segment_end.saturating_add(1);

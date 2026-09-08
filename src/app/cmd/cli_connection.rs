@@ -143,8 +143,9 @@ fn redact_uri_passwords(uri: &str) -> String {
             let segment_end = segment_start + segment.len();
             if let Some(equal_offset) = segment.find('=') {
                 let key = &segment[..equal_offset];
-                let is_password =
-                    urlencoding::decode(key).is_ok_and(|key| key.eq_ignore_ascii_case("password"));
+                let is_password = urlencoding::decode(key).is_ok_and(|key| {
+                    key.eq_ignore_ascii_case("password") || key.eq_ignore_ascii_case("sslpassword")
+                });
                 if is_password {
                     ranges.push((segment_start + equal_offset + 1, segment_end));
                 }

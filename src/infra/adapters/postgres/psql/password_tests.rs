@@ -142,6 +142,23 @@ fn invalid_uri_password_encoding_fails_without_echoing_uri() {
 }
 
 #[test]
+fn uri_sslpassword_is_rejected_without_echoing_secret() {
+    for dsn in [
+        "postgresql://user@host/db?sslpassword=secret",
+        "postgresql://user@host/db?sslpass%77ord=secret",
+    ] {
+        let Err(error) = PostgresAdapter::build_psql_command(dsn, &[], &[], false) else {
+            panic!("URI sslpassword should be rejected before spawn")
+        };
+
+        assert!(
+            matches!(error, DbOperationError::ConnectionFailed(ref message) if message == "PostgreSQL URI sslpassword cannot be passed securely to psql")
+        );
+        assert!(!error.to_string().contains("secret"));
+    }
+}
+
+#[test]
 fn no_explicit_password_preserves_service_passfile_and_environment() {
     for dsn in [
         "service=mydb",
