@@ -24,7 +24,7 @@ pub(crate) struct ConfigVersionCheck {
     pub version: u32,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ConnectionConfigFile {
     pub version: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -38,7 +38,7 @@ pub(crate) struct ConnectionConfigFile {
     pub connections: Vec<ConnectionConfigEntry>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ConnectionConfigEntry {
     pub id: String,
     pub name: String,
@@ -54,6 +54,8 @@ pub(crate) struct ConnectionConfigEntry {
     pub username: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub password_ref: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ssl_mode: Option<SslMode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -114,6 +116,7 @@ impl From<&ConnectionProfile> for ConnectionConfigEntry {
             database: None,
             username: None,
             password: None,
+            password_ref: None,
             ssl_mode: None,
             mysql_ssl_mode: None,
             mysql_ssl_ca: None,
@@ -169,72 +172,90 @@ impl From<&ConnectionProfile> for ConnectionConfigEntry {
     }
 }
 
-impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
-    type Error = ConnectionProfileError;
+impl ConnectionConfigEntry {
+    pub(crate) fn from_profile_with_password_ref(
+        profile: &ConnectionProfile,
+        password_ref: Option<String>,
+    ) -> Self {
+        let mut entry = Self::from(profile);
+        entry.password_ref = password_ref;
+        if entry.password_ref.is_some() || entry.password.as_deref() == Some("") {
+            entry.password = None;
+        }
+        entry
+    }
 
-    fn try_from(entry: &ConnectionConfigEntry) -> Result<Self, Self::Error> {
-        let id = ConnectionId::from_string(&entry.id);
-        let name = ConnectionName::new(&entry.name)?;
-        match entry.db_type {
-            DatabaseType::PostgreSQL => Self::with_id_and_config(
+    pub(crate) fn to_profile_with_password(
+        &self,
+        password: String,
+    ) -> Result<ConnectionProfile, ConnectionProfileError> {
+        let id = ConnectionId::from_string(&self.id);
+        let name = ConnectionName::new(&self.name)?;
+        match self.db_type {
+            DatabaseType::PostgreSQL => ConnectionProfile::with_id_and_config(
                 id,
                 name.as_str().to_string(),
                 ConnectionConfig::PostgreSQL(PostgresConnectionConfig::new(
-                    optional_postgres_field(entry.host.as_ref()),
-                    entry.port.unwrap_or(5432),
-                    required_postgres_field(entry.database.as_ref(), "database")?,
-                    optional_postgres_field(entry.username.as_ref()),
-                    match &entry.password {
-                        Some(password) => password.clone(),
-                        None => String::new(),
-                    },
-                    entry.ssl_mode.unwrap_or(SslMode::Prefer),
+                    optional_postgres_field(self.host.as_ref()),
+                    self.port.unwrap_or(5432),
+                    required_postgres_field(self.database.as_ref(), "database")?,
+                    optional_postgres_field(self.username.as_ref()),
+                    password,
+                    self.ssl_mode.unwrap_or(SslMode::Prefer),
                 )),
             ),
-            DatabaseType::SQLite => Self::with_id_and_config(
+            DatabaseType::SQLite => ConnectionProfile::with_id_and_config(
                 id,
                 name.as_str().to_string(),
                 ConnectionConfig::SQLite(SqliteConnectionConfig::new(required_sqlite_path(
-                    entry.path.as_ref(),
+                    self.path.as_ref(),
                 )?)?),
             ),
             DatabaseType::MySQL => {
-                let transport = entry.mysql_transport.unwrap_or_default();
-                let database = entry.database.clone().filter(|value| !value.is_empty());
-                Self::with_id_and_config(
+                let transport = self.mysql_transport.unwrap_or_default();
+                let database = self.database.clone().filter(|value| !value.is_empty());
+                ConnectionProfile::with_id_and_config(
                     id,
                     name.as_str().to_string(),
                     ConnectionConfig::MySQL(
                         MySqlConnectionConfig::new(
                             match transport {
-                                MySqlTransport::Tcp => required_mysql_host(entry.host.as_ref())?,
+                                MySqlTransport::Tcp => required_mysql_host(self.host.as_ref())?,
                                 MySqlTransport::UnixSocket | MySqlTransport::NamedPipe => {
-                                    entry.host.clone().unwrap_or_default()
+                                    self.host.clone().unwrap_or_default()
                                 }
                             },
-                            entry.port.unwrap_or(3306),
+                            self.port.unwrap_or(3306),
                             database,
-                            required_mysql_field(entry.username.as_ref(), "username")?,
-                            entry.password.clone().unwrap_or_default(),
-                            entry.mysql_ssl_mode.unwrap_or_default(),
+                            required_mysql_field(self.username.as_ref(), "username")?,
+                            password,
+                            self.mysql_ssl_mode.unwrap_or_default(),
                         )
                         .with_tls_paths(
-                            entry.mysql_ssl_ca.clone(),
-                            entry.mysql_ssl_cert.clone(),
-                            entry.mysql_ssl_key.clone(),
+                            self.mysql_ssl_ca.clone(),
+                            self.mysql_ssl_cert.clone(),
+                            self.mysql_ssl_key.clone(),
                         )
-                        .with_server_public_key_path(entry.mysql_server_public_key_path.clone())
+                        .with_server_public_key_path(self.mysql_server_public_key_path.clone())
                         .with_get_server_public_key(
-                            entry.mysql_get_server_public_key.unwrap_or(false),
+                            self.mysql_get_server_public_key.unwrap_or(false),
                         )
-                        .with_transport(transport, entry.mysql_transport_path.clone())
+                        .with_transport(transport, self.mysql_transport_path.clone())
                         .with_cleartext_auth_plugin(
-                            entry.mysql_enable_cleartext_plugin.unwrap_or(false),
+                            self.mysql_enable_cleartext_plugin.unwrap_or(false),
                         ),
                     ),
                 )
             }
         }
+    }
+}
+
+impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
+    type Error = ConnectionProfileError;
+
+    fn try_from(entry: &ConnectionConfigEntry) -> Result<Self, Self::Error> {
+        entry.to_profile_with_password(entry.password.clone().unwrap_or_default())
     }
 }
 
@@ -308,6 +329,7 @@ mod tests {
             database: Some("app".to_string()),
             username: Some("user".to_string()),
             password: None,
+            password_ref: None,
             ssl_mode: Some(SslMode::Prefer),
             mysql_ssl_mode: None,
             mysql_ssl_ca: None,
@@ -332,6 +354,7 @@ mod tests {
             database: None,
             username: None,
             password: None,
+            password_ref: None,
             ssl_mode: None,
             mysql_ssl_mode: None,
             mysql_ssl_ca: None,
@@ -356,6 +379,7 @@ mod tests {
             database: database.map(str::to_string),
             username: Some("user".to_string()),
             password: Some("p@ss#word".to_string()),
+            password_ref: None,
             ssl_mode: None,
             mysql_ssl_mode: Some(MySqlSslMode::Required),
             mysql_ssl_ca: None,

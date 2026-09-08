@@ -19,6 +19,7 @@ pub mod mysql_connection_probe;
 pub mod query_executor;
 pub mod query_history;
 pub mod renderer;
+pub mod secret_store;
 pub mod service_file;
 pub mod settings_store;
 pub mod sqlite_diagnostics;
@@ -43,6 +44,7 @@ pub use mysql_connection_probe::{MySqlConnectionProbe, MySqlConnectionProbeResul
 pub use query_executor::QueryExecutor;
 pub use query_history::{QueryHistoryError, QueryHistoryStore};
 pub use renderer::{CellDetailViewport, RenderError, RenderOutput, RenderResult, Renderer};
+pub use secret_store::{SecretStore, SecretStoreError};
 pub use service_file::{PgServiceEntryReader, ServiceFileContents, ServiceFileError};
 pub use settings_store::{AppSettings, SettingsStore, SettingsStoreError};
 pub use sqlite_diagnostics::SqliteDiagnosticsProvider;

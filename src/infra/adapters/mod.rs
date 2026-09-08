@@ -11,6 +11,7 @@ pub mod mysql;
 pub(crate) mod postgres;
 pub(crate) mod query_history;
 pub(crate) mod registry;
+pub(crate) mod secret_store;
 pub(crate) mod settings_store;
 pub(crate) mod sqlite;
 #[cfg(test)]
@@ -25,5 +26,6 @@ pub use folder_opener::NativeFolderOpener;
 pub use postgres::{PgServiceFileReader, PostgresAdapter};
 pub use query_history::FileQueryHistoryStore;
 pub use registry::DbAdapterRegistry;
+pub(crate) use secret_store::PlatformSecretStore;
 pub use settings_store::TomlSettingsStore;
 pub use sqlite::{FsSqlitePathValidator, SqliteAdapter};

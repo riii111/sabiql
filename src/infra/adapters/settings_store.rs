@@ -196,6 +196,53 @@ mod tests {
     }
 
     #[test]
+    fn saving_ui_settings_preserves_password_storage_fields() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join(CONFIG_FILE_NAME),
+            r#"version = 3
+
+[[connections]]
+id = "legacy"
+name = "Legacy"
+host = "localhost"
+port = 5432
+database = "testdb"
+username = "testuser"
+password = "legacy-password"
+ssl_mode = "prefer"
+
+[[connections]]
+id = "managed"
+name = "Managed"
+host = "localhost"
+port = 5432
+database = "testdb"
+username = "testuser"
+password_ref = "connection:managed"
+ssl_mode = "prefer"
+"#,
+        )
+        .unwrap();
+        let store = TomlSettingsStore::with_config_dir(dir.path().to_path_buf());
+
+        store.save(AppSettings::default()).unwrap();
+
+        let content = fs::read_to_string(dir.path().join(CONFIG_FILE_NAME)).unwrap();
+        let config: ConnectionConfigFile = toml::from_str(&content).unwrap();
+        assert_eq!(
+            config.connections[0].password.as_deref(),
+            Some("legacy-password")
+        );
+        assert_eq!(config.connections[0].password_ref, None);
+        assert_eq!(
+            config.connections[1].password_ref.as_deref(),
+            Some("connection:managed")
+        );
+        assert_eq!(config.connections[1].password, None);
+    }
+
+    #[test]
     fn missing_file_returns_default_settings() {
         let temp_dir = TempDir::new().unwrap();
         let store = TomlSettingsStore::with_config_dir(temp_dir.path().to_path_buf());

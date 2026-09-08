@@ -52,6 +52,7 @@ unicode-width = "0.2"
 urlencoding = "2"
 url = "2"
 uuid = { version = "1", features = ["v4", "v5"] }
+keyring-core = "1"
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Security",

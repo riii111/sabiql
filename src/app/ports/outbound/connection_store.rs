@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::domain::connection::{ConnectionId, ConnectionProfile, ConnectionProfileError};
+use crate::ports::outbound::SecretStoreError;
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ConnectionStoreError {
@@ -18,6 +19,8 @@ pub enum ConnectionStoreError {
     DuplicateName(String),
     #[error("Connection not found: {0}")]
     NotFound(String),
+    #[error("Secret store error: {0}")]
+    SecretStore(#[from] SecretStoreError),
 }
 
 impl From<std::io::Error> for ConnectionStoreError {
