@@ -121,7 +121,7 @@ pub fn mysql_cache_miss_config() -> MySqlConnectionConfig {
 pub fn mysql_cache_miss_retrieval_config() -> MySqlConnectionConfig {
     let mut config = mysql_integration_config();
     config.username = std::env::var("SABIQL_MYSQL_TEST_CACHE_MISS_RETRIEVAL_USER")
-        .unwrap_or_else(|_| "sabiql_cache_miss_retrieval_runner".to_string());
+        .unwrap_or_else(|_| "sabiql_cache_miss_retrieval".to_string());
     config.password = std::env::var("SABIQL_MYSQL_TEST_CACHE_MISS_RETRIEVAL_PASSWORD")
         .unwrap_or_else(|_| "sabiql-cache-miss-retrieval".to_string());
     config

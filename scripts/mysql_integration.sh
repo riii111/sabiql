@@ -16,7 +16,7 @@ readonly mysql_user="${SABIQL_MYSQL_TEST_USER:-sabiql_test_runner}"
 readonly mysql_password="${SABIQL_MYSQL_TEST_PASSWORD:-p a#ss;=\"word}"
 readonly cache_miss_user="${SABIQL_MYSQL_TEST_CACHE_MISS_USER:-sabiql_cache_miss_runner}"
 readonly cache_miss_password="${SABIQL_MYSQL_TEST_CACHE_MISS_PASSWORD:-sabiql-cache-miss}"
-readonly cache_miss_retrieval_user="${SABIQL_MYSQL_TEST_CACHE_MISS_RETRIEVAL_USER:-sabiql_cache_miss_retrieval_runner}"
+readonly cache_miss_retrieval_user="${SABIQL_MYSQL_TEST_CACHE_MISS_RETRIEVAL_USER:-sabiql_cache_miss_retrieval}"
 readonly cache_miss_retrieval_password="${SABIQL_MYSQL_TEST_CACHE_MISS_RETRIEVAL_PASSWORD:-sabiql-cache-miss-retrieval}"
 readonly mysql_client_label_key='com.sabiql.mysql.integration'
 

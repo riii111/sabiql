@@ -152,8 +152,7 @@ mod connection {
             .unwrap();
         assert_eq!(result.values(), [[QueryValue::Text("1".to_string())]]);
 
-        let trusted_profile =
-            mysql_profile("mysql-caching-sha2-public-key", trusted_config.clone());
+        let trusted_profile = mysql_profile("mysql-caching-sha2-public-key", trusted_config);
         let dsn = adapter.build_dsn(&trusted_profile);
 
         adapter.probe(&dsn).await.unwrap();
