@@ -37,12 +37,15 @@ impl DbAdapterRegistry {
         if dsn.starts_with("mysql://") {
             return Ok(DatabaseType::MySQL);
         }
-        if dsn.starts_with("postgres://") || is_postgres_conninfo_dsn(dsn) {
+        if dsn.starts_with("postgres://")
+            || dsn.starts_with("postgresql://")
+            || is_postgres_conninfo_dsn(dsn)
+        {
             return Ok(DatabaseType::PostgreSQL);
         }
-        Err(DbOperationError::ConnectionFailed(format!(
-            "Unsupported database DSN scheme: {dsn}"
-        )))
+        Err(DbOperationError::ConnectionFailed(
+            "Unsupported database DSN scheme".to_string(),
+        ))
     }
 
     fn metadata_provider(&self, dsn: &str) -> Result<&dyn MetadataProvider, DbOperationError> {
@@ -279,10 +282,20 @@ mod tests {
     #[case::sqlite_url("sqlite:///tmp/app.db", Some(DatabaseType::SQLite))]
     #[case::mysql_url("mysql://localhost/db", Some(DatabaseType::MySQL))]
     #[case::postgres_url("postgres://localhost/db", Some(DatabaseType::PostgreSQL))]
+    #[case::postgresql_url("postgresql://localhost/db", Some(DatabaseType::PostgreSQL))]
     #[case::postgres_conninfo("host='localhost' dbname='db'", Some(DatabaseType::PostgreSQL))]
     #[case::unsupported_scheme("redis://localhost", None)]
     fn classifies_named_dsn_inputs(#[case] dsn: &str, #[case] expected: Option<DatabaseType>) {
         assert_eq!(DbAdapterRegistry::db_type_from_dsn(dsn).ok(), expected);
+    }
+
+    #[test]
+    fn unsupported_dsn_error_does_not_echo_credentials() {
+        let error = DbAdapterRegistry::db_type_from_dsn("redis://user:secret@example.com/database")
+            .unwrap_err();
+
+        assert!(!error.user_message().contains("secret"));
+        assert!(!format!("{error:?}").contains("secret"));
     }
 
     #[tokio::test]

@@ -265,9 +265,15 @@ impl PostgresAdapter {
                     "PostgreSQL password file path is not UTF-8".into(),
                 )
             })?;
-            connection.push_str(" passfile=");
-            connection.push_str(&quote_conninfo_value(path));
-            cmd.arg(connection).env_remove("PGPASSWORD");
+            if dsn.starts_with("postgres://") || dsn.starts_with("postgresql://") {
+                cmd.arg(connection)
+                    .env("PGPASSFILE", path)
+                    .env_remove("PGPASSWORD");
+            } else {
+                connection.push_str(" passfile=");
+                connection.push_str(&quote_conninfo_value(path));
+                cmd.arg(connection).env_remove("PGPASSWORD");
+            }
             Some(passfile)
         } else {
             cmd.arg(dsn);

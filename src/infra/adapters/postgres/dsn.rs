@@ -58,16 +58,32 @@ fn find_conninfo_value(dsn: &str, key: &str) -> Option<String> {
     find_conninfo_part(dsn, key).map(|(value, _)| value)
 }
 
-// This scanner serves the quoted conninfo emitted by build_dsn, not arbitrary libpq input.
+// Keep credentials out of child argv for generated conninfo and PostgreSQL URIs.
 pub(super) fn take_explicit_password(dsn: &str) -> Option<(String, String)> {
-    let (password, range) = find_conninfo_part(dsn, "password")?;
-    if password.is_empty() {
+    if let Some((password, range)) = find_conninfo_part(dsn, "password") {
+        if password.is_empty() {
+            return None;
+        }
+        let mut connection = dsn.to_string();
+        // An explicit empty password suppresses service/environment defaults while allowing passfile.
+        connection.replace_range(range, "password=''");
+        return Some((connection, password));
+    }
+    take_uri_password(dsn)
+}
+
+fn take_uri_password(dsn: &str) -> Option<(String, String)> {
+    if !(dsn.starts_with("postgres://") || dsn.starts_with("postgresql://")) {
         return None;
     }
-    let mut connection = dsn.to_string();
-    // An explicit empty password suppresses service/environment defaults while allowing passfile.
-    connection.replace_range(range, "password=''");
-    Some((connection, password))
+    let mut url = url::Url::parse(dsn).ok()?;
+    let encoded_password = url.password()?.to_string();
+    if encoded_password.is_empty() {
+        return None;
+    }
+    let password = urlencoding::decode(&encoded_password).ok()?.into_owned();
+    url.set_password(None).ok()?;
+    Some((url.to_string(), password))
 }
 
 fn find_conninfo_part(dsn: &str, key: &str) -> Option<(String, std::ops::Range<usize>)> {

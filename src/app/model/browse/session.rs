@@ -466,12 +466,29 @@ impl BrowseSession {
     }
 
     pub fn activate_cli_ephemeral_connection(&mut self, id: &ConnectionId, name: &str, dsn: &str) {
+        self.activate_cli_ephemeral_connection_with_target(
+            id,
+            name,
+            DatabaseType::SQLite,
+            dsn,
+            None,
+        );
+    }
+
+    pub fn activate_cli_ephemeral_connection_with_target(
+        &mut self,
+        id: &ConnectionId,
+        name: &str,
+        database_type: DatabaseType,
+        dsn: &str,
+        database: Option<&str>,
+    ) {
         self.active_connection = Some(ActiveConnection {
             id: id.clone(),
             name: name.to_string(),
-            database_type: DatabaseType::SQLite,
+            database_type,
             origin: ConnectionOrigin::CliEphemeral,
-            database: None,
+            database: database.map(str::to_string),
         });
         self.dsn = Some(dsn.to_string());
         self.mysql_lower_case_table_names = 0;

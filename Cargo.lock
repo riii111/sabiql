@@ -2829,6 +2829,8 @@ dependencies = [
  "toml",
  "unicode-casefold",
  "unicode-width",
+ "url",
+ "urlencoding",
  "uuid",
 ]
 

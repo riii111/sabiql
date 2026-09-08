@@ -91,6 +91,20 @@ You can also open an existing SQLite database directly:
 sabiql /path/to/app.db
 ```
 
+For a non-saved PostgreSQL or MySQL connection, pass a URI or the name of an
+environment variable containing one:
+
+```bash
+sabiql 'postgresql://user@localhost/app'
+sabiql --connection-env DATABASE_URL
+```
+
+Supported URI schemes are `postgres://`, `postgresql://`, and `mysql://`.
+Passing a URI with credentials can expose the secret in shell history and
+process arguments; `--connection-env` avoids putting the URI in the command
+line. The connection profile is not saved, but query history and CSV exports
+follow their normal persistence behavior.
+
 Use `Ctrl+R` before browsing data when you want to block writes. Press `?` for help, or open Settings with `,` to change the theme and keymap.
 
 For copying from SSH or a headless host, see [OSC 52 clipboard configuration](docs/clipboard.md).
