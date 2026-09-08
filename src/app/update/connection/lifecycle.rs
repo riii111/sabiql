@@ -2,6 +2,7 @@ use crate::cmd::effect::Effect;
 use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::connection::error::ConnectionErrorInfo;
+use crate::model::connection::origin::ConnectionOrigin;
 use crate::model::shared::input_mode::InputMode;
 use crate::services::AppServices;
 use crate::update::action::{Action, ConnectionTarget};
@@ -11,7 +12,8 @@ use crate::update::query_context::termination_effects;
 use crate::update::dispatch_result::DispatchResult;
 
 use super::helpers::{
-    mysql_connection_completion_effects, reset_for_new_connection, restore_cache,
+    mysql_connection_completion_effects, reset_for_new_connection,
+    reset_for_new_connection_with_origin, restore_cache, restore_cache_with_origin,
     save_current_connection_cache,
 };
 
@@ -104,9 +106,13 @@ pub(in crate::update) fn reduce_connection_lifecycle(
             {
                 return DispatchResult::handled();
             }
+            let origin = state
+                .session
+                .pending_mysql_connection_probe()
+                .map_or(ConnectionOrigin::Profile, |pending| pending.origin);
             let cached = state.connection_caches.get(id).cloned();
             if let Some(cached) = cached.filter(|cache| cache.is_valid_mysql_snapshot(dsn)) {
-                restore_cache(state, &cached, target);
+                restore_cache_with_origin(state, &cached, target, origin);
                 state
                     .session
                     .set_mysql_lower_case_table_names(*lower_case_table_names);
@@ -118,7 +124,7 @@ pub(in crate::update) fn reduce_connection_lifecycle(
             }
 
             state.connection_caches.remove(id);
-            reset_for_new_connection(state, target);
+            reset_for_new_connection_with_origin(state, target, origin);
             state
                 .session
                 .set_mysql_lower_case_table_names(*lower_case_table_names);
@@ -194,12 +200,21 @@ pub(super) fn try_connect(state: &mut AppState) -> Vec<Effect> {
                     database_type: DatabaseType::MySQL,
                     database: state.session.active_database().map(str::to_string),
                 };
-                let run_id = state.session.begin_mysql_connection_probe(
-                    &target.id,
-                    &target.name,
-                    &target.dsn,
-                    target.database.as_deref(),
-                );
+                let run_id = if state.session.is_ephemeral_connection() {
+                    state.session.begin_cli_mysql_connection_probe(
+                        &target.id,
+                        &target.name,
+                        &target.dsn,
+                        target.database.as_deref(),
+                    )
+                } else {
+                    state.session.begin_mysql_connection_probe(
+                        &target.id,
+                        &target.name,
+                        &target.dsn,
+                        target.database.as_deref(),
+                    )
+                };
                 clear_query_confirmation(state);
                 state.query.reset_for_context_change();
                 state.session.mark_connecting();
@@ -1540,6 +1555,46 @@ mod tests {
                     .iter()
                     .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
             );
+        }
+
+        #[test]
+        fn cli_mysql_connection_stays_ephemeral_after_probe() {
+            let mut state = AppState::new("test".to_string());
+            let id = ConnectionId::from_string("cli:mysql");
+            let dsn = "mysql://user@localhost:3306/app";
+            state.session.activate_cli_ephemeral_connection_with_target(
+                &id,
+                "localhost/app",
+                DatabaseType::MySQL,
+                dsn,
+                Some("app"),
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::NotConnected);
+
+            let effects = reduce(&mut state, &Action::TryConnect).unwrap();
+            let (target, run_id) = effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeMySqlConnection { target, run_id } => {
+                        Some((target.clone(), *run_id))
+                    }
+                    _ => None,
+                })
+                .expect("CLI MySQL connection should start a probe");
+
+            reduce(
+                &mut state,
+                &Action::MySqlConnectionProbeCompleted {
+                    target,
+                    run_id,
+                    lower_case_table_names: 0,
+                },
+            );
+
+            assert!(state.session.is_ephemeral_connection());
+            assert!(!state.session.can_reenter_connection_setup());
         }
 
         #[test]

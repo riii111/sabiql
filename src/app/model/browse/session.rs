@@ -106,6 +106,7 @@ pub struct PendingMySqlConnectionProbe {
     pub name: String,
     pub dsn: String,
     pub database: Option<String>,
+    pub origin: ConnectionOrigin,
     pub run_id: u64,
     table_detail: Option<InterruptedTableDetail>,
 }
@@ -118,6 +119,7 @@ impl fmt::Debug for PendingMySqlConnectionProbe {
             .field("name", &self.name)
             .field("dsn", &mask_password(&self.dsn))
             .field("database", &self.database)
+            .field("origin", &self.origin)
             .field("run_id", &self.run_id)
             .field("table_detail", &self.table_detail)
             .finish()
@@ -139,7 +141,7 @@ impl fmt::Debug for PendingMySqlConnectionProbe {
 // where the aggregate API does not cover the exact semantics needed.
 // `set_connection_state` and `set_metadata_state` are test-only lifecycle
 // fixtures.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct BrowseSession {
     // -- co-dependent: connection lifecycle --
     connection_state: ConnectionState,
@@ -169,6 +171,48 @@ pub struct BrowseSession {
     database_generation: u64,
     read_only: bool,
     is_reloading: bool,
+}
+
+impl fmt::Debug for BrowseSession {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let dsn = self.dsn.as_deref().map(mask_password);
+        formatter
+            .debug_struct("BrowseSession")
+            .field("connection_state", &self.connection_state)
+            .field("metadata_state", &self.metadata_state)
+            .field("selected_table_key", &self.selected_table_key)
+            .field("table_detail_state", &self.table_detail_state)
+            .field("selection_generation", &self.selection_generation)
+            .field("metadata", &self.metadata)
+            .field("metadata_run", &self.metadata_run)
+            .field(
+                "metadata_detail_generation",
+                &self.metadata_detail_generation,
+            )
+            .field("effective_user", &self.effective_user)
+            .field("table_detail_run", &self.table_detail_run)
+            .field("connection_save_run", &self.connection_save_run)
+            .field("connection_save_guard", &self.connection_save_guard)
+            .field("dsn", &dsn)
+            .field("active_connection", &self.active_connection)
+            .field(
+                "mysql_connection_probe_run",
+                &self.mysql_connection_probe_run,
+            )
+            .field(
+                "pending_mysql_connection_probe",
+                &self.pending_mysql_connection_probe,
+            )
+            .field(
+                "mysql_lower_case_table_names",
+                &self.mysql_lower_case_table_names,
+            )
+            .field("connection_generation", &self.connection_generation)
+            .field("database_generation", &self.database_generation)
+            .field("read_only", &self.read_only)
+            .field("is_reloading", &self.is_reloading)
+            .finish()
+    }
 }
 
 impl Default for BrowseSession {
@@ -355,6 +399,40 @@ impl BrowseSession {
         dsn: &str,
         database: Option<&str>,
     ) -> u64 {
+        self.begin_mysql_connection_probe_with_origin(
+            id,
+            name,
+            dsn,
+            database,
+            ConnectionOrigin::Profile,
+        )
+    }
+
+    #[must_use]
+    pub fn begin_cli_mysql_connection_probe(
+        &mut self,
+        id: &ConnectionId,
+        name: &str,
+        dsn: &str,
+        database: Option<&str>,
+    ) -> u64 {
+        self.begin_mysql_connection_probe_with_origin(
+            id,
+            name,
+            dsn,
+            database,
+            ConnectionOrigin::CliEphemeral,
+        )
+    }
+
+    fn begin_mysql_connection_probe_with_origin(
+        &mut self,
+        id: &ConnectionId,
+        name: &str,
+        dsn: &str,
+        database: Option<&str>,
+        origin: ConnectionOrigin,
+    ) -> u64 {
         let table_detail =
             self.dsn
                 .clone()
@@ -372,6 +450,7 @@ impl BrowseSession {
             name: name.to_string(),
             dsn: dsn.to_string(),
             database: database.map(str::to_string),
+            origin,
             run_id,
             table_detail,
         });
@@ -451,12 +530,31 @@ impl BrowseSession {
         dsn: &str,
         database: Option<&str>,
     ) {
+        self.activate_connection_with_target_and_origin(
+            id,
+            name,
+            database_type,
+            dsn,
+            database,
+            ConnectionOrigin::Profile,
+        );
+    }
+
+    pub fn activate_connection_with_target_and_origin(
+        &mut self,
+        id: &ConnectionId,
+        name: &str,
+        database_type: DatabaseType,
+        dsn: &str,
+        database: Option<&str>,
+        origin: ConnectionOrigin,
+    ) {
         self.database_generation = self.database_generation.wrapping_add(1);
         self.active_connection = Some(ActiveConnection {
             id: id.clone(),
             name: name.to_string(),
             database_type,
-            origin: ConnectionOrigin::Profile,
+            origin,
             database: database.map(str::to_string),
         });
         self.dsn = Some(dsn.to_string());
@@ -466,17 +564,31 @@ impl BrowseSession {
     }
 
     pub fn activate_cli_ephemeral_connection(&mut self, id: &ConnectionId, name: &str, dsn: &str) {
-        self.active_connection = Some(ActiveConnection {
-            id: id.clone(),
-            name: name.to_string(),
-            database_type: DatabaseType::SQLite,
-            origin: ConnectionOrigin::CliEphemeral,
-            database: None,
-        });
-        self.dsn = Some(dsn.to_string());
-        self.mysql_lower_case_table_names = 0;
-        self.read_only = false;
-        self.clear_mysql_connection_probe();
+        self.activate_cli_ephemeral_connection_with_target(
+            id,
+            name,
+            DatabaseType::SQLite,
+            dsn,
+            None,
+        );
+    }
+
+    pub fn activate_cli_ephemeral_connection_with_target(
+        &mut self,
+        id: &ConnectionId,
+        name: &str,
+        database_type: DatabaseType,
+        dsn: &str,
+        database: Option<&str>,
+    ) {
+        self.activate_connection_with_target_and_origin(
+            id,
+            name,
+            database_type,
+            dsn,
+            database,
+            ConnectionOrigin::CliEphemeral,
+        );
     }
 
     pub fn clear_connection(&mut self) {
@@ -653,6 +765,12 @@ impl BrowseSession {
     ) {
         self.restore_from_cache(cache, query);
         self.activate_connection_with_target(id, name, database_type, dsn, database);
+    }
+
+    pub fn set_active_connection_origin(&mut self, origin: ConnectionOrigin) {
+        if let Some(connection) = self.active_connection.as_mut() {
+            connection.origin = origin;
+        }
     }
 
     // Caller must also call `result_interaction.reset_view()` and restore UI state.

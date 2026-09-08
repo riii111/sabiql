@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crate::domain::DatabaseMetadata;
 use crate::model::app_state::AppState;
 use crate::model::connection::cache::ConnectionCache;
+use crate::model::connection::origin::ConnectionOrigin;
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::update::action::{Action, ConnectionTarget};
 use crate::update::query_context::termination_effects;
@@ -30,17 +31,26 @@ fn reconcile_connection_state(state: &mut AppState, inspector_tab: InspectorTab)
 }
 
 pub(super) fn reset_for_new_connection(state: &mut AppState, target: &ConnectionTarget) {
+    reset_for_new_connection_with_origin(state, target, ConnectionOrigin::Profile);
+}
+
+pub(super) fn reset_for_new_connection_with_origin(
+    state: &mut AppState,
+    target: &ConnectionTarget,
+    origin: ConnectionOrigin,
+) {
     let inspector_tab = state.ui.inspector_tab();
     let sql_modal_tab = state.sql_modal.active_tab();
     reset_state_before_connection_reconciliation(state);
     state.ui.set_inspector_tab(inspector_tab);
     state.sql_modal.set_active_tab(sql_modal_tab);
-    state.session.activate_connection_with_target(
+    state.session.activate_connection_with_target_and_origin(
         &target.id,
         &target.name,
         target.database_type,
         &target.dsn,
         target.database.as_deref(),
+        origin,
     );
     reconcile_connection_state(state, inspector_tab);
 }
@@ -142,6 +152,15 @@ pub(super) fn restore_cache(
     cache: &ConnectionCache,
     target: &ConnectionTarget,
 ) {
+    restore_cache_with_origin(state, cache, target, ConnectionOrigin::Profile);
+}
+
+pub(super) fn restore_cache_with_origin(
+    state: &mut AppState,
+    cache: &ConnectionCache,
+    target: &ConnectionTarget,
+    origin: ConnectionOrigin,
+) {
     state.session.restore_from_cache_for_connection(
         cache,
         &mut state.query,
@@ -151,6 +170,7 @@ pub(super) fn restore_cache(
         &target.dsn,
         target.database.as_deref(),
     );
+    state.session.set_active_connection_origin(origin);
     reconcile_connection_state(state, cache.inspector_tab);
     state
         .ui

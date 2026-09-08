@@ -58,16 +58,120 @@ fn find_conninfo_value(dsn: &str, key: &str) -> Option<String> {
     find_conninfo_part(dsn, key).map(|(value, _)| value)
 }
 
-// This scanner serves the quoted conninfo emitted by build_dsn, not arbitrary libpq input.
-pub(super) fn take_explicit_password(dsn: &str) -> Option<(String, String)> {
-    let (password, range) = find_conninfo_part(dsn, "password")?;
-    if password.is_empty() {
-        return None;
+// Keep credentials out of child argv for generated conninfo and PostgreSQL URIs.
+pub(super) fn take_explicit_password(dsn: &str) -> Result<Option<(String, String)>, &'static str> {
+    if let Some((password, range)) = find_conninfo_part(dsn, "password") {
+        if password.is_empty() {
+            return Ok(None);
+        }
+        let mut connection = dsn.to_string();
+        // An explicit empty password suppresses service/environment defaults while allowing passfile.
+        connection.replace_range(range, "password=''");
+        return Ok(Some((connection, password)));
     }
+    take_uri_password(dsn)
+}
+
+fn take_uri_password(dsn: &str) -> Result<Option<(String, String)>, &'static str> {
+    if !(dsn.starts_with("postgres://") || dsn.starts_with("postgresql://")) {
+        return Ok(None);
+    }
+
+    let Some(scheme_end) = dsn.find("://") else {
+        return Ok(None);
+    };
+    let authority_start = scheme_end + 3;
+    let authority_end = dsn[authority_start..]
+        .find(['/', '?', '#'])
+        .map_or(dsn.len(), |offset| authority_start + offset);
+    let authority = &dsn[authority_start..authority_end];
+    let mut password = None;
+    let mut ranges = Vec::new();
+
+    if let Some(at_offset) = authority.rfind('@') {
+        let userinfo = &authority[..at_offset];
+        if let Some(colon_offset) = userinfo.find(':') {
+            let password_start = authority_start + colon_offset + 1;
+            let password_end = authority_start + at_offset;
+            let encoded_password = &dsn[password_start..password_end];
+            if !encoded_password.is_empty() {
+                password = Some(
+                    decode_uri_component(encoded_password)
+                        .map_err(|()| "Invalid PostgreSQL URI password encoding")?,
+                );
+                ranges.push((authority_start + colon_offset, password_end));
+            }
+        }
+    }
+
+    if let Some(query_offset) = dsn[authority_end..].find('?') {
+        let query_start = authority_end + query_offset + 1;
+        let query_end = dsn[query_start..]
+            .find('#')
+            .map_or(dsn.len(), |offset| query_start + offset);
+        let query = &dsn[query_start..query_end];
+        let mut segment_start = query_start;
+        for segment in query.split('&') {
+            let segment_end = segment_start + segment.len();
+            if let Some(equal_offset) = segment.find('=') {
+                let key = decode_uri_component(&segment[..equal_offset])
+                    .map_err(|()| "Invalid PostgreSQL URI parameter encoding")?;
+                let value_start = segment_start + equal_offset + 1;
+                let encoded_value = &dsn[value_start..segment_end];
+                if key.eq_ignore_ascii_case("sslpassword") {
+                    if !encoded_value.is_empty()
+                        && !decode_uri_component(encoded_value)
+                            .map_err(|()| "Invalid PostgreSQL URI password encoding")?
+                            .is_empty()
+                    {
+                        return Err("PostgreSQL URI sslpassword cannot be passed securely to psql");
+                    }
+                } else if key.eq_ignore_ascii_case("password") && !encoded_value.is_empty() {
+                    let decoded_password = decode_uri_component(encoded_value)
+                        .map_err(|()| "Invalid PostgreSQL URI password encoding")?;
+                    if !decoded_password.is_empty() {
+                        // libpq applies later non-empty URI keywords last.
+                        password = Some(decoded_password);
+                    }
+                    ranges.push((value_start, segment_end));
+                }
+            }
+            segment_start = segment_end.saturating_add(1);
+        }
+    }
+
+    let Some(password) = password else {
+        return Ok(None);
+    };
     let mut connection = dsn.to_string();
-    // An explicit empty password suppresses service/environment defaults while allowing passfile.
-    connection.replace_range(range, "password=''");
-    Some((connection, password))
+    for (start, end) in ranges.into_iter().rev() {
+        connection.replace_range(start..end, "");
+    }
+    Ok(Some((connection, password)))
+}
+
+fn decode_uri_component(value: &str) -> Result<String, ()> {
+    let bytes = value.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            if bytes
+                .get(i + 1)
+                .is_none_or(|byte| !byte.is_ascii_hexdigit())
+                || bytes
+                    .get(i + 2)
+                    .is_none_or(|byte| !byte.is_ascii_hexdigit())
+            {
+                return Err(());
+            }
+            i += 3;
+        } else {
+            i += 1;
+        }
+    }
+    urlencoding::decode(value)
+        .map(std::borrow::Cow::into_owned)
+        .map_err(|_| ())
 }
 
 fn find_conninfo_part(dsn: &str, key: &str) -> Option<(String, std::ops::Range<usize>)> {

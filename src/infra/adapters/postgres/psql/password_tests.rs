@@ -52,6 +52,113 @@ fn password_text_inside_another_field_is_not_extracted() {
 }
 
 #[test]
+fn uri_password_is_absent_from_argv_and_uses_a_temporary_passfile() {
+    for scheme in ["postgres", "postgresql"] {
+        let dsn = format!("{scheme}://user:p%40ss%3Aword@localhost/db?sslmode=require");
+        let (cmd, passfile) =
+            PostgresAdapter::build_psql_command(&dsn, &[], &["-c", "SELECT 1"], false).unwrap();
+        let args: Vec<_> = cmd
+            .as_std()
+            .get_args()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect();
+
+        assert_eq!(
+            args[0],
+            format!("{scheme}://user@localhost/db?sslmode=require")
+        );
+        assert!(
+            !args
+                .iter()
+                .any(|arg| arg.contains("p%40ss") || arg.contains("word"))
+        );
+        let path = passfile.as_ref().unwrap().path.to_str().unwrap();
+        assert!(
+            cmd.as_std()
+                .get_envs()
+                .any(|(key, value)| key == "PGPASSFILE" && value == Some(path.as_ref()))
+        );
+        assert!(
+            cmd.as_std()
+                .get_envs()
+                .any(|(key, value)| key == "PGPASSWORD" && value.is_none())
+        );
+    }
+}
+
+#[test]
+fn libpq_uri_password_is_absent_from_argv_when_url_parser_rejects_uri() {
+    for dsn in [
+        "postgresql://user:secret@/db?host=/var/run/postgresql",
+        "postgresql://user:secret@host1,host2/db",
+        "postgresql://user@host/db?pass%77ord=secret",
+    ] {
+        let (cmd, passfile) =
+            PostgresAdapter::build_psql_command(dsn, &[], &["-c", "SELECT 1"], false).unwrap();
+        let args: Vec<_> = cmd
+            .as_std()
+            .get_args()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect();
+
+        assert!(!args.iter().any(|arg| arg.contains("secret")));
+        assert!(args[0].contains("user@"));
+        assert!(passfile.is_some());
+    }
+}
+
+#[test]
+fn query_password_uses_last_non_empty_value() {
+    let dsn = "postgresql://user:first@host/db?password=second&pass%77ord=third";
+    let (cmd, passfile) =
+        PostgresAdapter::build_psql_command(dsn, &[], &["-c", "SELECT 1"], false).unwrap();
+    let args: Vec<_> = cmd
+        .as_std()
+        .get_args()
+        .map(|value| value.to_string_lossy().into_owned())
+        .collect();
+    let password_file = passfile.as_ref().unwrap().path.to_str().unwrap();
+    let password_file_contents = std::fs::read_to_string(password_file).unwrap();
+
+    assert!(
+        !args.iter().any(|arg| {
+            arg.contains("first") || arg.contains("second") || arg.contains("third")
+        })
+    );
+    assert!(password_file_contents.contains("third"));
+}
+
+#[test]
+fn invalid_uri_password_encoding_fails_without_echoing_uri() {
+    let dsn = "postgresql://user:%ZZ@localhost/db";
+    let Err(error) = PostgresAdapter::build_psql_command(dsn, &[], &[], false) else {
+        panic!("invalid URI password encoding should fail before spawn")
+    };
+
+    assert!(
+        matches!(error, DbOperationError::ConnectionFailed(ref message) if message == "Invalid PostgreSQL URI password encoding")
+    );
+    assert!(!error.to_string().contains("%ZZ"));
+}
+
+#[test]
+fn uri_sslpassword_is_rejected_without_echoing_secret() {
+    for dsn in [
+        "postgresql://user@host/db?sslpassword=secret",
+        "postgresql://user@host/db?sslpass%77ord=secret",
+    ] {
+        let Err(error) = PostgresAdapter::build_psql_command(dsn, &[], &[], false) else {
+            panic!("URI sslpassword should be rejected before spawn")
+        };
+
+        assert!(
+            matches!(error, DbOperationError::ConnectionFailed(ref message) if message == "PostgreSQL URI sslpassword cannot be passed securely to psql")
+        );
+        assert!(!error.to_string().contains("secret"));
+    }
+}
+
+#[test]
 fn no_explicit_password_preserves_service_passfile_and_environment() {
     for dsn in [
         "service=mydb",

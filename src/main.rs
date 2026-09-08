@@ -28,7 +28,9 @@ mod tests;
 #[path = "tests/render_snapshots/mod.rs"]
 mod render_snapshots;
 
-use sabiql_app::cmd::cli_sqlite::{activate_cli_sqlite_connection, resolve_cli_sqlite_target};
+use sabiql_app::cmd::cli_connection::{
+    activate_cli_connection, resolve_cli_connection_env, resolve_cli_connection_target,
+};
 use sabiql_app::cmd::completion_engine::CompletionEngine;
 use sabiql_app::cmd::effect::Effect;
 use sabiql_app::cmd::render_schedule::next_animation_deadline;
@@ -54,11 +56,16 @@ use sabiql_infra::export::DotExporter;
 use sabiql_ui::adapters::TuiAdapter;
 use sabiql_ui::tui::TuiRunner;
 
-#[derive(Parser, Debug)]
+#[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// SQLite database file path or sqlite:// DSN
+    /// SQLite path/DSN or PostgreSQL/MySQL URI (URI credentials may be visible in shell history and process arguments; use --connection-env NAME for an environment variable)
+    #[arg(conflicts_with = "connection_env", value_name = "TARGET")]
     database: Option<String>,
+
+    /// Read a PostgreSQL/MySQL URI from the named environment variable without saving a profile
+    #[arg(long, value_name = "NAME", conflicts_with = "database")]
+    connection_env: Option<String>,
 
     #[command(subcommand)]
     command: Option<Command>,
@@ -120,12 +127,14 @@ async fn main() -> Result<()> {
         }
     }
 
-    let cli_sqlite = match args.database {
-        Some(database) => Some(resolve_cli_sqlite_target(
+    let cli_connection = match (args.database, args.connection_env) {
+        (Some(database), None) => Some(resolve_cli_connection_target(
             &database,
             &FsSqlitePathValidator,
         )?),
-        None => None,
+        (None, Some(name)) => Some(resolve_cli_connection_env(&name, &FsSqlitePathValidator)?),
+        (None, None) => None,
+        (Some(_), Some(_)) => unreachable!("clap rejects conflicting connection inputs"),
     };
 
     let project_root = find_project_root()?;
@@ -190,10 +199,10 @@ async fn main() -> Result<()> {
     match connection_store.load_all() {
         Ok(profiles) if profiles.is_empty() => {
             load_service_entries(&mut state, pg_service_entry_reader.as_ref());
-            if cli_sqlite.is_none() && state.service_entries().is_empty() {
+            if cli_connection.is_none() && state.service_entries().is_empty() {
                 state.connection_setup.set_first_run(true);
                 state.modal.set_mode(InputMode::ConnectionSetup);
-            } else if cli_sqlite.is_none() {
+            } else if cli_connection.is_none() {
                 state.modal.set_mode(InputMode::ConnectionSelector);
                 state.ui.set_connection_list_selection(Some(0));
             }
@@ -207,12 +216,14 @@ async fn main() -> Result<()> {
             state.set_connections(profiles);
             load_service_entries(&mut state, pg_service_entry_reader.as_ref());
 
-            if cli_sqlite.is_none() {
+            if cli_connection.is_none() {
                 state.modal.set_mode(InputMode::ConnectionSelector);
                 state.ui.set_connection_list_selection(Some(0));
             }
         }
-        Err(ConnectionStoreError::VersionMismatch { found, expected }) if cli_sqlite.is_none() => {
+        Err(ConnectionStoreError::VersionMismatch { found, expected })
+            if cli_connection.is_none() =>
+        {
             eprintln!(
                 "Error: Configuration file version mismatch (found v{}, expected v{}).\n\
                  Please delete {} and reconfigure.",
@@ -222,15 +233,15 @@ async fn main() -> Result<()> {
             );
             std::process::exit(1);
         }
-        Err(_) if cli_sqlite.is_none() => {
+        Err(_) if cli_connection.is_none() => {
             state.connection_setup.set_first_run(true);
             state.modal.set_mode(InputMode::ConnectionSetup);
         }
         Err(_) => {}
     }
 
-    if let Some(target) = cli_sqlite.as_ref() {
-        activate_cli_sqlite_connection(&mut state, target, &FsSqlitePathValidator)?;
+    if let Some(target) = cli_connection.as_ref() {
+        activate_cli_connection(&mut state, target, &FsSqlitePathValidator)?;
     }
 
     let mut tui = TuiRunner::new()?;

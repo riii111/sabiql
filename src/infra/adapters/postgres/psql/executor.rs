@@ -258,16 +258,24 @@ impl PostgresAdapter {
         cmd: &mut Command,
         dsn: &str,
     ) -> Result<Option<Passfile>, DbOperationError> {
-        let passfile = if let Some((mut connection, password)) = take_explicit_password(dsn) {
+        let passfile = if let Some((mut connection, password)) = take_explicit_password(dsn)
+            .map_err(|message| DbOperationError::ConnectionFailed(message.into()))?
+        {
             let passfile = Passfile::create(&password)?;
             let path = passfile.path.to_str().ok_or_else(|| {
                 DbOperationError::ConnectionFailed(
                     "PostgreSQL password file path is not UTF-8".into(),
                 )
             })?;
-            connection.push_str(" passfile=");
-            connection.push_str(&quote_conninfo_value(path));
-            cmd.arg(connection).env_remove("PGPASSWORD");
+            if dsn.starts_with("postgres://") || dsn.starts_with("postgresql://") {
+                cmd.arg(connection)
+                    .env("PGPASSFILE", path)
+                    .env_remove("PGPASSWORD");
+            } else {
+                connection.push_str(" passfile=");
+                connection.push_str(&quote_conninfo_value(path));
+                cmd.arg(connection).env_remove("PGPASSWORD");
+            }
             Some(passfile)
         } else {
             cmd.arg(dsn);

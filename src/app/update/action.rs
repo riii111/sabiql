@@ -185,7 +185,7 @@ pub enum ModalKind {
     SqliteDiagnostics,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SmartErRefreshResult {
     pub dsn: String,
     pub run_id: u64,
@@ -196,7 +196,7 @@ pub struct SmartErRefreshResult {
     pub new_signatures: HashMap<String, String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SmartErRefreshFetched {
     pub dsn: String,
     pub run_id: u64,
@@ -204,7 +204,7 @@ pub struct SmartErRefreshFetched {
     pub signature_snapshot: Arc<TableSignatureSnapshot>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SmartErRefreshError {
     pub dsn: String,
     pub run_id: u64,
@@ -291,7 +291,7 @@ pub enum QueryFailureContext {
     Preview { generation: u64 },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Action {
     // App shell
     None,
@@ -653,6 +653,119 @@ pub enum Action {
     ErLogWriteFailed(String),
 }
 
+struct MaskedDsn<'a>(&'a str);
+
+impl fmt::Debug for MaskedDsn<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&mask_password(self.0))
+    }
+}
+
+impl fmt::Debug for SmartErRefreshResult {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SmartErRefreshResult")
+            .field("dsn", &MaskedDsn(&self.dsn))
+            .field("run_id", &self.run_id)
+            .field("new_metadata", &self.new_metadata)
+            .field("stale_tables", &self.stale_tables)
+            .field("removed_tables", &self.removed_tables)
+            .field("missing_in_cache", &self.missing_in_cache)
+            .field("new_signatures", &self.new_signatures)
+            .finish()
+    }
+}
+
+impl fmt::Debug for SmartErRefreshFetched {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SmartErRefreshFetched")
+            .field("dsn", &MaskedDsn(&self.dsn))
+            .field("run_id", &self.run_id)
+            .field("new_metadata", &self.new_metadata)
+            .field("signature_snapshot", &self.signature_snapshot)
+            .finish()
+    }
+}
+
+impl fmt::Debug for SmartErRefreshError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SmartErRefreshError")
+            .field("dsn", &MaskedDsn(&self.dsn))
+            .field("run_id", &self.run_id)
+            .field("error", &self.error)
+            .field("new_metadata", &self.new_metadata)
+            .finish()
+    }
+}
+
+impl fmt::Debug for Action {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::TableDetailLoaded {
+                dsn,
+                run_id,
+                outcome,
+                generation,
+            } => formatter
+                .debug_struct("Action::TableDetailLoaded")
+                .field("dsn", &MaskedDsn(dsn))
+                .field("run_id", run_id)
+                .field("outcome", outcome)
+                .field("generation", generation)
+                .finish(),
+            Self::TableDetailCached {
+                dsn,
+                run_id,
+                schema,
+                table,
+                detail,
+            } => formatter
+                .debug_struct("Action::TableDetailCached")
+                .field("dsn", &MaskedDsn(dsn))
+                .field("run_id", run_id)
+                .field("schema", schema)
+                .field("table", table)
+                .field("detail", detail)
+                .finish(),
+            Self::TableDetailCacheFailed {
+                dsn,
+                run_id,
+                schema,
+                table,
+                error,
+            } => formatter
+                .debug_struct("Action::TableDetailCacheFailed")
+                .field("dsn", &MaskedDsn(dsn))
+                .field("run_id", run_id)
+                .field("schema", schema)
+                .field("table", table)
+                .field("error", error)
+                .finish(),
+            Self::CompletionUpdated {
+                candidates,
+                trigger_position,
+                visible,
+                dsn,
+                connection_generation,
+                database_generation,
+                metadata_generation,
+            } => formatter
+                .debug_struct("Action::CompletionUpdated")
+                .field("candidates", candidates)
+                .field("trigger_position", trigger_position)
+                .field("visible", visible)
+                .field("dsn", &dsn.as_deref().map(MaskedDsn))
+                .field("connection_generation", connection_generation)
+                .field("database_generation", database_generation)
+                .field("metadata_generation", metadata_generation)
+                .finish(),
+            _ => formatter.write_str("Action::<redacted>"),
+        }
+    }
+}
+
 impl Action {
     pub fn is_none(&self) -> bool {
         matches!(self, Self::None)
@@ -993,6 +1106,35 @@ mod tests {
             Action::JsonExitEdit.feature_requirement_for_state(&normal_state),
             FeatureRequirement::JsonDocumentEdit
         );
+    }
+
+    #[test]
+    fn debug_masks_uri_passwords_in_actions() {
+        let dsn = "postgresql://user@host/db?pass%77ord=secret";
+        let actions = [
+            Action::TableDetailCached {
+                dsn: dsn.to_string(),
+                run_id: 1,
+                schema: "public".to_string(),
+                table: "users".to_string(),
+                detail: None,
+            },
+            Action::CompletionUpdated {
+                candidates: Vec::new(),
+                trigger_position: 0,
+                visible: false,
+                dsn: Some(dsn.to_string()),
+                connection_generation: 0,
+                database_generation: 0,
+                metadata_generation: 0,
+            },
+        ];
+
+        for action in actions {
+            let debug = format!("{action:?}");
+            assert!(!debug.contains("secret"));
+            assert!(debug.contains("pass%77ord=****"));
+        }
     }
 
     mod shared_scroll_helpers {
