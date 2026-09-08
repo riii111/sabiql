@@ -37,9 +37,6 @@ pub(in crate::cmd) async fn run(
             )
             .await;
         }
-        Effect::FetchEffectiveUser { dsn, run_id } => {
-            fetch_effective_user(action_tx, metadata_provider, metadata_tasks, dsn, run_id);
-        }
         Effect::FetchTableDetail {
             dsn,
             schema,
@@ -121,11 +118,14 @@ async fn fetch_metadata(
 
     MetadataTaskRegistry::spawn(metadata_tasks, async move {
         match provider.fetch_metadata(&dsn).await {
-            Ok(metadata) => {
-                let metadata = Arc::new(metadata);
-                tx.send(Action::MetadataLoaded { run_id, metadata })
-                    .await
-                    .ok();
+            Ok(result) => {
+                tx.send(Action::MetadataLoaded {
+                    run_id,
+                    metadata: Arc::new(result.metadata),
+                    effective_user: result.effective_user,
+                })
+                .await
+                .ok();
             }
             Err(e) => {
                 tx.send(Action::MetadataFailed { run_id, error: e })
@@ -133,27 +133,6 @@ async fn fetch_metadata(
                     .ok();
             }
         }
-    });
-}
-
-fn fetch_effective_user(
-    action_tx: &mpsc::Sender<Action>,
-    metadata_provider: &Arc<dyn MetadataProvider>,
-    metadata_tasks: &Arc<MetadataTaskRegistry>,
-    dsn: String,
-    run_id: u64,
-) {
-    let provider = Arc::clone(metadata_provider);
-    let tx = action_tx.clone();
-
-    MetadataTaskRegistry::spawn(metadata_tasks, async move {
-        let effective_user = provider.fetch_effective_user(&dsn).await.ok().flatten();
-        tx.send(Action::EffectiveUserLoaded {
-            run_id,
-            effective_user,
-        })
-        .await
-        .ok();
     });
 }
 
@@ -275,10 +254,10 @@ mod tests {
 
     use crate::domain::SqlitePathError;
     use crate::model::app_state::AppState;
-    use crate::ports::outbound::DbOperationError;
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
+    use crate::ports::outbound::{DbOperationError, MetadataFetchResult};
     use crate::update::action::Action;
 
     mod fetch_metadata {
@@ -342,10 +321,12 @@ mod tests {
             fs::write(&path, b"").unwrap();
             let dsn = format!("sqlite://{}", path.display());
             let mut mock_provider = MockMetadataProvider::new();
-            mock_provider
-                .expect_fetch_metadata()
-                .once()
-                .returning(|_| Ok(test_fixtures::sample_metadata()));
+            mock_provider.expect_fetch_metadata().once().returning(|_| {
+                Ok(MetadataFetchResult {
+                    metadata: test_fixtures::sample_metadata(),
+                    effective_user: None,
+                })
+            });
 
             let (tx, mut rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner(
@@ -379,10 +360,12 @@ mod tests {
         #[tokio::test]
         async fn fetches_metadata_and_returns_metadata_loaded() {
             let mut mock_provider = MockMetadataProvider::new();
-            mock_provider
-                .expect_fetch_metadata()
-                .once()
-                .returning(|_| Ok(test_fixtures::sample_metadata()));
+            mock_provider.expect_fetch_metadata().once().returning(|_| {
+                Ok(MetadataFetchResult {
+                    metadata: test_fixtures::sample_metadata(),
+                    effective_user: Some("app_user".to_string()),
+                })
+            });
 
             let (tx, mut rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner(
@@ -407,10 +390,14 @@ mod tests {
             .unwrap();
 
             let action = run.actions.into_iter().next().expect("action dispatched");
-            assert!(
-                matches!(action, Action::MetadataLoaded { run_id: 7, .. }),
-                "expected MetadataLoaded, got {action:?}"
-            );
+            assert!(matches!(
+                action,
+                Action::MetadataLoaded {
+                    run_id: 7,
+                    effective_user: Some(user),
+                    ..
+                } if user == "app_user"
+            ));
         }
 
         #[tokio::test]
@@ -420,7 +407,6 @@ mod tests {
                 .expect_fetch_metadata()
                 .once()
                 .returning(|_| Err(DbOperationError::ConnectionFailed("timeout".to_string())));
-            mock_provider.expect_fetch_effective_user().never();
 
             let (tx, mut rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner(
@@ -449,50 +435,6 @@ mod tests {
                 matches!(action, Action::MetadataFailed { run_id: 7, .. }),
                 "expected MetadataFailed, got {action:?}"
             );
-        }
-
-        #[tokio::test]
-        async fn effective_user_provider_error_is_reported_as_absent() {
-            let mut mock_provider = MockMetadataProvider::new();
-            mock_provider
-                .expect_fetch_effective_user()
-                .once()
-                .returning(|_| {
-                    Err(DbOperationError::QueryFailed(
-                        "permission denied".to_string(),
-                    ))
-                });
-
-            let (tx, mut rx) = mpsc::channel(8);
-            let runner = test_fixtures::make_runner(
-                Arc::new(mock_provider),
-                Arc::new(MockQueryExecutor::new()),
-                Arc::new(MockConnectionStore::new()),
-                tx,
-            );
-
-            let run = test_fixtures::run_one_effect(
-                &runner,
-                Effect::FetchEffectiveUser {
-                    dsn: "dsn://test".to_string(),
-                    run_id: 7,
-                },
-                AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
-                &mut rx,
-                Some(std::time::Duration::from_millis(500)),
-            )
-            .await
-            .unwrap();
-
-            let action = run.actions.into_iter().next().expect("action dispatched");
-            assert!(matches!(
-                action,
-                Action::EffectiveUserLoaded {
-                    run_id: 7,
-                    effective_user: None,
-                }
-            ));
         }
     }
 

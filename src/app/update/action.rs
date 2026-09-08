@@ -375,6 +375,7 @@ pub enum Action {
         run_id: u64,
         mysql_lower_case_table_names: Option<u8>,
         metadata: Option<Arc<DatabaseMetadata>>,
+        effective_user: Option<String>,
     },
     ConnectionSaveFailed {
         error: ConnectionSaveError,
@@ -432,14 +433,11 @@ pub enum Action {
     MetadataLoaded {
         run_id: u64,
         metadata: Arc<DatabaseMetadata>,
+        effective_user: Option<String>,
     },
     MetadataFailed {
         run_id: u64,
         error: DbOperationError,
-    },
-    EffectiveUserLoaded {
-        run_id: u64,
-        effective_user: Option<String>,
     },
     TableDetailLoaded {
         dsn: String,

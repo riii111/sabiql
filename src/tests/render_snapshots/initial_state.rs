@@ -42,9 +42,10 @@ fn header_shows_effective_user_at_normal_width() {
         DatabaseType::PostgreSQL,
         "postgresql://localhost/test",
     );
+    let metadata = state.session.metadata().cloned().expect("metadata");
     state
         .session
-        .mark_effective_user_loaded(Some("app_user".to_string()));
+        .mark_connected_with_user(Arc::new(metadata), Some("app_user".to_string()));
     let mut terminal = create_test_terminal();
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -61,9 +62,10 @@ fn mysql_header_shows_effective_user_without_dsn_password() {
         DatabaseType::MySQL,
         "mysql://app:header-secret@localhost/app",
     );
+    let metadata = state.session.metadata().cloned().expect("metadata");
     state
         .session
-        .mark_effective_user_loaded(Some("app@%".to_string()));
+        .mark_connected_with_user(Arc::new(metadata), Some("app@%".to_string()));
     let mut terminal = create_test_terminal();
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -81,9 +83,10 @@ fn header_truncates_connection_name_at_narrow_width() {
         DatabaseType::PostgreSQL,
         "postgresql://localhost/test",
     );
+    let metadata = state.session.metadata().cloned().expect("metadata");
     state
         .session
-        .mark_effective_user_loaded(Some("app_user".to_string()));
+        .mark_connected_with_user(Arc::new(metadata), Some("app_user".to_string()));
     let mut terminal = create_test_terminal_sized(60, 20);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -101,9 +104,10 @@ fn header_shows_read_only_badge_at_narrow_width() {
         "postgresql://localhost/test",
     );
     state.session.enable_read_only();
+    let metadata = state.session.metadata().cloned().expect("metadata");
     state
         .session
-        .mark_effective_user_loaded(Some("app_user".to_string()));
+        .mark_connected_with_user(Arc::new(metadata), Some("app_user".to_string()));
     let mut terminal = create_test_terminal_sized(80, 20);
 
     let output = render_to_string(&mut terminal, &mut state);

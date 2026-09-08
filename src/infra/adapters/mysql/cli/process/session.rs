@@ -128,6 +128,10 @@ impl MySqlMetadataSession {
         Ok(())
     }
 
+    pub(in crate::adapters::mysql) async fn cleanup(&mut self) {
+        cleanup_mysql_process(&mut self.process).await;
+    }
+
     pub(in crate::adapters::mysql) async fn finish_preview(
         &mut self,
     ) -> Result<(), DbOperationError> {
@@ -162,7 +166,7 @@ impl MySqlMetadataSession {
                 "mysql query exceeded the execution timeout".to_string(),
             )),
         };
-        cleanup_mysql_process(&mut self.process).await;
+        self.cleanup().await;
         result
     }
 }

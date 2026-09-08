@@ -144,6 +144,7 @@ mod tests {
                 &Action::MetadataLoaded {
                     run_id: stale_run_id,
                     metadata: metadata_with_users(),
+                    effective_user: None,
                 },
                 Instant::now(),
             )
@@ -1262,7 +1263,11 @@ mod tests {
 
         fn metadata_loaded_action(state: &mut AppState, metadata: Arc<DatabaseMetadata>) -> Action {
             let run_id = state.session.begin_metadata_refresh();
-            Action::MetadataLoaded { run_id, metadata }
+            Action::MetadataLoaded {
+                run_id,
+                metadata,
+                effective_user: None,
+            }
         }
 
         #[test]
@@ -1299,6 +1304,7 @@ mod tests {
                 &Action::MetadataLoaded {
                     run_id: metadata_run_id,
                     metadata: make_metadata(vec![("public", "orders")]),
+                    effective_user: None,
                 },
                 Instant::now(),
             )

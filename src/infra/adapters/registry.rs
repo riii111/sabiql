@@ -1,10 +1,9 @@
 use crate::app::ports::outbound::{
-    AccessMode, DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, QueryExecutor,
+    AccessMode, DbOperationError, DdlGenerator, DsnBuilder, MetadataFetchResult, MetadataProvider,
+    QueryExecutor,
 };
 use crate::domain::connection::{ConnectionProfile, DatabaseType};
-use crate::domain::{
-    DatabaseMetadata, QueryResult, Table, TableSignatureSnapshot, WriteExecutionResult,
-};
+use crate::domain::{QueryResult, Table, TableSignatureSnapshot, WriteExecutionResult};
 use async_trait::async_trait;
 use std::path::PathBuf;
 
@@ -99,12 +98,8 @@ impl DsnBuilder for DbAdapterRegistry {
 
 #[async_trait]
 impl MetadataProvider for DbAdapterRegistry {
-    async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
+    async fn fetch_metadata(&self, dsn: &str) -> Result<MetadataFetchResult, DbOperationError> {
         self.metadata_provider(dsn)?.fetch_metadata(dsn).await
-    }
-
-    async fn fetch_effective_user(&self, dsn: &str) -> Result<Option<String>, DbOperationError> {
-        self.metadata_provider(dsn)?.fetch_effective_user(dsn).await
     }
 
     async fn fetch_table_detail(
@@ -298,26 +293,29 @@ mod tests {
 
         let metadata = registry.fetch_metadata(&dsn).await.unwrap();
 
-        assert_eq!(metadata.table_summaries[0].qualified_name(), "main.users");
+        assert_eq!(
+            metadata.metadata.table_summaries[0].qualified_name(),
+            "main.users"
+        );
     }
 
     #[tokio::test]
-    async fn sqlite_effective_user_dispatch_preserves_unknown_user() {
+    async fn sqlite_metadata_dispatch_preserves_unknown_user() {
         let (_dir, dsn) =
             test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
         let registry = DbAdapterRegistry::new();
 
-        let effective_user = registry.fetch_effective_user(&dsn).await.unwrap();
+        let effective_user = registry.fetch_metadata(&dsn).await.unwrap().effective_user;
 
         assert_eq!(effective_user, None);
     }
 
     #[tokio::test]
-    async fn mysql_effective_user_dispatch_does_not_expose_password_on_validation_failure() {
+    async fn mysql_metadata_dispatch_does_not_expose_password_on_validation_failure() {
         let registry = DbAdapterRegistry::new();
 
         let error = registry
-            .fetch_effective_user("mysql://app:header-secret%01@localhost/app")
+            .fetch_metadata("mysql://app:header-secret%01@localhost/app")
             .await
             .unwrap_err();
 

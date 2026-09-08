@@ -291,9 +291,10 @@ mod metadata_fetch {
             Box::pin(async move {
                 let registry = DbAdapterRegistry::new();
                 let effective_user = registry
-                    .fetch_effective_user(db.dsn())
+                    .fetch_metadata(db.dsn())
                     .await
                     .map_err(|error| format!("{error:?}"))?
+                    .effective_user
                     .ok_or_else(|| "MySQL effective user was empty".to_string())?;
                 let config = mysql_integration_config();
 
@@ -320,15 +321,20 @@ mod metadata_fetch {
                     .await
                     .map_err(|error| format!("{error:?}"))?;
                 if metadata
+                    .metadata
                     .schemas
                     .iter()
                     .map(|schema| schema.name.as_str())
                     .collect::<Vec<_>>()
                     != ["sabiql_test"]
                 {
-                    return Err(format!("unexpected MySQL schemas: {:?}", metadata.schemas));
+                    return Err(format!(
+                        "unexpected MySQL schemas: {:?}",
+                        metadata.metadata.schemas
+                    ));
                 }
                 let table = metadata
+                    .metadata
                     .table_summaries
                     .iter()
                     .find(|summary| summary.name == MYSQL_FIXTURE_TABLE)

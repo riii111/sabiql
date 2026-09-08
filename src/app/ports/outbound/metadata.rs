@@ -4,14 +4,16 @@ use crate::domain::{DatabaseMetadata, Table, TableSignatureSnapshot};
 
 use super::DbOperationError;
 
+#[derive(Debug, Clone)]
+pub struct MetadataFetchResult {
+    pub metadata: DatabaseMetadata,
+    pub effective_user: Option<String>,
+}
+
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait MetadataProvider: Send + Sync {
-    async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError>;
-
-    async fn fetch_effective_user(&self, _dsn: &str) -> Result<Option<String>, DbOperationError> {
-        Ok(None)
-    }
+    async fn fetch_metadata(&self, dsn: &str) -> Result<MetadataFetchResult, DbOperationError>;
 
     async fn fetch_table_detail(
         &self,

@@ -101,7 +101,7 @@ pub(in crate::cmd) fn smart_refresh_task(
 
     async move {
         let new_metadata = match metadata_provider.fetch_metadata(&dsn).await {
-            Ok(m) => m,
+            Ok(result) => result.metadata,
             Err(e) => {
                 tx.send(Action::SmartErRefreshFailed(SmartErRefreshError {
                     dsn,

@@ -34,10 +34,6 @@ pub enum Effect {
         dsn: String,
         run_id: u64,
     },
-    FetchEffectiveUser {
-        dsn: String,
-        run_id: u64,
-    },
     // Updates state.table_detail on completion
     FetchTableDetail {
         dsn: String,
