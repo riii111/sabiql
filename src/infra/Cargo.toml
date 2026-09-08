@@ -27,6 +27,7 @@ urlencoding.workspace = true
 url.workspace = true
 quick-xml.workspace = true
 uuid.workspace = true
+keyring-core.workspace = true
 sabiql-app.workspace = true
 sabiql-domain.workspace = true
 
@@ -38,6 +39,15 @@ windows-sys.workspace = true
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 arboard.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+apple-native-keyring-store = { version = "1", features = ["keychain"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-native-keyring-store = "1"
+
+[target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]
+dbus-secret-service-keyring-store = { version = "1", features = ["crypto-rust", "vendored"] }
 
 [dev-dependencies]
 rstest.workspace = true

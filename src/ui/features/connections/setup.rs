@@ -168,11 +168,11 @@ impl ConnectionSetup {
             vec![
                 Line::from("Note: password is sent via mysql_clear_password"),
                 Line::from("TLS required: REQUIRED, VERIFY_CA, or VERIFY_IDENTITY"),
-                Line::from("Note: Connection info is stored locally in plain text"),
+                Line::from("Note: Passwords use the OS secret store when supported"),
             ]
         } else {
             vec![Line::from(
-                "Note: Connection info is stored locally in plain text",
+                "Note: Passwords use the OS secret store when supported",
             )]
         };
         let notice_para =

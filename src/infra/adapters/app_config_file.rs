@@ -47,7 +47,7 @@ pub(super) fn write_config_file(config_dir: &Path, content: &str) -> Result<(), 
 
 pub(super) fn render_config_file(content: &str) -> String {
     format!(
-        "# sabiql configuration\n# WARNING: Connection passwords are stored in plain text\n\n{content}"
+        "# sabiql configuration\n# Connection passwords are stored in the OS secret store when supported.\n# Existing plain-text passwords remain until that connection is edited and saved.\n\n{content}"
     )
 }
 

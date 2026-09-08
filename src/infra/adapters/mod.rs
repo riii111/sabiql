@@ -11,6 +11,7 @@ pub mod mysql;
 pub(crate) mod postgres;
 pub(crate) mod query_history;
 pub(crate) mod registry;
+pub(crate) mod secret_store;
 pub(crate) mod settings_store;
 pub(crate) mod sqlite;
 #[cfg(test)]
