@@ -193,8 +193,9 @@ impl ConnectionStore for TomlConnectionStore {
             if let Some(old_ref) = old_ref
                 && let Err(error) = self.secret_store.delete(&old_ref)
             {
-                let _ = self.write_config(&previous_config);
-                let _ = self.secret_store.delete(&reference);
+                if self.write_config(&previous_config).is_ok() {
+                    let _ = self.secret_store.delete(&reference);
+                }
                 return Err(error.into());
             }
         } else if let Some(reference) = old_ref {
