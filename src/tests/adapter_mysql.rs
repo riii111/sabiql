@@ -12,8 +12,8 @@ mod shared {
 mod connection {
 
     use crate::tests::harness::mysql::{
-        MYSQL_FIXTURE_TABLE, mysql_cache_miss_config, mysql_integration_config, mysql_tls_config,
-        with_mysql_test_db,
+        MYSQL_FIXTURE_TABLE, mysql_cache_miss_config, mysql_cache_miss_retrieval_config,
+        mysql_integration_config, mysql_tls_config, with_mysql_test_db,
     };
     use sabiql_app::model::connection::error::ConnectionErrorInfo;
     use sabiql_app::ports::outbound::{
@@ -134,22 +134,7 @@ mod connection {
             error => panic!("unexpected error kind: {error:?}"),
         }
 
-        let trusted_profile =
-            mysql_profile("mysql-caching-sha2-public-key", trusted_config.clone());
-        let dsn = adapter.build_dsn(&trusted_profile);
-
-        adapter.probe(&dsn).await.unwrap();
-        let result = adapter
-            .execute_adhoc(
-                &dsn,
-                &format!("SELECT id FROM {MYSQL_FIXTURE_TABLE}"),
-                AccessMode::ReadWrite,
-            )
-            .await
-            .unwrap();
-        assert_eq!(result.values(), [[QueryValue::Text("1".to_string())]]);
-
-        let retrieval_config = trusted_config
+        let retrieval_config = mysql_cache_miss_retrieval_config()
             .with_server_public_key_path(None)
             .with_get_server_public_key(true);
         let retrieval_profile =
@@ -160,6 +145,21 @@ mod connection {
         let result = adapter
             .execute_adhoc(
                 &retrieval_dsn,
+                &format!("SELECT id FROM {MYSQL_FIXTURE_TABLE}"),
+                AccessMode::ReadWrite,
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.values(), [[QueryValue::Text("1".to_string())]]);
+
+        let trusted_profile =
+            mysql_profile("mysql-caching-sha2-public-key", trusted_config.clone());
+        let dsn = adapter.build_dsn(&trusted_profile);
+
+        adapter.probe(&dsn).await.unwrap();
+        let result = adapter
+            .execute_adhoc(
+                &dsn,
                 &format!("SELECT id FROM {MYSQL_FIXTURE_TABLE}"),
                 AccessMode::ReadWrite,
             )

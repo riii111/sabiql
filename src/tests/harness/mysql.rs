@@ -118,6 +118,15 @@ pub fn mysql_cache_miss_config() -> MySqlConnectionConfig {
     config
 }
 
+pub fn mysql_cache_miss_retrieval_config() -> MySqlConnectionConfig {
+    let mut config = mysql_integration_config();
+    config.username = std::env::var("SABIQL_MYSQL_TEST_CACHE_MISS_RETRIEVAL_USER")
+        .unwrap_or_else(|_| "sabiql_cache_miss_retrieval_runner".to_string());
+    config.password = std::env::var("SABIQL_MYSQL_TEST_CACHE_MISS_RETRIEVAL_PASSWORD")
+        .unwrap_or_else(|_| "sabiql-cache-miss-retrieval".to_string());
+    config
+}
+
 fn mysql_tls_config_with_env(env: impl Fn(&str) -> Option<String>) -> MySqlConnectionConfig {
     mysql_config(MySqlSslMode::VerifyCa, &env).with_tls_paths(
         Some(env("SABIQL_MYSQL_TEST_SSL_CA").expect("TLS CA path")),
