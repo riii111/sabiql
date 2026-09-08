@@ -6,7 +6,6 @@ use std::sync::Arc;
 use super::app_config_file::{
     self, config_file_path, get_config_dir as app_config_dir, render_config_file, write_config_file,
 };
-use crate::app::ports::outbound::SecretStore;
 use crate::app::ports::outbound::connection_store::{ConnectionStore, ConnectionStoreError};
 use crate::config::{
     CURRENT_VERSION, ConfigVersionCheck, ConnectionConfigEntry, ConnectionConfigFile,
@@ -15,7 +14,7 @@ use crate::config::{
 use crate::domain::connection::{ConnectionConfig, ConnectionId, ConnectionProfile, DatabaseType};
 use uuid::Uuid;
 
-use super::PlatformSecretStore;
+use super::{PlatformSecretStore, SecretStore};
 
 pub struct TomlConnectionStore {
     config_dir: PathBuf,
@@ -31,6 +30,19 @@ impl TomlConnectionStore {
         })
     }
 
+    pub fn with_config_dir(config_dir: PathBuf) -> Self {
+        #[cfg(test)]
+        let secret_store: Arc<dyn SecretStore> = Arc::new(tests::TestSecretStore::default());
+
+        #[cfg(not(test))]
+        let secret_store: Arc<dyn SecretStore> = Arc::new(PlatformSecretStore::new());
+
+        Self {
+            config_dir,
+            secret_store,
+        }
+    }
+
     #[cfg(test)]
     fn with_config_dir_and_secret_store(
         config_dir: PathBuf,
@@ -40,14 +52,6 @@ impl TomlConnectionStore {
             config_dir,
             secret_store,
         }
-    }
-
-    #[cfg(test)]
-    pub fn with_config_dir(config_dir: PathBuf) -> Self {
-        Self::with_config_dir_and_secret_store(
-            config_dir,
-            Arc::new(tests::TestSecretStore::default()),
-        )
     }
 
     pub fn storage_path(&self) -> PathBuf {
@@ -107,8 +111,26 @@ impl TomlConnectionStore {
         }
         entry.password_ref.as_deref().map_or_else(
             || Ok(entry.password.clone().unwrap_or_default()),
-            |reference| self.secret_store.get(reference).map_err(Into::into),
+            |reference| self.get_secret(reference),
         )
+    }
+
+    fn set_secret(&self, reference: &str, secret: &str) -> Result<(), ConnectionStoreError> {
+        self.secret_store
+            .set(reference, secret)
+            .map_err(|_| ConnectionStoreError::SecretStore)
+    }
+
+    fn get_secret(&self, reference: &str) -> Result<String, ConnectionStoreError> {
+        self.secret_store
+            .get(reference)
+            .map_err(|_| ConnectionStoreError::SecretStore)
+    }
+
+    fn delete_secret(&self, reference: &str) -> Result<(), ConnectionStoreError> {
+        self.secret_store
+            .delete(reference)
+            .map_err(|_| ConnectionStoreError::SecretStore)
     }
 
     fn empty_config() -> ConnectionConfigFile {
@@ -179,7 +201,7 @@ impl ConnectionStore for TomlConnectionStore {
                 || Self::password_ref(profile),
                 |_| Self::replacement_password_ref(profile),
             );
-            self.secret_store.set(&reference, password)?;
+            self.set_secret(&reference, password)?;
             let entry = ConnectionConfigEntry::from_profile_with_password_ref(
                 profile,
                 Some(reference.clone()),
@@ -191,21 +213,21 @@ impl ConnectionStore for TomlConnectionStore {
                 return Err(error);
             }
             if let Some(old_ref) = old_ref
-                && let Err(error) = self.secret_store.delete(&old_ref)
+                && let Err(error) = self.delete_secret(&old_ref)
             {
                 if self.write_config(&previous_config).is_ok() {
                     let _ = self.secret_store.delete(&reference);
                 }
-                return Err(error.into());
+                return Err(error);
             }
         } else if let Some(reference) = old_ref {
             let previous_config = config.clone();
             let entry = ConnectionConfigEntry::from_profile_with_password_ref(profile, None);
             replace_entry(&mut config.connections, entry);
             self.write_config(&config)?;
-            if let Err(error) = self.secret_store.delete(&reference) {
+            if let Err(error) = self.delete_secret(&reference) {
                 let _ = self.write_config(&previous_config);
-                return Err(error.into());
+                return Err(error);
             }
         } else {
             let entry = ConnectionConfigEntry::from_profile_with_password_ref(profile, None);
@@ -242,10 +264,10 @@ impl ConnectionStore for TomlConnectionStore {
         config.connections.remove(entry_index);
         self.write_config(&config)?;
         if let Some(reference) = old_ref
-            && let Err(error) = self.secret_store.delete(&reference)
+            && let Err(error) = self.delete_secret(&reference)
         {
             let _ = self.write_config(&previous_config);
-            return Err(error.into());
+            return Err(error);
         }
 
         Ok(())
@@ -299,7 +321,7 @@ fn validate_password_refs(config: &ConnectionConfigFile) -> Result<(), Connectio
 mod tests {
     use super::app_config_file::CONFIG_FILE_NAME;
     use super::*;
-    use crate::app::ports::outbound::SecretStoreError;
+    use crate::adapters::secret_store::SecretStoreError;
     use crate::domain::connection::SslMode;
     use crate::domain::connection::{
         ConnectionConfig, DatabaseType, MySqlSslMode, PostgresConnectionConfig,
@@ -830,12 +852,7 @@ ssl_mode = "prefer"
 
             let result = store.save(&profile);
 
-            assert!(matches!(
-                result,
-                Err(ConnectionStoreError::SecretStore(
-                    SecretStoreError::OperationFailed
-                ))
-            ));
+            assert!(matches!(result, Err(ConnectionStoreError::SecretStore)));
             assert_eq!(fs::read_to_string(store.storage_path()).unwrap(), before);
             assert_eq!(
                 store.load_all().unwrap()[0]
@@ -858,12 +875,7 @@ ssl_mode = "prefer"
             secret_store.set_error(SecretStoreError::OperationFailed);
             let result = store.save(&profile);
 
-            assert!(matches!(
-                result,
-                Err(ConnectionStoreError::SecretStore(
-                    SecretStoreError::OperationFailed
-                ))
-            ));
+            assert!(matches!(result, Err(ConnectionStoreError::SecretStore)));
             assert_eq!(fs::read_to_string(store.storage_path()).unwrap(), before);
         }
 
@@ -1031,12 +1043,7 @@ password_ref = "connection:same"
             secret_store.delete_error(SecretStoreError::OperationFailed);
             let result = store.delete(&profile.id);
 
-            assert!(matches!(
-                result,
-                Err(ConnectionStoreError::SecretStore(
-                    SecretStoreError::OperationFailed
-                ))
-            ));
+            assert!(matches!(result, Err(ConnectionStoreError::SecretStore)));
             assert_eq!(fs::read_to_string(store.storage_path()).unwrap(), before);
         }
 
@@ -1106,12 +1113,7 @@ password_ref = "connection:same"
 
             let result = store.load_all();
 
-            assert!(matches!(
-                result,
-                Err(ConnectionStoreError::SecretStore(
-                    SecretStoreError::OperationFailed
-                ))
-            ));
+            assert!(matches!(result, Err(ConnectionStoreError::SecretStore)));
         }
 
         #[test]

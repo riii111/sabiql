@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use crate::domain::connection::{ConnectionId, ConnectionProfile, ConnectionProfileError};
-use crate::ports::outbound::SecretStoreError;
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ConnectionStoreError {
@@ -23,8 +22,8 @@ pub enum ConnectionStoreError {
     InvalidPasswordReference(String),
     #[error("Duplicate password reference: {0}")]
     DuplicatePasswordReference(String),
-    #[error("Secret store error: {0}")]
-    SecretStore(#[from] SecretStoreError),
+    #[error("Secret store error")]
+    SecretStore,
 }
 
 impl From<std::io::Error> for ConnectionStoreError {

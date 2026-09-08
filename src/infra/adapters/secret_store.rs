@@ -1,6 +1,28 @@
 use std::sync::{Mutex, OnceLock};
 
-use sabiql_app::ports::outbound::{SecretStore, SecretStoreError};
+#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
+#[allow(
+    clippy::redundant_pub_crate,
+    reason = "the secret store boundary is shared only within the infrastructure crate"
+)]
+pub(crate) enum SecretStoreError {
+    #[error("OS secret store is not supported on this platform")]
+    UnsupportedPlatform,
+    #[error("OS secret store operation failed")]
+    OperationFailed,
+}
+
+#[allow(
+    clippy::redundant_pub_crate,
+    reason = "the secret store boundary is shared only within the infrastructure crate"
+)]
+pub(crate) trait SecretStore: Send + Sync {
+    fn set(&self, reference: &str, secret: &str) -> Result<(), SecretStoreError>;
+
+    fn get(&self, reference: &str) -> Result<String, SecretStoreError>;
+
+    fn delete(&self, reference: &str) -> Result<(), SecretStoreError>;
+}
 
 #[cfg(target_os = "macos")]
 use apple_native_keyring_store::keychain;

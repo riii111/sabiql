@@ -80,33 +80,8 @@ pub(crate) struct ConnectionConfigEntry {
     pub path: Option<String>,
 }
 
-impl From<&[ConnectionProfile]> for ConnectionConfigFile {
-    fn from(profiles: &[ConnectionProfile]) -> Self {
-        Self {
-            version: CURRENT_VERSION,
-            theme: None,
-            keymap_preset: None,
-            er_browser: None,
-            clipboard_backend: None,
-            connections: profiles.iter().map(ConnectionConfigEntry::from).collect(),
-        }
-    }
-}
-
-impl TryFrom<&ConnectionConfigFile> for Vec<ConnectionProfile> {
-    type Error = ConnectionProfileError;
-
-    fn try_from(config: &ConnectionConfigFile) -> Result<Self, Self::Error> {
-        config
-            .connections
-            .iter()
-            .map(ConnectionProfile::try_from)
-            .collect()
-    }
-}
-
-impl From<&ConnectionProfile> for ConnectionConfigEntry {
-    fn from(profile: &ConnectionProfile) -> Self {
+impl ConnectionConfigEntry {
+    fn from_profile(profile: &ConnectionProfile) -> Self {
         let mut entry = Self {
             id: profile.id.as_str().to_string(),
             name: profile.name.as_str().to_string(),
@@ -170,14 +145,11 @@ impl From<&ConnectionProfile> for ConnectionConfigEntry {
         }
         entry
     }
-}
-
-impl ConnectionConfigEntry {
     pub(crate) fn from_profile_with_password_ref(
         profile: &ConnectionProfile,
         password_ref: Option<String>,
     ) -> Self {
-        let mut entry = Self::from(profile);
+        let mut entry = Self::from_profile(profile);
         entry.password_ref = password_ref;
         if entry.password_ref.is_some() || entry.password.as_deref() == Some("") {
             entry.password = None;
@@ -251,14 +223,6 @@ impl ConnectionConfigEntry {
     }
 }
 
-impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
-    type Error = ConnectionProfileError;
-
-    fn try_from(entry: &ConnectionConfigEntry) -> Result<Self, Self::Error> {
-        entry.to_profile_with_password(entry.password.clone().unwrap_or_default())
-    }
-}
-
 fn required_sqlite_path(value: Option<&String>) -> Result<String, ConnectionProfileError> {
     value
         .cloned()
@@ -304,6 +268,16 @@ mod tests {
     use super::*;
     use crate::adapters::mysql::MySqlAdapter;
     use crate::app::ports::outbound::DsnBuilder;
+
+    fn profile_from_entry(
+        entry: &ConnectionConfigEntry,
+    ) -> Result<ConnectionProfile, ConnectionProfileError> {
+        entry.to_profile_with_password(entry.password.clone().unwrap_or_default())
+    }
+
+    fn entry_from_profile(profile: &ConnectionProfile) -> ConnectionConfigEntry {
+        ConnectionConfigEntry::from_profile_with_password_ref(profile, None)
+    }
 
     #[test]
     fn supported_versions_are_accepted() {
@@ -399,7 +373,7 @@ mod tests {
         let mut entry = postgres_entry();
         entry.database = None;
 
-        let result = ConnectionProfile::try_from(&entry);
+        let result = profile_from_entry(&entry);
 
         assert!(matches!(
             result,
@@ -423,7 +397,7 @@ mod tests {
         )
         .unwrap();
 
-        let profile = ConnectionProfile::try_from(&entry).unwrap();
+        let profile = profile_from_entry(&entry).unwrap();
 
         assert_eq!(profile.database_type(), DatabaseType::PostgreSQL);
     }
@@ -432,7 +406,7 @@ mod tests {
     fn sqlite_entry_rejects_missing_path() {
         let entry = sqlite_entry(None);
 
-        let result = ConnectionProfile::try_from(&entry);
+        let result = profile_from_entry(&entry);
 
         assert!(matches!(
             result,
@@ -446,7 +420,7 @@ mod tests {
     fn sqlite_entry_rejects_empty_path() {
         let entry = sqlite_entry(Some(""));
 
-        let result = ConnectionProfile::try_from(&entry);
+        let result = profile_from_entry(&entry);
 
         assert!(matches!(
             result,
@@ -460,7 +434,7 @@ mod tests {
     fn sqlite_entry_rejects_invalid_path() {
         let entry = sqlite_entry(Some("/tmp/app\0.db"));
 
-        let result = ConnectionProfile::try_from(&entry);
+        let result = profile_from_entry(&entry);
 
         assert!(matches!(
             result,
@@ -474,7 +448,7 @@ mod tests {
     fn sqlite_entry_rejects_in_memory_database() {
         let entry = sqlite_entry(Some(":memory:"));
 
-        let result = ConnectionProfile::try_from(&entry);
+        let result = profile_from_entry(&entry);
 
         assert!(matches!(
             result,
@@ -488,7 +462,7 @@ mod tests {
     fn sqlite_entry_rejects_uri_filename() {
         let entry = sqlite_entry(Some("file:/tmp/app.db?mode=ro"));
 
-        let result = ConnectionProfile::try_from(&entry);
+        let result = profile_from_entry(&entry);
 
         assert!(matches!(
             result,
@@ -501,8 +475,8 @@ mod tests {
     #[test]
     fn mysql_entry_round_trips_optional_database_and_tls_mode() {
         let entry = mysql_entry(Some("app"));
-        let profile = ConnectionProfile::try_from(&entry).unwrap();
-        let serialized = ConnectionConfigEntry::from(&profile);
+        let profile = profile_from_entry(&entry).unwrap();
+        let serialized = entry_from_profile(&profile);
 
         assert_eq!(serialized.db_type, DatabaseType::MySQL);
         assert_eq!(serialized.database.as_deref(), Some("app"));
@@ -519,7 +493,7 @@ mod tests {
         entry.mysql_transport = Some(MySqlTransport::UnixSocket);
         entry.mysql_transport_path = Some("/run/mysqld/mysqld.sock".to_string());
 
-        let profile = ConnectionProfile::try_from(&entry).unwrap();
+        let profile = profile_from_entry(&entry).unwrap();
         let config = profile.mysql_config().unwrap();
         assert_eq!(config.transport, MySqlTransport::UnixSocket);
         assert_eq!(
@@ -527,13 +501,13 @@ mod tests {
             Some("/run/mysqld/mysqld.sock")
         );
 
-        let serialized = ConnectionConfigEntry::from(&profile);
+        let serialized = entry_from_profile(&profile);
         assert_eq!(serialized.host, None);
         assert_eq!(serialized.port, None);
         assert_eq!(serialized.mysql_transport, entry.mysql_transport);
         assert_eq!(serialized.mysql_transport_path, entry.mysql_transport_path);
 
-        let round_tripped = ConnectionProfile::try_from(&serialized).unwrap();
+        let round_tripped = profile_from_entry(&serialized).unwrap();
         let dsn = MySqlAdapter::new().build_dsn(&round_tripped);
         assert!(dsn.contains("transport=UNIX_SOCKET"));
         assert!(dsn.contains("transport-path=%2Frun%2Fmysqld%2Fmysqld.sock"));
@@ -544,10 +518,10 @@ mod tests {
         let mut entry = mysql_entry(Some("app"));
         entry.mysql_enable_cleartext_plugin = Some(true);
 
-        let profile = ConnectionProfile::try_from(&entry).unwrap();
+        let profile = profile_from_entry(&entry).unwrap();
         assert!(profile.mysql_config().unwrap().enable_cleartext_plugin);
 
-        let serialized = ConnectionConfigEntry::from(&profile);
+        let serialized = entry_from_profile(&profile);
         assert_eq!(serialized.mysql_enable_cleartext_plugin, Some(true));
     }
 
@@ -559,14 +533,14 @@ mod tests {
         entry.mysql_ssl_cert = Some(r"C:\certs\client.pem".to_string());
         entry.mysql_ssl_key = Some(r"C:\certs\client-key.pem".to_string());
 
-        let profile = ConnectionProfile::try_from(&entry).unwrap();
+        let profile = profile_from_entry(&entry).unwrap();
         let config = profile.mysql_config().unwrap();
         assert_eq!(config.ssl_mode, MySqlSslMode::VerifyIdentity);
         assert_eq!(config.ssl_ca.as_deref(), Some("/tmp/ca #1.pem"));
         assert_eq!(config.ssl_cert.as_deref(), Some(r"C:\certs\client.pem"));
         assert_eq!(config.ssl_key.as_deref(), Some(r"C:\certs\client-key.pem"));
 
-        let serialized = ConnectionConfigEntry::from(&profile);
+        let serialized = entry_from_profile(&profile);
         assert_eq!(serialized.mysql_ssl_ca, entry.mysql_ssl_ca);
         assert_eq!(serialized.mysql_ssl_cert, entry.mysql_ssl_cert);
         assert_eq!(serialized.mysql_ssl_key, entry.mysql_ssl_key);
@@ -578,7 +552,7 @@ mod tests {
         entry.mysql_server_public_key_path = Some(r"C:\keys\server-public.pem".to_string());
         entry.mysql_get_server_public_key = Some(true);
 
-        let profile = ConnectionProfile::try_from(&entry).unwrap();
+        let profile = profile_from_entry(&entry).unwrap();
         assert_eq!(
             profile
                 .mysql_config()
@@ -589,7 +563,7 @@ mod tests {
         );
         assert!(profile.mysql_config().unwrap().get_server_public_key);
 
-        let serialized = ConnectionConfigEntry::from(&profile);
+        let serialized = entry_from_profile(&profile);
         assert_eq!(
             serialized.mysql_server_public_key_path,
             entry.mysql_server_public_key_path
@@ -602,17 +576,17 @@ mod tests {
         let mut entry = mysql_entry(Some("app"));
         entry.mysql_ssl_ca = Some("/tmp/old-ca.pem".to_string());
 
-        let profile = ConnectionProfile::try_from(&entry).unwrap();
+        let profile = profile_from_entry(&entry).unwrap();
         let config = profile.mysql_config().unwrap();
         assert_eq!(config.ssl_ca, None);
 
-        let serialized = ConnectionConfigEntry::from(&profile);
+        let serialized = entry_from_profile(&profile);
         assert_eq!(serialized.mysql_ssl_ca, None);
     }
 
     #[test]
     fn mysql_entry_without_database_is_valid() {
-        let profile = ConnectionProfile::try_from(&mysql_entry(None)).unwrap();
+        let profile = profile_from_entry(&mysql_entry(None)).unwrap();
 
         let config = profile.mysql_config().unwrap();
         assert_eq!(config.database, None);
@@ -624,14 +598,14 @@ mod tests {
         let mut entry = mysql_entry(None);
         entry.host = None;
         assert!(matches!(
-            ConnectionProfile::try_from(&entry),
+            profile_from_entry(&entry),
             Err(ConnectionProfileError::MissingMySqlField("host"))
         ));
 
         entry.host = Some("localhost".to_string());
         entry.username = Some(" ".to_string());
         assert!(matches!(
-            ConnectionProfile::try_from(&entry),
+            profile_from_entry(&entry),
             Err(ConnectionProfileError::MissingMySqlField("username"))
         ));
     }
@@ -642,7 +616,7 @@ mod tests {
         entry.host = Some("db example".to_string());
 
         assert!(matches!(
-            ConnectionProfile::try_from(&entry),
+            profile_from_entry(&entry),
             Err(ConnectionProfileError::InvalidMySqlHost)
         ));
     }
@@ -653,7 +627,7 @@ mod tests {
         entry.port = Some(0);
 
         assert!(matches!(
-            ConnectionProfile::try_from(&entry),
+            profile_from_entry(&entry),
             Err(ConnectionProfileError::InvalidMySqlPort)
         ));
     }
