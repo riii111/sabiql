@@ -28,6 +28,7 @@ pub enum ConnectionField {
     SslCert,
     SslKey,
     ServerPublicKeyPath,
+    GetServerPublicKey,
 }
 
 impl ConnectionField {
@@ -59,6 +60,7 @@ impl ConnectionField {
                 fields.extend([Self::Database, Self::User, Self::Password, Self::SslMode]);
                 fields.push(Self::CleartextAuth);
                 fields.push(Self::ServerPublicKeyPath);
+                fields.push(Self::GetServerPublicKey);
                 match mysql_ssl_mode {
                     MySqlSslMode::Disabled => {}
                     MySqlSslMode::Preferred | MySqlSslMode::Required => {
@@ -84,7 +86,11 @@ impl ConnectionField {
             | Self::ServerPublicKeyPath => Some(4096),
             Self::Host | Self::Database | Self::User | Self::Password => Some(255),
             Self::Port => Some(5),
-            Self::DatabaseType | Self::Transport | Self::SslMode | Self::CleartextAuth => None,
+            Self::DatabaseType
+            | Self::Transport
+            | Self::SslMode
+            | Self::CleartextAuth
+            | Self::GetServerPublicKey => None,
         }
     }
 
@@ -122,6 +128,7 @@ impl ConnectionField {
             Self::SslCert => "Cert Path:",
             Self::SslKey => "Key Path:",
             Self::ServerPublicKeyPath => "Server Key:",
+            Self::GetServerPublicKey => "Get Server:",
         }
     }
 }
@@ -161,6 +168,7 @@ pub struct ConnectionSetupState {
     pub(crate) mysql_ssl_mode: MySqlSslMode,
     pub(crate) mysql_transport: MySqlTransport,
     pub(crate) enable_cleartext_plugin: bool,
+    pub(crate) get_server_public_key: bool,
 
     pub(crate) focused_field: ConnectionField,
     pub(crate) database_type_dropdown: DropdownState,
@@ -193,6 +201,7 @@ impl Default for ConnectionSetupState {
             mysql_ssl_mode: MySqlSslMode::Preferred,
             mysql_transport: MySqlTransport::Tcp,
             enable_cleartext_plugin: false,
+            get_server_public_key: false,
             focused_field: ConnectionField::DatabaseType,
             database_type_dropdown: DropdownState::default(),
             transport_dropdown: DropdownState::default(),
@@ -223,6 +232,10 @@ impl ConnectionSetupState {
 
     pub fn cleartext_auth_plugin_enabled(&self) -> bool {
         self.enable_cleartext_plugin
+    }
+
+    pub fn get_server_public_key_enabled(&self) -> bool {
+        self.get_server_public_key
     }
 
     pub fn focused_field(&self) -> ConnectionField {
@@ -280,7 +293,8 @@ impl ConnectionSetupState {
             ConnectionField::DatabaseType
             | ConnectionField::Transport
             | ConnectionField::SslMode
-            | ConnectionField::CleartextAuth => None,
+            | ConnectionField::CleartextAuth
+            | ConnectionField::GetServerPublicKey => None,
             ConnectionField::Name => Some(&self.name),
             ConnectionField::SqlitePath => Some(&self.sqlite_path),
             ConnectionField::TransportPath => Some(&self.transport_path),
@@ -305,7 +319,8 @@ impl ConnectionSetupState {
             ConnectionField::DatabaseType
             | ConnectionField::Transport
             | ConnectionField::SslMode
-            | ConnectionField::CleartextAuth => None,
+            | ConnectionField::CleartextAuth
+            | ConnectionField::GetServerPublicKey => None,
             ConnectionField::Name => Some(&mut self.name),
             ConnectionField::SqlitePath => Some(&mut self.sqlite_path),
             ConnectionField::TransportPath => Some(&mut self.transport_path),
@@ -422,7 +437,9 @@ impl ConnectionSetupState {
                         .unwrap_or(0);
                 }
             }
-            ConnectionField::SslMode | ConnectionField::CleartextAuth => {
+            ConnectionField::SslMode
+            | ConnectionField::CleartextAuth
+            | ConnectionField::GetServerPublicKey => {
                 self.ssl_dropdown.is_open = !self.ssl_dropdown.is_open;
                 self.database_type_dropdown.is_open = false;
                 self.transport_dropdown.is_open = false;
@@ -430,6 +447,8 @@ impl ConnectionSetupState {
                     self.ssl_dropdown.selected_index =
                         if self.focused_field == ConnectionField::CleartextAuth {
                             usize::from(self.enable_cleartext_plugin)
+                        } else if self.focused_field == ConnectionField::GetServerPublicKey {
+                            usize::from(self.get_server_public_key)
                         } else if self.database_type == DatabaseType::MySQL {
                             MySqlSslMode::all_variants()
                                 .iter()
@@ -459,7 +478,10 @@ impl ConnectionSetupState {
                 self.transport_dropdown.selected_index += 1;
             }
         } else if self.ssl_dropdown.is_open {
-            let max = if self.focused_field == ConnectionField::CleartextAuth {
+            let max = if matches!(
+                self.focused_field,
+                ConnectionField::CleartextAuth | ConnectionField::GetServerPublicKey
+            ) {
                 1
             } else if self.database_type == DatabaseType::MySQL {
                 MySqlSslMode::all_variants().len() - 1
@@ -502,6 +524,8 @@ impl ConnectionSetupState {
             if self.database_type == DatabaseType::MySQL {
                 if self.focused_field == ConnectionField::CleartextAuth {
                     self.enable_cleartext_plugin = self.ssl_dropdown.selected_index == 1;
+                } else if self.focused_field == ConnectionField::GetServerPublicKey {
+                    self.get_server_public_key = self.ssl_dropdown.selected_index == 1;
                 } else if let Some(mode) =
                     MySqlSslMode::all_variants().get(self.ssl_dropdown.selected_index)
                 {
@@ -623,6 +647,7 @@ impl ConnectionSetupState {
                         .flatten(),
                 )
                 .with_server_public_key_path(optional_path(&self.server_public_key_path))
+                .with_get_server_public_key(self.get_server_public_key)
                 .with_cleartext_auth_plugin(self.enable_cleartext_plugin),
             ),
         })
@@ -690,6 +715,7 @@ impl From<&ConnectionProfile> for ConnectionSetupState {
                     TextInputState::new(&config.password, config.password.chars().count());
                 state.mysql_ssl_mode = config.ssl_mode;
                 state.enable_cleartext_plugin = config.enable_cleartext_plugin;
+                state.get_server_public_key = config.get_server_public_key;
                 if config.ssl_mode.uses_ca()
                     && let Some(path) = config.ssl_ca.as_deref()
                 {
@@ -773,6 +799,7 @@ mod tests {
                     ConnectionField::SslMode,
                     ConnectionField::CleartextAuth,
                     ConnectionField::ServerPublicKeyPath,
+                    ConnectionField::GetServerPublicKey,
                     ConnectionField::SslCert,
                     ConnectionField::SslKey,
                 ]
@@ -799,6 +826,7 @@ mod tests {
                     ConnectionField::SslMode,
                     ConnectionField::CleartextAuth,
                     ConnectionField::ServerPublicKeyPath,
+                    ConnectionField::GetServerPublicKey,
                 ]
             );
         }
@@ -816,6 +844,7 @@ mod tests {
             assert_eq!(ConnectionField::SslMode.max_chars(), None);
             assert_eq!(ConnectionField::CleartextAuth.max_chars(), None);
             assert_eq!(ConnectionField::ServerPublicKeyPath.max_chars(), Some(4096));
+            assert_eq!(ConnectionField::GetServerPublicKey.max_chars(), None);
         }
 
         #[rstest]
@@ -877,6 +906,22 @@ mod tests {
                 panic!("expected MySQL config");
             };
             assert!(config.enable_cleartext_plugin);
+        }
+
+        #[test]
+        fn server_public_key_retrieval_dropdown_updates_config() {
+            let mut state = ConnectionSetupState::default();
+            state.set_database_type(DatabaseType::MySQL);
+            state.focused_field = ConnectionField::GetServerPublicKey;
+            state.toggle_focused_dropdown();
+            state.dropdown_next();
+            state.confirm_dropdown();
+
+            assert!(state.get_server_public_key_enabled());
+            let ConnectionConfig::MySQL(config) = state.to_connection_config().unwrap() else {
+                panic!("expected MySQL config");
+            };
+            assert!(config.get_server_public_key);
         }
     }
 

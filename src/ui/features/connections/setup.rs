@@ -24,7 +24,7 @@ const FIELD_HEIGHT: u16 = 1;
 const MODAL_VERTICAL_CHROME: u16 = 6;
 const MODAL_HORIZONTAL_CHROME: u16 = 6;
 const MIN_PREVIEW_LINES: usize = 2;
-const CLEARTEXT_AUTH_OPTIONS: &[&str] = &["disabled", "enabled"];
+const BOOLEAN_OPTIONS: &[&str] = &["disabled", "enabled"];
 
 fn bracketed_input(content: &str, border_style: Style, theme: &ThemePalette) -> Line<'static> {
     Line::from(vec![
@@ -140,6 +140,15 @@ impl ConnectionSetup {
                     form_state.validation_error(ConnectionField::CleartextAuth),
                     theme,
                 ),
+                ConnectionField::GetServerPublicKey => Self::render_dropdown_field(
+                    frame,
+                    chunks[idx],
+                    field.label(),
+                    get_server_public_key_label(form_state),
+                    form_state.focused_field() == ConnectionField::GetServerPublicKey,
+                    form_state.validation_error(ConnectionField::GetServerPublicKey),
+                    theme,
+                ),
                 field => Self::render_text_field(
                     frame,
                     chunks[idx],
@@ -207,19 +216,22 @@ impl ConnectionSetup {
             && let Some(field_area) = Self::open_dropdown_field_area(
                 chunks.as_ref(),
                 &visible_fields,
-                if form_state.focused_field() == ConnectionField::CleartextAuth {
-                    ConnectionField::CleartextAuth
-                } else {
-                    ConnectionField::SslMode
+                match form_state.focused_field() {
+                    ConnectionField::CleartextAuth => ConnectionField::CleartextAuth,
+                    ConnectionField::GetServerPublicKey => ConnectionField::GetServerPublicKey,
+                    _ => ConnectionField::SslMode,
                 },
             )
         {
             if form_state.database_type() == DatabaseType::MySQL {
-                if form_state.focused_field() == ConnectionField::CleartextAuth {
+                if matches!(
+                    form_state.focused_field(),
+                    ConnectionField::CleartextAuth | ConnectionField::GetServerPublicKey
+                ) {
                     Self::render_dropdown_list(
                         frame,
                         field_area,
-                        CLEARTEXT_AUTH_OPTIONS.iter().copied(),
+                        BOOLEAN_OPTIONS.iter().copied(),
                         form_state.ssl_dropdown().selected_index(),
                         theme,
                     );
@@ -271,6 +283,7 @@ impl ConnectionSetup {
                 | ConnectionField::Transport
                 | ConnectionField::SslMode
                 | ConnectionField::CleartextAuth
+                | ConnectionField::GetServerPublicKey
         ) {
             vec![
                 connection_setup::ENTER_DROPDOWN.as_hint(),
@@ -520,6 +533,14 @@ fn ssl_mode_label(state: &ConnectionSetupState) -> String {
 
 fn cleartext_auth_label(state: &ConnectionSetupState) -> &'static str {
     if state.cleartext_auth_plugin_enabled() {
+        "enabled"
+    } else {
+        "disabled"
+    }
+}
+
+fn get_server_public_key_label(state: &ConnectionSetupState) -> &'static str {
+    if state.get_server_public_key_enabled() {
         "enabled"
     } else {
         "disabled"

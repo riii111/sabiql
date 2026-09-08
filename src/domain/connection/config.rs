@@ -198,6 +198,8 @@ pub struct MySqlConnectionConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server_public_key_path: Option<String>,
     #[serde(default, skip_serializing_if = "is_false")]
+    pub get_server_public_key: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
     pub enable_cleartext_plugin: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transport_path: Option<String>,
@@ -224,6 +226,7 @@ impl MySqlConnectionConfig {
             ssl_cert: None,
             ssl_key: None,
             server_public_key_path: None,
+            get_server_public_key: false,
             enable_cleartext_plugin: false,
             transport_path: None,
         }
@@ -245,6 +248,12 @@ impl MySqlConnectionConfig {
     #[must_use]
     pub fn with_server_public_key_path(mut self, path: Option<String>) -> Self {
         self.server_public_key_path = path;
+        self
+    }
+
+    #[must_use]
+    pub fn with_get_server_public_key(mut self, enabled: bool) -> Self {
+        self.get_server_public_key = enabled;
         self
     }
 

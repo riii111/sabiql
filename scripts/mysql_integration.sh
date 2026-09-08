@@ -16,6 +16,8 @@ readonly mysql_user="${SABIQL_MYSQL_TEST_USER:-sabiql_test_runner}"
 readonly mysql_password="${SABIQL_MYSQL_TEST_PASSWORD:-p a#ss;=\"word}"
 readonly cache_miss_user="${SABIQL_MYSQL_TEST_CACHE_MISS_USER:-sabiql_cache_miss_runner}"
 readonly cache_miss_password="${SABIQL_MYSQL_TEST_CACHE_MISS_PASSWORD:-sabiql-cache-miss}"
+readonly cache_miss_retrieval_user="${SABIQL_MYSQL_TEST_CACHE_MISS_RETRIEVAL_USER:-sabiql_cache_miss_retrieval}"
+readonly cache_miss_retrieval_password="${SABIQL_MYSQL_TEST_CACHE_MISS_RETRIEVAL_PASSWORD:-sabiql-cache-miss-retrieval}"
 readonly mysql_client_label_key='com.sabiql.mysql.integration'
 
 run_dir=''
@@ -235,7 +237,7 @@ create_server_public_key_material() {
     chmod 644 "$tls_dir/server-public-key.pem"
 }
 
-reset_cache_miss_account() {
+reset_cache_miss_accounts() {
     run_compose exec -T mysql mysql \
         --protocol=socket \
         --user=root \
@@ -243,7 +245,7 @@ reset_cache_miss_account() {
         --batch \
         --raw \
         --skip-column-names \
-        --execute="CREATE USER IF NOT EXISTS '$cache_miss_user'@'%' IDENTIFIED WITH caching_sha2_password BY '$cache_miss_password'; ALTER USER '$cache_miss_user'@'%' IDENTIFIED WITH caching_sha2_password BY '$cache_miss_password'; GRANT SELECT ON \`$mysql_database\`.* TO '$cache_miss_user'@'%';"
+        --execute="CREATE USER IF NOT EXISTS '$cache_miss_user'@'%' IDENTIFIED WITH caching_sha2_password BY '$cache_miss_password'; ALTER USER '$cache_miss_user'@'%' IDENTIFIED WITH caching_sha2_password BY '$cache_miss_password'; GRANT SELECT ON \`$mysql_database\`.* TO '$cache_miss_user'@'%'; CREATE USER IF NOT EXISTS '$cache_miss_retrieval_user'@'%' IDENTIFIED WITH caching_sha2_password BY '$cache_miss_retrieval_password'; ALTER USER '$cache_miss_retrieval_user'@'%' IDENTIFIED WITH caching_sha2_password BY '$cache_miss_retrieval_password'; GRANT SELECT ON \`$mysql_database\`.* TO '$cache_miss_retrieval_user'@'%';"
 }
 
 install_cli_wrapper() {
@@ -292,6 +294,8 @@ run_tests() {
     export SABIQL_MYSQL_TEST_PASSWORD="$mysql_password"
     export SABIQL_MYSQL_TEST_CACHE_MISS_USER="$cache_miss_user"
     export SABIQL_MYSQL_TEST_CACHE_MISS_PASSWORD="$cache_miss_password"
+    export SABIQL_MYSQL_TEST_CACHE_MISS_RETRIEVAL_USER="$cache_miss_retrieval_user"
+    export SABIQL_MYSQL_TEST_CACHE_MISS_RETRIEVAL_PASSWORD="$cache_miss_retrieval_password"
     export SABIQL_MYSQL_TEST_TLS_DIR="$tls_dir"
     export SABIQL_MYSQL_TEST_SSL_CA="$tls_dir/ca.pem"
     export SABIQL_MYSQL_TEST_SSL_CERT="$tls_dir/client-cert.pem"
@@ -315,7 +319,7 @@ case "${1:-test}" in
         install_cli_wrapper
         create_option_file
         assert_versions
-        reset_cache_miss_account
+        reset_cache_miss_accounts
         run_tests
         ;;
     *)
