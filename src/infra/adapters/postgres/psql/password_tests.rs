@@ -87,6 +87,39 @@ fn uri_password_is_absent_from_argv_and_uses_a_temporary_passfile() {
 }
 
 #[test]
+fn libpq_uri_password_is_absent_from_argv_when_url_parser_rejects_uri() {
+    for dsn in [
+        "postgresql://user:secret@/db?host=/var/run/postgresql",
+        "postgresql://user:secret@host1,host2/db",
+    ] {
+        let (cmd, passfile) =
+            PostgresAdapter::build_psql_command(dsn, &[], &["-c", "SELECT 1"], false).unwrap();
+        let args: Vec<_> = cmd
+            .as_std()
+            .get_args()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect();
+
+        assert!(!args.iter().any(|arg| arg.contains("secret")));
+        assert!(args[0].contains("user@"));
+        assert!(passfile.is_some());
+    }
+}
+
+#[test]
+fn invalid_uri_password_encoding_fails_without_echoing_uri() {
+    let dsn = "postgresql://user:%ZZ@localhost/db";
+    let Err(error) = PostgresAdapter::build_psql_command(dsn, &[], &[], false) else {
+        panic!("invalid URI password encoding should fail before spawn")
+    };
+
+    assert!(
+        matches!(error, DbOperationError::ConnectionFailed(ref message) if message == "Invalid PostgreSQL URI password encoding")
+    );
+    assert!(!error.to_string().contains("%ZZ"));
+}
+
+#[test]
 fn no_explicit_password_preserves_service_passfile_and_environment() {
     for dsn in [
         "service=mydb",

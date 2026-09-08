@@ -100,13 +100,62 @@ impl CliUriTarget {
         };
 
         Ok(Self {
-            id: ConnectionId::new(),
+            id: stable_cli_connection_id(dsn),
             name,
             database_type,
             database,
             dsn: dsn.to_string(),
         })
     }
+}
+
+fn stable_cli_connection_id(dsn: &str) -> ConnectionId {
+    let identity = redact_uri_passwords(dsn);
+    let id = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, identity.as_bytes());
+    ConnectionId::from_string(format!("cli:{id}"))
+}
+
+fn redact_uri_passwords(uri: &str) -> String {
+    let Some(scheme_end) = uri.find("://") else {
+        return uri.to_string();
+    };
+    let authority_start = scheme_end + 3;
+    let authority_end = uri[authority_start..]
+        .find(['/', '?', '#'])
+        .map_or(uri.len(), |offset| authority_start + offset);
+    let mut ranges = Vec::new();
+    let authority = &uri[authority_start..authority_end];
+    if let Some(at_offset) = authority.rfind('@') {
+        let userinfo_end = authority_start + at_offset;
+        if let Some(colon_offset) = authority[..at_offset].find(':') {
+            ranges.push((authority_start + colon_offset + 1, userinfo_end));
+        }
+    }
+
+    if let Some(query_offset) = uri[authority_end..].find('?') {
+        let query_start = authority_end + query_offset + 1;
+        let query_end = uri[query_start..]
+            .find('#')
+            .map_or(uri.len(), |offset| query_start + offset);
+        let query = &uri[query_start..query_end];
+        let mut segment_start = query_start;
+        for segment in query.split('&') {
+            let segment_end = segment_start + segment.len();
+            if let Some(equal_offset) = segment.find('=') {
+                let key = &segment[..equal_offset];
+                if key.eq_ignore_ascii_case("password") {
+                    ranges.push((segment_start + equal_offset + 1, segment_end));
+                }
+            }
+            segment_start = segment_end.saturating_add(1);
+        }
+    }
+
+    let mut redacted = uri.to_string();
+    for (start, end) in ranges.into_iter().rev() {
+        redacted.replace_range(start..end, "");
+    }
+    redacted
 }
 
 pub fn resolve_cli_connection_target(
@@ -231,6 +280,26 @@ mod tests {
         assert_eq!(target.database.as_deref(), Some("app"));
         assert_eq!(target.name, "localhost/app");
         assert!(!format!("{target:?}").contains("secret"));
+    }
+
+    #[test]
+    fn reuses_uri_connection_id_without_password() {
+        let first = resolve_cli_connection_target(
+            "mysql://user:first-secret@localhost/app",
+            &AcceptingValidator,
+        )
+        .unwrap();
+        let second = resolve_cli_connection_target(
+            "mysql://user:second-secret@localhost/app",
+            &AcceptingValidator,
+        )
+        .unwrap();
+
+        let (CliConnectionTarget::Uri(first), CliConnectionTarget::Uri(second)) = (first, second)
+        else {
+            panic!("expected URI targets");
+        };
+        assert_eq!(first.id, second.id);
     }
 
     #[test]

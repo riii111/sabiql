@@ -106,6 +106,7 @@ pub struct PendingMySqlConnectionProbe {
     pub name: String,
     pub dsn: String,
     pub database: Option<String>,
+    pub origin: ConnectionOrigin,
     pub run_id: u64,
     table_detail: Option<InterruptedTableDetail>,
 }
@@ -118,6 +119,7 @@ impl fmt::Debug for PendingMySqlConnectionProbe {
             .field("name", &self.name)
             .field("dsn", &mask_password(&self.dsn))
             .field("database", &self.database)
+            .field("origin", &self.origin)
             .field("run_id", &self.run_id)
             .field("table_detail", &self.table_detail)
             .finish()
@@ -355,6 +357,40 @@ impl BrowseSession {
         dsn: &str,
         database: Option<&str>,
     ) -> u64 {
+        self.begin_mysql_connection_probe_with_origin(
+            id,
+            name,
+            dsn,
+            database,
+            ConnectionOrigin::Profile,
+        )
+    }
+
+    #[must_use]
+    pub fn begin_cli_mysql_connection_probe(
+        &mut self,
+        id: &ConnectionId,
+        name: &str,
+        dsn: &str,
+        database: Option<&str>,
+    ) -> u64 {
+        self.begin_mysql_connection_probe_with_origin(
+            id,
+            name,
+            dsn,
+            database,
+            ConnectionOrigin::CliEphemeral,
+        )
+    }
+
+    fn begin_mysql_connection_probe_with_origin(
+        &mut self,
+        id: &ConnectionId,
+        name: &str,
+        dsn: &str,
+        database: Option<&str>,
+        origin: ConnectionOrigin,
+    ) -> u64 {
         let table_detail =
             self.dsn
                 .clone()
@@ -372,6 +408,7 @@ impl BrowseSession {
             name: name.to_string(),
             dsn: dsn.to_string(),
             database: database.map(str::to_string),
+            origin,
             run_id,
             table_detail,
         });
@@ -451,12 +488,31 @@ impl BrowseSession {
         dsn: &str,
         database: Option<&str>,
     ) {
+        self.activate_connection_with_target_and_origin(
+            id,
+            name,
+            database_type,
+            dsn,
+            database,
+            ConnectionOrigin::Profile,
+        );
+    }
+
+    pub fn activate_connection_with_target_and_origin(
+        &mut self,
+        id: &ConnectionId,
+        name: &str,
+        database_type: DatabaseType,
+        dsn: &str,
+        database: Option<&str>,
+        origin: ConnectionOrigin,
+    ) {
         self.database_generation = self.database_generation.wrapping_add(1);
         self.active_connection = Some(ActiveConnection {
             id: id.clone(),
             name: name.to_string(),
             database_type,
-            origin: ConnectionOrigin::Profile,
+            origin,
             database: database.map(str::to_string),
         });
         self.dsn = Some(dsn.to_string());
@@ -483,17 +539,14 @@ impl BrowseSession {
         dsn: &str,
         database: Option<&str>,
     ) {
-        self.active_connection = Some(ActiveConnection {
-            id: id.clone(),
-            name: name.to_string(),
+        self.activate_connection_with_target_and_origin(
+            id,
+            name,
             database_type,
-            origin: ConnectionOrigin::CliEphemeral,
-            database: database.map(str::to_string),
-        });
-        self.dsn = Some(dsn.to_string());
-        self.mysql_lower_case_table_names = 0;
-        self.read_only = false;
-        self.clear_mysql_connection_probe();
+            dsn,
+            database,
+            ConnectionOrigin::CliEphemeral,
+        );
     }
 
     pub fn clear_connection(&mut self) {
@@ -670,6 +723,12 @@ impl BrowseSession {
     ) {
         self.restore_from_cache(cache, query);
         self.activate_connection_with_target(id, name, database_type, dsn, database);
+    }
+
+    pub fn set_active_connection_origin(&mut self, origin: ConnectionOrigin) {
+        if let Some(connection) = self.active_connection.as_mut() {
+            connection.origin = origin;
+        }
     }
 
     // Caller must also call `result_interaction.reset_view()` and restore UI state.

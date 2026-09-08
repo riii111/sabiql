@@ -59,31 +59,108 @@ fn find_conninfo_value(dsn: &str, key: &str) -> Option<String> {
 }
 
 // Keep credentials out of child argv for generated conninfo and PostgreSQL URIs.
-pub(super) fn take_explicit_password(dsn: &str) -> Option<(String, String)> {
+pub(super) fn take_explicit_password(dsn: &str) -> Result<Option<(String, String)>, ()> {
     if let Some((password, range)) = find_conninfo_part(dsn, "password") {
         if password.is_empty() {
-            return None;
+            return Ok(None);
         }
         let mut connection = dsn.to_string();
         // An explicit empty password suppresses service/environment defaults while allowing passfile.
         connection.replace_range(range, "password=''");
-        return Some((connection, password));
+        return Ok(Some((connection, password)));
     }
     take_uri_password(dsn)
 }
 
-fn take_uri_password(dsn: &str) -> Option<(String, String)> {
+fn take_uri_password(dsn: &str) -> Result<Option<(String, String)>, ()> {
     if !(dsn.starts_with("postgres://") || dsn.starts_with("postgresql://")) {
-        return None;
+        return Ok(None);
     }
-    let mut url = url::Url::parse(dsn).ok()?;
-    let encoded_password = url.password()?.to_string();
-    if encoded_password.is_empty() {
-        return None;
+
+    let Some(scheme_end) = dsn.find("://") else {
+        return Ok(None);
+    };
+    let authority_start = scheme_end + 3;
+    let authority_end = dsn[authority_start..]
+        .find(['/', '?', '#'])
+        .map_or(dsn.len(), |offset| authority_start + offset);
+    let authority = &dsn[authority_start..authority_end];
+    let mut password = None;
+    let mut ranges = Vec::new();
+
+    if let Some(at_offset) = authority.rfind('@') {
+        let userinfo = &authority[..at_offset];
+        if let Some(colon_offset) = userinfo.find(':') {
+            let password_start = authority_start + colon_offset + 1;
+            let password_end = authority_start + at_offset;
+            let encoded_password = &dsn[password_start..password_end];
+            if !encoded_password.is_empty() {
+                password = Some(decode_uri_component(encoded_password)?);
+                ranges.push((authority_start + colon_offset, password_end));
+            }
+        }
     }
-    let password = urlencoding::decode(&encoded_password).ok()?.into_owned();
-    url.set_password(None).ok()?;
-    Some((url.to_string(), password))
+
+    if let Some(query_offset) = dsn[authority_end..].find('?') {
+        let query_start = authority_end + query_offset + 1;
+        let query_end = dsn[query_start..]
+            .find('#')
+            .map_or(dsn.len(), |offset| query_start + offset);
+        let query = &dsn[query_start..query_end];
+        let mut segment_start = query_start;
+        for segment in query.split('&') {
+            let segment_end = segment_start + segment.len();
+            if let Some(equal_offset) = segment.find('=') {
+                let key = &segment[..equal_offset];
+                if key.eq_ignore_ascii_case("password") {
+                    let value_start = segment_start + equal_offset + 1;
+                    let encoded_password = &dsn[value_start..segment_end];
+                    if !encoded_password.is_empty() {
+                        if password.is_none() {
+                            password = Some(decode_uri_component(encoded_password)?);
+                        } else {
+                            decode_uri_component(encoded_password)?;
+                        }
+                        ranges.push((value_start, segment_end));
+                    }
+                }
+            }
+            segment_start = segment_end.saturating_add(1);
+        }
+    }
+
+    let Some(password) = password else {
+        return Ok(None);
+    };
+    let mut connection = dsn.to_string();
+    for (start, end) in ranges.into_iter().rev() {
+        connection.replace_range(start..end, "");
+    }
+    Ok(Some((connection, password)))
+}
+
+fn decode_uri_component(value: &str) -> Result<String, ()> {
+    let bytes = value.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            if bytes
+                .get(i + 1)
+                .is_none_or(|byte| !byte.is_ascii_hexdigit())
+                || bytes
+                    .get(i + 2)
+                    .is_none_or(|byte| !byte.is_ascii_hexdigit())
+            {
+                return Err(());
+            }
+            i += 3;
+        } else {
+            i += 1;
+        }
+    }
+    urlencoding::decode(value)
+        .map(std::borrow::Cow::into_owned)
+        .map_err(|_| ())
 }
 
 fn find_conninfo_part(dsn: &str, key: &str) -> Option<(String, std::ops::Range<usize>)> {

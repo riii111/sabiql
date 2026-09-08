@@ -258,7 +258,12 @@ impl PostgresAdapter {
         cmd: &mut Command,
         dsn: &str,
     ) -> Result<Option<Passfile>, DbOperationError> {
-        let passfile = if let Some((mut connection, password)) = take_explicit_password(dsn) {
+        let passfile = if let Some((mut connection, password)) = take_explicit_password(dsn)
+            .map_err(|()| {
+                DbOperationError::ConnectionFailed(
+                    "Invalid PostgreSQL URI password encoding".into(),
+                )
+            })? {
             let passfile = Passfile::create(&password)?;
             let path = passfile.path.to_str().ok_or_else(|| {
                 DbOperationError::ConnectionFailed(
