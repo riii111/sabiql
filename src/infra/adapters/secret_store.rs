@@ -1,22 +1,16 @@
 use std::sync::{Mutex, OnceLock};
 
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
-#[allow(
-    clippy::redundant_pub_crate,
-    reason = "the secret store boundary is shared only within the infrastructure crate"
-)]
-pub(crate) enum SecretStoreError {
+pub(super) enum SecretStoreError {
+    #[error("OS secret store entry does not exist")]
+    NoEntry,
     #[error("OS secret store is not supported on this platform")]
     UnsupportedPlatform,
     #[error("OS secret store operation failed")]
     OperationFailed,
 }
 
-#[allow(
-    clippy::redundant_pub_crate,
-    reason = "the secret store boundary is shared only within the infrastructure crate"
-)]
-pub(crate) trait SecretStore: Send + Sync {
+pub(super) trait SecretStore: Send + Sync {
     fn set(&self, reference: &str, secret: &str) -> Result<(), SecretStoreError>;
 
     fn get(&self, reference: &str) -> Result<String, SecretStoreError>;
@@ -33,16 +27,12 @@ use windows_native_keyring_store as credential_manager;
 
 const SERVICE_NAME: &str = "com.sabiql.connections";
 
-#[allow(
-    clippy::redundant_pub_crate,
-    reason = "the adapter is re-exported within the infrastructure crate"
-)]
-pub(crate) struct PlatformSecretStore {
+pub(super) struct PlatformSecretStore {
     operation_lock: Mutex<()>,
 }
 
 impl PlatformSecretStore {
-    pub(crate) fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             operation_lock: Mutex::new(()),
         }
@@ -62,9 +52,7 @@ impl SecretStore for PlatformSecretStore {
             .lock()
             .expect("secret store operation lock poisoned");
         let entry = entry(reference)?;
-        entry
-            .set_password(secret)
-            .map_err(|_| SecretStoreError::OperationFailed)
+        entry.set_password(secret).map_err(map_keyring_error)
     }
 
     fn get(&self, reference: &str) -> Result<String, SecretStoreError> {
@@ -73,9 +61,7 @@ impl SecretStore for PlatformSecretStore {
             .lock()
             .expect("secret store operation lock poisoned");
         let entry = entry(reference)?;
-        entry
-            .get_password()
-            .map_err(|_| SecretStoreError::OperationFailed)
+        entry.get_password().map_err(map_keyring_error)
     }
 
     fn delete(&self, reference: &str) -> Result<(), SecretStoreError> {
@@ -84,9 +70,14 @@ impl SecretStore for PlatformSecretStore {
             .lock()
             .expect("secret store operation lock poisoned");
         let entry = entry(reference)?;
-        entry
-            .delete_credential()
-            .map_err(|_| SecretStoreError::OperationFailed)
+        entry.delete_credential().map_err(map_keyring_error)
+    }
+}
+
+fn map_keyring_error(error: keyring_core::Error) -> SecretStoreError {
+    match error {
+        keyring_core::Error::NoEntry => SecretStoreError::NoEntry,
+        _ => SecretStoreError::OperationFailed,
     }
 }
 

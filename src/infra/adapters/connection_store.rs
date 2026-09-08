@@ -14,7 +14,7 @@ use crate::config::{
 use crate::domain::connection::{ConnectionConfig, ConnectionId, ConnectionProfile, DatabaseType};
 use uuid::Uuid;
 
-use super::{PlatformSecretStore, SecretStore};
+use super::secret_store::{PlatformSecretStore, SecretStore, SecretStoreError};
 
 pub struct TomlConnectionStore {
     config_dir: PathBuf,
@@ -31,15 +31,9 @@ impl TomlConnectionStore {
     }
 
     pub fn with_config_dir(config_dir: PathBuf) -> Self {
-        #[cfg(test)]
-        let secret_store: Arc<dyn SecretStore> = Arc::new(tests::TestSecretStore::default());
-
-        #[cfg(not(test))]
-        let secret_store: Arc<dyn SecretStore> = Arc::new(PlatformSecretStore::new());
-
         Self {
             config_dir,
-            secret_store,
+            secret_store: Arc::new(PlatformSecretStore::new()),
         }
     }
 
@@ -102,6 +96,21 @@ impl TomlConnectionStore {
             .collect()
     }
 
+    fn validate_profiles_without_secrets(
+        config: &ConnectionConfigFile,
+    ) -> Result<Vec<ConnectionProfile>, ConnectionStoreError> {
+        validate_password_refs(config)?;
+        config
+            .connections
+            .iter()
+            .map(|entry| {
+                entry
+                    .to_profile_with_password(String::new())
+                    .map_err(ConnectionStoreError::InvalidProfile)
+            })
+            .collect()
+    }
+
     fn password_for_entry(
         &self,
         entry: &ConnectionConfigEntry,
@@ -109,28 +118,29 @@ impl TomlConnectionStore {
         if entry.db_type == DatabaseType::SQLite {
             return Ok(String::new());
         }
-        entry.password_ref.as_deref().map_or_else(
-            || Ok(entry.password.clone().unwrap_or_default()),
-            |reference| self.get_secret(reference),
-        )
+        let Some(reference) = entry.password_ref.as_deref() else {
+            return Ok(entry.password.clone().unwrap_or_default());
+        };
+        match self.get_secret(reference) {
+            Ok(password) => Ok(password),
+            Err(SecretStoreError::NoEntry) => Ok(String::new()),
+            Err(_) => Err(ConnectionStoreError::SecretStore),
+        }
     }
 
-    fn set_secret(&self, reference: &str, secret: &str) -> Result<(), ConnectionStoreError> {
-        self.secret_store
-            .set(reference, secret)
-            .map_err(|_| ConnectionStoreError::SecretStore)
+    fn set_secret(&self, reference: &str, secret: &str) -> Result<(), SecretStoreError> {
+        self.secret_store.set(reference, secret)
     }
 
-    fn get_secret(&self, reference: &str) -> Result<String, ConnectionStoreError> {
-        self.secret_store
-            .get(reference)
-            .map_err(|_| ConnectionStoreError::SecretStore)
+    fn get_secret(&self, reference: &str) -> Result<String, SecretStoreError> {
+        self.secret_store.get(reference)
     }
 
     fn delete_secret(&self, reference: &str) -> Result<(), ConnectionStoreError> {
-        self.secret_store
-            .delete(reference)
-            .map_err(|_| ConnectionStoreError::SecretStore)
+        match self.secret_store.delete(reference) {
+            Ok(()) | Err(SecretStoreError::NoEntry) => Ok(()),
+            Err(_) => Err(ConnectionStoreError::SecretStore),
+        }
     }
 
     fn empty_config() -> ConnectionConfigFile {
@@ -174,7 +184,7 @@ impl ConnectionStore for TomlConnectionStore {
     fn save(&self, profile: &ConnectionProfile) -> Result<(), ConnectionStoreError> {
         let _guard = app_config_file::lock();
         let mut config = self.load_config_file()?.unwrap_or_else(Self::empty_config);
-        let profiles = self.load_profiles(&config)?;
+        let profiles = Self::validate_profiles_without_secrets(&config)?;
 
         let normalized_name = profile.name.normalized();
         if profiles
@@ -201,7 +211,8 @@ impl ConnectionStore for TomlConnectionStore {
                 || Self::password_ref(profile),
                 |_| Self::replacement_password_ref(profile),
             );
-            self.set_secret(&reference, password)?;
+            self.set_secret(&reference, password)
+                .map_err(|_| ConnectionStoreError::SecretStore)?;
             let entry = ConnectionConfigEntry::from_profile_with_password_ref(
                 profile,
                 Some(reference.clone()),
@@ -250,7 +261,7 @@ impl ConnectionStore for TomlConnectionStore {
         let mut config = self
             .load_config_file()?
             .ok_or_else(|| ConnectionStoreError::NotFound(id.to_string()))?;
-        self.load_profiles(&config)?;
+        Self::validate_profiles_without_secrets(&config)?;
         let Some(entry_index) = config
             .connections
             .iter()
@@ -351,7 +362,7 @@ mod tests {
                 .expect("test secret store lock poisoned")
                 .get(reference)
                 .cloned()
-                .ok_or(SecretStoreError::OperationFailed)
+                .ok_or(SecretStoreError::NoEntry)
         }
 
         fn delete(&self, reference: &str) -> Result<(), SecretStoreError> {
@@ -411,7 +422,7 @@ mod tests {
                 .values
                 .get(reference)
                 .cloned()
-                .ok_or(SecretStoreError::OperationFailed)
+                .ok_or(SecretStoreError::NoEntry)
         }
 
         fn delete(&self, reference: &str) -> Result<(), SecretStoreError> {
@@ -434,6 +445,13 @@ mod tests {
         )
     }
 
+    fn store_with_test_secret_store(config_dir: PathBuf) -> TomlConnectionStore {
+        TomlConnectionStore::with_config_dir_and_secret_store(
+            config_dir,
+            Arc::new(TestSecretStore::default()),
+        )
+    }
+
     fn make_test_profile(name: &str) -> ConnectionProfile {
         ConnectionProfile::new_postgres(
             name,
@@ -453,7 +471,7 @@ mod tests {
         #[test]
         fn no_file_returns_empty_vec() {
             let temp_dir = TempDir::new().unwrap();
-            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let store = store_with_test_secret_store(temp_dir.path().to_path_buf());
 
             let result = store.load_all().unwrap();
 
@@ -479,7 +497,7 @@ ssl_mode = "prefer"
 "#;
             fs::write(&config_path, content).unwrap();
 
-            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let store = store_with_test_secret_store(temp_dir.path().to_path_buf());
             let result = store.load_all();
 
             assert!(matches!(
@@ -498,7 +516,7 @@ ssl_mode = "prefer"
 
             fs::write(&config_path, "invalid toml {{{{").unwrap();
 
-            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let store = store_with_test_secret_store(temp_dir.path().to_path_buf());
             let result = store.load_all();
 
             assert!(matches!(
@@ -527,7 +545,7 @@ ssl_mode = "prefer"
 "#;
             fs::write(&config_path, content).unwrap();
 
-            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let store = store_with_test_secret_store(temp_dir.path().to_path_buf());
             let profiles = store.load_all().unwrap();
 
             assert_eq!(profiles.len(), 1);
@@ -559,7 +577,7 @@ ssl_mode = "prefer"
 "#;
             fs::write(&config_path, content).unwrap();
 
-            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let store = store_with_test_secret_store(temp_dir.path().to_path_buf());
             let profiles = store.load_all().unwrap();
 
             assert_eq!(profiles.len(), 1);
@@ -712,6 +730,40 @@ ssl_mode = "prefer"
         }
 
         #[test]
+        fn password_update_repairs_connection_when_existing_secret_is_missing() {
+            let temp_dir = TempDir::new().unwrap();
+            let secret_store = Arc::new(RecordingSecretStore::default());
+            let store = store_with_secret_store(&temp_dir, Arc::clone(&secret_store));
+            let mut profile = make_test_profile("Production");
+            store.save(&profile).unwrap();
+            let old_reference = format!("connection:{}", profile.id);
+            secret_store
+                .state
+                .lock()
+                .unwrap()
+                .values
+                .remove(&old_reference);
+
+            profile.config = ConnectionConfig::PostgreSQL(PostgresConnectionConfig::new(
+                "localhost",
+                5432,
+                "testdb",
+                "testuser",
+                "newpass",
+                SslMode::Prefer,
+            ));
+            store.save(&profile).unwrap();
+
+            assert_eq!(
+                store.load_all().unwrap()[0]
+                    .postgres_config()
+                    .unwrap()
+                    .password,
+                "newpass"
+            );
+        }
+
+        #[test]
         fn clearing_password_removes_existing_secret_reference() {
             let temp_dir = TempDir::new().unwrap();
             let secret_store = Arc::new(RecordingSecretStore::default());
@@ -734,7 +786,7 @@ ssl_mode = "prefer"
             assert!(!content.contains("password_ref"));
             assert!(matches!(
                 secret_store.get(&reference),
-                Err(SecretStoreError::OperationFailed)
+                Err(SecretStoreError::NoEntry)
             ));
         }
 
@@ -742,7 +794,7 @@ ssl_mode = "prefer"
         fn creates_config_directory_if_missing() {
             let temp_dir = TempDir::new().unwrap();
             let config_dir = temp_dir.path().join("nested").join("config");
-            let store = TomlConnectionStore::with_config_dir(config_dir.clone());
+            let store = store_with_test_secret_store(config_dir.clone());
             let profile = make_test_profile("Test");
 
             store.save(&profile).unwrap();
@@ -754,7 +806,7 @@ ssl_mode = "prefer"
         #[test]
         fn duplicate_name_returns_error() {
             let temp_dir = TempDir::new().unwrap();
-            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let store = store_with_test_secret_store(temp_dir.path().to_path_buf());
 
             let profile1 = make_test_profile("Production");
             let profile2 = make_test_profile("production"); // case-insensitive match
@@ -771,7 +823,7 @@ ssl_mode = "prefer"
         #[test]
         fn same_id_updates_without_duplicate_error() {
             let temp_dir = TempDir::new().unwrap();
-            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let store = store_with_test_secret_store(temp_dir.path().to_path_buf());
 
             let mut profile = make_test_profile("Production");
             store.save(&profile).unwrap();
@@ -894,7 +946,7 @@ password_ref = "connection:second"
 "#,
             )
             .unwrap();
-            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let store = store_with_test_secret_store(temp_dir.path().to_path_buf());
 
             let result = store.load_all();
 
@@ -925,7 +977,7 @@ password_ref = "connection:same"
 "#,
             )
             .unwrap();
-            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let store = store_with_test_secret_store(temp_dir.path().to_path_buf());
 
             let result = store.load_all();
 
@@ -980,7 +1032,7 @@ password_ref = "connection:same"
                 "version = 2\ntheme = \"light\"\nkeymap_preset = \"ide\"\ner_browser = \"Firefox\"\nclipboard_backend = \"osc52\"\nconnections = []\n",
             )
             .unwrap();
-            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let store = store_with_test_secret_store(temp_dir.path().to_path_buf());
             let profile = make_test_profile("Test");
 
             store.save(&profile).unwrap();
@@ -999,7 +1051,7 @@ password_ref = "connection:same"
             use std::os::unix::fs::PermissionsExt;
 
             let temp_dir = TempDir::new().unwrap();
-            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let store = store_with_test_secret_store(temp_dir.path().to_path_buf());
             let profile = make_test_profile("Test");
 
             store.save(&profile).unwrap();
@@ -1027,8 +1079,27 @@ password_ref = "connection:same"
             assert!(store.load_all().unwrap().is_empty());
             assert!(matches!(
                 secret_store.get(&format!("connection:{}", profile.id)),
-                Err(SecretStoreError::OperationFailed)
+                Err(SecretStoreError::NoEntry)
             ));
+        }
+
+        #[test]
+        fn removes_connection_when_existing_secret_is_missing() {
+            let temp_dir = TempDir::new().unwrap();
+            let secret_store = Arc::new(RecordingSecretStore::default());
+            let store = store_with_secret_store(&temp_dir, Arc::clone(&secret_store));
+            let profile = make_test_profile("Test");
+            store.save(&profile).unwrap();
+            secret_store
+                .state
+                .lock()
+                .unwrap()
+                .values
+                .remove(&format!("connection:{}", profile.id));
+
+            store.delete(&profile.id).unwrap();
+
+            assert!(store.load_all().unwrap().is_empty());
         }
 
         #[test]
@@ -1050,7 +1121,7 @@ password_ref = "connection:same"
         #[test]
         fn removes_connection_by_id() {
             let temp_dir = TempDir::new().unwrap();
-            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let store = store_with_test_secret_store(temp_dir.path().to_path_buf());
 
             let profile = make_test_profile("Test");
             store.save(&profile).unwrap();
@@ -1063,7 +1134,7 @@ password_ref = "connection:same"
         #[test]
         fn nonexistent_id_returns_not_found() {
             let temp_dir = TempDir::new().unwrap();
-            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let store = store_with_test_secret_store(temp_dir.path().to_path_buf());
 
             let result = store.delete(&ConnectionId::new());
 
@@ -1077,7 +1148,7 @@ password_ref = "connection:same"
         #[test]
         fn existing_id_finds_connection() {
             let temp_dir = TempDir::new().unwrap();
-            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let store = store_with_test_secret_store(temp_dir.path().to_path_buf());
 
             let profile = make_test_profile("Test");
             store.save(&profile).unwrap();
@@ -1091,7 +1162,7 @@ password_ref = "connection:same"
         #[test]
         fn missing_id_returns_none() {
             let temp_dir = TempDir::new().unwrap();
-            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let store = store_with_test_secret_store(temp_dir.path().to_path_buf());
 
             let found = store.find_by_id(&ConnectionId::new()).unwrap();
 
@@ -1132,7 +1203,7 @@ path = ""
 "#;
             fs::write(&config_path, content).unwrap();
 
-            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let store = store_with_test_secret_store(temp_dir.path().to_path_buf());
             let result = store.load_all();
 
             assert!(matches!(
@@ -1148,7 +1219,7 @@ path = ""
         #[test]
         fn matches_config_file_path() {
             let temp_dir = TempDir::new().unwrap();
-            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let store = store_with_test_secret_store(temp_dir.path().to_path_buf());
 
             let path = store.storage_path();
 
@@ -1178,7 +1249,7 @@ ssl_mode = "prefer"
 "#;
             fs::write(&config_path, v1_content).unwrap();
 
-            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let store = store_with_test_secret_store(temp_dir.path().to_path_buf());
             let profile = make_test_profile("New Connection");
             let result = store.save(&profile);
 
@@ -1201,7 +1272,7 @@ ssl_mode = "prefer"
         #[test]
         fn leaves_no_temp_file() {
             let temp_dir = TempDir::new().unwrap();
-            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let store = store_with_test_secret_store(temp_dir.path().to_path_buf());
             let profile = make_test_profile("Test");
 
             store.save(&profile).unwrap();
@@ -1223,7 +1294,7 @@ ssl_mode = "prefer"
         #[test]
         fn existing_file_preserved_on_save_roundtrip() {
             let temp_dir = TempDir::new().unwrap();
-            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let store = store_with_test_secret_store(temp_dir.path().to_path_buf());
 
             let profile1 = make_test_profile("First");
             let mut profile2 = make_test_profile("Second");

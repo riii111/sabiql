@@ -26,6 +26,5 @@ pub use folder_opener::NativeFolderOpener;
 pub use postgres::{PgServiceFileReader, PostgresAdapter};
 pub use query_history::FileQueryHistoryStore;
 pub use registry::DbAdapterRegistry;
-pub(crate) use secret_store::{PlatformSecretStore, SecretStore};
 pub use settings_store::TomlSettingsStore;
 pub use sqlite::{FsSqlitePathValidator, SqliteAdapter};
