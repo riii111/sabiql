@@ -37,17 +37,6 @@ impl TomlConnectionStore {
         }
     }
 
-    #[cfg(test)]
-    fn with_config_dir_and_secret_store(
-        config_dir: PathBuf,
-        secret_store: Arc<dyn SecretStore>,
-    ) -> Self {
-        Self {
-            config_dir,
-            secret_store,
-        }
-    }
-
     pub fn storage_path(&self) -> PathBuf {
         config_file_path(&self.config_dir)
     }
@@ -207,6 +196,8 @@ impl ConnectionStore for TomlConnectionStore {
         let password = Self::password(profile).filter(|password| !password.is_empty());
 
         if let Some(password) = password {
+            let previous_config = config.clone();
+            config.version = CURRENT_VERSION;
             let reference = old_ref.as_ref().map_or_else(
                 || Self::password_ref(profile),
                 |_| Self::replacement_password_ref(profile),
@@ -217,7 +208,6 @@ impl ConnectionStore for TomlConnectionStore {
                 profile,
                 Some(reference.clone()),
             );
-            let previous_config = config.clone();
             replace_entry(&mut config.connections, entry);
             if let Err(error) = self.write_config(&config) {
                 let _ = self.secret_store.delete(&reference);
@@ -439,17 +429,17 @@ mod tests {
         temp_dir: &TempDir,
         secret_store: Arc<RecordingSecretStore>,
     ) -> TomlConnectionStore {
-        TomlConnectionStore::with_config_dir_and_secret_store(
-            temp_dir.path().to_path_buf(),
+        TomlConnectionStore {
+            config_dir: temp_dir.path().to_path_buf(),
             secret_store,
-        )
+        }
     }
 
     fn store_with_test_secret_store(config_dir: PathBuf) -> TomlConnectionStore {
-        TomlConnectionStore::with_config_dir_and_secret_store(
+        TomlConnectionStore {
             config_dir,
-            Arc::new(TestSecretStore::default()),
-        )
+            secret_store: Arc::new(TestSecretStore::default()),
+        }
     }
 
     fn make_test_profile(name: &str) -> ConnectionProfile {
@@ -504,7 +494,7 @@ ssl_mode = "prefer"
                 result,
                 Err(ConnectionStoreError::VersionMismatch {
                     found: 1,
-                    expected: 3
+                    expected: 4
                 })
             ));
         }
@@ -727,6 +717,8 @@ ssl_mode = "prefer"
             assert!(content.contains("password_ref = \"connection:legacy-one\""));
             assert!(!content.contains("one-password"));
             assert!(content.contains("password = \"two-password\""));
+            let config: ConnectionConfigFile = toml::from_str(&content).unwrap();
+            assert_eq!(config.version, CURRENT_VERSION);
         }
 
         #[test]
@@ -1257,7 +1249,7 @@ ssl_mode = "prefer"
                 result,
                 Err(ConnectionStoreError::VersionMismatch {
                     found: 1,
-                    expected: 3
+                    expected: 4
                 })
             ));
 

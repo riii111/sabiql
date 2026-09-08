@@ -107,6 +107,7 @@ impl SettingsStore for TomlSettingsStore {
                 clipboard_backend: None,
                 connections: vec![],
             });
+        config.version = CURRENT_VERSION;
         set_app_settings(&mut config, settings);
         let content = toml::to_string_pretty(&config)?;
         let content_with_header = render_config_file(&content);
@@ -230,6 +231,7 @@ ssl_mode = "prefer"
 
         let content = fs::read_to_string(dir.path().join(CONFIG_FILE_NAME)).unwrap();
         let config: ConnectionConfigFile = toml::from_str(&content).unwrap();
+        assert_eq!(config.version, CURRENT_VERSION);
         assert_eq!(
             config.connections[0].password.as_deref(),
             Some("legacy-password")

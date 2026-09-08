@@ -11,9 +11,9 @@ use crate::domain::connection::{
     SqliteConnectionConfig, SqliteConnectionConfigError, SslMode,
 };
 
-pub(crate) const CURRENT_VERSION: u32 = 3;
-// Version 2 remains readable because older config files omit db_type and map to PostgreSQL.
-const SUPPORTED_CONFIG_VERSIONS: &[u32] = &[2, CURRENT_VERSION];
+pub(crate) const CURRENT_VERSION: u32 = 4;
+// Versions 2 and 3 remain readable; older config files omit db_type and map to PostgreSQL.
+const SUPPORTED_CONFIG_VERSIONS: &[u32] = &[2, 3, CURRENT_VERSION];
 
 pub(crate) fn is_supported_config_version(version: u32) -> bool {
     SUPPORTED_CONFIG_VERSIONS.contains(&version)
