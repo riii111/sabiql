@@ -24,6 +24,7 @@ pub(super) fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) ->
                     | ConnectionField::Transport
                     | ConnectionField::SslMode
                     | ConnectionField::CleartextAuth
+                    | ConnectionField::GetServerPublicKey
             ))
     {
         return Action::ConnectionSetupSave;
@@ -53,6 +54,7 @@ pub(super) fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) ->
                     | ConnectionField::Transport
                     | ConnectionField::SslMode
                     | ConnectionField::CleartextAuth
+                    | ConnectionField::GetServerPublicKey
             ) =>
         {
             Action::ConnectionSetupToggleDropdown

@@ -485,6 +485,7 @@ pub(in crate::update) fn validate_field(state: &mut ConnectionSetupState, field:
                 state.set_validation_error(field, "Requires TLS");
             }
         }
+        ConnectionField::GetServerPublicKey if state.database_type() == DatabaseType::MySQL => {}
         ConnectionField::SslMode if state.database_type() == DatabaseType::MySQL => {
             if state.mysql_transport() == MySqlTransport::NamedPipe
                 && !matches!(
@@ -513,6 +514,7 @@ pub(in crate::update) fn validate_field(state: &mut ConnectionSetupState, field:
         | ConnectionField::SslCert
         | ConnectionField::SslKey
         | ConnectionField::ServerPublicKeyPath
+        | ConnectionField::GetServerPublicKey
         | ConnectionField::CleartextAuth => {}
     }
 }

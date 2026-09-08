@@ -1,5 +1,6 @@
 ---
 source: src/tests/render_snapshots/connection_flow.rs
+assertion_line: 105
 expression: output
 ---
 test_project ▸ - ▸ -                                                                                                                 not loaded | localhost:5432/test
@@ -30,6 +31,7 @@ test_project ▸ - ▸ -                                                        
 │                                       │┌ [3] Resul│  SSL Mode:   [ PREFERRED                ▼ ]                │──────────────────────────────────────────────────┐
 │                                       ││(select a │  Cleartext:  [ enabled                  ▼ ]                │                                                  │
 │                                       ││          │  Server Key: [                            ]                │                                                  │
+│                                       ││          │  Get Server: [ disabled                 ▼ ]                │                                                  │
 │                                       ││          │  Cert Path:  [                            ]                │                                                  │
 │                                       ││          │  Key Path:   [                            ]                │                                                  │
 │                                       ││          │                                                            │                                                  │
@@ -38,7 +40,6 @@ test_project ▸ - ▸ -                                                        
 │                                       ││          │  Note: Connection info is stored locally in plain text     │                                                  │
 │                                       ││          │                                                            │                                                  │
 │                                       ││          ╰ Tab/⇧Tab: Field │ Enter: Toggle │ ^S: Connect │ Esc: Cancel╯                                                  │
-│                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

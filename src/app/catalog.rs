@@ -549,7 +549,11 @@ fn connection_setup_current_rows(
 ) -> Vec<HelpRow> {
     let is_dropdown_field = matches!(
         focused_field,
-        ConnectionField::DatabaseType | ConnectionField::Transport | ConnectionField::SslMode
+        ConnectionField::DatabaseType
+            | ConnectionField::Transport
+            | ConnectionField::SslMode
+            | ConnectionField::CleartextAuth
+            | ConnectionField::GetServerPublicKey
     );
     let submit = if is_dropdown_field {
         &connection_setup::ENTER_DROPDOWN

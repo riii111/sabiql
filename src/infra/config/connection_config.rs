@@ -67,6 +67,8 @@ pub(crate) struct ConnectionConfigEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mysql_server_public_key_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mysql_get_server_public_key: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mysql_enable_cleartext_plugin: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mysql_transport: Option<MySqlTransport>,
@@ -118,6 +120,7 @@ impl From<&ConnectionProfile> for ConnectionConfigEntry {
             mysql_ssl_cert: None,
             mysql_ssl_key: None,
             mysql_server_public_key_path: None,
+            mysql_get_server_public_key: None,
             mysql_enable_cleartext_plugin: None,
             mysql_transport: None,
             mysql_transport_path: None,
@@ -154,6 +157,7 @@ impl From<&ConnectionProfile> for ConnectionConfigEntry {
                 entry
                     .mysql_server_public_key_path
                     .clone_from(&config.server_public_key_path);
+                entry.mysql_get_server_public_key = config.get_server_public_key.then_some(true);
                 entry.mysql_enable_cleartext_plugin =
                     config.enable_cleartext_plugin.then_some(true);
                 entry
@@ -220,6 +224,9 @@ impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
                             entry.mysql_ssl_key.clone(),
                         )
                         .with_server_public_key_path(entry.mysql_server_public_key_path.clone())
+                        .with_get_server_public_key(
+                            entry.mysql_get_server_public_key.unwrap_or(false),
+                        )
                         .with_transport(transport, entry.mysql_transport_path.clone())
                         .with_cleartext_auth_plugin(
                             entry.mysql_enable_cleartext_plugin.unwrap_or(false),
@@ -307,6 +314,7 @@ mod tests {
             mysql_ssl_cert: None,
             mysql_ssl_key: None,
             mysql_server_public_key_path: None,
+            mysql_get_server_public_key: None,
             mysql_enable_cleartext_plugin: None,
             mysql_transport: None,
             mysql_transport_path: None,
@@ -330,6 +338,7 @@ mod tests {
             mysql_ssl_cert: None,
             mysql_ssl_key: None,
             mysql_server_public_key_path: None,
+            mysql_get_server_public_key: None,
             mysql_enable_cleartext_plugin: None,
             mysql_transport: None,
             mysql_transport_path: None,
@@ -353,6 +362,7 @@ mod tests {
             mysql_ssl_cert: None,
             mysql_ssl_key: None,
             mysql_server_public_key_path: None,
+            mysql_get_server_public_key: None,
             mysql_enable_cleartext_plugin: None,
             mysql_transport: None,
             mysql_transport_path: None,
@@ -475,6 +485,7 @@ mod tests {
         assert_eq!(serialized.mysql_ssl_mode, Some(MySqlSslMode::Required));
         assert_eq!(serialized.port, Some(3306));
         assert_eq!(serialized.password.as_deref(), Some("p@ss#word"));
+        assert_eq!(serialized.mysql_get_server_public_key, None);
     }
 
     #[cfg(unix)]
@@ -541,6 +552,7 @@ mod tests {
     fn mysql_entry_round_trips_server_public_key_path() {
         let mut entry = mysql_entry(Some("app"));
         entry.mysql_server_public_key_path = Some(r"C:\keys\server-public.pem".to_string());
+        entry.mysql_get_server_public_key = Some(true);
 
         let profile = ConnectionProfile::try_from(&entry).unwrap();
         assert_eq!(
@@ -551,12 +563,14 @@ mod tests {
                 .as_deref(),
             Some(r"C:\keys\server-public.pem")
         );
+        assert!(profile.mysql_config().unwrap().get_server_public_key);
 
         let serialized = ConnectionConfigEntry::from(&profile);
         assert_eq!(
             serialized.mysql_server_public_key_path,
             entry.mysql_server_public_key_path
         );
+        assert_eq!(serialized.mysql_get_server_public_key, Some(true));
     }
 
     #[test]

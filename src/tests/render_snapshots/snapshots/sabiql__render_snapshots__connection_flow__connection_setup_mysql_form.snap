@@ -1,12 +1,12 @@
 ---
 source: src/tests/render_snapshots/connection_flow.rs
+assertion_line: 86
 expression: output
 ---
 test_project ▸ - ▸ -                                                                                                                 not loaded | localhost:5432/test
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
 │ Press 'r' to load metadata            │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                       ││(select a table)                                                                                                          │
-│                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -26,11 +26,12 @@ test_project ▸ - ▸ -                                                        
 │                                       ││          │  Host:       [ localhost                  ]                │                                                  │
 │                                       ││          │  Port:       [ 3306                       ]                │                                                  │
 │                                       ││          │  Database:   [ app                        ]                │                                                  │
-│                                       │└──────────│  User:       [ mysql_user                 ]                │──────────────────────────────────────────────────┘
-│                                       │┌ [3] Resul│  Password:   [ empty = no password        ]                │──────────────────────────────────────────────────┐
-│                                       ││(select a │  SSL Mode:   [ PREFERRED                ▼ ]                │                                                  │
-│                                       ││          │  Cleartext:  [ disabled                 ▼ ]                │                                                  │
+│                                       ││          │  User:       [ mysql_user                 ]                │                                                  │
+│                                       │└──────────│  Password:   [ empty = no password        ]                │──────────────────────────────────────────────────┘
+│                                       │┌ [3] Resul│  SSL Mode:   [ PREFERRED                ▼ ]                │──────────────────────────────────────────────────┐
+│                                       ││(select a │  Cleartext:  [ disabled                 ▼ ]                │                                                  │
 │                                       ││          │  Server Key: [                            ]                │                                                  │
+│                                       ││          │  Get Server: [ disabled                 ▼ ]                │                                                  │
 │                                       ││          │  Cert Path:  [                            ]                │                                                  │
 │                                       ││          │  Key Path:   [                            ]                │                                                  │
 │                                       ││          │                                                            │                                                  │

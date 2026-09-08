@@ -82,7 +82,8 @@ pub(in crate::update) fn reduce_connection_setup(
                 ConnectionField::DatabaseType
                 | ConnectionField::Transport
                 | ConnectionField::SslMode
-                | ConnectionField::CleartextAuth => {}
+                | ConnectionField::CleartextAuth
+                | ConnectionField::GetServerPublicKey => {}
                 _ => {
                     let field = setup.focused_field();
                     if let Some(input) = setup.focused_input_mut()
@@ -351,7 +352,8 @@ fn insert_form_text(setup: &mut ConnectionSetupState, text: &str) {
         ConnectionField::DatabaseType
         | ConnectionField::Transport
         | ConnectionField::SslMode
-        | ConnectionField::CleartextAuth => {}
+        | ConnectionField::CleartextAuth
+        | ConnectionField::GetServerPublicKey => {}
         field => {
             if let Some(input) = setup.focused_input_mut() {
                 let remaining = remaining_input_capacity(field, input.char_count());

@@ -392,6 +392,9 @@ fn serialize_option_file(target: &MySqlDsn) -> String {
         push_option(&mut contents, "database", database);
     }
     push_option(&mut contents, "ssl-mode", &target.ssl_mode.to_string());
+    if target.get_server_public_key {
+        push_option(&mut contents, "get-server-public-key", "true");
+    }
     if target.enable_cleartext_plugin {
         push_option(&mut contents, "enable-cleartext-plugin", "true");
     }
@@ -510,6 +513,7 @@ mod tests {
             ssl_cert: None,
             ssl_key: None,
             server_public_key_path: None,
+            get_server_public_key: false,
             enable_cleartext_plugin: false,
         }
     }
@@ -586,6 +590,40 @@ mod tests {
         let option_file = MySqlOptionFile::create(&target).unwrap();
         let contents = fs::read_to_string(&option_file.path).unwrap();
 
+        assert!(contents.contains(&format!(
+            "server-public-key-path = {}\n",
+            quote_option_value(&key.display().to_string())
+        )));
+    }
+
+    #[test]
+    fn option_file_serializes_server_public_key_retrieval() {
+        let target = MySqlDsn {
+            get_server_public_key: true,
+            ..target()
+        };
+
+        let option_file = MySqlOptionFile::create(&target).unwrap();
+        let contents = fs::read_to_string(&option_file.path).unwrap();
+
+        assert!(contents.contains("get-server-public-key = \"true\"\n"));
+    }
+
+    #[test]
+    fn option_file_keeps_a_valid_key_path_alongside_retrieval_option() {
+        let directory = tempfile::tempdir().unwrap();
+        let key = directory.path().join("server-key.pem");
+        fs::write(&key, VALID_PUBLIC_KEY_PEM).unwrap();
+        let target = MySqlDsn {
+            server_public_key_path: Some(key.display().to_string()),
+            get_server_public_key: true,
+            ..target()
+        };
+
+        let option_file = MySqlOptionFile::create(&target).unwrap();
+        let contents = fs::read_to_string(&option_file.path).unwrap();
+
+        assert!(contents.contains("get-server-public-key = \"true\"\n"));
         assert!(contents.contains(&format!(
             "server-public-key-path = {}\n",
             quote_option_value(&key.display().to_string())

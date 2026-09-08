@@ -22,6 +22,7 @@ pub(super) struct MySqlDsn {
     pub(super) ssl_cert: Option<String>,
     pub(super) ssl_key: Option<String>,
     pub(super) server_public_key_path: Option<String>,
+    pub(super) get_server_public_key: bool,
     pub(super) enable_cleartext_plugin: bool,
 }
 
@@ -41,6 +42,7 @@ impl fmt::Debug for MySqlDsn {
             .field("ssl_cert", &self.ssl_cert)
             .field("ssl_key", &self.ssl_key)
             .field("server_public_key_path", &self.server_public_key_path)
+            .field("get_server_public_key", &self.get_server_public_key)
             .field("enable_cleartext_plugin", &self.enable_cleartext_plugin)
             .finish()
     }
@@ -85,6 +87,10 @@ fn build_mysql_dsn(config: &MySqlConnectionConfig) -> String {
     if let Some(path) = config.server_public_key_path.as_deref() {
         url.query_pairs_mut()
             .append_pair("server-public-key-path", path);
+    }
+    if config.get_server_public_key {
+        url.query_pairs_mut()
+            .append_pair("get-server-public-key", "true");
     }
     if config.enable_cleartext_plugin {
         url.query_pairs_mut()
@@ -149,6 +155,18 @@ pub(super) fn parse_mysql_dsn(dsn: &str) -> Result<MySqlDsn, DbOperationError> {
     let server_public_key_path = url
         .query_pairs()
         .find_map(|(key, value)| (key == "server-public-key-path").then(|| value.into_owned()));
+    let get_server_public_key = url
+        .query_pairs()
+        .find_map(|(key, value)| (key == "get-server-public-key").then(|| value.into_owned()))
+        .map(|value| match value.as_str() {
+            "true" => Ok(true),
+            "false" => Ok(false),
+            _ => Err(DbOperationError::ConnectionFailed(
+                "Invalid MySQL server public key retrieval setting".to_string(),
+            )),
+        })
+        .transpose()?
+        .unwrap_or(false);
     let enable_cleartext_plugin = url
         .query_pairs()
         .find_map(|(key, value)| (key == "enable-cleartext-plugin").then(|| value.into_owned()))
@@ -186,6 +204,7 @@ pub(super) fn parse_mysql_dsn(dsn: &str) -> Result<MySqlDsn, DbOperationError> {
         ssl_cert,
         ssl_key,
         server_public_key_path,
+        get_server_public_key,
         enable_cleartext_plugin,
     })
 }
@@ -565,6 +584,40 @@ mod tests {
     }
 
     #[test]
+    fn builds_and_parses_mysql_dsn_with_server_public_key_retrieval() {
+        let config = MySqlConnectionConfig::new(
+            "127.0.0.1",
+            3306,
+            Some("app".to_string()),
+            "user",
+            "password",
+            MySqlSslMode::Disabled,
+        )
+        .with_get_server_public_key(true);
+
+        let dsn = build_mysql_dsn(&config);
+        assert!(dsn.contains("get-server-public-key=true"));
+        let parsed = parse_mysql_dsn(&dsn).unwrap();
+
+        assert!(parsed.get_server_public_key);
+    }
+
+    #[test]
+    fn server_public_key_retrieval_defaults_to_disabled_and_rejects_invalid_values() {
+        let parsed = parse_mysql_dsn("mysql://user:password@localhost:3306/app").unwrap();
+        assert!(!parsed.get_server_public_key);
+
+        let error =
+            parse_mysql_dsn("mysql://user:password@localhost:3306/app?get-server-public-key=maybe")
+                .unwrap_err();
+        assert!(matches!(
+            error,
+            DbOperationError::ConnectionFailed(details)
+                if details == "Invalid MySQL server public key retrieval setting"
+        ));
+    }
+
+    #[test]
     fn builds_and_parses_mysql_dsn_with_cleartext_auth_plugin() {
         let config = MySqlConnectionConfig::new(
             "db.example",
@@ -704,6 +757,7 @@ mod tests {
                 ssl_cert: None,
                 ssl_key: None,
                 server_public_key_path: None,
+                get_server_public_key: false,
                 enable_cleartext_plugin: false,
             };
             match field {
