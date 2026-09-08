@@ -73,6 +73,8 @@ sabiql uses the CLI for the database you want to open:
 
 Graphviz is required only for PostgreSQL and MySQL ER diagrams. SQLite does not support ER diagrams.
 
+ER diagrams are generated and opened on the host running sabiql. Running sabiql itself on an SSH or other headless host is outside the guaranteed workflow for ER generation and viewer display; a local sabiql instance connecting to a database through an SSH tunnel remains supported.
+
 Windows support is experimental.
 
 See [MySQL support and limitations](docs/mysql.md) and [SQLite support and limitations](docs/sqlite.md) for supported versions and database-specific limitations.
