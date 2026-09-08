@@ -19,6 +19,10 @@ pub enum ConnectionStoreError {
     DuplicateName(String),
     #[error("Connection not found: {0}")]
     NotFound(String),
+    #[error("Invalid password reference: {0}")]
+    InvalidPasswordReference(String),
+    #[error("Duplicate password reference: {0}")]
+    DuplicatePasswordReference(String),
     #[error("Secret store error: {0}")]
     SecretStore(#[from] SecretStoreError),
 }

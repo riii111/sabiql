@@ -47,7 +47,7 @@ apple-native-keyring-store = { version = "1", features = ["keychain"] }
 windows-native-keyring-store = "1"
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]
-dbus-secret-service-keyring-store = { version = "1", features = ["crypto-rust"] }
+dbus-secret-service-keyring-store = { version = "1", features = ["crypto-rust", "vendored"] }
 
 [dev-dependencies]
 rstest.workspace = true

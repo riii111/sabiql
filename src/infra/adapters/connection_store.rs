@@ -1,61 +1,25 @@
-#[cfg(test)]
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
-#[cfg(test)]
-use std::sync::Mutex;
 
 use super::app_config_file::{
     self, config_file_path, get_config_dir as app_config_dir, render_config_file, write_config_file,
 };
+use crate::app::ports::outbound::SecretStore;
 use crate::app::ports::outbound::connection_store::{ConnectionStore, ConnectionStoreError};
-use crate::app::ports::outbound::{SecretStore, SecretStoreError};
 use crate::config::{
     CURRENT_VERSION, ConfigVersionCheck, ConnectionConfigEntry, ConnectionConfigFile,
     is_supported_config_version,
 };
 use crate::domain::connection::{ConnectionConfig, ConnectionId, ConnectionProfile, DatabaseType};
+use uuid::Uuid;
 
 use super::PlatformSecretStore;
 
 pub struct TomlConnectionStore {
     config_dir: PathBuf,
     secret_store: Arc<dyn SecretStore>,
-}
-
-#[cfg(test)]
-#[derive(Default)]
-struct TestSecretStore {
-    values: Mutex<HashMap<String, String>>,
-}
-
-#[cfg(test)]
-impl SecretStore for TestSecretStore {
-    fn set(&self, reference: &str, secret: &str) -> Result<(), SecretStoreError> {
-        self.values
-            .lock()
-            .expect("test secret store lock poisoned")
-            .insert(reference.to_string(), secret.to_string());
-        Ok(())
-    }
-
-    fn get(&self, reference: &str) -> Result<String, SecretStoreError> {
-        self.values
-            .lock()
-            .expect("test secret store lock poisoned")
-            .get(reference)
-            .cloned()
-            .ok_or(SecretStoreError::OperationFailed)
-    }
-
-    fn delete(&self, reference: &str) -> Result<(), SecretStoreError> {
-        self.values
-            .lock()
-            .expect("test secret store lock poisoned")
-            .remove(reference);
-        Ok(())
-    }
 }
 
 impl TomlConnectionStore {
@@ -80,7 +44,10 @@ impl TomlConnectionStore {
 
     #[cfg(test)]
     pub fn with_config_dir(config_dir: PathBuf) -> Self {
-        Self::with_config_dir_and_secret_store(config_dir, Arc::new(TestSecretStore::default()))
+        Self::with_config_dir_and_secret_store(
+            config_dir,
+            Arc::new(tests::TestSecretStore::default()),
+        )
     }
 
     pub fn storage_path(&self) -> PathBuf {
@@ -118,6 +85,7 @@ impl TomlConnectionStore {
         &self,
         config: &ConnectionConfigFile,
     ) -> Result<Vec<ConnectionProfile>, ConnectionStoreError> {
+        validate_password_refs(config)?;
         config
             .connections
             .iter()
@@ -166,15 +134,8 @@ impl TomlConnectionStore {
         format!("connection:{}", profile.id)
     }
 
-    fn rollback_secret(
-        &self,
-        reference: &str,
-        previous: Option<&str>,
-    ) -> Result<(), SecretStoreError> {
-        match previous {
-            Some(secret) => self.secret_store.set(reference, secret),
-            None => self.secret_store.delete(reference),
-        }
+    fn replacement_password_ref(profile: &ConnectionProfile) -> String {
+        format!("{}:{}", Self::password_ref(profile), Uuid::new_v4())
     }
 }
 
@@ -214,31 +175,36 @@ impl ConnectionStore for TomlConnectionStore {
         let password = Self::password(profile).filter(|password| !password.is_empty());
 
         if let Some(password) = password {
-            let reference = old_ref
-                .clone()
-                .unwrap_or_else(|| Self::password_ref(profile));
-            let previous = old_ref
-                .as_deref()
-                .map(|reference| self.secret_store.get(reference))
-                .transpose()?;
+            let reference = old_ref.as_ref().map_or_else(
+                || Self::password_ref(profile),
+                |_| Self::replacement_password_ref(profile),
+            );
             self.secret_store.set(&reference, password)?;
             let entry = ConnectionConfigEntry::from_profile_with_password_ref(
                 profile,
                 Some(reference.clone()),
             );
+            let previous_config = config.clone();
             replace_entry(&mut config.connections, entry);
             if let Err(error) = self.write_config(&config) {
-                let _ = self.rollback_secret(&reference, previous.as_deref());
+                let _ = self.secret_store.delete(&reference);
                 return Err(error);
             }
-        } else if let Some(reference) = old_ref.as_deref() {
-            let previous = self.secret_store.get(reference)?;
-            self.secret_store.delete(reference)?;
+            if let Some(old_ref) = old_ref
+                && let Err(error) = self.secret_store.delete(&old_ref)
+            {
+                let _ = self.write_config(&previous_config);
+                let _ = self.secret_store.delete(&reference);
+                return Err(error.into());
+            }
+        } else if let Some(reference) = old_ref {
+            let previous_config = config.clone();
             let entry = ConnectionConfigEntry::from_profile_with_password_ref(profile, None);
             replace_entry(&mut config.connections, entry);
-            if let Err(error) = self.write_config(&config) {
-                let _ = self.rollback_secret(reference, Some(&previous));
-                return Err(error);
+            self.write_config(&config)?;
+            if let Err(error) = self.secret_store.delete(&reference) {
+                let _ = self.write_config(&previous_config);
+                return Err(error.into());
             }
         } else {
             let entry = ConnectionConfigEntry::from_profile_with_password_ref(profile, None);
@@ -271,19 +237,14 @@ impl ConnectionStore for TomlConnectionStore {
         };
 
         let old_ref = config.connections[entry_index].password_ref.clone();
-        let previous = old_ref
-            .as_deref()
-            .map(|reference| self.secret_store.get(reference))
-            .transpose()?;
-        if let Some(reference) = old_ref.as_deref() {
-            self.secret_store.delete(reference)?;
-        }
+        let previous_config = config.clone();
         config.connections.remove(entry_index);
-        if let Err(error) = self.write_config(&config) {
-            if let (Some(reference), Some(previous)) = (old_ref.as_deref(), previous.as_deref()) {
-                let _ = self.secret_store.set(reference, previous);
-            }
-            return Err(error);
+        self.write_config(&config)?;
+        if let Some(reference) = old_ref
+            && let Err(error) = self.secret_store.delete(&reference)
+        {
+            let _ = self.write_config(&previous_config);
+            return Err(error.into());
         }
 
         Ok(())
@@ -298,16 +259,86 @@ fn replace_entry(entries: &mut Vec<ConnectionConfigEntry>, entry: ConnectionConf
     }
 }
 
+fn validate_password_refs(config: &ConnectionConfigFile) -> Result<(), ConnectionStoreError> {
+    let mut references = HashSet::new();
+    for entry in &config.connections {
+        let Some(reference) = entry.password_ref.as_deref() else {
+            continue;
+        };
+        if entry.db_type == DatabaseType::SQLite {
+            return Err(ConnectionStoreError::InvalidPasswordReference(
+                reference.to_string(),
+            ));
+        }
+        let stable_prefix = format!("connection:{}", entry.id);
+        let owned = reference == stable_prefix
+            || reference
+                .strip_prefix(&format!("{stable_prefix}:"))
+                .is_some_and(|suffix| Uuid::parse_str(suffix).is_ok());
+        if !owned {
+            return Err(ConnectionStoreError::InvalidPasswordReference(
+                reference.to_string(),
+            ));
+        }
+        if !references.insert(reference) {
+            return Err(ConnectionStoreError::DuplicatePasswordReference(
+                reference.to_string(),
+            ));
+        }
+        if entry.password.is_some() {
+            return Err(ConnectionStoreError::InvalidPasswordReference(
+                reference.to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::app_config_file::CONFIG_FILE_NAME;
     use super::*;
+    use crate::app::ports::outbound::SecretStoreError;
     use crate::domain::connection::SslMode;
     use crate::domain::connection::{
         ConnectionConfig, DatabaseType, MySqlSslMode, PostgresConnectionConfig,
     };
+    use std::collections::HashMap;
     use std::path::Path;
+    use std::sync::Mutex;
     use tempfile::TempDir;
+
+    #[derive(Default)]
+    pub(super) struct TestSecretStore {
+        values: Mutex<HashMap<String, String>>,
+    }
+
+    impl SecretStore for TestSecretStore {
+        fn set(&self, reference: &str, secret: &str) -> Result<(), SecretStoreError> {
+            self.values
+                .lock()
+                .expect("test secret store lock poisoned")
+                .insert(reference.to_string(), secret.to_string());
+            Ok(())
+        }
+
+        fn get(&self, reference: &str) -> Result<String, SecretStoreError> {
+            self.values
+                .lock()
+                .expect("test secret store lock poisoned")
+                .get(reference)
+                .cloned()
+                .ok_or(SecretStoreError::OperationFailed)
+        }
+
+        fn delete(&self, reference: &str) -> Result<(), SecretStoreError> {
+            self.values
+                .lock()
+                .expect("test secret store lock poisoned")
+                .remove(reference);
+            Ok(())
+        }
+    }
 
     #[derive(Default)]
     struct RecordingSecretStore {
@@ -736,6 +767,85 @@ ssl_mode = "prefer"
         }
 
         #[test]
+        fn password_update_rotates_reference_before_removing_old_secret() {
+            let temp_dir = TempDir::new().unwrap();
+            let secret_store = Arc::new(RecordingSecretStore::default());
+            let store = store_with_secret_store(&temp_dir, Arc::clone(&secret_store));
+            let mut profile = make_test_profile("Production");
+            store.save(&profile).unwrap();
+            let initial: ConnectionConfigFile =
+                toml::from_str(&fs::read_to_string(store.storage_path()).unwrap()).unwrap();
+            let old_reference = initial.connections[0].password_ref.clone().unwrap();
+
+            profile.config = ConnectionConfig::PostgreSQL(PostgresConnectionConfig::new(
+                "localhost",
+                5432,
+                "testdb",
+                "testuser",
+                "newpass",
+                SslMode::Prefer,
+            ));
+            store.save(&profile).unwrap();
+
+            let updated: ConnectionConfigFile =
+                toml::from_str(&fs::read_to_string(store.storage_path()).unwrap()).unwrap();
+            let new_reference = updated.connections[0].password_ref.clone().unwrap();
+            assert_ne!(new_reference, old_reference);
+            assert_eq!(
+                store.load_all().unwrap()[0]
+                    .postgres_config()
+                    .unwrap()
+                    .password,
+                "newpass"
+            );
+            assert!(
+                !secret_store
+                    .state
+                    .lock()
+                    .unwrap()
+                    .values
+                    .contains_key(&old_reference)
+            );
+        }
+
+        #[test]
+        fn secret_cleanup_failure_restores_previous_connection() {
+            let temp_dir = TempDir::new().unwrap();
+            let secret_store = Arc::new(RecordingSecretStore::default());
+            let store = store_with_secret_store(&temp_dir, Arc::clone(&secret_store));
+            let mut profile = make_test_profile("Production");
+            store.save(&profile).unwrap();
+            let before = fs::read_to_string(store.storage_path()).unwrap();
+
+            profile.config = ConnectionConfig::PostgreSQL(PostgresConnectionConfig::new(
+                "localhost",
+                5432,
+                "testdb",
+                "testuser",
+                "newpass",
+                SslMode::Prefer,
+            ));
+            secret_store.delete_error(SecretStoreError::OperationFailed);
+
+            let result = store.save(&profile);
+
+            assert!(matches!(
+                result,
+                Err(ConnectionStoreError::SecretStore(
+                    SecretStoreError::OperationFailed
+                ))
+            ));
+            assert_eq!(fs::read_to_string(store.storage_path()).unwrap(), before);
+            assert_eq!(
+                store.load_all().unwrap()[0]
+                    .postgres_config()
+                    .unwrap()
+                    .password,
+                "testpass"
+            );
+        }
+
+        #[test]
         fn secret_store_failure_leaves_existing_config_unchanged() {
             let temp_dir = TempDir::new().unwrap();
             let secret_store = Arc::new(RecordingSecretStore::default());
@@ -754,6 +864,63 @@ ssl_mode = "prefer"
                 ))
             ));
             assert_eq!(fs::read_to_string(store.storage_path()).unwrap(), before);
+        }
+
+        #[test]
+        fn rejects_password_reference_owned_by_another_connection() {
+            let temp_dir = TempDir::new().unwrap();
+            let config_path = temp_dir.path().join(CONFIG_FILE_NAME);
+            fs::write(
+                &config_path,
+                r#"version = 3
+
+[[connections]]
+id = "first"
+name = "First"
+password_ref = "connection:second"
+"#,
+            )
+            .unwrap();
+            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+
+            let result = store.load_all();
+
+            assert!(matches!(
+                result,
+                Err(ConnectionStoreError::InvalidPasswordReference(reference))
+                    if reference == "connection:second"
+            ));
+        }
+
+        #[test]
+        fn rejects_duplicate_password_references() {
+            let temp_dir = TempDir::new().unwrap();
+            let config_path = temp_dir.path().join(CONFIG_FILE_NAME);
+            fs::write(
+                &config_path,
+                r#"version = 3
+
+[[connections]]
+id = "same"
+name = "First"
+password_ref = "connection:same"
+
+[[connections]]
+id = "same"
+name = "Second"
+password_ref = "connection:same"
+"#,
+            )
+            .unwrap();
+            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+
+            let result = store.load_all();
+
+            assert!(matches!(
+                result,
+                Err(ConnectionStoreError::DuplicatePasswordReference(reference))
+                    if reference == "connection:same"
+            ));
         }
 
         #[cfg(unix)]
