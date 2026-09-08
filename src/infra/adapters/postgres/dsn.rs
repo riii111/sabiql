@@ -112,14 +112,16 @@ fn take_uri_password(dsn: &str) -> Result<Option<(String, String)>, ()> {
             let segment_end = segment_start + segment.len();
             if let Some(equal_offset) = segment.find('=') {
                 let key = &segment[..equal_offset];
-                if key.eq_ignore_ascii_case("password") {
+                let is_password =
+                    decode_uri_component(key).is_ok_and(|key| key.eq_ignore_ascii_case("password"));
+                if is_password {
                     let value_start = segment_start + equal_offset + 1;
                     let encoded_password = &dsn[value_start..segment_end];
                     if !encoded_password.is_empty() {
-                        if password.is_none() {
-                            password = Some(decode_uri_component(encoded_password)?);
-                        } else {
-                            decode_uri_component(encoded_password)?;
+                        let decoded_password = decode_uri_component(encoded_password)?;
+                        if !decoded_password.is_empty() {
+                            // libpq applies later non-empty URI keywords last.
+                            password = Some(decoded_password);
                         }
                         ranges.push((value_start, segment_end));
                     }

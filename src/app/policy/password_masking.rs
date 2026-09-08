@@ -97,19 +97,46 @@ fn has_assignment_boundary(text: &str, pos: usize) -> bool {
 fn password_assignment_prefix_len(text: &str, pos: usize) -> Option<usize> {
     const KEYS: &[&str] = &["password", "sslpassword"];
 
-    let key = KEYS.iter().find(|key| {
-        has_assignment_boundary(text, pos) && starts_with_ascii_ignore_case(text, pos, key)
-    })?;
-
     let bytes = text.as_bytes();
-    let mut i = pos + key.len();
-    while bytes.get(i).is_some_and(u8::is_ascii_whitespace) {
+    if let Some(key) = KEYS.iter().find(|key| {
+        has_assignment_boundary(text, pos) && starts_with_ascii_ignore_case(text, pos, key)
+    }) {
+        let mut i = pos + key.len();
+        while bytes.get(i).is_some_and(u8::is_ascii_whitespace) {
+            i += 1;
+        }
+        if bytes.get(i) != Some(&b'=') {
+            return None;
+        }
         i += 1;
+        while bytes.get(i).is_some_and(u8::is_ascii_whitespace) {
+            i += 1;
+        }
+
+        return Some(i - pos);
     }
-    if bytes.get(i) != Some(&b'=') {
+
+    if !has_assignment_boundary(text, pos) {
         return None;
     }
-    i += 1;
+    let mut key_end = pos;
+    while bytes
+        .get(key_end)
+        .is_some_and(|byte| !byte.is_ascii_whitespace() && *byte != b'=')
+    {
+        key_end += 1;
+    }
+    let encoded_key = text.get(pos..key_end)?;
+    let decoded_key = urlencoding::decode(encoded_key).ok()?;
+    if !decoded_key.eq_ignore_ascii_case("password")
+        && !decoded_key.eq_ignore_ascii_case("sslpassword")
+    {
+        return None;
+    }
+    if bytes.get(key_end) != Some(&b'=') {
+        return None;
+    }
+    let mut i = key_end + 1;
     while bytes.get(i).is_some_and(u8::is_ascii_whitespace) {
         i += 1;
     }
@@ -137,7 +164,7 @@ fn mask_after_prefix(text: &str, find_prefix: impl Fn(usize) -> Option<usize>) -
 }
 
 fn is_assignment_terminator(byte: u8) -> bool {
-    byte.is_ascii_whitespace() || matches!(byte, b';' | b'\'' | b'"' | b',')
+    byte.is_ascii_whitespace() || matches!(byte, b';' | b'\'' | b'"' | b',' | b'&' | b'#')
 }
 
 fn skip_masked_assignment_value(text: &str, value_start: usize, result: &mut String) -> usize {
@@ -209,6 +236,10 @@ mod tests {
     #[case(
         "mysql://user:p@ss%23word@host:3306/db?ssl-mode=REQUIRED",
         "mysql://user:****@host:3306/db?ssl-mode=REQUIRED"
+    )]
+    #[case(
+        "postgresql://user@host/db?pass%77ord=secret&sslmode=require",
+        "postgresql://user@host/db?pass%77ord=****&sslmode=require"
     )]
     fn masks_passwords_in_urls(#[case] input: &str, #[case] expected: &str) {
         assert_eq!(mask_password(input), expected);

@@ -91,6 +91,7 @@ fn libpq_uri_password_is_absent_from_argv_when_url_parser_rejects_uri() {
     for dsn in [
         "postgresql://user:secret@/db?host=/var/run/postgresql",
         "postgresql://user:secret@host1,host2/db",
+        "postgresql://user@host/db?pass%77ord=secret",
     ] {
         let (cmd, passfile) =
             PostgresAdapter::build_psql_command(dsn, &[], &["-c", "SELECT 1"], false).unwrap();
@@ -104,6 +105,27 @@ fn libpq_uri_password_is_absent_from_argv_when_url_parser_rejects_uri() {
         assert!(args[0].contains("user@"));
         assert!(passfile.is_some());
     }
+}
+
+#[test]
+fn query_password_uses_last_non_empty_value() {
+    let dsn = "postgresql://user:first@host/db?password=second&pass%77ord=third";
+    let (cmd, passfile) =
+        PostgresAdapter::build_psql_command(dsn, &[], &["-c", "SELECT 1"], false).unwrap();
+    let args: Vec<_> = cmd
+        .as_std()
+        .get_args()
+        .map(|value| value.to_string_lossy().into_owned())
+        .collect();
+    let password_file = passfile.as_ref().unwrap().path.to_str().unwrap();
+    let password_file_contents = std::fs::read_to_string(password_file).unwrap();
+
+    assert!(
+        !args.iter().any(|arg| {
+            arg.contains("first") || arg.contains("second") || arg.contains("third")
+        })
+    );
+    assert!(password_file_contents.contains("third"));
 }
 
 #[test]

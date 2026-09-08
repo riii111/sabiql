@@ -141,7 +141,7 @@ impl fmt::Debug for PendingMySqlConnectionProbe {
 // where the aggregate API does not cover the exact semantics needed.
 // `set_connection_state` and `set_metadata_state` are test-only lifecycle
 // fixtures.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct BrowseSession {
     // -- co-dependent: connection lifecycle --
     connection_state: ConnectionState,
@@ -171,6 +171,48 @@ pub struct BrowseSession {
     database_generation: u64,
     read_only: bool,
     is_reloading: bool,
+}
+
+impl fmt::Debug for BrowseSession {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let dsn = self.dsn.as_deref().map(mask_password);
+        formatter
+            .debug_struct("BrowseSession")
+            .field("connection_state", &self.connection_state)
+            .field("metadata_state", &self.metadata_state)
+            .field("selected_table_key", &self.selected_table_key)
+            .field("table_detail_state", &self.table_detail_state)
+            .field("selection_generation", &self.selection_generation)
+            .field("metadata", &self.metadata)
+            .field("metadata_run", &self.metadata_run)
+            .field(
+                "metadata_detail_generation",
+                &self.metadata_detail_generation,
+            )
+            .field("effective_user", &self.effective_user)
+            .field("table_detail_run", &self.table_detail_run)
+            .field("connection_save_run", &self.connection_save_run)
+            .field("connection_save_guard", &self.connection_save_guard)
+            .field("dsn", &dsn)
+            .field("active_connection", &self.active_connection)
+            .field(
+                "mysql_connection_probe_run",
+                &self.mysql_connection_probe_run,
+            )
+            .field(
+                "pending_mysql_connection_probe",
+                &self.pending_mysql_connection_probe,
+            )
+            .field(
+                "mysql_lower_case_table_names",
+                &self.mysql_lower_case_table_names,
+            )
+            .field("connection_generation", &self.connection_generation)
+            .field("database_generation", &self.database_generation)
+            .field("read_only", &self.read_only)
+            .field("is_reloading", &self.is_reloading)
+            .finish()
+    }
 }
 
 impl Default for BrowseSession {

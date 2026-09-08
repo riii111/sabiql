@@ -112,7 +112,7 @@ impl CliUriTarget {
 fn stable_cli_connection_id(dsn: &str) -> ConnectionId {
     let identity = redact_uri_passwords(dsn);
     let id = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, identity.as_bytes());
-    ConnectionId::from_string(format!("cli:{id}"))
+    ConnectionId::from_string(format!("cli-uri-{id}"))
 }
 
 fn redact_uri_passwords(uri: &str) -> String {
@@ -143,7 +143,9 @@ fn redact_uri_passwords(uri: &str) -> String {
             let segment_end = segment_start + segment.len();
             if let Some(equal_offset) = segment.find('=') {
                 let key = &segment[..equal_offset];
-                if key.eq_ignore_ascii_case("password") {
+                let is_password =
+                    urlencoding::decode(key).is_ok_and(|key| key.eq_ignore_ascii_case("password"));
+                if is_password {
                     ranges.push((segment_start + equal_offset + 1, segment_end));
                 }
             }
@@ -300,6 +302,7 @@ mod tests {
             panic!("expected URI targets");
         };
         assert_eq!(first.id, second.id);
+        assert!(!first.id.as_str().contains(':'));
     }
 
     #[test]
