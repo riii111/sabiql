@@ -56,7 +56,7 @@ use sabiql_infra::export::DotExporter;
 use sabiql_ui::adapters::TuiAdapter;
 use sabiql_ui::tui::TuiRunner;
 
-#[derive(Parser, Debug)]
+#[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// SQLite path/DSN or PostgreSQL/MySQL URI (URI credentials may be visible in shell history and process arguments; use --connection-env NAME for an environment variable)
