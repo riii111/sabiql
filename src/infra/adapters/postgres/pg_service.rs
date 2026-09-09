@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -151,16 +152,9 @@ fn parse(content: &str, path: &Path) -> Vec<ServiceEntry> {
     }
 
     // libpq uses the first matching section.
-    let mut seen = std::collections::HashMap::new();
-    for (i, entry) in entries.iter().enumerate() {
-        seen.entry(entry.service_name.clone()).or_insert(i);
-    }
-    let mut unique_indices: Vec<usize> = seen.into_values().collect();
-    unique_indices.sort_unstable();
-    unique_indices
-        .into_iter()
-        .map(|i| entries[i].clone())
-        .collect()
+    let mut seen = HashSet::new();
+    entries.retain(|entry| seen.insert(entry.service_name.clone()));
+    entries
 }
 
 #[cfg(test)]

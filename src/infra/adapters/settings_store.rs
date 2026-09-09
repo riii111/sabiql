@@ -53,24 +53,12 @@ impl TomlSettingsStore {
     }
 
     fn load_config_file_lenient(&self) -> Result<Option<ConnectionConfigFile>, SettingsStoreError> {
-        let path = config_file_path(&self.config_dir);
-        if !path.exists() {
-            return Ok(None);
+        match self.load_config_file_strict() {
+            Err(
+                SettingsStoreError::TomlDeserialize(_) | SettingsStoreError::VersionMismatch { .. },
+            ) => Ok(None),
+            result => result,
         }
-
-        let content = fs::read_to_string(&path)?;
-        let Ok(version_check) = toml::from_str::<ConfigVersionCheck>(&content) else {
-            return Ok(None);
-        };
-
-        if !is_supported_config_version(version_check.version) {
-            return Ok(None);
-        }
-
-        let Ok(config) = toml::from_str::<ConnectionConfigFile>(&content) else {
-            return Ok(None);
-        };
-        Ok(Some(config))
     }
 
     fn load_config_file_strict(&self) -> Result<Option<ConnectionConfigFile>, SettingsStoreError> {

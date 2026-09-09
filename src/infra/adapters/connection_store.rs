@@ -110,19 +110,11 @@ impl TomlConnectionStore {
         let Some(reference) = entry.password_ref.as_deref() else {
             return Ok(entry.password.clone().unwrap_or_default());
         };
-        match self.get_secret(reference) {
+        match self.secret_store.get(reference) {
             Ok(password) => Ok(password),
             Err(SecretStoreError::NoEntry) => Ok(String::new()),
             Err(_) => Err(ConnectionStoreError::SecretStore),
         }
-    }
-
-    fn set_secret(&self, reference: &str, secret: &str) -> Result<(), SecretStoreError> {
-        self.secret_store.set(reference, secret)
-    }
-
-    fn get_secret(&self, reference: &str) -> Result<String, SecretStoreError> {
-        self.secret_store.get(reference)
     }
 
     fn delete_secret(&self, reference: &str) -> Result<(), ConnectionStoreError> {
@@ -202,7 +194,8 @@ impl ConnectionStore for TomlConnectionStore {
                 || Self::password_ref(profile),
                 |_| Self::replacement_password_ref(profile),
             );
-            self.set_secret(&reference, password)
+            self.secret_store
+                .set(&reference, password)
                 .map_err(|_| ConnectionStoreError::SecretStore)?;
             let entry = ConnectionConfigEntry::from_profile_with_password_ref(
                 profile,
