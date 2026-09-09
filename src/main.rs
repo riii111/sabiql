@@ -1,16 +1,6 @@
-#![allow(
-    clippy::disallowed_methods,
-    reason = "the main loop is the time source: it reads the clock and injects `now` into reducers"
-)]
-#![cfg_attr(
-    test,
-    allow(
-        unreachable_pub,
-        reason = "test support visibility is excluded from production API measurement"
-    )
-)]
-
 use std::cell::RefCell;
+use std::fmt;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -22,14 +12,24 @@ use tokio::time::sleep_until;
 mod panic_hooks;
 
 #[cfg(test)]
+#[allow(
+    clippy::disallowed_methods,
+    unreachable_pub,
+    reason = "test support constructs timestamps and shares helpers across test modules"
+)]
 mod tests;
 
 #[cfg(test)]
 #[path = "tests/render_snapshots/mod.rs"]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "snapshot tests construct timestamps with the real clock"
+)]
 mod render_snapshots;
 
 use sabiql_app::cmd::cli_sqlite::{
-    CliSqliteTarget, activate_cli_sqlite_connection, resolve_cli_sqlite_target,
+    CliSqliteActivateError, CliSqliteTarget, activate_cli_sqlite_connection,
+    resolve_cli_sqlite_target,
 };
 use sabiql_app::cmd::completion_engine::CompletionEngine;
 use sabiql_app::cmd::effect::Effect;
@@ -127,12 +127,29 @@ async fn main() -> Result<()> {
     let project_name = get_project_name(&project_root);
     let infrastructure = build_infrastructure()?;
     let app_settings = infrastructure.settings_store.load().unwrap_or_default();
-    let state = initialize_state(
+    let state = match initialize_state(
         project_name,
         app_settings,
         cli_sqlite.as_ref(),
         &infrastructure,
-    )?;
+    ) {
+        Ok(state) => state,
+        Err(InitializeStateError::VersionMismatch {
+            found,
+            expected,
+            path,
+        }) => {
+            eprintln!(
+                "Error: Configuration file version mismatch (found v{}, expected v{}).\n\
+                 Please delete {} and reconfigure.",
+                found,
+                expected,
+                path.display()
+            );
+            std::process::exit(1);
+        }
+        Err(error) => return Err(error.into()),
+    };
     let runtime = Runtime::new(state, infrastructure)?;
     Box::pin(runtime.run()).await
 }
@@ -159,17 +176,48 @@ fn build_infrastructure() -> Result<Infrastructure> {
     })
 }
 
-#[allow(
-    clippy::exit,
-    clippy::print_stderr,
-    reason = "configuration errors are reported before TUI initialization"
-)]
+#[derive(Debug)]
+enum InitializeStateError {
+    VersionMismatch {
+        found: u32,
+        expected: u32,
+        path: PathBuf,
+    },
+    CliSqlite(CliSqliteActivateError),
+}
+
+impl fmt::Display for InitializeStateError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::VersionMismatch { .. } => {
+                formatter.write_str("configuration file version mismatch")
+            }
+            Self::CliSqlite(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl std::error::Error for InitializeStateError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::VersionMismatch { .. } => None,
+            Self::CliSqlite(error) => Some(error),
+        }
+    }
+}
+
+impl From<CliSqliteActivateError> for InitializeStateError {
+    fn from(error: CliSqliteActivateError) -> Self {
+        Self::CliSqlite(error)
+    }
+}
+
 fn initialize_state(
     project_name: String,
     app_settings: AppSettings,
     cli_sqlite: Option<&CliSqliteTarget>,
     infrastructure: &Infrastructure,
-) -> Result<AppState> {
+) -> Result<AppState, InitializeStateError> {
     let mut state = AppState::new(project_name);
     apply_app_settings(&mut state, app_settings);
 
@@ -189,14 +237,11 @@ fn initialize_state(
             configure_initial_connection_view(&mut state, cli_sqlite.is_some(), true);
         }
         Err(ConnectionStoreError::VersionMismatch { found, expected }) if cli_sqlite.is_none() => {
-            eprintln!(
-                "Error: Configuration file version mismatch (found v{}, expected v{}).\n\
-                 Please delete {} and reconfigure.",
+            return Err(InitializeStateError::VersionMismatch {
                 found,
                 expected,
-                infrastructure.connection_store.storage_path().display()
-            );
-            std::process::exit(1);
+                path: infrastructure.connection_store.storage_path(),
+            });
         }
         Err(_) if cli_sqlite.is_none() => {
             state.connection_setup.set_first_run(true);
@@ -250,6 +295,10 @@ struct Runtime {
     services: AppServices,
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Runtime is the event-loop boundary that reads the clock and injects `now` into reducers"
+)]
 impl Runtime {
     fn new(state: AppState, infrastructure: Infrastructure) -> Result<Self> {
         let (action_tx, action_rx) = mpsc::channel::<Action>(256);
