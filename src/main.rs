@@ -1,15 +1,3 @@
-#![allow(
-    clippy::disallowed_methods,
-    reason = "the main loop is the time source: it reads the clock and injects `now` into reducers"
-)]
-#![cfg_attr(
-    test,
-    allow(
-        unreachable_pub,
-        reason = "test support visibility is excluded from production API measurement"
-    )
-)]
-
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::time::Instant;
@@ -22,14 +10,24 @@ use tokio::time::sleep_until;
 mod panic_hooks;
 
 #[cfg(test)]
+#[allow(
+    clippy::disallowed_methods,
+    unreachable_pub,
+    reason = "test support constructs timestamps and shares helpers across test modules"
+)]
 mod tests;
 
 #[cfg(test)]
 #[path = "tests/render_snapshots/mod.rs"]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "snapshot tests construct timestamps with the real clock"
+)]
 mod render_snapshots;
 
 use sabiql_app::cmd::cli_connection::{
-    activate_cli_connection, resolve_cli_connection_env, resolve_cli_connection_target,
+    CliConnectionTarget, activate_cli_connection, resolve_cli_connection_env,
+    resolve_cli_connection_target,
 };
 use sabiql_app::cmd::completion_engine::CompletionEngine;
 use sabiql_app::cmd::effect::Effect;
@@ -38,8 +36,8 @@ use sabiql_app::cmd::runner::{ConnectionDeps, EffectRunner, ErDeps, QueryDeps, U
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::input_mode::InputMode;
 use sabiql_app::ports::outbound::{
-    ConnectionStore, ConnectionStoreError, MySqlConnectionProbe, PgServiceEntryReader,
-    ServiceFileError, SqliteDiagnosticsProvider,
+    AppSettings, ClipboardWriter, ConnectionStore, ConnectionStoreError, MySqlConnectionProbe,
+    PgServiceEntryReader, ServiceFileError, SqliteDiagnosticsProvider,
 };
 use sabiql_app::services::AppServices;
 use sabiql_app::update::action::Action;
@@ -127,85 +125,77 @@ async fn main() -> Result<()> {
         }
     }
 
-    let cli_connection = match (args.database, args.connection_env) {
-        (Some(database), None) => Some(resolve_cli_connection_target(
-            &database,
-            &FsSqlitePathValidator,
-        )?),
-        (None, Some(name)) => Some(resolve_cli_connection_env(&name, &FsSqlitePathValidator)?),
-        (None, None) => None,
-        (Some(_), Some(_)) => unreachable!("clap rejects conflicting connection inputs"),
-    };
-
+    let cli_connection = resolve_cli_connection(args.database, args.connection_env)?;
     let project_root = find_project_root()?;
     let project_name = get_project_name(&project_root);
+    let infrastructure = build_infrastructure()?;
+    let app_settings = infrastructure.settings_store.load().unwrap_or_default();
+    let state = initialize_state(
+        project_name,
+        app_settings,
+        cli_connection.as_ref(),
+        &infrastructure,
+    )?;
+    let runtime = Runtime::new(state, infrastructure)?;
+    Box::pin(runtime.run()).await
+}
 
-    let (action_tx, mut action_rx) = mpsc::channel::<Action>(256);
+fn resolve_cli_connection(
+    database: Option<String>,
+    connection_env: Option<String>,
+) -> Result<Option<CliConnectionTarget>> {
+    match (database, connection_env) {
+        (Some(database), None) => Ok(Some(resolve_cli_connection_target(
+            &database,
+            &FsSqlitePathValidator,
+        )?)),
+        (None, Some(name)) => Ok(Some(resolve_cli_connection_env(
+            &name,
+            &FsSqlitePathValidator,
+        )?)),
+        (None, None) => Ok(None),
+        (Some(_), Some(_)) => unreachable!("clap rejects conflicting connection inputs"),
+    }
+}
 
-    let adapter_registry = Arc::new(DbAdapterRegistry::new());
-    let mysql_connection_probe: Arc<dyn MySqlConnectionProbe> = Arc::new(MySqlAdapter::new());
-    let sqlite_diagnostics: Arc<dyn SqliteDiagnosticsProvider> = Arc::new(SqliteAdapter::new());
-    let completion_engine = RefCell::new(CompletionEngine::new());
-    let connection_store = TomlConnectionStore::new()?;
-    let settings_store = TomlSettingsStore::new()?;
-    let app_settings = settings_store.load().unwrap_or_default();
+struct Infrastructure {
+    adapter_registry: Arc<DbAdapterRegistry>,
+    connection_store: Arc<TomlConnectionStore>,
+    settings_store: Arc<TomlSettingsStore>,
+    pg_service_entry_reader: Arc<dyn PgServiceEntryReader>,
+    clipboard: Arc<dyn ClipboardWriter>,
+}
+
+fn build_infrastructure() -> Result<Infrastructure> {
+    let settings_store = Arc::new(TomlSettingsStore::new()?);
     let clipboard = settings_store.load_clipboard()?;
-    let connection_store = Arc::new(connection_store);
-    let settings_store = Arc::new(settings_store);
+    Ok(Infrastructure {
+        adapter_registry: Arc::new(DbAdapterRegistry::new()),
+        connection_store: Arc::new(TomlConnectionStore::new()?),
+        settings_store,
+        pg_service_entry_reader: Arc::new(PgServiceFileReader::new()),
+        clipboard,
+    })
+}
 
-    let pg_service_entry_reader: Arc<dyn PgServiceEntryReader> =
-        Arc::new(PgServiceFileReader::new());
-
-    let effect_runner = EffectRunner::new(
-        Arc::clone(&adapter_registry) as _,
-        ConnectionDeps {
-            dsn_builder: Arc::clone(&adapter_registry) as _,
-            mysql_connection_probe,
-            connection_store: Arc::clone(&connection_store) as _,
-            pg_service_entry_reader: Arc::clone(&pg_service_entry_reader),
-            sqlite_path_validator: Arc::new(FsSqlitePathValidator),
-        },
-        QueryDeps {
-            query_executor: Arc::clone(&adapter_registry) as _,
-            query_history_store: Arc::new(FileQueryHistoryStore::new()),
-            sqlite_diagnostics,
-            cached_result_exporter: Arc::new(CsvCachedResultExporter),
-        },
-        ErDeps {
-            er_exporter: Arc::new(DotExporter::new()),
-            config_writer: Arc::new(FileConfigWriter::new()),
-            er_log_writer: Arc::new(FsErLogWriter),
-        },
-        UtilityDeps {
-            clipboard,
-            folder_opener: Arc::new(NativeFolderOpener),
-        },
-        Arc::clone(&settings_store) as _,
-        action_tx.clone(),
-    );
-
-    let services = AppServices {
-        ddl_generator: Arc::clone(&adapter_registry) as _,
-        dsn_builder: Arc::clone(&adapter_registry) as _,
-    };
-
+#[allow(
+    clippy::exit,
+    clippy::print_stderr,
+    reason = "configuration errors are reported before TUI initialization"
+)]
+fn initialize_state(
+    project_name: String,
+    app_settings: AppSettings,
+    cli_connection: Option<&CliConnectionTarget>,
+    infrastructure: &Infrastructure,
+) -> Result<AppState> {
     let mut state = AppState::new(project_name);
-    state.ui.set_theme(app_settings.theme_id);
-    state
-        .settings
-        .load_keymap_preset(app_settings.keymap_preset);
-    state.settings.load_er_browser(app_settings.er_browser);
+    apply_app_settings(&mut state, app_settings);
 
-    match connection_store.load_all() {
+    match infrastructure.connection_store.load_all() {
         Ok(profiles) if profiles.is_empty() => {
-            load_service_entries(&mut state, pg_service_entry_reader.as_ref());
-            if cli_connection.is_none() && state.service_entries().is_empty() {
-                state.connection_setup.set_first_run(true);
-                state.modal.set_mode(InputMode::ConnectionSetup);
-            } else if cli_connection.is_none() {
-                state.modal.set_mode(InputMode::ConnectionSelector);
-                state.ui.set_connection_list_selection(Some(0));
-            }
+            load_service_entries(&mut state, infrastructure.pg_service_entry_reader.as_ref());
+            configure_initial_connection_view(&mut state, cli_connection.is_some(), false);
         }
         Ok(mut profiles) => {
             profiles.sort_by(|a, b| {
@@ -214,12 +204,8 @@ async fn main() -> Result<()> {
                     .cmp(&b.display_name().to_lowercase())
             });
             state.set_connections(profiles);
-            load_service_entries(&mut state, pg_service_entry_reader.as_ref());
-
-            if cli_connection.is_none() {
-                state.modal.set_mode(InputMode::ConnectionSelector);
-                state.ui.set_connection_list_selection(Some(0));
-            }
+            load_service_entries(&mut state, infrastructure.pg_service_entry_reader.as_ref());
+            configure_initial_connection_view(&mut state, cli_connection.is_some(), true);
         }
         Err(ConnectionStoreError::VersionMismatch { found, expected })
             if cli_connection.is_none() =>
@@ -229,7 +215,7 @@ async fn main() -> Result<()> {
                  Please delete {} and reconfigure.",
                 found,
                 expected,
-                connection_store.storage_path().display()
+                infrastructure.connection_store.storage_path().display()
             );
             std::process::exit(1);
         }
@@ -240,69 +226,37 @@ async fn main() -> Result<()> {
         Err(_) => {}
     }
 
-    if let Some(target) = cli_connection.as_ref() {
+    if let Some(target) = cli_connection {
         activate_cli_connection(&mut state, target, &FsSqlitePathValidator)?;
     }
 
-    let mut tui = TuiRunner::new()?;
-    tui.enter()?;
+    Ok(state)
+}
 
-    let initial_size = tui.terminal().size()?;
-    state.ui.set_terminal_width(initial_size.width);
-    state.ui.set_terminal_height(initial_size.height);
+fn apply_app_settings(state: &mut AppState, app_settings: AppSettings) {
+    state.ui.set_theme(app_settings.theme_id);
+    state
+        .settings
+        .load_keymap_preset(app_settings.keymap_preset);
+    state.settings.load_er_browser(app_settings.er_browser);
+}
 
-    let mut runtime = Runtime {
-        state,
-        tui,
-        effect_runner,
-        completion_engine,
-        services,
-    };
-
-    if runtime.state.session.dsn().is_some() && runtime.state.input_mode() == InputMode::Normal {
-        runtime.process_action(Action::TryConnect).await?;
+fn configure_initial_connection_view(
+    state: &mut AppState,
+    has_cli_connection: bool,
+    has_saved_profiles: bool,
+) {
+    if has_cli_connection {
+        return;
     }
 
-    loop {
-        let now = Instant::now();
-        let deadline = next_animation_deadline(&runtime.state, now);
-
-        tokio::select! {
-            event = runtime.tui.next_event() => {
-                let event = event?;
-                let action = handle_event(event, &runtime.state);
-                if !action.is_none() {
-                    runtime.process_terminal_event_burst(action).await?;
-                }
-            }
-            Some(action) = action_rx.recv() => {
-                runtime.process_action(action).await?;
-            }
-            // Animation deadline reached (spinner, cursor blink, message timeout)
-            () = async {
-                match deadline {
-                    Some(d) => sleep_until(d.into()).await,
-                    None => std::future::pending::<()>().await,
-                }
-            } => {
-                runtime.process_action(Action::Render).await?;
-            }
-        }
-
-        if let Some(debounce_until) = runtime.state.sql_modal.completion_debounce()
-            && Instant::now() >= debounce_until
-        {
-            runtime.state.sql_modal.consume_completion_debounce();
-            runtime.process_action(Action::CompletionRequest).await?;
-        }
-
-        if runtime.state.should_quit {
-            break;
-        }
+    if !has_saved_profiles && state.service_entries().is_empty() {
+        state.connection_setup.set_first_run(true);
+        state.modal.set_mode(InputMode::ConnectionSetup);
+    } else {
+        state.modal.set_mode(InputMode::ConnectionSelector);
+        state.ui.set_connection_list_selection(Some(0));
     }
-
-    runtime.tui.exit()?;
-    Ok(())
 }
 
 const MAX_DEPTH: usize = 16;
@@ -311,12 +265,118 @@ const MAX_DRAIN: usize = 32;
 struct Runtime {
     state: AppState,
     tui: TuiRunner,
+    action_rx: mpsc::Receiver<Action>,
     effect_runner: EffectRunner,
     completion_engine: RefCell<CompletionEngine>,
     services: AppServices,
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Runtime is the event-loop boundary that reads the clock and injects `now` into reducers"
+)]
 impl Runtime {
+    fn new(state: AppState, infrastructure: Infrastructure) -> Result<Self> {
+        let (action_tx, action_rx) = mpsc::channel::<Action>(256);
+        let adapter_registry = infrastructure.adapter_registry;
+        let mysql_connection_probe: Arc<dyn MySqlConnectionProbe> = Arc::new(MySqlAdapter::new());
+        let sqlite_diagnostics: Arc<dyn SqliteDiagnosticsProvider> = Arc::new(SqliteAdapter::new());
+        let completion_engine = RefCell::new(CompletionEngine::new());
+        let effect_runner = EffectRunner::new(
+            Arc::clone(&adapter_registry) as _,
+            ConnectionDeps {
+                dsn_builder: Arc::clone(&adapter_registry) as _,
+                mysql_connection_probe,
+                connection_store: Arc::clone(&infrastructure.connection_store) as _,
+                pg_service_entry_reader: Arc::clone(&infrastructure.pg_service_entry_reader),
+                sqlite_path_validator: Arc::new(FsSqlitePathValidator),
+            },
+            QueryDeps {
+                query_executor: Arc::clone(&adapter_registry) as _,
+                query_history_store: Arc::new(FileQueryHistoryStore::new()),
+                sqlite_diagnostics,
+                cached_result_exporter: Arc::new(CsvCachedResultExporter),
+            },
+            ErDeps {
+                er_exporter: Arc::new(DotExporter::new()),
+                config_writer: Arc::new(FileConfigWriter::new()),
+                er_log_writer: Arc::new(FsErLogWriter),
+            },
+            UtilityDeps {
+                clipboard: infrastructure.clipboard,
+                folder_opener: Arc::new(NativeFolderOpener),
+            },
+            Arc::clone(&infrastructure.settings_store) as _,
+            action_tx,
+        );
+        let services = AppServices {
+            ddl_generator: Arc::clone(&adapter_registry) as _,
+            dsn_builder: Arc::clone(&adapter_registry) as _,
+        };
+
+        Ok(Self {
+            state,
+            tui: TuiRunner::new()?,
+            action_rx,
+            effect_runner,
+            completion_engine,
+            services,
+        })
+    }
+
+    async fn run(mut self) -> Result<()> {
+        self.tui.enter()?;
+
+        let initial_size = self.tui.terminal().size()?;
+        self.state.ui.set_terminal_width(initial_size.width);
+        self.state.ui.set_terminal_height(initial_size.height);
+
+        if self.state.session.dsn().is_some() && self.state.input_mode() == InputMode::Normal {
+            self.process_action(Action::TryConnect).await?;
+        }
+
+        loop {
+            let now = Instant::now();
+            let deadline = next_animation_deadline(&self.state, now);
+
+            tokio::select! {
+                event = self.tui.next_event() => {
+                    let event = event?;
+                    let action = handle_event(event, &self.state);
+                    if !action.is_none() {
+                        self.process_terminal_event_burst(action).await?;
+                    }
+                }
+                Some(action) = self.action_rx.recv() => {
+                    self.process_action(action).await?;
+                }
+                // Animation deadline reached (spinner, cursor blink, message timeout)
+                () = async {
+                    match deadline {
+                        Some(d) => sleep_until(d.into()).await,
+                        None => std::future::pending::<()>().await,
+                    }
+                } => {
+                    self.process_action(Action::Render).await?;
+                }
+            }
+
+            if let Some(debounce_until) = self.state.sql_modal.completion_debounce()
+                && Instant::now() >= debounce_until
+            {
+                self.state.sql_modal.consume_completion_debounce();
+                self.process_action(Action::CompletionRequest).await?;
+            }
+
+            if self.state.should_quit {
+                break;
+            }
+        }
+
+        self.tui.exit()?;
+        Ok(())
+    }
+
     async fn process_action(&mut self, action: Action) -> Result<()> {
         let now = Instant::now();
         let is_animation_tick = matches!(action, Action::Render);
@@ -324,13 +384,21 @@ impl Runtime {
             self.state.clear_expired_timers(now);
         }
         let mut effects = reduce(&mut self.state, action, now, &self.services);
-        if self.state.render_dirty {
-            if !is_animation_tick {
-                self.state.clear_expired_timers(now);
+        if is_animation_tick {
+            if self.state.render_dirty {
+                effects.push(Effect::Render);
             }
-            effects.push(Effect::Render);
+        } else {
+            self.append_render_if_dirty(&mut effects, now);
         }
         self.flush_effects(effects).await
+    }
+
+    fn append_render_if_dirty(&mut self, effects: &mut Vec<Effect>, now: Instant) {
+        if self.state.render_dirty {
+            self.state.clear_expired_timers(now);
+            effects.push(Effect::Render);
+        }
     }
 
     async fn run_effects(&mut self, effects: Vec<Effect>) -> Result<Vec<Action>> {
@@ -359,10 +427,7 @@ impl Runtime {
             for action in pending {
                 let now = Instant::now();
                 let mut effects = reduce(&mut self.state, action, now, &self.services);
-                if self.state.render_dirty {
-                    self.state.clear_expired_timers(now);
-                    effects.push(Effect::Render);
-                }
+                self.append_render_if_dirty(&mut effects, now);
                 next.extend(self.run_effects(effects).await?);
             }
             pending = next;
@@ -386,10 +451,7 @@ impl Runtime {
         let now = Instant::now();
         let mut effects = reduce(&mut self.state, first_action, now, &self.services);
         if !effects.is_empty() {
-            if self.state.render_dirty {
-                self.state.clear_expired_timers(now);
-                effects.push(Effect::Render);
-            }
+            self.append_render_if_dirty(&mut effects, now);
             return self.flush_effects(effects).await;
         }
 
@@ -411,10 +473,7 @@ impl Runtime {
                 let now = Instant::now();
                 let mut effects = reduce(&mut self.state, action, now, &self.services);
                 if !effects.is_empty() {
-                    if self.state.render_dirty {
-                        self.state.clear_expired_timers(now);
-                        effects.push(Effect::Render);
-                    }
+                    self.append_render_if_dirty(&mut effects, now);
                     self.flush_effects(effects).await?;
                     break;
                 }

@@ -56,8 +56,8 @@ fn dispatch_enabled_action(
 
     if let Some(effects) = dispatch_connection(state, &action, now, services)
         .or_else(|| dispatch_modal(state, &action, now))
-        // dispatch_result must precede dispatch_query: passthrough actions (e.g. ResultNextPage)
-        // reset view state here and return Pass, relying on dispatch_query for the page change.
+        // Result page actions pass through the result dispatcher; pagination owns their
+        // view reset and preview effect.
         .or_else(|| dispatch_result(state, &action, services, now))
         .or_else(|| dispatch_navigation(state, &action, services, now))
         .or_else(|| dispatch_sql_modal(state, &action, now))
