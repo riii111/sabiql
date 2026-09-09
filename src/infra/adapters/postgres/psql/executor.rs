@@ -208,29 +208,6 @@ fn select_result_segment<'a>(segments: &[&'a str]) -> Option<&'a str> {
 impl PostgresAdapter {
     const PGOPTIONS_READ_ONLY: &str = "-c default_transaction_read_only=on";
 
-    async fn run_psql(
-        &self,
-        dsn: &str,
-        extra_args: &[&str],
-        query: &str,
-        read_only: bool,
-    ) -> Result<String, DbOperationError> {
-        self.run_psql_args(dsn, extra_args, &["-c", query], read_only)
-            .await
-    }
-
-    async fn run_psql_args(
-        &self,
-        dsn: &str,
-        extra_args: &[&str],
-        query_args: &[&str],
-        read_only: bool,
-    ) -> Result<String, DbOperationError> {
-        let (mut cmd, passfile) = Self::build_psql_command(dsn, extra_args, query_args, read_only)?;
-
-        Self::collect_output(&mut cmd, passfile, self.timeout_secs).await
-    }
-
     fn build_psql_command(
         dsn: &str,
         extra_args: &[&str],
@@ -364,7 +341,10 @@ impl PostgresAdapter {
         dsn: &str,
         query: &str,
     ) -> Result<String, DbOperationError> {
-        self.run_psql(dsn, &["-t", "-A"], query, false).await
+        let (mut cmd, passfile) =
+            Self::build_psql_command(dsn, &["-t", "-A"], &["-c", query], false)?;
+
+        Self::collect_output(&mut cmd, passfile, self.timeout_secs).await
     }
 
     pub(in crate::adapters::postgres) async fn execute_query_result(
