@@ -1119,6 +1119,7 @@ mod tests {
         struct PendingMetadataProvider {
             metadata_started: Mutex<Option<oneshot::Sender<()>>>,
             effective_user_started: Mutex<Option<oneshot::Sender<()>>>,
+            effective_user_result: Mutex<Option<oneshot::Receiver<String>>>,
             dropped: Arc<AtomicUsize>,
         }
 
@@ -1151,7 +1152,11 @@ mod tests {
                     .expect("effective user should start once")
                     .send(())
                     .ok();
-                pending().await
+                let result = self.effective_user_result.lock().unwrap().take();
+                match result {
+                    Some(result) => Ok(Some(result.await.unwrap())),
+                    None => pending().await,
+                }
             }
 
             async fn fetch_table_detail(
@@ -1212,6 +1217,7 @@ mod tests {
             let metadata_provider = PendingMetadataProvider {
                 metadata_started: Mutex::new(Some(metadata_started_tx)),
                 effective_user_started: Mutex::new(None),
+                effective_user_result: Mutex::new(None),
                 dropped: Arc::clone(&dropped),
             };
             let probe = ProbeThatObservesDrop {
@@ -1275,12 +1281,93 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn removed_table_allows_new_effective_user_result_after_old_tasks_join() {
+            let (started_tx, started_rx) = oneshot::channel();
+            let (result_tx, result_rx) = oneshot::channel();
+            let provider = PendingMetadataProvider {
+                metadata_started: Mutex::new(None),
+                effective_user_started: Mutex::new(Some(started_tx)),
+                effective_user_result: Mutex::new(Some(result_rx)),
+                dropped: Arc::new(AtomicUsize::new(0)),
+            };
+            let (action_tx, mut action_rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner(
+                Arc::new(provider),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                action_tx,
+            );
+            let old_dropped = Arc::new(AtomicUsize::new(0));
+            let (old_started_tx, old_started_rx) = oneshot::channel();
+            runner
+                .query_tasks
+                .replace({
+                    let dropped = Arc::clone(&old_dropped);
+                    async move {
+                        let _guard = DropSignal(dropped);
+                        old_started_tx.send(()).unwrap();
+                        pending::<()>().await;
+                    }
+                })
+                .await;
+            old_started_rx.await.unwrap();
+            let mut state = AppState::new("test".to_string());
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "test",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
+            let _ = state
+                .session
+                .select_table("public", "users", &mut state.query);
+            let run_id = state.session.begin_metadata_refresh();
+            let services = AppServices::stub();
+            let effects = reduce(
+                &mut state,
+                Action::MetadataLoaded {
+                    run_id,
+                    metadata: Arc::new(DatabaseMetadata::new("test".to_string())),
+                },
+                Instant::now(),
+                &services,
+            );
+
+            runner
+                .execute_effects(
+                    effects,
+                    &mut NoopRenderer,
+                    &mut state,
+                    &RefCell::new(CompletionEngine::new()),
+                    &services,
+                )
+                .await
+                .unwrap();
+            timeout(Duration::from_secs(1), started_rx)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(old_dropped.load(Ordering::SeqCst), 1);
+            result_tx.send("refreshed_user".to_string()).unwrap();
+            let action = timeout(Duration::from_secs(1), action_rx.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(matches!(action, Action::EffectiveUserLoaded { .. }));
+            reduce(&mut state, action, Instant::now(), &services);
+
+            assert_eq!(state.session.effective_user(), Some("refreshed_user"));
+            assert!(state.session.selected_table_key().is_none());
+        }
+
+        #[tokio::test]
         async fn quit_drops_effective_user_and_delayed_prefetch_tasks() {
             let (effective_user_started_tx, effective_user_started_rx) = oneshot::channel();
             let dropped = Arc::new(AtomicUsize::new(0));
             let provider = PendingMetadataProvider {
                 metadata_started: Mutex::new(None),
                 effective_user_started: Mutex::new(Some(effective_user_started_tx)),
+                effective_user_result: Mutex::new(None),
                 dropped: Arc::clone(&dropped),
             };
             let (action_tx, mut action_rx) = mpsc::channel(8);

@@ -70,7 +70,7 @@ pub(super) fn reduce_loading(
                         .ui
                         .set_explorer_selection(if has_tables { Some(0) } else { None });
                     state.session.clear_table_selection(&mut state.query);
-                    effects.extend(termination_effects(&state.query, vec![]));
+                    effects = termination_effects(&state.query, effects);
                 }
             }
 
