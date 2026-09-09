@@ -989,7 +989,7 @@ mod tests {
         }
 
         #[test]
-        fn table_disappeared_clears_pagination_and_result() {
+        fn table_disappeared_clears_selection_and_cancels_before_effective_user_fetch() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let _ = state
                 .session
@@ -997,7 +997,15 @@ mod tests {
 
             let metadata = make_metadata(vec![("public", "orders")]);
             let action = metadata_loaded_action(&mut state, metadata);
-            dispatch_metadata(&mut state, &action, Instant::now());
+            let effects = dispatch_metadata(&mut state, &action, Instant::now()).unwrap();
+
+            assert!(matches!(
+                effects.as_slice(),
+                [
+                    Effect::CancelTrackedTasks,
+                    Effect::FetchEffectiveUser { .. }
+                ]
+            ));
 
             assert!(state.query.pagination.table().is_empty());
             assert!(state.query.current_result().is_none());
@@ -1054,16 +1062,11 @@ mod tests {
 
             assert_eq!(state.query.pagination.table(), "users");
             assert_eq!(state.ui.explorer_selected(), 1);
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::ExecutePreview { table, .. } if table == "users"))
-            );
-            assert!(
-                effects.iter().any(
-                    |e| matches!(e, Effect::FetchTableDetail { table, .. } if table == "users")
-                )
-            );
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::FetchEffectiveUser { .. }, Effect::ExecutePreview { table, .. }, Effect::FetchTableDetail { table: detail_table, .. }]
+                    if table == "users" && detail_table == "users"
+            ));
         }
 
         #[test]
@@ -1072,7 +1075,12 @@ mod tests {
 
             let metadata = make_metadata(vec![("public", "orders"), ("public", "users")]);
             let action = metadata_loaded_action(&mut state, metadata);
-            dispatch_metadata(&mut state, &action, Instant::now());
+            let effects = dispatch_metadata(&mut state, &action, Instant::now()).unwrap();
+
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::FetchEffectiveUser { .. }]
+            ));
 
             assert_eq!(state.ui.explorer_selected(), 0);
         }
