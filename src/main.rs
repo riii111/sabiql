@@ -1,6 +1,4 @@
 use std::cell::RefCell;
-use std::fmt;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -28,8 +26,7 @@ mod tests;
 mod render_snapshots;
 
 use sabiql_app::cmd::cli_sqlite::{
-    CliSqliteActivateError, CliSqliteTarget, activate_cli_sqlite_connection,
-    resolve_cli_sqlite_target,
+    CliSqliteTarget, activate_cli_sqlite_connection, resolve_cli_sqlite_target,
 };
 use sabiql_app::cmd::completion_engine::CompletionEngine;
 use sabiql_app::cmd::effect::Effect;
@@ -127,29 +124,12 @@ async fn main() -> Result<()> {
     let project_name = get_project_name(&project_root);
     let infrastructure = build_infrastructure()?;
     let app_settings = infrastructure.settings_store.load().unwrap_or_default();
-    let state = match initialize_state(
+    let state = initialize_state(
         project_name,
         app_settings,
         cli_sqlite.as_ref(),
         &infrastructure,
-    ) {
-        Ok(state) => state,
-        Err(InitializeStateError::VersionMismatch {
-            found,
-            expected,
-            path,
-        }) => {
-            eprintln!(
-                "Error: Configuration file version mismatch (found v{}, expected v{}).\n\
-                 Please delete {} and reconfigure.",
-                found,
-                expected,
-                path.display()
-            );
-            std::process::exit(1);
-        }
-        Err(error) => return Err(error.into()),
-    };
+    )?;
     let runtime = Runtime::new(state, infrastructure)?;
     Box::pin(runtime.run()).await
 }
@@ -176,48 +156,17 @@ fn build_infrastructure() -> Result<Infrastructure> {
     })
 }
 
-#[derive(Debug)]
-enum InitializeStateError {
-    VersionMismatch {
-        found: u32,
-        expected: u32,
-        path: PathBuf,
-    },
-    CliSqlite(CliSqliteActivateError),
-}
-
-impl fmt::Display for InitializeStateError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::VersionMismatch { .. } => {
-                formatter.write_str("configuration file version mismatch")
-            }
-            Self::CliSqlite(error) => error.fmt(formatter),
-        }
-    }
-}
-
-impl std::error::Error for InitializeStateError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::VersionMismatch { .. } => None,
-            Self::CliSqlite(error) => Some(error),
-        }
-    }
-}
-
-impl From<CliSqliteActivateError> for InitializeStateError {
-    fn from(error: CliSqliteActivateError) -> Self {
-        Self::CliSqlite(error)
-    }
-}
-
+#[allow(
+    clippy::exit,
+    clippy::print_stderr,
+    reason = "configuration errors are reported before TUI initialization"
+)]
 fn initialize_state(
     project_name: String,
     app_settings: AppSettings,
     cli_sqlite: Option<&CliSqliteTarget>,
     infrastructure: &Infrastructure,
-) -> Result<AppState, InitializeStateError> {
+) -> Result<AppState> {
     let mut state = AppState::new(project_name);
     apply_app_settings(&mut state, app_settings);
 
@@ -237,11 +186,14 @@ fn initialize_state(
             configure_initial_connection_view(&mut state, cli_sqlite.is_some(), true);
         }
         Err(ConnectionStoreError::VersionMismatch { found, expected }) if cli_sqlite.is_none() => {
-            return Err(InitializeStateError::VersionMismatch {
+            eprintln!(
+                "Error: Configuration file version mismatch (found v{}, expected v{}).\n\
+                 Please delete {} and reconfigure.",
                 found,
                 expected,
-                path: infrastructure.connection_store.storage_path(),
-            });
+                infrastructure.connection_store.storage_path().display()
+            );
+            std::process::exit(1);
         }
         Err(_) if cli_sqlite.is_none() => {
             state.connection_setup.set_first_run(true);
