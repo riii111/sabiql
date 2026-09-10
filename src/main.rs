@@ -7,8 +7,6 @@ use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 use tokio::time::sleep_until;
 
-mod panic_hooks;
-
 use sabiql_app::cmd::cli_sqlite::{
     CliSqliteTarget, activate_cli_sqlite_connection, resolve_cli_sqlite_target,
 };
@@ -36,6 +34,24 @@ use sabiql_infra::config::project_root::{find_project_root, get_project_name};
 use sabiql_infra::export::DotExporter;
 use sabiql_ui::adapters::TuiAdapter;
 use sabiql_ui::tui::TuiRunner;
+
+mod panic_hooks;
+
+#[cfg(test)]
+#[allow(
+    clippy::disallowed_methods,
+    unreachable_pub,
+    reason = "test support constructs timestamps and shares helpers across test modules"
+)]
+mod tests;
+
+#[cfg(test)]
+#[path = "tests/render_snapshots/mod.rs"]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "snapshot tests construct timestamps with the real clock"
+)]
+mod render_snapshots;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -543,19 +559,3 @@ fn dispatch_overflow_fallback(
     };
     state.messages.set_error(message);
 }
-
-#[cfg(test)]
-#[allow(
-    clippy::disallowed_methods,
-    unreachable_pub,
-    reason = "test support constructs timestamps and shares helpers across test modules"
-)]
-mod tests;
-
-#[cfg(test)]
-#[path = "tests/render_snapshots/mod.rs"]
-#[allow(
-    clippy::disallowed_methods,
-    reason = "snapshot tests construct timestamps with the real clock"
-)]
-mod render_snapshots;
