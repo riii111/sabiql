@@ -30,55 +30,6 @@ impl DbAdapterRegistry {
             mysql: MySqlAdapter::new(),
         }
     }
-
-    fn db_type_from_dsn(dsn: &str) -> Result<DatabaseType, DbOperationError> {
-        if dsn.starts_with("sqlite://") {
-            return Ok(DatabaseType::SQLite);
-        }
-        if dsn.starts_with("mysql://") {
-            return Ok(DatabaseType::MySQL);
-        }
-        if dsn.starts_with("postgres://") || is_postgres_conninfo_dsn(dsn) {
-            return Ok(DatabaseType::PostgreSQL);
-        }
-        Err(DbOperationError::ConnectionFailed(format!(
-            "Unsupported database DSN scheme: {dsn}"
-        )))
-    }
-
-    fn metadata_provider(&self, dsn: &str) -> Result<&dyn MetadataProvider, DbOperationError> {
-        match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::PostgreSQL => Ok(&self.postgres),
-            DatabaseType::SQLite => Ok(&self.sqlite),
-            DatabaseType::MySQL => Ok(&self.mysql),
-        }
-    }
-
-    fn query_executor(&self, dsn: &str) -> Result<&dyn QueryExecutor, DbOperationError> {
-        match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::PostgreSQL => Ok(&self.postgres),
-            DatabaseType::SQLite => Ok(&self.sqlite),
-            DatabaseType::MySQL => Ok(&self.mysql),
-        }
-    }
-
-    fn ddl_generator(&self, database_type: DatabaseType) -> &dyn DdlGenerator {
-        match database_type {
-            DatabaseType::PostgreSQL => &self.postgres,
-            DatabaseType::SQLite => &self.sqlite,
-            DatabaseType::MySQL => &self.mysql,
-        }
-    }
-}
-
-fn is_postgres_conninfo_dsn(dsn: &str) -> bool {
-    let Some((key, _)) = dsn.trim_start().split_once('=') else {
-        return false;
-    };
-    matches!(
-        key.trim(),
-        "host" | "hostaddr" | "port" | "dbname" | "user" | "password" | "sslmode" | "service"
-    )
 }
 
 impl DsnBuilder for DbAdapterRegistry {
@@ -193,6 +144,57 @@ impl DdlGenerator for DbAdapterRegistry {
         self.ddl_generator(database_type)
             .generate_ddl(database_type, table)
     }
+}
+
+impl DbAdapterRegistry {
+    fn metadata_provider(&self, dsn: &str) -> Result<&dyn MetadataProvider, DbOperationError> {
+        match Self::db_type_from_dsn(dsn)? {
+            DatabaseType::PostgreSQL => Ok(&self.postgres),
+            DatabaseType::SQLite => Ok(&self.sqlite),
+            DatabaseType::MySQL => Ok(&self.mysql),
+        }
+    }
+
+    fn query_executor(&self, dsn: &str) -> Result<&dyn QueryExecutor, DbOperationError> {
+        match Self::db_type_from_dsn(dsn)? {
+            DatabaseType::PostgreSQL => Ok(&self.postgres),
+            DatabaseType::SQLite => Ok(&self.sqlite),
+            DatabaseType::MySQL => Ok(&self.mysql),
+        }
+    }
+
+    fn ddl_generator(&self, database_type: DatabaseType) -> &dyn DdlGenerator {
+        match database_type {
+            DatabaseType::PostgreSQL => &self.postgres,
+            DatabaseType::SQLite => &self.sqlite,
+            DatabaseType::MySQL => &self.mysql,
+        }
+    }
+
+    fn db_type_from_dsn(dsn: &str) -> Result<DatabaseType, DbOperationError> {
+        if dsn.starts_with("sqlite://") {
+            return Ok(DatabaseType::SQLite);
+        }
+        if dsn.starts_with("mysql://") {
+            return Ok(DatabaseType::MySQL);
+        }
+        if dsn.starts_with("postgres://") || is_postgres_conninfo_dsn(dsn) {
+            return Ok(DatabaseType::PostgreSQL);
+        }
+        Err(DbOperationError::ConnectionFailed(format!(
+            "Unsupported database DSN scheme: {dsn}"
+        )))
+    }
+}
+
+fn is_postgres_conninfo_dsn(dsn: &str) -> bool {
+    let Some((key, _)) = dsn.trim_start().split_once('=') else {
+        return false;
+    };
+    matches!(
+        key.trim(),
+        "host" | "hostaddr" | "port" | "dbname" | "user" | "password" | "sslmode" | "service"
+    )
 }
 
 #[cfg(test)]

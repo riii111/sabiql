@@ -105,30 +105,6 @@ impl EffectRunner {
         &self.action_tx
     }
 
-    async fn cancel_tracked_tasks(&self) {
-        let connection_task = self.connection_task.abort();
-        let metadata_task = self.metadata_tasks.abort();
-        let smart_er_task = self.smart_er_refresh_task.abort();
-        let sqlite_diagnostics_tasks = self.sqlite_diagnostics_task.abort();
-        let query_task = self.query_tasks.abort();
-        let table_detail_task = self.table_detail_tasks.abort();
-        if let Some(task) = metadata_task {
-            let _ = task.await;
-        }
-        if let Some(task) = query_task {
-            let _ = task.await;
-        }
-        if let Some(task) = table_detail_task {
-            let _ = task.await;
-        }
-        if let Some(task) = connection_task {
-            let _ = task.await;
-        }
-        for task in smart_er_task.into_iter().chain(sqlite_diagnostics_tasks) {
-            let _ = task.await;
-        }
-    }
-
     pub async fn execute_effects<T: Renderer>(
         &self,
         effects: Vec<Effect>,
@@ -339,6 +315,30 @@ impl EffectRunner {
             | Effect::ClearCompletionEngineCache
             | Effect::ResizeCompletionCache { .. }
             | Effect::TriggerCompletion) => Ok(cmd_completion::run(e, state, completion_engine)),
+        }
+    }
+
+    async fn cancel_tracked_tasks(&self) {
+        let connection_task = self.connection_task.abort();
+        let metadata_task = self.metadata_tasks.abort();
+        let smart_er_task = self.smart_er_refresh_task.abort();
+        let sqlite_diagnostics_tasks = self.sqlite_diagnostics_task.abort();
+        let query_task = self.query_tasks.abort();
+        let table_detail_task = self.table_detail_tasks.abort();
+        if let Some(task) = metadata_task {
+            let _ = task.await;
+        }
+        if let Some(task) = query_task {
+            let _ = task.await;
+        }
+        if let Some(task) = table_detail_task {
+            let _ = task.await;
+        }
+        if let Some(task) = connection_task {
+            let _ = task.await;
+        }
+        for task in smart_er_task.into_iter().chain(sqlite_diagnostics_tasks) {
+            let _ = task.await;
         }
     }
 }
