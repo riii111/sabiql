@@ -11,10 +11,8 @@ use tokio::sync::mpsc;
 use crate::cmd::browse as cmd_browse;
 use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::connection as cmd_connection;
-use crate::cmd::connection::ConnectionTaskOwner;
 use crate::cmd::effect::Effect;
 use crate::cmd::er::handler as cmd_er;
-use crate::cmd::er::task::SmartErRefreshTaskOwner;
 use crate::cmd::metadata_task::MetadataTaskRegistry;
 use crate::cmd::settings as cmd_settings;
 use crate::cmd::single_task_owner::SingleTaskOwner;
@@ -69,9 +67,9 @@ pub struct EffectRunner {
     query_tasks: SingleTaskOwner,
     table_detail_tasks: SingleTaskOwner,
     metadata_tasks: Arc<MetadataTaskRegistry>,
-    connection_task: ConnectionTaskOwner,
+    connection_task: SingleTaskOwner,
     sqlite_diagnostics_task: sqlite_diagnostics::SqliteDiagnosticsTaskOwner,
-    smart_er_refresh_task: SmartErRefreshTaskOwner,
+    smart_er_refresh_task: SingleTaskOwner,
 }
 
 impl EffectRunner {
@@ -95,38 +93,14 @@ impl EffectRunner {
             query_tasks: SingleTaskOwner::default(),
             table_detail_tasks: SingleTaskOwner::default(),
             metadata_tasks: Arc::new(MetadataTaskRegistry::default()),
-            connection_task: ConnectionTaskOwner::default(),
+            connection_task: SingleTaskOwner::default(),
             sqlite_diagnostics_task: sqlite_diagnostics::SqliteDiagnosticsTaskOwner::default(),
-            smart_er_refresh_task: SmartErRefreshTaskOwner::default(),
+            smart_er_refresh_task: SingleTaskOwner::default(),
         }
     }
 
     pub fn action_tx(&self) -> &mpsc::Sender<Action> {
         &self.action_tx
-    }
-
-    async fn cancel_tracked_tasks(&self) {
-        let connection_task = self.connection_task.abort();
-        let metadata_task = self.metadata_tasks.abort();
-        let smart_er_task = self.smart_er_refresh_task.abort();
-        let sqlite_diagnostics_tasks = self.sqlite_diagnostics_task.abort();
-        let query_task = self.query_tasks.abort();
-        let table_detail_task = self.table_detail_tasks.abort();
-        if let Some(task) = metadata_task {
-            let _ = task.await;
-        }
-        if let Some(task) = query_task {
-            let _ = task.await;
-        }
-        if let Some(task) = table_detail_task {
-            let _ = task.await;
-        }
-        if let Some(task) = connection_task {
-            let _ = task.await;
-        }
-        for task in smart_er_task.into_iter().chain(sqlite_diagnostics_tasks) {
-            let _ = task.await;
-        }
     }
 
     pub async fn execute_effects<T: Renderer>(
@@ -338,6 +312,30 @@ impl EffectRunner {
             | Effect::ClearCompletionEngineCache
             | Effect::ResizeCompletionCache { .. }
             | Effect::TriggerCompletion) => Ok(cmd_completion::run(e, state, completion_engine)),
+        }
+    }
+
+    async fn cancel_tracked_tasks(&self) {
+        let connection_task = self.connection_task.abort();
+        let metadata_task = self.metadata_tasks.abort();
+        let smart_er_task = self.smart_er_refresh_task.abort();
+        let sqlite_diagnostics_tasks = self.sqlite_diagnostics_task.abort();
+        let query_task = self.query_tasks.abort();
+        let table_detail_task = self.table_detail_tasks.abort();
+        if let Some(task) = metadata_task {
+            let _ = task.await;
+        }
+        if let Some(task) = query_task {
+            let _ = task.await;
+        }
+        if let Some(task) = table_detail_task {
+            let _ = task.await;
+        }
+        if let Some(task) = connection_task {
+            let _ = task.await;
+        }
+        for task in smart_er_task.into_iter().chain(sqlite_diagnostics_tasks) {
+            let _ = task.await;
         }
     }
 }
@@ -1640,7 +1638,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn quitting_cancels_sqlite_save_before_blocking_claim() {
+        async fn quitting_cancels_sqlite_save_before_persistence() {
             let dir = tempdir().unwrap();
             let path = dir.path().join("app.db");
             fs::write(&path, b"").unwrap();
