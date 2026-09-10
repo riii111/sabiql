@@ -11,10 +11,8 @@ use tokio::sync::mpsc;
 use crate::cmd::browse as cmd_browse;
 use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::connection as cmd_connection;
-use crate::cmd::connection::ConnectionTaskOwner;
 use crate::cmd::effect::Effect;
 use crate::cmd::er::handler as cmd_er;
-use crate::cmd::er::task::SmartErRefreshTaskOwner;
 use crate::cmd::metadata_task::MetadataTaskRegistry;
 use crate::cmd::settings as cmd_settings;
 use crate::cmd::single_task_owner::SingleTaskOwner;
@@ -69,9 +67,9 @@ pub struct EffectRunner {
     query_tasks: SingleTaskOwner,
     table_detail_tasks: SingleTaskOwner,
     metadata_tasks: Arc<MetadataTaskRegistry>,
-    connection_task: ConnectionTaskOwner,
+    connection_task: SingleTaskOwner,
     sqlite_diagnostics_task: sqlite_diagnostics::SqliteDiagnosticsTaskOwner,
-    smart_er_refresh_task: SmartErRefreshTaskOwner,
+    smart_er_refresh_task: SingleTaskOwner,
 }
 
 impl EffectRunner {
@@ -95,9 +93,9 @@ impl EffectRunner {
             query_tasks: SingleTaskOwner::default(),
             table_detail_tasks: SingleTaskOwner::default(),
             metadata_tasks: Arc::new(MetadataTaskRegistry::default()),
-            connection_task: ConnectionTaskOwner::default(),
+            connection_task: SingleTaskOwner::default(),
             sqlite_diagnostics_task: sqlite_diagnostics::SqliteDiagnosticsTaskOwner::default(),
-            smart_er_refresh_task: SmartErRefreshTaskOwner::default(),
+            smart_er_refresh_task: SingleTaskOwner::default(),
         }
     }
 

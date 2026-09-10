@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
 
 use crate::cmd::effect::Effect;
 use crate::cmd::runner::ConnectionDeps;
+use crate::cmd::single_task_owner::SingleTaskOwner;
 use crate::cmd::sqlite_path_validate::{
     canonicalize_sqlite_database_path, validate_sqlite_database_path,
 };
@@ -21,53 +21,6 @@ use crate::ports::outbound::{
 use crate::update::action::{
     Action, ConnectionSaveError, ConnectionTarget, ConnectionsLoadedPayload,
 };
-
-#[derive(Default)]
-pub(in crate::cmd) struct ConnectionTaskOwner {
-    active: std::sync::Mutex<Option<JoinHandle<()>>>,
-}
-
-impl ConnectionTaskOwner {
-    pub(in crate::cmd) async fn replace<F>(&self, task: F)
-    where
-        F: std::future::Future<Output = ()> + Send + 'static,
-    {
-        self.cancel().await;
-        let task = tokio::spawn(task);
-        *self.active.lock().expect("connection task lock poisoned") = Some(task);
-    }
-
-    pub(in crate::cmd) async fn cancel(&self) {
-        if let Some(task) = self.abort() {
-            let _ = task.await;
-        }
-    }
-
-    pub(in crate::cmd) fn abort(&self) -> Option<JoinHandle<()>> {
-        let task = self
-            .active
-            .lock()
-            .expect("connection task lock poisoned")
-            .take();
-        if let Some(task) = &task {
-            task.abort();
-        }
-        task
-    }
-}
-
-impl Drop for ConnectionTaskOwner {
-    fn drop(&mut self) {
-        if let Some(task) = self
-            .active
-            .get_mut()
-            .expect("connection task lock poisoned")
-            .take()
-        {
-            task.abort();
-        }
-    }
-}
 
 fn save_if_active<T>(
     run_guard: &ConnectionSaveGuard,
@@ -86,7 +39,7 @@ pub(in crate::cmd) async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     connection: &ConnectionDeps,
-    connection_task: &ConnectionTaskOwner,
+    connection_task: &SingleTaskOwner,
     metadata_provider: &Arc<dyn MetadataProvider>,
     state: &AppState,
 ) -> Option<Action> {
