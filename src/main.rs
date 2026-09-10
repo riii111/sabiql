@@ -9,22 +9,6 @@ use tokio::time::sleep_until;
 
 mod panic_hooks;
 
-#[cfg(test)]
-#[allow(
-    clippy::disallowed_methods,
-    unreachable_pub,
-    reason = "test support constructs timestamps and shares helpers across test modules"
-)]
-mod tests;
-
-#[cfg(test)]
-#[path = "tests/render_snapshots/mod.rs"]
-#[allow(
-    clippy::disallowed_methods,
-    reason = "snapshot tests construct timestamps with the real clock"
-)]
-mod render_snapshots;
-
 use sabiql_app::cmd::cli_sqlite::{
     CliSqliteTarget, activate_cli_sqlite_connection, resolve_cli_sqlite_target,
 };
@@ -72,29 +56,6 @@ enum Command {
     /// Self-update is disabled in this build
     #[command(hide = true)]
     Update,
-}
-
-#[cfg(feature = "self-update")]
-fn latest_stable_release<'a>(
-    current_version: &str,
-    releases: &'a [self_update::update::Release],
-) -> Option<&'a self_update::update::Release> {
-    releases
-        .iter()
-        .filter(|release| !release.version.contains('-'))
-        .filter(|release| {
-            self_update::version::bump_is_greater(current_version, &release.version)
-                .unwrap_or(false)
-        })
-        .reduce(|latest, release| {
-            if self_update::version::bump_is_greater(&latest.version, &release.version)
-                .unwrap_or(false)
-            {
-                release
-            } else {
-                latest
-            }
-        })
 }
 
 #[tokio::main]
@@ -171,11 +132,8 @@ fn initialize_state(
     apply_app_settings(&mut state, app_settings);
 
     match infrastructure.connection_store.load_all() {
-        Ok(profiles) if profiles.is_empty() => {
-            load_service_entries(&mut state, infrastructure.pg_service_entry_reader.as_ref());
-            configure_initial_connection_view(&mut state, cli_sqlite.is_some(), false);
-        }
         Ok(mut profiles) => {
+            let has_saved_profiles = !profiles.is_empty();
             profiles.sort_by(|a, b| {
                 a.display_name()
                     .to_lowercase()
@@ -183,7 +141,7 @@ fn initialize_state(
             });
             state.set_connections(profiles);
             load_service_entries(&mut state, infrastructure.pg_service_entry_reader.as_ref());
-            configure_initial_connection_view(&mut state, cli_sqlite.is_some(), true);
+            configure_initial_connection_view(&mut state, cli_sqlite.is_some(), has_saved_profiles);
         }
         Err(ConnectionStoreError::VersionMismatch { found, expected }) if cli_sqlite.is_none() => {
             eprintln!(
@@ -217,6 +175,19 @@ fn apply_app_settings(state: &mut AppState, app_settings: AppSettings) {
     state.settings.load_er_browser(app_settings.er_browser);
 }
 
+fn load_service_entries(state: &mut AppState, reader: &dyn PgServiceEntryReader) {
+    match reader.read_services() {
+        Ok((services, path)) if !services.is_empty() => {
+            state.set_service_entries(services);
+            state.set_service_file_path(Some(path));
+        }
+        Ok(_) | Err(ServiceFileError::NotFound(_)) => {}
+        Err(e) => {
+            state.messages.set_error(e.to_string());
+        }
+    }
+}
+
 fn configure_initial_connection_view(
     state: &mut AppState,
     has_cli_database: bool,
@@ -233,6 +204,77 @@ fn configure_initial_connection_view(
         state.modal.set_mode(InputMode::ConnectionSelector);
         state.ui.set_connection_list_selection(Some(0));
     }
+}
+
+#[cfg(feature = "self-update")]
+#[allow(clippy::print_stdout, reason = "CLI subcommand output, TUI not active")]
+fn run_update() -> Result<()> {
+    let current = env!("CARGO_PKG_VERSION");
+    println!("Current version: v{current}");
+    println!("Checking for updates...");
+
+    let releases = self_update::backends::github::ReleaseList::configure()
+        .repo_owner("riii111")
+        .repo_name("sabiql")
+        .build()?
+        .fetch()?;
+    let Some(latest) = latest_stable_release(current, &releases) else {
+        println!("Already up to date (v{current}).");
+        return Ok(());
+    };
+    let target_version = format!("v{}", latest.version);
+
+    let status = self_update::backends::github::Update::configure()
+        .repo_owner("riii111")
+        .repo_name("sabiql")
+        .bin_name("sabiql")
+        .show_download_progress(true)
+        .no_confirm(true)
+        .current_version(current)
+        .target_version_tag(&target_version)
+        .build()?
+        .update()?;
+
+    if status.updated() {
+        println!("Updated successfully: v{} -> {}", current, status.version());
+    } else {
+        println!("Already up to date (v{current}).");
+    }
+
+    Ok(())
+}
+
+#[cfg(feature = "self-update")]
+fn latest_stable_release<'a>(
+    current_version: &str,
+    releases: &'a [self_update::update::Release],
+) -> Option<&'a self_update::update::Release> {
+    releases
+        .iter()
+        .filter(|release| !release.version.contains('-'))
+        .filter(|release| {
+            self_update::version::bump_is_greater(current_version, &release.version)
+                .unwrap_or(false)
+        })
+        .reduce(|latest, release| {
+            if self_update::version::bump_is_greater(&latest.version, &release.version)
+                .unwrap_or(false)
+            {
+                release
+            } else {
+                latest
+            }
+        })
+}
+
+#[cfg(not(feature = "self-update"))]
+fn self_update_disabled_message() -> String {
+    format!(
+        "Self-update is not available in this build (v{}).\n\
+         If installed via Homebrew: brew upgrade sabiql\n\
+         If installed via cargo:    cargo install sabiql",
+        env!("CARGO_PKG_VERSION")
+    )
 }
 
 const MAX_DEPTH: usize = 16;
@@ -353,70 +395,6 @@ impl Runtime {
         Ok(())
     }
 
-    async fn process_action(&mut self, action: Action) -> Result<()> {
-        let now = Instant::now();
-        let is_animation_tick = matches!(action, Action::Render);
-        if is_animation_tick {
-            self.state.clear_expired_timers(now);
-        }
-        let mut effects = reduce(&mut self.state, action, now, &self.services);
-        if is_animation_tick {
-            if self.state.render_dirty {
-                effects.push(Effect::Render);
-            }
-        } else {
-            self.append_render_if_dirty(&mut effects, now);
-        }
-        self.flush_effects(effects).await
-    }
-
-    fn append_render_if_dirty(&mut self, effects: &mut Vec<Effect>, now: Instant) {
-        if self.state.render_dirty {
-            self.state.clear_expired_timers(now);
-            effects.push(Effect::Render);
-        }
-    }
-
-    async fn run_effects(&mut self, effects: Vec<Effect>) -> Result<Vec<Action>> {
-        let mut tui_adapter = TuiAdapter::new(&mut self.tui);
-        let pending = self
-            .effect_runner
-            .execute_effects(
-                effects,
-                &mut tui_adapter,
-                &mut self.state,
-                &self.completion_engine,
-                &self.services,
-            )
-            .await?;
-        self.state.clear_dirty();
-        Ok(pending)
-    }
-
-    async fn flush_effects(&mut self, effects: Vec<Effect>) -> Result<()> {
-        let mut pending = self.run_effects(effects).await?;
-
-        let mut depth = 0;
-        while !pending.is_empty() && depth < MAX_DEPTH {
-            depth += 1;
-            let mut next = Vec::new();
-            for action in pending {
-                let now = Instant::now();
-                let mut effects = reduce(&mut self.state, action, now, &self.services);
-                self.append_render_if_dirty(&mut effects, now);
-                next.extend(self.run_effects(effects).await?);
-            }
-            pending = next;
-        }
-        if depth >= MAX_DEPTH && !pending.is_empty() {
-            dispatch_overflow_fallback(&mut self.state, self.effect_runner.action_tx(), pending);
-            // Render immediately so the overflow error is visible before the next
-            // event-loop pass; errors do not have an expiry wake-up anymore.
-            self.run_effects(vec![Effect::Render]).await?;
-        }
-        Ok(())
-    }
-
     async fn process_terminal_event_burst(&mut self, first_action: Action) -> Result<()> {
         if !first_action.is_scroll() {
             self.state.messages.clear_error();
@@ -473,6 +451,70 @@ impl Runtime {
 
         Ok(())
     }
+
+    async fn process_action(&mut self, action: Action) -> Result<()> {
+        let now = Instant::now();
+        let is_animation_tick = matches!(action, Action::Render);
+        if is_animation_tick {
+            self.state.clear_expired_timers(now);
+        }
+        let mut effects = reduce(&mut self.state, action, now, &self.services);
+        if is_animation_tick {
+            if self.state.render_dirty {
+                effects.push(Effect::Render);
+            }
+        } else {
+            self.append_render_if_dirty(&mut effects, now);
+        }
+        self.flush_effects(effects).await
+    }
+
+    async fn flush_effects(&mut self, effects: Vec<Effect>) -> Result<()> {
+        let mut pending = self.run_effects(effects).await?;
+
+        let mut depth = 0;
+        while !pending.is_empty() && depth < MAX_DEPTH {
+            depth += 1;
+            let mut next = Vec::new();
+            for action in pending {
+                let now = Instant::now();
+                let mut effects = reduce(&mut self.state, action, now, &self.services);
+                self.append_render_if_dirty(&mut effects, now);
+                next.extend(self.run_effects(effects).await?);
+            }
+            pending = next;
+        }
+        if depth >= MAX_DEPTH && !pending.is_empty() {
+            dispatch_overflow_fallback(&mut self.state, self.effect_runner.action_tx(), pending);
+            // Render immediately so the overflow error is visible before the next
+            // event-loop pass; errors do not have an expiry wake-up anymore.
+            self.run_effects(vec![Effect::Render]).await?;
+        }
+        Ok(())
+    }
+
+    async fn run_effects(&mut self, effects: Vec<Effect>) -> Result<Vec<Action>> {
+        let mut tui_adapter = TuiAdapter::new(&mut self.tui);
+        let pending = self
+            .effect_runner
+            .execute_effects(
+                effects,
+                &mut tui_adapter,
+                &mut self.state,
+                &self.completion_engine,
+                &self.services,
+            )
+            .await?;
+        self.state.clear_dirty();
+        Ok(pending)
+    }
+
+    fn append_render_if_dirty(&mut self, effects: &mut Vec<Effect>, now: Instant) {
+        if self.state.render_dirty {
+            self.state.clear_expired_timers(now);
+            effects.push(Effect::Render);
+        }
+    }
 }
 
 /// Last-resort handling when DispatchActions recursion exceeds the depth
@@ -502,63 +544,18 @@ fn dispatch_overflow_fallback(
     state.messages.set_error(message);
 }
 
-fn load_service_entries(state: &mut AppState, reader: &dyn PgServiceEntryReader) {
-    match reader.read_services() {
-        Ok((services, path)) if !services.is_empty() => {
-            state.set_service_entries(services);
-            state.set_service_file_path(Some(path));
-        }
-        Ok(_) | Err(ServiceFileError::NotFound(_)) => {}
-        Err(e) => {
-            state.messages.set_error(e.to_string());
-        }
-    }
-}
+#[cfg(test)]
+#[allow(
+    clippy::disallowed_methods,
+    unreachable_pub,
+    reason = "test support constructs timestamps and shares helpers across test modules"
+)]
+mod tests;
 
-#[cfg(feature = "self-update")]
-#[allow(clippy::print_stdout, reason = "CLI subcommand output, TUI not active")]
-fn run_update() -> Result<()> {
-    let current = env!("CARGO_PKG_VERSION");
-    println!("Current version: v{current}");
-    println!("Checking for updates...");
-
-    let releases = self_update::backends::github::ReleaseList::configure()
-        .repo_owner("riii111")
-        .repo_name("sabiql")
-        .build()?
-        .fetch()?;
-    let Some(latest) = latest_stable_release(current, &releases) else {
-        println!("Already up to date (v{current}).");
-        return Ok(());
-    };
-    let target_version = format!("v{}", latest.version);
-
-    let status = self_update::backends::github::Update::configure()
-        .repo_owner("riii111")
-        .repo_name("sabiql")
-        .bin_name("sabiql")
-        .show_download_progress(true)
-        .no_confirm(true)
-        .current_version(current)
-        .target_version_tag(&target_version)
-        .build()?
-        .update()?;
-
-    if status.updated() {
-        println!("Updated successfully: v{} -> {}", current, status.version());
-    } else {
-        println!("Already up to date (v{current}).");
-    }
-
-    Ok(())
-}
-
-#[cfg(not(feature = "self-update"))]
-fn self_update_disabled_message() -> String {
-    format!(
-        "Self-update is not available in this build (v{}).\n\
-         If installed via Homebrew: brew upgrade sabiql\n\
-         If installed via cargo:    cargo install sabiql",
-        env!("CARGO_PKG_VERSION")
-    )
-}
+#[cfg(test)]
+#[path = "tests/render_snapshots/mod.rs"]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "snapshot tests construct timestamps with the real clock"
+)]
+mod render_snapshots;
