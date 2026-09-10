@@ -1757,7 +1757,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn quitting_cancels_sqlite_save_before_blocking_claim() {
+        async fn quitting_cancels_sqlite_save_before_persistence() {
             let dir = tempdir().unwrap();
             let path = dir.path().join("app.db");
             fs::write(&path, b"").unwrap();

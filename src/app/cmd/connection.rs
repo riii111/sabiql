@@ -69,12 +69,12 @@ impl Drop for ConnectionTaskOwner {
     }
 }
 
-fn claim_and_save<T>(
+fn save_if_active<T>(
     run_guard: &ConnectionSaveGuard,
     run_id: u64,
     save: impl FnOnce() -> T,
 ) -> Option<T> {
-    if !run_guard.claim(run_id) || !run_guard.begin_persistence(run_id) {
+    if !run_guard.begin_persistence(run_id) {
         return None;
     }
     let result = save();
@@ -141,7 +141,7 @@ pub(in crate::cmd) async fn run(
                 connection_task
                     .replace(async move {
                         tokio::task::spawn_blocking(move || {
-                            match claim_and_save(&run_guard, run_id, || store.save(&profile)) {
+                            match save_if_active(&run_guard, run_id, || store.save(&profile)) {
                                 Some(Ok(())) => {
                                     tx.blocking_send(Action::ConnectionSaveCompleted {
                                         target,
@@ -178,7 +178,7 @@ pub(in crate::cmd) async fn run(
                         match probe.probe(&target.dsn).await {
                             Ok(probe_result) => {
                                 let save_result = tokio::task::spawn_blocking(move || {
-                                    claim_and_save(&run_guard, run_id, || store.save(&profile))
+                                    save_if_active(&run_guard, run_id, || store.save(&profile))
                                 })
                                 .await
                                 .expect("connection store save task panicked");
@@ -228,7 +228,7 @@ pub(in crate::cmd) async fn run(
                     match provider.fetch_metadata(&dsn).await {
                         Ok(metadata) => {
                             let save_result = tokio::task::spawn_blocking(move || {
-                                claim_and_save(&run_guard, run_id, || store.save(&profile))
+                                save_if_active(&run_guard, run_id, || store.save(&profile))
                             })
                             .await
                             .expect("connection store save task panicked");
@@ -448,6 +448,7 @@ mod tests {
     };
 
     mod save_connection {
+        use super::super::save_if_active;
         use super::*;
         use mockall::predicate::eq;
         use std::fs;
@@ -827,27 +828,53 @@ mod tests {
         }
 
         #[test]
-        fn cancel_after_claim_prevents_save_from_starting() {
+        fn cancelled_save_does_not_start_persistence() {
             let run_guard = test_fixtures::active_connection_save_guard(1);
-
-            assert!(run_guard.claim(1));
+            let mut saved = false;
 
             run_guard.cancel();
-            assert!(!run_guard.begin_persistence(1));
+            let result = save_if_active(&run_guard, 1, || saved = true);
+
+            assert!(result.is_none());
+            assert!(!saved);
         }
 
         #[test]
         fn finishing_cancelled_save_does_not_clear_new_run() {
             let run_guard = test_fixtures::active_connection_save_guard(1);
 
-            assert!(run_guard.claim(1));
-            assert!(run_guard.begin_persistence(1));
+            let result = save_if_active(&run_guard, 1, || {
+                run_guard.cancel();
+                run_guard.arm_save(2);
+            });
 
-            run_guard.cancel();
+            assert!(result.is_some());
+            assert!(save_if_active(&run_guard, 2, || ()).is_some());
+        }
+
+        #[test]
+        fn stale_save_does_not_consume_new_run() {
+            let run_guard = test_fixtures::active_connection_save_guard(1);
+            let mut saved = false;
+
             run_guard.arm_save(2);
-            run_guard.finish_save(1);
+            let result = save_if_active(&run_guard, 1, || saved = true);
 
-            assert!(run_guard.claim(2));
+            assert!(result.is_none());
+            assert!(!saved);
+            assert!(save_if_active(&run_guard, 2, || ()).is_some());
+        }
+
+        #[test]
+        fn persistence_starts_only_once_per_run() {
+            let run_guard = test_fixtures::active_connection_save_guard(1);
+
+            let result = save_if_active(&run_guard, 1, || {
+                assert!(save_if_active(&run_guard, 1, || ()).is_none());
+            });
+
+            assert!(result.is_some());
+            assert!(save_if_active(&run_guard, 1, || ()).is_none());
         }
 
         #[tokio::test]

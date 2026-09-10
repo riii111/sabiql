@@ -25,7 +25,6 @@ enum ConnectionSaveState {
     #[default]
     Idle,
     Active(u64),
-    Claimed(u64),
     Saving(u64),
 }
 
@@ -39,18 +38,9 @@ impl ConnectionSaveGuard {
         *self.state.lock().expect("connection save guard poisoned") = ConnectionSaveState::Idle;
     }
 
-    pub(crate) fn claim(&self, run_id: u64) -> bool {
-        let mut state = self.state.lock().expect("connection save guard poisoned");
-        if *state != ConnectionSaveState::Active(run_id) {
-            return false;
-        }
-        *state = ConnectionSaveState::Claimed(run_id);
-        true
-    }
-
     pub(crate) fn begin_persistence(&self, run_id: u64) -> bool {
         let mut state = self.state.lock().expect("connection save guard poisoned");
-        if *state != ConnectionSaveState::Claimed(run_id) {
+        if *state != ConnectionSaveState::Active(run_id) {
             return false;
         }
         *state = ConnectionSaveState::Saving(run_id);
