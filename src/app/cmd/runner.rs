@@ -1098,7 +1098,7 @@ mod tests {
         use std::sync::atomic::{AtomicUsize, Ordering};
 
         use tokio::sync::oneshot;
-        use tokio::time::{Duration, advance};
+        use tokio::time::{Duration, sleep, timeout};
 
         use super::*;
         use crate::domain::Table;
@@ -1286,15 +1286,12 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            tokio::task::yield_now().await;
-
-            advance(Duration::from_secs(59)).await;
+            sleep(Duration::from_secs(59)).await;
             assert!(action_rx.try_recv().is_err());
 
-            advance(Duration::from_secs(1)).await;
             assert!(matches!(
-                action_rx.recv().await,
-                Some(Action::ProcessPrefetchQueue { run_id: 1 })
+                timeout(Duration::from_secs(2), action_rx.recv()).await,
+                Ok(Some(Action::ProcessPrefetchQueue { run_id: 1 }))
             ));
         }
 
@@ -1328,9 +1325,7 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            tokio::task::yield_now().await;
-            tokio::task::yield_now().await;
-            advance(Duration::from_secs(59)).await;
+            sleep(Duration::from_secs(59)).await;
             assert!(action_rx.try_recv().is_err());
 
             let shutdown_effects = reduce(
@@ -1350,9 +1345,11 @@ mod tests {
                 .await
                 .unwrap();
 
-            advance(Duration::from_secs(2)).await;
-            tokio::task::yield_now().await;
-            assert!(action_rx.try_recv().is_err());
+            assert!(
+                timeout(Duration::from_secs(2), action_rx.recv())
+                    .await
+                    .is_err()
+            );
         }
     }
 
