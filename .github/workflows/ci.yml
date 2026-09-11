@@ -111,6 +111,33 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           key: windows-test
+      - name: Limit workspace debug information
+        shell: pwsh
+        run: |
+          # CI needs stack traces, but not full type and variable information for workspace packages.
+          New-Item -ItemType Directory -Path .cargo -Force | Out-Null
+          @'
+          [profile.dev.package.sabiql]
+          debug = 1
+          [profile.dev.package."sabiql-app"]
+          debug = 1
+          [profile.dev.package."sabiql-domain"]
+          debug = 1
+          [profile.dev.package."sabiql-infra"]
+          debug = 1
+          [profile.dev.package."sabiql-ui"]
+          debug = 1
+          [profile.test.package.sabiql]
+          debug = 1
+          [profile.test.package."sabiql-app"]
+          debug = 1
+          [profile.test.package."sabiql-domain"]
+          debug = 1
+          [profile.test.package."sabiql-infra"]
+          debug = 1
+          [profile.test.package."sabiql-ui"]
+          debug = 1
+          '@ | Set-Content -Path .cargo/config.toml -Encoding utf8
       - uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b # v2
         with:
           tool: nextest
