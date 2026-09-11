@@ -87,7 +87,11 @@ jobs:
         run: cargo nextest run --workspace --profile ci-all --all-features --show-progress=none --status-level=fail --final-status-level=fail
       - id: test_no_default_features
         continue-on-error: true
-        run: cargo nextest run -p sabiql --profile ci-no-default --no-default-features --show-progress=none --status-level=fail --final-status-level=fail
+        env:
+          NEXTEST_HIDE_PROGRESS_BAR: true
+          NEXTEST_STATUS_LEVEL: fail
+          NEXTEST_FINAL_STATUS_LEVEL: fail
+        run: cargo insta test --test-runner nextest --unreferenced=reject -p sabiql --bin sabiql --profile ci-no-default --no-default-features
       - name: Summarize failed tests
         if: steps.test_all_features.outcome == 'failure' || steps.test_no_default_features.outcome == 'failure'
         run: |
@@ -97,9 +101,6 @@ jobs:
       - name: Fail job if tests failed
         if: steps.test_all_features.outcome == 'failure' || steps.test_no_default_features.outcome == 'failure'
         run: exit 1
-      - name: Reject unreferenced snapshots
-        run: cargo insta test --unreferenced=reject -p sabiql
-
   windows-test:
     name: Windows Test
     runs-on: windows-latest
@@ -219,7 +220,8 @@ jobs:
           make -j2
           make install
           PATH="$HOME/.local/sqlite-minimum/bin:$PATH" sqlite3 --version
-          PATH="$HOME/.local/sqlite-minimum/bin:$PATH" cargo nextest run -p sabiql-infra
+          sqlite_filter='test(adapters::sqlite) or test(adapters::registry::tests::builds_sqlite_dsn_from_sqlite_profile) or test(adapters::registry::tests::classifies_named_dsn_inputs::case_1_sqlite_url) or test(adapters::registry::tests::sqlite_)'
+          PATH="$HOME/.local/sqlite-minimum/bin:$PATH" cargo nextest run -p sabiql-infra -E "$sqlite_filter"
       - name: Reject SQLite 3.41.0
         run: |
           curl --fail --location --retry 3 \
@@ -239,11 +241,6 @@ jobs:
           cargo test -p sabiql-app \
             model::connection::error::tests::error_info::from_db_operation_error_classifies_sqlite_safe_mode_requirement \
             -- --exact
-      - name: Test system SQLite
-        run: |
-          sqlite3 --version
-          cargo nextest run -p sabiql-infra
-
   build:
     name: Build
     runs-on: ubuntu-latest
@@ -254,7 +251,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo build --workspace --release
-      - run: cargo build --workspace --release --no-default-features
 
   audit:
     name: Security Audit

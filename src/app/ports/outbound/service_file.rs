@@ -20,7 +20,6 @@ pub struct ServiceFileContents {
     pub warning: Option<ServiceFileError>,
 }
 
-#[cfg_attr(test, mockall::automock)]
 pub trait PgServiceEntryReader: Send + Sync {
     fn read_services(&self) -> Result<ServiceFileContents, ServiceFileError>;
 }
