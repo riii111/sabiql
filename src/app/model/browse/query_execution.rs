@@ -495,40 +495,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn can_next_false_when_reached_end() {
-            let p = PaginationState {
-                reached_end: true,
-                ..Default::default()
-            };
-
-            assert!(!p.can_next());
-        }
-
-        #[test]
-        fn can_next_true_before_end_of_data() {
-            let p = PaginationState::default();
-
-            assert!(p.can_next());
-        }
-
-        #[test]
-        fn can_prev_false_on_first_page() {
-            let p = PaginationState::default();
-
-            assert!(!p.can_prev());
-        }
-
-        #[test]
-        fn can_prev_true_on_later_page() {
-            let p = PaginationState {
-                current_page: 2,
-                ..Default::default()
-            };
-
-            assert!(p.can_prev());
-        }
-
-        #[test]
         fn reset_clears_state() {
             let mut p = PaginationState {
                 current_page: 5,

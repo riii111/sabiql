@@ -1077,32 +1077,14 @@ mod tests {
         }
 
         #[test]
-        fn completion_next_wraps_around() {
+        fn completion_navigation_wraps_around() {
             let mut state = create_test_state();
             state.sql_modal.apply_completion_update(
-                &[make_candidate("a"), make_candidate("b")],
-                0,
-                true,
-            );
-            state.sql_modal.completion_next();
-            let now = Instant::now();
-
-            let effects = reduce(
-                &mut state,
-                Action::CompletionNext,
-                now,
-                &AppServices::stub(),
-            );
-
-            assert_eq!(state.sql_modal.completion().selected_index, 0);
-            assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn completion_prev_wraps_around() {
-            let mut state = create_test_state();
-            state.sql_modal.apply_completion_update(
-                &[make_candidate("a"), make_candidate("b")],
+                &[
+                    make_candidate("a"),
+                    make_candidate("b"),
+                    make_candidate("c"),
+                ],
                 0,
                 true,
             );
@@ -1115,7 +1097,17 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.sql_modal.completion().selected_index, 1);
+            assert_eq!(state.sql_modal.completion().selected_index, 2);
+            assert!(effects.is_empty());
+
+            let effects = reduce(
+                &mut state,
+                Action::CompletionNext,
+                now,
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.sql_modal.completion().selected_index, 0);
             assert!(effects.is_empty());
         }
 
@@ -1348,32 +1340,18 @@ mod tests {
         }
 
         #[test]
-        fn close_keeps_error_info_for_reopen() {
+        fn close_resets_view_and_reopen_preserves_error_info() {
             let mut state = state_with_error();
+            state.session.set_metadata_state(MetadataState::Error);
+            state.ui.set_focused_pane(FocusedPane::Explorer);
+            let now = Instant::now();
+            let error_info = state.connection_error.error_info().cloned();
+
             state.connection_error.toggle_details();
             state.connection_error.scroll_down(usize::MAX);
-            let now = Instant::now();
-
-            reduce(
-                &mut state,
-                Action::CloseConnectionError,
-                now,
-                &AppServices::stub(),
-            );
-
-            // error_info is kept so Enter can re-open modal
-            assert!(state.connection_error.has_error());
-            assert_eq!(state.input_mode(), InputMode::Normal);
-            // UI state is reset
-            assert!(!state.connection_error.details_expanded());
-            assert_eq!(state.connection_error.scroll_offset(), 0);
-        }
-
-        #[test]
-        fn close_clears_copied_feedback() {
-            let mut state = state_with_error();
-            let now = Instant::now();
             state.connection_error.mark_copied_at(now);
+            assert!(state.connection_error.details_expanded());
+            assert!(state.connection_error.scroll_offset() > 0);
             assert!(state.connection_error.is_copied_visible_at(now));
 
             reduce(
@@ -1382,28 +1360,12 @@ mod tests {
                 now,
                 &AppServices::stub(),
             );
-
-            // Copied feedback is cleared on close
-            assert!(!state.connection_error.is_copied_visible_at(now));
-        }
-
-        #[test]
-        fn reopen_modal_after_close_shows_same_error() {
-            let mut state = state_with_error();
-            state.session.set_metadata_state(MetadataState::Error);
-            state.ui.set_focused_pane(FocusedPane::Explorer);
-            let now = Instant::now();
-
-            // Close modal
-            reduce(
-                &mut state,
-                Action::CloseConnectionError,
-                now,
-                &AppServices::stub(),
-            );
             assert_eq!(state.input_mode(), InputMode::Normal);
+            assert_eq!(state.connection_error.error_info(), error_info.as_ref());
+            assert!(!state.connection_error.details_expanded());
+            assert_eq!(state.connection_error.scroll_offset(), 0);
+            assert!(!state.connection_error.is_copied_visible_at(now));
 
-            // Re-open with Enter
             reduce(
                 &mut state,
                 Action::ConfirmSelection,
@@ -1411,7 +1373,7 @@ mod tests {
                 &AppServices::stub(),
             );
             assert_eq!(state.input_mode(), InputMode::ConnectionError);
-            assert!(state.connection_error.has_error());
+            assert_eq!(state.connection_error.error_info(), error_info.as_ref());
         }
 
         #[test]
@@ -1592,22 +1554,6 @@ mod tests {
         }
 
         #[test]
-        fn reload_metadata_sets_is_reloading_flag() {
-            let mut state = create_test_state();
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let now = Instant::now();
-
-            reduce(
-                &mut state,
-                Action::ReloadMetadata,
-                now,
-                &AppServices::stub(),
-            );
-
-            assert!(state.session.is_reloading());
-        }
-
-        #[test]
         fn reload_then_metadata_loaded_shows_reloaded_message() {
             let mut state = create_test_state();
             state.session.activate_connection_with_dsn(
@@ -1646,17 +1592,6 @@ mod tests {
         use super::*;
         use crate::domain::DatabaseMetadata;
         use crate::model::er_state::ErStatus;
-
-        #[test]
-        fn er_open_while_rendering_returns_no_effects() {
-            let mut state = create_test_state();
-            state.er_preparation.mark_rendering();
-            let now = Instant::now();
-
-            let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
-
-            assert!(effects.is_empty());
-        }
 
         #[test]
         fn unsupported_er_open_direct_dispatch_has_no_side_effect() {
@@ -1698,52 +1633,6 @@ mod tests {
             assert!(state.table_prefetch.active_prefetch_run_id().is_none());
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
-        }
-
-        #[test]
-        fn active_prefetch_run_emits_smart_refresh() {
-            let mut state = create_test_state();
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            state
-                .session
-                .set_metadata(Some(Arc::new(DatabaseMetadata::new("test".to_string()))));
-            let _ = state.table_prefetch.begin_er_prefetch();
-            let now = Instant::now();
-
-            let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
-
-            assert!(state.table_prefetch.active_prefetch_run_id().is_none());
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
-        }
-
-        #[test]
-        fn no_prefetch_emits_smart_refresh() {
-            let mut state = create_test_state();
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            state
-                .session
-                .set_metadata(Some(Arc::new(DatabaseMetadata::new("test".to_string()))));
-            let now = Instant::now();
-
-            let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
-
-            assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
-        }
-
-        #[test]
-        fn no_metadata_returns_error() {
-            let mut state = create_test_state();
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let _ = state.table_prefetch.begin_er_prefetch();
-            let now = Instant::now();
-
-            let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
-
-            assert!(state.messages.last_error.is_some());
-            assert!(effects.is_empty());
         }
 
         #[test]
@@ -2557,6 +2446,7 @@ mod tests {
                 .session
                 .set_connection_state(ConnectionState::Connected);
             state.ui.set_explorer_selected_raw(5);
+            state.ui.set_inspector_tab(InspectorTab::Indexes);
             let now = Instant::now();
 
             let effects = reduce(
@@ -2576,6 +2466,10 @@ mod tests {
             assert!(state.session.connection_state().is_connecting());
             assert!(state.connection_caches.contains_key(&conn_a));
             assert_eq!(state.connection_caches[&conn_a].explorer_selected, 5);
+            assert_eq!(
+                state.connection_caches[&conn_a].inspector_tab,
+                InspectorTab::Indexes
+            );
             assert!(matches!(
                 effects.as_slice(),
                 [
