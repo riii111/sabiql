@@ -1098,7 +1098,7 @@ mod tests {
         use std::sync::atomic::{AtomicUsize, Ordering};
 
         use tokio::sync::oneshot;
-        use tokio::time::{Duration, timeout};
+        use tokio::time::{Duration, sleep, timeout};
 
         use super::*;
         use crate::domain::Table;
@@ -1256,8 +1256,8 @@ mod tests {
             assert_eq!(dropped.load(Ordering::SeqCst), 1);
         }
 
-        #[tokio::test]
-        async fn quit_drops_delayed_prefetch_task() {
+        #[tokio::test(start_paused = true)]
+        async fn delayed_prefetch_dispatches_after_deadline_without_cancellation() {
             let provider = PendingMetadataProvider {
                 metadata_started: Mutex::new(None),
                 dropped: Arc::new(AtomicUsize::new(0)),
@@ -1286,6 +1286,48 @@ mod tests {
                 )
                 .await
                 .unwrap();
+            sleep(Duration::from_secs(59)).await;
+            assert!(action_rx.try_recv().is_err());
+
+            assert!(matches!(
+                timeout(Duration::from_secs(2), action_rx.recv()).await,
+                Ok(Some(Action::ProcessPrefetchQueue { run_id: 1 }))
+            ));
+        }
+
+        #[tokio::test(start_paused = true)]
+        async fn quit_drops_delayed_prefetch_task_after_timer_starts() {
+            let provider = PendingMetadataProvider {
+                metadata_started: Mutex::new(None),
+                dropped: Arc::new(AtomicUsize::new(0)),
+            };
+            let (action_tx, mut action_rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner(
+                Arc::new(provider),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                action_tx,
+            );
+            let mut state = AppState::new("test".to_string());
+            let completion_engine = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .execute_effects(
+                    vec![Effect::DelayedProcessPrefetchQueue {
+                        run_id: 1,
+                        delay_secs: 60,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            sleep(Duration::from_secs(59)).await;
+            assert!(action_rx.try_recv().is_err());
+
             let shutdown_effects = reduce(
                 &mut state,
                 Action::Quit,
@@ -1304,7 +1346,7 @@ mod tests {
                 .unwrap();
 
             assert!(
-                timeout(Duration::from_millis(100), action_rx.recv())
+                timeout(Duration::from_secs(2), action_rx.recv())
                     .await
                     .is_err()
             );
@@ -1754,11 +1796,7 @@ mod tests {
                 .unwrap();
 
             assert_eq!(dropped.load(Ordering::SeqCst), 1);
-            assert!(
-                timeout(Duration::from_millis(100), action_rx.recv())
-                    .await
-                    .is_err()
-            );
+            assert!(action_rx.try_recv().is_err());
         }
     }
 
@@ -1766,13 +1804,11 @@ mod tests {
         use std::future::pending;
         use std::sync::atomic::{AtomicUsize, Ordering};
 
-        use tokio::sync::mpsc::UnboundedSender;
-        use tokio::time::{Duration, timeout};
-
         use super::*;
         use crate::domain::Table;
         use crate::ports::outbound::DbOperationError;
         use crate::update::reducer::reduce;
+        use tokio::sync::mpsc::UnboundedSender;
 
         struct DropSignal(Arc<AtomicUsize>);
 
@@ -1822,14 +1858,6 @@ mod tests {
             ) -> Result<TableSignatureSnapshot, DbOperationError> {
                 unreachable!("test only starts smart ER refresh")
             }
-        }
-
-        async fn wait_for_no_action(action_rx: &mut mpsc::Receiver<Action>) {
-            assert!(
-                timeout(Duration::from_millis(100), action_rx.recv())
-                    .await
-                    .is_err()
-            );
         }
 
         fn runner_with_pending_provider(
@@ -1892,7 +1920,7 @@ mod tests {
                 started_rx.recv().await.as_deref(),
                 Some("postgres://localhost/new")
             );
-            wait_for_no_action(&mut action_rx).await;
+            assert!(action_rx.try_recv().is_err());
         }
 
         #[tokio::test]
@@ -1937,7 +1965,7 @@ mod tests {
                 .unwrap();
 
             assert_eq!(dropped.load(Ordering::SeqCst), 1);
-            wait_for_no_action(&mut action_rx).await;
+            assert!(action_rx.try_recv().is_err());
         }
 
         #[tokio::test]
@@ -1983,7 +2011,7 @@ mod tests {
                 .unwrap();
 
             assert_eq!(dropped.load(Ordering::SeqCst), 1);
-            wait_for_no_action(&mut action_rx).await;
+            assert!(action_rx.try_recv().is_err());
         }
 
         #[tokio::test]
@@ -2033,7 +2061,7 @@ mod tests {
                 .unwrap();
 
             assert_eq!(dropped.load(Ordering::SeqCst), 1);
-            wait_for_no_action(&mut action_rx).await;
+            assert!(action_rx.try_recv().is_err());
         }
     }
 }
