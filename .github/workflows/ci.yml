@@ -89,9 +89,10 @@ jobs:
         continue-on-error: true
         env:
           NEXTEST_HIDE_PROGRESS_BAR: true
+          NEXTEST_PROFILE: ci-no-default
           NEXTEST_STATUS_LEVEL: fail
           NEXTEST_FINAL_STATUS_LEVEL: fail
-        run: cargo insta test --test-runner nextest --unreferenced=reject -p sabiql --bin sabiql --profile ci-no-default --no-default-features
+        run: cargo insta test --test-runner nextest --unreferenced=reject -p sabiql --bin sabiql --no-default-features
       - name: Summarize failed tests
         if: steps.test_all_features.outcome == 'failure' || steps.test_no_default_features.outcome == 'failure'
         run: |
