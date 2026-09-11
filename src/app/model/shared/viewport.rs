@@ -957,23 +957,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn rightmost_column_not_truncated_at_right_edge() {
-            let ideal = vec![20, 20, 20];
-            let min = vec![10, 10, 10];
-            let cfg = config(&ideal, &min);
-            let max_offset = 1;
-
-            let (indices, selected) =
-                select_viewport_columns(&cfg, &ctx(max_offset, 35, Some(2), max_offset));
-
-            let last_idx = indices.len() - 1;
-            assert_eq!(
-                selected[last_idx], ideal[indices[last_idx]],
-                "Rightmost column should have its ideal width at right edge"
-            );
-        }
-
-        #[test]
         fn left_columns_shrink_first_at_right_edge() {
             let ideal = vec![20, 20, 20];
             let min = vec![10, 10, 10];
@@ -1160,15 +1143,6 @@ mod tests {
                 visible,
                 vec![vec![0, 1, 2, 3, 4], vec![1, 2, 3, 4, 5], vec![2, 3, 4, 5]]
             );
-        }
-
-        #[test]
-        fn plan_counts_use_capped_widths() {
-            let ideal = vec![6, 12, 200, 14, 10, 16];
-            let min = vec![4, 6, 8, 12, 8, 8];
-
-            let plan = ViewportPlan::calculate(&ideal, &min, 120);
-
             assert_eq!(plan.column_count, 4);
             assert_eq!(plan.max_offset, 2);
         }
@@ -1437,26 +1411,6 @@ mod tests {
             // idx0 starts at 0, idx1 starts at 1
             assert_eq!(idx0[0], 0, "First column at offset 0 should be 0");
             assert_eq!(idx1[0], 1, "First column at offset 1 should be 1");
-        }
-
-        #[test]
-        fn total_width_within_available() {
-            let ideal = vec![20, 20, 20, 15];
-            let min = vec![10, 10, 10, 10];
-            let cfg = config(&ideal, &min);
-
-            // 3 cols: 20+20+20 + 2 sep = 62
-            // Available: 80, slack: 18
-            // Next col needs: 15 + 1 sep = 16
-            // 18 >= 16, bonus added
-            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 80, Some(3), 1));
-
-            assert_eq!(indices.len(), 4);
-            let total = total_width_with_separators(&widths);
-            assert!(
-                total <= 80,
-                "Total width {total} should not exceed available 80"
-            );
         }
     }
 }

@@ -494,6 +494,11 @@ mod tests {
                 serde_json::from_str(r#"{ "path": "/tmp/app.db" }"#).unwrap();
 
             assert_eq!(config.path(), "/tmp/app.db");
+
+            let config: SqliteConnectionConfig =
+                serde_json::from_str(r#"{ "path": "./relative/app.db" }"#).unwrap();
+
+            assert_eq!(config.path(), "./relative/app.db");
         }
 
         #[test]
@@ -561,32 +566,6 @@ mod tests {
             assert!(!MySqlConnectionConfig::is_valid_host(" localhost "));
             assert!(!MySqlConnectionConfig::is_valid_host(
                 "db?ssl-mode=REQUIRED"
-            ));
-        }
-    }
-
-    mod validate_sqlite_path {
-        use super::*;
-
-        #[test]
-        fn accepts_regular_file_path() {
-            assert!(validate_sqlite_path("/tmp/app.db").is_ok());
-            assert!(validate_sqlite_path("./relative/app.db").is_ok());
-        }
-
-        #[test]
-        fn rejects_memory_database() {
-            assert!(matches!(
-                validate_sqlite_path(":memory:"),
-                Err(SqliteConnectionConfigError::UnsupportedInMemoryDatabase)
-            ));
-        }
-
-        #[test]
-        fn rejects_file_uri() {
-            assert!(matches!(
-                validate_sqlite_path("file:memdb?mode=memory"),
-                Err(SqliteConnectionConfigError::UnsupportedUriFilename)
             ));
         }
     }

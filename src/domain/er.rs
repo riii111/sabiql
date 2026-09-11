@@ -420,12 +420,14 @@ mod tests {
                 make_table("a", "public", vec![("public.a", "public.b")]),
                 make_table("b", "public", vec![]),
                 make_table("c", "public", vec![]),
+                make_table("logs", "public", vec![]),
             ];
             let seeds = vec!["public.a".to_string(), "public.c".to_string()];
 
             let result = fk_reachable_tables_multi(&tables, &seeds, 1);
 
             assert_eq!(result.len(), 3);
+            assert!(!result.iter().any(|t| t.qualified_name == "public.logs"));
         }
 
         #[test]

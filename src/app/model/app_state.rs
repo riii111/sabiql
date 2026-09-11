@@ -1183,13 +1183,6 @@ mod tests {
         }
 
         #[test]
-        fn selection_generation_starts_at_zero() {
-            let state = make_state();
-
-            assert_eq!(state.session.selection_generation(), 0);
-        }
-
-        #[test]
         fn selection_generation_increments_on_selection() {
             let mut state = make_state();
 
@@ -1200,18 +1193,6 @@ mod tests {
             assert_eq!(gen1, 0);
             assert_eq!(gen2, 1);
             assert_eq!(gen3, 2);
-        }
-
-        #[test]
-        fn selection_generation_advances_after_reselection() {
-            let mut state = make_state();
-
-            let initial_gen = state.session.selection_generation();
-            let current_gen = state
-                .session
-                .select_table("public", "users", &mut state.query);
-
-            assert!(initial_gen < current_gen);
         }
     }
 
@@ -1305,8 +1286,11 @@ mod tests {
         }
 
         #[test]
-        fn resets_prefetch_state() {
+        fn reload_metadata_resets_prefetch_er_and_messages() {
             let mut state = prepare_state_for_reload();
+            let _ = state.er_preparation.start_waiting_run();
+            state.messages.set_error("Old error".to_string());
+            assert!(state.messages.last_error().is_some());
 
             dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
@@ -1319,28 +1303,7 @@ mod tests {
                     .failed_prefetch("public.failed")
                     .is_none()
             );
-        }
-
-        #[test]
-        fn resets_er_preparation() {
-            let mut state = prepare_state_for_reload();
-            let _ = state.er_preparation.start_waiting_run();
-
-            dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
-
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
-        }
-
-        #[test]
-        fn clears_stale_messages() {
-            let mut state = prepare_state_for_reload();
-            state.messages.set_error("Old error".to_string());
-
-            assert!(state.messages.last_error().is_some());
-            assert!(state.messages.expires_at().is_none());
-
-            dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
-
             assert!(state.messages.last_error().is_none());
             assert!(state.messages.expires_at().is_none());
         }

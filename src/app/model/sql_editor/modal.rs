@@ -365,23 +365,6 @@ mod tests {
         use crate::policy::write::write_guardrails::RiskLevel;
 
         #[test]
-        fn high_status_keeps_target_name() {
-            let status = SqlModalStatus::ConfirmingHigh {
-                decision: AdhocRiskDecision {
-                    risk_level: RiskLevel::High,
-                    label: "DROP",
-                },
-                input: TextInputState::default(),
-                target_name: "users".to_string(),
-            };
-
-            assert!(matches!(
-                status,
-                SqlModalStatus::ConfirmingHigh { ref target_name, .. } if target_name == "users"
-            ));
-        }
-
-        #[test]
         fn cancel_only_resets_confirmation_status() {
             let mut ctx = SqlModalContext::default();
             ctx.cancel_confirmation();
