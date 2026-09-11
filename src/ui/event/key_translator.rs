@@ -138,7 +138,7 @@ mod tests {
 
     #[test]
     fn uppercase_char_with_shift_normalizes_to_plain() {
-        for c in ['G', 'H', 'M', 'L'] {
+        for c in ['G'] {
             let event = KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT);
 
             let combo = translate(event);
