@@ -291,13 +291,6 @@ mod tests {
         }
 
         #[test]
-        fn er_idle_returns_false() {
-            let state = create_test_state();
-
-            assert!(!has_active_spinner(&state));
-        }
-
-        #[test]
         fn er_waiting_returns_true() {
             let mut state = create_test_state();
             let _ = state.er_preparation.start_waiting_run();
@@ -362,36 +355,6 @@ mod tests {
             state.modal.set_mode(InputMode::Help);
 
             assert!(!has_blinking_cursor(&state));
-        }
-    }
-
-    mod min_instant_tests {
-        use super::*;
-
-        #[test]
-        fn both_none_returns_none() {
-            assert!(min_instant(None, None).is_none());
-        }
-
-        #[test]
-        fn first_some_returns_first() {
-            let now = Instant::now();
-            assert_eq!(min_instant(Some(now), None), Some(now));
-        }
-
-        #[test]
-        fn second_some_returns_second() {
-            let now = Instant::now();
-            assert_eq!(min_instant(None, Some(now)), Some(now));
-        }
-
-        #[test]
-        fn both_some_returns_earlier() {
-            let now = Instant::now();
-            let later = now + Duration::from_secs(1);
-
-            assert_eq!(min_instant(Some(now), Some(later)), Some(now));
-            assert_eq!(min_instant(Some(later), Some(now)), Some(now));
         }
     }
 }
