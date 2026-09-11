@@ -312,17 +312,7 @@ mod tests {
             metadata.metadata.table_summaries[0].qualified_name(),
             "main.users"
         );
-    }
-
-    #[tokio::test]
-    async fn sqlite_metadata_dispatch_preserves_unknown_user() {
-        let (_dir, dsn) =
-            test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-        let registry = DbAdapterRegistry::new();
-
-        let effective_user = registry.fetch_metadata(&dsn).await.unwrap().effective_user;
-
-        assert_eq!(effective_user, None);
+        assert_eq!(metadata.effective_user, None);
     }
 
     #[tokio::test]

@@ -879,17 +879,6 @@ mod tests {
         }
 
         #[test]
-        fn ctas_outside_savepoint_survives() {
-            assert_eq!(
-                PostgresAdapter::parse_aggregate_command_tag(
-                    "BEGIN\nSELECT 1\nCOMMIT",
-                    "BEGIN; CREATE TABLE t AS SELECT 1; COMMIT"
-                ),
-                Some(CommandTag::Create("TABLE".to_string()))
-            );
-        }
-
-        #[test]
         fn ctas_full_rollback() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(

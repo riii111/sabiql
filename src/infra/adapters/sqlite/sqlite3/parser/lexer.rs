@@ -724,6 +724,26 @@ END";
         use super::*;
 
         #[test]
+        fn module_name_parses_regular_and_multiline_ddl() {
+            assert_eq!(
+                virtual_table_module_name("CREATE VIRTUAL TABLE notes_fts USING fts5(body);"),
+                Some("fts5".to_string())
+            );
+            assert_eq!(
+                virtual_table_module_name("CREATE VIRTUAL TABLE notes_fts\nUSING fts5(body);"),
+                Some("fts5".to_string())
+            );
+        }
+
+        #[test]
+        fn module_name_reads_bracket_quoted_module() {
+            assert_eq!(
+                virtual_table_module_name("CREATE VIRTUAL TABLE notes USING [fts5](body);"),
+                Some("fts5".to_string())
+            );
+        }
+
+        #[test]
         fn module_name_skips_quoted_table_name() {
             assert_eq!(
                 virtual_table_module_name(r#"CREATE VIRTUAL TABLE "using" USING fts5(body);"#),

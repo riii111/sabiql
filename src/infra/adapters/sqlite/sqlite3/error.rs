@@ -281,12 +281,6 @@ mod tests {
             assert_eq!(SqliteVersion::parse(output), expected);
         }
 
-        #[test]
-        fn safe_mode_requires_sqlite_3_41_1_or_later() {
-            assert!(SqliteVersion::new(3, 41, 0) < SQLITE_SAFE_MODE_MIN_VERSION);
-            assert!(SqliteVersion::new(3, 41, 1) >= SQLITE_SAFE_MODE_MIN_VERSION);
-        }
-
         #[rstest]
         #[case("3.41.1", true)]
         #[case("3.51.0", true)]
