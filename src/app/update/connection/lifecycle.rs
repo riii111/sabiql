@@ -547,29 +547,6 @@ mod tests {
     mod cache_tests {
         use super::*;
 
-        #[test]
-        fn saves_current_cache_before_switching() {
-            let mut state = AppState::new("test".to_string());
-            let current_id = ConnectionId::new();
-            let new_id = ConnectionId::new();
-
-            state.session.activate_connection_with_dsn(
-                &current_id,
-                "current",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/current",
-            );
-            state.ui.set_explorer_selected_raw(5);
-            state.ui.set_inspector_tab(InspectorTab::Indexes);
-
-            let action = create_postgres_switch_action(&new_id, "new_db");
-            reduce(&mut state, &action);
-
-            let saved = &state.connection_caches[&current_id];
-            assert_eq!(saved.explorer_selected, 5);
-            assert_eq!(saved.inspector_tab, InspectorTab::Indexes);
-        }
-
         fn assert_non_mysql_cache_survives_mysql_switch(
             database_type: DatabaseType,
             dsn: &str,

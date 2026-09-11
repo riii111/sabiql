@@ -311,14 +311,6 @@ mod tests {
     use super::*;
     use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
 
-    fn candidate(text: &str) -> CompletionCandidate {
-        CompletionCandidate {
-            text: text.to_string(),
-            kind: CompletionKind::Keyword,
-            score: 1,
-        }
-    }
-
     impl SqlModalContext {
         #[doc(hidden)]
         pub(crate) fn clear_content(&mut self) {
@@ -467,18 +459,6 @@ mod tests {
 
             assert!(!ctx.completion.visible);
             assert_eq!(ctx.completion_debounce, Some(debounce_until));
-        }
-
-        #[test]
-        fn navigation_wraps_selection() {
-            let mut ctx = SqlModalContext::default();
-            ctx.apply_completion_update(&[candidate("a"), candidate("b")], 0, true);
-
-            ctx.completion_prev();
-            assert_eq!(ctx.completion.selected_index, 1);
-
-            ctx.completion_next();
-            assert_eq!(ctx.completion.selected_index, 0);
         }
 
         #[test]

@@ -1508,24 +1508,6 @@ mod tests {
         use crate::domain::CommandTag;
 
         #[test]
-        fn dml_with_table_selected_emits_execute_preview() {
-            let mut state = state_with_table("public", "users");
-            let action = query_completed_action(
-                &mut state,
-                adhoc_result_with_tag(CommandTag::Update(3)),
-                0,
-                None,
-            );
-
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
-
-            assert_eq!(effects.len(), 1);
-            assert!(
-                matches!(&effects[0], Effect::ExecutePreview { table, .. } if table == "users")
-            );
-        }
-
-        #[test]
         fn dml_without_table_selected_emits_no_effects() {
             let mut state = create_test_state();
             let action = query_completed_action(
@@ -1756,7 +1738,9 @@ mod tests {
             let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(effects.len(), 1);
-            assert!(matches!(&effects[0], Effect::ExecutePreview { .. }));
+            assert!(
+                matches!(&effects[0], Effect::ExecutePreview { table, .. } if table == "users")
+            );
 
             let new_preview = preview_result(5);
             let action = query_completed_action(&mut state, Arc::clone(&new_preview), 0, Some(0));
