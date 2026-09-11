@@ -1510,9 +1510,12 @@ mod tests {
                 let mut state = connected_state();
                 enter_query_history(&mut state, InputMode::Normal);
                 let test_conn = ConnectionId::from_string("test-conn");
-                state
-                    .query_history_picker
-                    .replace_entries(&[make_entry("SELECT * FROM users", &test_conn)]);
+                state.query_history_picker.replace_entries(&[
+                    make_entry("SELECT * FROM users", &test_conn),
+                    make_entry("SELECT 1", &test_conn),
+                    make_entry("SELECT 1", &test_conn),
+                ]);
+                state.query_history_picker.set_selection_for_test(1);
 
                 let effects = super::dispatch_modal(
                     &mut state,

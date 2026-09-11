@@ -239,66 +239,22 @@ mod tests {
         fn table_picker_appends_text() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::TablePicker);
+            state.ui.table_picker_mut().set_selection(5);
 
             let effects = dispatch_navigation(
-                &mut state,
-                &Action::Paste("hello".to_string()),
-                &AppServices::stub(),
-                Instant::now(),
-            );
-
-            assert!(effects.is_handled());
-            assert_eq!(state.ui.table_picker().filter_input().content(), "hello");
-        }
-
-        #[test]
-        fn table_picker_strips_newlines() {
-            let mut state = AppState::new("test".to_string());
-            state.modal.set_mode(InputMode::TablePicker);
-
-            dispatch_navigation(
                 &mut state,
                 &Action::Paste("hel\nlo\r\n".to_string()),
                 &AppServices::stub(),
                 Instant::now(),
             );
 
+            assert!(effects.is_handled());
             assert_eq!(state.ui.table_picker().filter_input().content(), "hello");
-        }
-
-        #[test]
-        fn table_picker_resets_selection() {
-            let mut state = AppState::new("test".to_string());
-            state.modal.set_mode(InputMode::TablePicker);
-            state.ui.table_picker_mut().set_selection(5);
-
-            dispatch_navigation(
-                &mut state,
-                &Action::Paste("x".to_string()),
-                &AppServices::stub(),
-                Instant::now(),
-            );
-
             assert_eq!(state.ui.table_picker().selected(), 0);
         }
 
         #[test]
         fn command_line_appends_text() {
-            let mut state = AppState::new("test".to_string());
-            state.modal.set_mode(InputMode::CommandLine);
-
-            dispatch_navigation(
-                &mut state,
-                &Action::Paste("quit".to_string()),
-                &AppServices::stub(),
-                Instant::now(),
-            );
-
-            assert_eq!(state.command_line_input.content(), "quit");
-        }
-
-        #[test]
-        fn command_line_strips_newlines() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::CommandLine);
 
@@ -331,10 +287,11 @@ mod tests {
         fn er_table_picker_appends_to_filter() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::ErTablePicker);
+            state.ui.er_picker_mut().set_selection(5);
 
             let effects = dispatch_navigation(
                 &mut state,
-                &Action::Paste("public.users".to_string()),
+                &Action::Paste("public\n.users\r\n".to_string()),
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -348,24 +305,6 @@ mod tests {
         }
 
         #[test]
-        fn er_table_picker_strips_newlines() {
-            let mut state = AppState::new("test".to_string());
-            state.modal.set_mode(InputMode::ErTablePicker);
-
-            dispatch_navigation(
-                &mut state,
-                &Action::Paste("public\n.users\r\n".to_string()),
-                &AppServices::stub(),
-                Instant::now(),
-            );
-
-            assert_eq!(
-                state.ui.er_picker().filter_input().content(),
-                "public.users"
-            );
-        }
-
-        #[test]
         fn query_history_picker_appends_to_filter() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::QueryHistoryPicker);
@@ -373,7 +312,7 @@ mod tests {
 
             let effects = dispatch_navigation(
                 &mut state,
-                &Action::Paste("users".to_string()),
+                &Action::Paste("us\ners\r\n".to_string()),
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -381,21 +320,6 @@ mod tests {
             assert!(effects.is_handled());
             assert_eq!(state.query_history_picker.filter_input().content(), "users");
             assert_eq!(state.query_history_picker.selected(), 0);
-        }
-
-        #[test]
-        fn query_history_picker_strips_newlines() {
-            let mut state = AppState::new("test".to_string());
-            state.modal.set_mode(InputMode::QueryHistoryPicker);
-
-            dispatch_navigation(
-                &mut state,
-                &Action::Paste("us\ners\r\n".to_string()),
-                &AppServices::stub(),
-                Instant::now(),
-            );
-
-            assert_eq!(state.query_history_picker.filter_input().content(), "users");
         }
     }
 

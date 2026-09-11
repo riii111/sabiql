@@ -211,6 +211,7 @@ mod tests {
     use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
     use crate::update::action::CursorMove;
     use crate::update::input::keybindings::Key;
+    use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {
         KeyCombo::plain(k)
@@ -280,6 +281,14 @@ mod tests {
         }
 
         #[test]
+        fn append_enters_edit_mode() {
+            let result =
+                handle_json_detail_keys(combo(Key::Char('A')), InputInteraction::Viewing, None);
+
+            assert!(matches!(result, Action::JsonAppendInsert));
+        }
+
+        #[test]
         fn h_moves_cursor_left_in_normal_mode() {
             let result =
                 handle_json_detail_keys(combo(Key::Char('h')), InputInteraction::Viewing, None);
@@ -290,6 +299,27 @@ mod tests {
                     target: InputTarget::JsonEdit,
                     direction: CursorMove::Left,
                 }
+            ));
+        }
+
+        #[rstest]
+        #[case(Key::Char('0'), CursorMove::LineStart)]
+        #[case(Key::Char('$'), CursorMove::LineEnd)]
+        #[case(Key::Char('w'), CursorMove::WordForward)]
+        #[case(Key::Char('b'), CursorMove::WordBackward)]
+        #[case(Key::Char('G'), CursorMove::LastLine)]
+        #[case(Key::Char('H'), CursorMove::ViewportTop)]
+        #[case(Key::Char('M'), CursorMove::ViewportMiddle)]
+        #[case(Key::Char('L'), CursorMove::ViewportBottom)]
+        fn vim_aliases_move_json_cursor(#[case] key: Key, #[case] expected: CursorMove) {
+            let result = handle_json_detail_keys(combo(key), InputInteraction::Viewing, None);
+
+            assert!(matches!(
+                result,
+                Action::TextMoveCursor {
+                    target: InputTarget::JsonEdit,
+                    direction,
+                } if direction == expected
             ));
         }
 

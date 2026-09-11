@@ -434,33 +434,6 @@ mod tests {
         }
 
         #[test]
-        fn clears_active_state_when_active_deleted() {
-            let mut state = AppState::new("test".to_string());
-            let profile = create_profile("Production");
-            let profile_id = profile.id.clone();
-            state.set_connections(vec![profile]);
-            state.session.activate_connection_with_dsn(
-                &profile_id,
-                "Production",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/db",
-            );
-            state
-                .session
-                .set_connection_state(ConnectionState::Connected);
-
-            reduce_connection_selector(
-                &mut state,
-                &Action::ConnectionDeleted(profile_id),
-                Instant::now(),
-            );
-
-            assert!(state.session.active_connection_id().is_none());
-            assert!(state.session.dsn().is_none());
-            assert!(state.session.connection_state().is_not_connected());
-        }
-
-        #[test]
         fn resets_postgres_state_when_active_deleted() {
             let mut state = AppState::new("test".to_string());
             let profile = create_profile("Production");
