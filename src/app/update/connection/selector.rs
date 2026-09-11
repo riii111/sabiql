@@ -486,6 +486,9 @@ mod tests {
                 Instant::now(),
             );
 
+            assert!(state.session.active_connection_id().is_none());
+            assert!(state.session.dsn().is_none());
+            assert!(state.session.connection_state().is_not_connected());
             assert_eq!(state.query.pagination.current_page(), 0);
             assert_eq!(
                 state.result_interaction.selection().mode(),
