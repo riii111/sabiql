@@ -402,9 +402,6 @@ fn find_cursor_position(line_spans: &[LineSpan], cursor: usize) -> (usize, usize
 }
 
 #[cfg(test)]
-mod perf_tests;
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use rstest::rstest;

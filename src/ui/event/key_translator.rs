@@ -138,17 +138,15 @@ mod tests {
 
     #[test]
     fn uppercase_char_with_shift_normalizes_to_plain() {
-        for c in ['G'] {
-            let event = KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT);
+        let event = KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT);
 
-            let combo = translate(event);
+        let combo = translate(event);
 
-            assert_eq!(
-                combo,
-                KeyCombo::plain(Key::Char(c)),
-                "Shift+{c} should normalize to plain {c}"
-            );
-        }
+        assert_eq!(
+            combo,
+            KeyCombo::plain(Key::Char('G')),
+            "Shift+G should normalize to plain G"
+        );
     }
 
     #[test]
