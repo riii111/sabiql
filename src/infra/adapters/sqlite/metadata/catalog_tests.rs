@@ -4,10 +4,8 @@ use crate::domain::{Schema, SqlitePathError, TableKind, TableKindInfo};
 use super::super::SqliteAdapter;
 
 mod metadata {
-    use crate::adapters::test_support;
-    use rstest::rstest;
-
     use super::*;
+    use crate::adapters::test_support;
 
     #[tokio::test]
     async fn invalid_dsn_returns_connection_error() {
@@ -271,27 +269,34 @@ mod metadata {
         }
     }
 
-    #[rstest]
-    #[case::regular("users", TableKind::Table, false, false, None)]
-    #[case::without_rowid("settings", TableKind::Table, false, true, None)]
-    #[case::name_containing_strict("strict_users", TableKind::Table, false, false, None)]
-    #[case::strict("typed_users", TableKind::Table, true, false, None)]
-    #[case::virtual_table("notes_fts", TableKind::Virtual, false, false, Some("fts5"))]
     #[tokio::test]
-    async fn classifies_table_kind(
-        #[case] table_name: &str,
-        #[case] expected_kind: TableKind,
-        #[case] expected_strict: bool,
-        #[case] expected_without_rowid: bool,
-        #[case] expected_virtual_module: Option<&str>,
-    ) {
+    async fn classifies_table_kind() {
         let fixture = TableKindInfoMetadataFixture::new().await;
-        let kind_info = fixture.kind_info(table_name);
+        let cases = [
+            ("users", TableKind::Table, false, false, None),
+            ("settings", TableKind::Table, false, true, None),
+            ("strict_users", TableKind::Table, false, false, None),
+            ("typed_users", TableKind::Table, true, false, None),
+            ("notes_fts", TableKind::Virtual, false, false, Some("fts5")),
+        ];
 
-        assert_eq!(kind_info.kind, expected_kind);
-        assert_eq!(kind_info.is_strict, expected_strict);
-        assert_eq!(kind_info.without_rowid, expected_without_rowid);
-        assert_eq!(kind_info.virtual_module.as_deref(), expected_virtual_module);
+        for (table_name, expected_kind, expected_strict, expected_without_rowid, expected_module) in
+            cases
+        {
+            let kind_info = fixture.kind_info(table_name);
+
+            assert_eq!(kind_info.kind, expected_kind, "table={table_name}");
+            assert_eq!(kind_info.is_strict, expected_strict, "table={table_name}");
+            assert_eq!(
+                kind_info.without_rowid, expected_without_rowid,
+                "table={table_name}"
+            );
+            assert_eq!(
+                kind_info.virtual_module.as_deref(),
+                expected_module,
+                "table={table_name}"
+            );
+        }
     }
 
     #[tokio::test]

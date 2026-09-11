@@ -96,6 +96,7 @@ mod tests {
     #[test]
     fn begin_with_value_sets_active_state_with_copied_values() {
         let mut state = CellEditState::default();
+        assert!(!state.is_active());
 
         state.begin(3, 5, "Alice".to_string());
 
@@ -104,15 +105,6 @@ mod tests {
         assert_eq!(state.original_value(), "Alice");
         assert_eq!(state.draft_value(), "Alice");
         assert_eq!(state.input.cursor(), 5); // cursor at end
-        assert!(state.is_active());
-    }
-
-    #[test]
-    fn is_active_requires_both_row_and_col() {
-        assert!(!CellEditState::default().is_active());
-
-        let mut state = CellEditState::default();
-        state.begin(1, 2, "Alice".to_string());
         assert!(state.is_active());
     }
 

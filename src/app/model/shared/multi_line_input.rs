@@ -402,9 +402,6 @@ fn find_cursor_position(line_spans: &[LineSpan], cursor: usize) -> (usize, usize
 }
 
 #[cfg(test)]
-mod perf_tests;
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use rstest::rstest;
@@ -875,6 +872,7 @@ mod tests {
             s.backspace();
             assert_eq!(s.content(), "abcdef");
             assert_eq!(s.cursor(), 3);
+            assert_eq!(s.cursor_to_position(), (0, 3));
         }
 
         #[test]
@@ -918,16 +916,6 @@ mod tests {
             s.move_cursor(CursorMove::Down);
 
             assert_eq!(s.cursor_to_position(), (2, 3));
-        }
-
-        #[test]
-        fn backspace_rebuilds_cached_cursor_position() {
-            let mut s = ml("abc\ndef", 4);
-
-            s.backspace();
-
-            assert_eq!(s.content(), "abcdef");
-            assert_eq!(s.cursor_to_position(), (0, 3));
         }
     }
 

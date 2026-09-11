@@ -1094,35 +1094,260 @@ mod tests {
             generation_kind: None,
         };
 
-        for read_only in [false, true] {
-            for character_set in [false, true] {
-                for collation in [false, true] {
-                    for generation in [false, true] {
-                        let options = ColumnDisplayOptions {
-                            read_only,
-                            character_set,
-                            collation,
-                            generation,
-                        };
-                        let mut expected = vec!["id", "integer", "", "✓"];
-                        if options.read_only {
-                            expected.push("read-only");
-                        }
-                        expected.extend(["default", "comment"]);
-                        if options.character_set {
-                            expected.push("charset");
-                        }
-                        if options.collation {
-                            expected.push("collation");
-                        }
-                        if options.generation {
-                            expected.push("generation");
-                        }
+        let cases = [
+            (
+                ColumnDisplayOptions {
+                    read_only: false,
+                    character_set: false,
+                    collation: false,
+                    generation: false,
+                },
+                vec!["id", "integer", "", "✓", "default", "comment"],
+            ),
+            (
+                ColumnDisplayOptions {
+                    read_only: true,
+                    character_set: false,
+                    collation: false,
+                    generation: false,
+                },
+                vec!["id", "integer", "", "✓", "read-only", "default", "comment"],
+            ),
+            (
+                ColumnDisplayOptions {
+                    read_only: false,
+                    character_set: true,
+                    collation: false,
+                    generation: false,
+                },
+                vec!["id", "integer", "", "✓", "default", "comment", "charset"],
+            ),
+            (
+                ColumnDisplayOptions {
+                    read_only: false,
+                    character_set: false,
+                    collation: true,
+                    generation: false,
+                },
+                vec!["id", "integer", "", "✓", "default", "comment", "collation"],
+            ),
+            (
+                ColumnDisplayOptions {
+                    read_only: false,
+                    character_set: false,
+                    collation: false,
+                    generation: true,
+                },
+                vec!["id", "integer", "", "✓", "default", "comment", "generation"],
+            ),
+            (
+                ColumnDisplayOptions {
+                    read_only: true,
+                    character_set: true,
+                    collation: true,
+                    generation: true,
+                },
+                vec![
+                    "id",
+                    "integer",
+                    "",
+                    "✓",
+                    "read-only",
+                    "default",
+                    "comment",
+                    "charset",
+                    "collation",
+                    "generation",
+                ],
+            ),
+            (
+                ColumnDisplayOptions {
+                    read_only: false,
+                    character_set: true,
+                    collation: true,
+                    generation: false,
+                },
+                vec![
+                    "id",
+                    "integer",
+                    "",
+                    "✓",
+                    "default",
+                    "comment",
+                    "charset",
+                    "collation",
+                ],
+            ),
+            (
+                ColumnDisplayOptions {
+                    read_only: false,
+                    character_set: true,
+                    collation: true,
+                    generation: true,
+                },
+                vec![
+                    "id",
+                    "integer",
+                    "",
+                    "✓",
+                    "default",
+                    "comment",
+                    "charset",
+                    "collation",
+                    "generation",
+                ],
+            ),
+            (
+                ColumnDisplayOptions {
+                    read_only: true,
+                    character_set: false,
+                    collation: true,
+                    generation: false,
+                },
+                vec![
+                    "id",
+                    "integer",
+                    "",
+                    "✓",
+                    "read-only",
+                    "default",
+                    "comment",
+                    "collation",
+                ],
+            ),
+            (
+                ColumnDisplayOptions {
+                    read_only: true,
+                    character_set: false,
+                    collation: true,
+                    generation: true,
+                },
+                vec![
+                    "id",
+                    "integer",
+                    "",
+                    "✓",
+                    "read-only",
+                    "default",
+                    "comment",
+                    "collation",
+                    "generation",
+                ],
+            ),
+            (
+                ColumnDisplayOptions {
+                    read_only: true,
+                    character_set: true,
+                    collation: false,
+                    generation: false,
+                },
+                vec![
+                    "id",
+                    "integer",
+                    "",
+                    "✓",
+                    "read-only",
+                    "default",
+                    "comment",
+                    "charset",
+                ],
+            ),
+            (
+                ColumnDisplayOptions {
+                    read_only: true,
+                    character_set: true,
+                    collation: false,
+                    generation: true,
+                },
+                vec![
+                    "id",
+                    "integer",
+                    "",
+                    "✓",
+                    "read-only",
+                    "default",
+                    "comment",
+                    "charset",
+                    "generation",
+                ],
+            ),
+            (
+                ColumnDisplayOptions {
+                    read_only: true,
+                    character_set: true,
+                    collation: true,
+                    generation: false,
+                },
+                vec![
+                    "id",
+                    "integer",
+                    "",
+                    "✓",
+                    "read-only",
+                    "default",
+                    "comment",
+                    "charset",
+                    "collation",
+                ],
+            ),
+            (
+                ColumnDisplayOptions {
+                    read_only: false,
+                    character_set: false,
+                    collation: true,
+                    generation: true,
+                },
+                vec![
+                    "id",
+                    "integer",
+                    "",
+                    "✓",
+                    "default",
+                    "comment",
+                    "collation",
+                    "generation",
+                ],
+            ),
+            (
+                ColumnDisplayOptions {
+                    read_only: false,
+                    character_set: true,
+                    collation: false,
+                    generation: true,
+                },
+                vec![
+                    "id",
+                    "integer",
+                    "",
+                    "✓",
+                    "default",
+                    "comment",
+                    "charset",
+                    "generation",
+                ],
+            ),
+            (
+                ColumnDisplayOptions {
+                    read_only: true,
+                    character_set: false,
+                    collation: false,
+                    generation: true,
+                },
+                vec![
+                    "id",
+                    "integer",
+                    "",
+                    "✓",
+                    "read-only",
+                    "default",
+                    "comment",
+                    "generation",
+                ],
+            ),
+        ];
 
-                        assert_eq!(column_row_cells(&row, options), expected);
-                    }
-                }
-            }
+        for (options, expected) in cases {
+            assert_eq!(column_row_cells(&row, options), expected);
         }
     }
 

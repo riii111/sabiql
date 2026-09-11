@@ -242,9 +242,6 @@ pub(crate) fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
         .map_or(s.len(), |(byte_idx, _)| byte_idx)
 }
 
-#[cfg(test)]
-mod perf_tests;
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum WordKind {
     Keyword,

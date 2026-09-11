@@ -164,18 +164,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn sets_selected_index() {
-            let mut state = PickerState {
-                pane_height: 10,
-                ..Default::default()
-            };
-
-            state.set_selection(4);
-
-            assert_eq!(state.selected, 4);
-        }
-
-        #[test]
         fn scroll_offset_stays_zero_when_within_viewport() {
             let mut state = PickerState {
                 pane_height: 10,

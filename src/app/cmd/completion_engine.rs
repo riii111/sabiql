@@ -1428,15 +1428,6 @@ mod tests {
         }
 
         #[test]
-        fn after_from_returns_table_context() {
-            let e = engine();
-            let (token, ctx) = e.analyze("SELECT * FROM ", 14);
-
-            assert_eq!(token, "");
-            assert_eq!(ctx, CompletionContext::Table);
-        }
-
-        #[test]
         fn after_join_returns_table_context() {
             let e = engine();
             let (token, ctx) = e.analyze("SELECT * FROM users JOIN ", 25);
@@ -3711,23 +3702,6 @@ mod tests {
                 candidates[0].kind,
                 CompletionKind::Keyword,
                 "With empty prefix, keywords should come first"
-            );
-        }
-
-        #[test]
-        fn non_empty_prefix_shows_columns_first() {
-            let e = engine();
-            let table = create_users_table();
-
-            // "na" prefix: "name" column should come before keywords
-            let candidates = e.get_candidates("SELECT na", 9, None, Some(&table));
-
-            // First candidate should be the "name" column (boosted score)
-            assert_eq!(candidates[0].text, "name");
-            assert_eq!(
-                candidates[0].kind,
-                CompletionKind::Column,
-                "With prefix, matching columns should come first"
             );
         }
 

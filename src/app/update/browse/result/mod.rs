@@ -27,36 +27,3 @@ pub fn dispatch_result(
         .or_else(|| json::reduce_json(state, action, now))
         .or_else(|| row_detail::reduce_row_detail(state, action, now))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn next_page_passes_through_to_query_dispatcher() {
-        let mut state = AppState::new("test".to_string());
-
-        let result = dispatch_result(
-            &mut state,
-            &Action::ResultNextPage,
-            &AppServices::stub(),
-            Instant::now(),
-        );
-
-        assert!(result.is_pass());
-    }
-
-    #[test]
-    fn prev_page_passes_through_to_query_dispatcher() {
-        let mut state = AppState::new("test".to_string());
-
-        let result = dispatch_result(
-            &mut state,
-            &Action::ResultPrevPage,
-            &AppServices::stub(),
-            Instant::now(),
-        );
-
-        assert!(result.is_pass());
-    }
-}

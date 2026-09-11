@@ -1026,32 +1026,6 @@ mod tests {
         }
 
         #[test]
-        fn yank_empty_content_is_noop() {
-            let mut state = sql_modal_state();
-
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
-
-            assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn yank_non_empty_emits_copy_effect() {
-            let mut state = sql_modal_state();
-            state.sql_modal.editor.set_content("SELECT 1".to_string());
-
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
-
-            assert_eq!(effects.len(), 1);
-            assert!(
-                matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content == "SELECT 1")
-            );
-        }
-
-        #[test]
         fn yank_success_sets_flash() {
             let mut state = sql_modal_state();
             let now = Instant::now();

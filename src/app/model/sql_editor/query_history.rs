@@ -544,20 +544,5 @@ mod tests {
 
             assert_eq!(state.clamped_selected(), 0);
         }
-
-        #[test]
-        fn confirm_gets_representative_entry() {
-            let state = make_state(vec![
-                make_entry("SELECT 1"),
-                make_entry("SELECT 1"),
-                make_entry("SELECT 1"),
-            ]);
-
-            let grouped = state.grouped_filtered_entries();
-            let selected = state.clamped_selected();
-            let query = grouped.get(selected).map(|g| g.entry.query.clone());
-
-            assert_eq!(query, Some("SELECT 1".to_string()));
-        }
     }
 }

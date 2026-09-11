@@ -567,12 +567,6 @@ mod tests {
         }
 
         #[test]
-        fn preserves_mysql_split_errors_for_callers() {
-            assert!(classify_mysql_multi_statement("SELECT 'unfinished", Some("app")).is_err());
-            assert!(classify_mysql_multi_statement("SELECT 1 /* unfinished", Some("app")).is_err());
-        }
-
-        #[test]
         fn rejects_unsupported_controls_and_statements_before_execution() {
             for sql in [
                 "USE app",

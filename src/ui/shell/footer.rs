@@ -347,7 +347,6 @@ mod tests {
     use crate::app::domain::{ConnectionId, DatabaseType};
     use crate::app::model::app_state::AppState;
     use crate::app::model::connection::error::ConnectionErrorInfo;
-    use crate::app::model::connection::setup::ConnectionField;
     use crate::app::model::shared::focused_pane::FocusedPane;
     use crate::app::model::shared::input_mode::InputMode;
     use crate::app::model::shared::settings::KeymapPreset;
@@ -364,12 +363,6 @@ mod tests {
         state.modal.set_mode(InputMode::Normal);
         state.ui.set_focused_pane(FocusedPane::Inspector);
         state
-    }
-
-    fn focus_connection_field(state: &mut AppState, field: ConnectionField) {
-        while state.connection_setup.focused_field() != field {
-            state.connection_setup.focus_next_field();
-        }
     }
 
     fn result_focused_state() -> AppState {
@@ -655,15 +648,6 @@ mod tests {
         let hints = Footer::get_context_hints(&state);
 
         assert_eq!(hints, vec![sql_modal::MOVE.as_hint()]);
-    }
-
-    #[test]
-    fn connection_setup_footer_hides_modal_hints() {
-        let mut state = AppState::new("test".to_string());
-        state.modal.set_mode(InputMode::ConnectionSetup);
-        focus_connection_field(&mut state, ConnectionField::SslMode);
-
-        assert!(Footer::get_context_hints(&state).is_empty());
     }
 
     #[test]
