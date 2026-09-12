@@ -1,5 +1,6 @@
 use super::*;
 use crate::tests::harness::{focus_connection_field, set_connection_input};
+use sabiql_app::model::sql_editor::modal::SQL_MODAL_HEIGHT_PERCENT;
 
 fn json_detail_state() -> (AppState, Instant) {
     let now = test_instant();
@@ -67,6 +68,31 @@ fn block_cursor_position(buffer: &ratatui::buffer::Buffer) -> Option<(u16, u16)>
                     && cell.fg == DEFAULT_THEME.semantic.cursor.text_fg
             })
         })
+}
+
+fn sql_modal_area() -> Rect {
+    let width = TEST_WIDTH * 80 / 100;
+    let height = TEST_HEIGHT * SQL_MODAL_HEIGHT_PERCENT / 100 + 1;
+    Rect::new(
+        (TEST_WIDTH - width) / 2,
+        (TEST_HEIGHT - height) / 2,
+        width,
+        height,
+    )
+}
+
+fn find_text_in_area(buffer: &Buffer, area: Rect, text: &str) -> Option<(u16, u16)> {
+    for y in area.top()..area.bottom() {
+        let row = (area.left()..area.right())
+            .filter_map(|x| buffer.cell((x, y)))
+            .map(ratatui::buffer::Cell::symbol)
+            .collect::<String>();
+        if let Some(byte_offset) = row.find(text) {
+            let offset = row[..byte_offset].chars().count() as u16;
+            return Some((area.left() + offset, y));
+        }
+    }
+    None
 }
 
 #[test]
@@ -177,6 +203,10 @@ fn sql_modal_normal_cursor_position_tracks_head_middle_and_tail() {
     let tail_buffer = render_and_get_buffer(&mut terminal, &mut state);
     let tail = block_cursor_position(&tail_buffer)
         .expect("Expected block cursor in SQL normal mode at tail");
+    let modal_area = sql_modal_area();
+    assert!(find_text_in_area(&tail_buffer, modal_area, "SELECT 1").is_some());
+    assert!(find_text_in_area(&tail_buffer, modal_area, "[NORMAL]").is_some());
+    assert!(find_text_in_area(&tail_buffer, modal_area, "i: Insert").is_some());
 
     assert_eq!(
         head.1, middle.1,

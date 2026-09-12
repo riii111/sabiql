@@ -33,23 +33,6 @@ fn baseline_sqlite_diagnostics_snapshot() -> SqliteDiagnosticsSnapshot {
 }
 
 #[test]
-fn sql_modal_with_completion() {
-    let mut state = postgres_connected_state();
-    let mut terminal = create_test_terminal();
-
-    state.modal.set_mode(InputMode::SqlModal);
-    state
-        .sql_modal
-        .editor_mut_for_input()
-        .set_content("SELECT * FROM us".to_string());
-    state.sql_modal.enter_editing();
-
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
 fn sql_modal_completion_popup_with_scroll() {
     let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
@@ -227,23 +210,6 @@ fn sql_modal_ide_editing() {
         .set_content("SELECT 1".to_string());
     state.sql_modal.enter_editing();
     state.settings.load_keymap_preset(KeymapPreset::Ide);
-
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
-fn sql_modal_normal_cursor_at_tail() {
-    let mut state = create_test_state();
-    let mut terminal = create_test_terminal();
-
-    state.modal.set_mode(InputMode::SqlModal);
-    state
-        .sql_modal
-        .editor_mut_for_input()
-        .set_content("SELECT 1".to_string());
-    state.sql_modal.enter_normal();
 
     let output = render_to_string(&mut terminal, &mut state);
 
