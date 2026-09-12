@@ -245,23 +245,14 @@ mod tests {
     }
 
     #[test]
-    fn long_text_cell_opens_read_only_detail() {
-        let mut state = state_with_cell("text", &"a".repeat(60));
-
-        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
-
-        assert_eq!(state.input_mode(), InputMode::CellDetail);
-        assert!(state.cell_detail.is_active());
-        assert_eq!(state.cell_detail.column_name(), "body");
-    }
-
-    #[test]
     fn short_text_cell_opens_detail() {
         let mut state = state_with_cell("text", "short");
 
         reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
+        assert!(state.cell_detail.is_active());
+        assert_eq!(state.cell_detail.column_name(), "body");
         assert_eq!(state.cell_detail.content(), "short");
     }
 

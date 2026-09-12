@@ -85,8 +85,10 @@ mod tests {
     use crate::ports::outbound::sqlite_diagnostics::MockSqliteDiagnosticsProvider;
 
     #[tokio::test]
-    async fn dispatches_core_snapshot_on_success() {
-        let (tx, mut rx) = mpsc::channel(1);
+    async fn core_and_quick_check_tasks_can_run_together() {
+        use tokio::time::{Duration, timeout};
+
+        let (tx, mut rx) = mpsc::channel(2);
         let mut provider = MockSqliteDiagnosticsProvider::new();
         provider.expect_fetch_core_diagnostics().returning(|_| {
             Ok(SqliteDiagnosticsSnapshot {
@@ -94,70 +96,6 @@ mod tests {
                 ..Default::default()
             })
         });
-
-        let provider = Arc::new(provider) as Arc<dyn SqliteDiagnosticsProvider>;
-        let owner = SqliteDiagnosticsTaskOwner::default();
-        run(
-            Effect::FetchSqliteDiagnosticsCore {
-                dsn: "sqlite:///tmp/app.db".to_string(),
-                run_id: 1,
-            },
-            &tx,
-            &provider,
-            &owner,
-        )
-        .await;
-
-        let action = rx.recv().await.unwrap();
-        assert!(matches!(
-            action,
-            Action::SqliteDiagnosticsCoreLoaded {
-                snapshot,
-                ..
-            } if snapshot.sqlite_version.ok_value() == Some("3.45.0")
-        ));
-    }
-
-    #[tokio::test]
-    async fn dispatches_quick_check_field_on_success() {
-        let (tx, mut rx) = mpsc::channel(1);
-        let mut provider = MockSqliteDiagnosticsProvider::new();
-        provider
-            .expect_fetch_quick_check()
-            .returning(|_| DiagnosticField::ok("ok"));
-
-        let provider = Arc::new(provider) as Arc<dyn SqliteDiagnosticsProvider>;
-        let owner = SqliteDiagnosticsTaskOwner::default();
-        run(
-            Effect::FetchSqliteDiagnosticsQuickCheck {
-                dsn: "sqlite:///tmp/app.db".to_string(),
-                run_id: 1,
-            },
-            &tx,
-            &provider,
-            &owner,
-        )
-        .await;
-
-        let action = rx.recv().await.unwrap();
-        assert!(matches!(
-            action,
-            Action::SqliteDiagnosticsQuickCheckLoaded {
-                quick_check,
-                ..
-            } if quick_check.ok_value() == Some("ok")
-        ));
-    }
-
-    #[tokio::test]
-    async fn core_and_quick_check_tasks_can_run_together() {
-        use tokio::time::{Duration, timeout};
-
-        let (tx, mut rx) = mpsc::channel(2);
-        let mut provider = MockSqliteDiagnosticsProvider::new();
-        provider
-            .expect_fetch_core_diagnostics()
-            .returning(|_| Ok(SqliteDiagnosticsSnapshot::default()));
         provider
             .expect_fetch_quick_check()
             .returning(|_| DiagnosticField::ok("ok"));
@@ -193,16 +131,23 @@ mod tests {
             .await
             .expect("core and quick-check tasks should both complete")
             .expect("second diagnostics action should be sent");
-        assert!(matches!(
-            (first, second),
-            (
-                Action::SqliteDiagnosticsCoreLoaded { .. },
-                Action::SqliteDiagnosticsQuickCheckLoaded { .. }
-            ) | (
-                Action::SqliteDiagnosticsQuickCheckLoaded { .. },
-                Action::SqliteDiagnosticsCoreLoaded { .. }
-            )
-        ));
+        let mut core_actions = Vec::new();
+        let mut quick_actions = Vec::new();
+        for action in [first, second] {
+            match action {
+                Action::SqliteDiagnosticsCoreLoaded { snapshot, .. } => {
+                    core_actions.push(snapshot);
+                }
+                Action::SqliteDiagnosticsQuickCheckLoaded { quick_check, .. } => {
+                    quick_actions.push(quick_check);
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(core_actions.len(), 1);
+        assert_eq!(quick_actions.len(), 1);
+        assert_eq!(core_actions[0].sqlite_version.ok_value(), Some("3.45.0"));
+        assert_eq!(quick_actions[0].ok_value(), Some("ok"));
     }
 
     #[tokio::test]

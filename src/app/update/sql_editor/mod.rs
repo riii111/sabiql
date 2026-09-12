@@ -1036,8 +1036,10 @@ mod tests {
         }
 
         #[test]
-        fn open_sql_modal_starts_in_normal() {
+        fn open_sql_modal_resets_active_tab_to_sql() {
             let mut state = AppState::new("test".to_string());
+            state.sql_modal.set_active_tab(SqlModalTab::Plan);
+            state.sql_modal.enter_editing();
 
             reduce_sql_modal(
                 &mut state,
@@ -1046,19 +1048,6 @@ mod tests {
             );
 
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
-        }
-
-        #[test]
-        fn open_sql_modal_resets_active_tab_to_sql() {
-            let mut state = AppState::new("test".to_string());
-            state.sql_modal.set_active_tab(SqlModalTab::Plan);
-
-            reduce_sql_modal(
-                &mut state,
-                &Action::OpenModal(ModalKind::SqlModal),
-                Instant::now(),
-            );
-
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
         }
 

@@ -1086,30 +1086,6 @@ mod tests {
         }
 
         #[test]
-        fn first_failure_sets_retry_count_1() {
-            let mut state = state_with_dsn("postgres://localhost/test");
-            let run_id = state.table_prefetch.begin_er_prefetch();
-            let qualified = "public.users".to_string();
-            state.table_prefetch.start_table_prefetch(qualified.clone());
-
-            let now = Instant::now();
-            dispatch_metadata(
-                &mut state,
-                &Action::TableDetailCacheFailed {
-                    dsn: "postgres://localhost/test".to_string(),
-                    run_id,
-                    schema: "public".to_string(),
-                    table: "users".to_string(),
-                    error: DbOperationError::Timeout("timed out".to_string()),
-                },
-                now,
-            );
-
-            let entry = state.table_prefetch.failed_prefetch(&qualified).unwrap();
-            assert_eq!(entry.retry_count, 1);
-        }
-
-        #[test]
         fn failure_requeues_table_for_retry_with_delayed_process() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.table_prefetch.begin_er_prefetch();
@@ -1131,7 +1107,14 @@ mod tests {
 
             assert!(state.table_prefetch.is_prefetch_queued(&qualified));
             assert!(!state.table_prefetch.is_table_prefetching(&qualified));
-            assert!(state.table_prefetch.failed_prefetch(&qualified).is_some());
+            assert_eq!(
+                state
+                    .table_prefetch
+                    .failed_prefetch(&qualified)
+                    .unwrap()
+                    .retry_count,
+                1
+            );
             assert!(
                 effects
                     .iter()

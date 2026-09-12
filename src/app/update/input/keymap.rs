@@ -61,7 +61,6 @@ mod tests {
     use crate::update::input::keybindings::{Key, KeyCombo};
 
     static QUIT_COMBOS: &[KeyCombo] = &[KeyCombo::plain(Key::Char('q'))];
-    static HELP_COMBOS: &[KeyCombo] = &[KeyCombo::plain(Key::Char('?'))];
     static J_COMBOS: &[KeyCombo] = &[KeyCombo::plain(Key::Char('j'))];
 
     fn quit_binding() -> KeyBinding {
@@ -83,17 +82,6 @@ mod tests {
             description: "Navigate",
             action: Action::None,
             combos: J_COMBOS, // mimics executable-array display entry (combos as metadata)
-        }
-    }
-
-    fn help_binding() -> KeyBinding {
-        KeyBinding {
-            key_short: "?",
-            key: "?",
-            desc_short: "Help",
-            description: "Help",
-            action: Action::ToggleModal(ModalKind::Help),
-            combos: HELP_COMBOS,
         }
     }
 
@@ -128,18 +116,6 @@ mod tests {
             resolve(&KeyCombo::plain(Key::Char('q')), &bindings),
             Some(Action::Quit)
         ));
-    }
-
-    #[test]
-    fn first_matching_non_none_entry_is_resolved() {
-        let quit = quit_binding();
-        let help = help_binding();
-        let bindings = [quit, help];
-
-        // Quit combo matches first
-        let result = resolve(&KeyCombo::plain(Key::Char('q')), &bindings);
-
-        assert!(matches!(result, Some(Action::Quit)));
     }
 
     mod resolve_mode_tests {

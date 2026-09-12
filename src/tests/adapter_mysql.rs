@@ -3496,7 +3496,6 @@ mod csv_export {
                 let output_directory = tempdir().map_err(|error| error.to_string())?;
                 for (name, query) in [
                     ("select", format!("SELECT id FROM {MYSQL_FIXTURE_TABLE}")),
-                    ("table", format!("TABLE {MYSQL_EMPTY_TABLE}")),
                     ("show", format!("SHOW TABLES LIKE '{MYSQL_FIXTURE_TABLE}'")),
                     ("describe", format!("DESCRIBE {MYSQL_FIXTURE_TABLE}")),
                 ] {

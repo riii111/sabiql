@@ -1512,9 +1512,16 @@ mod tests {
                 Some("mysql://localhost/new")
             );
 
+            let shutdown_effects = reduce(
+                &mut state,
+                Action::Quit,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(state.should_quit);
             runner
                 .execute_effects(
-                    vec![Effect::CancelTrackedTasks],
+                    shutdown_effects,
                     &mut renderer,
                     &mut state,
                     &completion_engine,
@@ -1595,66 +1602,6 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(dropped.load(Ordering::SeqCst), 2);
-        }
-
-        #[tokio::test]
-        async fn quitting_aborts_pending_mysql_probe_task() {
-            let (started_tx, mut started_rx) = mpsc::unbounded_channel();
-            let dropped = Arc::new(AtomicUsize::new(0));
-            let probe = PendingMySqlConnectionProbe {
-                started: started_tx,
-                dropped: Arc::clone(&dropped),
-            };
-            let (action_tx, _action_rx) = mpsc::channel(8);
-            let runner = test_fixtures::make_runner_with_dsn_and_probe(
-                Arc::new(MockMetadataProvider::new()),
-                Arc::new(MockQueryExecutor::new()),
-                Arc::new(MockConnectionStore::new()),
-                action_tx,
-                Arc::new(test_fixtures::NoopDsnBuilder),
-                Arc::new(probe),
-            );
-            let mut state = AppState::new("test".to_string());
-            let completion_engine = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
-
-            runner
-                .execute_effects(
-                    vec![Effect::ProbeMySqlConnection {
-                        target: mysql_target("mysql://localhost/pending"),
-                        run_id: 1,
-                    }],
-                    &mut renderer,
-                    &mut state,
-                    &completion_engine,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-            timeout(Duration::from_secs(1), started_rx.recv())
-                .await
-                .expect("pending probe should start")
-                .expect("probe start signal should be sent");
-
-            let shutdown_effects = reduce(
-                &mut state,
-                Action::Quit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
-            assert!(state.should_quit);
-            runner
-                .execute_effects(
-                    shutdown_effects,
-                    &mut renderer,
-                    &mut state,
-                    &completion_engine,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            assert_eq!(dropped.load(Ordering::SeqCst), 1);
         }
 
         #[tokio::test]

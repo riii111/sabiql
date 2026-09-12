@@ -325,18 +325,6 @@ mod tests {
         }
 
         #[test]
-        fn noop_when_reached_end() {
-            let mut state = create_test_state();
-            state.query.set_current_result(preview_result(100));
-            state.query.pagination.set_page_result(0, true);
-            let now = Instant::now();
-
-            let effects = dispatch_query(&mut state, &Action::ResultNextPage, now).unwrap();
-
-            assert!(effects.is_empty());
-        }
-
-        #[test]
         fn noop_for_adhoc() {
             let mut state = create_test_state();
             state.query.set_current_result(adhoc_result());
@@ -371,11 +359,13 @@ mod tests {
             state.result_interaction.activate_cell(2, 1);
             state.result_interaction.stage_row(2);
 
-            dispatch_query(&mut state, &Action::ResultNextPage, Instant::now());
+            let effects =
+                dispatch_query(&mut state, &Action::ResultNextPage, Instant::now()).unwrap();
 
             assert_eq!(state.result_interaction.selection().row(), Some(2));
             assert_eq!(state.result_interaction.selection().cell(), Some(1));
             assert!(state.result_interaction.staged_delete_rows().contains(&2));
+            assert!(effects.is_empty());
         }
 
         #[test]
@@ -471,20 +461,6 @@ mod tests {
         }
 
         #[test]
-        fn noop_on_first_page() {
-            let mut state = create_test_state();
-            state
-                .query
-                .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
-            state.query.pagination.set_current_page(0);
-            let now = Instant::now();
-
-            let effects = dispatch_query(&mut state, &Action::ResultPrevPage, now).unwrap();
-
-            assert!(effects.is_empty());
-        }
-
-        #[test]
         fn preserves_view_state_when_prev_page_noops() {
             let mut state = create_test_state();
             state
@@ -494,11 +470,13 @@ mod tests {
             state.result_interaction.activate_cell(1, 1);
             state.result_interaction.stage_row(1);
 
-            dispatch_query(&mut state, &Action::ResultPrevPage, Instant::now());
+            let effects =
+                dispatch_query(&mut state, &Action::ResultPrevPage, Instant::now()).unwrap();
 
             assert_eq!(state.result_interaction.selection().row(), Some(1));
             assert_eq!(state.result_interaction.selection().cell(), Some(1));
             assert!(state.result_interaction.staged_delete_rows().contains(&1));
+            assert!(effects.is_empty());
         }
     }
 

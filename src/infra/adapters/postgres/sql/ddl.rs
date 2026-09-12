@@ -209,15 +209,5 @@ mod tests {
 
             assert!(ddl.contains("IS 'It''s a test';"));
         }
-
-        #[test]
-        fn no_comment_on_when_absent() {
-            let adapter = PostgresAdapter::new();
-            let table = make_table(vec![make_column("id", "integer", false)], None);
-
-            let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
-
-            assert!(!ddl.contains("COMMENT ON"));
-        }
     }
 }

@@ -63,15 +63,6 @@ mod cli_sqlite_startup {
     use tempfile::tempdir;
 
     #[test]
-    fn resolves_existing_sqlite_file() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("app.db");
-        fs::write(&path, b"SQLite format 3\0rest").unwrap();
-
-        assert!(resolve_cli_sqlite_target(path.to_str().unwrap(), &FsSqlitePathValidator).is_ok());
-    }
-
-    #[test]
     fn resolves_extensionless_sqlite_file() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("History");

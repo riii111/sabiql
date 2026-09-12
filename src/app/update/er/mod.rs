@@ -809,13 +809,23 @@ mod tests {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id: 1,
                     error: DbOperationError::ObjectMissing("table removed".to_string()),
-                    new_metadata: Some(make_metadata(5)),
+                    new_metadata: Some(make_metadata(20)),
                 }),
                 Instant::now(),
             )
             .unwrap();
 
             assert!(state.er_preparation.last_signatures().is_empty());
+            assert_eq!(
+                state
+                    .session
+                    .metadata()
+                    .as_ref()
+                    .unwrap()
+                    .table_summaries
+                    .len(),
+                20
+            );
             assert!(state.messages.last_error.is_some());
             assert!(
                 state
@@ -923,46 +933,6 @@ mod tests {
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
             assert!(effects.is_empty());
             assert!(state.messages.last_error.is_some());
-        }
-
-        #[test]
-        fn new_metadata_applied_before_fallback() {
-            let mut state = state_with_dsn("postgres://localhost/test");
-            set_waiting_run_id(&mut state, 1);
-            state.session.set_metadata(Some(make_metadata(3)));
-
-            let effects = reduce_er(
-                &mut state,
-                &Action::SmartErRefreshFailed(SmartErRefreshError {
-                    dsn: "postgres://localhost/test".to_string(),
-                    run_id: 1,
-                    error: DbOperationError::ObjectMissing("table removed".to_string()),
-                    new_metadata: Some(make_metadata(20)),
-                }),
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert_eq!(
-                state
-                    .session
-                    .metadata()
-                    .as_ref()
-                    .unwrap()
-                    .table_summaries
-                    .len(),
-                20
-            );
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::ClearCompletionEngineCache))
-            );
-            assert!(effects.iter().any(|e| matches!(
-                e,
-                Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::StartErPrefetchAll))
-            )));
         }
     }
 }

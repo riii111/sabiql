@@ -443,6 +443,14 @@ mod tests {
                     .content(),
                 "db.example.com"
             );
+            assert_eq!(
+                state
+                    .connection_setup
+                    .input(ConnectionField::Host)
+                    .unwrap()
+                    .cursor(),
+                14
+            );
         }
 
         #[test]
@@ -543,26 +551,6 @@ mod tests {
             );
 
             assert_eq!(state.connection_setup.ssl_mode(), ssl_mode_before);
-        }
-
-        #[test]
-        fn updates_cursor() {
-            let mut state = setup_state_with_field(ConnectionField::Host);
-
-            reduce(
-                &mut state,
-                &Action::Paste("db.example.com".to_string()),
-                Instant::now(),
-            );
-
-            assert_eq!(
-                state
-                    .connection_setup
-                    .input(ConnectionField::Host)
-                    .unwrap()
-                    .cursor(),
-                14
-            );
         }
 
         #[test]

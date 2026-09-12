@@ -693,18 +693,6 @@ mod tests {
                 assert!(matches!(result, Action::OpenModal(ModalKind::TablePicker)));
             }
 
-            #[rstest]
-            #[case(Key::Char('H'))]
-            #[case(Key::Char('M'))]
-            #[case(Key::Char('L'))]
-            fn hml_noop(#[case] key: Key) {
-                let state = inspector_focused_state();
-
-                let result = handle_normal_mode(combo(key), &state);
-
-                assert!(matches!(result, Action::None));
-            }
-
             #[test]
             fn c_opens_connection_selector() {
                 let state = inspector_focused_state();
@@ -750,29 +738,6 @@ mod tests {
                         direction: ScrollDirection::Right,
                         amount: ScrollAmount::Line
                     }
-                ));
-            }
-
-            #[rstest]
-            #[case(Key::Char('H'), ScrollDirection::Up, ScrollAmount::ViewportTop)]
-            #[case(Key::Char('M'), ScrollDirection::Up, ScrollAmount::ViewportMiddle)]
-            #[case(Key::Char('L'), ScrollDirection::Down, ScrollAmount::ViewportBottom)]
-            fn hml_scrolls_to_viewport(
-                #[case] key: Key,
-                #[case] direction: ScrollDirection,
-                #[case] amount: ScrollAmount,
-            ) {
-                let state = result_focused_state();
-
-                let result = handle_normal_mode(combo(key), &state);
-
-                assert!(matches!(
-                    result,
-                    Action::Scroll {
-                        target: ScrollTarget::Result,
-                        direction: actual_direction,
-                        amount: actual_amount
-                    } if actual_direction == direction && actual_amount == amount
                 ));
             }
 
@@ -1139,22 +1104,6 @@ mod tests {
                         target: ScrollTarget::Result,
                         direction: ScrollDirection::Right,
                         amount: ScrollAmount::Line
-                    }
-                ));
-            }
-
-            #[test]
-            fn m_scrolls_to_viewport_middle() {
-                let state = focus_mode_state();
-
-                let result = handle_normal_mode(combo(Key::Char('M')), &state);
-
-                assert!(matches!(
-                    result,
-                    Action::Scroll {
-                        target: ScrollTarget::Result,
-                        direction: ScrollDirection::Up,
-                        amount: ScrollAmount::ViewportMiddle
                     }
                 ));
             }

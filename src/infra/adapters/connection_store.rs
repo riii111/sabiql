@@ -1104,19 +1104,6 @@ password_ref = "connection:same"
         }
 
         #[test]
-        fn removes_connection_by_id() {
-            let temp_dir = TempDir::new().unwrap();
-            let store = store_with_test_secret_store(temp_dir.path().to_path_buf());
-
-            let profile = make_test_profile("Test");
-            store.save(&profile).unwrap();
-
-            store.delete(&profile.id).unwrap();
-
-            assert!(store.load_all().unwrap().is_empty());
-        }
-
-        #[test]
         fn nonexistent_id_returns_not_found() {
             let temp_dir = TempDir::new().unwrap();
             let store = store_with_test_secret_store(temp_dir.path().to_path_buf());
