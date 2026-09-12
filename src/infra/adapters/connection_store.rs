@@ -124,17 +124,6 @@ impl TomlConnectionStore {
         }
     }
 
-    fn empty_config() -> ConnectionConfigFile {
-        ConnectionConfigFile {
-            version: CURRENT_VERSION,
-            theme: None,
-            keymap_preset: None,
-            er_browser: None,
-            clipboard_backend: None,
-            connections: vec![],
-        }
-    }
-
     fn password(profile: &ConnectionProfile) -> Option<&str> {
         match &profile.config {
             ConnectionConfig::PostgreSQL(config) => Some(config.password.as_str()),
@@ -164,7 +153,7 @@ impl ConnectionStore for TomlConnectionStore {
 
     fn save(&self, profile: &ConnectionProfile) -> Result<(), ConnectionStoreError> {
         let _guard = app_config_file::lock();
-        let mut config = self.load_config_file()?.unwrap_or_else(Self::empty_config);
+        let mut config = self.load_config_file()?.unwrap_or_default();
         let profiles = Self::validate_profiles_without_secrets(&config)?;
 
         let normalized_name = profile.name.normalized();
