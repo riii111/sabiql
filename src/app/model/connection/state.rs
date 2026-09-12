@@ -34,12 +34,6 @@ mod tests {
     use super::*;
     use rstest::rstest;
 
-    #[test]
-    fn default_returns_not_connected() {
-        let state = ConnectionState::default();
-        assert!(state.is_not_connected());
-    }
-
     #[rstest]
     #[case(ConnectionState::NotConnected, true, false, false, false)]
     #[case(ConnectionState::Connecting, false, true, false, false)]

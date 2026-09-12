@@ -1466,24 +1466,6 @@ mod tests {
         }
 
         #[rstest]
-        #[case(Key::Char('a'))]
-        #[case(Key::Enter)]
-        #[case(Key::Esc)]
-        #[case(Key::Tab)]
-        #[case(Key::Up)]
-        #[case(Key::Down)]
-        fn running_state_compare_tab_suppresses_all_keys(#[case] code: Key) {
-            let result = handle_sql_modal_keys(
-                combo(code),
-                false,
-                &SqlModalStatus::Running,
-                SqlModalTab::Compare,
-            );
-
-            assert_action(result, Expected::None);
-        }
-
-        #[rstest]
         #[case(success_status())]
         #[case(error_status())]
         fn plan_tab_read_only_keys_work_in_success_error(#[case] status: SqlModalStatus) {

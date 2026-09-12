@@ -743,25 +743,6 @@ mod tests {
 
             assert_eq!(visible, 0);
         }
-
-        #[rstest]
-        #[case(30, 20)]
-        #[case(100, 25)]
-        #[case(50, 15)]
-        #[case(10, 30)]
-        fn scroll_can_reach_all_rows(#[case] total_rows: usize, #[case] pane_height: u16) {
-            let state = UiState {
-                result_pane_height: pane_height,
-                ..Default::default()
-            };
-            let visible = state.result_visible_rows();
-            let max_scroll = total_rows.saturating_sub(visible);
-
-            assert!(
-                max_scroll + visible >= total_rows,
-                "max_scroll={max_scroll}, visible={visible}, total={total_rows}"
-            );
-        }
     }
 
     mod focus_mode {
@@ -843,37 +824,8 @@ mod tests {
         }
     }
 
-    mod invariants {
-        use super::*;
-
-        #[test]
-        fn result_overhead_constants_are_consistent() {
-            assert_eq!(RESULT_PANE_OVERHEAD, RESULT_INNER_OVERHEAD + 2);
-        }
-    }
-
     mod help_scroll {
         use super::*;
-
-        #[test]
-        fn help_max_scroll_plus_viewport_equals_content_line_count() {
-            let terminal_height: u16 = 24;
-            let total_lines = 100;
-            let content_width = 80;
-            let state = UiState {
-                terminal_height,
-                ..Default::default()
-            };
-            let viewport = state.help_visible_rows(total_lines, content_width);
-
-            let max = state.help_max_scroll(total_lines, content_width);
-
-            assert_eq!(
-                max + viewport,
-                total_lines,
-                "max_scroll({max}) + viewport({viewport}) != total_lines({total_lines})"
-            );
-        }
 
         #[test]
         fn help_max_scroll_is_zero_when_terminal_very_tall() {
@@ -899,6 +851,7 @@ mod tests {
             };
 
             assert_eq!(state.help_visible_rows(total_lines, content_width), 14);
+            assert_eq!(state.help_max_scroll(total_lines, content_width), 86);
         }
 
         #[test]

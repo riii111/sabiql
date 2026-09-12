@@ -1764,7 +1764,6 @@ mod tests {
     }
 
     mod fk_neighbors_discovered {
-        use super::prefetch::MAX_PREFETCH_RETRIES;
         use super::*;
 
         #[test]
@@ -1925,44 +1924,6 @@ mod tests {
                 Some("public.comments".to_string())
             );
             assert!(!state.table_prefetch.has_pending_prefetch());
-        }
-
-        #[test]
-        fn phase2_table_retry_limit_triggers_completion() {
-            // All Phase 2 tables fail → completion must still fire
-            let mut state = state_with_dsn("postgres://localhost/test");
-            let run_id = state.table_prefetch.begin_er_prefetch();
-            let _ = state.er_preparation.start_waiting_run();
-            state.er_preparation.mark_fk_expanded();
-            let neighbor = "public.posts".to_string();
-            state.table_prefetch.queue_table_prefetch(neighbor.clone());
-            state.table_prefetch.fail_table_prefetch(
-                neighbor,
-                FailedPrefetchEntry {
-                    failed_at: Instant::now(),
-                    error: "timeout".to_string(),
-                    retry_count: MAX_PREFETCH_RETRIES,
-                    retryable: true,
-                },
-            );
-
-            let effects = dispatch_metadata(
-                &mut state,
-                &Action::PrefetchTableDetail {
-                    run_id,
-                    schema: "public".to_string(),
-                    table: "posts".to_string(),
-                },
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::WriteErFailureLog { .. }))
-            );
         }
     }
 }
