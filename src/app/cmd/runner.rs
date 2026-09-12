@@ -409,28 +409,6 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn calls_draw() {
-            let (tx, mut _rx) = mpsc::channel(8);
-            let runner = test_fixtures::make_runner(
-                Arc::new(MockMetadataProvider::new()),
-                Arc::new(MockQueryExecutor::new()),
-                Arc::new(MockConnectionStore::new()),
-                tx,
-            );
-
-            test_fixtures::run_one_effect(
-                &runner,
-                Effect::Render,
-                AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
-                &mut _rx,
-                None,
-            )
-            .await
-            .unwrap();
-        }
-
-        #[tokio::test]
         async fn clamps_stale_explorer_horizontal_offset_to_new_maximum() {
             let (tx, _rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner(

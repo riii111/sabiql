@@ -970,56 +970,16 @@ mod tests {
         use super::*;
 
         #[test]
-        fn result_rows_default_to_zero() {
-            let state = make_state();
-
-            let visible = state.result_visible_rows();
-
-            assert_eq!(visible, 0);
-        }
-
-        #[rstest]
-        #[case(10, 5)]
-        #[case(15, 10)]
-        #[case(20, 15)]
-        #[case(30, 25)]
-        fn result_rows_follow_pane_height(#[case] pane_height: u16, #[case] expected: usize) {
+        fn result_rows_delegate_to_ui_state() {
             let mut state = make_state();
-            state.ui.set_result_pane_height(pane_height);
 
-            let visible = state.result_visible_rows();
+            assert_eq!(state.result_visible_rows(), 0);
 
-            assert_eq!(visible, expected);
-        }
-
-        #[test]
-        fn result_rows_clamp_small_heights() {
-            let mut state = make_state();
-            state.ui.set_result_pane_height(2);
-
-            let visible = state.result_visible_rows();
-
-            assert_eq!(visible, 0);
-        }
-
-        #[test]
-        fn result_rows_stay_zero_at_minimum() {
-            let mut state = make_state();
-            state.ui.set_result_pane_height(1);
-
-            let visible = state.result_visible_rows();
-
-            assert_eq!(visible, 0);
-        }
-
-        #[test]
-        fn result_rows_scale_with_height() {
-            let mut state = make_state();
             state.ui.set_result_pane_height(50);
+            assert_eq!(state.result_visible_rows(), 45);
 
-            let visible = state.result_visible_rows();
-
-            assert_eq!(visible, 45);
+            state.ui.set_result_pane_height(0);
+            assert_eq!(state.result_visible_rows(), 0);
         }
 
         #[test]

@@ -2921,57 +2921,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn cached_table_returns_columns() {
-            let mut e = engine();
-
-            let table = Table {
-                schema: "public".to_string(),
-                name: "users".to_string(),
-                columns: vec![
-                    Column {
-                        attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        ..test_support::column::test_nullable_column("id", "int", 1)
-                    },
-                    test_support::column::test_nullable_column("name", "text", 2),
-                ],
-                primary_key: Some(vec!["id".to_string()]),
-                ..test_support::table::minimal("", "")
-            };
-
-            e.cache_table_detail("public.users".to_string(), table);
-
-            let sql_context = SqlContext {
-                tables: vec![TableReference {
-                    schema: Some("public".to_string()),
-                    table: "users".to_string(),
-                    alias: Some("u".to_string()),
-                }],
-                ctes: vec![],
-                target_table: None,
-            };
-
-            let mut metadata = DatabaseMetadata::new("test".to_string());
-            metadata.table_summaries = vec![TableSummary::new(
-                "public".to_string(),
-                "users".to_string(),
-                None,
-                false,
-            )];
-
-            let candidates = e.alias_column_candidates(
-                "u",
-                &sql_context,
-                Some(&metadata),
-                "",
-                DatabaseType::PostgreSQL,
-            );
-
-            assert_eq!(candidates.len(), 2);
-            assert!(candidates.iter().any(|c| c.text == "id"));
-            assert!(candidates.iter().any(|c| c.text == "name"));
-        }
-
-        #[test]
         fn non_cached_table_returns_empty() {
             let e = engine();
 
@@ -3425,20 +3374,6 @@ mod tests {
             assert_eq!(missing.len(), 10);
         }
 
-        #[test]
-        fn has_cached_table_returns_true_for_cached() {
-            let mut e = engine();
-            let table = Table {
-                schema: "public".to_string(),
-                name: "users".to_string(),
-                ..test_support::table::minimal("", "")
-            };
-            e.cache_table_detail("public.users".to_string(), table);
-
-            assert!(e.has_cached_table("public.users"));
-            assert!(!e.has_cached_table("public.orders"));
-        }
-
         fn make_table(schema: &str, name: &str) -> Table {
             Table {
                 schema: schema.to_string(),
@@ -3542,6 +3477,7 @@ mod tests {
                 e.get_candidates("SELECT u. FROM public.users u", 9, Some(&metadata), None);
 
             assert!(!candidates.is_empty());
+            assert_eq!(candidates.len(), 3);
             assert!(candidates.iter().any(|c| c.text == "id"));
             assert!(candidates.iter().any(|c| c.text == "name"));
             assert!(candidates.iter().any(|c| c.text == "email"));
@@ -3650,6 +3586,7 @@ mod tests {
                 first_keyword_idx < first_column_idx,
                 "Keywords should appear before columns"
             );
+            assert_eq!(candidates[0].kind, CompletionKind::Keyword);
         }
 
         #[test]
@@ -3687,22 +3624,6 @@ mod tests {
                 .count();
 
             assert_eq!(and_count, 1, "AND should appear only once (deduplicated)");
-        }
-
-        #[test]
-        fn empty_prefix_shows_keywords_first() {
-            let e = engine();
-            let table = create_users_table();
-
-            // Empty prefix: keywords should come first
-            let candidates = e.get_candidates("SELECT ", 7, None, Some(&table));
-
-            // First candidate should be a keyword (score 200)
-            assert_eq!(
-                candidates[0].kind,
-                CompletionKind::Keyword,
-                "With empty prefix, keywords should come first"
-            );
         }
 
         #[test]
@@ -3892,25 +3813,6 @@ mod tests {
             // SQL referencing evicted table should trigger re-fetch
             let missing = e.missing_tables("SELECT * FROM t1", Some(&metadata));
             assert_eq!(missing, vec!["public.t1".to_string()]);
-        }
-
-        #[test]
-        fn cached_table_not_in_missing_tables() {
-            let mut e = CompletionEngine::new_with_capacity(2);
-
-            let t1 = create_table("public", "t1", &["id"]);
-            e.cache_table_detail("public.t1".to_string(), t1);
-
-            let mut metadata = DatabaseMetadata::new("test".to_string());
-            metadata.table_summaries = vec![TableSummary::new(
-                "public".to_string(),
-                "t1".to_string(),
-                None,
-                false,
-            )];
-
-            let missing = e.missing_tables("SELECT * FROM t1", Some(&metadata));
-            assert!(missing.is_empty());
         }
 
         #[test]

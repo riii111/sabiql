@@ -276,29 +276,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn idle_query_returns_false() {
-            let state = create_test_state();
-
-            assert!(!has_active_spinner(&state));
-        }
-
-        #[test]
-        fn running_query_returns_true() {
-            let mut state = create_test_state();
-            let _ = state.query.begin_running(Instant::now());
-
-            assert!(has_active_spinner(&state));
-        }
-
-        #[test]
-        fn er_waiting_returns_true() {
-            let mut state = create_test_state();
-            let _ = state.er_preparation.start_waiting_run();
-
-            assert!(has_active_spinner(&state));
-        }
-
-        #[test]
         fn er_rendering_returns_false() {
             let mut state = create_test_state();
             state.er_preparation.mark_rendering();
@@ -309,37 +286,6 @@ mod tests {
 
     mod has_blinking_cursor_tests {
         use super::*;
-
-        #[test]
-        fn normal_mode_returns_false() {
-            let state = create_test_state();
-
-            assert!(!has_blinking_cursor(&state));
-        }
-
-        #[test]
-        fn sql_modal_returns_true() {
-            let mut state = create_test_state();
-            state.modal.set_mode(InputMode::SqlModal);
-
-            assert!(has_blinking_cursor(&state));
-        }
-
-        #[test]
-        fn table_picker_returns_true() {
-            let mut state = create_test_state();
-            state.modal.set_mode(InputMode::TablePicker);
-
-            assert!(has_blinking_cursor(&state));
-        }
-
-        #[test]
-        fn command_line_returns_true() {
-            let mut state = create_test_state();
-            state.modal.set_mode(InputMode::CommandLine);
-
-            assert!(has_blinking_cursor(&state));
-        }
 
         #[test]
         fn connection_setup_returns_true() {

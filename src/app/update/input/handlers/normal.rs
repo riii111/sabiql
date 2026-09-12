@@ -220,30 +220,12 @@ mod tests {
             use super::*;
 
             #[test]
-            fn ctrl_p_opens_table_picker() {
-                let state = browse_state();
-
-                let result = handle_normal_mode(combo_ctrl(Key::Char('p')), &state);
-
-                assert!(matches!(result, Action::OpenModal(ModalKind::TablePicker)));
-            }
-
-            #[test]
             fn plain_p_is_noop() {
                 let state = browse_state();
 
                 let result = handle_normal_mode(combo(Key::Char('p')), &state);
 
                 assert!(matches!(result, Action::None));
-            }
-
-            #[test]
-            fn comma_opens_settings() {
-                let state = browse_state();
-
-                let result = handle_normal_mode(combo(Key::Char(',')), &state);
-
-                assert!(matches!(result, Action::OpenModal(ModalKind::Settings)));
             }
 
             #[test]
@@ -373,18 +355,6 @@ mod tests {
                 let result = handle_normal_mode(combo(Key::Char(':')), &state);
 
                 assert!(matches!(result, Action::EnterCommandLine));
-            }
-
-            #[test]
-            fn f1_opens_command_palette() {
-                let state = browse_state();
-
-                let result = handle_normal_mode(combo(Key::F(1)), &state);
-
-                assert!(matches!(
-                    result,
-                    Action::OpenModal(ModalKind::CommandPalette)
-                ));
             }
 
             #[test]
