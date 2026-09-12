@@ -1,7 +1,7 @@
 use crate::model::app_state::AppState;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::key_sequence::Prefix;
-use crate::policy::{FeaturePolicy, FeatureRequirement};
+use crate::policy::FeaturePolicy;
 use crate::update::action::{Action, ModalKind};
 use crate::update::input::keybindings::{self as kb, Key, KeyCombo, Modifiers};
 use crate::update::input::vim::{
@@ -124,12 +124,14 @@ pub(super) fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         Key::Char('u') if result_navigation && staged_delete_in_progress => {
             Action::UnstageLastStagedRow
         }
-        Key::Char('s') => Action::OpenModal(ModalKind::SqlModal),
-        Key::Char('e') if feature_policy.is_enabled(FeatureRequirement::ErDiagram) => {
-            Action::OpenModal(ModalKind::ErTablePicker)
+        _ if kb::global::SQL.combos.contains(&combo) => kb::global::SQL.action.clone(),
+        _ if feature_policy.is_enabled(kb::global::ER_DIAGRAM.feature_requirement())
+            && kb::global::ER_DIAGRAM.combos.contains(&combo) =>
+        {
+            kb::global::ER_DIAGRAM.action.clone()
         }
-        Key::Char('c') if kb::global::CONNECTIONS.combos.contains(&combo) => {
-            Action::OpenModal(ModalKind::ConnectionSelector)
+        _ if kb::global::CONNECTIONS.combos.contains(&combo) => {
+            kb::global::CONNECTIONS.action.clone()
         }
 
         Key::Char('z') => Action::BeginKeySequence(Prefix::Z),
@@ -141,7 +143,9 @@ pub(super) fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{ConnectionId, DatabaseType};
+    use std::sync::Arc;
+
+    use crate::domain::{ConnectionId, DatabaseType, QueryResult, QuerySource};
     use crate::model::connection::error::test_support;
     use crate::model::shared::key_sequence::KeySequenceState;
     use crate::model::shared::settings::KeymapPreset;
@@ -218,6 +222,20 @@ mod tests {
 
         mod global_actions {
             use super::*;
+
+            fn state_with_csv_result(preset: KeymapPreset) -> AppState {
+                let mut state = browse_state_with_preset(preset);
+                state
+                    .query
+                    .set_current_result(Arc::new(QueryResult::success(
+                        "SELECT 1".to_string(),
+                        vec!["col".to_string()],
+                        vec![vec!["value".to_string()]],
+                        1,
+                        QuerySource::Preview,
+                    )));
+                state
+            }
 
             #[test]
             fn ctrl_p_opens_table_picker() {
@@ -323,6 +341,61 @@ mod tests {
                 let result = handle_normal_mode(combo(Key::Char('e')), &state);
 
                 assert!(matches!(result, Action::None));
+            }
+
+            #[rstest]
+            #[case(KeymapPreset::Default, Key::Char('s'), ModalKind::SqlModal)]
+            #[case(KeymapPreset::Ide, Key::Char('s'), ModalKind::SqlModal)]
+            #[case(KeymapPreset::Default, Key::Char('e'), ModalKind::ErTablePicker)]
+            #[case(KeymapPreset::Ide, Key::Char('e'), ModalKind::ErTablePicker)]
+            #[case(KeymapPreset::Default, Key::Char('c'), ModalKind::ConnectionSelector)]
+            #[case(KeymapPreset::Ide, Key::Char('c'), ModalKind::ConnectionSelector)]
+            fn shortcuts_use_declared_bindings(
+                #[case] preset: KeymapPreset,
+                #[case] key: Key,
+                #[case] modal: ModalKind,
+            ) {
+                let mut state = connected_state(DatabaseType::PostgreSQL);
+                state.settings.load_keymap_preset(preset);
+
+                let result = handle_normal_mode(combo(key), &state);
+
+                assert!(matches!(result, Action::OpenModal(actual) if actual == modal));
+            }
+
+            #[rstest]
+            #[case(KeymapPreset::Default, KeyCombo::ctrl(Key::Char('s')))]
+            #[case(KeymapPreset::Default, KeyCombo::alt(Key::Char('s')))]
+            #[case(KeymapPreset::Default, KeyCombo::shift(Key::Char('s')))]
+            #[case(KeymapPreset::Default, KeyCombo::alt(Key::Char('e')))]
+            #[case(KeymapPreset::Default, KeyCombo::shift(Key::Char('e')))]
+            #[case(KeymapPreset::Default, KeyCombo::ctrl(Key::Char('c')))]
+            #[case(KeymapPreset::Default, KeyCombo::alt(Key::Char('c')))]
+            #[case(KeymapPreset::Default, KeyCombo::shift(Key::Char('c')))]
+            #[case(KeymapPreset::Ide, KeyCombo::ctrl(Key::Char('e')))]
+            fn undeclared_shortcuts_are_ignored(
+                #[case] preset: KeymapPreset,
+                #[case] input: KeyCombo,
+            ) {
+                let state = browse_state_with_preset(preset);
+
+                let result = handle_normal_mode(input, &state);
+
+                assert!(matches!(result, Action::None));
+            }
+
+            #[rstest]
+            #[case(KeymapPreset::Default, combo_ctrl(Key::Char('e')))]
+            #[case(KeymapPreset::Ide, combo(Key::Char('E')))]
+            fn csv_export_binding_takes_priority_over_normal_shortcuts(
+                #[case] preset: KeymapPreset,
+                #[case] input: KeyCombo,
+            ) {
+                let state = state_with_csv_result(preset);
+
+                let result = handle_normal_mode(input, &state);
+
+                assert!(matches!(result, Action::RequestCsvExport));
             }
 
             #[rstest]
@@ -1509,10 +1582,6 @@ mod tests {
                 }
 
                 fn state_waiting_z_prefix_with_result() -> AppState {
-                    use std::sync::Arc;
-
-                    use crate::domain::{QueryResult, QuerySource};
-
                     let mut state = state_waiting_z_prefix();
                     state
                         .query
