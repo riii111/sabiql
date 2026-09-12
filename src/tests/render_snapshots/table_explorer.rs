@@ -1,9 +1,38 @@
 use super::*;
-use harness::{explorer_selected_state, table_detail_loaded_state, with_current_result};
+use harness::{
+    explorer_selected_state, render_and_get_buffer, table_detail_loaded_state, with_current_result,
+};
 use sabiql_app::model::shared::ui_state::FocusMode;
 use sabiql_domain::{
     ConnectionId, DatabaseMetadata, Schema, TableKind, TableKindInfo, TableSummary,
 };
+use sabiql_ui::theme::DEFAULT_THEME;
+
+fn row_text(buffer: &ratatui::buffer::Buffer, y: u16) -> String {
+    (buffer.area.left()..buffer.area.right())
+        .filter_map(|x| buffer.cell((x, y)))
+        .map(ratatui::buffer::Cell::symbol)
+        .collect()
+}
+
+fn assert_row_text_color(
+    buffer: &ratatui::buffer::Buffer,
+    y: u16,
+    text: &str,
+    expected: ratatui::style::Color,
+) {
+    let row = row_text(buffer, y);
+    let start = row
+        .find(text)
+        .map(|byte_offset| buffer.area.left() + row[..byte_offset].chars().count() as u16)
+        .expect("expected text in target row");
+    for (offset, _) in text.chars().enumerate() {
+        assert_eq!(
+            buffer.cell((start + offset as u16, y)).unwrap().fg,
+            expected
+        );
+    }
+}
 
 #[test]
 fn table_selection_with_preview() {
@@ -58,9 +87,15 @@ fn error_message_in_footer() {
         .messages
         .set_error("Connection failed: timeout".to_string());
 
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
+    let buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let footer = row_text(&buffer, 49);
+    assert!(footer.contains("Connection failed: timeout"));
+    assert_row_text_color(
+        &buffer,
+        49,
+        "Connection failed: timeout",
+        DEFAULT_THEME.semantic.status.error,
+    );
 }
 
 #[test]
@@ -128,9 +163,13 @@ fn sqlite_explorer_shows_table_names_without_schema_or_kind_suffixes() {
     state.ui.set_explorer_selection(Some(0));
 
     let mut terminal = create_test_terminal();
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
+    let buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let explorer_rows = (2..6).map(|y| row_text(&buffer, y)).collect::<Vec<_>>();
+    let labels = explorer_rows
+        .iter()
+        .map(|row| row.split('│').nth(1).expect("expected Explorer row").trim())
+        .collect::<Vec<_>>();
+    assert_eq!(labels, ["> users", "settings", "notes_fts", "typed_users"]);
 }
 
 #[test]
@@ -156,9 +195,10 @@ fn sqlite_header_shows_table_name_without_schema() {
         .select_table("main", "users", &mut state.query);
 
     let mut terminal = create_test_terminal();
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
+    let buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let header = row_text(&buffer, 0);
+    assert!(header.contains("app.db ▸ users"));
+    assert!(!header.contains("main.users"));
 }
 
 #[test]
@@ -186,7 +226,11 @@ fn mysql_header_and_explorer_show_table_names() {
     state.ui.set_explorer_selection(Some(0));
 
     let mut terminal = create_test_terminal();
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
+    let buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let header = row_text(&buffer, 0);
+    let explorer_rows = [row_text(&buffer, 2), row_text(&buffer, 3)];
+    assert!(header.contains("app ▸ users"));
+    assert!(explorer_rows[0].contains("users"));
+    assert!(explorer_rows[1].contains("audit_log"));
+    assert!(explorer_rows.iter().all(|row| !row.contains("app.")));
 }

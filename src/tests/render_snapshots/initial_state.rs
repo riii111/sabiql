@@ -1,5 +1,43 @@
 use super::*;
+use crate::tests::harness::{TEST_HEIGHT, render_and_get_buffer};
 use sabiql_domain::ConnectionId;
+use sabiql_ui::theme::DEFAULT_THEME;
+
+fn row_text(buffer: &ratatui::buffer::Buffer, y: u16) -> String {
+    (buffer.area.left()..buffer.area.right())
+        .filter_map(|x| buffer.cell((x, y)))
+        .map(ratatui::buffer::Cell::symbol)
+        .collect()
+}
+
+fn assert_row_text_color(
+    buffer: &ratatui::buffer::Buffer,
+    y: u16,
+    text: &str,
+    expected: ratatui::style::Color,
+) {
+    let row = row_text(buffer, y);
+    let start = row
+        .find(text)
+        .map(|byte_offset| buffer.area.left() + row[..byte_offset].chars().count() as u16)
+        .expect("expected text in target row");
+    for (offset, _) in text.chars().enumerate() {
+        assert_eq!(
+            buffer.cell((start + offset as u16, y)).unwrap().fg,
+            expected
+        );
+    }
+}
+
+fn explorer_text(output: &str) -> String {
+    output
+        .lines()
+        .skip(2)
+        .take(TEST_HEIGHT as usize - 3)
+        .filter_map(|line| line.split('│').nth(1))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
 
 #[test]
 fn initial_state_no_metadata() {
@@ -18,8 +56,10 @@ fn explorer_shows_retry_when_metadata_reload_fails() {
     let mut terminal = create_test_terminal();
 
     let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
+    let rows = output.lines().collect::<Vec<_>>();
+    assert!(rows[2].contains("Metadata load failed"));
+    assert!(rows[3].contains("r: retry, Enter: details"));
+    assert!(!explorer_text(&output).contains("public."));
 }
 
 #[test]
@@ -29,8 +69,10 @@ fn explorer_shows_not_connected_when_no_active_connection() {
     let mut terminal = create_test_terminal();
 
     let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
+    let rows = output.lines().collect::<Vec<_>>();
+    assert!(rows[0].contains("no dsn | -"));
+    assert!(rows[2].contains("Press 'c' to select a connection"));
+    assert!(!explorer_text(&output).contains("public."));
 }
 
 #[test]
@@ -48,9 +90,16 @@ fn header_shows_effective_user_at_normal_width() {
         .mark_connected_with_user(Arc::new(metadata), Some("app_user".to_string()));
     let mut terminal = create_test_terminal();
 
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
+    let buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let header = row_text(&buffer, 0);
+    assert!(header.contains("connected | user: app_user | test"));
+    assert!(header.contains("user: app_user"));
+    assert_row_text_color(
+        &buffer,
+        0,
+        "user: app_user",
+        DEFAULT_THEME.semantic.text.secondary,
+    );
 }
 
 #[test]

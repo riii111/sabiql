@@ -13,7 +13,7 @@ test_project ▸ - ▸ -                                                        
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                ╭ Select Connection ──────────────────────────────────────────────────────────────────────────────╮                                │
-│                                │>   my-very-long-service-name-that-exceeds-normal-length  from pg_service.conf                   │                                │
+│                                │>   my-service-name-that-is-long-enough-to-cross-the-visible-selector-limi…  from pg_service.conf│                                │
 │                                │    short                               from pg_service.conf                                     │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │

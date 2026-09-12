@@ -3,51 +3,31 @@ source: src/tests/render_snapshots/connection_flow.rs
 expression: output
 ---
 test_project ▸ - ▸ -                                                                                                                 not loaded | localhost:5432/test
-┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
-│ Press 'r' to load metadata            │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                       ││(select a table)                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││          ╭ New Connection ────────────────────────────────────────────╮                                                  │
-│                                       ││          │                                                            │                                                  │
-│                                       ││          │  Type:       [ PostgreSQL               ▼ ]                │                                                  │
+┌ [1] Explorer ─────────────────────────┐[Info] [Col╭ New Connection ────────────────────────────────────────────╮                                                   
+│ Press 'r' to load metadata            │┌ [2] Inspe│                                                            │──────────────────────────────────────────────────┐
+│                                       ││(select a │  Type:       [ PostgreSQL               ▼ ]                │                                                  │
 │                                       ││          │  Name:       [ nnnnnnnnnnnnnnnnnnnnnnnnnn ]                │                                                  │
 │                                       ││          │  Host:       [ hhhhhhhhhhhhhhhhhhhhhhhhhh ]                │                                                  │
 │                                       ││          │  Port:       [ 65535                      ]                │                                                  │
-│                                       │└──────────│  Database:   [ dddddddddddddddddddddddddd ]                │──────────────────────────────────────────────────┘
-│                                       │┌ [3] Resul│  User:       [ uuuuuuuuuuuuuuuuuuuuuuuuuu ]                │──────────────────────────────────────────────────┐
-│                                       ││(select a │  Password:   [ ************************** ]                │                                                  │
+│                                       ││          │  Database:   [ dddddddddddddddddddddddddd ]                │                                                  │
+│                                       ││          │  User:       [ uuuuuuuuuuuuuuuuuuuuuuuuuu ]                │                                                  │
+│                                       ││          │  Password:   [ ************************** ]                │                                                  │
 │                                       ││          │  SSL Mode:   [ prefer                   ▼ ]                │                                                  │
 │                                       ││          │                                                            │                                                  │
-│                                       ││          │  → stub-dsn                                                │                                                  │
+│                                       ││          │  → host='hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh  │                                                  │
+│                                       ││          │    hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh  │                                                  │
+│                                       │└──────────│    hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh  │──────────────────────────────────────────────────┘
+│                                       │┌ [3] Resul│    hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh  │──────────────────────────────────────────────────┐
+│                                       ││(select a │    hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh' port='6  │                                                  │
+│                                       ││          │    5535' dbname='dddddddddddddddddddddddddddddddddddddddd  │                                                  │
+│                                       ││          │    dddddddddddddddddddddddddddddddddddddddddddddddddddddd  │                                                  │
+│                                       ││          │    dddddddddddddddddddddddddddddddddddddddddddddddddddddd  │                                                  │
+│                                       ││          │    dddddddddddddddddddddddddddddddddddddddddddddddddddddd  │                                                  │
+│                                       ││          │    ddddddddddddddddddddddddddddddddddddddddddddddddddddd'  │                                                  │
+│                                       ││          │     user='uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu  │                                                  │
+│                                       ││          │    uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu  │                                                  │
+│                                       ││          │    uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu  │                                                  │
+│                                       ││          │    uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu…  │                                                  │
 │                                       ││          │  Note: Passwords use the OS secret store when supported    │                                                  │
-│                                       ││          │                                                            │                                                  │
-│                                       ││          ╰ Tab/⇧Tab: Field │ Enter: Toggle │ ^S: Connect │ Esc: Cancel╯                                                  │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-└───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+└───────────────────────────────────────┘└──────────│                                                            │──────────────────────────────────────────────────┘
+                                                    ╰ Tab/⇧Tab: Field │ Enter: Toggle │ ^S: Connect │ Esc: Cancel╯
