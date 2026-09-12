@@ -80,6 +80,19 @@ pub(crate) struct ConnectionConfigEntry {
     pub path: Option<String>,
 }
 
+impl Default for ConnectionConfigFile {
+    fn default() -> Self {
+        Self {
+            version: CURRENT_VERSION,
+            theme: None,
+            keymap_preset: None,
+            er_browser: None,
+            clipboard_backend: None,
+            connections: Vec::new(),
+        }
+    }
+}
+
 impl ConnectionConfigEntry {
     fn from_profile(profile: &ConnectionProfile) -> Self {
         let mut entry = Self {
