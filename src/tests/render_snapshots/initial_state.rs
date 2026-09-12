@@ -1,5 +1,5 @@
 use super::*;
-use crate::tests::harness::render_and_get_buffer;
+use crate::tests::harness::{TEST_HEIGHT, render_and_get_buffer};
 use sabiql_domain::ConnectionId;
 use sabiql_ui::theme::DEFAULT_THEME;
 
@@ -29,6 +29,16 @@ fn assert_row_text_color(
     }
 }
 
+fn explorer_text(output: &str) -> String {
+    output
+        .lines()
+        .skip(2)
+        .take(TEST_HEIGHT as usize - 3)
+        .filter_map(|line| line.split('│').nth(1))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[test]
 fn initial_state_no_metadata() {
     let mut state = create_test_state();
@@ -49,7 +59,7 @@ fn explorer_shows_retry_when_metadata_reload_fails() {
     let rows = output.lines().collect::<Vec<_>>();
     assert!(rows[2].contains("Metadata load failed"));
     assert!(rows[3].contains("r: retry, Enter: details"));
-    assert!(!rows[2].contains("public."));
+    assert!(!explorer_text(&output).contains("public."));
 }
 
 #[test]
@@ -60,8 +70,9 @@ fn explorer_shows_not_connected_when_no_active_connection() {
 
     let output = render_to_string(&mut terminal, &mut state);
     let rows = output.lines().collect::<Vec<_>>();
+    assert!(rows[0].contains("no dsn | -"));
     assert!(rows[2].contains("Press 'c' to select a connection"));
-    assert!(!rows[2].contains("public."));
+    assert!(!explorer_text(&output).contains("public."));
 }
 
 #[test]
@@ -81,6 +92,7 @@ fn header_shows_effective_user_at_normal_width() {
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
     let header = row_text(&buffer, 0);
+    assert!(header.contains("connected | user: app_user | test"));
     assert!(header.contains("user: app_user"));
     assert_row_text_color(
         &buffer,

@@ -356,7 +356,7 @@ fn connection_setup_preview_with_max_length_fields() {
     insta::assert_snapshot!(output);
     assert!(preview.lines().count() >= 2);
     assert!(preview.contains("…"));
-    assert!(!output.contains(&repeated('p', 255)));
+    assert!(!output.contains("pppp"));
     assert!(!output.contains("stub-dsn"));
 }
 

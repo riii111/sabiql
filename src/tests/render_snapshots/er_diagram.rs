@@ -75,6 +75,7 @@ fn er_table_picker_single_select() {
     assert!(rows[2].contains("Output:  er_partial_public_users.dot"));
     assert!(rows[3].contains("✔ public.users"));
     assert!(!rows[4].contains("✔"));
+    assert!(!rows[5].contains("✔"));
     assert!(output.lines().any(|line| line.contains("1/3 selected")));
 }
 

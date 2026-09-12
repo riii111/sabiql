@@ -170,6 +170,13 @@ fn sqlite_explorer_shows_table_names_without_schema_or_kind_suffixes() {
     assert!(explorer_rows[2].contains("notes_fts"));
     assert!(explorer_rows[3].contains("typed_users"));
     assert!(explorer_rows.iter().all(|row| !row.contains("main.")));
+    assert!(
+        explorer_rows
+            .iter()
+            .all(|row| !row.contains("WITHOUT ROWID"))
+    );
+    assert!(explorer_rows.iter().all(|row| !row.contains("virtual")));
+    assert!(explorer_rows.iter().all(|row| !row.contains("strict")));
 }
 
 #[test]
