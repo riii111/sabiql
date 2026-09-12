@@ -76,15 +76,7 @@ impl SettingsStore for TomlSettingsStore {
     fn save(&self, settings: AppSettings) -> Result<(), SettingsStoreError> {
         let _guard = app_config_file::lock();
 
-        let mut config = self
-            .load_config_file_strict()?
-            .unwrap_or_else(|| ConnectionConfigFile {
-                version: CURRENT_VERSION,
-                theme: None,
-                keymap_preset: None,
-                er_browser: None,
-                connections: vec![],
-            });
+        let mut config = self.load_config_file_strict()?.unwrap_or_default();
         set_app_settings(&mut config, settings);
         let content = toml::to_string_pretty(&config)?;
         let content_with_header = render_config_file(&content);
