@@ -165,18 +165,11 @@ fn sqlite_explorer_shows_table_names_without_schema_or_kind_suffixes() {
     let mut terminal = create_test_terminal();
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
     let explorer_rows = (2..6).map(|y| row_text(&buffer, y)).collect::<Vec<_>>();
-    assert!(explorer_rows[0].contains("> users"));
-    assert!(explorer_rows[1].contains("settings"));
-    assert!(explorer_rows[2].contains("notes_fts"));
-    assert!(explorer_rows[3].contains("typed_users"));
-    assert!(explorer_rows.iter().all(|row| !row.contains("main.")));
-    assert!(
-        explorer_rows
-            .iter()
-            .all(|row| !row.contains("WITHOUT ROWID"))
-    );
-    assert!(explorer_rows.iter().all(|row| !row.contains("virtual")));
-    assert!(explorer_rows.iter().all(|row| !row.contains("strict")));
+    let labels = explorer_rows
+        .iter()
+        .map(|row| row.split('│').nth(1).expect("expected Explorer row").trim())
+        .collect::<Vec<_>>();
+    assert_eq!(labels, ["> users", "settings", "notes_fts", "typed_users"]);
 }
 
 #[test]
