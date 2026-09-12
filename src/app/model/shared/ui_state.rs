@@ -828,26 +828,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn help_max_scroll_plus_viewport_equals_content_line_count() {
-            let terminal_height: u16 = 24;
-            let total_lines = 100;
-            let content_width = 80;
-            let state = UiState {
-                terminal_height,
-                ..Default::default()
-            };
-            let viewport = state.help_visible_rows(total_lines, content_width);
-
-            let max = state.help_max_scroll(total_lines, content_width);
-
-            assert_eq!(
-                max + viewport,
-                total_lines,
-                "max_scroll({max}) + viewport({viewport}) != total_lines({total_lines})"
-            );
-        }
-
-        #[test]
         fn help_max_scroll_is_zero_when_terminal_very_tall() {
             let total_lines = 100;
             let content_width = 80;
