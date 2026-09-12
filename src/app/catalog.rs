@@ -217,14 +217,22 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
             focused_pane: FocusedPane::Result,
             staged_delete_in_progress: true,
             result_active: true,
+            pending_cell_edit_draft,
             ..
-        } => rows_from_binding_refs(&[
-            &result_active::STAGE_DELETE,
-            &result_active::UNSTAGE_DELETE,
-            &cell_edit::WRITE,
-            &global::CONNECTIONS,
-            &result_active::ESC_BACK,
-        ]),
+        } => {
+            let escape = if pending_cell_edit_draft {
+                &result_active::DRAFT_DISCARD
+            } else {
+                &result_active::ESC_BACK
+            };
+            rows_from_binding_refs(&[
+                &result_active::STAGE_DELETE,
+                &result_active::UNSTAGE_DELETE,
+                &cell_edit::WRITE,
+                &global::CONNECTIONS,
+                escape,
+            ])
+        }
         HelpOrigin::Normal {
             focused_pane: FocusedPane::Result,
             staged_delete_in_progress: true,
@@ -245,6 +253,8 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
             result_active: true,
             staged_delete_in_progress: false,
             can_write_preview,
+            can_edit_selected_cell,
+            pending_cell_edit_draft,
             ..
         } => {
             let mut rows = vec![
@@ -254,10 +264,16 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
             ];
             if can_write_preview {
                 rows.push(&result_active::STAGE_DELETE);
+            }
+            if can_edit_selected_cell {
                 rows.push(&result_active::EDIT);
             }
             rows.push(&global::CONNECTIONS);
-            rows.push(&result_active::ESC_BACK);
+            rows.push(if pending_cell_edit_draft {
+                &result_active::DRAFT_DISCARD
+            } else {
+                &result_active::ESC_BACK
+            });
             rows_from_binding_refs(&rows)
         }
         HelpOrigin::Normal {
@@ -712,10 +728,14 @@ fn merge_rows(groups: &[Vec<HelpRow>]) -> Vec<HelpRow> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{ConnectionId, DatabaseType};
+    use crate::domain::{
+        ColumnAttributes, ConnectionId, DatabaseType, QueryResult, QuerySource, QueryValue,
+    };
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::ui_state::FocusMode;
     use crate::model::sql_editor::modal::SqlModalTab;
+    use crate::test_support;
+    use std::sync::Arc;
 
     fn row_descriptions(document: &HelpDocument) -> Vec<&str> {
         document
@@ -723,6 +743,67 @@ mod tests {
             .iter()
             .flat_map(HelpSection::rows)
             .map(HelpRow::description)
+            .collect()
+    }
+
+    fn result_state_with_selected_column(
+        database_type: DatabaseType,
+        selected_column: usize,
+        data_type: &str,
+        attributes: ColumnAttributes,
+        value: QueryValue,
+    ) -> AppState {
+        let (schema, name, dsn) = match database_type {
+            DatabaseType::SQLite => ("main", "users", "sqlite://test.db"),
+            DatabaseType::MySQL => ("sabiql_test", "users", "mysql://localhost/test"),
+            DatabaseType::PostgreSQL => ("public", "users", "postgres://localhost/test"),
+        };
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            database_type,
+            dsn,
+        );
+        state
+            .query
+            .set_current_result(Arc::new(QueryResult::success_with_values(
+                "SELECT id, value FROM users".to_string(),
+                vec!["id".to_string(), "value".to_string()],
+                vec![vec![QueryValue::text("1"), value]],
+                1,
+                QuerySource::Preview,
+            )));
+        state.query.pagination.reset_for_table(schema, name);
+
+        let mut table = test_support::table::minimal(schema, name);
+        let mut id = test_support::column::test_nullable_column("id", "INTEGER", 1);
+        id.attributes = if selected_column == 0 {
+            attributes
+        } else {
+            ColumnAttributes::PRIMARY_KEY
+        };
+        let mut selected = test_support::column::test_nullable_column("value", data_type, 2);
+        selected.attributes = if selected_column == 1 {
+            attributes
+        } else {
+            ColumnAttributes::empty()
+        };
+        table.columns = vec![id, selected];
+        table.primary_key = Some(vec!["id".to_string()]);
+        state.session.set_table_detail_raw(Some(table));
+        state.ui.set_focused_pane(FocusedPane::Result);
+        state.result_interaction.activate_cell(0, selected_column);
+        state
+    }
+
+    fn current_descriptions(state: &mut AppState) -> Vec<String> {
+        let origin = HelpOrigin::from_state(state);
+        state.ui.help_mut().open(origin);
+        HelpDocument::from_state(state).sections()[0]
+            .rows()
+            .iter()
+            .map(|row| row.description().to_string())
             .collect()
     }
 
@@ -734,6 +815,8 @@ mod tests {
                 result_active: true,
                 staged_delete_in_progress: false,
                 can_write_preview: true,
+                can_edit_selected_cell: true,
+                pending_cell_edit_draft: false,
                 keymap_preset: KeymapPreset::default(),
             },
             "",
@@ -764,6 +847,8 @@ mod tests {
                     result_active,
                     staged_delete_in_progress,
                     can_write_preview: true,
+                    can_edit_selected_cell: true,
+                    pending_cell_edit_draft: false,
                     keymap_preset: KeymapPreset::default(),
                 },
                 "",
@@ -804,6 +889,8 @@ mod tests {
                 result_active: false,
                 staged_delete_in_progress: false,
                 can_write_preview: true,
+                can_edit_selected_cell: true,
+                pending_cell_edit_draft: false,
                 keymap_preset: KeymapPreset::default(),
             },
             "",
@@ -825,6 +912,8 @@ mod tests {
                 result_active: true,
                 staged_delete_in_progress: false,
                 can_write_preview: true,
+                can_edit_selected_cell: true,
+                pending_cell_edit_draft: false,
                 keymap_preset: KeymapPreset::default(),
             },
             "",
@@ -839,6 +928,118 @@ mod tests {
     }
 
     #[test]
+    fn result_current_help_shows_edit_only_for_editable_selected_cells() {
+        let cases = vec![
+            (
+                "ordinary text",
+                result_state_with_selected_column(
+                    DatabaseType::PostgreSQL,
+                    1,
+                    "text",
+                    ColumnAttributes::empty(),
+                    QueryValue::text("before"),
+                ),
+                true,
+            ),
+            (
+                "JSON cell",
+                result_state_with_selected_column(
+                    DatabaseType::PostgreSQL,
+                    1,
+                    "jsonb",
+                    ColumnAttributes::empty(),
+                    QueryValue::text(r#"{"key":"value"}"#),
+                ),
+                true,
+            ),
+            (
+                "primary key",
+                result_state_with_selected_column(
+                    DatabaseType::PostgreSQL,
+                    0,
+                    "integer",
+                    ColumnAttributes::PRIMARY_KEY,
+                    QueryValue::text("1"),
+                ),
+                false,
+            ),
+            (
+                "read-only column",
+                result_state_with_selected_column(
+                    DatabaseType::PostgreSQL,
+                    1,
+                    "integer",
+                    ColumnAttributes::READ_ONLY,
+                    QueryValue::text("1"),
+                ),
+                false,
+            ),
+            (
+                "SQLite BLOB",
+                result_state_with_selected_column(
+                    DatabaseType::SQLite,
+                    1,
+                    "BLOB",
+                    ColumnAttributes::empty(),
+                    QueryValue::Blob(vec![0, 255]),
+                ),
+                false,
+            ),
+        ];
+
+        for (case_name, mut state, expected_edit_hint) in cases {
+            assert!(
+                state.can_write_visible_preview(),
+                "fixture must keep table writes enabled for {case_name}"
+            );
+            let descriptions = current_descriptions(&mut state);
+
+            assert_eq!(
+                descriptions
+                    .iter()
+                    .any(|description| description == "Edit active cell"),
+                expected_edit_hint,
+                "unexpected edit hint for {case_name}"
+            );
+        }
+    }
+
+    #[test]
+    fn result_current_help_uses_the_draft_snapshot_for_escape() {
+        let mut state = result_state_with_selected_column(
+            DatabaseType::PostgreSQL,
+            1,
+            "text",
+            ColumnAttributes::empty(),
+            QueryValue::text("before"),
+        );
+        state
+            .result_interaction
+            .begin_cell_edit(0, 1, "before".to_string());
+        state
+            .result_interaction
+            .replace_cell_edit_draft("after".to_string());
+        state.modal.set_mode(InputMode::Normal);
+
+        let descriptions = current_descriptions(&mut state);
+
+        assert!(descriptions.iter().any(
+            |description| description == "Discard the pending draft and stay in cell selection"
+        ));
+        assert!(!descriptions.iter().any(|description| {
+            description
+                == "Exit cell selection and return to scroll mode without clearing staged deletes"
+        }));
+
+        state.result_interaction.discard_cell_edit();
+        state.result_interaction.activate_cell(0, 0);
+        let document = HelpDocument::from_state(&state);
+        assert!(document.sections()[0].rows().iter().any(|row| {
+            row.description() == "Discard the pending draft and stay in cell selection"
+        }));
+    }
+
+    #[test]
     fn read_only_result_active_help_omits_write_actions() {
         let document = HelpDocument::new(
             HelpOrigin::Normal {
@@ -846,6 +1047,8 @@ mod tests {
                 result_active: true,
                 staged_delete_in_progress: false,
                 can_write_preview: false,
+                can_edit_selected_cell: false,
+                pending_cell_edit_draft: false,
                 keymap_preset: KeymapPreset::default(),
             },
             "",
@@ -874,6 +1077,8 @@ mod tests {
                 result_active: true,
                 staged_delete_in_progress: true,
                 can_write_preview: true,
+                can_edit_selected_cell: true,
+                pending_cell_edit_draft: false,
                 keymap_preset: KeymapPreset::default(),
             },
             "",
@@ -905,6 +1110,8 @@ mod tests {
                 result_active: false,
                 staged_delete_in_progress: true,
                 can_write_preview: true,
+                can_edit_selected_cell: true,
+                pending_cell_edit_draft: false,
                 keymap_preset: KeymapPreset::default(),
             },
             "",
@@ -931,6 +1138,8 @@ mod tests {
                 result_active: true,
                 staged_delete_in_progress: false,
                 can_write_preview: true,
+                can_edit_selected_cell: true,
+                pending_cell_edit_draft: false,
                 keymap_preset: KeymapPreset::default(),
             },
             "copy",
@@ -955,6 +1164,8 @@ mod tests {
                 result_active: false,
                 staged_delete_in_progress: false,
                 can_write_preview: true,
+                can_edit_selected_cell: true,
+                pending_cell_edit_draft: false,
                 keymap_preset: KeymapPreset::default(),
             },
             "navigation",
@@ -976,6 +1187,8 @@ mod tests {
                 result_active: false,
                 staged_delete_in_progress: false,
                 can_write_preview: true,
+                can_edit_selected_cell: true,
+                pending_cell_edit_draft: false,
                 keymap_preset: KeymapPreset::default(),
             },
             "zz-no-match",
@@ -996,6 +1209,8 @@ mod tests {
                 result_active: false,
                 staged_delete_in_progress: false,
                 can_write_preview: true,
+                can_edit_selected_cell: true,
+                pending_cell_edit_draft: false,
                 keymap_preset: KeymapPreset::default(),
             },
             "",
