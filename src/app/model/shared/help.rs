@@ -25,6 +25,8 @@ impl Default for HelpState {
                 result_active: false,
                 staged_delete_in_progress: false,
                 can_write_preview: false,
+                can_edit_selected_cell: false,
+                pending_cell_edit_draft: false,
                 keymap_preset: KeymapPreset::Default,
             },
             filter: TextInputState::default(),
@@ -131,6 +133,8 @@ pub enum HelpOrigin {
         result_active: bool,
         staged_delete_in_progress: bool,
         can_write_preview: bool,
+        can_edit_selected_cell: bool,
+        pending_cell_edit_draft: bool,
         keymap_preset: KeymapPreset,
     },
     CommandLine,
@@ -200,6 +204,8 @@ impl HelpOrigin {
                     .staged_delete_rows()
                     .is_empty(),
                 can_write_preview: state.can_write_visible_preview(),
+                can_edit_selected_cell: state.can_edit_selected_cell(),
+                pending_cell_edit_draft: state.result_interaction.cell_edit().has_pending_draft(),
                 keymap_preset: state.settings.saved_keymap_preset(),
             },
             InputMode::CommandLine => Self::CommandLine,
@@ -360,6 +366,8 @@ mod tests {
                 result_active: false,
                 staged_delete_in_progress: false,
                 can_write_preview: false,
+                can_edit_selected_cell: false,
+                pending_cell_edit_draft: false,
                 keymap_preset: KeymapPreset::Default,
             }
         ));
