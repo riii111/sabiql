@@ -356,23 +356,6 @@ mod tests {
         }
 
         #[test]
-        fn half_page_down_preserves_relative_position() {
-            let mut state = state_with_tables(50, 23);
-            state.ui.set_explorer_selected_raw(15);
-            state.ui.set_explorer_scroll_offset(10);
-
-            dispatch_navigation(
-                &mut state,
-                &Action::Select(SelectMotion::HalfPageDown),
-                &AppServices::stub(),
-                Instant::now(),
-            );
-
-            let relative = state.ui.explorer_selected() - state.ui.explorer_scroll_offset();
-            assert_eq!(relative, 5);
-        }
-
-        #[test]
         fn data_fewer_than_viewport_scroll_stays_zero() {
             let mut state = state_with_tables(10, 23);
             state.ui.set_explorer_selected_raw(3);

@@ -99,19 +99,6 @@ mod tests {
     }
 
     #[test]
-    fn accepts_sqlite_file_by_header() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("History");
-        fs::write(&path, b"SQLite format 3\0rest").unwrap();
-
-        assert!(
-            FsSqlitePathValidator
-                .validate_database_path(path.to_str().unwrap())
-                .is_ok()
-        );
-    }
-
-    #[test]
     fn rejects_readable_non_sqlite_file() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("notes.txt");

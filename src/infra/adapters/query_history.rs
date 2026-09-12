@@ -276,32 +276,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn append_trims_to_1000_when_exceeded() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = ConnectionId::from_string("test-conn");
-
-        // Write 1001 entries
-        for i in 0..1001 {
-            store
-                .append(
-                    "test",
-                    &scope(&conn_id),
-                    &make_entry(&format!("SELECT {i}")),
-                )
-                .await
-                .unwrap();
-        }
-
-        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
-
-        assert_eq!(entries.len(), MAX_HISTORY_ENTRIES);
-        // Oldest entry (SELECT 0) should be trimmed, newest (SELECT 1000) should remain
-        assert_eq!(entries[0].query, "SELECT 1");
-        assert_eq!(entries[MAX_HISTORY_ENTRIES - 1].query, "SELECT 1000");
-    }
-
-    #[tokio::test]
     async fn load_nonexistent_file_returns_empty_vec() {
         let tmp = TempDir::new().unwrap();
         let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
@@ -410,11 +384,17 @@ mod tests {
                 )
                 .await
                 .unwrap();
+
+            if i == MAX_HISTORY_ENTRIES {
+                let entries = store.load("test", &scope(&conn_id)).await.unwrap();
+                assert_eq!(entries.len(), MAX_HISTORY_ENTRIES);
+                assert_eq!(entries[0].query, "SELECT 1");
+                assert_eq!(entries[MAX_HISTORY_ENTRIES - 1].query, "SELECT 1000");
+            }
         }
 
         let entries = store.load("test", &scope(&conn_id)).await.unwrap();
         assert_eq!(entries.len(), MAX_HISTORY_ENTRIES);
-        // Oldest 5 entries (0..5) should be trimmed
         assert_eq!(entries[0].query, "SELECT 5");
         assert_eq!(
             entries[MAX_HISTORY_ENTRIES - 1].query,

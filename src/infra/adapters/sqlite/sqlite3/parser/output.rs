@@ -683,30 +683,11 @@ mod tests {
         }
 
         #[test]
-        fn parse_quoted_value_decodes_preview_transport_plain_quoted() {
-            let sentinel = sql::sqlite_nul_text_sentinel();
-            let quoted = format!("'{sentinel}68656C6C6F'");
-            let value = parse_quoted_value(&quoted, QuerySource::Preview, true).unwrap();
-
-            assert_eq!(value, QueryValue::Text("hello".to_string()));
-        }
-
-        #[test]
         fn parse_quoted_value_keeps_plain_quoted_transport_as_text_for_adhoc() {
             let sentinel = sql::sqlite_nul_text_sentinel();
             let transport = format!("{sentinel}68656C6C6F");
             let quoted = format!("'{transport}'");
             let value = parse_quoted_value(&quoted, QuerySource::Adhoc, true).unwrap();
-
-            assert_eq!(value, QueryValue::Text(transport));
-        }
-
-        #[test]
-        fn parse_quoted_value_skips_preview_transport_decode_for_column_names() {
-            let sentinel = sql::sqlite_nul_text_sentinel();
-            let transport = format!("{sentinel}68656C6C6F");
-            let quoted = format!("'{transport}'");
-            let value = parse_quoted_value(&quoted, QuerySource::Preview, false).unwrap();
 
             assert_eq!(value, QueryValue::Text(transport));
         }

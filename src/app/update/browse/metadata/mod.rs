@@ -1131,7 +1131,14 @@ mod tests {
 
             assert!(state.table_prefetch.is_prefetch_queued(&qualified));
             assert!(!state.table_prefetch.is_table_prefetching(&qualified));
-            assert!(state.table_prefetch.failed_prefetch(&qualified).is_some());
+            assert_eq!(
+                state
+                    .table_prefetch
+                    .failed_prefetch(&qualified)
+                    .unwrap()
+                    .retry_count,
+                1
+            );
             assert!(
                 effects
                     .iter()

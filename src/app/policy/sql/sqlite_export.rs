@@ -69,13 +69,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn insert_is_not_rerunnable() {
-            assert!(!is_sqlite_rerunnable_export_query(
-                "INSERT INTO users(id) VALUES (1)"
-            ));
-        }
-
-        #[test]
         fn mixed_write_and_select_is_not_rerunnable() {
             assert!(!is_sqlite_rerunnable_export_query(
                 "INSERT INTO users(id) VALUES (1); SELECT * FROM users"

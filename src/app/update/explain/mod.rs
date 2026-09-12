@@ -1271,6 +1271,8 @@ mod tests {
 
             // Step 1: First EXPLAIN
             reduce_explain(&mut state, &Action::ExplainRequest, now);
+            assert!(state.query.is_running());
+            assert_eq!(state.query.start_time(), Some(now));
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {

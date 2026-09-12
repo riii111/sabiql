@@ -262,6 +262,8 @@ mod tests {
         reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
+        assert!(state.cell_detail.is_active());
+        assert_eq!(state.cell_detail.column_name(), "body");
         assert_eq!(state.cell_detail.content(), "short");
     }
 

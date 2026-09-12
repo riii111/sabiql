@@ -742,12 +742,18 @@ mod tests {
                     },
                 );
 
-                super::dispatch_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now())
-                    .into_effects()
-                    .expect("reducer should handle action");
+                let effects = super::dispatch_modal(
+                    &mut state,
+                    &Action::ConfirmDialogConfirm,
+                    Instant::now(),
+                )
+                .into_effects()
+                .expect("reducer should handle action");
 
                 assert!(state.result_interaction.pending_write_preview().is_none());
                 assert!(state.query.pending_delete_refresh_target().is_none());
+                assert_eq!(state.input_mode(), InputMode::Normal);
+                assert!(effects.is_empty());
             }
 
             #[test]

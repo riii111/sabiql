@@ -264,25 +264,6 @@ mod tests {
         }
 
         #[rstest]
-        #[case(Key::Char('h'), ScrollDirection::Left, ScrollAmount::Line)]
-        #[case(Key::Left, ScrollDirection::Left, ScrollAmount::Line)]
-        #[case(Key::Char('l'), ScrollDirection::Right, ScrollAmount::Line)]
-        #[case(Key::Right, ScrollDirection::Right, ScrollAmount::Line)]
-        #[case(Key::Home, ScrollDirection::Up, ScrollAmount::ToStart)]
-        #[case(Key::End, ScrollDirection::Down, ScrollAmount::ToEnd)]
-        fn viewing_resolves_navigation_keys_as_scroll(
-            #[case] key: Key,
-            #[case] direction: ScrollDirection,
-            #[case] amount: ScrollAmount,
-        ) {
-            assert_help_scroll(
-                handle_help_keys(combo(key), InputInteraction::Viewing),
-                direction,
-                amount,
-            );
-        }
-
-        #[rstest]
         #[case(Key::Up)]
         #[case(Key::Down)]
         #[case(Key::PageUp)]

@@ -107,6 +107,7 @@ mod command_tags {
 
         assert_eq!(result.columns, vec!["name"]);
         assert_eq!(test_support::display_row(&result, 0), vec!["x".to_string()]);
+        assert_eq!(result.row_count(), 1);
         assert_eq!(result.command_tag, Some(CommandTag::Update(1)));
     }
 

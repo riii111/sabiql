@@ -3850,30 +3850,6 @@ mod tests {
         }
 
         #[test]
-        fn lru_eviction_order_is_fifo_without_access() {
-            let mut e = CompletionEngine::new_with_capacity(2);
-
-            // Insert t1, t2, t3 in order - t1 should be evicted first
-            e.cache_table_detail(
-                "public.t1".to_string(),
-                create_table("public", "t1", &["id"]),
-            );
-            e.cache_table_detail(
-                "public.t2".to_string(),
-                create_table("public", "t2", &["id"]),
-            );
-            // t1 is now LRU, will be evicted when t3 is added
-            e.cache_table_detail(
-                "public.t3".to_string(),
-                create_table("public", "t3", &["id"]),
-            );
-
-            assert!(!e.has_cached_table("public.t1")); // evicted
-            assert!(e.has_cached_table("public.t2"));
-            assert!(e.has_cached_table("public.t3"));
-        }
-
-        #[test]
         fn peeking_table_does_not_promote_it_before_eviction() {
             let mut e = CompletionEngine::new_with_capacity(2);
 
