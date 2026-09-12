@@ -74,15 +74,25 @@ pub(crate) struct ConnectionConfigEntry {
     pub path: Option<String>,
 }
 
-impl From<&[ConnectionProfile]> for ConnectionConfigFile {
-    fn from(profiles: &[ConnectionProfile]) -> Self {
+impl Default for ConnectionConfigFile {
+    fn default() -> Self {
         Self {
             version: CURRENT_VERSION,
             theme: None,
             keymap_preset: None,
             er_browser: None,
-            connections: profiles.iter().map(ConnectionConfigEntry::from).collect(),
+            connections: Vec::new(),
         }
+    }
+}
+
+impl From<&[ConnectionProfile]> for ConnectionConfigFile {
+    fn from(profiles: &[ConnectionProfile]) -> Self {
+        let mut config = Self::default();
+        config
+            .connections
+            .extend(profiles.iter().map(ConnectionConfigEntry::from));
+        config
     }
 }
 
