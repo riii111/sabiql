@@ -64,29 +64,6 @@ mod command_tags {
     }
 
     #[tokio::test]
-    async fn dml_with_following_select_uses_trailing_changes_result() {
-        let (_dir, dsn) = test_support::make_sqlite_db(
-            r"
-            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
-            INSERT INTO users(id, name) VALUES (1, 'a');
-            ",
-        );
-        let adapter = SqliteAdapter::new();
-
-        let result = adapter
-            .execute_adhoc(
-                &dsn,
-                "UPDATE users SET name = 'x' WHERE id = 1; SELECT 42",
-                AccessMode::ReadWrite,
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(result.row_count(), 1);
-        assert_eq!(result.command_tag, Some(CommandTag::Update(1)));
-    }
-
-    #[tokio::test]
     async fn dml_with_following_select_preserves_result_set_and_refresh_tag() {
         let (_dir, dsn) = test_support::make_sqlite_db(
             r"

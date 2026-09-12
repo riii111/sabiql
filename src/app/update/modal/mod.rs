@@ -689,30 +689,6 @@ mod tests {
             }
 
             #[test]
-            fn execute_write_blocked_returns_to_mode_with_no_effects() {
-                let mut state = create_test_state();
-                enter_confirm_dialog(&mut state, InputMode::Normal);
-                state.confirm_dialog.open(
-                    "",
-                    "",
-                    ConfirmIntent::ExecuteWrite {
-                        sql: "UPDATE t SET x=1".to_string(),
-                        blocked: true,
-                    },
-                );
-
-                let effects = super::dispatch_modal(
-                    &mut state,
-                    &Action::ConfirmDialogConfirm,
-                    Instant::now(),
-                )
-                .unwrap();
-
-                assert_eq!(state.input_mode(), InputMode::Normal);
-                assert!(effects.is_empty());
-            }
-
-            #[test]
             fn execute_write_blocked_confirm_clears_preview_state() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);

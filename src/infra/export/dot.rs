@@ -551,22 +551,6 @@ mod tests {
             let viewer = MockViewer::new();
             let graphviz_called = Arc::clone(&graphviz.called);
             let viewer_called = Arc::clone(&viewer.called);
-            let exporter = DotExporter::with_dependencies(graphviz, viewer);
-            let temp_dir = tempfile::tempdir().unwrap();
-
-            let result = exporter.export("digraph {}", "test.dot", temp_dir.path(), None);
-
-            assert!(result.is_ok());
-            assert!(graphviz_called.load(Ordering::SeqCst));
-            assert!(viewer_called.load(Ordering::SeqCst));
-        }
-
-        #[test]
-        fn passes_browser_to_viewer() {
-            let graphviz = MockGraphviz::new();
-            let viewer = MockViewer::new();
-            let graphviz_called = Arc::clone(&graphviz.called);
-            let viewer_called = Arc::clone(&viewer.called);
             let viewer_browser = Arc::clone(&viewer.browser);
             let exporter = DotExporter::with_dependencies(graphviz, viewer);
             let temp_dir = tempfile::tempdir().unwrap();
