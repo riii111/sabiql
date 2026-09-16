@@ -116,7 +116,7 @@ jobs:
       - name: Limit workspace debug information
         shell: pwsh
         run: |
-          # CI needs stack traces, but not full type and variable information for workspace packages.
+          # Avoid Windows PDB cost; limited debug is enough for CI backtraces.
           New-Item -ItemType Directory -Path .cargo -Force | Out-Null
           @'
           [profile.dev.package.sabiql]
