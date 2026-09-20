@@ -1118,12 +1118,10 @@ mod tests {
             let mut query = QueryExecution::default();
             let generation = session.select_table("public", "users", &mut query);
             let _ = session.set_table_detail(make_table_detail(), generation);
-            query.set_current_result(make_query_result());
 
             let _ = session.begin_table_detail_run();
 
             assert!(session.table_detail().is_none());
-            assert!(query.current_result().is_some());
             assert!(matches!(
                 session.table_detail_state(),
                 TableDetailState::Loading
@@ -1766,27 +1764,50 @@ mod tests {
         use super::*;
 
         #[rstest]
-        #[case(DatabaseType::MySQL, "mysql://localhost/app", "app", Some("app"))]
-        #[case(DatabaseType::PostgreSQL, "dsn://connection", "database", None)]
-        #[case(DatabaseType::SQLite, "dsn://connection", "database", None)]
+        #[case(
+            DatabaseType::MySQL,
+            "mysql://localhost/app",
+            "mysql-connection",
+            "app",
+            Some("app")
+        )]
+        #[case(
+            DatabaseType::PostgreSQL,
+            "dsn://connection",
+            "postgres-connection",
+            "database",
+            None
+        )]
+        #[case(
+            DatabaseType::SQLite,
+            "dsn://connection",
+            "sqlite-connection",
+            "database",
+            None
+        )]
         fn uses_database_only_for_mysql(
             #[case] database_type: DatabaseType,
             #[case] dsn: &str,
+            #[case] connection_id: &str,
             #[case] selected_database: &str,
             #[case] expected_database: Option<&str>,
         ) {
             let mut session = BrowseSession::default();
+            let id = ConnectionId::from_string(connection_id);
             session.activate_connection_with_target(
-                &ConnectionId::from_string("connection"),
-                "connection",
+                &id,
+                connection_id,
                 database_type,
                 dsn,
                 Some(selected_database),
             );
 
             assert_eq!(
-                session.query_history_scope().unwrap().database.as_deref(),
-                expected_database
+                session.query_history_scope(),
+                Some(QueryHistoryScope::new(
+                    id,
+                    expected_database.map(str::to_owned),
+                ))
             );
         }
     }

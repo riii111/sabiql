@@ -507,8 +507,6 @@ mod tests {
         #[case(2, CursorMove::Home, 0)]
         #[case(0, CursorMove::End, 3)]
         #[case(0, CursorMove::LastLine, 3)]
-        #[case(1, CursorMove::Up, 1)]
-        #[case(1, CursorMove::Down, 1)]
         fn moves_to_line_boundaries(
             #[case] cursor: usize,
             #[case] movement: CursorMove,
@@ -519,6 +517,17 @@ mod tests {
             s.move_cursor(movement);
 
             assert_eq!(s.cursor(), expected);
+        }
+
+        #[rstest]
+        #[case(CursorMove::Up)]
+        #[case(CursorMove::Down)]
+        fn vertical_movement_is_noop_for_single_line(#[case] movement: CursorMove) {
+            let mut s = state_with("abc", 1);
+
+            s.move_cursor(movement);
+
+            assert_eq!(s.cursor(), 1);
         }
 
         #[rstest]

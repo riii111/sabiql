@@ -351,7 +351,7 @@ mod tests {
         #[rstest]
         #[case(true)]
         #[case(false)]
-        fn returns_current_result_when_present(#[case] present: bool) {
+        fn matches_current_result_presence(#[case] present: bool) {
             let qe = if present {
                 QueryExecution {
                     current_result: Some(make_result(QuerySource::Preview)),
