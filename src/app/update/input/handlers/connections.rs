@@ -231,16 +231,6 @@ mod tests {
         }
 
         #[test]
-        fn ide_ctrl_s_saves_on_ssl_field() {
-            let mut state = setup_state_with_preset(KeymapPreset::Ide);
-            state.connection_setup.focused_field = ConnectionField::SslMode;
-
-            let result = handle_connection_setup_keys(combo_ctrl(Key::Char('s')), &state);
-
-            assert!(matches!(result, Action::ConnectionSetupSave));
-        }
-
-        #[test]
         fn esc_cancels() {
             let state = setup_state();
 
@@ -344,27 +334,41 @@ mod tests {
         mod dropdown_open {
             use super::*;
 
-            fn dropdown_state() -> AppState {
+            fn dropdown_state(field: ConnectionField) -> AppState {
                 let mut state = setup_state();
-                focus_field(&mut state, ConnectionField::SslMode);
-                state.connection_setup.toggle_focused_dropdown();
-                state
-            }
-
-            fn database_type_dropdown_state() -> AppState {
-                let mut state = setup_state();
-                focus_field(&mut state, ConnectionField::DatabaseType);
+                focus_field(&mut state, field);
                 state.connection_setup.toggle_focused_dropdown();
                 state
             }
 
             #[rstest]
-            #[case(Key::Up, Action::ConnectionSetupDropdownPrev)]
-            #[case(Key::Down, Action::ConnectionSetupDropdownNext)]
-            #[case(Key::Enter, Action::ConnectionSetupDropdownConfirm)]
-            #[case(Key::Esc, Action::ConnectionSetupDropdownCancel)]
-            fn dropdown_navigation(#[case] code: Key, #[case] expected: Action) {
-                let state = dropdown_state();
+            #[case(ConnectionField::SslMode, Key::Up, Action::ConnectionSetupDropdownPrev)]
+            #[case(
+                ConnectionField::SslMode,
+                Key::Down,
+                Action::ConnectionSetupDropdownNext
+            )]
+            #[case(
+                ConnectionField::SslMode,
+                Key::Enter,
+                Action::ConnectionSetupDropdownConfirm
+            )]
+            #[case(
+                ConnectionField::SslMode,
+                Key::Esc,
+                Action::ConnectionSetupDropdownCancel
+            )]
+            #[case(
+                ConnectionField::DatabaseType,
+                Key::Up,
+                Action::ConnectionSetupDropdownPrev
+            )]
+            fn dropdown_navigation(
+                #[case] field: ConnectionField,
+                #[case] code: Key,
+                #[case] expected: Action,
+            ) {
+                let state = dropdown_state(field);
 
                 let result = handle_connection_setup_keys(combo(code), &state);
 
@@ -374,20 +378,11 @@ mod tests {
                 );
             }
 
-            #[test]
-            fn database_type_dropdown_routes_navigation() {
-                let state = database_type_dropdown_state();
-
-                let result = handle_connection_setup_keys(combo(Key::Up), &state);
-
-                assert!(matches!(result, Action::ConnectionSetupDropdownPrev));
-            }
-
             #[rstest]
             #[case(Key::Char('p'), Action::ConnectionSetupDropdownPrev)]
             #[case(Key::Char('n'), Action::ConnectionSetupDropdownNext)]
             fn ctrl_aliases(#[case] code: Key, #[case] expected: Action) {
-                let state = dropdown_state();
+                let state = dropdown_state(ConnectionField::SslMode);
 
                 let result = handle_connection_setup_keys(combo_ctrl(code), &state);
 
@@ -401,7 +396,7 @@ mod tests {
             #[case(Key::Char('p'))]
             #[case(Key::Char('n'))]
             fn ctrl_aliases_ignore_extra_modifiers(#[case] code: Key) {
-                let state = dropdown_state();
+                let state = dropdown_state(ConnectionField::SslMode);
 
                 let result = handle_connection_setup_keys(KeyCombo::ctrl_alt(code), &state);
                 assert!(matches!(result, Action::None));

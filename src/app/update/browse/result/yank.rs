@@ -193,27 +193,15 @@ mod tests {
             state
         }
 
-        #[test]
-        fn out_of_bounds_row_sets_error() {
+        #[rstest::rstest]
+        #[case(true)]
+        #[case(false)]
+        fn out_of_bounds_cell_sets_error(#[case] row_out_of_bounds: bool) {
             let mut state = state_with_grid(3, 3);
-            state.result_interaction.activate_cell(10, 0);
-
-            let effects = reduce_yank(
-                &mut state,
-                &Action::ResultCellYank,
-                &AppServices::stub(),
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert!(effects.is_empty());
-            assert!(state.messages.last_error.is_some());
-        }
-
-        #[test]
-        fn out_of_bounds_col_sets_error() {
-            let mut state = state_with_grid(3, 3);
-            state.result_interaction.activate_cell(0, 10);
+            state.result_interaction.activate_cell(
+                if row_out_of_bounds { 10 } else { 0 },
+                if row_out_of_bounds { 0 } else { 10 },
+            );
 
             let effects = reduce_yank(
                 &mut state,

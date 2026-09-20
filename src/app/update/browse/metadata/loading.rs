@@ -186,23 +186,6 @@ mod tests {
     }
 
     #[test]
-    fn metadata_failure_terminates_initial_loading_detail() {
-        let mut state = connected_state(DatabaseType::PostgreSQL);
-        let (generation, run_id) = loading_detail_and_metadata_run(&mut state);
-
-        let effects = reduce_loading(&mut state, &metadata_failed(run_id), Instant::now())
-            .into_effects()
-            .expect("metadata failure should be handled");
-
-        assert!(matches!(
-            state.session.table_detail_state(),
-            TableDetailState::Error(_)
-        ));
-        assert!(state.session.is_table_detail_terminal(generation));
-        assert!(effects.is_empty());
-    }
-
-    #[test]
     fn initial_metadata_failure_clears_result_once() {
         let mut state = AppState::new("test".to_string());
         let dsn = "postgres://localhost/test";

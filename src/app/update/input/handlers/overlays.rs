@@ -115,24 +115,22 @@ mod tests {
             ));
         }
 
-        #[test]
-        fn esc_closes_help() {
-            let result = handle_help_keys(combo(Key::Esc), InputInteraction::Viewing);
+        #[rstest]
+        #[case(Key::Esc)]
+        #[case(Key::Char('?'))]
+        fn close_keys_close_help(#[case] key: Key) {
+            let result = handle_help_keys(combo(key), InputInteraction::Viewing);
 
             assert!(matches!(result, Action::CloseModal(ModalKind::Help)));
         }
 
-        #[test]
-        fn question_mark_closes_help() {
-            let result = handle_help_keys(combo(Key::Char('?')), InputInteraction::Viewing);
-
-            assert!(matches!(result, Action::CloseModal(ModalKind::Help)));
-        }
-
-        #[test]
-        fn question_mark_filters_help_while_editing() {
+        #[rstest]
+        #[case('?')]
+        #[case('a')]
+        #[case('/')]
+        fn filter_chars_are_inserted_while_editing(#[case] ch: char) {
             let result = handle_help_keys(
-                combo(Key::Char('?')),
+                combo(Key::Char(ch)),
                 InputInteraction::FormEditing(InputTarget::HelpFilter),
             );
 
@@ -140,24 +138,8 @@ mod tests {
                 result,
                 Action::TextInput {
                     target: InputTarget::HelpFilter,
-                    ch: '?',
-                }
-            ));
-        }
-
-        #[test]
-        fn editing_filter_accepts_char_input() {
-            let result = handle_help_keys(
-                combo(Key::Char('a')),
-                InputInteraction::FormEditing(InputTarget::HelpFilter),
-            );
-
-            assert!(matches!(
-                result,
-                Action::TextInput {
-                    target: InputTarget::HelpFilter,
-                    ch: 'a'
-                }
+                    ch: actual,
+                } if actual == ch
             ));
         }
 
@@ -173,22 +155,6 @@ mod tests {
             let result = handle_help_keys(combo(Key::Enter), InputInteraction::Viewing);
 
             assert!(matches!(result, Action::None));
-        }
-
-        #[test]
-        fn slash_filters_help_while_editing() {
-            let result = handle_help_keys(
-                combo(Key::Char('/')),
-                InputInteraction::FormEditing(InputTarget::HelpFilter),
-            );
-
-            assert!(matches!(
-                result,
-                Action::TextInput {
-                    target: InputTarget::HelpFilter,
-                    ch: '/',
-                }
-            ));
         }
 
         #[test]

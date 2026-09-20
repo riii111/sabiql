@@ -568,31 +568,24 @@ mod tests {
             assert!(effects.is_empty());
         }
 
-        #[test]
-        fn rerunnable_export_always_confirms_even_when_result_is_small() {
+        #[rstest::rstest]
+        #[case(false)]
+        #[case(true)]
+        fn rerunnable_export_always_confirms_regardless_of_result_size(#[case] large: bool) {
             let mut state = create_test_state();
-            state.query.set_current_result(adhoc_result());
-
-            let effects =
-                dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
-
-            assert!(effects.is_empty());
-            assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
-            assert!(state.confirm_dialog.message().contains("unknown"));
-        }
-
-        #[test]
-        fn rerunnable_export_always_confirms_even_when_result_is_large() {
-            let mut state = create_test_state();
-            let result = QueryResult::success(
-                "SELECT 1".to_string(),
-                vec!["value".to_string()],
-                vec![vec!["1".to_string()]],
-                0,
-                QuerySource::Adhoc,
-            )
-            .with_row_count(200_000);
-            state.query.set_current_result(Arc::new(result));
+            if large {
+                let result = QueryResult::success(
+                    "SELECT 1".to_string(),
+                    vec!["value".to_string()],
+                    vec![vec!["1".to_string()]],
+                    0,
+                    QuerySource::Adhoc,
+                )
+                .with_row_count(200_000);
+                state.query.set_current_result(Arc::new(result));
+            } else {
+                state.query.set_current_result(adhoc_result());
+            }
 
             let effects =
                 dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();

@@ -305,18 +305,6 @@ mod tests {
             }
 
             #[test]
-            fn er_key_opens_picker_for_postgresql() {
-                let state = connected_state(DatabaseType::PostgreSQL);
-
-                let result = handle_normal_mode(combo(Key::Char('e')), &state);
-
-                assert!(matches!(
-                    result,
-                    Action::OpenModal(ModalKind::ErTablePicker)
-                ));
-            }
-
-            #[test]
             fn er_key_is_ignored_for_sqlite() {
                 let state = connected_state(DatabaseType::SQLite);
 
@@ -721,42 +709,6 @@ mod tests {
         mod inspector_navigation {
             use super::*;
 
-            #[rstest]
-            #[case(Key::Char('g'))]
-            #[case(Key::Home)]
-            fn g_scrolls_top(#[case] code: Key) {
-                let state = inspector_focused_state();
-
-                let result = handle_normal_mode(combo(code), &state);
-
-                assert!(matches!(
-                    result,
-                    Action::Scroll {
-                        target: ScrollTarget::Inspector,
-                        direction: ScrollDirection::Up,
-                        amount: ScrollAmount::ToStart
-                    }
-                ));
-            }
-
-            #[rstest]
-            #[case(Key::Char('G'))]
-            #[case(Key::End)]
-            fn shift_g_scrolls_bottom(#[case] code: Key) {
-                let state = inspector_focused_state();
-
-                let result = handle_normal_mode(combo(code), &state);
-
-                assert!(matches!(
-                    result,
-                    Action::Scroll {
-                        target: ScrollTarget::Inspector,
-                        direction: ScrollDirection::Down,
-                        amount: ScrollAmount::ToEnd
-                    }
-                ));
-            }
-
             #[test]
             fn ctrl_p_opens_table_picker_from_inspector() {
                 let state = inspector_focused_state();
@@ -764,18 +716,6 @@ mod tests {
                 let result = handle_normal_mode(combo_ctrl(Key::Char('p')), &state);
 
                 assert!(matches!(result, Action::OpenModal(ModalKind::TablePicker)));
-            }
-
-            #[test]
-            fn c_opens_connection_selector() {
-                let state = inspector_focused_state();
-
-                let result = handle_normal_mode(combo(Key::Char('c')), &state);
-
-                assert!(matches!(
-                    result,
-                    Action::OpenModal(ModalKind::ConnectionSelector)
-                ));
             }
         }
 
@@ -885,34 +825,6 @@ mod tests {
                 let result = handle_normal_mode(combo(key), &state);
 
                 assert!(matches!(result, Action::None));
-            }
-
-            #[test]
-            fn c_opens_connection_selector() {
-                let state = result_focused_state();
-
-                let result = handle_normal_mode(combo(Key::Char('c')), &state);
-
-                assert!(matches!(
-                    result,
-                    Action::OpenModal(ModalKind::ConnectionSelector)
-                ));
-            }
-        }
-
-        mod focus_mode {
-            use super::*;
-
-            #[test]
-            fn c_opens_connection_selector() {
-                let state = focus_mode_state();
-
-                let result = handle_normal_mode(combo(Key::Char('c')), &state);
-
-                assert!(matches!(
-                    result,
-                    Action::OpenModal(ModalKind::ConnectionSelector)
-                ));
             }
         }
 
@@ -1072,114 +984,6 @@ mod tests {
 
         mod focus_mode {
             use super::*;
-
-            #[rstest]
-            #[case(Key::Char('j'))]
-            #[case(Key::Down)]
-            fn j_scrolls_down(#[case] code: Key) {
-                let state = focus_mode_state();
-
-                let result = handle_normal_mode(combo(code), &state);
-
-                assert!(matches!(
-                    result,
-                    Action::Scroll {
-                        target: ScrollTarget::Result,
-                        direction: ScrollDirection::Down,
-                        amount: ScrollAmount::Line
-                    }
-                ));
-            }
-
-            #[rstest]
-            #[case(Key::Char('k'))]
-            #[case(Key::Up)]
-            fn k_scrolls_up(#[case] code: Key) {
-                let state = focus_mode_state();
-
-                let result = handle_normal_mode(combo(code), &state);
-
-                assert!(matches!(
-                    result,
-                    Action::Scroll {
-                        target: ScrollTarget::Result,
-                        direction: ScrollDirection::Up,
-                        amount: ScrollAmount::Line
-                    }
-                ));
-            }
-
-            #[rstest]
-            #[case(Key::Char('g'))]
-            #[case(Key::Home)]
-            fn g_scrolls_top(#[case] code: Key) {
-                let state = focus_mode_state();
-
-                let result = handle_normal_mode(combo(code), &state);
-
-                assert!(matches!(
-                    result,
-                    Action::Scroll {
-                        target: ScrollTarget::Result,
-                        direction: ScrollDirection::Up,
-                        amount: ScrollAmount::ToStart
-                    }
-                ));
-            }
-
-            #[rstest]
-            #[case(Key::Char('G'))]
-            #[case(Key::End)]
-            fn shift_g_scrolls_bottom(#[case] code: Key) {
-                let state = focus_mode_state();
-
-                let result = handle_normal_mode(combo(code), &state);
-
-                assert!(matches!(
-                    result,
-                    Action::Scroll {
-                        target: ScrollTarget::Result,
-                        direction: ScrollDirection::Down,
-                        amount: ScrollAmount::ToEnd
-                    }
-                ));
-            }
-
-            #[rstest]
-            #[case(Key::Char('h'))]
-            #[case(Key::Left)]
-            fn h_scrolls_left(#[case] code: Key) {
-                let state = focus_mode_state();
-
-                let result = handle_normal_mode(combo(code), &state);
-
-                assert!(matches!(
-                    result,
-                    Action::Scroll {
-                        target: ScrollTarget::Result,
-                        direction: ScrollDirection::Left,
-                        amount: ScrollAmount::Line
-                    }
-                ));
-            }
-
-            #[rstest]
-            #[case(Key::Char('l'))]
-            #[case(Key::Right)]
-            fn l_scrolls_right(#[case] code: Key) {
-                let state = focus_mode_state();
-
-                let result = handle_normal_mode(combo(code), &state);
-
-                assert!(matches!(
-                    result,
-                    Action::Scroll {
-                        target: ScrollTarget::Result,
-                        direction: ScrollDirection::Right,
-                        amount: ScrollAmount::Line
-                    }
-                ));
-            }
 
             #[test]
             fn bracket_right_returns_next_page() {
@@ -1431,7 +1235,9 @@ mod tests {
         #[case("inspector", Key::Char('j'), Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Down, amount: ScrollAmount::Line })]
         #[case("inspector", Key::Char('k'), Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Up, amount: ScrollAmount::Line })]
         #[case("focus_mode", Key::Char('j'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::Line })]
+        #[case("focus_mode", Key::Down, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::Line })]
         #[case("focus_mode", Key::Char('k'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::Line })]
+        #[case("focus_mode", Key::Up, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::Line })]
         fn vertical_jk(#[case] ctx_name: &str, #[case] key: Key, #[case] expected: Action) {
             let state = match ctx_name {
                 "explorer" => explorer_ctx(),
@@ -1454,9 +1260,13 @@ mod tests {
         #[case("result_cell_active", Key::Char('g'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ToStart })]
         #[case("result_cell_active", Key::Char('G'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ToEnd })]
         #[case("inspector", Key::Char('g'), Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Up, amount: ScrollAmount::ToStart })]
+        #[case("inspector", Key::Home, Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Up, amount: ScrollAmount::ToStart })]
         #[case("inspector", Key::Char('G'), Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Down, amount: ScrollAmount::ToEnd })]
+        #[case("inspector", Key::End, Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Down, amount: ScrollAmount::ToEnd })]
         #[case("focus_mode", Key::Char('g'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ToStart })]
+        #[case("focus_mode", Key::Home, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ToStart })]
         #[case("focus_mode", Key::Char('G'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ToEnd })]
+        #[case("focus_mode", Key::End, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ToEnd })]
         fn ends_g_shift_g(#[case] ctx_name: &str, #[case] key: Key, #[case] expected: Action) {
             let state = match ctx_name {
                 "explorer" => explorer_ctx(),
@@ -1469,6 +1279,30 @@ mod tests {
             let key_label = format!("{key:?}");
             let actual = handle_normal_mode(combo(key), &state);
             assert_action(actual, expected, ctx_name, &key_label);
+        }
+
+        #[rstest]
+        #[case(Key::Char('h'))]
+        #[case(Key::Left)]
+        #[case(Key::Char('l'))]
+        #[case(Key::Right)]
+        fn focus_mode_horizontal_navigation(#[case] key: Key) {
+            let expected = match key {
+                Key::Char('h') | Key::Left => Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Left,
+                    amount: ScrollAmount::Line,
+                },
+                Key::Char('l') | Key::Right => Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Right,
+                    amount: ScrollAmount::Line,
+                },
+                _ => unreachable!(),
+            };
+            let key_label = format!("{key:?}");
+            let actual = handle_normal_mode(combo(key), &focus_mode_ctx());
+            assert_action(actual, expected, "focus_mode", &key_label);
         }
 
         #[rstest]

@@ -59,17 +59,30 @@ mod tests {
             state
         }
 
-        #[test]
-        fn inserts_at_cursor() {
+        #[rstest::rstest]
+        #[case("SELCT", 3, "E", "SELECT", 4)]
+        #[case("AB", 1, "XYZ", "AXYZB", 4)]
+        fn inserts_at_cursor_and_advances_cursor(
+            #[case] content: &str,
+            #[case] cursor: usize,
+            #[case] pasted: &str,
+            #[case] expected_content: &str,
+            #[case] expected_cursor: usize,
+        ) {
             let mut state = editing_state();
             state
                 .sql_modal
                 .editor
-                .set_content_with_cursor("SELCT".to_string(), 3);
+                .set_content_with_cursor(content.to_string(), cursor);
 
-            reduce_sql_modal(&mut state, &Action::Paste("E".to_string()), Instant::now());
+            reduce_sql_modal(
+                &mut state,
+                &Action::Paste(pasted.to_string()),
+                Instant::now(),
+            );
 
-            assert_eq!(state.sql_modal.editor.content(), "SELECT");
+            assert_eq!(state.sql_modal.editor.content(), expected_content);
+            assert_eq!(state.sql_modal.editor.cursor(), expected_cursor);
         }
 
         #[test]
@@ -96,23 +109,6 @@ mod tests {
             );
 
             assert_eq!(state.sql_modal.editor.content(), "a\nb");
-        }
-
-        #[test]
-        fn advances_cursor() {
-            let mut state = editing_state();
-            state
-                .sql_modal
-                .editor
-                .set_content_with_cursor("AB".to_string(), 1);
-
-            reduce_sql_modal(
-                &mut state,
-                &Action::Paste("XYZ".to_string()),
-                Instant::now(),
-            );
-
-            assert_eq!(state.sql_modal.editor.cursor(), 4); // 1 + 3
         }
 
         #[test]
@@ -585,25 +581,6 @@ mod tests {
         }
 
         #[test]
-        fn submit_delete_no_where_enters_confirming_high() {
-            let mut state = sql_modal_state();
-            state
-                .sql_modal
-                .editor
-                .set_content("DELETE FROM users".to_string());
-
-            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
-
-            assert!(matches!(
-                state.sql_modal.status(),
-                SqlModalStatus::ConfirmingHigh {
-                    target_name,
-                    ..
-                } if target_name == "users"
-            ));
-        }
-
-        #[test]
         fn submit_update_no_where_enters_confirming_high() {
             let mut state = sql_modal_state();
             state
@@ -710,29 +687,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn read_only_blocks_write_query_in_sql_modal() {
-            let mut state = AppState::new("test".to_string());
-            state.modal.set_mode(InputMode::SqlModal);
-            state
-                .sql_modal
-                .editor
-                .set_content("DELETE FROM users WHERE id = 1".to_string());
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            state.session.enable_read_only();
-
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
-
-            assert!(effects.is_empty());
-            assert!(matches!(
-                state.sql_modal.status(),
-                SqlModalStatus::Error(error)
-                    if error == "Read-only mode: write operations are disabled"
-            ));
-        }
-
-        #[test]
         fn read_only_reject_clears_prior_success() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::SqlModal);
@@ -756,9 +710,11 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("DELETE FROM users WHERE id = 1".to_string());
-            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
                 .into_effects()
                 .expect("reducer should handle action");
+
+            assert!(effects.is_empty());
 
             assert!(matches!(
                 state.sql_modal.status(),
@@ -939,8 +895,11 @@ mod tests {
 
             assert!(matches!(
                 state.sql_modal.status(),
-                SqlModalStatus::ConfirmingHigh { decision, .. }
-                    if decision.risk_level == RiskLevel::High
+                SqlModalStatus::ConfirmingHigh {
+                    decision,
+                    target_name,
+                    ..
+                } if decision.risk_level == RiskLevel::High && target_name == "users"
             ));
         }
     }
