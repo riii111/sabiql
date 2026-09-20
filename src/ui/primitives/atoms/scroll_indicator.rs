@@ -186,22 +186,19 @@ mod tests {
     use super::clamp_scroll_offset;
 
     #[test]
-    fn clamp_returns_zero_when_content_fits() {
-        assert_eq!(clamp_scroll_offset(100, 10, 5), 0);
-    }
+    fn clamp_scroll_offset_handles_content_boundaries() {
+        let cases = [
+            (100, 10, 5, 0),
+            (5, 10, 10, 0),
+            (50, 10, 100, 50),
+            (100, 10, 20, 10),
+        ];
 
-    #[test]
-    fn clamp_returns_zero_when_exact_fit() {
-        assert_eq!(clamp_scroll_offset(5, 10, 10), 0);
-    }
-
-    #[test]
-    fn clamp_preserves_offset_within_range() {
-        assert_eq!(clamp_scroll_offset(50, 10, 100), 50);
-    }
-
-    #[test]
-    fn clamp_caps_offset_exceeding_max() {
-        assert_eq!(clamp_scroll_offset(100, 10, 20), 10);
+        for (scroll_offset, viewport_size, total_items, expected) in cases {
+            assert_eq!(
+                clamp_scroll_offset(scroll_offset, viewport_size, total_items),
+                expected
+            );
+        }
     }
 }

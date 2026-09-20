@@ -823,41 +823,24 @@ mod tests {
         }
     }
 
-    #[test]
-    fn short_string_returns_unchanged() {
-        let result = truncate_cell("hello", 10);
-
-        assert_eq!(result, "hello");
-    }
-
-    #[test]
-    fn exact_length_returns_unchanged() {
-        let result = truncate_cell("hello", 5);
-
-        assert_eq!(result, "hello");
-    }
-
-    #[test]
-    fn long_string_truncates_with_ellipsis() {
-        let result = truncate_cell("hello world", 8);
-
-        assert_eq!(result, "hello...");
-    }
-
-    #[test]
-    fn multibyte_truncates_by_display_width() {
-        let result = truncate_cell("こんにちは世界", 5);
-
-        assert_eq!(result, "こ...");
-    }
-
     #[rstest]
+    #[case("hello", 10, "hello")]
+    #[case("hello", 5, "hello")]
+    #[case("hello world", 8, "hello...")]
+    #[case("こんにちは世界", 5, "こ...")]
     #[case("日本語テスト", 12, "日本語テスト")]
     #[case("日本語テスト", 10, "日本語...")]
     #[case("日本語テスト", 5, "日...")]
     #[case("日本語テスト", 4, "...")]
     #[case("SELECT * FROM 日本語テーブル", 15, "SELECT * FRO...")]
-    fn multibyte_truncation_is_safe(
+    #[case("", 10, "")]
+    #[case("hello", 0, "")]
+    #[case("hello world", 1, ".")]
+    #[case("hello world", 2, "..")]
+    #[case("hello world", 3, "...")]
+    #[case("hello world", 4, "h...")]
+    #[case("hello world", 5, "he...")]
+    fn truncates_cells_with_expected_width(
         #[case] input: &str,
         #[case] max: usize,
         #[case] expected: &str,
@@ -882,31 +865,5 @@ mod tests {
         let result = truncate_cell("this is a long first line\nsecond", 10);
 
         assert_eq!(result, "this is...");
-    }
-
-    #[test]
-    fn empty_string_returns_empty() {
-        let result = truncate_cell("", 10);
-
-        assert_eq!(result, "");
-    }
-
-    #[test]
-    fn zero_width_returns_empty() {
-        let result = truncate_cell("hello", 0);
-
-        assert_eq!(result, "");
-    }
-
-    #[rstest]
-    #[case(1, ".")]
-    #[case(2, "..")]
-    #[case(3, "...")]
-    #[case(4, "h...")]
-    #[case(5, "he...")]
-    fn small_widths_stay_within_contract(#[case] max: usize, #[case] expected: &str) {
-        let result = truncate_cell("hello world", max);
-
-        assert_eq!(result, expected);
     }
 }

@@ -650,6 +650,7 @@ mod tests {
     use super::*;
     use crate::app::model::shared::settings::KeymapPreset;
     use crate::domain::connection::ConnectionConfig;
+    use rstest::rstest;
 
     fn focus_field(state: &mut ConnectionSetupState, field: ConnectionField) {
         while state.focused_field() != field {
@@ -657,11 +658,13 @@ mod tests {
         }
     }
 
-    #[test]
-    fn submit_hints_include_toggle_and_save_on_ssl_field() {
+    #[rstest]
+    #[case(ConnectionField::SslMode)]
+    #[case(ConnectionField::DatabaseType)]
+    fn submit_hints_toggle_and_save_for_toggle_fields(#[case] field: ConnectionField) {
         let state = AppState::new("test".to_string());
         let mut form_state = ConnectionSetupState::default();
-        focus_field(&mut form_state, ConnectionField::SslMode);
+        focus_field(&mut form_state, field);
 
         assert_eq!(
             ConnectionSetup::submit_hints(&state, &form_state, "Connect"),
@@ -669,39 +672,21 @@ mod tests {
         );
     }
 
-    #[test]
-    fn submit_hint_uses_toggle_on_database_type_field() {
-        let state = AppState::new("test".to_string());
-        let form_state = ConnectionSetupState::default();
-
-        assert_eq!(
-            ConnectionSetup::submit_hints(&state, &form_state, "Connect"),
-            vec![("Enter", "Toggle"), ("^S", "Connect")]
-        );
-    }
-
-    #[test]
-    fn submit_hints_use_preset_save_key_off_ssl_field() {
+    #[rstest]
+    #[case(KeymapPreset::Default, "^S")]
+    #[case(KeymapPreset::Ide, "Enter")]
+    fn submit_hints_use_keymap_save_key_on_text_field(
+        #[case] preset: KeymapPreset,
+        #[case] save_key: &str,
+    ) {
         let mut state = AppState::new("test".to_string());
-        state.settings.load_keymap_preset(KeymapPreset::Ide);
+        state.settings.load_keymap_preset(preset);
         let mut form_state = ConnectionSetupState::default();
         form_state.focus_next_field();
 
         assert_eq!(
             ConnectionSetup::submit_hints(&state, &form_state, "Connect"),
-            vec![("Enter", "Connect")]
-        );
-    }
-
-    #[test]
-    fn submit_hints_use_default_save_key_on_text_field() {
-        let state = AppState::new("test".to_string());
-        let mut form_state = ConnectionSetupState::default();
-        form_state.focus_next_field();
-
-        assert_eq!(
-            ConnectionSetup::submit_hints(&state, &form_state, "Connect"),
-            vec![("^S", "Connect")]
+            vec![(save_key, "Connect")]
         );
     }
 
@@ -810,26 +795,32 @@ mod tests {
     }
 
     #[test]
-    fn preview_lines_use_two_rows_with_ellipsis() {
-        assert_eq!(
-            preview_lines("host='localhost' port='5432'", 12, 2),
-            vec!["→ host='loca".to_string(), "  lhost' po…".to_string()]
-        );
-    }
+    fn preview_lines_preserve_ascii_and_unicode_rows() {
+        let cases = [
+            (
+                "host='localhost' port='5432'",
+                12,
+                2,
+                vec!["→ host='loca".to_string(), "  lhost' po…".to_string()],
+            ),
+            (
+                "dbname='日本語db' sslmode='prefer'",
+                12,
+                2,
+                vec!["→ dbname='日".to_string(), "  本語db' s…".to_string()],
+            ),
+        ];
 
-    #[test]
-    fn preview_lines_respect_display_width() {
-        let lines = preview_lines("dbname='日本語db' sslmode='prefer'", 12, 2);
+        for (input, width, rows, expected) in cases {
+            let lines = preview_lines(input, width, rows);
 
-        assert_eq!(
-            lines,
-            vec!["→ dbname='日".to_string(), "  本語db' s…".to_string()]
-        );
-        assert!(
-            lines
-                .iter()
-                .all(|line| UnicodeWidthStr::width(line.as_str()) <= 12)
-        );
+            assert_eq!(lines, expected);
+            assert!(
+                lines
+                    .iter()
+                    .all(|line| UnicodeWidthStr::width(line.as_str()) <= width)
+            );
+        }
     }
 
     #[test]

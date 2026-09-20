@@ -69,14 +69,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn calculates_min_widths_with_str_slice() {
+    fn calculates_min_widths_for_str_slices_and_strings() {
         let headers = ["id", "name", "description"];
         let widths = calculate_header_min_widths(&headers);
         assert_eq!(widths, vec![4, 6, 13]);
-    }
 
-    #[test]
-    fn calculates_min_widths_with_string_vec() {
         let headers = vec!["id".to_string(), "name".to_string()];
         let widths = calculate_header_min_widths(&headers);
         assert_eq!(widths, vec![4, 6]);

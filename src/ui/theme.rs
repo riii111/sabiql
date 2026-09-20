@@ -350,13 +350,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn palette_for_default_returns_default_theme() {
-        assert_eq!(palette_for(ThemeId::Default), &DEFAULT_THEME);
-    }
-
-    #[test]
-    fn palette_for_light_returns_light_theme() {
-        assert_eq!(palette_for(ThemeId::Light), &LIGHT_THEME);
+    fn palette_for_returns_theme_for_each_id() {
+        for (theme_id, expected) in [
+            (ThemeId::Default, &DEFAULT_THEME),
+            (ThemeId::Light, &LIGHT_THEME),
+        ] {
+            assert_eq!(palette_for(theme_id), expected);
+        }
     }
 
     #[test]

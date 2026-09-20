@@ -477,7 +477,12 @@ fn connection_error_save_failure_hides_retry_in_modal_and_footer() {
     let output = render_service_error_without_service_file_hint(true);
 
     assert!(output.contains("Actions:  e  Edit"));
-    assert!(output.contains("e:Edit"));
+    let footer = output
+        .lines()
+        .find(|line| line.contains("e:Edit"))
+        .expect("connection error footer actions");
+    assert!(footer.trim_start().starts_with("e:Edit"));
+    assert!(!footer.contains("Esc:Close"));
     assert!(!output.contains("Retry"));
     assert!(!output.contains("pg_service.conf"));
 }

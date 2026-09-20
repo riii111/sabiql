@@ -346,15 +346,12 @@ mod tests {
     use super::Footer;
     use crate::app::domain::{ConnectionId, DatabaseType};
     use crate::app::model::app_state::AppState;
-    use crate::app::model::connection::error::ConnectionErrorInfo;
     use crate::app::model::shared::focused_pane::FocusedPane;
     use crate::app::model::shared::input_mode::InputMode;
     use crate::app::model::shared::settings::KeymapPreset;
     use crate::app::model::shared::ui_state::FocusMode;
-    use crate::app::ports::outbound::DbOperationError;
     use crate::app::update::input::keybindings::{
-        connection_error, er_picker, global, json_detail, result_active, settings, sql_modal,
-        table_picker,
+        er_picker, global, json_detail, result_active, settings, sql_modal, table_picker,
     };
     use rstest::rstest;
 
@@ -533,16 +530,6 @@ mod tests {
     }
 
     #[test]
-    fn row_detail_footer_hides_modal_hints() {
-        let mut state = AppState::new("test".to_string());
-        state.modal.set_mode(InputMode::RowDetail);
-
-        let hints = Footer::get_context_hints(&state);
-
-        assert!(hints.is_empty());
-    }
-
-    #[test]
     fn picker_footer_keeps_table_filter_hint() {
         let mut state = AppState::new("test".to_string());
 
@@ -551,9 +538,6 @@ mod tests {
             Footer::get_context_hints(&state),
             vec![table_picker::TYPE_FILTER.as_hint()]
         );
-
-        state.modal.set_mode(InputMode::QueryHistoryPicker);
-        assert!(Footer::get_context_hints(&state).is_empty());
     }
 
     #[test]
@@ -573,17 +557,6 @@ mod tests {
         );
     }
 
-    #[rstest]
-    #[case(InputMode::ConnectionSelector)]
-    #[case(InputMode::CommandPalette)]
-    #[case(InputMode::ConnectionSetup)]
-    fn modal_footer_hides_hints_rendered_in_modal_frame(#[case] mode: InputMode) {
-        let mut state = AppState::new("test".to_string());
-        state.modal.set_mode(mode);
-
-        assert!(Footer::get_context_hints(&state).is_empty());
-    }
-
     #[test]
     fn settings_footer_keeps_only_selection_hint() {
         let mut state = AppState::new("test".to_string());
@@ -600,34 +573,53 @@ mod tests {
     }
 
     #[test]
-    fn settings_custom_browser_edit_footer_hides_modal_hints() {
-        let mut state = AppState::new("test".to_string());
-        state.modal.set_mode(InputMode::Settings);
-        state.settings.switch_next_section();
-        state.settings.switch_next_section();
-        state.settings.start_custom_browser_edit();
+    fn empty_modal_footer_hints_stay_hidden() {
+        #[derive(Clone, Copy)]
+        enum Case {
+            Mode(&'static str, InputMode),
+            SettingsCustomBrowserEdit,
+            Help(&'static str, bool),
+        }
 
-        let hints = Footer::get_context_hints(&state);
+        let cases = [
+            Case::Mode("row detail", InputMode::RowDetail),
+            Case::Mode("query history picker", InputMode::QueryHistoryPicker),
+            Case::Mode("connection selector", InputMode::ConnectionSelector),
+            Case::Mode("command palette", InputMode::CommandPalette),
+            Case::Mode("connection setup", InputMode::ConnectionSetup),
+            Case::SettingsCustomBrowserEdit,
+            Case::Help("help", false),
+            Case::Help("help filter", true),
+        ];
 
-        assert!(hints.is_empty());
-    }
+        for case in cases {
+            let name = match case {
+                Case::Mode(name, _) | Case::Help(name, _) => name,
+                Case::SettingsCustomBrowserEdit => "settings custom browser edit",
+            };
+            let mut state = AppState::new("test".to_string());
 
-    #[test]
-    fn help_footer_hints_follow_help_mode() {
-        let mut state = AppState::new("test".to_string());
-        state.modal.set_mode(InputMode::Help);
+            match case {
+                Case::Mode(_, mode) => state.modal.set_mode(mode),
+                Case::SettingsCustomBrowserEdit => {
+                    state.modal.set_mode(InputMode::Settings);
+                    state.settings.switch_next_section();
+                    state.settings.switch_next_section();
+                    state.settings.start_custom_browser_edit();
+                }
+                Case::Help(_, filter_editing) => {
+                    state.modal.set_mode(InputMode::Help);
+                    if filter_editing {
+                        state.ui.help_mut().enter_filter_editing();
+                    }
+                }
+            }
 
-        assert_eq!(
-            Footer::get_context_hints(&state),
-            Vec::<(&str, &str)>::new()
-        );
-
-        state.ui.help_mut().enter_filter_editing();
-
-        assert_eq!(
-            Footer::get_context_hints(&state),
-            Vec::<(&str, &str)>::new()
-        );
+            assert!(
+                Footer::get_context_hints(&state).is_empty(),
+                "{name} should not render global footer hints"
+            );
+        }
     }
 
     #[rstest::rstest]
@@ -648,27 +640,5 @@ mod tests {
         let hints = Footer::get_context_hints(&state);
 
         assert_eq!(hints, vec![sql_modal::MOVE.as_hint()]);
-    }
-
-    #[test]
-    fn connection_error_footer_hides_retry_for_save_and_connect_failure() {
-        let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
-            &ConnectionId::new(),
-            "mysql",
-            DatabaseType::MySQL,
-            "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
-        );
-        state.connection_error.set_save_and_connect_error(
-            ConnectionErrorInfo::from_db_operation_error(&DbOperationError::Timeout(
-                "connection timed out".to_string(),
-            )),
-        );
-        state.modal.set_mode(InputMode::ConnectionError);
-
-        let hints = Footer::get_context_hints(&state);
-
-        assert_eq!(hints[0], connection_error::EDIT.as_hint());
-        assert!(!hints.contains(&connection_error::ESC_CLOSE.as_hint()));
     }
 }

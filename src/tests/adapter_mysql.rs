@@ -2350,71 +2350,39 @@ mod query_execution {
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
-    async fn preserves_empty_show_columns() {
+    async fn preserves_empty_metadata_columns_for_all_query_forms() {
         with_mysql_test_db(|db| {
             Box::pin(async move {
-                let show = db
-                    .adapter()
-                    .execute_adhoc(
-                        db.dsn(),
-                        "SHOW TABLES LIKE 'sabiql_empty_metadata_missing'",
-                        AccessMode::ReadWrite,
-                    )
-                    .await
-                    .map_err(|error| format!("empty SHOW failed: {error:?}"))?;
-                if show.columns != ["Tables_in_sabiql_test (sabiql_empty_metadata_missing)"]
-                    || !show.values().is_empty()
-                {
-                    return Err(format!("unexpected empty SHOW result: {show:?}"));
-                }
-                Ok(())
-            })
-        })
-        .await;
-    }
+                let cases = [
+                    (
+                        "SHOW",
+                        "SHOW TABLES LIKE 'sabiql_empty_metadata_missing'".to_string(),
+                        vec!["Tables_in_sabiql_test (sabiql_empty_metadata_missing)"],
+                    ),
+                    (
+                        "DESCRIBE",
+                        format!("DESCRIBE {MYSQL_EMPTY_TABLE} 'missing_column'"),
+                        vec!["Field", "Type", "Null", "Key", "Default", "Extra"],
+                    ),
+                    (
+                        "TABLE",
+                        format!("TABLE {MYSQL_EMPTY_TABLE}"),
+                        vec!["id", "payload"],
+                    ),
+                ];
 
-    #[tokio::test]
-    #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
-    async fn preserves_empty_describe_columns() {
-        with_mysql_test_db(|db| {
-            Box::pin(async move {
-                let describe = db
-                    .adapter()
-                    .execute_adhoc(
-                        db.dsn(),
-                        &format!("DESCRIBE {MYSQL_EMPTY_TABLE} 'missing_column'"),
-                        AccessMode::ReadWrite,
-                    )
-                    .await
-                    .map_err(|error| format!("empty DESCRIBE failed: {error:?}"))?;
-                if describe.columns != ["Field", "Type", "Null", "Key", "Default", "Extra"]
-                    || !describe.values().is_empty()
-                {
-                    return Err(format!("unexpected empty DESCRIBE result: {describe:?}"));
+                for (label, query, expected_columns) in cases {
+                    let result = db
+                        .adapter()
+                        .execute_adhoc(db.dsn(), &query, AccessMode::ReadWrite)
+                        .await
+                        .map_err(|error| format!("empty {label} failed: {error:?}"))?;
+                    let columns: Vec<_> = result.columns.iter().map(String::as_str).collect();
+                    if columns != expected_columns || !result.values().is_empty() {
+                        return Err(format!("unexpected empty {label} result: {result:?}"));
+                    }
                 }
-                Ok(())
-            })
-        })
-        .await;
-    }
 
-    #[tokio::test]
-    #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
-    async fn preserves_empty_table_columns() {
-        with_mysql_test_db(|db| {
-            Box::pin(async move {
-                let table = db
-                    .adapter()
-                    .execute_adhoc(
-                        db.dsn(),
-                        &format!("TABLE {MYSQL_EMPTY_TABLE}"),
-                        AccessMode::ReadWrite,
-                    )
-                    .await
-                    .map_err(|error| format!("empty TABLE failed: {error:?}"))?;
-                if table.columns != ["id", "payload"] || !table.values().is_empty() {
-                    return Err(format!("unexpected empty TABLE result: {table:?}"));
-                }
                 Ok(())
             })
         })

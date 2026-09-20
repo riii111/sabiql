@@ -1415,28 +1415,6 @@ mod tests {
     }
 
     #[test]
-    fn foreign_key_row_cells_include_referential_actions() {
-        let row = InspectorForeignKeyRow {
-            name: "fk_users_department".to_string(),
-            columns: "department_id".to_string(),
-            references: "public.departments(id)".to_string(),
-            on_update: "NO ACTION".to_string(),
-            on_delete: "CASCADE".to_string(),
-        };
-
-        assert_eq!(
-            foreign_key_row_cells(&row),
-            vec![
-                "fk_users_department",
-                "department_id",
-                "public.departments(id)",
-                "NO ACTION",
-                "CASCADE",
-            ]
-        );
-    }
-
-    #[test]
     fn mysql_trigger_details_render_all_creation_context_fields() {
         use crate::app::model::shared::theme_id::ThemeId;
         use crate::theme::palette_for;
