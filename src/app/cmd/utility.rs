@@ -254,32 +254,6 @@ mod tests {
         use super::*;
 
         #[tokio::test]
-        async fn calls_folder_opener_port() {
-            let (tx, _rx) = mpsc::channel(8);
-            let clipboard: Arc<dyn ClipboardWriter> = Arc::new(MockClipboard {
-                result: Ok(ClipboardOutcome::Copied),
-            });
-            let opener = Arc::new(MockFolderOpener::new());
-            let folder_opener: Arc<dyn FolderOpener> = Arc::clone(&opener) as _;
-
-            run(
-                Effect::OpenFolder {
-                    path: PathBuf::from("/tmp/export"),
-                    message_revision: 7,
-                    export_message: "Exported → /tmp/export/data.csv".to_string(),
-                },
-                &tx,
-                &clipboard,
-                &folder_opener,
-            )
-            .await;
-
-            let opened = opener.opened.lock().unwrap();
-            assert_eq!(opened.len(), 1);
-            assert_eq!(opened[0], PathBuf::from("/tmp/export"));
-        }
-
-        #[tokio::test]
         async fn failure_dispatches_open_folder_failed() {
             let (tx, mut rx) = mpsc::channel(8);
             let clipboard: Arc<dyn ClipboardWriter> = Arc::new(MockClipboard {
@@ -316,6 +290,11 @@ mod tests {
                 }
                 other => panic!("expected OpenFolderFailed, got {other:?}"),
             }
+
+            assert_eq!(
+                opener.opened.lock().unwrap().as_slice(),
+                [PathBuf::from("/nonexistent")]
+            );
         }
     }
 }

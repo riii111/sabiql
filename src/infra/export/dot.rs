@@ -564,14 +564,14 @@ mod tests {
             assert_eq!(viewer_browser.lock().unwrap().as_deref(), Some("Firefox"));
         }
 
-        #[test]
-        fn requested_browser_ignores_whitespace_only_values() {
-            assert_eq!(requested_browser(Some("   ")), None);
-        }
-
-        #[test]
-        fn requested_browser_trims_browser_name() {
-            assert_eq!(requested_browser(Some("  Firefox  ")), Some("Firefox"));
+        #[rstest::rstest]
+        #[case(Some("   "), None)]
+        #[case(Some("  Firefox  "), Some("Firefox"))]
+        fn requested_browser_normalizes_configured_name(
+            #[case] requested: Option<&str>,
+            #[case] expected: Option<&str>,
+        ) {
+            assert_eq!(requested_browser(requested), expected);
         }
 
         #[test]
@@ -703,8 +703,12 @@ mod tests {
             let temp_dir = tempfile::tempdir().unwrap();
             let old_dot = temp_dir.path().join("er_old_tables.dot");
             let old_svg = temp_dir.path().join("er_old_tables.svg");
+            let log_file = temp_dir.path().join("er_failure.log");
+            let other_file = temp_dir.path().join("other.txt");
             std::fs::write(&old_dot, "old dot").unwrap();
             std::fs::write(&old_svg, "old svg").unwrap();
+            std::fs::write(&log_file, "log").unwrap();
+            std::fs::write(&other_file, "data").unwrap();
 
             let exporter = DotExporter::with_dependencies(MockGraphviz::new(), MockViewer::new());
             exporter
@@ -714,21 +718,6 @@ mod tests {
             assert!(!old_dot.exists());
             assert!(!old_svg.exists());
             assert!(temp_dir.path().join("er_new.dot").exists());
-        }
-
-        #[test]
-        fn non_er_files_survive_cleanup() {
-            let temp_dir = tempfile::tempdir().unwrap();
-            let log_file = temp_dir.path().join("er_failure.log");
-            let other_file = temp_dir.path().join("other.txt");
-            std::fs::write(&log_file, "log").unwrap();
-            std::fs::write(&other_file, "data").unwrap();
-
-            let exporter = DotExporter::with_dependencies(MockGraphviz::new(), MockViewer::new());
-            exporter
-                .export("digraph {}", "er_new.dot", temp_dir.path(), None)
-                .unwrap();
-
             assert!(log_file.exists());
             assert!(other_file.exists());
         }

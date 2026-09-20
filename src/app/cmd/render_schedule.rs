@@ -168,43 +168,24 @@ mod tests {
             assert_eq!(deadline, Some(highlight_until));
         }
 
-        #[test]
-        fn sql_modal_returns_cursor_blink_interval() {
+        #[rstest::rstest]
+        #[case(InputMode::SqlModal, true)]
+        #[case(InputMode::TablePicker, true)]
+        #[case(InputMode::CommandLine, true)]
+        #[case(InputMode::ConnectionSetup, true)]
+        #[case(InputMode::Help, false)]
+        fn cursor_modes_control_animation_deadline(#[case] mode: InputMode, #[case] blinks: bool) {
             let mut state = create_test_state();
-            state.modal.set_mode(InputMode::SqlModal);
+            state.modal.set_mode(mode);
             let now = Instant::now();
 
             let deadline = next_animation_deadline(&state, now);
 
-            assert!(deadline.is_some());
-            let expected = now + CURSOR_BLINK_INTERVAL;
-            assert_eq!(deadline.unwrap(), expected);
-        }
-
-        #[test]
-        fn table_picker_returns_cursor_blink_interval() {
-            let mut state = create_test_state();
-            state.modal.set_mode(InputMode::TablePicker);
-            let now = Instant::now();
-
-            let deadline = next_animation_deadline(&state, now);
-
-            assert!(deadline.is_some());
-            let expected = now + CURSOR_BLINK_INTERVAL;
-            assert_eq!(deadline.unwrap(), expected);
-        }
-
-        #[test]
-        fn command_line_returns_cursor_blink_interval() {
-            let mut state = create_test_state();
-            state.modal.set_mode(InputMode::CommandLine);
-            let now = Instant::now();
-
-            let deadline = next_animation_deadline(&state, now);
-
-            assert!(deadline.is_some());
-            let expected = now + CURSOR_BLINK_INTERVAL;
-            assert_eq!(deadline.unwrap(), expected);
+            if blinks {
+                assert_eq!(deadline, Some(now + CURSOR_BLINK_INTERVAL));
+            } else {
+                assert!(deadline.is_none());
+            }
         }
 
         #[test]
@@ -281,26 +262,6 @@ mod tests {
             state.er_preparation.mark_rendering();
 
             assert!(!has_active_spinner(&state));
-        }
-    }
-
-    mod has_blinking_cursor_tests {
-        use super::*;
-
-        #[test]
-        fn connection_setup_returns_true() {
-            let mut state = create_test_state();
-            state.modal.set_mode(InputMode::ConnectionSetup);
-
-            assert!(has_blinking_cursor(&state));
-        }
-
-        #[test]
-        fn help_mode_returns_false() {
-            let mut state = create_test_state();
-            state.modal.set_mode(InputMode::Help);
-
-            assert!(!has_blinking_cursor(&state));
         }
     }
 }

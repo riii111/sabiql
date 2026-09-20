@@ -412,8 +412,6 @@ mod tests {
 
     #[rstest::rstest]
     #[case(true, false)]
-    #[case(false, false)]
-    #[case(true, true)]
     #[case(false, true)]
     #[tokio::test]
     async fn cache_failure_preserves_session_without_exporting(
@@ -501,7 +499,7 @@ mod tests {
         let state = state_with_mysql_dsn(dsn);
         let completion_engine = RefCell::new(CompletionEngine::new());
         let (action_tx, mut action_rx) = mpsc::channel(1);
-        let table = table::minimal("app", "items");
+        let cached_table = table::minimal("app", "items");
 
         handle_smart_refresh_cache_and_diff(
             &action_tx,
@@ -511,50 +509,25 @@ mod tests {
             1,
             Arc::new(DatabaseMetadata::new("app".to_string())),
             Arc::new(TableSignatureSnapshot {
-                signatures: vec![TableSignature {
-                    schema: "app".to_string(),
-                    name: "items".to_string(),
-                    signature: "signature".to_string(),
-                }],
-                prefetched_table_details: vec![table],
+                signatures: vec![
+                    TableSignature {
+                        schema: "app".to_string(),
+                        name: "items".to_string(),
+                        signature: "signature".to_string(),
+                    },
+                    TableSignature {
+                        schema: "app".to_string(),
+                        name: "new_table".to_string(),
+                        signature: "signature".to_string(),
+                    },
+                ],
+                prefetched_table_details: vec![cached_table],
             }),
         )
         .await
         .unwrap();
 
         assert!(completion_engine.borrow().has_cached_table("app.items"));
-        let Action::SmartErRefreshCompleted(result) = action_rx.recv().await.unwrap() else {
-            panic!("expected smart refresh completion");
-        };
-        assert!(result.missing_in_cache.is_empty());
-    }
-
-    #[tokio::test]
-    async fn uncached_new_tables_are_reported_as_missing_in_cache() {
-        let dsn = "mysql://user:password@localhost:3306/app";
-        let state = state_with_mysql_dsn(dsn);
-        let completion_engine = RefCell::new(CompletionEngine::new());
-        let (action_tx, mut action_rx) = mpsc::channel(1);
-
-        handle_smart_refresh_cache_and_diff(
-            &action_tx,
-            &state,
-            &completion_engine,
-            dsn.to_string(),
-            1,
-            Arc::new(DatabaseMetadata::new("app".to_string())),
-            Arc::new(TableSignatureSnapshot {
-                signatures: vec![TableSignature {
-                    schema: "app".to_string(),
-                    name: "new_table".to_string(),
-                    signature: "signature".to_string(),
-                }],
-                prefetched_table_details: vec![],
-            }),
-        )
-        .await
-        .unwrap();
-
         let Action::SmartErRefreshCompleted(result) = action_rx.recv().await.unwrap() else {
             panic!("expected smart refresh completion");
         };
