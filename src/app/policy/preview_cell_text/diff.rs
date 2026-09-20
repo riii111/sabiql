@@ -58,25 +58,37 @@ mod tests {
         assert!(uses_structured_json_diff(handling));
     }
 
-    #[test]
-    fn text_column_preserves_json_like_string() {
+    #[rstest]
+    #[case(DatabaseType::PostgreSQL, "text", r#"{ "a": 1 }"#, r#"{"a":1}"#, true)]
+    #[case(
+        DatabaseType::SQLite,
+        "TEXT",
+        r#"{"items":["admin","writer"]}"#,
+        r#"{"items":["admin","writer"]}"#,
+        false
+    )]
+    fn text_columns_preserve_json_like_strings(
+        #[case] database_type: DatabaseType,
+        #[case] column_data_type: &str,
+        #[case] first: &str,
+        #[case] second: &str,
+        #[case] expect_difference: bool,
+    ) {
         let handling =
-            CellPresentationPolicy::new(DatabaseType::PostgreSQL, "text", "").diff_handling();
-        let spaced = r#"{ "a": 1 }"#;
-        let compact = r#"{"a":1}"#;
-        assert_eq!(normalize_for_write_diff(spaced, handling), spaced);
-        assert_ne!(
-            normalize_for_write_diff(spaced, handling),
-            normalize_for_write_diff(compact, handling)
-        );
-    }
+            CellPresentationPolicy::new(database_type, column_data_type, "").diff_handling();
 
-    #[test]
-    fn sqlite_text_column_preserves_json_like_string() {
-        let handling =
-            CellPresentationPolicy::new(DatabaseType::SQLite, "TEXT", "").diff_handling();
-        let original = r#"{"items":["admin","writer"]}"#;
-        assert_eq!(normalize_for_write_diff(original, handling), original);
+        assert_eq!(normalize_for_write_diff(first, handling), first);
+        if expect_difference {
+            assert_ne!(
+                normalize_for_write_diff(first, handling),
+                normalize_for_write_diff(second, handling)
+            );
+        } else {
+            assert_eq!(
+                normalize_for_write_diff(first, handling),
+                normalize_for_write_diff(second, handling)
+            );
+        }
     }
 
     #[test]

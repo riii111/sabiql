@@ -83,30 +83,33 @@ impl QueryHistoryEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
-    #[test]
-    fn serde_round_trip_preserves_optional_fields() {
-        for (query, connection_id, database, affected_rows) in [
-            ("SELECT * FROM users", "test-uuid", None, None),
-            ("UPDATE users SET name = 'x'", "test-uuid", None, Some(5)),
-            ("SELECT 1", "abc-123", Some("analytics"), None),
-        ] {
-            let entry = QueryHistoryEntry::new_with_database(
-                query.to_string(),
-                "2026-03-13T12:00:00Z".to_string(),
-                ConnectionId::from_string(connection_id),
-                database.map(str::to_string),
-                QueryResultStatus::Success,
-                affected_rows,
-            );
+    #[rstest]
+    #[case::select_without_optional_fields("SELECT * FROM users", "test-uuid", None, None)]
+    #[case::update_with_affected_rows("UPDATE users SET name = 'x'", "test-uuid", None, Some(5))]
+    #[case::select_with_database("SELECT 1", "abc-123", Some("analytics"), None)]
+    fn serde_round_trip_preserves_optional_fields(
+        #[case] query: &str,
+        #[case] connection_id: &str,
+        #[case] database: Option<&str>,
+        #[case] affected_rows: Option<u64>,
+    ) {
+        let entry = QueryHistoryEntry::new_with_database(
+            query.to_string(),
+            "2026-03-13T12:00:00Z".to_string(),
+            ConnectionId::from_string(connection_id),
+            database.map(str::to_string),
+            QueryResultStatus::Success,
+            affected_rows,
+        );
 
-            let json = serde_json::to_string(&entry).unwrap();
-            let deserialized: QueryHistoryEntry = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&entry).unwrap();
+        let deserialized: QueryHistoryEntry = serde_json::from_str(&json).unwrap();
 
-            assert_eq!(entry, deserialized);
-            assert_eq!(deserialized.database.as_deref(), database);
-            assert_eq!(deserialized.affected_rows, affected_rows);
-        }
+        assert_eq!(entry, deserialized);
+        assert_eq!(deserialized.database.as_deref(), database);
+        assert_eq!(deserialized.affected_rows, affected_rows);
     }
 
     #[test]
