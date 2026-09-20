@@ -316,6 +316,11 @@ mod tests {
                 }
                 other => panic!("expected OpenFolderFailed, got {other:?}"),
             }
+
+            assert_eq!(
+                opener.opened.lock().unwrap().as_slice(),
+                [PathBuf::from("/nonexistent")]
+            );
         }
     }
 }

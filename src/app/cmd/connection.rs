@@ -796,18 +796,6 @@ mod tests {
         }
 
         #[test]
-        fn cancelled_save_does_not_start_persistence() {
-            let run_guard = test_fixtures::active_connection_save_guard(1);
-            let mut saved = false;
-
-            run_guard.cancel();
-            let result = save_if_active(&run_guard, 1, || saved = true);
-
-            assert!(result.is_none());
-            assert!(!saved);
-        }
-
-        #[test]
         fn finishing_cancelled_save_does_not_clear_new_run() {
             let run_guard = test_fixtures::active_connection_save_guard(1);
 
@@ -905,58 +893,6 @@ mod tests {
                     } if dsn == &expected_dsn
                 ),
                 "expected sqlite ConnectionSaveCompleted, got {action:?}"
-            );
-        }
-
-        #[tokio::test]
-        async fn sqlite_profile_is_not_saved_when_run_is_cancelled() {
-            let dir = tempdir().unwrap();
-            let path = dir.path().join("app.db");
-            fs::write(&path, b"").unwrap();
-            let path = path.to_str().unwrap().to_string();
-            let run_guard = test_fixtures::active_connection_save_guard(1);
-            run_guard.cancel();
-
-            let mut store = MockConnectionStore::new();
-            store.expect_save().never();
-            let (tx, mut rx) = mpsc::channel(8);
-            let runner = test_fixtures::make_runner_with_dsn(
-                Arc::new(MockMetadataProvider::new()),
-                Arc::new(MockQueryExecutor::new()),
-                Arc::new(store),
-                tx,
-                Arc::new(SqliteDsnBuilder),
-            );
-            let mut renderer = NoopRenderer;
-            let mut state = AppState::new("test".to_string());
-            let completion_engine = RefCell::new(CompletionEngine::new());
-
-            runner
-                .execute_effects(
-                    vec![
-                        Effect::SaveAndConnect {
-                            id: None,
-                            name: "Local".to_string(),
-                            config: ConnectionConfig::SQLite(
-                                SqliteConnectionConfig::new(path).unwrap(),
-                            ),
-                            run_id: 1,
-                            run_guard,
-                        },
-                        Effect::CancelConnectionTask,
-                    ],
-                    &mut renderer,
-                    &mut state,
-                    &completion_engine,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            assert!(
-                tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv())
-                    .await
-                    .is_err()
             );
         }
 

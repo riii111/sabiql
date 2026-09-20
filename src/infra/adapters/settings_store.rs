@@ -303,30 +303,12 @@ ssl_mode = "prefer"
         assert_eq!(settings.er_browser, None);
     }
 
-    #[test]
-    fn unknown_theme_falls_back_to_default() {
+    #[rstest::rstest]
+    #[case("version = 2\ntheme = \"terminal\"\nconnections = []\n")]
+    #[case("version = 2\nconnections = []\n")]
+    fn unknown_or_missing_theme_falls_back_to_default(#[case] config: &str) {
         let temp_dir = TempDir::new().unwrap();
-        fs::write(
-            temp_dir.path().join(CONFIG_FILE_NAME),
-            "version = 2\ntheme = \"terminal\"\nconnections = []\n",
-        )
-        .unwrap();
-        let store = TomlSettingsStore::with_config_dir(temp_dir.path().to_path_buf());
-
-        let settings = store.load().unwrap();
-
-        assert_eq!(settings.theme_id, ThemeId::Default);
-        assert_eq!(settings.keymap_preset, KeymapPreset::Default);
-    }
-
-    #[test]
-    fn missing_theme_falls_back_to_default() {
-        let temp_dir = TempDir::new().unwrap();
-        fs::write(
-            temp_dir.path().join(CONFIG_FILE_NAME),
-            "version = 2\nconnections = []\n",
-        )
-        .unwrap();
+        fs::write(temp_dir.path().join(CONFIG_FILE_NAME), config).unwrap();
         let store = TomlSettingsStore::with_config_dir(temp_dir.path().to_path_buf());
 
         let settings = store.load().unwrap();

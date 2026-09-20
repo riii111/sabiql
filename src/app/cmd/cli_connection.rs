@@ -269,23 +269,6 @@ mod tests {
     }
 
     #[test]
-    fn extracts_mysql_database_without_exposing_credentials() {
-        let target = resolve_cli_connection_target(
-            "mysql://user:secret@localhost/app?ssl-mode=REQUIRED",
-            &AcceptingValidator,
-        )
-        .unwrap();
-
-        let CliConnectionTarget::Uri(target) = target else {
-            panic!("expected URI target");
-        };
-        assert_eq!(target.database_type, DatabaseType::MySQL);
-        assert_eq!(target.database.as_deref(), Some("app"));
-        assert_eq!(target.name, "localhost/app");
-        assert!(!format!("{target:?}").contains("secret"));
-    }
-
-    #[test]
     fn reuses_uri_connection_id_without_password() {
         let first = resolve_cli_connection_target(
             "mysql://user:first-secret@localhost/app",
@@ -322,9 +305,18 @@ mod tests {
 
     #[test]
     fn activates_mysql_uri_as_an_ephemeral_connection() {
-        let target =
-            resolve_cli_connection_target("mysql://user:secret@localhost/app", &AcceptingValidator)
-                .unwrap();
+        let target = resolve_cli_connection_target(
+            "mysql://user:secret@localhost/app?ssl-mode=REQUIRED",
+            &AcceptingValidator,
+        )
+        .unwrap();
+        let CliConnectionTarget::Uri(uri_target) = &target else {
+            panic!("expected URI target");
+        };
+        assert_eq!(uri_target.database_type, DatabaseType::MySQL);
+        assert_eq!(uri_target.database.as_deref(), Some("app"));
+        assert_eq!(uri_target.name, "localhost/app");
+        assert!(!format!("{uri_target:?}").contains("secret"));
         let mut state = AppState::new("test".to_string());
 
         activate_cli_connection(&mut state, &target, &AcceptingValidator).unwrap();

@@ -492,23 +492,14 @@ mod tests {
             ));
         }
 
-        #[test]
-        fn nonzero_empty_stderr_includes_status_code() {
+        #[rstest::rstest]
+        #[case("")]
+        #[case(" \n\t")]
+        fn nonzero_empty_or_whitespace_stderr_includes_status_code(#[case] stderr: &str) {
             let status = exit_status(7);
 
             assert!(matches!(
-                classify_query_error("", status),
-                DbOperationError::QueryFailed(details)
-                    if details == "psql exited with status code 7"
-            ));
-        }
-
-        #[test]
-        fn whitespace_stderr_includes_status_code() {
-            let status = exit_status(7);
-
-            assert!(matches!(
-                classify_query_error(" \n\t", status),
+                classify_query_error(stderr, status),
                 DbOperationError::QueryFailed(details)
                     if details == "psql exited with status code 7"
             ));

@@ -1532,19 +1532,12 @@ mod tests {
             assert!(candidates.iter().all(|c| c.kind == CompletionKind::Keyword));
         }
 
-        #[test]
-        fn sel_prefix_returns_select() {
+        #[rstest::rstest]
+        #[case("SEL")]
+        #[case("sel")]
+        fn prefix_returns_select(#[case] prefix: &str) {
             let e = engine();
-            let candidates = e.keyword_candidates("SEL");
-
-            assert_eq!(candidates.len(), 1);
-            assert_eq!(candidates[0].text, "SELECT");
-        }
-
-        #[test]
-        fn case_insensitive_matching() {
-            let e = engine();
-            let candidates = e.keyword_candidates("sel");
+            let candidates = e.keyword_candidates(prefix);
 
             assert_eq!(candidates.len(), 1);
             assert_eq!(candidates[0].text, "SELECT");
@@ -1774,21 +1767,12 @@ mod tests {
             assert!(candidates.is_empty());
         }
 
-        #[test]
-        fn after_closed_string_returns_candidates() {
+        #[rstest::rstest]
+        #[case("'value' SEL", 11)]
+        #[case("/* comment */ SEL", 17)]
+        fn after_closed_literal_returns_candidates(#[case] sql: &str, #[case] cursor: usize) {
             let e = engine();
-
-            let candidates = e.get_candidates("'value' SEL", 11, None, None);
-
-            assert!(!candidates.is_empty());
-            assert!(candidates.iter().any(|c| c.text == "SELECT"));
-        }
-
-        #[test]
-        fn after_closed_comment_returns_candidates() {
-            let e = engine();
-
-            let candidates = e.get_candidates("/* comment */ SEL", 17, None, None);
+            let candidates = e.get_candidates(sql, cursor, None, None);
 
             assert!(!candidates.is_empty());
             assert!(candidates.iter().any(|c| c.text == "SELECT"));

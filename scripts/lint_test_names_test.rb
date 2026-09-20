@@ -38,7 +38,20 @@ class LintTestNamesTest < Minitest::Test
 
           #[cfg(test)]
           static SHARED: usize = 1;
+
+          #[cfg(test)]
+          #[allow(unused_imports)]
+          use crate::{
+              Fixture,
+              OtherFixture,
+          };
       }
+
+      #[cfg(any(test, feature = "test-support"))]
+      use crate::SharedFixture;
+
+      #[cfg(feature = "test-support")]
+      use crate::FeatureFixture;
 
       #[cfg(feature = "test-support")]
       fn test_support_helper() {}
@@ -75,6 +88,10 @@ class LintTestNamesTest < Minitest::Test
       #[cfg(test)]
       static MISPLACED_STATIC: usize = 1;
 
+      #[cfg(test)]
+      #[allow(dead_code)]
+      fn stacked_misplaced_function() {}
+
       mod production {
           #[cfg(test)]
           fn nested_function() {}
@@ -82,50 +99,8 @@ class LintTestNamesTest < Minitest::Test
     RUST
 
     refute status.success?
-    assert_equal 9, stderr.lines.grep(/test-only item must be inside a cfg\(test\) module/).length
+    assert_equal 10, stderr.lines.grep(/test-only item must be inside a cfg\(test\) module/).length
     assert_includes stderr, "fixture.rs"
-  end
-
-  def test_keeps_stacked_attributes_and_test_module_scope_distinct
-    _stdout, stderr, status = run_lint(<<~RUST)
-      #[cfg(test)]
-      #[allow(dead_code)]
-      fn misplaced_function() {}
-
-      #[cfg(test)]
-      mod tests {
-          #[cfg(test)]
-          #[allow(dead_code)]
-          fn helper() {}
-      }
-    RUST
-
-    refute status.success?
-    assert_equal 1, stderr.lines.grep(/test-only item must be inside a cfg\(test\) module/).length
-  end
-
-  def test_allows_stacked_test_use_tree_inside_test_module
-    stdout, stderr, status = run_lint(<<~RUST)
-      #[cfg(test)]
-      mod tests {
-          #[cfg(test)]
-          #[allow(unused_imports)]
-          use crate::{
-              Fixture,
-              OtherFixture,
-          };
-      }
-
-      #[cfg(any(test, feature = "test-support"))]
-      use crate::SharedFixture;
-
-      #[cfg(feature = "test-support")]
-      use crate::FeatureFixture;
-    RUST
-
-    assert status.success?, stderr
-    assert_equal "test-name lint passed\n", stdout
-    assert_empty stderr
   end
 
   def test_rejects_private_test_use_at_module_scope

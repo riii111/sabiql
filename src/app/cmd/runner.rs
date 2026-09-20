@@ -361,15 +361,12 @@ mod tests {
         use super::*;
         use crate::model::browse::json_detail::JsonDetailState;
 
-        struct ExplorerWidthRenderer {
+        struct LayoutRenderer {
             explorer_content_width: usize,
-        }
-
-        struct JsonVisibleRowsRenderer {
             visible_rows: usize,
         }
 
-        impl Renderer for ExplorerWidthRenderer {
+        impl Renderer for LayoutRenderer {
             fn draw(
                 &mut self,
                 _state: &AppState,
@@ -384,19 +381,6 @@ mod tests {
                         },
                         ..BrowseLayout::default()
                     },
-                    ..RenderOutput::default()
-                })
-            }
-        }
-
-        impl Renderer for JsonVisibleRowsRenderer {
-            fn draw(
-                &mut self,
-                _state: &AppState,
-                _services: &AppServices,
-                _now: Instant,
-            ) -> RenderResult<RenderOutput> {
-                Ok(RenderOutput {
                     details: DetailLayout {
                         json: Some(JsonDetailLayout {
                             editor_visible_rows: self.visible_rows,
@@ -409,7 +393,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn clamps_stale_explorer_horizontal_offset_to_new_maximum() {
+        async fn updates_layout_dependent_state() {
             let (tx, _rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
@@ -430,10 +414,22 @@ mod tests {
                 metadata
             })));
             state.ui.set_explorer_horizontal_offset(20);
+            state.json_detail = JsonDetailState::open_pretty(
+                0,
+                0,
+                "settings".to_string(),
+                "{}".to_string(),
+                "{\n  \"a\": 1,\n  \"b\": 2,\n  \"c\": 3\n}".to_string(),
+            );
+            state.json_detail.editor_mut().set_content_with_cursor(
+                "{\n  \"a\": 1,\n  \"b\": 2,\n  \"c\": 3\n}".to_string(),
+                29,
+            );
 
             let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = ExplorerWidthRenderer {
+            let mut renderer = LayoutRenderer {
                 explorer_content_width: 8,
+                visible_rows: 2,
             };
 
             runner
@@ -448,45 +444,6 @@ mod tests {
                 .unwrap();
 
             assert_eq!(state.ui.explorer_horizontal_offset(), 9);
-        }
-
-        #[tokio::test]
-        async fn recomputes_json_editor_scroll_when_visible_rows_change() {
-            let (tx, _rx) = mpsc::channel(8);
-            let runner = test_fixtures::make_runner(
-                Arc::new(MockMetadataProvider::new()),
-                Arc::new(MockQueryExecutor::new()),
-                Arc::new(MockConnectionStore::new()),
-                tx,
-            );
-
-            let state = &mut AppState::new("test".to_string());
-            state.json_detail = JsonDetailState::open_pretty(
-                0,
-                0,
-                "settings".to_string(),
-                "{}".to_string(),
-                "{\n  \"a\": 1,\n  \"b\": 2,\n  \"c\": 3\n}".to_string(),
-            );
-            state.json_detail.editor_mut().set_content_with_cursor(
-                "{\n  \"a\": 1,\n  \"b\": 2,\n  \"c\": 3\n}".to_string(),
-                29,
-            );
-
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = JsonVisibleRowsRenderer { visible_rows: 2 };
-
-            runner
-                .execute_effects(
-                    vec![Effect::Render],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
             assert_eq!(state.ui.json_detail_editor_visible_rows(), 2);
             assert_eq!(state.json_detail.editor().cursor_to_position().0, 3);
             assert_eq!(state.json_detail.editor().scroll_row(), 2);
@@ -685,7 +642,10 @@ mod tests {
             let mut follow_up = Box::pin(runner.execute_effects(
                 vec![
                     Effect::CancelTrackedTasks,
-                    Effect::DispatchActions(vec![Action::Render]),
+                    Effect::DispatchActions(vec![
+                        Action::Render,
+                        Action::ProcessPrefetchQueue { run_id: 2 },
+                    ]),
                 ],
                 &mut renderer,
                 &mut state,
@@ -740,50 +700,14 @@ mod tests {
                 .is_ok();
             assert!(connection_aborted, "connection task was not aborted");
             assert!(table_dropped, "table detail task was not aborted");
-            assert!(matches!(actions.as_slice(), [Action::Render]));
+            assert!(matches!(
+                actions.as_slice(),
+                [Action::Render, Action::ProcessPrefetchQueue { run_id: 2 }]
+            ));
             assert!(
                 rx.try_recv().is_err(),
                 "SQLite diagnostics task emitted a late action"
             );
-        }
-    }
-
-    mod dispatch_actions {
-        use super::*;
-
-        #[tokio::test]
-        async fn dispatches_all_actions() {
-            let (tx, mut _rx) = mpsc::channel(8);
-            let runner = test_fixtures::make_runner(
-                Arc::new(MockMetadataProvider::new()),
-                Arc::new(MockQueryExecutor::new()),
-                Arc::new(MockConnectionStore::new()),
-                tx,
-            );
-
-            let run = test_fixtures::run_one_effect(
-                &runner,
-                Effect::DispatchActions(vec![
-                    Action::ProcessPrefetchQueue { run_id: 1 },
-                    Action::ProcessPrefetchQueue { run_id: 1 },
-                ]),
-                AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
-                &mut _rx,
-                None,
-            )
-            .await
-            .unwrap();
-
-            assert_eq!(run.actions.len(), 2);
-            assert!(matches!(
-                run.actions[0],
-                Action::ProcessPrefetchQueue { run_id: 1 }
-            ));
-            assert!(matches!(
-                run.actions[1],
-                Action::ProcessPrefetchQueue { run_id: 1 }
-            ));
         }
     }
 
@@ -1845,6 +1769,26 @@ mod tests {
                 started_rx.recv().await.as_deref(),
                 Some("postgres://localhost/new")
             );
+
+            let shutdown_effects = reduce(
+                &mut state,
+                Action::Quit,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(state.should_quit);
+            runner
+                .execute_effects(
+                    shutdown_effects,
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(dropped.load(Ordering::SeqCst), 2);
             assert!(action_rx.try_recv().is_err());
         }
 
@@ -1927,56 +1871,6 @@ mod tests {
                         dsn: "postgres://localhost/current".to_string(),
                         run_id: 2,
                     }],
-                    &mut renderer,
-                    &mut state,
-                    &completion_engine,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            assert_eq!(dropped.load(Ordering::SeqCst), 1);
-            assert!(action_rx.try_recv().is_err());
-        }
-
-        #[tokio::test]
-        async fn quit_aborts_pending_refresh_and_emits_no_action() {
-            let (started_tx, mut started_rx) = mpsc::unbounded_channel();
-            let dropped = Arc::new(AtomicUsize::new(0));
-            let (action_tx, mut action_rx) = mpsc::channel(8);
-            let runner = runner_with_pending_provider(started_tx, Arc::clone(&dropped), action_tx);
-            let mut state = AppState::new("test".to_string());
-            let completion_engine = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
-
-            runner
-                .execute_effects(
-                    vec![Effect::SmartErRefresh {
-                        dsn: "postgres://localhost/current".to_string(),
-                        run_id: 1,
-                    }],
-                    &mut renderer,
-                    &mut state,
-                    &completion_engine,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-            assert_eq!(
-                started_rx.recv().await.as_deref(),
-                Some("postgres://localhost/current")
-            );
-
-            let shutdown_effects = reduce(
-                &mut state,
-                Action::Quit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
-            assert!(state.should_quit);
-            runner
-                .execute_effects(
-                    shutdown_effects,
                     &mut renderer,
                     &mut state,
                     &completion_engine,
