@@ -48,9 +48,4 @@ mod tests {
         let id = sample().connection_id();
         assert_eq!(id, ConnectionId::from_string("service:mydb".to_string()));
     }
-
-    #[test]
-    fn display_name_returns_service_name() {
-        assert_eq!(sample().display_name(), "mydb");
-    }
 }

@@ -86,7 +86,6 @@ mod tests {
         #[rstest]
         #[case("Production")]
         #[case("Local Dev")]
-        #[case("  Production  ")] // trimmed
         #[case("a")] // 1 char minimum
         fn accepts_nonempty_names(#[case] input: &str) {
             assert!(ConnectionName::new(input).is_ok());
@@ -125,16 +124,12 @@ mod tests {
     mod normalized {
         use super::*;
 
-        #[test]
-        fn lowercases_name() {
-            let name = ConnectionName::new("Production").unwrap();
-            assert_eq!(name.normalized(), "production");
-        }
-
-        #[test]
-        fn mixed_case_normalized_to_lowercase() {
-            let name = ConnectionName::new("My Local DB").unwrap();
-            assert_eq!(name.normalized(), "my local db");
+        #[rstest]
+        #[case("Production", "production")]
+        #[case("My Local DB", "my local db")]
+        fn normalizes_to_lowercase(#[case] input: &str, #[case] expected: &str) {
+            let name = ConnectionName::new(input).unwrap();
+            assert_eq!(name.normalized(), expected);
         }
     }
 

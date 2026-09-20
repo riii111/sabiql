@@ -406,6 +406,7 @@ impl ConnectionConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     #[test]
     fn mysql_tls_modes_use_mysql_option_names() {
@@ -527,24 +528,18 @@ mod tests {
             ));
         }
 
-        #[test]
-        fn rejects_uri_filename() {
+        #[rstest]
+        #[case("file:/tmp/app.db?mode=ro")]
+        #[case("FILE:/tmp/app.db")]
+        fn rejects_uri_filename_case_insensitively(#[case] path: &str) {
             let result = serde_json::from_str::<SqliteConnectionConfig>(
-                r#"{ "path": "file:/tmp/app.db?mode=ro" }"#,
+                &serde_json::json!({ "path": path }).to_string(),
             );
 
             assert!(matches!(
                 result,
                 Err(error) if error.to_string().contains("URI filename")
             ));
-        }
-
-        #[test]
-        fn rejects_uri_filename_case_insensitively() {
-            let result =
-                serde_json::from_str::<SqliteConnectionConfig>(r#"{ "path": "FILE:/tmp/app.db" }"#);
-
-            assert!(result.is_err());
         }
     }
 

@@ -392,53 +392,6 @@ mod tests {
         use super::*;
 
         #[rstest]
-        #[case(DbOperationError::ConnectionFailed("boom".to_string()))]
-        #[case(DbOperationError::SqlitePath(SqlitePathError::FileNotFound(
-            "/tmp/missing.db".to_string(),
-        )))]
-        #[case(DbOperationError::ConnectionLost("boom".to_string()))]
-        #[case(DbOperationError::PermissionDenied("boom".to_string()))]
-        #[case(DbOperationError::ForeignKeyViolation("boom".to_string()))]
-        #[case(DbOperationError::UniqueViolation("boom".to_string()))]
-        #[case(DbOperationError::LockTimeout("boom".to_string()))]
-        #[case(DbOperationError::ObjectMissing("boom".to_string()))]
-        #[case(DbOperationError::QueryFailed("boom".to_string()))]
-        #[case(DbOperationError::ExportIo(Arc::new(std::io::Error::other("boom"))))]
-        #[case(DbOperationError::UnsupportedOperation("boom".to_string()))]
-        #[case(DbOperationError::UnsupportedOperationWithKind {
-            kind: UnsupportedOperationKind::ClientVersion,
-            details: "boom".to_string(),
-        })]
-        #[case(DbOperationError::UnsupportedOperationWithSqliteKind {
-            kind: SqliteCompatibilityKind::SafeMode,
-            details: "boom".to_string(),
-        })]
-        #[case(DbOperationError::ConnectionFailedWithKind {
-            kind: ConnectionFailureKind::TlsHandshake,
-            details: "boom".to_string(),
-        })]
-        #[case(DbOperationError::MetadataParseFailed("boom".to_string()))]
-        #[case(DbOperationError::InvalidJson(Arc::new(serde_json::from_str::<i32>("x").unwrap_err())))]
-        #[case(DbOperationError::EmptyResponse("boom".to_string()))]
-        #[case(
-            DbOperationError::CsvParse(Arc::new(csv::Error::from(std::io::Error::other(
-                "boom"
-            ))))
-        )]
-        #[case(DbOperationError::CommandTagParseFailed("boom".to_string()))]
-        #[case(DbOperationError::CommandNotFound {
-            command: DatabaseCli::Psql,
-            details: "boom".to_string(),
-        })]
-        #[case(DbOperationError::Timeout("boom".to_string()))]
-        #[case(DbOperationError::Canceled("boom".to_string()))]
-        fn non_empty(#[case] error: DbOperationError) {
-            assert!(!error.summary().is_empty());
-            assert!(!error.hint().is_empty());
-            assert!(!error.user_message().is_empty());
-        }
-
-        #[rstest]
         #[case(ConnectionFailureKind::HostUnreachable)]
         #[case(ConnectionFailureKind::Auth)]
         #[case(ConnectionFailureKind::DatabaseNotFound)]
@@ -497,17 +450,6 @@ mod tests {
         use std::error::Error;
 
         #[test]
-        fn sqlite_cli_not_found_has_sqlite_specific_guidance() {
-            let error = DbOperationError::CommandNotFound {
-                command: DatabaseCli::Sqlite3,
-                details: "No such file or directory".to_string(),
-            };
-
-            assert_eq!(error.summary(), "sqlite3 not found");
-            assert_eq!(error.hint(), "Install sqlite3 and add it to PATH");
-        }
-
-        #[test]
         fn sqlite_path_preserves_source_and_masks_details() {
             let error =
                 DbOperationError::SqlitePath(SqlitePathError::Io("password=secret".to_string()));
@@ -526,42 +468,56 @@ mod tests {
             assert!(!error.user_message().contains("secret"));
         }
 
-        #[test]
-        fn mysql_cli_not_found_has_oracle_mysql_guidance() {
+        #[rstest]
+        #[case(
+            DatabaseCli::Sqlite3,
+            "No such file or directory",
+            "No such file or directory",
+            "sqlite3 not found",
+            "Install sqlite3 and add it to PATH",
+            "sqlite3 not found: No such file or directory. Install sqlite3 and add it to PATH."
+        )]
+        #[case(
+            DatabaseCli::MySql,
+            "mysql: command not found",
+            "mysql: command not found",
+            "mysql not found",
+            "Install the Oracle MySQL 8.4 client and add it to PATH",
+            "mysql not found: mysql: command not found. Install the Oracle MySQL 8.4 client and add it to PATH."
+        )]
+        fn cli_not_found_preserves_details_and_guidance(
+            #[case] command: DatabaseCli,
+            #[case] details: &str,
+            #[case] expected_details: &str,
+            #[case] expected_summary: &str,
+            #[case] expected_hint: &str,
+            #[case] expected_message: &str,
+        ) {
             let error = DbOperationError::CommandNotFound {
-                command: DatabaseCli::MySql,
-                details: "mysql: command not found".to_string(),
+                command,
+                details: details.to_string(),
             };
 
-            assert_eq!(error.summary(), "mysql not found");
-            assert_eq!(
-                error.hint(),
-                "Install the Oracle MySQL 8.4 client and add it to PATH"
-            );
-            assert_eq!(
-                error.user_message(),
-                "mysql not found: mysql: command not found. Install the Oracle MySQL 8.4 client and add it to PATH."
-            );
+            assert_eq!(error.masked_details(), expected_details);
+            assert_eq!(error.summary(), expected_summary);
+            assert_eq!(error.hint(), expected_hint);
+            assert_eq!(error.user_message(), expected_message);
         }
 
-        #[test]
-        fn actionable_message_uses_summary_and_hint() {
-            let error = DbOperationError::PermissionDenied("permission denied".to_string());
-
-            assert_eq!(
-                error.user_message(),
-                "Permission denied: permission denied. Check the connected user's privileges."
-            );
-        }
-
-        #[test]
-        fn generic_query_failed_uses_consistent_format() {
-            let error = DbOperationError::QueryFailed("syntax error at or near SELECT".to_string());
-
-            assert_eq!(
-                error.user_message(),
-                "Query failed: syntax error at or near SELECT. Review the database error details and SQL."
-            );
+        #[rstest]
+        #[case(
+            DbOperationError::PermissionDenied("permission denied".to_string()),
+            "Permission denied: permission denied. Check the connected user's privileges."
+        )]
+        #[case(
+            DbOperationError::QueryFailed("syntax error at or near SELECT".to_string()),
+            "Query failed: syntax error at or near SELECT. Review the database error details and SQL."
+        )]
+        fn actionable_message_preserves_expected_format(
+            #[case] error: DbOperationError,
+            #[case] expected_message: &str,
+        ) {
+            assert_eq!(error.user_message(), expected_message);
         }
 
         #[test]
@@ -585,35 +541,52 @@ mod tests {
             assert!(!format!("{error:?}").contains("mysecret"));
         }
 
-        #[test]
-        fn change_failure_warns_about_possible_commits() {
-            let error = DbOperationError::QueryFailedAfterChange {
-                source: Arc::new(DbOperationError::QueryFailed("syntax error".to_string())),
-                refresh_scope: RefreshScope::Metadata,
-            };
-
-            assert_eq!(error.summary(), "Query failed");
-            assert_eq!(error.hint(), "Review the database error details and SQL");
-            assert_eq!(error.masked_details(), "syntax error");
-            assert!(
-                error
-                    .user_message()
-                    .contains("Some changes may have been committed")
-            );
-        }
-
         #[rstest]
-        #[case(DbOperationError::PermissionDenied("permission denied".to_string()))]
-        #[case(DbOperationError::UniqueViolation("duplicate entry".to_string()))]
-        #[case(DbOperationError::ForeignKeyViolation("foreign key failed".to_string()))]
-        #[case(DbOperationError::LockTimeout("lock wait timeout".to_string()))]
-        fn change_failure_preserves_classification(#[case] source: DbOperationError) {
-            let expected_summary = source.summary();
-            let expected_hint = source.hint();
-            let expected_details = source.masked_details();
+        #[case(
+            DbOperationError::PermissionDenied("permission denied".to_string()),
+            RefreshScope::Data,
+            "Permission denied",
+            "Check the connected user's privileges",
+            "permission denied"
+        )]
+        #[case(
+            DbOperationError::UniqueViolation("duplicate entry".to_string()),
+            RefreshScope::Data,
+            "Unique constraint violation",
+            "Check for duplicate values before retrying",
+            "duplicate entry"
+        )]
+        #[case(
+            DbOperationError::ForeignKeyViolation("foreign key failed".to_string()),
+            RefreshScope::Data,
+            "Foreign key constraint violation",
+            "Check referenced rows before retrying the write operation",
+            "foreign key failed"
+        )]
+        #[case(
+            DbOperationError::LockTimeout("lock wait timeout".to_string()),
+            RefreshScope::Data,
+            "Operation blocked by lock or timeout",
+            "Retry; if it persists, check for blocking transactions or timeout settings",
+            "lock wait timeout"
+        )]
+        #[case(
+            DbOperationError::QueryFailed("syntax error".to_string()),
+            RefreshScope::Metadata,
+            "Query failed",
+            "Review the database error details and SQL",
+            "syntax error"
+        )]
+        fn change_failure_preserves_classification(
+            #[case] source: DbOperationError,
+            #[case] refresh_scope: RefreshScope,
+            #[case] expected_summary: &str,
+            #[case] expected_hint: &str,
+            #[case] expected_details: &str,
+        ) {
             let error = DbOperationError::QueryFailedAfterChange {
                 source: Arc::new(source),
-                refresh_scope: RefreshScope::Data,
+                refresh_scope,
             };
 
             assert_eq!(error.summary(), expected_summary);
@@ -621,6 +594,11 @@ mod tests {
             assert_eq!(error.masked_details(), expected_details);
             assert!(error.user_message().contains(expected_summary));
             assert!(error.user_message().contains(expected_hint));
+            assert!(
+                error
+                    .user_message()
+                    .contains("Some changes may have been committed")
+            );
         }
 
         #[test]

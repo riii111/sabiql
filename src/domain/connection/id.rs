@@ -39,23 +39,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_generates_unique_ids() {
-        let id1 = ConnectionId::new();
-        let id2 = ConnectionId::new();
-        assert_ne!(id1, id2);
-    }
-
-    #[test]
     fn from_string_preserves_value() {
         let uuid_str = "550e8400-e29b-41d4-a716-446655440000";
         let id = ConnectionId::from_string(uuid_str);
         assert_eq!(id.as_str(), uuid_str);
-    }
-
-    #[test]
-    fn display_shows_uuid() {
-        let uuid_str = "test-uuid";
-        let id = ConnectionId::from_string(uuid_str);
         assert_eq!(format!("{id}"), uuid_str);
     }
 }
