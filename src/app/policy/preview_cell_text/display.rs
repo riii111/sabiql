@@ -43,6 +43,7 @@ mod tests {
     use super::super::handling::CellPresentationPolicy;
     use super::*;
     use crate::domain::DatabaseType;
+    use rstest::rstest;
 
     #[test]
     fn postgresql_json_column_pretty_prints() {
@@ -99,25 +100,12 @@ mod tests {
         );
     }
 
-    #[test]
-    fn sqlite_declared_json_type_stays_raw() {
+    #[rstest]
+    #[case("json")]
+    #[case("jsonb")]
+    fn sqlite_declared_non_text_types_stay_raw(#[case] column_data_type: &str) {
         let handling =
-            CellPresentationPolicy::new(DatabaseType::SQLite, "json", r#"{"b":2,"a":1}"#)
-                .display_handling();
-        let value = r#"{"b":2,"a":1}"#;
-        assert_eq!(
-            format_for_cell_detail(value, handling),
-            CellDetailDisplay {
-                content: value.to_string(),
-                formatted_json: false,
-            }
-        );
-    }
-
-    #[test]
-    fn sqlite_declared_non_text_type_stays_raw() {
-        let handling =
-            CellPresentationPolicy::new(DatabaseType::SQLite, "jsonb", r#"{"b":2,"a":1}"#)
+            CellPresentationPolicy::new(DatabaseType::SQLite, column_data_type, r#"{"b":2,"a":1}"#)
                 .display_handling();
         let value = r#"{"b":2,"a":1}"#;
         assert_eq!(

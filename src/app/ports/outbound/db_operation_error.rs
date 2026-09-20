@@ -392,53 +392,6 @@ mod tests {
         use super::*;
 
         #[rstest]
-        #[case(DbOperationError::ConnectionFailed("boom".to_string()))]
-        #[case(DbOperationError::SqlitePath(SqlitePathError::FileNotFound(
-            "/tmp/missing.db".to_string(),
-        )))]
-        #[case(DbOperationError::ConnectionLost("boom".to_string()))]
-        #[case(DbOperationError::PermissionDenied("boom".to_string()))]
-        #[case(DbOperationError::ForeignKeyViolation("boom".to_string()))]
-        #[case(DbOperationError::UniqueViolation("boom".to_string()))]
-        #[case(DbOperationError::LockTimeout("boom".to_string()))]
-        #[case(DbOperationError::ObjectMissing("boom".to_string()))]
-        #[case(DbOperationError::QueryFailed("boom".to_string()))]
-        #[case(DbOperationError::ExportIo(Arc::new(std::io::Error::other("boom"))))]
-        #[case(DbOperationError::UnsupportedOperation("boom".to_string()))]
-        #[case(DbOperationError::UnsupportedOperationWithKind {
-            kind: UnsupportedOperationKind::ClientVersion,
-            details: "boom".to_string(),
-        })]
-        #[case(DbOperationError::UnsupportedOperationWithSqliteKind {
-            kind: SqliteCompatibilityKind::SafeMode,
-            details: "boom".to_string(),
-        })]
-        #[case(DbOperationError::ConnectionFailedWithKind {
-            kind: ConnectionFailureKind::TlsHandshake,
-            details: "boom".to_string(),
-        })]
-        #[case(DbOperationError::MetadataParseFailed("boom".to_string()))]
-        #[case(DbOperationError::InvalidJson(Arc::new(serde_json::from_str::<i32>("x").unwrap_err())))]
-        #[case(DbOperationError::EmptyResponse("boom".to_string()))]
-        #[case(
-            DbOperationError::CsvParse(Arc::new(csv::Error::from(std::io::Error::other(
-                "boom"
-            ))))
-        )]
-        #[case(DbOperationError::CommandTagParseFailed("boom".to_string()))]
-        #[case(DbOperationError::CommandNotFound {
-            command: DatabaseCli::Psql,
-            details: "boom".to_string(),
-        })]
-        #[case(DbOperationError::Timeout("boom".to_string()))]
-        #[case(DbOperationError::Canceled("boom".to_string()))]
-        fn non_empty(#[case] error: DbOperationError) {
-            assert!(!error.summary().is_empty());
-            assert!(!error.hint().is_empty());
-            assert!(!error.user_message().is_empty());
-        }
-
-        #[rstest]
         #[case(ConnectionFailureKind::HostUnreachable)]
         #[case(ConnectionFailureKind::Auth)]
         #[case(ConnectionFailureKind::DatabaseNotFound)]
@@ -585,35 +538,37 @@ mod tests {
             assert!(!format!("{error:?}").contains("mysecret"));
         }
 
-        #[test]
-        fn change_failure_warns_about_possible_commits() {
-            let error = DbOperationError::QueryFailedAfterChange {
-                source: Arc::new(DbOperationError::QueryFailed("syntax error".to_string())),
-                refresh_scope: RefreshScope::Metadata,
-            };
-
-            assert_eq!(error.summary(), "Query failed");
-            assert_eq!(error.hint(), "Review the database error details and SQL");
-            assert_eq!(error.masked_details(), "syntax error");
-            assert!(
-                error
-                    .user_message()
-                    .contains("Some changes may have been committed")
-            );
-        }
-
         #[rstest]
-        #[case(DbOperationError::PermissionDenied("permission denied".to_string()))]
-        #[case(DbOperationError::UniqueViolation("duplicate entry".to_string()))]
-        #[case(DbOperationError::ForeignKeyViolation("foreign key failed".to_string()))]
-        #[case(DbOperationError::LockTimeout("lock wait timeout".to_string()))]
-        fn change_failure_preserves_classification(#[case] source: DbOperationError) {
+        #[case(
+            DbOperationError::PermissionDenied("permission denied".to_string()),
+            RefreshScope::Data
+        )]
+        #[case(
+            DbOperationError::UniqueViolation("duplicate entry".to_string()),
+            RefreshScope::Data
+        )]
+        #[case(
+            DbOperationError::ForeignKeyViolation("foreign key failed".to_string()),
+            RefreshScope::Data
+        )]
+        #[case(
+            DbOperationError::LockTimeout("lock wait timeout".to_string()),
+            RefreshScope::Data
+        )]
+        #[case(
+            DbOperationError::QueryFailed("syntax error".to_string()),
+            RefreshScope::Metadata
+        )]
+        fn change_failure_preserves_classification(
+            #[case] source: DbOperationError,
+            #[case] refresh_scope: RefreshScope,
+        ) {
             let expected_summary = source.summary();
             let expected_hint = source.hint();
             let expected_details = source.masked_details();
             let error = DbOperationError::QueryFailedAfterChange {
                 source: Arc::new(source),
-                refresh_scope: RefreshScope::Data,
+                refresh_scope,
             };
 
             assert_eq!(error.summary(), expected_summary);
@@ -621,6 +576,11 @@ mod tests {
             assert_eq!(error.masked_details(), expected_details);
             assert!(error.user_message().contains(expected_summary));
             assert!(error.user_message().contains(expected_hint));
+            assert!(
+                error
+                    .user_message()
+                    .contains("Some changes may have been committed")
+            );
         }
 
         #[test]

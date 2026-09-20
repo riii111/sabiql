@@ -85,39 +85,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn serde_round_trip() {
-        let entry = QueryHistoryEntry::new_with_database(
-            "SELECT * FROM users".to_string(),
-            "2026-03-13T12:00:00Z".to_string(),
-            ConnectionId::from_string("test-uuid"),
-            None,
-            QueryResultStatus::Success,
-            None,
-        );
+    fn serde_round_trip_preserves_optional_fields() {
+        for (query, connection_id, database, affected_rows) in [
+            ("SELECT * FROM users", "test-uuid", None, None),
+            ("UPDATE users SET name = 'x'", "test-uuid", None, Some(5)),
+            ("SELECT 1", "abc-123", Some("analytics"), None),
+        ] {
+            let entry = QueryHistoryEntry::new_with_database(
+                query.to_string(),
+                "2026-03-13T12:00:00Z".to_string(),
+                ConnectionId::from_string(connection_id),
+                database.map(str::to_string),
+                QueryResultStatus::Success,
+                affected_rows,
+            );
 
-        let json = serde_json::to_string(&entry).unwrap();
-        let deserialized: QueryHistoryEntry = serde_json::from_str(&json).unwrap();
+            let json = serde_json::to_string(&entry).unwrap();
+            let deserialized: QueryHistoryEntry = serde_json::from_str(&json).unwrap();
 
-        assert_eq!(entry, deserialized);
-    }
-
-    #[test]
-    fn serde_round_trip_with_affected_rows() {
-        let entry = QueryHistoryEntry::new_with_database(
-            "UPDATE users SET name = 'x'".to_string(),
-            "2026-03-13T12:00:00Z".to_string(),
-            ConnectionId::from_string("test-uuid"),
-            None,
-            QueryResultStatus::Success,
-            Some(5),
-        );
-
-        let json = serde_json::to_string(&entry).unwrap();
-        let deserialized: QueryHistoryEntry = serde_json::from_str(&json).unwrap();
-
-        assert_eq!(entry, deserialized);
-        assert_eq!(deserialized.result_status, QueryResultStatus::Success);
-        assert_eq!(deserialized.affected_rows, Some(5));
+            assert_eq!(entry, deserialized);
+            assert_eq!(deserialized.database.as_deref(), database);
+            assert_eq!(deserialized.affected_rows, affected_rows);
+        }
     }
 
     #[test]
@@ -152,22 +141,5 @@ mod tests {
         let entry: QueryHistoryEntry = serde_json::from_str(json).unwrap();
 
         assert_eq!(entry.database, None);
-    }
-
-    #[test]
-    fn serde_round_trip_preserves_database() {
-        let entry = QueryHistoryEntry::new_with_database(
-            "SELECT 1".to_string(),
-            "2026-03-13T12:00:00Z".to_string(),
-            ConnectionId::from_string("abc-123"),
-            Some("analytics".to_string()),
-            QueryResultStatus::Success,
-            None,
-        );
-
-        let json = serde_json::to_string(&entry).unwrap();
-        let deserialized: QueryHistoryEntry = serde_json::from_str(&json).unwrap();
-
-        assert_eq!(deserialized.database.as_deref(), Some("analytics"));
     }
 }

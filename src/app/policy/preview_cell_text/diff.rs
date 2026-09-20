@@ -30,30 +30,30 @@ pub(crate) fn uses_structured_json_diff(handling: PreviewCellTextDiffHandling) -
 mod tests {
     use super::*;
     use crate::domain::DatabaseType;
+    use rstest::rstest;
 
     use super::super::handling::CellPresentationPolicy;
 
-    #[test]
-    fn json_column_normalizes_key_order() {
+    #[rstest]
+    #[case(
+        DatabaseType::PostgreSQL,
+        "jsonb",
+        r#"{"industries": ["tech"], "company_size": "enterprise"}"#,
+        r#"{"company_size":"enterprise","industries":["tech"]}"#
+    )]
+    #[case(DatabaseType::MySQL, "json", r#"{"a": 1, "b": 2}"#, r#"{"b":2,"a":1}"#)]
+    fn json_columns_normalize_key_order(
+        #[case] database_type: DatabaseType,
+        #[case] column_data_type: &str,
+        #[case] first: &str,
+        #[case] second: &str,
+    ) {
         let handling =
-            CellPresentationPolicy::new(DatabaseType::PostgreSQL, "jsonb", "").diff_handling();
-        let pg_style = r#"{"industries": ["tech"], "company_size": "enterprise"}"#;
-        let serde_style = r#"{"company_size":"enterprise","industries":["tech"]}"#;
-        assert_eq!(
-            normalize_for_write_diff(pg_style, handling),
-            normalize_for_write_diff(serde_style, handling)
-        );
-    }
-
-    #[test]
-    fn mysql_json_column_normalizes_key_order() {
-        let handling = CellPresentationPolicy::new(DatabaseType::MySQL, "json", "").diff_handling();
-        let spaced = r#"{"a": 1, "b": 2}"#;
-        let compact = r#"{"b":2,"a":1}"#;
+            CellPresentationPolicy::new(database_type, column_data_type, "").diff_handling();
 
         assert_eq!(
-            normalize_for_write_diff(spaced, handling),
-            normalize_for_write_diff(compact, handling)
+            normalize_for_write_diff(first, handling),
+            normalize_for_write_diff(second, handling)
         );
         assert!(uses_structured_json_diff(handling));
     }

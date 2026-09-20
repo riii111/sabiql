@@ -124,16 +124,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sqlite_explorer_shows_table_name_without_schema() {
-        let summary = TableSummary::new("main".to_string(), "users".to_string(), None, false);
-
-        assert_eq!(
-            explorer_table_label(&summary, DatabaseType::SQLite),
-            "users"
-        );
-    }
-
-    #[test]
     fn sqlite_explorer_hides_virtual_table_suffix_but_inspector_keeps_kind() {
         let summary = TableSummary::new("main".to_string(), "notes_fts".to_string(), None, false)
             .with_kind_info(TableKindInfo {
@@ -188,12 +178,16 @@ mod tests {
     }
 
     #[test]
-    fn mysql_table_display_omits_database() {
+    fn database_specific_table_labels() {
         let summary = TableSummary::new("app".to_string(), "users".to_string(), None, false);
 
         assert_eq!(explorer_table_label(&summary, DatabaseType::MySQL), "users");
         assert_eq!(
             table_display_name(DatabaseType::SQLite, "main", "users"),
+            "users"
+        );
+        assert_eq!(
+            explorer_table_label(&summary, DatabaseType::SQLite),
             "users"
         );
         assert_eq!(
