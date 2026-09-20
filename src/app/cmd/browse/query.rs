@@ -1358,11 +1358,18 @@ mod tests {
                 .returning(|_, _, _| {
                     Ok(WriteExecutionResult {
                         affected_rows: 1,
-                        diagnostics: vec![DatabaseDiagnostic {
-                            level: DiagnosticLevel::Warning,
-                            code: 1265,
-                            message: "Data truncated password=secret".to_string(),
-                        }],
+                        diagnostics: vec![
+                            DatabaseDiagnostic {
+                                level: DiagnosticLevel::Warning,
+                                code: 1265,
+                                message: "Data truncated password=secret".to_string(),
+                            },
+                            DatabaseDiagnostic {
+                                level: DiagnosticLevel::Warning,
+                                code: 1265,
+                                message: "Data truncated".to_string(),
+                            },
+                        ],
                     })
                 });
 
@@ -1388,11 +1395,18 @@ mod tests {
                     assert_eq!(affected_rows, 1);
                     assert_eq!(
                         diagnostics,
-                        vec![DatabaseDiagnostic {
-                            level: DiagnosticLevel::Warning,
-                            code: 1265,
-                            message: "Data truncated password=****".to_string(),
-                        }]
+                        vec![
+                            DatabaseDiagnostic {
+                                level: DiagnosticLevel::Warning,
+                                code: 1265,
+                                message: "Data truncated password=****".to_string(),
+                            },
+                            DatabaseDiagnostic {
+                                level: DiagnosticLevel::Warning,
+                                code: 1265,
+                                message: "Data truncated".to_string(),
+                            },
+                        ]
                     );
                 }
                 action => panic!("unexpected action: {action:?}"),

@@ -25,6 +25,10 @@ class LintTestNamesTest < Minitest::Test
           fn helper() {}
 
           #[cfg(test)]
+          #[allow(dead_code)]
+          fn stacked_helper() {}
+
+          #[cfg(test)]
           struct Fixture;
 
           #[cfg(test)]
