@@ -48,92 +48,60 @@ mod tests {
     use super::*;
 
     #[test]
-    fn plain_char_translates_to_char_no_modifiers() {
-        let event = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
+    fn translates_basic_key_events() {
+        let cases = [
+            (
+                KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE),
+                KeyCombo::plain(Key::Char('a')),
+            ),
+            (
+                KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL),
+                KeyCombo::ctrl(Key::Char('p')),
+            ),
+            (
+                KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT),
+                KeyCombo::alt(Key::Enter),
+            ),
+            (
+                KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT),
+                KeyCombo {
+                    key: Key::BackTab,
+                    modifiers: Modifiers::SHIFT,
+                },
+            ),
+            (
+                KeyEvent::new(KeyCode::Null, KeyModifiers::NONE),
+                KeyCombo::plain(Key::Null),
+            ),
+            (
+                KeyEvent::new(KeyCode::CapsLock, KeyModifiers::NONE),
+                KeyCombo::plain(Key::Other),
+            ),
+            (
+                KeyEvent::new(KeyCode::Up, KeyModifiers::NONE),
+                KeyCombo::plain(Key::Up),
+            ),
+            (
+                KeyEvent::new(KeyCode::Down, KeyModifiers::NONE),
+                KeyCombo::plain(Key::Down),
+            ),
+            (
+                KeyEvent::new(KeyCode::Left, KeyModifiers::NONE),
+                KeyCombo::plain(Key::Left),
+            ),
+            (
+                KeyEvent::new(KeyCode::Right, KeyModifiers::NONE),
+                KeyCombo::plain(Key::Right),
+            ),
+            (
+                KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE),
+                KeyCombo::plain(Key::F(1)),
+            ),
+        ];
 
-        let combo = translate(event);
-
-        assert_eq!(combo, KeyCombo::plain(Key::Char('a')));
-    }
-
-    #[test]
-    fn ctrl_char_translates_to_ctrl_modifier() {
-        let event = KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL);
-
-        let combo = translate(event);
-
-        assert_eq!(combo, KeyCombo::ctrl(Key::Char('p')));
-    }
-
-    #[test]
-    fn alt_enter_translates_to_alt_modifier() {
-        let event = KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT);
-
-        let combo = translate(event);
-
-        assert_eq!(combo, KeyCombo::alt(Key::Enter));
-    }
-
-    #[test]
-    fn backtab_translates_with_shift() {
-        let event = KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT);
-
-        let combo = translate(event);
-
-        assert_eq!(
-            combo,
-            KeyCombo {
-                key: Key::BackTab,
-                modifiers: Modifiers::SHIFT,
-            }
-        );
-    }
-
-    #[test]
-    fn null_key_translates_to_null() {
-        let event = KeyEvent::new(KeyCode::Null, KeyModifiers::NONE);
-
-        let combo = translate(event);
-
-        assert_eq!(combo, KeyCombo::plain(Key::Null));
-    }
-
-    #[test]
-    fn unknown_key_translates_to_other() {
-        let event = KeyEvent::new(KeyCode::CapsLock, KeyModifiers::NONE);
-
-        let combo = translate(event);
-
-        assert_eq!(combo, KeyCombo::plain(Key::Other));
-    }
-
-    #[test]
-    fn arrow_keys_translate_correctly() {
-        assert_eq!(
-            translate(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE)),
-            KeyCombo::plain(Key::Up)
-        );
-        assert_eq!(
-            translate(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)),
-            KeyCombo::plain(Key::Down)
-        );
-        assert_eq!(
-            translate(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE)),
-            KeyCombo::plain(Key::Left)
-        );
-        assert_eq!(
-            translate(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE)),
-            KeyCombo::plain(Key::Right)
-        );
-    }
-
-    #[test]
-    fn function_key_translates() {
-        let event = KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE);
-
-        let combo = translate(event);
-
-        assert_eq!(combo, KeyCombo::plain(Key::F(1)));
+        for (event, expected) in cases {
+            assert_eq!(translate(event), expected);
+        }
     }
 
     #[test]

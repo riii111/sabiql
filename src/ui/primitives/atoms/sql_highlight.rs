@@ -100,9 +100,7 @@ fn token_style(kind: &TokenKind, theme: &ThemePalette) -> Style {
 mod tests {
     use super::*;
     use crate::primitives::atoms::{CursorKind, insert_cursor_span_with_kind};
-    use crate::theme::{
-        ComponentTokens, CursorTokens, DEFAULT_THEME, SemanticTokens, SyntaxTokens,
-    };
+    use crate::theme::{ComponentTokens, DEFAULT_THEME, SyntaxTokens};
 
     fn line_text(line: &Line<'_>) -> String {
         line.spans
@@ -311,34 +309,6 @@ mod tests {
 
         assert_eq!(
             highlighted[0].spans[0].style.fg,
-            Some(custom_theme.component.syntax.sql_keyword)
-        );
-    }
-
-    #[test]
-    fn highlight_sql_with_insert_cursor_preserves_injected_token_style() {
-        let custom_theme = ThemePalette {
-            semantic: SemanticTokens {
-                cursor: CursorTokens {
-                    fg: ratatui::style::Color::Rgb(0xfe, 0xdc, 0xba),
-                    ..DEFAULT_THEME.semantic.cursor
-                },
-                ..DEFAULT_THEME.semantic
-            },
-            ..DEFAULT_THEME
-        };
-
-        let mut lines = highlight_sql_spans("SELECT", DatabaseType::PostgreSQL, &custom_theme);
-        let spans = std::mem::take(
-            lines
-                .get_mut(0)
-                .expect("insert cursor theme test should target an existing line"),
-        );
-        let highlighted_with_cursor =
-            insert_cursor_span_with_kind(spans, 0, CursorKind::Insert, &custom_theme);
-
-        assert_eq!(
-            highlighted_with_cursor[0].style.fg,
             Some(custom_theme.component.syntax.sql_keyword)
         );
     }

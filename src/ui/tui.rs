@@ -361,20 +361,23 @@ mod tests {
     }
 
     #[test]
-    fn receive_event_returns_event_stream_errors() {
-        let error = receive_event(Some(Err(io::Error::new(
-            io::ErrorKind::BrokenPipe,
-            "event read failed",
-        ))))
-        .unwrap_err();
+    fn receive_event_returns_event_stream_failures() {
+        let cases = [
+            (
+                Some(Err(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    "event read failed",
+                ))),
+                "event read failed",
+            ),
+            (
+                Some(Err(event_stream_ended())),
+                "terminal event stream ended",
+            ),
+        ];
 
-        assert_eq!(error.to_string(), "event read failed");
-    }
-
-    #[test]
-    fn receive_event_returns_event_stream_eof_as_error() {
-        let error = receive_event(Some(Err(event_stream_ended()))).unwrap_err();
-
-        assert_eq!(error.to_string(), "terminal event stream ended");
+        for (event, expected) in cases {
+            assert_eq!(receive_event(event).unwrap_err().to_string(), expected);
+        }
     }
 }

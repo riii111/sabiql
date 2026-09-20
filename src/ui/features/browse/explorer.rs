@@ -209,25 +209,13 @@ mod tests {
         #[case("abcdefgh", 2, 4, "cdef")]
         #[case("abc", 3, 5, "")]
         #[case("abc", 10, 5, "")]
-        fn ascii_input_truncates_substring(
-            #[case] input: &str,
-            #[case] offset: usize,
-            #[case] max_width: usize,
-            #[case] expected: &str,
-        ) {
-            let result = truncate_with_offset(input, offset, max_width);
-
-            assert_eq!(result, expected);
-        }
-
-        #[rstest]
         #[case("日本語テスト", 0, 3, "日")]
         #[case("日本語テスト", 1, 3, "本")]
         #[case("日本語テスト", 2, 3, "本")]
         #[case("日本語テスト", 0, 1, "")]
         #[case("public.日本語_table", 0, 10, "public.日")]
         #[case("🎉table🎊", 0, 6, "🎉tabl")]
-        fn unicode_input_truncates_visible_columns(
+        fn truncates_with_character_offset_and_display_width(
             #[case] input: &str,
             #[case] offset: usize,
             #[case] max_width: usize,
