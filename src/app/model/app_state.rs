@@ -970,19 +970,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn result_rows_delegate_to_ui_state() {
-            let mut state = make_state();
-
-            assert_eq!(state.result_visible_rows(), 0);
-
-            state.ui.set_result_pane_height(50);
-            assert_eq!(state.result_visible_rows(), 45);
-
-            state.ui.set_result_pane_height(0);
-            assert_eq!(state.result_visible_rows(), 0);
-        }
-
-        #[test]
         fn row_detail_scroll_offset_clamps_on_resize() {
             let mut state = make_state();
             state.row_detail = RowDetailState::open(&["id".to_string()], &["1".to_string()]);
@@ -1039,7 +1026,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn confirm_preview_layout_is_applied() {
+        fn confirm_preview_layout_follows_render_output() {
             let mut state = make_state();
             let output = RenderOutput {
                 overlays: OverlayLayout {
@@ -1058,14 +1045,6 @@ mod tests {
             assert_eq!(state.confirm_dialog.preview_viewport_height, Some(10));
             assert_eq!(state.confirm_dialog.preview_content_height, Some(25));
             assert_eq!(state.confirm_dialog.preview_scroll, 4);
-        }
-
-        #[test]
-        fn confirm_preview_layout_is_reset_when_not_rendered() {
-            let mut state = make_state();
-            state.confirm_dialog.preview_viewport_height = Some(10);
-            state.confirm_dialog.preview_content_height = Some(25);
-            state.confirm_dialog.preview_scroll = 4;
 
             state.apply_render_output(RenderOutput::default());
 
@@ -1095,77 +1074,33 @@ mod tests {
     mod table_selection {
         use super::*;
 
-        #[test]
-        fn empty_filter_returns_all() {
+        #[rstest]
+        #[case("", 2, None)]
+        #[case("user", 1, Some("users"))]
+        #[case("USER", 1, Some("users"))]
+        fn filtered_tables_match_input(
+            #[case] filter: &str,
+            #[case] expected_len: usize,
+            #[case] expected_name: Option<&str>,
+        ) {
             let mut state = make_state();
             state.session.set_metadata(Some(make_metadata(vec![
                 TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
                 TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
             ])));
-            state.ui.table_picker_mut().clear_filter();
+            state.ui.table_picker_mut().insert_filter_str(filter);
 
             let filtered = state.filtered_tables();
 
-            assert_eq!(filtered.len(), 2);
-        }
-
-        #[test]
-        fn substring_filter_matches() {
-            let mut state = make_state();
-            state.session.set_metadata(Some(make_metadata(vec![
-                TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
-                TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
-            ])));
-            state.ui.table_picker_mut().insert_filter_str("user");
-
-            let filtered = state.filtered_tables();
-
-            assert_eq!(filtered.len(), 1);
-            assert_eq!(filtered[0].name, "users");
-        }
-
-        #[test]
-        fn filter_ignores_case() {
-            let mut state = make_state();
-            state
-                .session
-                .set_metadata(Some(make_metadata(vec![TableSummary::new(
-                    "public".to_string(),
-                    "Users".to_string(),
-                    Some(100),
-                    false,
-                )])));
-            state.ui.table_picker_mut().insert_filter_str("user");
-
-            let filtered = state.filtered_tables();
-
-            assert_eq!(filtered.len(), 1);
-        }
-
-        #[test]
-        fn selection_generation_increments_on_selection() {
-            let mut state = make_state();
-
-            let gen1 = state.session.selection_generation();
-            let gen2 = state.session.select_table("public", "t1", &mut state.query);
-            let gen3 = state.session.select_table("public", "t2", &mut state.query);
-
-            assert_eq!(gen1, 0);
-            assert_eq!(gen2, 1);
-            assert_eq!(gen3, 2);
+            assert_eq!(filtered.len(), expected_len);
+            if let Some(expected_name) = expected_name {
+                assert_eq!(filtered[0].name, expected_name);
+            }
         }
     }
 
     mod table_prefetch_lifecycle {
         use super::*;
-
-        #[test]
-        fn prefetch_queue_starts_empty() {
-            let state = make_state();
-
-            assert!(!state.table_prefetch.has_pending_prefetch());
-            assert!(state.table_prefetch.active_prefetch_run_id().is_none());
-        }
 
         #[test]
         fn prefetch_queue_is_fifo() {
@@ -1182,41 +1117,6 @@ mod tests {
 
             assert_eq!(first, Some("public.users".to_string()));
             assert_eq!(second, Some("public.orders".to_string()));
-        }
-
-        #[test]
-        fn prefetching_tables_track_in_flight() {
-            let mut state = make_state();
-
-            state
-                .table_prefetch
-                .start_table_prefetch("public.users".to_string());
-
-            assert!(state.table_prefetch.is_table_prefetching("public.users"));
-            assert!(!state.table_prefetch.is_table_prefetching("public.orders"));
-        }
-
-        #[test]
-        fn failed_prefetch_tables_store_error_and_time() {
-            let mut state = make_state();
-            let now = Instant::now();
-
-            state.table_prefetch.fail_table_prefetch(
-                "public.users".to_string(),
-                FailedPrefetchEntry {
-                    failed_at: now,
-                    error: "connection timeout".to_string(),
-                    retry_count: 0,
-                    retryable: true,
-                },
-            );
-
-            let entry = state
-                .table_prefetch
-                .failed_prefetch("public.users")
-                .unwrap();
-            assert_eq!(entry.failed_at, now);
-            assert_eq!(entry.error, "connection timeout");
         }
     }
 

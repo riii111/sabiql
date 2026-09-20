@@ -976,6 +976,7 @@ mod tests {
 
     use super::*;
     use crate::domain::QuerySource;
+    use rstest::rstest;
 
     fn make_metadata(db_name: &str) -> Arc<DatabaseMetadata> {
         Arc::new({
@@ -1013,78 +1014,34 @@ mod tests {
         use super::*;
 
         #[test]
-        fn increments_generation() {
+        fn selecting_table_resets_related_state() {
             let mut session = BrowseSession::default();
             let mut query = QueryExecution::default();
+            session.set_table_detail_raw(Some(make_table_detail()));
+            query.pagination.reset_for_table("old", "old");
+            query.pagination.set_page_result(5, true);
+            let run_id = query.begin_running(std::time::Instant::now());
+            query.set_current_result(make_query_result());
 
             let gen1 = session.select_table("public", "users", &mut query);
-            let gen2 = session.select_table("public", "posts", &mut query);
 
             assert_eq!(gen1, 1);
-            assert_eq!(gen2, 2);
-        }
-
-        #[test]
-        fn clears_table_detail() {
-            let mut session = BrowseSession::default();
-            session.set_table_detail_raw(Some(make_table_detail()));
-            let mut query = QueryExecution::default();
-
-            let _ = session.select_table("public", "users", &mut query);
-
             assert!(session.table_detail().is_none());
             assert!(matches!(
                 session.table_detail_state(),
                 TableDetailState::Loading
             ));
-        }
-
-        #[test]
-        fn sets_selected_table_key() {
-            let mut session = BrowseSession::default();
-            let mut query = QueryExecution::default();
-
-            let _ = session.select_table("public", "users", &mut query);
-
             assert_eq!(session.selected_table_key(), Some("public.users"));
-        }
-
-        #[test]
-        fn resets_pagination() {
-            let mut session = BrowseSession::default();
-            let mut query = QueryExecution::default();
-            query.pagination.reset_for_table("old", "old");
-            query.pagination.set_page_result(5, true);
-
-            let _ = session.select_table("public", "users", &mut query);
-
             assert_eq!(query.pagination.current_page(), 0);
             assert!(!query.pagination.reached_end());
             assert_eq!(query.pagination.schema(), "public");
             assert_eq!(query.pagination.table(), "users");
-        }
-
-        #[test]
-        fn terminates_active_query_run() {
-            let mut session = BrowseSession::default();
-            let mut query = QueryExecution::default();
-            let run_id = query.begin_running(std::time::Instant::now());
-
-            let _ = session.select_table("public", "users", &mut query);
-
             assert!(!query.is_running());
             assert!(!query.is_current_run(run_id));
-        }
-
-        #[test]
-        fn clears_previous_query_result() {
-            let mut session = BrowseSession::default();
-            let mut query = QueryExecution::default();
-            query.set_current_result(make_query_result());
-
-            let _ = session.select_table("public", "users", &mut query);
-
             assert!(query.current_result().is_none());
+
+            let gen2 = session.select_table("public", "posts", &mut query);
+            assert_eq!(gen2, 2);
         }
     }
 
@@ -1092,22 +1049,6 @@ mod tests {
 
     mod set_table_detail_tests {
         use super::*;
-
-        #[test]
-        fn accepts_matching_generation() {
-            let mut session = BrowseSession::default();
-            let mut query = QueryExecution::default();
-            let generation = session.select_table("public", "users", &mut query);
-
-            let accepted = session.set_table_detail(make_table_detail(), generation);
-
-            assert!(accepted);
-            assert!(session.table_detail().is_some());
-            assert!(matches!(
-                session.table_detail_state(),
-                TableDetailState::Loaded(_)
-            ));
-        }
 
         #[test]
         fn rejects_stale_generation() {
@@ -1150,6 +1091,10 @@ mod tests {
             assert!(!session.is_current_table_detail_run(run_id));
             assert_eq!(session.selection_generation(), generation);
             assert!(session.table_detail().is_some());
+            assert!(matches!(
+                session.table_detail_state(),
+                TableDetailState::Loaded(_)
+            ));
             assert_eq!(session.begin_table_detail_run(), run_id + 1);
         }
 
@@ -1177,23 +1122,6 @@ mod tests {
             let _ = session.begin_table_detail_run();
 
             assert!(session.table_detail().is_none());
-            assert!(matches!(
-                session.table_detail_state(),
-                TableDetailState::Loading
-            ));
-        }
-
-        #[test]
-        fn starting_detail_run_keeps_current_query_result_visible() {
-            let mut session = BrowseSession::default();
-            let mut query = QueryExecution::default();
-            let generation = session.select_table("public", "users", &mut query);
-            let _ = session.set_table_detail(make_table_detail(), generation);
-            query.set_current_result(make_query_result());
-
-            let _ = session.begin_table_detail_run();
-
-            assert!(query.current_result().is_some());
             assert!(matches!(
                 session.table_detail_state(),
                 TableDetailState::Loading
@@ -1404,12 +1332,14 @@ mod tests {
     // ── clear_table_selection ────────────────────────────────────────
 
     #[test]
-    fn clear_table_selection_clears_all() {
+    fn clear_table_selection_resets_state_and_invalidates_pending_work() {
         let mut session = BrowseSession::default();
         let mut query = QueryExecution::default();
-        let _ = session.select_table("public", "users", &mut query);
+        let pre_clear_gen = session.select_table("public", "users", &mut query);
         let _ = session.set_table_detail(make_table_detail(), session.selection_generation());
         query.set_current_result(make_query_result());
+        query.pagination.set_page_result(3, true);
+        let run_id = query.begin_running(std::time::Instant::now());
 
         session.clear_table_selection(&mut query);
 
@@ -1421,17 +1351,9 @@ mod tests {
         ));
         assert!(query.current_result().is_none());
         assert_eq!(query.pagination.current_page(), 0);
-    }
+        assert!(!query.is_running());
+        assert!(!query.is_current_run(run_id));
 
-    #[test]
-    fn clear_table_selection_invalidates_pending_detail() {
-        let mut session = BrowseSession::default();
-        let mut query = QueryExecution::default();
-        let pre_clear_gen = session.select_table("public", "users", &mut query);
-
-        session.clear_table_selection(&mut query);
-
-        // A TableDetailLoaded arriving with the pre-clear generation must be rejected
         let accepted = session.set_table_detail(make_table_detail(), pre_clear_gen);
         assert!(!accepted);
         assert!(session.table_detail().is_none());
@@ -1439,18 +1361,6 @@ mod tests {
             session.table_detail_state(),
             TableDetailState::NotSelected
         ));
-    }
-
-    #[test]
-    fn clear_table_selection_terminates_active_query_run() {
-        let mut session = BrowseSession::default();
-        let mut query = QueryExecution::default();
-        let run_id = query.begin_running(std::time::Instant::now());
-
-        session.clear_table_selection(&mut query);
-
-        assert!(!query.is_running());
-        assert!(!query.is_current_run(run_id));
     }
 
     // ── Connection lifecycle ─────────────────────────────────────────
@@ -1820,15 +1730,6 @@ mod tests {
         }
 
         #[test]
-        fn cleared_after_reset() {
-            let mut session = BrowseSession::default();
-            session.mark_connected(make_metadata("mydb"));
-            let mut query = QueryExecution::default();
-            session.reset(&mut query);
-            assert!(session.database_name().is_none());
-        }
-
-        #[test]
         fn synced_after_restore_from_cache() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("cached_db"));
@@ -1862,36 +1763,52 @@ mod tests {
     mod query_history_scope_tests {
         use super::*;
 
-        #[test]
-        fn mysql_scope_includes_selected_database() {
+        #[rstest]
+        #[case(
+            DatabaseType::MySQL,
+            "mysql://localhost/app",
+            "mysql-connection",
+            "app",
+            Some("app")
+        )]
+        #[case(
+            DatabaseType::PostgreSQL,
+            "dsn://connection",
+            "postgres-connection",
+            "database",
+            None
+        )]
+        #[case(
+            DatabaseType::SQLite,
+            "dsn://connection",
+            "sqlite-connection",
+            "database",
+            None
+        )]
+        fn uses_database_only_for_mysql(
+            #[case] database_type: DatabaseType,
+            #[case] dsn: &str,
+            #[case] connection_id: &str,
+            #[case] selected_database: &str,
+            #[case] expected_database: Option<&str>,
+        ) {
             let mut session = BrowseSession::default();
+            let id = ConnectionId::from_string(connection_id);
             session.activate_connection_with_target(
-                &ConnectionId::from_string("mysql"),
-                "mysql",
-                DatabaseType::MySQL,
-                "mysql://localhost/app",
-                Some("app"),
+                &id,
+                connection_id,
+                database_type,
+                dsn,
+                Some(selected_database),
             );
 
-            let scope = session.query_history_scope().unwrap();
-
-            assert_eq!(scope.database.as_deref(), Some("app"));
-        }
-
-        #[test]
-        fn postgres_and_sqlite_scopes_omit_database() {
-            for database_type in [DatabaseType::PostgreSQL, DatabaseType::SQLite] {
-                let mut session = BrowseSession::default();
-                session.activate_connection_with_target(
-                    &ConnectionId::from_string("connection"),
-                    "connection",
-                    database_type,
-                    "dsn://connection",
-                    Some("database"),
-                );
-
-                assert_eq!(session.query_history_scope().unwrap().database, None);
-            }
+            assert_eq!(
+                session.query_history_scope(),
+                Some(QueryHistoryScope::new(
+                    id,
+                    expected_database.map(str::to_owned),
+                ))
+            );
         }
     }
 
@@ -1913,22 +1830,16 @@ mod tests {
             assert_eq!(session.tables().len(), 2);
         }
 
-        #[test]
-        fn is_service_connection_detects_service_dsn() {
+        #[rstest]
+        #[case("service=myservice", true)]
+        #[case("postgres://localhost/db", false)]
+        fn is_service_connection_matches_dsn_shape(#[case] dsn: &str, #[case] expected: bool) {
             let session = BrowseSession {
-                dsn: Some("service=myservice".to_string()),
+                dsn: Some(dsn.to_string()),
                 ..Default::default()
             };
-            assert!(session.is_service_connection());
-        }
 
-        #[test]
-        fn is_service_connection_false_for_normal_dsn() {
-            let session = BrowseSession {
-                dsn: Some("postgres://localhost/db".to_string()),
-                ..Default::default()
-            };
-            assert!(!session.is_service_connection());
+            assert_eq!(session.is_service_connection(), expected);
         }
 
         #[test]

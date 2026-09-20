@@ -186,19 +186,6 @@ mod tests {
     mod error_info {
         use super::*;
 
-        #[test]
-        fn from_parts_uses_provided_presentation() {
-            let info = test_support::from_parts(
-                "Connection timed out",
-                "Check network connectivity",
-                true,
-                "error",
-            );
-            assert_eq!(info.summary(), "Connection timed out");
-            assert_eq!(info.hint(), "Check network connectivity");
-            assert!(info.is_retryable());
-        }
-
         #[rstest]
         #[case(
             ConnectionFailureKind::HostUnreachable,

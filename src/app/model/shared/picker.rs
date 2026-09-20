@@ -122,19 +122,15 @@ mod tests {
     mod visible_items {
         use super::*;
 
-        #[test]
-        fn zero_pane_height_returns_zero() {
-            let state = PickerState::default();
-            assert_eq!(state.visible_items(), 0);
-        }
-
-        #[test]
-        fn matches_pane_height() {
+        #[rstest]
+        #[case(0, 0)]
+        #[case(20, 20)]
+        fn matches_pane_height(#[case] pane_height: u16, #[case] expected: usize) {
             let state = PickerState {
-                pane_height: 20,
+                pane_height,
                 ..Default::default()
             };
-            assert_eq!(state.visible_items(), 20);
+            assert_eq!(state.visible_items(), expected);
         }
     }
 
@@ -210,6 +206,7 @@ mod tests {
         #[case(10, 0, 10, 1)]
         #[case(4, 3, 5, 3)]
         #[case(2, 3, 5, 2)]
+        #[case(5, 3, 0, 0)]
         fn clamp_scroll_offset_cases(
             #[case] selected: usize,
             #[case] current_offset: usize,
@@ -220,11 +217,6 @@ mod tests {
                 clamp_scroll_offset(selected, current_offset, viewport),
                 expected_offset
             );
-        }
-
-        #[test]
-        fn clamp_scroll_offset_zero_viewport_returns_zero() {
-            assert_eq!(clamp_scroll_offset(5, 3, 0), 0);
         }
     }
 }

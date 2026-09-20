@@ -1043,19 +1043,18 @@ mod tests {
             assert!(state.ssl_ca.content().is_empty());
         }
 
-        #[test]
-        fn has_errors_returns_false_when_empty() {
-            let state = ConnectionSetupState::default();
-            assert!(!state.has_validation_errors());
-        }
-
-        #[test]
-        fn has_errors_returns_true_when_errors_exist() {
+        #[rstest]
+        #[case(false, false)]
+        #[case(true, true)]
+        fn has_errors_matches_validation_state(#[case] with_error: bool, #[case] expected: bool) {
             let mut state = ConnectionSetupState::default();
-            state
-                .validation_errors
-                .insert(ConnectionField::Host, "Required".to_string());
-            assert!(state.has_validation_errors());
+            if with_error {
+                state
+                    .validation_errors
+                    .insert(ConnectionField::Host, "Required".to_string());
+            }
+
+            assert_eq!(state.has_validation_errors(), expected);
         }
 
         #[test]
@@ -1112,45 +1111,42 @@ mod tests {
             assert!(!state.is_first_run());
         }
 
-        #[test]
-        fn is_edit_mode_returns_false_for_new() {
-            let state = ConnectionSetupState::default();
-            assert!(!state.is_edit_mode());
+        #[rstest]
+        #[case(false)]
+        #[case(true)]
+        fn is_edit_mode_matches_profile_presence(#[case] editing: bool) {
+            let state = if editing {
+                let profile = ConnectionProfile::new_postgres(
+                    "Test",
+                    "localhost",
+                    5432,
+                    "db",
+                    "user",
+                    "",
+                    SslMode::Prefer,
+                )
+                .unwrap();
+                ConnectionSetupState::from(&profile)
+            } else {
+                ConnectionSetupState::default()
+            };
+
+            assert_eq!(state.is_edit_mode(), editing);
         }
 
-        #[test]
-        fn is_edit_mode_returns_true_for_edit() {
-            let profile = ConnectionProfile::new_postgres(
-                "Test",
-                "localhost",
-                5432,
-                "db",
-                "user",
-                "",
-                SslMode::Prefer,
-            )
-            .unwrap();
-            let state = ConnectionSetupState::from(&profile);
-            assert!(state.is_edit_mode());
-        }
-
-        #[test]
-        fn focused_input_returns_correct_field() {
+        #[rstest]
+        #[case(ConnectionField::Host, Some("localhost"))]
+        #[case(ConnectionField::SslMode, None)]
+        fn focused_input_matches_field(
+            #[case] field: ConnectionField,
+            #[case] expected: Option<&str>,
+        ) {
             let state = ConnectionSetupState {
-                focused_field: ConnectionField::Host,
+                focused_field: field,
                 ..Default::default()
             };
-            assert!(state.focused_input().is_some());
-            assert_eq!(state.focused_input().unwrap().content(), "localhost");
-        }
 
-        #[test]
-        fn focused_input_returns_none_for_ssl() {
-            let state = ConnectionSetupState {
-                focused_field: ConnectionField::SslMode,
-                ..Default::default()
-            };
-            assert!(state.focused_input().is_none());
+            assert_eq!(state.focused_input().map(TextInputState::content), expected);
         }
     }
 }

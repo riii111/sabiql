@@ -88,6 +88,7 @@ mod tests {
 
         assert_eq!(state.last_error(), Some("Error!"));
         assert!(state.last_success().is_none());
+        assert!(state.expires_at().is_none());
     }
 
     #[test]
@@ -101,16 +102,6 @@ mod tests {
 
         assert_eq!(state.last_success(), Some("Success!"));
         assert!(state.last_error().is_none());
-    }
-
-    #[test]
-    fn set_error_does_not_set_expiration_time() {
-        let mut state = MessageState::default();
-        assert!(state.expires_at().is_none());
-
-        state.set_error("Error!".to_string());
-
-        assert!(state.expires_at().is_none());
     }
 
     #[test]

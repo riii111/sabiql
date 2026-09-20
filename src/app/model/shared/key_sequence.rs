@@ -23,6 +23,7 @@ impl KeySequenceState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     #[test]
     fn idle_by_default() {
@@ -30,16 +31,12 @@ mod tests {
         assert_eq!(state, KeySequenceState::Idle);
     }
 
-    #[test]
-    fn pending_prefix_returns_some_for_waiting() {
-        let state = KeySequenceState::WaitingSecondKey(Prefix::Z);
-        assert_eq!(state.pending_prefix(), Some(Prefix::Z));
-    }
-
-    #[test]
-    fn g_prefix_is_reported_as_pending() {
-        let state = KeySequenceState::WaitingSecondKey(Prefix::G);
-        assert_eq!(state.pending_prefix(), Some(Prefix::G));
+    #[rstest]
+    #[case(Prefix::Z)]
+    #[case(Prefix::G)]
+    fn waiting_prefix_is_reported_as_pending(#[case] prefix: Prefix) {
+        let state = KeySequenceState::WaitingSecondKey(prefix);
+        assert_eq!(state.pending_prefix(), Some(prefix));
     }
 
     #[test]

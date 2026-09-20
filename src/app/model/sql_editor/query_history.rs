@@ -174,6 +174,7 @@ impl QueryHistoryPickerState {
 mod tests {
     use super::*;
     use crate::domain::ConnectionId;
+    use rstest::rstest;
 
     impl QueryHistoryPickerState {
         pub(crate) fn set_selection_for_test(&mut self, selected: usize) {
@@ -329,40 +330,22 @@ mod tests {
         assert_eq!(state.scroll_offset, 0);
     }
 
-    #[test]
-    fn clamped_selected_with_empty_entries() {
+    #[rstest]
+    #[case(&[], 5, 0)]
+    #[case(&["SELECT 1", "SELECT 2"], 10, 1)]
+    #[case(&["SELECT 1", "SELECT 2", "SELECT 3"], 1, 1)]
+    fn clamped_selected_returns_valid_index(
+        #[case] queries: &[&str],
+        #[case] selected: usize,
+        #[case] expected: usize,
+    ) {
         let state = QueryHistoryPickerState {
-            selected: 5,
+            entries: queries.iter().map(|query| make_entry(query)).collect(),
+            selected,
             ..Default::default()
         };
 
-        assert_eq!(state.clamped_selected(), 0);
-    }
-
-    #[test]
-    fn clamped_selected_clamps_to_last_index() {
-        let state = QueryHistoryPickerState {
-            entries: vec![make_entry("SELECT 1"), make_entry("SELECT 2")],
-            selected: 10,
-            ..Default::default()
-        };
-
-        assert_eq!(state.clamped_selected(), 1);
-    }
-
-    #[test]
-    fn clamped_selected_preserves_valid_selection() {
-        let state = QueryHistoryPickerState {
-            entries: vec![
-                make_entry("SELECT 1"),
-                make_entry("SELECT 2"),
-                make_entry("SELECT 3"),
-            ],
-            selected: 1,
-            ..Default::default()
-        };
-
-        assert_eq!(state.clamped_selected(), 1);
+        assert_eq!(state.clamped_selected(), expected);
     }
 
     #[test]

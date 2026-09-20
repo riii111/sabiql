@@ -718,6 +718,7 @@ mod tests {
         #[case(15, 10)]
         #[case(20, 15)]
         #[case(30, 25)]
+        #[case(2, 0)]
         fn result_pane_height_calculates_correct_visible_rows(
             #[case] pane_height: u16,
             #[case] expected: usize,
@@ -730,18 +731,6 @@ mod tests {
             let visible = state.result_visible_rows();
 
             assert_eq!(visible, expected);
-        }
-
-        #[test]
-        fn small_result_pane_height_does_not_underflow() {
-            let state = UiState {
-                result_pane_height: 2,
-                ..Default::default()
-            };
-
-            let visible = state.result_visible_rows();
-
-            assert_eq!(visible, 0);
         }
     }
 
@@ -1003,22 +992,20 @@ mod tests {
             assert_eq!(sel.row(), None);
         }
 
-        #[test]
-        fn clamp_resets_when_zero_rows() {
+        #[rstest]
+        #[case(5, 0, 0, 10)]
+        #[case(10, 2, 5, 10)]
+        #[case(0, 3, 10, 0)]
+        fn clamp_resets_for_invalid_selection(
+            #[case] row: usize,
+            #[case] cell: usize,
+            #[case] rows: usize,
+            #[case] cols: usize,
+        ) {
             let mut sel = ResultSelection::default();
-            sel.enter_cell(5, 0);
+            sel.enter_cell(row, cell);
 
-            sel.clamp(0, 10);
-
-            assert_eq!(sel.mode(), ResultNavMode::Scroll);
-        }
-
-        #[test]
-        fn clamp_resets_when_row_out_of_bounds() {
-            let mut sel = ResultSelection::default();
-            sel.enter_cell(10, 2);
-
-            sel.clamp(5, 10);
+            sel.clamp(rows, cols);
 
             assert_eq!(sel.mode(), ResultNavMode::Scroll);
         }
@@ -1031,16 +1018,6 @@ mod tests {
             sel.clamp(10, 5);
 
             assert_eq!(sel.cell(), Some(4));
-        }
-
-        #[test]
-        fn clamp_resets_when_zero_cols() {
-            let mut sel = ResultSelection::default();
-            sel.enter_cell(0, 3);
-
-            sel.clamp(10, 0);
-
-            assert_eq!(sel.mode(), ResultNavMode::Scroll);
         }
 
         #[test]
