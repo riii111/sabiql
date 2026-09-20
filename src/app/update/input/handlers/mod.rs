@@ -458,6 +458,16 @@ mod tests {
         }
 
         #[test]
+        fn er_table_picker_pastes_text() {
+            let mut state = make_state(InputMode::ErTablePicker);
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
+
+            let result = handle_paste_event("public.users".to_string(), &state);
+
+            assert!(matches!(result, Action::Paste(t) if t == "public.users"));
+        }
+
+        #[test]
         fn sqlite_ignores_er_table_picker_paste() {
             let mut state = make_state(InputMode::ErTablePicker);
             test_fixtures::activate_sqlite_connection(&mut state, "sqlite://test.db");

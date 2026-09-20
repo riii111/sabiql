@@ -1014,30 +1014,38 @@ mod tests {
             }
 
             #[rstest::rstest]
-            #[case(false, false)]
-            #[case(false, true)]
-            #[case(true, false)]
-            #[case(true, true)]
-            fn csv_export_cancel_respects_current_run(#[case] stale: bool, #[case] cached: bool) {
-                let (mut state, cancelled_run_id, current_run_id) = if stale {
-                    csv_state_with_stale_run()
-                } else {
-                    let (state, run_id) = csv_state_with_current_run();
-                    (state, run_id, run_id)
-                };
+            #[case(false)]
+            #[case(true)]
+            fn current_csv_export_cancel_marks_query_idle(#[case] cached: bool) {
+                let (mut state, run_id) = csv_state_with_current_run();
                 let intent = if cached {
-                    cached_csv_intent(cancelled_run_id)
+                    cached_csv_intent(run_id)
                 } else {
-                    rerunnable_csv_intent(cancelled_run_id)
+                    rerunnable_csv_intent(run_id)
                 };
                 open_confirm_intent(&mut state, intent);
 
                 let effects = cancel_effects(&mut state);
                 assert!(effects.is_empty());
-                assert_eq!(state.query.is_running(), stale);
-                if stale {
-                    assert!(state.query.is_current_run(current_run_id));
-                }
+                assert!(!state.query.is_running());
+            }
+
+            #[rstest::rstest]
+            #[case(false)]
+            #[case(true)]
+            fn stale_csv_export_cancel_keeps_current_run(#[case] cached: bool) {
+                let (mut state, stale_run_id, current_run_id) = csv_state_with_stale_run();
+                let intent = if cached {
+                    cached_csv_intent(stale_run_id)
+                } else {
+                    rerunnable_csv_intent(stale_run_id)
+                };
+                open_confirm_intent(&mut state, intent);
+
+                let effects = cancel_effects(&mut state);
+                assert!(effects.is_empty());
+                assert!(state.query.is_running());
+                assert!(state.query.is_current_run(current_run_id));
             }
 
             #[test]

@@ -304,6 +304,15 @@ mod tests {
                 assert!(same_payload_free_action(&result, &expected));
             }
 
+            #[test]
+            fn er_key_is_ignored_for_sqlite() {
+                let state = connected_state(DatabaseType::SQLite);
+
+                let result = handle_normal_mode(combo(Key::Char('e')), &state);
+
+                assert!(matches!(result, Action::None));
+            }
+
             #[rstest]
             #[case(KeymapPreset::Default, Key::Char('s'), ModalKind::SqlModal)]
             #[case(KeymapPreset::Ide, Key::Char('s'), ModalKind::SqlModal)]
