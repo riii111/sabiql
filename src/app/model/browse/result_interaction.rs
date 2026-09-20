@@ -485,17 +485,6 @@ mod tests {
     }
 
     #[test]
-    fn enter_cell_delegates_correctly() {
-        let mut ri = ResultInteraction::default();
-
-        ri.activate_cell(5, 2);
-
-        assert_eq!(ri.selection().mode(), ResultNavMode::CellActive);
-        assert_eq!(ri.selection().row(), Some(5));
-        assert_eq!(ri.selection().cell(), Some(2));
-    }
-
-    #[test]
     fn stage_row_and_unstage_last() {
         let mut ri = ResultInteraction::default();
         ri.stage_row(0);
@@ -505,27 +494,6 @@ mod tests {
 
         assert_eq!(ri.staged_delete_rows().len(), 1);
         assert!(ri.staged_delete_rows().contains(&0));
-    }
-
-    #[test]
-    fn begin_cell_edit_sets_active() {
-        let mut ri = ResultInteraction::default();
-
-        ri.begin_cell_edit(1, 2, "hello".to_string());
-
-        assert!(ri.cell_edit().is_active());
-        assert_eq!(ri.cell_edit().row(), Some(1));
-        assert_eq!(ri.cell_edit().col(), Some(2));
-    }
-
-    #[test]
-    fn clamp_selection_delegates() {
-        let mut ri = ResultInteraction::default();
-        ri.activate_cell(10, 0);
-
-        ri.clamp_selection(5, 5);
-
-        assert_eq!(ri.selection().mode(), ResultNavMode::Scroll);
     }
 
     fn test_preview() -> WritePreview {

@@ -468,6 +468,7 @@ impl ColumnWidthsCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     fn config<'a>(ideal: &'a [u16], min: &'a [u16]) -> ColumnWidthConfig<'a> {
         ColumnWidthConfig {
@@ -488,20 +489,12 @@ mod tests {
     mod total_width {
         use super::*;
 
-        #[test]
-        fn empty_widths_return_zero() {
-            assert_eq!(total_width_with_separators(&[]), 0);
-        }
-
-        #[test]
-        fn single_column_no_separator() {
-            assert_eq!(total_width_with_separators(&[10]), 10);
-        }
-
-        #[test]
-        fn multiple_columns_includes_separators() {
-            // 10 + 20 + 30 + 2 separators = 62
-            assert_eq!(total_width_with_separators(&[10, 20, 30]), 62);
+        #[rstest]
+        #[case(&[] as &[u16], 0)]
+        #[case(&[10], 10)]
+        #[case(&[10, 20, 30], 62)]
+        fn includes_separators(#[case] widths: &[u16], #[case] expected: u16) {
+            assert_eq!(total_width_with_separators(widths), expected);
         }
     }
 
@@ -596,53 +589,34 @@ mod tests {
             assert_eq!(plan.widths_fingerprint, widths_fingerprint(&ideal, &min));
         }
 
-        #[test]
-        fn same_widths_skip_recalculation() {
-            let ideal = vec![10, 20, 30, 40, 50];
-            let min = vec![5, 5, 5, 5, 5];
-            let plan = ViewportPlan::calculate(&ideal, &min, 80);
+        #[rstest]
+        #[case(false, &[10, 20, 30, 40, 50], &[5, 5, 5, 5, 5], 80, &[10, 20, 30, 40, 50], 80, false)]
+        #[case(false, &[10, 20, 30], &[5, 5, 5], 80, &[10, 20, 30], 100, true)]
+        #[case(false, &[10, 20, 30, 40, 50], &[5, 5, 5, 5, 5], 80, &[10, 20, 30, 40, 60], 80, true)]
+        #[case(false, &[10, 20, 30, 40, 50], &[5, 5, 5, 5, 5], 80, &[50, 40, 30, 20, 10], 80, true)]
+        #[case(true, &[], &[], 0, &[10], 80, true)]
+        fn needs_recalculation_when_plan_inputs_change(
+            #[case] use_default: bool,
+            #[case] ideal: &[u16],
+            #[case] min: &[u16],
+            #[case] available_width: u16,
+            #[case] new_ideal: &[u16],
+            #[case] new_available_width: u16,
+            #[case] expected: bool,
+        ) {
+            let plan = if use_default {
+                ViewportPlan::default()
+            } else {
+                ViewportPlan::calculate(ideal, min, available_width)
+            };
 
-            assert!(!plan.needs_recalculation(80, widths_fingerprint(&ideal, &min)));
-        }
-
-        #[test]
-        fn recalculates_when_available_width_changes() {
-            let ideal = vec![10, 20, 30];
-            let min = vec![5, 5, 5];
-            let plan = ViewportPlan::calculate(&ideal, &min, 80);
-
-            assert!(plan.needs_recalculation(100, widths_fingerprint(&ideal, &min)));
-        }
-
-        #[test]
-        fn recalculates_when_a_width_changes() {
-            let ideal = vec![10, 20, 30, 40, 50];
-            let min = vec![5, 5, 5, 5, 5];
-            let plan = ViewportPlan::calculate(&ideal, &min, 80);
-
-            let changed = vec![10, 20, 30, 40, 60];
-
-            assert!(plan.needs_recalculation(80, widths_fingerprint(&changed, &min)));
-        }
-
-        #[test]
-        fn reordered_widths_trigger_recalculation() {
-            // max_offset depends on suffix widths, so a stale plan would point
-            // at the wrong scroll range even though len/sum/max are unchanged
-            let ideal = vec![10, 20, 30, 40, 50];
-            let min = vec![5, 5, 5, 5, 5];
-            let plan = ViewportPlan::calculate(&ideal, &min, 80);
-
-            let reordered = vec![50, 40, 30, 20, 10];
-
-            assert!(plan.needs_recalculation(80, widths_fingerprint(&reordered, &min)));
-        }
-
-        #[test]
-        fn default_plan_needs_recalculation() {
-            let plan = ViewportPlan::default();
-
-            assert!(plan.needs_recalculation(80, widths_fingerprint(&[10], &[4])));
+            assert_eq!(
+                plan.needs_recalculation(
+                    new_available_width,
+                    widths_fingerprint(new_ideal, if use_default { &[4] } else { min }),
+                ),
+                expected
+            );
         }
     }
 
@@ -815,29 +789,23 @@ mod tests {
     mod next_prev_offset {
         use super::*;
 
-        #[test]
-        fn next_increments() {
-            assert_eq!(calculate_next_column_offset(1, 2), 2);
+        #[rstest]
+        #[case(1, 2, 2)]
+        #[case(2, 2, 2)]
+        #[case(usize::MAX, 2, 2)]
+        fn next_offset_clamps_to_max(
+            #[case] current: usize,
+            #[case] max_offset: usize,
+            #[case] expected: usize,
+        ) {
+            assert_eq!(calculate_next_column_offset(current, max_offset), expected);
         }
 
-        #[test]
-        fn next_clamps_to_max() {
-            assert_eq!(calculate_next_column_offset(2, 2), 2);
-        }
-
-        #[test]
-        fn next_saturates_at_usize_max() {
-            assert_eq!(calculate_next_column_offset(usize::MAX, 2), 2);
-        }
-
-        #[test]
-        fn prev_decrements() {
-            assert_eq!(calculate_prev_column_offset(2), 1);
-        }
-
-        #[test]
-        fn prev_clamps_to_zero() {
-            assert_eq!(calculate_prev_column_offset(0), 0);
+        #[rstest]
+        #[case(2, 1)]
+        #[case(0, 0)]
+        fn previous_offset_clamps_to_zero(#[case] current: usize, #[case] expected: usize) {
+            assert_eq!(calculate_prev_column_offset(current), expected);
         }
     }
 
@@ -905,26 +873,16 @@ mod tests {
     mod header_min_width {
         use super::*;
 
-        #[test]
-        fn columns_never_shrink_below_header_min_width() {
-            let ideal = vec![20, 20, 20];
-            let min = vec![10, 10, 10];
-            let cfg = config(&ideal, &min);
-
-            let (_, selected) = select_viewport_columns(&cfg, &ctx(0, 35, Some(3), 1));
-
-            for (i, (w, min_w)) in selected.iter().zip(min.iter()).enumerate() {
-                assert!(*w >= *min_w, "Column {i} width {w} is below min {min_w}");
-            }
-        }
-
-        #[test]
-        fn large_min_widths_respected_under_pressure() {
-            let ideal = vec![30, 30, 30];
-            let min = vec![15, 15, 15];
-            let cfg = config(&ideal, &min);
-
-            let (_, selected) = select_viewport_columns(&cfg, &ctx(0, 50, Some(3), 1));
+        #[rstest]
+        #[case(&[20, 20, 20], &[10, 10, 10], 35)]
+        #[case(&[30, 30, 30], &[15, 15, 15], 50)]
+        fn columns_never_shrink_below_header_min_width(
+            #[case] ideal: &[u16],
+            #[case] min: &[u16],
+            #[case] available_width: u16,
+        ) {
+            let cfg = config(ideal, min);
+            let (_, selected) = select_viewport_columns(&cfg, &ctx(0, available_width, Some(3), 1));
 
             for (w, min_w) in selected.iter().zip(min.iter()) {
                 assert!(*w >= *min_w);
@@ -1343,18 +1301,26 @@ mod tests {
     mod bonus_column {
         use super::*;
 
-        #[test]
-        fn adds_bonus_columns_while_they_fit() {
-            let ideal = vec![10, 10, 10, 10, 10];
-            let min = vec![4, 4, 4, 4, 4];
-            let cfg = config(&ideal, &min);
+        #[rstest]
+        #[case(&[10, 10, 10, 10, 10], &[4, 4, 4, 4, 4], 0, 70, 2, 3, &[0, 1, 2, 3, 4])]
+        #[case(&[10, 10, 10], &[4, 4, 4], 1, 50, 2, 2, &[1, 2])]
+        fn bonus_columns_append_only_when_available(
+            #[case] ideal: &[u16],
+            #[case] min: &[u16],
+            #[case] offset: usize,
+            #[case] available_width: u16,
+            #[case] fixed_count: usize,
+            #[case] max_offset: usize,
+            #[case] expected_indices: &[usize],
+        ) {
+            let cfg = config(ideal, min);
+            let (indices, widths) = select_viewport_columns(
+                &cfg,
+                &ctx(offset, available_width, Some(fixed_count), max_offset),
+            );
 
-            // Fixed count = 2 (21), bonus cols 2,3,4 each need 11 → all added
-            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 70, Some(2), 3));
-
-            assert_eq!(indices, vec![0, 1, 2, 3, 4]);
-            let total = total_width_with_separators(&widths);
-            assert!(total <= 70);
+            assert_eq!(indices, expected_indices);
+            assert!(total_width_with_separators(&widths) <= available_width);
         }
 
         #[test]
@@ -1369,18 +1335,6 @@ mod tests {
 
             assert_eq!(indices, vec![0, 1, 2, 3]);
             assert_eq!(widths, vec![10, 10, 10, 7]);
-        }
-
-        #[test]
-        fn no_append_past_last_column_when_not_at_right_edge() {
-            let ideal = vec![10, 10, 10];
-            let min = vec![4, 4, 4];
-            let cfg = config(&ideal, &min);
-
-            // Showing cols [1, 2]; nothing exists after col 2 to append
-            let (indices, _) = select_viewport_columns(&cfg, &ctx(1, 50, Some(2), 2));
-
-            assert_eq!(indices.len(), 2);
         }
 
         #[test]

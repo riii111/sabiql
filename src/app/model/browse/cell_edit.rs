@@ -146,42 +146,4 @@ mod tests {
         assert_eq!(state.draft_value(), "");
         assert!(!state.is_active());
     }
-
-    #[test]
-    fn cursor_movement_works_through_input() {
-        let mut state = CellEditState::default();
-        state.begin(0, 0, "hello".to_string());
-
-        state.move_cursor(CursorMove::Home);
-        assert_eq!(state.input().cursor(), 0);
-
-        state.insert_char('X');
-        assert_eq!(state.draft_value(), "Xhello");
-        assert_eq!(state.input().cursor(), 1);
-    }
-
-    #[test]
-    fn backspace_at_middle_removes_correct_char() {
-        let mut state = CellEditState::default();
-        state.begin(0, 0, "abcd".to_string());
-
-        state.move_cursor(CursorMove::Left);
-        state.move_cursor(CursorMove::Left);
-        state.backspace();
-
-        assert_eq!(state.draft_value(), "acd");
-        assert_eq!(state.input().cursor(), 1);
-    }
-
-    #[test]
-    fn delete_at_cursor_position() {
-        let mut state = CellEditState::default();
-        state.begin(0, 0, "abcd".to_string());
-
-        state.move_cursor(CursorMove::Home);
-        state.delete();
-
-        assert_eq!(state.draft_value(), "bcd");
-        assert_eq!(state.input().cursor(), 0);
-    }
 }

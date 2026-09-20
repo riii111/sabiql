@@ -311,14 +311,6 @@ mod tests {
     use super::*;
     use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
 
-    impl SqlModalContext {
-        #[doc(hidden)]
-        pub(crate) fn clear_content(&mut self) {
-            self.editor.clear();
-            self.reset_completion();
-        }
-    }
-
     mod lifecycle {
         use super::*;
 
@@ -330,25 +322,6 @@ mod tests {
             assert_eq!(ctx.editor.cursor(), 0);
             assert_eq!(ctx.status, SqlModalStatus::Normal);
             assert!(!ctx.completion.visible);
-        }
-
-        #[test]
-        fn clear_content_resets_editor_state() {
-            let mut ctx = SqlModalContext::default();
-            ctx.editor.set_content("SELECT * FROM users".to_string());
-            ctx.completion.visible = true;
-            ctx.completion.candidates.push(CompletionCandidate {
-                text: "test".to_string(),
-                kind: CompletionKind::Table,
-                score: 100,
-            });
-
-            ctx.clear_content();
-
-            assert!(ctx.editor.content().is_empty());
-            assert_eq!(ctx.editor.cursor(), 0);
-            assert!(!ctx.completion.visible);
-            assert!(ctx.completion.candidates.is_empty());
         }
     }
 

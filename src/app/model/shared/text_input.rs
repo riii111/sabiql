@@ -390,281 +390,135 @@ mod tests {
     mod insert_char_tests {
         use super::*;
 
-        #[test]
-        fn insert_at_empty() {
-            let mut s = TextInputState::default();
+        #[rstest]
+        #[case("", 0, 'a', "a", 1)]
+        #[case("ab", 2, 'c', "abc", 3)]
+        #[case("bc", 0, 'a', "abc", 1)]
+        #[case("ac", 1, 'b', "abc", 2)]
+        #[case("あう", 1, 'い', "あいう", 2)]
+        fn inserts_character_at_cursor(
+            #[case] content: &str,
+            #[case] cursor: usize,
+            #[case] character: char,
+            #[case] expected_content: &str,
+            #[case] expected_cursor: usize,
+        ) {
+            let mut s = state_with(content, cursor);
 
-            s.insert_char('a');
+            s.insert_char(character);
 
-            assert_eq!(s.content(), "a");
-            assert_eq!(s.cursor(), 1);
-        }
-
-        #[test]
-        fn insert_at_end() {
-            let mut s = state_with("ab", 2);
-
-            s.insert_char('c');
-
-            assert_eq!(s.content(), "abc");
-            assert_eq!(s.cursor(), 3);
-        }
-
-        #[test]
-        fn insert_at_beginning() {
-            let mut s = state_with("bc", 0);
-
-            s.insert_char('a');
-
-            assert_eq!(s.content(), "abc");
-            assert_eq!(s.cursor(), 1);
-        }
-
-        #[test]
-        fn insert_at_middle() {
-            let mut s = state_with("ac", 1);
-
-            s.insert_char('b');
-
-            assert_eq!(s.content(), "abc");
-            assert_eq!(s.cursor(), 2);
-        }
-
-        #[test]
-        fn insert_multibyte() {
-            let mut s = state_with("あう", 1);
-
-            s.insert_char('い');
-
-            assert_eq!(s.content(), "あいう");
-            assert_eq!(s.cursor(), 2);
+            assert_eq!(s.content(), expected_content);
+            assert_eq!(s.cursor(), expected_cursor);
         }
     }
 
     mod insert_str_tests {
         use super::*;
 
-        #[test]
-        fn inserts_at_beginning() {
-            let mut s = state_with("cd", 0);
+        #[rstest]
+        #[case("cd", 0, "ab", "abcd", 2)]
+        #[case("ad", 1, "bc", "abcd", 3)]
+        #[case("あえ", 1, "いう", "あいうえ", 3)]
+        fn inserts_string_at_cursor(
+            #[case] content: &str,
+            #[case] cursor: usize,
+            #[case] inserted: &str,
+            #[case] expected_content: &str,
+            #[case] expected_cursor: usize,
+        ) {
+            let mut s = state_with(content, cursor);
 
-            s.insert_str("ab");
+            s.insert_str(inserted);
 
-            assert_eq!(s.content(), "abcd");
-            assert_eq!(s.cursor(), 2);
-        }
-
-        #[test]
-        fn inserts_at_middle() {
-            let mut s = state_with("ad", 1);
-
-            s.insert_str("bc");
-
-            assert_eq!(s.content(), "abcd");
-            assert_eq!(s.cursor(), 3);
-        }
-
-        #[test]
-        fn inserts_multibyte() {
-            let mut s = state_with("あえ", 1);
-
-            s.insert_str("いう");
-
-            assert_eq!(s.content(), "あいうえ");
-            assert_eq!(s.cursor(), 3);
+            assert_eq!(s.content(), expected_content);
+            assert_eq!(s.cursor(), expected_cursor);
         }
     }
 
     mod backspace_tests {
         use super::*;
 
-        #[test]
-        fn at_start_is_noop() {
-            let mut s = state_with("abc", 0);
+        #[rstest]
+        #[case("abc", 0, "abc", 0)]
+        #[case("abc", 3, "ab", 2)]
+        #[case("abc", 2, "ac", 1)]
+        #[case("", 0, "", 0)]
+        #[case("あいう", 2, "あう", 1)]
+        fn removes_character_before_cursor(
+            #[case] content: &str,
+            #[case] cursor: usize,
+            #[case] expected_content: &str,
+            #[case] expected_cursor: usize,
+        ) {
+            let mut s = state_with(content, cursor);
 
             s.backspace();
 
-            assert_eq!(s.content(), "abc");
-            assert_eq!(s.cursor(), 0);
-        }
-
-        #[test]
-        fn at_end() {
-            let mut s = state_with("abc", 3);
-
-            s.backspace();
-
-            assert_eq!(s.content(), "ab");
-            assert_eq!(s.cursor(), 2);
-        }
-
-        #[test]
-        fn at_middle() {
-            let mut s = state_with("abc", 2);
-
-            s.backspace();
-
-            assert_eq!(s.content(), "ac");
-            assert_eq!(s.cursor(), 1);
-        }
-
-        #[test]
-        fn on_empty_string() {
-            let mut s = TextInputState::default();
-
-            s.backspace();
-
-            assert_eq!(s.content(), "");
-            assert_eq!(s.cursor(), 0);
-        }
-
-        #[test]
-        fn multibyte() {
-            let mut s = state_with("あいう", 2);
-
-            s.backspace();
-
-            assert_eq!(s.content(), "あう");
-            assert_eq!(s.cursor(), 1);
+            assert_eq!(s.content(), expected_content);
+            assert_eq!(s.cursor(), expected_cursor);
         }
     }
 
     mod delete_tests {
         use super::*;
 
-        #[test]
-        fn at_end_is_noop() {
-            let mut s = state_with("abc", 3);
+        #[rstest]
+        #[case("abc", 3, "abc", 3)]
+        #[case("abc", 0, "bc", 0)]
+        #[case("abc", 1, "ac", 1)]
+        #[case("", 0, "", 0)]
+        #[case("あいう", 1, "あう", 1)]
+        fn removes_character_at_cursor(
+            #[case] content: &str,
+            #[case] cursor: usize,
+            #[case] expected_content: &str,
+            #[case] expected_cursor: usize,
+        ) {
+            let mut s = state_with(content, cursor);
 
             s.delete();
 
-            assert_eq!(s.content(), "abc");
-            assert_eq!(s.cursor(), 3);
-        }
-
-        #[test]
-        fn at_beginning() {
-            let mut s = state_with("abc", 0);
-
-            s.delete();
-
-            assert_eq!(s.content(), "bc");
-            assert_eq!(s.cursor(), 0);
-        }
-
-        #[test]
-        fn at_middle() {
-            let mut s = state_with("abc", 1);
-
-            s.delete();
-
-            assert_eq!(s.content(), "ac");
-            assert_eq!(s.cursor(), 1);
-        }
-
-        #[test]
-        fn on_empty_string() {
-            let mut s = TextInputState::default();
-
-            s.delete();
-
-            assert_eq!(s.content(), "");
-            assert_eq!(s.cursor(), 0);
-        }
-
-        #[test]
-        fn multibyte() {
-            let mut s = state_with("あいう", 1);
-
-            s.delete();
-
-            assert_eq!(s.content(), "あう");
-            assert_eq!(s.cursor(), 1);
+            assert_eq!(s.content(), expected_content);
+            assert_eq!(s.cursor(), expected_cursor);
         }
     }
 
     mod move_cursor_tests {
         use super::*;
 
-        #[test]
-        fn move_left() {
-            let mut s = state_with("abc", 2);
+        #[rstest]
+        #[case(2, CursorMove::Left, 1)]
+        #[case(0, CursorMove::Left, 0)]
+        #[case(1, CursorMove::Right, 2)]
+        #[case(3, CursorMove::Right, 3)]
+        fn moves_horizontally_within_bounds(
+            #[case] cursor: usize,
+            #[case] movement: CursorMove,
+            #[case] expected: usize,
+        ) {
+            let mut s = state_with("abc", cursor);
 
-            s.move_cursor(CursorMove::Left);
+            s.move_cursor(movement);
 
-            assert_eq!(s.cursor(), 1);
+            assert_eq!(s.cursor(), expected);
         }
 
-        #[test]
-        fn move_left_at_start_stays() {
-            let mut s = state_with("abc", 0);
+        #[rstest]
+        #[case(2, CursorMove::Home, 0)]
+        #[case(0, CursorMove::End, 3)]
+        #[case(0, CursorMove::LastLine, 3)]
+        #[case(1, CursorMove::Up, 1)]
+        #[case(1, CursorMove::Down, 1)]
+        fn moves_to_line_boundaries(
+            #[case] cursor: usize,
+            #[case] movement: CursorMove,
+            #[case] expected: usize,
+        ) {
+            let mut s = state_with("abc", cursor);
 
-            s.move_cursor(CursorMove::Left);
+            s.move_cursor(movement);
 
-            assert_eq!(s.cursor(), 0);
-        }
-
-        #[test]
-        fn move_right() {
-            let mut s = state_with("abc", 1);
-
-            s.move_cursor(CursorMove::Right);
-
-            assert_eq!(s.cursor(), 2);
-        }
-
-        #[test]
-        fn move_right_at_end_stays() {
-            let mut s = state_with("abc", 3);
-
-            s.move_cursor(CursorMove::Right);
-
-            assert_eq!(s.cursor(), 3);
-        }
-
-        #[test]
-        fn move_home() {
-            let mut s = state_with("abc", 2);
-
-            s.move_cursor(CursorMove::Home);
-
-            assert_eq!(s.cursor(), 0);
-        }
-
-        #[test]
-        fn move_end() {
-            let mut s = state_with("abc", 0);
-
-            s.move_cursor(CursorMove::End);
-
-            assert_eq!(s.cursor(), 3);
-        }
-
-        #[test]
-        fn move_last_line_moves_to_end() {
-            let mut s = state_with("abc", 0);
-
-            s.move_cursor(CursorMove::LastLine);
-
-            assert_eq!(s.cursor(), 3);
-        }
-
-        #[test]
-        fn move_up_is_noop() {
-            let mut s = state_with("abc", 1);
-
-            s.move_cursor(CursorMove::Up);
-
-            assert_eq!(s.cursor(), 1);
-        }
-
-        #[test]
-        fn move_down_is_noop() {
-            let mut s = state_with("abc", 1);
-
-            s.move_cursor(CursorMove::Down);
-
-            assert_eq!(s.cursor(), 1);
+            assert_eq!(s.cursor(), expected);
         }
 
         #[rstest]
