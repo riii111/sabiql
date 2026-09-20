@@ -1118,10 +1118,12 @@ mod tests {
             let mut query = QueryExecution::default();
             let generation = session.select_table("public", "users", &mut query);
             let _ = session.set_table_detail(make_table_detail(), generation);
+            query.set_current_result(make_query_result());
 
             let _ = session.begin_table_detail_run();
 
             assert!(session.table_detail().is_none());
+            assert!(query.current_result().is_some());
             assert!(matches!(
                 session.table_detail_state(),
                 TableDetailState::Loading
