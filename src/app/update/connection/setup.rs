@@ -1458,93 +1458,48 @@ mod tests {
             ));
         }
 
-        #[test]
-        fn opening_setup_clears_pending_probe() {
+        #[derive(Clone, Copy)]
+        enum SetupLifecycle {
+            Open,
+            Edit,
+            Close,
+        }
+
+        fn reduce_setup_lifecycle(state: &mut AppState, lifecycle: SetupLifecycle) -> Vec<Effect> {
+            let action = match lifecycle {
+                SetupLifecycle::Open => Action::OpenModal(ModalKind::ConnectionSetup),
+                SetupLifecycle::Edit => {
+                    Action::ConnectionEditLoaded(Box::new(create_profile("edited")))
+                }
+                SetupLifecycle::Close => {
+                    state.modal.set_mode(InputMode::ConnectionSetup);
+                    Action::CloseModal(ModalKind::ConnectionSetup)
+                }
+            };
+            reduce(state, &action, Instant::now()).unwrap()
+        }
+
+        #[rstest::rstest]
+        #[case(SetupLifecycle::Open)]
+        #[case(SetupLifecycle::Edit)]
+        #[case(SetupLifecycle::Close)]
+        fn setup_lifecycle_clears_pending_probe(#[case] lifecycle: SetupLifecycle) {
             let mut state = state_with_pending_mysql_probe();
 
-            let effects = reduce(
-                &mut state,
-                &Action::OpenModal(ModalKind::ConnectionSetup),
-                Instant::now(),
-            )
-            .unwrap();
+            let effects = reduce_setup_lifecycle(&mut state, lifecycle);
 
             assert!(state.session.pending_mysql_connection_probe().is_none());
             assert!(matches!(effects.as_slice(), [Effect::CancelConnectionTask]));
         }
 
-        #[test]
-        fn opening_setup_retries_interrupted_table_detail() {
+        #[rstest::rstest]
+        #[case(SetupLifecycle::Open)]
+        #[case(SetupLifecycle::Edit)]
+        #[case(SetupLifecycle::Close)]
+        fn setup_lifecycle_retries_interrupted_table_detail(#[case] lifecycle: SetupLifecycle) {
             let mut state = state_with_interrupted_table_detail();
 
-            let effects = reduce(
-                &mut state,
-                &Action::OpenModal(ModalKind::ConnectionSetup),
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert!(state.session.pending_mysql_connection_probe().is_none());
-            assert_table_detail_retry(&effects);
-        }
-
-        #[test]
-        fn loading_edit_clears_pending_probe() {
-            let mut state = state_with_pending_mysql_probe();
-
-            let effects = reduce(
-                &mut state,
-                &Action::ConnectionEditLoaded(Box::new(create_profile("edited"))),
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert!(state.session.pending_mysql_connection_probe().is_none());
-            assert!(matches!(effects.as_slice(), [Effect::CancelConnectionTask]));
-        }
-
-        #[test]
-        fn loading_edit_retries_interrupted_table_detail() {
-            let mut state = state_with_interrupted_table_detail();
-
-            let effects = reduce(
-                &mut state,
-                &Action::ConnectionEditLoaded(Box::new(create_profile("edited"))),
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert!(state.session.pending_mysql_connection_probe().is_none());
-            assert_table_detail_retry(&effects);
-        }
-
-        #[test]
-        fn closing_setup_clears_pending_probe() {
-            let mut state = state_with_pending_mysql_probe();
-            state.modal.set_mode(InputMode::ConnectionSetup);
-
-            let effects = reduce(
-                &mut state,
-                &Action::CloseModal(ModalKind::ConnectionSetup),
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert!(state.session.pending_mysql_connection_probe().is_none());
-            assert!(matches!(effects.as_slice(), [Effect::CancelConnectionTask]));
-        }
-
-        #[test]
-        fn closing_setup_retries_interrupted_table_detail() {
-            let mut state = state_with_interrupted_table_detail();
-            state.modal.set_mode(InputMode::ConnectionSetup);
-
-            let effects = reduce(
-                &mut state,
-                &Action::CloseModal(ModalKind::ConnectionSetup),
-                Instant::now(),
-            )
-            .unwrap();
+            let effects = reduce_setup_lifecycle(&mut state, lifecycle);
 
             assert!(state.session.pending_mysql_connection_probe().is_none());
             assert_table_detail_retry(&effects);

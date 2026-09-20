@@ -349,22 +349,16 @@ mod tests {
             assert!(state.messages.last_error.is_some());
         }
 
-        #[test]
-        fn rendering_status_returns_empty_effects() {
+        #[rstest::rstest]
+        #[case(true)]
+        #[case(false)]
+        fn busy_status_returns_empty_effects(#[case] rendering: bool) {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.mark_rendering();
-
-            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
-
-            assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn waiting_status_returns_empty_effects() {
-            let mut state = state_with_dsn("postgres://localhost/test");
-            let _ = state.er_preparation.start_waiting_run();
+            if rendering {
+                state.er_preparation.mark_rendering();
+            } else {
+                let _ = state.er_preparation.start_waiting_run();
+            }
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now())
                 .into_effects()

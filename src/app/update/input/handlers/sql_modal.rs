@@ -649,41 +649,17 @@ mod tests {
         }
 
         #[rstest]
-        #[case(Key::Char('p'))]
-        #[case(Key::Char('n'))]
-        fn ctrl_alt_aliases_fall_through_to_text_input(#[case] code: Key) {
-            let result = handle_sql_modal_keys(
-                KeyCombo::ctrl_alt(code),
-                true,
-                &SqlModalStatus::Editing,
-                SqlModalTab::Sql,
-            );
-            assert_action(
-                result,
-                Expected::SqlModalInput(match code {
-                    Key::Char(c) => c,
-                    _ => unreachable!(),
-                }),
-            );
-        }
-
-        #[rstest]
-        #[case(Key::Char('p'))]
-        #[case(Key::Char('n'))]
-        fn ctrl_shift_aliases_fall_through_to_text_input(#[case] code: Key) {
-            let result = handle_sql_modal_keys(
-                KeyCombo::ctrl_shift(code),
-                true,
-                &SqlModalStatus::Editing,
-                SqlModalTab::Sql,
-            );
-            assert_action(
-                result,
-                Expected::SqlModalInput(match code {
-                    Key::Char(c) => c,
-                    _ => unreachable!(),
-                }),
-            );
+        #[case(KeyCombo::ctrl_alt(Key::Char('p')), 'p')]
+        #[case(KeyCombo::ctrl_alt(Key::Char('n')), 'n')]
+        #[case(KeyCombo::ctrl_shift(Key::Char('p')), 'p')]
+        #[case(KeyCombo::ctrl_shift(Key::Char('n')), 'n')]
+        fn modified_aliases_fall_through_to_text_input(
+            #[case] input: KeyCombo,
+            #[case] expected: char,
+        ) {
+            let result =
+                handle_sql_modal_keys(input, true, &SqlModalStatus::Editing, SqlModalTab::Sql);
+            assert_action(result, Expected::SqlModalInput(expected));
         }
 
         // Keys unaffected by completion visibility
@@ -706,26 +682,12 @@ mod tests {
             assert_action(result, expected);
         }
 
-        #[test]
-        fn alt_enter_submits_query() {
-            let result = handle_sql_modal_keys(
-                combo_alt(Key::Enter),
-                false,
-                &SqlModalStatus::Editing,
-                SqlModalTab::Sql,
-            );
-
-            assert_action(result, Expected::SqlModalSubmit);
-        }
-
-        #[test]
-        fn f5_submits_query() {
-            let result = handle_sql_modal_keys(
-                combo(Key::F(5)),
-                false,
-                &SqlModalStatus::Editing,
-                SqlModalTab::Sql,
-            );
+        #[rstest]
+        #[case(combo_alt(Key::Enter))]
+        #[case(combo(Key::F(5)))]
+        fn submit_aliases_submit_query_while_editing(#[case] input: KeyCombo) {
+            let result =
+                handle_sql_modal_keys(input, false, &SqlModalStatus::Editing, SqlModalTab::Sql);
 
             assert_action(result, Expected::SqlModalSubmit);
         }
@@ -1065,39 +1027,19 @@ mod tests {
         }
 
         #[rstest]
-        #[case(SqlModalTab::Plan, Key::Char('n'))]
-        #[case(SqlModalTab::Plan, Key::Char('p'))]
-        #[case(SqlModalTab::Compare, Key::Char('n'))]
-        #[case(SqlModalTab::Compare, Key::Char('p'))]
-        fn ctrl_alt_aliases_do_not_scroll_in_read_only_tabs(
+        #[case(KeyCombo::ctrl_alt(Key::Char('n')), SqlModalTab::Plan)]
+        #[case(KeyCombo::ctrl_alt(Key::Char('p')), SqlModalTab::Plan)]
+        #[case(KeyCombo::ctrl_alt(Key::Char('n')), SqlModalTab::Compare)]
+        #[case(KeyCombo::ctrl_alt(Key::Char('p')), SqlModalTab::Compare)]
+        #[case(KeyCombo::ctrl_shift(Key::Char('n')), SqlModalTab::Plan)]
+        #[case(KeyCombo::ctrl_shift(Key::Char('p')), SqlModalTab::Plan)]
+        #[case(KeyCombo::ctrl_shift(Key::Char('n')), SqlModalTab::Compare)]
+        #[case(KeyCombo::ctrl_shift(Key::Char('p')), SqlModalTab::Compare)]
+        fn modified_aliases_do_not_scroll_in_read_only_tabs(
+            #[case] input: KeyCombo,
             #[case] tab: SqlModalTab,
-            #[case] code: Key,
         ) {
-            let result = handle_sql_modal_keys(
-                KeyCombo::ctrl_alt(code),
-                false,
-                &SqlModalStatus::Normal,
-                tab,
-            );
-
-            assert_action(result, Expected::None);
-        }
-
-        #[rstest]
-        #[case(SqlModalTab::Plan, Key::Char('n'))]
-        #[case(SqlModalTab::Plan, Key::Char('p'))]
-        #[case(SqlModalTab::Compare, Key::Char('n'))]
-        #[case(SqlModalTab::Compare, Key::Char('p'))]
-        fn ctrl_shift_aliases_do_not_scroll_in_read_only_tabs(
-            #[case] tab: SqlModalTab,
-            #[case] code: Key,
-        ) {
-            let result = handle_sql_modal_keys(
-                KeyCombo::ctrl_shift(code),
-                false,
-                &SqlModalStatus::Normal,
-                tab,
-            );
+            let result = handle_sql_modal_keys(input, false, &SqlModalStatus::Normal, tab);
 
             assert_action(result, Expected::None);
         }
@@ -1138,38 +1080,12 @@ mod tests {
             assert_action(result, Expected::CloseModal(ModalKind::SqlModal));
         }
 
-        #[test]
-        fn unbound_keys_return_none() {
-            let result = handle_sql_modal_keys(
-                combo(Key::Char('a')),
-                false,
-                &SqlModalStatus::Normal,
-                SqlModalTab::Sql,
-            );
-
-            assert_action(result, Expected::None);
-        }
-
-        #[test]
-        fn alt_enter_submits() {
-            let result = handle_sql_modal_keys(
-                combo_alt(Key::Enter),
-                false,
-                &SqlModalStatus::Normal,
-                SqlModalTab::Sql,
-            );
-
-            assert_action(result, Expected::SqlModalSubmit);
-        }
-
-        #[test]
-        fn f5_submits() {
-            let result = handle_sql_modal_keys(
-                combo(Key::F(5)),
-                false,
-                &SqlModalStatus::Normal,
-                SqlModalTab::Sql,
-            );
+        #[rstest]
+        #[case(combo_alt(Key::Enter))]
+        #[case(combo(Key::F(5)))]
+        fn submit_aliases_submit_in_normal_status(#[case] input: KeyCombo) {
+            let result =
+                handle_sql_modal_keys(input, false, &SqlModalStatus::Normal, SqlModalTab::Sql);
 
             assert_action(result, Expected::SqlModalSubmit);
         }

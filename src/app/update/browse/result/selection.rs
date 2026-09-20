@@ -267,26 +267,20 @@ mod tests {
     mod page_passthrough {
         use super::*;
 
-        #[test]
-        fn next_page_returns_none_without_mutating_state() {
+        #[rstest::rstest]
+        #[case(true)]
+        #[case(false)]
+        fn page_actions_pass_without_mutating_state(#[case] next: bool) {
             let mut state = row_delete::base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
             state.result_interaction.activate_cell(0, 0);
             state.result_interaction.stage_row(0);
 
-            let result = reduce_selection(&mut state, &Action::ResultNextPage, Instant::now());
-
-            assert!(result.is_pass());
-            assert_eq!(state.result_interaction.selection().row(), Some(0));
-            assert!(state.result_interaction.staged_delete_rows().contains(&0));
-        }
-
-        #[test]
-        fn prev_page_returns_none_without_mutating_state() {
-            let mut state = row_delete::base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
-            state.result_interaction.activate_cell(0, 0);
-            state.result_interaction.stage_row(0);
-
-            let result = reduce_selection(&mut state, &Action::ResultPrevPage, Instant::now());
+            let action = if next {
+                Action::ResultNextPage
+            } else {
+                Action::ResultPrevPage
+            };
+            let result = reduce_selection(&mut state, &action, Instant::now());
 
             assert!(result.is_pass());
             assert_eq!(state.result_interaction.selection().row(), Some(0));

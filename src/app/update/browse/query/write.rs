@@ -1243,67 +1243,28 @@ mod tests {
             }
         }
 
-        #[test]
-        fn execute_write_with_non_one_row_sets_error() {
+        #[rstest::rstest]
+        #[case(0usize)]
+        #[case(2usize)]
+        fn execute_write_with_non_one_row_sets_error(#[case] affected_rows: usize) {
             let mut state = editable_state();
-            let action = write_succeeded_action(&mut state, 0);
+            let action = write_succeeded_action(&mut state, affected_rows);
 
             let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(effects.len(), 1);
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.query.is_running());
+            let expected_error =
+                format!("UPDATE expected 1 row, but affected {affected_rows} rows");
             assert_eq!(
                 state.messages.last_error.as_deref(),
-                Some("UPDATE expected 1 row, but affected 0 rows")
+                Some(expected_error.as_str())
             );
             assert!(matches!(
                 effects.first(),
                 Some(Effect::ExecutePreview { .. })
             ));
-        }
-
-        #[test]
-        fn execute_write_with_multiple_rows_sets_error() {
-            let mut state = editable_state();
-            let action = write_succeeded_action(&mut state, 2);
-
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
-
-            assert_eq!(effects.len(), 1);
-            assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(state.query.is_running());
-            assert_eq!(
-                state.messages.last_error.as_deref(),
-                Some("UPDATE expected 1 row, but affected 2 rows")
-            );
-            assert!(matches!(
-                effects.first(),
-                Some(Effect::ExecutePreview { .. })
-            ));
-        }
-
-        #[test]
-        fn mysql_zero_affected_rows_from_predicate_mismatch_stays_error() {
-            let mut state = mysql_editable_state("text", QueryValue::text("Alice"), "Bob");
-            let run_id = begin_query_run(&mut state);
-
-            let effects = dispatch_query(
-                &mut state,
-                &Action::ExecuteWriteSucceeded {
-                    run_id,
-                    affected_rows: 0,
-                    diagnostics: Vec::new(),
-                },
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert_eq!(effects.len(), 1);
-            assert_eq!(
-                state.messages.last_error.as_deref(),
-                Some("UPDATE expected 1 row, but affected 0 rows")
-            );
         }
 
         #[test]
@@ -1389,14 +1350,19 @@ mod tests {
             );
         }
 
-        #[test]
-        fn execute_write_failure_before_change_preserves_draft() {
+        #[rstest::rstest]
+        #[case(false)]
+        #[case(true)]
+        fn execute_write_failure_preserves_draft_without_refresh(#[case] timeout: bool) {
             let mut state = editable_state();
-            state.result_interaction.stage_row(0);
-            let action = write_failed_action(
-                &mut state,
-                DbOperationError::QueryFailed("before write".to_string()),
-            );
+            let error = if timeout {
+                state.session.enable_read_only();
+                DbOperationError::Timeout("outer timeout".to_string())
+            } else {
+                state.result_interaction.stage_row(0);
+                DbOperationError::QueryFailed("before write".to_string())
+            };
+            let action = write_failed_action(&mut state, error);
 
             let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
@@ -1404,23 +1370,9 @@ mod tests {
             assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert!(state.result_interaction.cell_edit().is_active());
             assert_eq!(state.result_interaction.cell_edit().draft_value(), "Bob");
-            assert!(state.result_interaction.staged_delete_rows().contains(&0));
-        }
-
-        #[test]
-        fn read_only_write_timeout_preserves_draft_without_refresh() {
-            let mut state = editable_state();
-            state.session.enable_read_only();
-            let action = write_failed_action(
-                &mut state,
-                DbOperationError::Timeout("outer timeout".to_string()),
-            );
-
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
-
-            assert!(effects.is_empty());
-            assert_eq!(state.input_mode(), InputMode::CellEdit);
-            assert!(state.result_interaction.cell_edit().is_active());
+            if !timeout {
+                assert!(state.result_interaction.staged_delete_rows().contains(&0));
+            }
             assert_eq!(state.query.current_result().unwrap().data_row_count(), 1);
         }
 

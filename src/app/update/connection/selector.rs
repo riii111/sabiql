@@ -152,6 +152,7 @@ mod tests {
         #[test]
         fn sets_mode_and_loads_connections() {
             let mut state = AppState::new("test".to_string());
+            state.ui.set_connection_list_selection(Some(3));
 
             let effects = reduce_connection_selector(
                 &mut state,
@@ -164,19 +165,6 @@ mod tests {
                 .into_effects()
                 .expect("reducer should handle action");
             assert!(effects.iter().any(|e| matches!(e, Effect::LoadConnections)));
-        }
-
-        #[test]
-        fn resets_selection_to_zero() {
-            let mut state = AppState::new("test".to_string());
-            state.ui.set_connection_list_selection(Some(3));
-
-            reduce_connection_selector(
-                &mut state,
-                &Action::OpenModal(ModalKind::ConnectionSelector),
-                Instant::now(),
-            );
-
             assert_eq!(state.ui.connection_list_selected(), 0);
         }
     }

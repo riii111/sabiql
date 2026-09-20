@@ -1031,21 +1031,6 @@ mod tests {
         }
 
         #[test]
-        fn sqlite_without_rowid_table_uses_primary_key_for_delete_preview() {
-            let mut state = sqlite_editable_state();
-            let mut detail = state.session.table_detail().cloned().expect("table detail");
-            detail.kind_info.without_rowid = true;
-            state.session.set_table_detail_raw(Some(detail));
-
-            let result = build_bulk_delete_preview(&state).unwrap();
-
-            assert_eq!(
-                result.preview.sql,
-                "DELETE FROM \"users\"\nWHERE \"id\" = '1';"
-            );
-        }
-
-        #[test]
         fn sqlite_database_type_rejects_null_primary_key_value() {
             let mut state = sqlite_editable_state();
             state

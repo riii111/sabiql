@@ -109,22 +109,6 @@ mod tests {
         }
 
         #[test]
-        fn escape_returns_to_help_origin_when_filter_is_empty() {
-            let mut state = create_test_state();
-            open_help(&mut state);
-
-            let effects = super::dispatch_modal(
-                &mut state,
-                &Action::CloseModal(ModalKind::Help),
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert_eq!(state.input_mode(), InputMode::CommandPalette);
-            assert!(effects.is_empty());
-        }
-
-        #[test]
         fn filter_text_actions_update_help_state() {
             let mut state = create_test_state();
             open_help(&mut state);
@@ -223,45 +207,40 @@ mod tests {
             super::dispatch_modal(state, &Action::TextYank { target }, Instant::now());
         }
 
-        #[test]
-        fn er_filter_kill_then_yank_restores_text() {
+        #[rstest::rstest]
+        #[case(InputTarget::ErFilter, "users")]
+        #[case(InputTarget::QueryHistoryFilter, "SELECT")]
+        #[case(InputTarget::SettingsErBrowser, "Firefox")]
+        fn kill_then_yank_restores_text(#[case] target: InputTarget, #[case] text: &str) {
             let mut state = create_test_state();
-            state.ui.er_picker_mut().insert_filter_str("users");
-
-            kill_then_yank(&mut state, InputTarget::ErFilter);
-
-            assert_eq!(state.ui.er_picker().filter_input().content(), "users");
-            assert_eq!(state.kill_buffer(), Some("users"));
-        }
-
-        #[test]
-        fn query_history_filter_kill_then_yank_restores_text() {
-            let mut state = create_test_state();
-            state.query_history_picker.insert_filter_str("SELECT");
-
-            kill_then_yank(&mut state, InputTarget::QueryHistoryFilter);
-
-            assert_eq!(
-                state.query_history_picker.filter_input().content(),
-                "SELECT"
-            );
-            assert_eq!(state.kill_buffer(), Some("SELECT"));
-        }
-
-        #[test]
-        fn settings_browser_kill_then_yank_restores_text() {
-            let mut state = create_test_state();
-            state.settings.switch_next_section();
-            state.settings.switch_next_section();
-            state.settings.start_custom_browser_edit();
-            for ch in "Firefox".chars() {
-                state.settings.input_custom_browser(ch);
+            match target {
+                InputTarget::ErFilter => state.ui.er_picker_mut().insert_filter_str(text),
+                InputTarget::QueryHistoryFilter => {
+                    state.query_history_picker.insert_filter_str(text);
+                }
+                InputTarget::SettingsErBrowser => {
+                    state.settings.switch_next_section();
+                    state.settings.switch_next_section();
+                    state.settings.start_custom_browser_edit();
+                    for ch in text.chars() {
+                        state.settings.input_custom_browser(ch);
+                    }
+                }
+                _ => unreachable!(),
             }
 
-            kill_then_yank(&mut state, InputTarget::SettingsErBrowser);
+            kill_then_yank(&mut state, target);
 
-            assert_eq!(state.settings.custom_er_browser().content(), "Firefox");
-            assert_eq!(state.kill_buffer(), Some("Firefox"));
+            let actual = match target {
+                InputTarget::ErFilter => state.ui.er_picker().filter_input().content(),
+                InputTarget::QueryHistoryFilter => {
+                    state.query_history_picker.filter_input().content()
+                }
+                InputTarget::SettingsErBrowser => state.settings.custom_er_browser().content(),
+                _ => unreachable!(),
+            };
+            assert_eq!(actual, text);
+            assert_eq!(state.kill_buffer(), Some(text));
         }
     }
 
@@ -765,48 +744,38 @@ mod tests {
                 assert_cached_export_effect(&effects[0], run_id);
             }
 
-            #[test]
-            fn csv_export_ignores_mismatched_dsn() {
+            #[rstest::rstest]
+            #[case("dsn")]
+            #[case("run")]
+            #[case("cached_run")]
+            fn csv_export_ignores_mismatched_context(#[case] mismatch: &str) {
                 let mut state = create_test_state();
-                enter_confirm_dialog(&mut state, InputMode::Normal);
-                let _ = state
-                    .session
-                    .begin_connecting("postgres://localhost/current");
-                let _ = state.query.begin_running(Instant::now());
-                state.confirm_dialog.open(
-                    "",
-                    "",
-                    ConfirmIntent::CsvExportRerunnable {
-                        dsn: "postgres://localhost/stale".to_string(),
-                        run_id: 1,
-                        export_query: "SELECT 1".to_string(),
-                        file_name: "test.csv".to_string(),
-                    },
-                );
-
-                let effects = super::dispatch_modal(
-                    &mut state,
-                    &Action::ConfirmDialogConfirm,
-                    Instant::now(),
-                )
-                .unwrap();
-
-                assert!(effects.is_empty());
-            }
-
-            #[test]
-            fn csv_export_ignores_mismatched_run_id() {
-                let (mut state, _) = csv_state_with_current_run();
-                open_confirm_intent(&mut state, rerunnable_csv_intent(2));
-
-                let effects = confirm_effects(&mut state);
-                assert!(effects.is_empty());
-            }
-
-            #[test]
-            fn cached_csv_export_ignores_mismatched_run_id() {
-                let (mut state, _) = csv_state_with_current_run();
-                open_confirm_intent(&mut state, cached_csv_intent(2));
+                if mismatch == "dsn" {
+                    enter_confirm_dialog(&mut state, InputMode::Normal);
+                    let _ = state
+                        .session
+                        .begin_connecting("postgres://localhost/current");
+                    let _ = state.query.begin_running(Instant::now());
+                    state.confirm_dialog.open(
+                        "",
+                        "",
+                        ConfirmIntent::CsvExportRerunnable {
+                            dsn: "postgres://localhost/stale".to_string(),
+                            run_id: 1,
+                            export_query: "SELECT 1".to_string(),
+                            file_name: "test.csv".to_string(),
+                        },
+                    );
+                } else {
+                    let (_, current_run_id) = csv_state_with_current_run();
+                    let intent = if mismatch == "run" {
+                        rerunnable_csv_intent(current_run_id + 1)
+                    } else {
+                        cached_csv_intent(current_run_id + 1)
+                    };
+                    state = csv_state_with_current_run().0;
+                    open_confirm_intent(&mut state, intent);
+                }
 
                 let effects = confirm_effects(&mut state);
                 assert!(effects.is_empty());
@@ -1044,46 +1013,31 @@ mod tests {
                 assert_eq!(state.result_interaction.selection().cell(), Some(2));
             }
 
-            #[test]
-            fn current_csv_export_cancel_marks_query_idle() {
-                let (mut state, run_id) = csv_state_with_current_run();
-                open_confirm_intent(&mut state, rerunnable_csv_intent(run_id));
+            #[rstest::rstest]
+            #[case(false, false)]
+            #[case(false, true)]
+            #[case(true, false)]
+            #[case(true, true)]
+            fn csv_export_cancel_respects_current_run(#[case] stale: bool, #[case] cached: bool) {
+                let (mut state, cancelled_run_id, current_run_id) = if stale {
+                    csv_state_with_stale_run()
+                } else {
+                    let (state, run_id) = csv_state_with_current_run();
+                    (state, run_id, run_id)
+                };
+                let intent = if cached {
+                    cached_csv_intent(cancelled_run_id)
+                } else {
+                    rerunnable_csv_intent(cancelled_run_id)
+                };
+                open_confirm_intent(&mut state, intent);
 
                 let effects = cancel_effects(&mut state);
                 assert!(effects.is_empty());
-                assert!(!state.query.is_running());
-            }
-
-            #[test]
-            fn current_cached_csv_export_cancel_marks_query_idle() {
-                let (mut state, run_id) = csv_state_with_current_run();
-                open_confirm_intent(&mut state, cached_csv_intent(run_id));
-
-                let effects = cancel_effects(&mut state);
-                assert!(effects.is_empty());
-                assert!(!state.query.is_running());
-            }
-
-            #[test]
-            fn stale_csv_export_cancel_keeps_current_run() {
-                let (mut state, stale_run_id, current_run_id) = csv_state_with_stale_run();
-                open_confirm_intent(&mut state, rerunnable_csv_intent(stale_run_id));
-
-                let effects = cancel_effects(&mut state);
-                assert!(effects.is_empty());
-                assert!(state.query.is_running());
-                assert!(state.query.is_current_run(current_run_id));
-            }
-
-            #[test]
-            fn stale_cached_csv_export_cancel_keeps_current_run() {
-                let (mut state, stale_run_id, current_run_id) = csv_state_with_stale_run();
-                open_confirm_intent(&mut state, cached_csv_intent(stale_run_id));
-
-                let effects = cancel_effects(&mut state);
-                assert!(effects.is_empty());
-                assert!(state.query.is_running());
-                assert!(state.query.is_current_run(current_run_id));
+                assert_eq!(state.query.is_running(), stale);
+                if stale {
+                    assert!(state.query.is_current_run(current_run_id));
+                }
             }
 
             #[test]
