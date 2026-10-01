@@ -107,8 +107,7 @@ async fn run_application() -> Result<()> {
         }
         #[cfg(not(feature = "self-update"))]
         {
-            eprintln!("{}", self_update_disabled_message());
-            std::process::exit(1);
+            return Err(color_eyre::eyre::eyre!(self_update_disabled_message()));
         }
     }
 
