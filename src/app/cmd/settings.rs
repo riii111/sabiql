@@ -26,6 +26,7 @@ pub(in crate::cmd) fn run(
 
 #[cfg(test)]
 mod tests {
+    use crate::model::shared::settings::ClipboardBackend;
     use std::sync::{Arc, Mutex};
 
     use super::*;
@@ -83,7 +84,7 @@ mod tests {
 
         let action = run(
             AppSettings {
-                clipboard_backend: crate::model::shared::settings::ClipboardBackend::Auto,
+                clipboard_backend: ClipboardBackend::Auto,
                 theme_id: ThemeId::Light,
                 keymap_preset: KeymapPreset::Ide,
                 er_browser: Some("Firefox".to_string()),
@@ -115,7 +116,7 @@ mod tests {
 
         let action = run(
             AppSettings {
-                clipboard_backend: crate::model::shared::settings::ClipboardBackend::Auto,
+                clipboard_backend: ClipboardBackend::Auto,
                 theme_id: ThemeId::Light,
                 keymap_preset: KeymapPreset::default(),
                 er_browser: None,

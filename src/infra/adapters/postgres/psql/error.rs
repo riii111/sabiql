@@ -44,10 +44,10 @@ pub(in crate::adapters::postgres) fn is_transport_interruption(
     // A PostgreSQL server error is definitive even when psql has already
     // printed output for earlier statements (or our boundary markers). The
     // exception is SQLSTATEs that mean the connection was lost or shut down.
-    if let Some(sqlstate) = error_sqlstate(error) {
-        if !is_connection_interruption_sqlstate(sqlstate) {
-            return false;
-        }
+    if let Some(sqlstate) = error_sqlstate(error)
+        && !is_connection_interruption_sqlstate(sqlstate)
+    {
+        return false;
     }
 
     if status.code() == Some(2) {
@@ -70,8 +70,8 @@ fn error_sqlstate(error: &DbOperationError) -> Option<&str> {
         | DbOperationError::LockTimeout(details)
         | DbOperationError::ObjectMissing(details)
         | DbOperationError::Timeout(details)
-        | DbOperationError::Canceled(details) => extract_sqlstate(details),
-        DbOperationError::ConnectionFailedWithKind { details, .. } => extract_sqlstate(details),
+        | DbOperationError::Canceled(details)
+        | DbOperationError::ConnectionFailedWithKind { details, .. } => extract_sqlstate(details),
         _ => None,
     }
 }

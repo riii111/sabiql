@@ -63,6 +63,10 @@ pub(in crate::cmd) async fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::shared::{
+        settings::{KeymapPreset, SettingsState},
+        theme_id::ThemeId,
+    };
     use std::path::{Path, PathBuf};
     use std::sync::Mutex;
 
@@ -133,14 +137,9 @@ mod tests {
             let writer = Arc::new(RecordingBackend(std::sync::Mutex::new(Vec::new())));
             let clipboard: Arc<dyn ClipboardWriter> = writer.clone();
             let folder_opener: Arc<dyn FolderOpener> = Arc::new(MockFolderOpener::new());
-            let mut state = crate::model::shared::settings::SettingsState::default();
+            let mut state = SettingsState::default();
             for backend in [ClipboardBackend::Native, ClipboardBackend::Osc52] {
-                state.commit_saved(
-                    crate::model::shared::theme_id::ThemeId::Default,
-                    crate::model::shared::settings::KeymapPreset::Default,
-                    None,
-                    backend,
-                );
+                state.commit_saved(ThemeId::Default, KeymapPreset::Default, None, backend);
                 run(
                     Effect::CopyToClipboard {
                         content: "value".into(),

@@ -1,3 +1,4 @@
+use sabiql_app::model::shared::settings::ClipboardBackend;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::os::fd::FromRawFd;
@@ -116,10 +117,7 @@ fn exercise_output() {
         for _ in 0..100 {
             assert!(
                 clipboard
-                    .copy_text(
-                        "日本語🙂",
-                        sabiql_app::model::shared::settings::ClipboardBackend::Osc52
-                    )
+                    .copy_text("日本語🙂", ClipboardBackend::Osc52)
                     .is_ok()
             );
             std::thread::yield_now();

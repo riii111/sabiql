@@ -35,6 +35,7 @@ mod tests {
     use crate::model::shared::confirm_dialog::{ConfirmIntent, CsvExportCacheSnapshot};
     use crate::model::shared::help::HelpMode;
     use crate::model::shared::input_mode::InputMode;
+    use crate::model::shared::settings::ClipboardBackend;
     use crate::model::shared::settings::KeymapPreset;
     use crate::ports::outbound::AppSettings;
     use crate::services::AppServices;
@@ -409,7 +410,7 @@ mod tests {
                 let effects = super::dispatch_modal(
                     &mut state,
                     &Action::SettingsSaved(AppSettings {
-                        clipboard_backend: crate::model::shared::settings::ClipboardBackend::Auto,
+                        clipboard_backend: ClipboardBackend::Auto,
                         theme_id: ThemeId::Light,
                         keymap_preset: KeymapPreset::Ide,
                         er_browser: Some("Google Chrome".to_string()),

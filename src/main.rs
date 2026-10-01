@@ -1,3 +1,4 @@
+use sabiql_infra::adapters::run_secret_store_helper;
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::time::Instant;
@@ -81,7 +82,7 @@ enum Command {
 }
 
 fn main() -> Result<()> {
-    if sabiql_infra::adapters::run_secret_store_helper() {
+    if run_secret_store_helper() {
         return Ok(());
     }
     tokio::runtime::Builder::new_multi_thread()
