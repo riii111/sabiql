@@ -93,6 +93,7 @@ pub(super) fn reduce_settings(
         Action::SettingsApply => {
             let theme_id = state.settings.selected_theme();
             let settings = AppSettings {
+                clipboard_backend: state.settings.selected_clipboard_backend(),
                 theme_id,
                 keymap_preset: state.settings.selected_keymap_preset(),
                 er_browser: state.settings.selected_er_browser(),
@@ -110,6 +111,7 @@ pub(super) fn reduce_settings(
                 settings.theme_id,
                 settings.keymap_preset,
                 settings.er_browser.clone(),
+                settings.clipboard_backend,
             );
             state
                 .messages
@@ -123,5 +125,52 @@ pub(super) fn reduce_settings(
             DispatchResult::handled()
         }
         _ => DispatchResult::pass(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::shared::settings::ClipboardBackend;
+
+    #[test]
+    fn clipboard_selection_only_applies_after_save_success() {
+        let mut state = AppState::new("test".into());
+        let now = Instant::now();
+        reduce_settings(&mut state, &Action::OpenModal(ModalKind::Settings), now);
+        reduce_settings(&mut state, &Action::SettingsPreviousSection, now);
+        reduce_settings(&mut state, &Action::SettingsSelectNext, now);
+        let effects = reduce_settings(&mut state, &Action::SettingsApply, now)
+            .into_effects()
+            .unwrap();
+        let Effect::SaveSettings { settings } = &effects[0] else {
+            panic!("expected save")
+        };
+        assert_eq!(settings.clipboard_backend, ClipboardBackend::Native);
+        assert_eq!(
+            state.settings.saved_clipboard_backend(),
+            ClipboardBackend::Auto
+        );
+
+        reduce_settings(
+            &mut state,
+            &Action::SettingsSaveFailed("disk full".into()),
+            now,
+        );
+        assert_eq!(
+            state.settings.saved_clipboard_backend(),
+            ClipboardBackend::Auto
+        );
+        reduce_settings(&mut state, &Action::SettingsCancel, now);
+        assert_eq!(
+            state.settings.selected_clipboard_backend(),
+            ClipboardBackend::Auto
+        );
+
+        reduce_settings(&mut state, &Action::SettingsSaved(settings.clone()), now);
+        assert_eq!(
+            state.settings.saved_clipboard_backend(),
+            ClipboardBackend::Native
+        );
     }
 }

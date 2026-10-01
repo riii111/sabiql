@@ -523,6 +523,21 @@ fn settings_overlay() {
 }
 
 #[test]
+fn settings_overlay_clipboard_pending_native() {
+    let mut state = postgres_connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.settings.open(state.ui.theme_id());
+    state.settings.switch_previous_section();
+    state.settings.select_next();
+    state.modal.set_mode(InputMode::Settings);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn settings_overlay_keymap() {
     let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();

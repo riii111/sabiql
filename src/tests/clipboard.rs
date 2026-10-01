@@ -114,7 +114,14 @@ fn exercise_output() {
     let worker = std::thread::spawn(move || {
         worker_barrier.wait();
         for _ in 0..100 {
-            assert!(clipboard.copy_text("日本語🙂").is_ok());
+            assert!(
+                clipboard
+                    .copy_text(
+                        "日本語🙂",
+                        sabiql_app::model::shared::settings::ClipboardBackend::Osc52
+                    )
+                    .is_ok()
+            );
             std::thread::yield_now();
         }
     });

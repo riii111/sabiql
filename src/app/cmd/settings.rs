@@ -1,6 +1,18 @@
 use crate::ports::outbound::{AppSettings, SettingsStore};
 use crate::update::action::Action;
 
+pub(in crate::cmd) fn spawn(
+    settings: AppSettings,
+    settings_store: &std::sync::Arc<dyn SettingsStore>,
+    action_tx: &tokio::sync::mpsc::Sender<Action>,
+) {
+    let store = std::sync::Arc::clone(settings_store);
+    let tx = action_tx.clone();
+    std::thread::spawn(move || {
+        let _ = tx.blocking_send(run(settings, &store));
+    });
+}
+
 pub(in crate::cmd) fn run(
     settings: AppSettings,
     settings_store: &std::sync::Arc<dyn SettingsStore>,
@@ -42,6 +54,27 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn pending_store_save_does_not_block_event_processing() {
+        struct DelayedStore(std::sync::Mutex<std::sync::mpsc::Receiver<()>>);
+        impl SettingsStore for DelayedStore {
+            fn save(&self, _: AppSettings) -> Result<(), SettingsStoreError> {
+                self.0.lock().unwrap().recv().unwrap();
+                Ok(())
+            }
+        }
+        let (release, wait) = std::sync::mpsc::channel();
+        let store: Arc<dyn SettingsStore> = Arc::new(DelayedStore(Mutex::new(wait)));
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        spawn(AppSettings::default(), &store, &tx);
+        assert!(rx.try_recv().is_err());
+        release.send(()).unwrap();
+        let result = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+            .await
+            .unwrap();
+        assert!(matches!(result, Some(Action::SettingsSaved(_))));
+    }
+
     #[test]
     fn save_settings_dispatches_saved_action() {
         let store = Arc::new(RecordingSettingsStore {
@@ -50,6 +83,7 @@ mod tests {
 
         let action = run(
             AppSettings {
+                clipboard_backend: crate::model::shared::settings::ClipboardBackend::Auto,
                 theme_id: ThemeId::Light,
                 keymap_preset: KeymapPreset::Ide,
                 er_browser: Some("Firefox".to_string()),
@@ -81,6 +115,7 @@ mod tests {
 
         let action = run(
             AppSettings {
+                clipboard_backend: crate::model::shared::settings::ClipboardBackend::Auto,
                 theme_id: ThemeId::Light,
                 keymap_preset: KeymapPreset::default(),
                 er_browser: None,

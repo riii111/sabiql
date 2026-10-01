@@ -12,7 +12,7 @@ use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{CommandTag, QueryResult, QuerySource, RefreshScope, WriteExecutionResult};
 
 use super::super::PostgresAdapter;
-use super::super::dsn::{quote_conninfo_value, take_explicit_password};
+use super::super::dsn::{add_uri_password_file, quote_conninfo_value, take_explicit_password};
 use super::error::{classify_cli_spawn_error, classify_query_error, is_transport_interruption};
 use super::parser::{ParseCommandTagError, split_sql_statements};
 use super::passfile::Passfile;
@@ -245,7 +245,7 @@ impl PostgresAdapter {
                 )
             })?;
             if dsn.starts_with("postgres://") || dsn.starts_with("postgresql://") {
-                cmd.arg(connection)
+                cmd.arg(add_uri_password_file(&connection, path))
                     .env("PGPASSFILE", path)
                     .env_remove("PGPASSWORD");
             } else {
@@ -1132,6 +1132,20 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn sqlstate_syntax_error_after_marker_output_is_definitive() {
+            let result = run_fake_adhoc(
+                "printf 'M\\nSELECT 1\\nM\\n'; printf 'ERROR:  42601: syntax error at or near FROM\\n' >&2; exit 3",
+                "SELECT 1; SELECT FROM users",
+                1,
+                false,
+                Some("M"),
+            )
+            .await;
+
+            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+        }
+
+        #[tokio::test]
         async fn read_only_transport_failure_stays_a_normal_error() {
             let result = run_fake_adhoc(
                 "printf 'connection to server was lost\\n' >&2; exit 1",
@@ -1316,6 +1330,26 @@ mod tests {
                     refresh_scope: RefreshScope::Data,
                     source,
                 }) if matches!(source.as_ref(), DbOperationError::UniqueViolation(_))
+            ));
+        }
+
+        #[tokio::test]
+        async fn explicit_commit_before_returning_syntax_error_still_refreshes() {
+            let result = run_fake_adhoc(
+                "printf 'M\\nBEGIN\\nM\\nUPDATE 1\\nM\\nCOMMIT\\nM\\n'; printf 'ERROR:  42601: syntax error at or near RETURNING\\n' >&2; exit 3",
+                "BEGIN; UPDATE users SET name = 'new'; COMMIT; INSERT INTO users(id) VALUES (1) RETURNING",
+                1,
+                false,
+                Some("M"),
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    refresh_scope: RefreshScope::Data,
+                    source,
+                }) if matches!(source.as_ref(), DbOperationError::QueryFailed(_))
             ));
         }
 

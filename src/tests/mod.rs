@@ -3,6 +3,7 @@ mod adapter_postgres;
 #[cfg(unix)]
 mod clipboard;
 pub mod harness;
+mod startup_recovery;
 
 use clap::Parser;
 

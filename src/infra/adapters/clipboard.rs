@@ -3,7 +3,53 @@ use std::io::{IsTerminal, Write, stdout};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 
+use crate::app::model::shared::settings::ClipboardBackend;
 use crate::app::ports::outbound::clipboard::{ClipboardError, ClipboardOutcome, ClipboardWriter};
+
+pub(super) struct RoutingClipboard {
+    ssh: bool,
+    native: Box<dyn ClipboardWriter>,
+    terminal: Box<dyn ClipboardWriter>,
+}
+
+impl RoutingClipboard {
+    pub(super) fn from_environment() -> Self {
+        Self {
+            ssh: is_ssh(
+                std::env::var_os("SSH_CONNECTION").as_deref(),
+                std::env::var_os("SSH_TTY").as_deref(),
+            ),
+            native: Box::new(ArboardClipboard),
+            terminal: Box::new(Osc52Clipboard),
+        }
+    }
+}
+
+fn is_ssh(connection: Option<&std::ffi::OsStr>, tty: Option<&std::ffi::OsStr>) -> bool {
+    [connection, tty]
+        .into_iter()
+        .flatten()
+        .any(|value| !value.is_empty())
+}
+
+impl ClipboardWriter for RoutingClipboard {
+    fn copy_text(
+        &self,
+        content: &str,
+        backend: ClipboardBackend,
+    ) -> Result<ClipboardOutcome, ClipboardError> {
+        match backend {
+            ClipboardBackend::Native => self.native.copy_text(content, backend),
+            ClipboardBackend::Osc52 => self.terminal.copy_text(content, backend),
+            ClipboardBackend::Auto if self.ssh => self.terminal.copy_text(content, backend),
+            ClipboardBackend::Auto => self.native.copy_text(content, backend).or_else(|_| {
+                self.terminal.copy_text(content, backend).map_err(|_| ClipboardError::Terminal(
+                    "OS clipboard and OSC 52 copy failed; check terminal clipboard permissions and copy size".into()
+                ))
+            }),
+        }
+    }
+}
 
 pub(super) struct ArboardClipboard;
 
@@ -13,13 +59,21 @@ pub(super) struct Osc52Clipboard;
 const MAX_OSC52_BYTES: usize = 74_994;
 
 impl ClipboardWriter for ArboardClipboard {
-    fn copy_text(&self, content: &str) -> Result<ClipboardOutcome, ClipboardError> {
+    fn copy_text(
+        &self,
+        content: &str,
+        _backend: ClipboardBackend,
+    ) -> Result<ClipboardOutcome, ClipboardError> {
         copy_native(content).map(|()| ClipboardOutcome::Copied)
     }
 }
 
 impl ClipboardWriter for Osc52Clipboard {
-    fn copy_text(&self, content: &str) -> Result<ClipboardOutcome, ClipboardError> {
+    fn copy_text(
+        &self,
+        content: &str,
+        _backend: ClipboardBackend,
+    ) -> Result<ClipboardOutcome, ClipboardError> {
         let stdout = stdout();
         if !stdout.is_terminal() {
             return Err(ClipboardError::Terminal(
@@ -61,6 +115,130 @@ fn copy_native(_content: &str) -> Result<(), ClipboardError> {
 mod tests {
     use super::*;
     use std::io;
+
+    struct RecordingClipboard {
+        calls: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+        outcome: Result<ClipboardOutcome, ClipboardError>,
+    }
+
+    impl ClipboardWriter for RecordingClipboard {
+        fn copy_text(
+            &self,
+            content: &str,
+            _: ClipboardBackend,
+        ) -> Result<ClipboardOutcome, ClipboardError> {
+            self.calls.lock().unwrap().push(content.to_owned());
+            self.outcome.clone()
+        }
+    }
+
+    #[rstest::rstest]
+    #[case(None, None, false)]
+    #[case(Some(""), Some(""), false)]
+    #[case(Some("remote"), None, true)]
+    #[case(None, Some("/dev/pts/1"), true)]
+    fn ssh_detection_requires_nonempty_environment(
+        #[case] connection: Option<&str>,
+        #[case] tty: Option<&str>,
+        #[case] expected: bool,
+    ) {
+        assert_eq!(
+            is_ssh(
+                connection.map(std::ffi::OsStr::new),
+                tty.map(std::ffi::OsStr::new)
+            ),
+            expected
+        );
+    }
+
+    #[rstest::rstest]
+    #[case(
+        ClipboardBackend::Auto,
+        true,
+        true,
+        true,
+        0,
+        1,
+        Some(ClipboardOutcome::SentToTerminal)
+    )]
+    #[case(
+        ClipboardBackend::Auto,
+        false,
+        true,
+        true,
+        1,
+        0,
+        Some(ClipboardOutcome::Copied)
+    )]
+    #[case(
+        ClipboardBackend::Auto,
+        false,
+        false,
+        true,
+        1,
+        1,
+        Some(ClipboardOutcome::SentToTerminal)
+    )]
+    #[case(ClipboardBackend::Auto, false, false, false, 1, 1, None)]
+    #[case(
+        ClipboardBackend::Native,
+        true,
+        true,
+        true,
+        1,
+        0,
+        Some(ClipboardOutcome::Copied)
+    )]
+    #[case(ClipboardBackend::Native, false, false, true, 1, 0, None)]
+    #[case(
+        ClipboardBackend::Osc52,
+        false,
+        true,
+        true,
+        0,
+        1,
+        Some(ClipboardOutcome::SentToTerminal)
+    )]
+    fn routing_calls_only_required_backends(
+        #[case] backend: ClipboardBackend,
+        #[case] ssh: bool,
+        #[case] native_ok: bool,
+        #[case] terminal_ok: bool,
+        #[case] native_count: usize,
+        #[case] terminal_count: usize,
+        #[case] expected: Option<ClipboardOutcome>,
+    ) {
+        let native_calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let terminal_calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let router = RoutingClipboard {
+            ssh,
+            native: Box::new(RecordingClipboard {
+                calls: native_calls.clone(),
+                outcome: if native_ok {
+                    Ok(ClipboardOutcome::Copied)
+                } else {
+                    Err(ClipboardError::Unavailable("secret".into()))
+                },
+            }),
+            terminal: Box::new(RecordingClipboard {
+                calls: terminal_calls.clone(),
+                outcome: if terminal_ok {
+                    Ok(ClipboardOutcome::SentToTerminal)
+                } else {
+                    Err(ClipboardError::Terminal("failure".into()))
+                },
+            }),
+        };
+
+        let result = router.copy_text("secret", backend);
+
+        assert_eq!(result.as_ref().ok().copied(), expected);
+        assert_eq!(native_calls.lock().unwrap().len(), native_count);
+        assert_eq!(terminal_calls.lock().unwrap().len(), terminal_count);
+        if backend == ClipboardBackend::Auto && expected.is_none() {
+            assert!(!result.unwrap_err().to_string().contains("secret"));
+        }
+    }
 
     #[rstest::rstest]
     #[case("", "")]

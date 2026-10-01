@@ -46,7 +46,12 @@ pub(in crate::update) fn reduce_connection_list(
                     .to_lowercase()
                     .cmp(&b.display_name().to_lowercase())
             });
-            state.set_connections_and_services(sorted, services.clone());
+            if profile_load_warning.is_none() {
+                state.set_connections(sorted);
+            }
+            if service_load_warning.is_none() {
+                state.set_service_entries(services.clone());
+            }
 
             if let Some(warning) = profile_load_warning {
                 state.messages.set_error(warning.clone());
@@ -117,6 +122,30 @@ mod tests {
             SslMode::Prefer,
         )
         .unwrap()
+    }
+
+    #[test]
+    fn failed_profile_reload_preserves_existing_connections_and_selection() {
+        let mut state = AppState::new("test".into());
+        let profile = create_test_profile("saved");
+        state.set_connections(vec![profile.clone()]);
+        state.ui.set_connection_list_selection(Some(0));
+
+        reduce_connection_list(
+            &mut state,
+            &Action::ConnectionsLoaded(ConnectionsLoadedPayload {
+                profiles: vec![],
+                services: vec![],
+                profile_load_warning: Some(
+                    "OS password storage unavailable; settings preserved".into(),
+                ),
+                service_load_warning: None,
+            }),
+            Instant::now(),
+        );
+
+        assert_eq!(state.connections(), &[profile]);
+        assert_eq!(state.ui.connection_list_selected(), 0);
     }
 
     mod connection_list_navigation {

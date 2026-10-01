@@ -22,6 +22,18 @@ use crate::update::action::{
     Action, ConnectionSaveError, ConnectionTarget, ConnectionsLoadedPayload,
 };
 
+// A stalled OS store must not keep the Tokio runtime alive during shutdown.
+// Production adapters independently bound their helper processes and watch parent lifetime.
+async fn run_store_operation<T: Send + 'static>(
+    operation: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, tokio::sync::oneshot::error::RecvError> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(operation());
+    });
+    rx.await
+}
+
 fn save_if_active<T>(
     run_guard: &ConnectionSaveGuard,
     run_id: u64,
@@ -93,7 +105,7 @@ pub(in crate::cmd) async fn run(
 
                 connection_task
                     .replace(async move {
-                        tokio::task::spawn_blocking(move || {
+                        run_store_operation(move || {
                             match save_if_active(&run_guard, run_id, || store.save(&profile)) {
                                 Some(Ok(())) => {
                                     tx.blocking_send(Action::ConnectionSaveCompleted {
@@ -131,7 +143,7 @@ pub(in crate::cmd) async fn run(
                     .replace(async move {
                         match probe.probe(&target.dsn).await {
                             Ok(probe_result) => {
-                                let save_result = tokio::task::spawn_blocking(move || {
+                                let save_result = run_store_operation(move || {
                                     save_if_active(&run_guard, run_id, || store.save(&profile))
                                 })
                                 .await
@@ -182,7 +194,7 @@ pub(in crate::cmd) async fn run(
                 .replace(async move {
                     match provider.fetch_metadata(&dsn).await {
                         Ok(metadata_result) => {
-                            let save_result = tokio::task::spawn_blocking(move || {
+                            let save_result = run_store_operation(move || {
                                 save_if_active(&run_guard, run_id, || store.save(&profile))
                             })
                             .await
@@ -256,7 +268,7 @@ pub(in crate::cmd) async fn run(
             let store = Arc::clone(&connection.connection_store);
             let tx = action_tx.clone();
 
-            tokio::task::spawn_blocking(move || match store.find_by_id(&id) {
+            std::thread::spawn(move || match store.find_by_id(&id) {
                 Ok(Some(profile)) => {
                     tx.blocking_send(Action::ConnectionEditLoaded(Box::new(profile)))
                         .ok();
@@ -280,10 +292,10 @@ pub(in crate::cmd) async fn run(
             let reader = Arc::clone(&connection.pg_service_entry_reader);
             let tx = action_tx.clone();
 
-            tokio::task::spawn_blocking(move || {
+            std::thread::spawn(move || {
                 let (profiles, profile_load_warning) = match store.load_all() {
                     Ok(p) => (p, None),
-                    Err(e) => (vec![], Some(e.to_string())),
+                    Err(e) => (vec![], Some(e.load_failure_message())),
                 };
                 let (services, service_load_warning) = match reader.read_services() {
                     Ok(contents) => (contents.entries, contents.warning.map(|e| e.to_string())),
@@ -306,7 +318,7 @@ pub(in crate::cmd) async fn run(
             let store = Arc::clone(&connection.connection_store);
             let tx = action_tx.clone();
 
-            tokio::task::spawn_blocking(move || match store.delete(&id) {
+            std::thread::spawn(move || match store.delete(&id) {
                 Ok(()) => {
                     tx.blocking_send(Action::ConnectionDeleted(id)).ok();
                 }
@@ -375,6 +387,37 @@ async fn normalize_sqlite_profile(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn pending_store_work_does_not_hold_runtime_shutdown_open() {
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let (closed_tx, closed_rx) = std::sync::mpsc::channel();
+        let owner = std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            runtime.block_on(async {
+                let task = tokio::spawn(super::run_store_operation(move || {
+                    started_tx.send(()).unwrap();
+                    release_rx.recv().unwrap();
+                }));
+                tokio::task::yield_now().await;
+                task.abort();
+                let _ = task.await;
+            });
+            drop(runtime);
+            closed_tx.send(()).unwrap();
+        });
+        started_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap();
+        let closed = closed_rx.recv_timeout(std::time::Duration::from_secs(2));
+        release_tx.send(()).unwrap();
+        owner.join().unwrap();
+        assert!(closed.is_ok(), "shutdown waited for the OS store operation");
+    }
+
     use std::cell::RefCell;
     use std::sync::Arc;
     use tokio::sync::mpsc;

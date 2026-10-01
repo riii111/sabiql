@@ -2,21 +2,70 @@ use super::text_input::TextInputState;
 use super::theme_id::ThemeId;
 use crate::model::shared::cursor::CursorMove;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ClipboardBackend {
+    #[default]
+    Auto,
+    Native,
+    Osc52,
+}
+
+impl ClipboardBackend {
+    pub const ALL: [Self; 3] = [Self::Auto, Self::Native, Self::Osc52];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "Auto",
+            Self::Native => "OS clipboard",
+            Self::Osc52 => "Terminal (OSC 52)",
+        }
+    }
+
+    pub fn config_value(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Native => "native",
+            Self::Osc52 => "osc52",
+        }
+    }
+
+    pub fn from_config_value(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|backend| backend.config_value() == value)
+    }
+
+    fn next(self) -> Self {
+        Self::ALL[(self as usize + 1).min(Self::ALL.len() - 1)]
+    }
+
+    fn previous(self) -> Self {
+        Self::ALL[(self as usize).saturating_sub(1)]
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsSection {
     Appearance,
     Keymap,
     ErDiagram,
+    Clipboard,
 }
 
 impl SettingsSection {
-    pub const ALL: [Self; 3] = [Self::Appearance, Self::Keymap, Self::ErDiagram];
+    pub const ALL: [Self; 4] = [
+        Self::Appearance,
+        Self::Keymap,
+        Self::ErDiagram,
+        Self::Clipboard,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Appearance => "Appearance",
             Self::Keymap => "Keymap",
             Self::ErDiagram => "ER Diagram",
+            Self::Clipboard => "Clipboard",
         }
     }
 
@@ -175,6 +224,8 @@ impl ErBrowserChoice {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsState {
+    saved_clipboard_backend: ClipboardBackend,
+    selected_clipboard_backend: ClipboardBackend,
     previous_theme: ThemeId,
     selected_theme: ThemeId,
     saved_keymap_preset: KeymapPreset,
@@ -189,6 +240,8 @@ pub struct SettingsState {
 impl Default for SettingsState {
     fn default() -> Self {
         Self {
+            saved_clipboard_backend: ClipboardBackend::Auto,
+            selected_clipboard_backend: ClipboardBackend::Auto,
             previous_theme: ThemeId::Default,
             selected_theme: ThemeId::Default,
             saved_keymap_preset: KeymapPreset::Default,
@@ -203,6 +256,19 @@ impl Default for SettingsState {
 }
 
 impl SettingsState {
+    pub fn load_clipboard_backend(&mut self, backend: ClipboardBackend) {
+        self.saved_clipboard_backend = backend;
+        self.selected_clipboard_backend = backend;
+    }
+
+    pub fn saved_clipboard_backend(&self) -> ClipboardBackend {
+        self.saved_clipboard_backend
+    }
+
+    pub fn selected_clipboard_backend(&self) -> ClipboardBackend {
+        self.selected_clipboard_backend
+    }
+
     pub fn load_er_browser(&mut self, er_browser: Option<String>) {
         self.saved_er_browser = normalize_browser(er_browser);
         self.selected_er_browser_choice =
@@ -219,6 +285,7 @@ impl SettingsState {
         self.previous_theme = current_theme;
         self.selected_theme = current_theme;
         self.selected_keymap_preset = self.saved_keymap_preset;
+        self.selected_clipboard_backend = self.saved_clipboard_backend;
         self.selected_er_browser_choice =
             ErBrowserChoice::from_browser_name(self.saved_er_browser.as_deref());
         self.custom_er_browser = custom_input_for(self.saved_er_browser.as_deref());
@@ -286,6 +353,9 @@ impl SettingsState {
 
     pub fn select_next(&mut self) {
         match self.section {
+            SettingsSection::Clipboard => {
+                self.selected_clipboard_backend = self.selected_clipboard_backend.next();
+            }
             SettingsSection::Appearance => {
                 self.selected_theme = self.selected_theme.next();
             }
@@ -301,6 +371,9 @@ impl SettingsState {
 
     pub fn select_previous(&mut self) {
         match self.section {
+            SettingsSection::Clipboard => {
+                self.selected_clipboard_backend = self.selected_clipboard_backend.previous();
+            }
             SettingsSection::Appearance => {
                 self.selected_theme = self.selected_theme.previous();
             }
@@ -362,7 +435,9 @@ impl SettingsState {
         theme: ThemeId,
         keymap_preset: KeymapPreset,
         er_browser: Option<String>,
+        clipboard_backend: ClipboardBackend,
     ) {
+        self.load_clipboard_backend(clipboard_backend);
         self.previous_theme = theme;
         self.selected_theme = theme;
         self.saved_keymap_preset = keymap_preset;
@@ -377,6 +452,7 @@ impl SettingsState {
     pub fn discard_selection(&mut self) {
         self.selected_theme = self.previous_theme;
         self.selected_keymap_preset = self.saved_keymap_preset;
+        self.selected_clipboard_backend = self.saved_clipboard_backend;
         self.selected_er_browser_choice =
             ErBrowserChoice::from_browser_name(self.saved_er_browser.as_deref());
         self.custom_er_browser = custom_input_for(self.saved_er_browser.as_deref());

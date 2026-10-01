@@ -409,6 +409,7 @@ mod tests {
                 let effects = super::dispatch_modal(
                     &mut state,
                     &Action::SettingsSaved(AppSettings {
+                        clipboard_backend: crate::model::shared::settings::ClipboardBackend::Auto,
                         theme_id: ThemeId::Light,
                         keymap_preset: KeymapPreset::Ide,
                         er_browser: Some("Google Chrome".to_string()),

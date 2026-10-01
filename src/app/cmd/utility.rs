@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use crate::cmd::effect::Effect;
+use crate::model::shared::settings::ClipboardBackend;
 use crate::ports::outbound::{ClipboardError, ClipboardOutcome, ClipboardWriter, FolderOpener};
 use crate::update::action::Action;
 
@@ -11,6 +12,7 @@ pub(in crate::cmd) async fn run(
     action_tx: &mpsc::Sender<Action>,
     clipboard: &Arc<dyn ClipboardWriter>,
     folder_opener: &Arc<dyn FolderOpener>,
+    backend: ClipboardBackend,
 ) {
     match effect {
         Effect::CopyToClipboard {
@@ -20,7 +22,7 @@ pub(in crate::cmd) async fn run(
         } => {
             let clipboard = Arc::clone(clipboard);
             let tx = action_tx.clone();
-            tokio::task::spawn_blocking(move || match clipboard.copy_text(&content) {
+            tokio::task::spawn_blocking(move || match clipboard.copy_text(&content, backend) {
                 Ok(ClipboardOutcome::SentToTerminal) => {
                     tx.blocking_send(Action::ClipboardSentToTerminal).ok();
                 }
@@ -69,7 +71,11 @@ mod tests {
     }
 
     impl ClipboardWriter for MockClipboard {
-        fn copy_text(&self, _content: &str) -> Result<ClipboardOutcome, ClipboardError> {
+        fn copy_text(
+            &self,
+            _content: &str,
+            _backend: ClipboardBackend,
+        ) -> Result<ClipboardOutcome, ClipboardError> {
             self.result.clone()
         }
     }
@@ -108,6 +114,56 @@ mod tests {
     mod copy_to_clipboard {
         use super::*;
 
+        struct RecordingBackend(std::sync::Mutex<Vec<ClipboardBackend>>);
+
+        impl ClipboardWriter for RecordingBackend {
+            fn copy_text(
+                &self,
+                _: &str,
+                backend: ClipboardBackend,
+            ) -> Result<ClipboardOutcome, ClipboardError> {
+                self.0.lock().unwrap().push(backend);
+                Ok(ClipboardOutcome::Copied)
+            }
+        }
+
+        #[tokio::test]
+        async fn next_copy_uses_newly_saved_backend_without_recreating_writer() {
+            let (tx, mut rx) = mpsc::channel(8);
+            let writer = Arc::new(RecordingBackend(std::sync::Mutex::new(Vec::new())));
+            let clipboard: Arc<dyn ClipboardWriter> = writer.clone();
+            let folder_opener: Arc<dyn FolderOpener> = Arc::new(MockFolderOpener::new());
+            let mut state = crate::model::shared::settings::SettingsState::default();
+            for backend in [ClipboardBackend::Native, ClipboardBackend::Osc52] {
+                state.commit_saved(
+                    crate::model::shared::theme_id::ThemeId::Default,
+                    crate::model::shared::settings::KeymapPreset::Default,
+                    None,
+                    backend,
+                );
+                run(
+                    Effect::CopyToClipboard {
+                        content: "value".into(),
+                        on_success: Box::new(Action::Render),
+                        on_failure: None,
+                    },
+                    &tx,
+                    &clipboard,
+                    &folder_opener,
+                    state.saved_clipboard_backend(),
+                )
+                .await;
+                tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+                    .await
+                    .unwrap()
+                    .unwrap();
+            }
+            assert_eq!(
+                *writer.0.lock().unwrap(),
+                [ClipboardBackend::Native, ClipboardBackend::Osc52]
+            );
+        }
+
         #[tokio::test]
         async fn terminal_send_does_not_dispatch_native_success() {
             let (tx, mut rx) = mpsc::channel(8);
@@ -125,6 +181,7 @@ mod tests {
                 &tx,
                 &clipboard,
                 &folder_opener,
+                ClipboardBackend::Auto,
             )
             .await;
 
@@ -153,6 +210,7 @@ mod tests {
                 &tx,
                 &clipboard,
                 &folder_opener,
+                ClipboardBackend::Auto,
             )
             .await;
 
@@ -182,6 +240,7 @@ mod tests {
                 &tx,
                 &clipboard,
                 &folder_opener,
+                ClipboardBackend::Auto,
             )
             .await;
 
@@ -209,6 +268,7 @@ mod tests {
                 &tx,
                 &clipboard,
                 &folder_opener,
+                ClipboardBackend::Auto,
             )
             .await;
 
@@ -236,6 +296,7 @@ mod tests {
                 &tx,
                 &clipboard,
                 &folder_opener,
+                ClipboardBackend::Auto,
             )
             .await;
 
@@ -271,6 +332,7 @@ mod tests {
                 &tx,
                 &clipboard,
                 &folder_opener,
+                ClipboardBackend::Auto,
             )
             .await;
 

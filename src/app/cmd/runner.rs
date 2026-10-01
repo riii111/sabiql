@@ -149,6 +149,7 @@ impl EffectRunner {
                     &self.action_tx,
                     &self.utility.clipboard,
                     &self.utility.folder_opener,
+                    state.settings.saved_clipboard_backend(),
                 )
                 .await;
                 Ok(vec![])
@@ -292,7 +293,8 @@ impl EffectRunner {
             }
 
             Effect::SaveSettings { settings } => {
-                Ok(vec![cmd_settings::run(settings, &self.settings_store)])
+                cmd_settings::spawn(settings, &self.settings_store, &self.action_tx);
+                Ok(vec![])
             }
 
             e @ (Effect::FetchSqliteDiagnosticsCore { .. }

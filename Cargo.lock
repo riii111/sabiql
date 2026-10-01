@@ -3126,6 +3126,7 @@ dependencies = [
  "rstest",
  "sabiql-app",
  "sabiql-domain",
+ "security-framework",
  "serde",
  "serde_json",
  "tempfile",

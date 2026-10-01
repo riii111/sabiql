@@ -42,6 +42,59 @@ fn mask_url_passwords(text: &str) -> String {
         i += ch.len_utf8();
     }
 
+    mask_uri_query_passwords(&result)
+}
+
+fn mask_uri_query_passwords(text: &str) -> String {
+    let mut ranges = Vec::new();
+    let mut i = 0;
+    while i < text.len() {
+        let scheme_len = if starts_with_ascii_ignore_case(text, i, "postgresql://") {
+            "postgresql://".len()
+        } else if starts_with_ascii_ignore_case(text, i, "postgres://") {
+            "postgres://".len()
+        } else if starts_with_ascii_ignore_case(text, i, "mysql://") {
+            "mysql://".len()
+        } else {
+            0
+        };
+        if scheme_len == 0 {
+            i += text[i..].chars().next().unwrap().len_utf8();
+            continue;
+        }
+        let authority_start = i + scheme_len;
+        let token_end = text[authority_start..]
+            .find(['\n', '\r', ' ', '\t', '\'', '"', ','])
+            .map_or(text.len(), |offset| authority_start + offset);
+        let path_or_query = text[authority_start..token_end]
+            .find(['/', '?', '#'])
+            .map_or(token_end, |offset| authority_start + offset);
+        let Some(query_offset) = text[path_or_query..token_end].find('?') else {
+            i = token_end;
+            continue;
+        };
+        let query_start = path_or_query + query_offset + 1;
+        let query = &text[query_start..token_end];
+        let mut segment_start = query_start;
+        for segment in query.split('&') {
+            let segment_end = segment_start + segment.len();
+            if let Some(equal_offset) = segment.find('=') {
+                let key = &segment[..equal_offset];
+                if urlencoding::decode(key).is_ok_and(|key| {
+                    key.eq_ignore_ascii_case("password") || key.eq_ignore_ascii_case("sslpassword")
+                }) {
+                    ranges.push((segment_start + equal_offset + 1, segment_end));
+                }
+            }
+            segment_start = segment_end.saturating_add(1);
+        }
+        i = token_end;
+    }
+
+    let mut result = text.to_string();
+    for (start, end) in ranges.into_iter().rev() {
+        result.replace_range(start..end, "****");
+    }
     result
 }
 
@@ -67,7 +120,40 @@ fn find_userinfo_terminator(text: &str, authority_start: usize) -> Option<usize>
 }
 
 fn mask_kv_passwords(text: &str) -> String {
-    mask_after_prefix(text, |pos| password_assignment_prefix_len(text, pos))
+    mask_after_prefix(text, |pos| {
+        (!is_url_query_position(text, pos))
+            .then(|| password_assignment_prefix_len(text, pos))
+            .flatten()
+    })
+}
+
+fn is_url_query_position(text: &str, pos: usize) -> bool {
+    let before = &text[..pos];
+    let Some((scheme_pos, scheme_len)) = [
+        ("postgresql://", "postgresql://".len()),
+        ("postgres://", "postgres://".len()),
+        ("mysql://", "mysql://".len()),
+    ]
+    .into_iter()
+    .filter_map(|(scheme, len)| before.rfind(scheme).map(|start| (start, len)))
+    .max_by_key(|(start, _)| *start) else {
+        return false;
+    };
+    let authority_start = scheme_pos + scheme_len;
+    let token_end = text[authority_start..]
+        .find(['\n', '\r', ' ', '\t', '\'', '"', ','])
+        .map_or(text.len(), |offset| authority_start + offset);
+    if pos >= token_end {
+        return false;
+    }
+    let path_or_query = text[authority_start..token_end]
+        .find(['/', '?', '#'])
+        .map_or(token_end, |offset| authority_start + offset);
+    let Some(query_offset) = text[path_or_query..token_end].find('?') else {
+        return false;
+    };
+    let query_start = path_or_query + query_offset + 1;
+    pos >= query_start
 }
 
 fn mask_env_passwords(text: &str) -> String {
@@ -164,7 +250,7 @@ fn mask_after_prefix(text: &str, find_prefix: impl Fn(usize) -> Option<usize>) -
 }
 
 fn is_assignment_terminator(byte: u8) -> bool {
-    byte.is_ascii_whitespace() || matches!(byte, b';' | b'\'' | b'"' | b',' | b'&' | b'#')
+    byte.is_ascii_whitespace() || matches!(byte, b';' | b'\'' | b'"' | b',')
 }
 
 fn skip_masked_assignment_value(text: &str, value_start: usize, result: &mut String) -> usize {
@@ -241,6 +327,10 @@ mod tests {
         "postgresql://user@host/db?pass%77ord=secret&sslmode=require",
         "postgresql://user@host/db?pass%77ord=****&sslmode=require"
     )]
+    #[case(
+        "postgresql://user@host/db?password=ab#cd&sslmode=require",
+        "postgresql://user@host/db?password=****&sslmode=require"
+    )]
     fn masks_passwords_in_urls(#[case] input: &str, #[case] expected: &str) {
         assert_eq!(mask_password(input), expected);
     }
@@ -268,6 +358,8 @@ mod tests {
     #[case("password=secret,host=localhost", "password=****,host=localhost")]
     #[case("password=secret' host=localhost", "password=****' host=localhost")]
     #[case("password=secret\" host=localhost", "password=****\" host=localhost")]
+    #[case("password=ab#cd", "password=****")]
+    #[case("password=ab&cd", "password=****")]
     #[case("password='secret' host=localhost", "password='****' host=localhost")]
     #[case(
         "password=\"secret\" host=localhost",

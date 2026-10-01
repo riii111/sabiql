@@ -63,14 +63,12 @@ fn uri_password_is_absent_from_argv_and_uses_a_temporary_passfile() {
             .map(|value| value.to_string_lossy().into_owned())
             .collect();
 
-        assert_eq!(
-            args[0],
-            format!("{scheme}://user@localhost/db?sslmode=require")
-        );
+        assert!(args[0].starts_with(&format!("{scheme}://user@localhost/db?sslmode=require")));
+        assert!(args[0].contains("&password=&passfile="));
         assert!(
             !args
                 .iter()
-                .any(|arg| arg.contains("p%40ss") || arg.contains("word"))
+                .any(|arg| arg.contains("p%40ss") || arg.contains("p%40ss%3Aword"))
         );
         let path = passfile.as_ref().unwrap().path.to_str().unwrap();
         assert!(
@@ -423,4 +421,83 @@ async fn real_libpq_preserves_special_passwords_and_explicit_precedence() {
         assert_eq!(server.join().unwrap(), password);
         assert!(!path.exists());
     }
+}
+
+#[tokio::test]
+#[ignore = "requires psql and a loopback listener; no database required"]
+async fn real_libpq_uri_password_overrides_service_and_uri_passfile() {
+    let password = "uri-password-雪#with?delimiters";
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        use std::io::{Read, Write};
+        let start = std::time::Instant::now();
+        let (mut stream, _) = loop {
+            match listener.accept() {
+                Ok(connection) => break connection,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    assert!(
+                        start.elapsed() < Duration::from_secs(5),
+                        "psql did not connect"
+                    );
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                Err(error) => panic!("{error}"),
+            }
+        };
+        stream.set_nonblocking(false).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let mut size = [0; 4];
+        stream.read_exact(&mut size).unwrap();
+        let mut startup = vec![0; u32::from_be_bytes(size) as usize - 4];
+        stream.read_exact(&mut startup).unwrap();
+        stream.write_all(&[b'R', 0, 0, 0, 8, 0, 0, 0, 3]).unwrap();
+        let mut tag = [0; 1];
+        stream.read_exact(&mut tag).unwrap();
+        assert_eq!(tag, [b'p']);
+        stream.read_exact(&mut size).unwrap();
+        let mut supplied = vec![0; u32::from_be_bytes(size) as usize - 4];
+        stream.read_exact(&mut supplied).unwrap();
+        assert_eq!(supplied.pop(), Some(0));
+        String::from_utf8(supplied).unwrap()
+    });
+
+    let dir = tempfile::tempdir().unwrap();
+    let service = dir.path().join("pg_service.conf");
+    std::fs::write(
+        &service,
+        "[test]\npassword=wrong-service-password\npassfile=/nonexistent/service-passfile\n",
+    )
+    .unwrap();
+    let encoded_password = urlencoding::encode(password);
+    let dsn = format!(
+        "postgresql://user@127.0.0.1:{port}/db?service=test&passfile=%2Fnonexistent%2Furi-passfile&password={encoded_password}&sslmode=disable"
+    );
+    let (mut cmd, file) =
+        PostgresAdapter::build_psql_command(&dsn, &["-w"], &["-c", "SELECT 1"], false).unwrap();
+    let path = file.as_ref().unwrap().path.clone();
+    let args: Vec<_> = cmd
+        .as_std()
+        .get_args()
+        .map(|value| value.to_string_lossy().into_owned())
+        .collect();
+    assert!(!args.iter().any(|arg| arg.contains("uri-password")));
+    cmd.env_clear()
+        .env("PATH", std::env::var_os("PATH").unwrap())
+        .env("PGGSSENCMODE", "disable")
+        .env("PGSERVICEFILE", service)
+        .env("PGSERVICE", "test")
+        .env("PGPASSWORD", "wrong-environment-password")
+        .env("PGPASSFILE", "/nonexistent/environment-passfile");
+
+    assert!(
+        PostgresAdapter::collect_output(&mut cmd, file, 5)
+            .await
+            .is_err()
+    );
+    assert_eq!(server.join().unwrap(), password);
+    assert!(!path.exists());
 }

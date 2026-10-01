@@ -19,6 +19,7 @@ use crate::domain::{
 };
 use crate::model::app_state::AppState;
 use crate::model::browse::session::ConnectionSaveGuard;
+use crate::model::shared::settings::ClipboardBackend;
 use crate::ports::outbound::DbOperationError;
 use crate::ports::outbound::{
     AppSettings, CachedResultExporter, ClipboardError, ClipboardOutcome, ClipboardWriter,
@@ -152,7 +153,11 @@ impl PgServiceEntryReader for NoopPgServiceEntryReader {
 
 pub struct NoopClipboardWriter;
 impl ClipboardWriter for NoopClipboardWriter {
-    fn copy_text(&self, _content: &str) -> Result<ClipboardOutcome, ClipboardError> {
+    fn copy_text(
+        &self,
+        _content: &str,
+        _backend: ClipboardBackend,
+    ) -> Result<ClipboardOutcome, ClipboardError> {
         Ok(ClipboardOutcome::Copied)
     }
 }

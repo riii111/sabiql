@@ -20,7 +20,7 @@ test_project ▸ test_db ▸ -                                                  
 │                                │    Appearance    │Keymap                                                                        │                                │
 │                                │  > Keymap        │                                                                              │                                │
 │                                │    ER Diagram    │Keymap preset                                                                 │                                │
-│                                │                  │                                                                              │                                │
+│                                │    Clipboard     │                                                                              │                                │
 │                                │                  │  > Default        saved                                                      │                                │
 │                                │                  │    IDE                                                                       │                                │
 │                                │                  │                                                                              │                                │
