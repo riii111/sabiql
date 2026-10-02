@@ -224,6 +224,7 @@ impl ErBrowserChoice {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsState {
+    save_pending: bool,
     saved_clipboard_backend: ClipboardBackend,
     selected_clipboard_backend: ClipboardBackend,
     previous_theme: ThemeId,
@@ -240,6 +241,7 @@ pub struct SettingsState {
 impl Default for SettingsState {
     fn default() -> Self {
         Self {
+            save_pending: false,
             saved_clipboard_backend: ClipboardBackend::Auto,
             selected_clipboard_backend: ClipboardBackend::Auto,
             previous_theme: ThemeId::Default,
@@ -256,6 +258,22 @@ impl Default for SettingsState {
 }
 
 impl SettingsState {
+    pub fn is_save_pending(&self) -> bool {
+        self.save_pending
+    }
+
+    pub fn begin_save(&mut self) -> bool {
+        if self.save_pending {
+            return false;
+        }
+        self.save_pending = true;
+        true
+    }
+
+    pub fn finish_save(&mut self) {
+        self.save_pending = false;
+    }
+
     pub fn load_clipboard_backend(&mut self, backend: ClipboardBackend) {
         self.saved_clipboard_backend = backend;
         self.selected_clipboard_backend = backend;

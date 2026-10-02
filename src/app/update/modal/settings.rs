@@ -12,6 +12,38 @@ pub(super) fn reduce_settings(
     action: &Action,
     now: Instant,
 ) -> DispatchResult {
+    if state.settings.is_save_pending()
+        && matches!(
+            action,
+            Action::SettingsSelectNext
+                | Action::SettingsSelectPrevious
+                | Action::SettingsStartCustomBrowserEdit
+                | Action::SettingsStopCustomBrowserEdit
+                | Action::TextInput {
+                    target: InputTarget::SettingsErBrowser,
+                    ..
+                }
+                | Action::TextBackspace {
+                    target: InputTarget::SettingsErBrowser
+                }
+                | Action::TextDelete {
+                    target: InputTarget::SettingsErBrowser
+                }
+                | Action::TextKill {
+                    target: InputTarget::SettingsErBrowser,
+                    ..
+                }
+                | Action::TextYank {
+                    target: InputTarget::SettingsErBrowser
+                }
+                | Action::TextMoveCursor {
+                    target: InputTarget::SettingsErBrowser,
+                    ..
+                }
+        )
+    {
+        return DispatchResult::handled();
+    }
     match action {
         Action::OpenModal(ModalKind::Settings) => {
             state.settings.open(state.ui.theme_id());
@@ -91,6 +123,12 @@ pub(super) fn reduce_settings(
             DispatchResult::handled()
         }
         Action::SettingsApply => {
+            if !state.settings.begin_save() {
+                return DispatchResult::handled();
+            }
+            state
+                .messages
+                .set_success_at("Saving settings…".to_string(), now);
             let theme_id = state.settings.selected_theme();
             let settings = AppSettings {
                 clipboard_backend: state.settings.selected_clipboard_backend(),
@@ -106,6 +144,7 @@ pub(super) fn reduce_settings(
             DispatchResult::handled()
         }
         Action::SettingsSaved(settings) => {
+            state.settings.finish_save();
             state.ui.set_theme(settings.theme_id);
             state.settings.commit_saved(
                 settings.theme_id,
@@ -119,6 +158,7 @@ pub(super) fn reduce_settings(
             DispatchResult::handled()
         }
         Action::SettingsSaveFailed(error) => {
+            state.settings.finish_save();
             state
                 .messages
                 .set_error(format!("Failed to save settings: {error}"));
@@ -132,6 +172,73 @@ pub(super) fn reduce_settings(
 mod tests {
     use super::*;
     use crate::model::shared::settings::ClipboardBackend;
+
+    #[test]
+    fn pending_save_survives_reopen_and_prevents_overlapping_requests() {
+        let mut state = AppState::new("test".into());
+        let now = Instant::now();
+        reduce_settings(&mut state, &Action::OpenModal(ModalKind::Settings), now);
+        reduce_settings(&mut state, &Action::SettingsPreviousSection, now);
+        reduce_settings(&mut state, &Action::SettingsSelectNext, now);
+        let effects = reduce_settings(&mut state, &Action::SettingsApply, now)
+            .into_effects()
+            .unwrap();
+        let Effect::SaveSettings { settings } = &effects[0] else {
+            panic!("expected save")
+        };
+        let saved = settings.clone();
+        assert!(state.settings.is_save_pending());
+        assert!(
+            reduce_settings(&mut state, &Action::SettingsApply, now)
+                .into_effects()
+                .unwrap()
+                .is_empty()
+        );
+        reduce_settings(&mut state, &Action::SettingsCancel, now);
+        reduce_settings(&mut state, &Action::OpenModal(ModalKind::Settings), now);
+        reduce_settings(&mut state, &Action::SettingsPreviousSection, now);
+        reduce_settings(&mut state, &Action::SettingsSelectNext, now);
+        assert_eq!(
+            state.settings.selected_clipboard_backend(),
+            ClipboardBackend::Auto
+        );
+        assert!(
+            reduce_settings(&mut state, &Action::SettingsApply, now)
+                .into_effects()
+                .unwrap()
+                .is_empty()
+        );
+        reduce_settings(&mut state, &Action::SettingsSaved(saved), now);
+        assert!(!state.settings.is_save_pending());
+        reduce_settings(&mut state, &Action::SettingsSelectNext, now);
+        let effects = reduce_settings(&mut state, &Action::SettingsApply, now)
+            .into_effects()
+            .unwrap();
+        let Effect::SaveSettings { settings } = &effects[0] else {
+            panic!("expected save")
+        };
+        assert_eq!(settings.clipboard_backend, ClipboardBackend::Osc52);
+    }
+
+    #[test]
+    fn failed_save_releases_pending_state_for_retry() {
+        let mut state = AppState::new("test".into());
+        let now = Instant::now();
+        reduce_settings(&mut state, &Action::SettingsApply, now);
+        reduce_settings(
+            &mut state,
+            &Action::SettingsSaveFailed("disk full".into()),
+            now,
+        );
+        assert!(!state.settings.is_save_pending());
+        assert_eq!(
+            reduce_settings(&mut state, &Action::SettingsApply, now)
+                .into_effects()
+                .unwrap()
+                .len(),
+            1
+        );
+    }
 
     #[test]
     fn clipboard_selection_only_applies_after_save_success() {
