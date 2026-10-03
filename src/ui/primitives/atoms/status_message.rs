@@ -16,12 +16,12 @@ impl StatusMessage {
         msg_type: MessageType,
         theme: &ThemePalette,
     ) -> Line<'static> {
-        let (prefix, style) = match msg_type {
-            MessageType::Error => ("", theme.status_style(StatusTone::Error)),
-            MessageType::Success => ("", theme.status_style(StatusTone::Success)),
+        let style = match msg_type {
+            MessageType::Error => theme.status_style(StatusTone::Error),
+            MessageType::Success => theme.status_style(StatusTone::Success),
         };
 
-        Line::from(vec![Span::styled(format!("{prefix}{message}"), style)])
+        Line::from(Span::styled(message.to_string(), style))
     }
 
     pub fn render_lines(

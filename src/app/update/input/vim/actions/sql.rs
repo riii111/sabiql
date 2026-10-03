@@ -1,8 +1,8 @@
 use crate::update::action::{
-    Action, CursorMove, InputTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
+    Action, InputTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
 };
 
-use super::scroll;
+use super::{scroll, text_cursor};
 use crate::update::input::vim::types::{
     SqlModalVimContext, VimCommand, VimModeTransition, VimNavigation, VimOperator,
 };
@@ -13,7 +13,7 @@ pub(in crate::update::input::vim) fn command(
 ) -> Option<Action> {
     match ctx {
         SqlModalVimContext::QueryNormal => match command {
-            VimCommand::Navigation(navigation) => query_navigation(navigation),
+            VimCommand::Navigation(navigation) => text_cursor(navigation, InputTarget::SqlModal),
             VimCommand::ModeTransition(VimModeTransition::Escape) => {
                 Some(Action::CloseModal(ModalKind::SqlModal))
             }
@@ -35,30 +35,6 @@ pub(in crate::update::input::vim) fn command(
         SqlModalVimContext::PlanViewer => viewer(command, ScrollTarget::ExplainPlan),
         SqlModalVimContext::CompareViewer => viewer(command, ScrollTarget::ExplainCompare),
     }
-}
-
-fn query_navigation(navigation: VimNavigation) -> Option<Action> {
-    let direction = match navigation {
-        VimNavigation::MoveLeft => CursorMove::Left,
-        VimNavigation::MoveRight => CursorMove::Right,
-        VimNavigation::MoveUp => CursorMove::Up,
-        VimNavigation::MoveDown => CursorMove::Down,
-        VimNavigation::MoveToFirst => CursorMove::FirstLine,
-        VimNavigation::MoveToLast => CursorMove::LastLine,
-        VimNavigation::MoveLineStart => CursorMove::LineStart,
-        VimNavigation::MoveLineEnd => CursorMove::LineEnd,
-        VimNavigation::MoveWordForward => CursorMove::WordForward,
-        VimNavigation::MoveWordBackward => CursorMove::WordBackward,
-        VimNavigation::ViewportTop => CursorMove::ViewportTop,
-        VimNavigation::ViewportMiddle => CursorMove::ViewportMiddle,
-        VimNavigation::ViewportBottom => CursorMove::ViewportBottom,
-        _ => return None,
-    };
-
-    Some(Action::TextMoveCursor {
-        target: InputTarget::SqlModal,
-        direction,
-    })
 }
 
 fn viewer(command: VimCommand, target: ScrollTarget) -> Option<Action> {

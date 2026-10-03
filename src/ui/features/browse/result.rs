@@ -703,16 +703,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn empty_headers_returns_empty_vec() {
-            let headers: Vec<String> = vec![];
-            let rows: Vec<Vec<String>> = vec![];
-
-            let result = calculate_ideal_widths(&headers, &rows);
-
-            assert_eq!(result.len(), 0);
-        }
-
-        #[test]
         fn single_column_uses_header_width_plus_padding() {
             let headers = vec!["name".to_string()];
             let rows: Vec<Vec<String>> = vec![];

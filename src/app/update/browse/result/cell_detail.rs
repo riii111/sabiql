@@ -1,7 +1,6 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
 use crate::model::shared::detail_view::{DetailDisplayMode, ReadOnlyDetailState};
 use crate::model::shared::flash_timer::FlashId;
@@ -10,6 +9,8 @@ use crate::policy::preview_cell_text::{CellPresentationPolicy, format_for_cell_d
 use crate::update::action::{Action, InputTarget, ModalKind, ScrollDirection, ScrollTarget};
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{clipboard_unavailable, find_text_matches};
+
+use super::{selected_cell_uses_json_detail_modal, selected_column_data_type};
 
 pub(in crate::update) fn reduce_cell_detail(
     state: &mut AppState,
@@ -159,40 +160,6 @@ fn selected_cell_value(state: &AppState) -> Option<(usize, usize, String, String
     Some((row_idx, col_idx, column_name, cell_value, data_type))
 }
 
-fn selected_cell_uses_json_detail_modal(state: &AppState) -> bool {
-    let Some(col_idx) = state.result_interaction.selection().cell() else {
-        return false;
-    };
-    let Some(row_idx) = state.result_interaction.selection().row() else {
-        return false;
-    };
-    let Some(result) = state.query.visible_result() else {
-        return false;
-    };
-    if matches!(result.value_at(row_idx, col_idx), Some(QueryValue::Null)) {
-        return false;
-    }
-    let Some(column_data_type) = selected_column_data_type(state, col_idx) else {
-        return false;
-    };
-    let policy = CellPresentationPolicy::new(
-        state.session.active_database_type_or_default(),
-        column_data_type,
-        "",
-    );
-    policy.uses_json_detail_modal()
-}
-
-fn selected_column_data_type(state: &AppState, col_idx: usize) -> Option<&str> {
-    let table_detail = state.session.table_detail()?;
-    if !state.query.pagination.matches_table(table_detail) {
-        return None;
-    }
-    state
-        .visible_preview_column(col_idx)
-        .map(|column| column.data_type.as_str())
-}
-
 fn update_search_matches(state: &mut AppState) {
     let query = state.cell_detail.search().input().content().to_string();
     let matches = find_text_matches(state.cell_detail.content(), &query);
@@ -206,7 +173,9 @@ mod tests {
     use super::*;
     use crate::domain::Column;
     use crate::domain::connection::ConnectionId;
-    use crate::domain::{ColumnAttributes, DatabaseType, QueryResult, QuerySource, Table};
+    use crate::domain::{
+        ColumnAttributes, DatabaseType, QueryResult, QuerySource, QueryValue, Table,
+    };
     use std::sync::Arc;
 
     fn state_with_cell(data_type: &str, cell_value: &str) -> AppState {
@@ -476,7 +445,7 @@ mod tests {
 
         let result = reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
 
-        assert!(result.is_handled_and(Vec::is_empty));
+        assert!(matches!(result.into_effects().as_deref(), Some([])));
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert!(state.cell_detail.is_active());
         assert_eq!(state.cell_detail.content(), "NULL");
@@ -507,7 +476,7 @@ mod tests {
 
         let effects = reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
 
-        assert!(effects.is_handled_and(Vec::is_empty));
+        assert!(matches!(effects.into_effects().as_deref(), Some([])));
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert!(state.cell_detail.is_active());
         assert!(!state.json_detail.is_active());

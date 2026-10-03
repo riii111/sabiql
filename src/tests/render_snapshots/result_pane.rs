@@ -1,73 +1,11 @@
 use super::*;
 use crate::tests::harness::render_and_get_buffer;
-use harness::{table_detail_loaded_state, with_current_result};
+use harness::{json_cell_selected_state, table_detail_loaded_state, with_current_result};
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use sabiql_app::update::dispatch_result;
 use sabiql_domain::{Column, ConnectionId, DatabaseMetadata, QueryResult, TableSummary};
 use sabiql_ui::theme::DEFAULT_THEME;
-
-fn find_text_in_row(buffer: &ratatui::buffer::Buffer, y: u16, text: &str) -> Option<u16> {
-    let row = (buffer.area.left()..buffer.area.right())
-        .filter_map(|x| buffer.cell((x, y)))
-        .map(ratatui::buffer::Cell::symbol)
-        .collect::<String>();
-    row.find(text)
-        .map(|byte_offset| buffer.area.left() + row[..byte_offset].chars().count() as u16)
-}
-
-fn row_text(buffer: &ratatui::buffer::Buffer, y: u16) -> String {
-    (buffer.area.left()..buffer.area.right())
-        .filter_map(|x| buffer.cell((x, y)))
-        .map(ratatui::buffer::Cell::symbol)
-        .collect()
-}
-
-fn json_detail_state() -> (AppState, std::time::Instant) {
-    let now = test_instant();
-    let mut state = create_test_state();
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata()));
-    let mut table = fixtures::sample_postgres_table_detail();
-    table.columns.push(Column {
-        name: "settings".to_string(),
-        data_type: "jsonb".to_string(),
-        attributes: ColumnAttributes::NULLABLE,
-        default: None,
-        comment: None,
-        ordinal_position: 4,
-        character_set_name: None,
-        collation_name: None,
-        generation_expression: None,
-        generation_kind: None,
-    });
-    let _ = state.session.set_table_detail(table, 0);
-    state
-        .query
-        .set_current_result(Arc::new(QueryResult::success(
-            "SELECT id, name, email, settings FROM users LIMIT 100".to_string(),
-            vec![
-                "id".to_string(),
-                "name".to_string(),
-                "email".to_string(),
-                "settings".to_string(),
-            ],
-            vec![vec![
-                "1".to_string(),
-                "Alice".to_string(),
-                "alice@example.com".to_string(),
-                r#"{"theme":"dark","count":5,"nested":{"enabled":true,"roles":["admin","writer"]}}"#
-                    .to_string(),
-            ]],
-            1,
-            QuerySource::Preview,
-        )));
-    state.query.pagination.reset_for_table("public", "users");
-    state.ui.set_focused_pane(FocusedPane::Result);
-    state.result_interaction.activate_cell(0, 3);
-    (state, now)
-}
 
 fn cell_detail_state() -> (AppState, std::time::Instant) {
     let now = test_instant();
@@ -487,7 +425,7 @@ fn result_pane_staged_delete_row() {
 
 #[test]
 fn result_pane_json_detail_mode() {
-    let (mut state, now) = json_detail_state();
+    let (mut state, now) = json_cell_selected_state();
     let mut terminal = create_test_terminal();
 
     dispatch_result(
@@ -541,7 +479,7 @@ fn result_pane_sqlite_json_text_cell_detail_mode() {
 
 #[test]
 fn result_pane_json_detail_shows_vertical_scrollbar() {
-    let (mut state, now) = json_detail_state();
+    let (mut state, now) = json_cell_selected_state();
     let mut terminal = create_test_terminal_sized(100, 25);
     let long_json = format!(
         "{{{}}}",
@@ -586,7 +524,7 @@ fn result_pane_json_detail_shows_vertical_scrollbar() {
 
 #[test]
 fn result_pane_json_edit_mode() {
-    let (mut state, now) = json_detail_state();
+    let (mut state, now) = json_cell_selected_state();
     let mut terminal = create_test_terminal();
 
     dispatch_result(
