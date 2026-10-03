@@ -692,14 +692,11 @@ impl CompletionEngine {
     ) -> Vec<CompletionCandidate> {
         let prefix_upper = prefix.to_uppercase();
         let mut candidates: Vec<_> = completion_keywords_for_database(database_type)
-            .filter(|kw| prefix.is_empty() || kw.starts_with(&prefix_upper))
-            .map(|kw| {
-                let is_prefix_match = kw.starts_with(&prefix_upper);
-                CompletionCandidate {
-                    text: (*kw).to_string(),
-                    kind: CompletionKind::Keyword,
-                    score: if is_prefix_match { 100 } else { 10 },
-                }
+            .filter(|kw| kw.starts_with(&prefix_upper))
+            .map(|kw| CompletionCandidate {
+                text: kw.to_string(),
+                kind: CompletionKind::Keyword,
+                score: 100,
             })
             .collect();
 
@@ -752,7 +749,7 @@ impl CompletionEngine {
         let prefix_upper = prefix.to_uppercase();
         PRIMARY_KEYWORDS
             .iter()
-            .filter(|kw| prefix.is_empty() || kw.starts_with(&prefix_upper))
+            .filter(|kw| kw.starts_with(&prefix_upper))
             .map(|kw| CompletionCandidate {
                 text: (*kw).to_string(),
                 kind: CompletionKind::Keyword,
@@ -781,38 +778,24 @@ impl CompletionEngine {
         };
 
         let prefix_lower = prefix.to_lowercase();
-        candidates.extend(
-            metadata
-                .table_summaries
-                .iter()
-                .filter(|t| {
-                    prefix.is_empty()
-                        || t.name.to_lowercase().starts_with(&prefix_lower)
-                        || t.qualified_name().to_lowercase().starts_with(&prefix_lower)
-                })
-                .map(|t| {
-                    let name_lower = t.name.to_lowercase();
-                    let is_name_prefix = name_lower.starts_with(&prefix_lower);
-                    let is_qualified_prefix =
-                        t.qualified_name().to_lowercase().starts_with(&prefix_lower);
-                    let score = if is_name_prefix {
-                        100
-                    } else if is_qualified_prefix {
-                        50
-                    } else {
-                        10
-                    };
-                    CompletionCandidate {
-                        text: if scope.database_type == DatabaseType::MySQL {
-                            t.name.clone()
-                        } else {
-                            t.qualified_name()
-                        },
-                        kind: CompletionKind::Table,
-                        score,
-                    }
-                }),
-        );
+        candidates.extend(metadata.table_summaries.iter().filter_map(|t| {
+            let score = if t.name.to_lowercase().starts_with(&prefix_lower) {
+                100
+            } else if t.qualified_name().to_lowercase().starts_with(&prefix_lower) {
+                50
+            } else {
+                return None;
+            };
+            Some(CompletionCandidate {
+                text: if scope.database_type == DatabaseType::MySQL {
+                    t.name.clone()
+                } else {
+                    t.qualified_name()
+                },
+                kind: CompletionKind::Table,
+                score,
+            })
+        }));
 
         sort_candidates(&mut candidates);
 
@@ -828,23 +811,15 @@ impl CompletionEngine {
         prefix: &str,
     ) -> Vec<CompletionCandidate> {
         let prefix_lower = prefix.to_lowercase();
-        let names = active_database.into_iter().map(str::to_string);
-
-        let mut seen = HashSet::new();
-        let mut candidates: Vec<_> = names
-            .into_iter()
-            .filter(|name| {
-                seen.insert(name.to_lowercase())
-                    && (prefix.is_empty() || name.to_lowercase().starts_with(&prefix_lower))
-            })
+        active_database
+            .filter(|name| name.to_lowercase().starts_with(&prefix_lower))
             .map(|name| CompletionCandidate {
-                text: name,
+                text: name.to_string(),
                 kind: CompletionKind::Database,
                 score: 120,
             })
-            .collect();
-        candidates.sort_by(|a, b| a.text.cmp(&b.text));
-        candidates
+            .into_iter()
+            .collect()
     }
 
     fn column_candidates(
@@ -874,24 +849,14 @@ impl CompletionEngine {
         let mut candidates: Vec<_> = table
             .columns
             .iter()
-            .filter(|c| {
-                if prefix.is_empty() {
-                    return true;
-                }
+            .filter_map(|c| {
                 let name_lower = c.name.to_lowercase();
-                name_lower.starts_with(&prefix_lower) || name_lower.contains(&prefix_lower)
-            })
-            .map(|c| {
-                let name_lower = c.name.to_lowercase();
-                let is_prefix_match = name_lower.starts_with(&prefix_lower);
-                let is_contains_match = !is_prefix_match && name_lower.contains(&prefix_lower);
-
-                let mut score = if is_prefix_match {
+                let mut score = if name_lower.starts_with(&prefix_lower) {
                     100
-                } else if is_contains_match {
+                } else if name_lower.contains(&prefix_lower) {
                     10
                 } else {
-                    0
+                    return None;
                 };
 
                 // Boost PK columns (+50)
@@ -906,11 +871,11 @@ impl CompletionEngine {
                 if !c.is_nullable() {
                     score += 20;
                 }
-                CompletionCandidate {
+                Some(CompletionCandidate {
                     text: c.name.clone(),
                     kind: CompletionKind::Column,
                     score,
-                }
+                })
             })
             .collect();
 
@@ -940,15 +905,12 @@ impl CompletionEngine {
             .iter()
             .filter(|t| {
                 t.schema.to_lowercase() == schema_lower
-                    && (prefix.is_empty() || t.name.to_lowercase().starts_with(&prefix_lower))
+                    && t.name.to_lowercase().starts_with(&prefix_lower)
             })
-            .map(|t| {
-                let is_prefix_match = t.name.to_lowercase().starts_with(&prefix_lower);
-                CompletionCandidate {
-                    text: t.name.clone(),
-                    kind: CompletionKind::Table,
-                    score: if is_prefix_match { 100 } else { 10 },
-                }
+            .map(|t| CompletionCandidate {
+                text: t.name.clone(),
+                kind: CompletionKind::Table,
+                score: 100,
             })
             .collect();
 
@@ -1051,7 +1013,7 @@ impl CompletionEngine {
 
         // Add CTE names first (higher priority)
         for cte in &sql_context.ctes {
-            if prefix.is_empty() || cte.to_lowercase().starts_with(&prefix_lower) {
+            if cte.to_lowercase().starts_with(&prefix_lower) {
                 candidates.push(CompletionCandidate {
                     text: cte.clone(),
                     kind: CompletionKind::Table,
@@ -1063,21 +1025,22 @@ impl CompletionEngine {
         // Add regular tables
         if let Some(metadata) = metadata {
             for t in &metadata.table_summaries {
-                if prefix.is_empty()
-                    || t.name.to_lowercase().starts_with(&prefix_lower)
-                    || t.qualified_name().to_lowercase().starts_with(&prefix_lower)
-                {
-                    let is_name_prefix = t.name.to_lowercase().starts_with(&prefix_lower);
-                    candidates.push(CompletionCandidate {
-                        text: if scope.database_type == DatabaseType::MySQL {
-                            t.name.clone()
-                        } else {
-                            t.qualified_name()
-                        },
-                        kind: CompletionKind::Table,
-                        score: if is_name_prefix { 100 } else { 50 },
-                    });
-                }
+                let score = if t.name.to_lowercase().starts_with(&prefix_lower) {
+                    100
+                } else if t.qualified_name().to_lowercase().starts_with(&prefix_lower) {
+                    50
+                } else {
+                    continue;
+                };
+                candidates.push(CompletionCandidate {
+                    text: if scope.database_type == DatabaseType::MySQL {
+                        t.name.clone()
+                    } else {
+                        t.qualified_name()
+                    },
+                    kind: CompletionKind::Table,
+                    score,
+                });
             }
         }
 
