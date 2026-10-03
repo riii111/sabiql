@@ -26,20 +26,14 @@ pub fn render_horizontal_scroll_indicator(
     let can_scroll_left = params.position > 0;
     let can_scroll_right = params.position + params.viewport_size < params.total_items;
 
-    if !can_scroll_left && !can_scroll_right {
-        return;
-    }
-
     let left_margin: u16 = 1;
     let available_width = area.width.saturating_sub(left_margin) as usize;
     if available_width < 15 {
         return;
     }
 
-    let scrollable_range = params.total_items.saturating_sub(params.viewport_size);
-    let percentage = (params.position * 100)
-        .checked_div(scrollable_range)
-        .unwrap_or(0);
+    let scrollable_range = params.total_items - params.viewport_size;
+    let percentage = params.position * 100 / scrollable_range;
     let position_text = format!("{} {:>3}%", params.label, percentage.min(100));
 
     // Layout: [label XXX%][space][scrollbar with < and >][1-cell gap for border]
@@ -90,7 +84,6 @@ pub fn render_horizontal_scroll_indicator(
 
     // Workaround for Ratatui scrollbar bug (issue #1681):
     // content_length should be the scrollable range, not total items
-    let scrollable_range = params.total_items.saturating_sub(params.viewport_size);
     let mut scrollbar_state = ScrollbarState::default()
         .content_length(scrollable_range)
         .viewport_content_length(0) // Use default (track size)
@@ -118,10 +111,6 @@ pub fn render_vertical_scroll_indicator_bar(
 
     let can_scroll_up = params.position > 0;
     let can_scroll_down = params.position + params.viewport_size < params.total_items;
-
-    if !can_scroll_up && !can_scroll_down {
-        return;
-    }
 
     // Reserve 1 row at bottom when horizontal scrollbar is also present
     let height = if params.has_horizontal_scrollbar {
