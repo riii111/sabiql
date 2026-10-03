@@ -31,8 +31,9 @@ Use dedicated test credentials, databases and configuration directories.
 - SQLite: safe-mode minimum version, reads/writes and CSV export into an isolated
   destination. Permission failures must not be reported as successful exports.
 - macOS: upgrade from an older binary and inspect Keychain permission prompts;
-  test allow, deny and a locked store. Record whether old-credential cleanup can
-  roll a save back. Do not change cleanup policy based on an untested assumption.
+  test allow, deny and a locked store. Old-credential cleanup failure must preserve
+  committed configuration and any replacement credential; test both no mutation
+  and completed deletion with a lost response. Verify the cleanup warning.
 - Windows: Credential Manager save/read/delete, denial and failure recovery.
 - Linux: unlocked, locked and unavailable Secret Service. Verify bounded startup,
   responsive settings and prompt-independent process exit.

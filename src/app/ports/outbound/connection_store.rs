@@ -42,6 +42,10 @@ pub enum ConnectionStoreError {
         "{0}. For PostgreSQL, save an empty password and use .pgpass or a PostgreSQL service. PostgreSQL and MySQL can also use --connection-env. Editing a legacy plaintext password requires secure storage, or clearing the password first."
     )]
     SecretStore(SecretStoreFailure),
+    #[error(
+        "Configuration changes were saved, but old password cleanup could not be confirmed: {0}. An old credential may remain in the OS password store; verify it before removing it manually."
+    )]
+    CleanupIncomplete(SecretStoreFailure),
     #[error("Connection changed while saving; reload it and try again")]
     ConcurrentModification,
 }

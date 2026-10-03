@@ -222,6 +222,32 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn helper_can_commit_a_fixture_mutation_before_response_timeout() {
+        let temp = tempfile::tempdir().unwrap();
+        let marker = temp.path().join("deleted-fixture");
+        let mut command = Command::new("sh");
+        command
+            .args([
+                "-c",
+                "read -r request; touch \"$1\"; exec sleep 30",
+                "fixture-helper",
+            ])
+            .arg(&marker);
+
+        let response = call_command(
+            command,
+            Request::Delete {
+                reference: "fixture".into(),
+            },
+            Duration::from_secs(1),
+        );
+
+        assert_eq!(response, Err(SecretStoreError::TimedOut));
+        assert!(marker.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn watchdog_detects_parent_pipe_close_without_waiting_for_operation() {
         let (mut parent, mut helper) = std::os::unix::net::UnixStream::pair().unwrap();
         let (sender, receiver) = mpsc::channel();

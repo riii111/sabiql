@@ -73,14 +73,18 @@ impl SecretStore for PlatformSecretStore {
 
 impl From<SecretStoreError> for ConnectionStoreError {
     fn from(error: SecretStoreError) -> Self {
-        Self::SecretStore(match error {
-            SecretStoreError::UnsupportedPlatform => SecretStoreFailure::Unsupported,
-            SecretStoreError::AccessDenied => SecretStoreFailure::AccessDenied,
-            SecretStoreError::TimedOut => SecretStoreFailure::TimedOut,
-            SecretStoreError::OperationFailed | SecretStoreError::NoEntry => {
-                SecretStoreFailure::Unavailable
-            }
-        })
+        Self::SecretStore(error.into())
+    }
+}
+
+impl From<SecretStoreError> for SecretStoreFailure {
+    fn from(error: SecretStoreError) -> Self {
+        match error {
+            SecretStoreError::UnsupportedPlatform => Self::Unsupported,
+            SecretStoreError::AccessDenied => Self::AccessDenied,
+            SecretStoreError::TimedOut => Self::TimedOut,
+            SecretStoreError::OperationFailed | SecretStoreError::NoEntry => Self::Unavailable,
+        }
     }
 }
 

@@ -322,6 +322,13 @@ pub(in crate::cmd) async fn run(
                 Ok(()) => {
                     tx.blocking_send(Action::ConnectionDeleted(id)).ok();
                 }
+                Err(e @ ConnectionStoreError::CleanupIncomplete(_)) => {
+                    tx.blocking_send(Action::ConnectionDeletedWithCleanupWarning {
+                        id,
+                        warning: e.to_string(),
+                    })
+                    .ok();
+                }
                 Err(e) => {
                     tx.blocking_send(Action::ConnectionDeleteFailed(e.to_string()))
                         .ok();
@@ -994,6 +1001,7 @@ mod tests {
 
     mod delete_connection {
         use super::*;
+        use crate::ports::outbound::connection_store::SecretStoreFailure;
 
         #[tokio::test]
         async fn success_returns_connection_deleted() {
@@ -1024,6 +1032,39 @@ mod tests {
             assert!(
                 matches!(action, Action::ConnectionDeleted(_)),
                 "expected ConnectionDeleted, got {action:?}"
+            );
+        }
+
+        #[tokio::test]
+        async fn committed_delete_returns_deleted_action_with_cleanup_warning() {
+            let mut mock_store = MockConnectionStore::new();
+            mock_store.expect_delete().once().returning(|_| {
+                Err(ConnectionStoreError::CleanupIncomplete(
+                    SecretStoreFailure::TimedOut,
+                ))
+            });
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(mock_store),
+                tx,
+            );
+            let id = ConnectionId::new();
+
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::DeleteConnection { id: id.clone() },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
+
+            assert!(
+                matches!(&run.actions[0], Action::ConnectionDeletedWithCleanupWarning { id: deleted, warning } if deleted == &id && warning.contains("Configuration changes were saved") && warning.contains("cleanup could not be confirmed"))
             );
         }
 

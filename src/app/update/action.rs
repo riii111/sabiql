@@ -402,6 +402,10 @@ pub enum Action {
     RequestDeleteSelectedConnection,
     DeleteConnection(ConnectionId),
     ConnectionDeleted(ConnectionId),
+    ConnectionDeletedWithCleanupWarning {
+        id: ConnectionId,
+        warning: String,
+    },
     ConnectionDeleteFailed(String),
     RequestEditSelectedConnection,
 
