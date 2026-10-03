@@ -1,8 +1,6 @@
 use crate::domain::SqlitePathError;
 use crate::policy::password_masking::mask_password;
-use crate::ports::outbound::{
-    ConnectionFailureKind, DatabaseCli, DbOperationError, SqliteCompatibilityKind,
-};
+use crate::ports::outbound::{ConnectionFailureKind, DatabaseCli, DbOperationError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectionErrorInfo {
@@ -54,10 +52,7 @@ impl ConnectionErrorInfo {
                 let (summary, hint) = kind.presentation();
                 (summary, hint, false)
             }
-            DbOperationError::UnsupportedOperationWithSqliteKind {
-                kind: SqliteCompatibilityKind::SafeMode,
-                ..
-            } => (
+            DbOperationError::SqliteSafeModeRequired(_) => (
                 "SQLite 3.41.1 or later required",
                 "Upgrade sqlite3 to use SQLite safely",
                 false,
@@ -434,10 +429,9 @@ mod tests {
         #[test]
         fn from_db_operation_error_classifies_typed_sqlite_safe_mode_requirement() {
             let info = ConnectionErrorInfo::from_db_operation_error(
-                &DbOperationError::UnsupportedOperationWithSqliteKind {
-                    kind: SqliteCompatibilityKind::SafeMode,
-                    details: "sqlite3 3.41.1 or later is required for safe SQLite execution (found sqlite3 3.41.0)".to_string(),
-                },
+                &DbOperationError::SqliteSafeModeRequired(
+                    "sqlite3 3.41.1 or later is required for safe SQLite execution (found sqlite3 3.41.0)".to_string(),
+                ),
             );
 
             assert_eq!(info.summary(), "SQLite 3.41.1 or later required");

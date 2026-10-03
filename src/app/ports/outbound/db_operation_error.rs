@@ -57,11 +57,6 @@ impl UnsupportedOperationKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SqliteCompatibilityKind {
-    SafeMode,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectionFailureKind {
     HostUnreachable,
     Auth,
@@ -143,10 +138,7 @@ pub enum DbOperationError {
         details: String,
     },
     #[error("Unsupported operation")]
-    UnsupportedOperationWithSqliteKind {
-        kind: SqliteCompatibilityKind,
-        details: String,
-    },
+    SqliteSafeModeRequired(String),
     #[error("Connection failed")]
     ConnectionFailedWithKind {
         kind: ConnectionFailureKind,
@@ -220,7 +212,7 @@ impl DbOperationError {
                 "Reduce the preview value size and retry",
             ),
             Self::QueryFailedAfterChange { source, .. } => source.presentation(),
-            Self::UnsupportedOperation(_) | Self::UnsupportedOperationWithSqliteKind { .. } => (
+            Self::UnsupportedOperation(_) | Self::SqliteSafeModeRequired(_) => (
                 "Unsupported operation",
                 "Use a supported operation for this database",
             ),
@@ -324,7 +316,7 @@ impl DbOperationError {
             | Self::PreviewSizeExceeded(details)
             | Self::UnsupportedOperation(details)
             | Self::UnsupportedOperationWithKind { details, .. }
-            | Self::UnsupportedOperationWithSqliteKind { details, .. }
+            | Self::SqliteSafeModeRequired(details)
             | Self::ConnectionFailedWithKind { details, .. }
             | Self::MetadataParseFailed(details)
             | Self::EmptyResponse(details)
