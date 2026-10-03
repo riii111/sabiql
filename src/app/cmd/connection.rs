@@ -1052,19 +1052,24 @@ mod tests {
             );
             let id = ConnectionId::new();
 
-            let run = test_fixtures::run_one_effect(
+            test_fixtures::run_one_effect(
                 &runner,
                 Effect::DeleteConnection { id: id.clone() },
                 AppState::new("test".to_string()),
                 RefCell::new(CompletionEngine::new()),
                 &mut rx,
-                Some(std::time::Duration::from_millis(500)),
+                None,
             )
             .await
             .unwrap();
 
+            let action = test_fixtures::recv_action_with_timeout(
+                &mut rx,
+                std::time::Duration::from_millis(500),
+            )
+            .await;
             assert!(
-                matches!(&run.actions[0], Action::ConnectionDeletedWithCleanupWarning { id: deleted, warning } if deleted == &id && warning.contains("Configuration changes were saved") && warning.contains("cleanup could not be confirmed"))
+                matches!(&action, Action::ConnectionDeletedWithCleanupWarning { id: deleted, warning } if deleted == &id && warning.contains("Configuration changes were saved") && warning.contains("cleanup could not be confirmed"))
             );
         }
 
