@@ -493,7 +493,7 @@ mod tests {
                 Arc::new(MySqlDsnBuilder),
                 Arc::new(probe),
             );
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::SaveAndConnect {
                     id: None,
@@ -510,7 +510,7 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             assert!(matches!(
                 action,
                 Action::ConnectionSaveCompleted {
@@ -550,7 +550,7 @@ mod tests {
                 Arc::new(MySqlDsnBuilder),
                 Arc::new(probe),
             );
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::SaveAndConnect {
                     id: None,
@@ -567,7 +567,7 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             assert!(matches!(
                 action,
                 Action::ConnectionSaveFailed {
@@ -712,7 +712,7 @@ mod tests {
                 Arc::new(PostgresDsnBuilder),
             );
 
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::SaveAndConnect {
                     id: None,
@@ -730,7 +730,7 @@ mod tests {
             .unwrap();
 
             assert!(matches!(
-                run.actions.into_iter().next(),
+                actions.into_iter().next(),
                 Some(Action::ConnectionSaveCompleted {
                     run_id: 1,
                     metadata: Some(metadata),
@@ -769,7 +769,7 @@ mod tests {
                 Arc::new(PostgresDsnBuilder),
             );
 
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::SaveAndConnect {
                     id: None,
@@ -787,7 +787,7 @@ mod tests {
             .unwrap();
 
             assert!(matches!(
-                run.actions.into_iter().next(),
+                actions.into_iter().next(),
                 Some(Action::ConnectionSaveFailed {
                     error: ConnectionSaveError::Store(error),
                     run_id: 1,
@@ -863,7 +863,7 @@ mod tests {
                 Arc::new(SqliteDsnBuilder),
             );
 
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::SaveAndConnect {
                     id: None,
@@ -882,7 +882,7 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -914,7 +914,7 @@ mod tests {
                 Arc::new(SqliteDsnBuilder),
             );
 
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::SaveAndConnect {
                     id: None,
@@ -933,7 +933,7 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -966,7 +966,7 @@ mod tests {
             );
 
             let id = ConnectionId::new();
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::DeleteConnection { id: id.clone() },
                 AppState::new("test".to_string()),
@@ -977,7 +977,7 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(action, Action::ConnectionDeleted(_)),
                 "expected ConnectionDeleted, got {action:?}"
@@ -1001,7 +1001,7 @@ mod tests {
             );
 
             let id = ConnectionId::new();
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::DeleteConnection { id },
                 AppState::new("test".to_string()),
@@ -1012,7 +1012,7 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -1043,7 +1043,7 @@ mod tests {
                 tx,
             );
 
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::LoadConnectionForEdit {
                     id: ConnectionId::from_string("id"),
@@ -1057,7 +1057,7 @@ mod tests {
             .unwrap();
 
             assert!(matches!(
-                run.actions.into_iter().next(),
+                actions.into_iter().next(),
                 Some(Action::ConnectionEditLoadFailed(error))
                     if error == "Connection not found: id"
             ));
@@ -1084,7 +1084,7 @@ mod tests {
                 tx,
             );
 
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::LoadConnections,
                 AppState::new("test".to_string()),
@@ -1095,7 +1095,7 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(action, Action::ConnectionsLoaded(ConnectionsLoadedPayload { ref profiles, .. }) if profiles.is_empty()),
                 "expected ConnectionsLoaded with empty profiles, got {action:?}"

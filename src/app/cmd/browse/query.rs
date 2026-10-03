@@ -425,7 +425,7 @@ mod tests {
             Arc::new(MockConnectionStore::new()),
             tx,
         );
-        let run = test_fixtures::run_one_effect(
+        let actions = test_fixtures::run_one_effect(
             &runner,
             effect,
             AppState::new("test".to_string()),
@@ -436,7 +436,7 @@ mod tests {
         .await
         .unwrap();
 
-        run.actions.into_iter().next().expect("action dispatched")
+        actions.into_iter().next().expect("action dispatched")
     }
 
     mod query_history_append {
@@ -1088,7 +1088,7 @@ mod tests {
                 Arc::new(MockConnectionStore::new()),
                 tx,
             );
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::ExportCsvFromCache {
                     dsn: "sqlite:///tmp/test.db".to_string(),
@@ -1109,7 +1109,7 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             let Action::CsvExportSucceeded {
                 path, row_count, ..
             } = action
@@ -1131,7 +1131,7 @@ mod tests {
                 tx,
                 Arc::new(FailingCachedResultExporter),
             );
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::ExportCsvFromCache {
                     dsn: "sqlite:///tmp/test.db".to_string(),
@@ -1149,7 +1149,7 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             assert!(matches!(action, Action::CsvExportFailed { run_id: 8, .. }));
         }
     }
@@ -1188,7 +1188,7 @@ mod tests {
                 tx,
             );
 
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::ExecutePreview {
                     dsn: "dsn://test".to_string(),
@@ -1208,7 +1208,7 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(action, Action::QueryCompleted { .. }),
                 "expected QueryCompleted, got {action:?}"
@@ -1233,7 +1233,7 @@ mod tests {
                 tx,
             );
 
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::ExecutePreview {
                     dsn: "dsn://test".to_string(),
@@ -1253,7 +1253,7 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,

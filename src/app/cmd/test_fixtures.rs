@@ -182,10 +182,6 @@ pub fn active_connection_save_guard(run_id: u64) -> Arc<ConnectionSaveGuard> {
     guard
 }
 
-pub struct EffectRun {
-    pub actions: Vec<Action>,
-}
-
 pub fn run_one_effect<'a>(
     runner: &'a EffectRunner,
     effect: Effect,
@@ -193,7 +189,7 @@ pub fn run_one_effect<'a>(
     completion_engine: RefCell<CompletionEngine>,
     action_rx: &'a mut mpsc::Receiver<Action>,
     action_timeout: Option<Duration>,
-) -> Pin<Box<dyn Future<Output = Result<EffectRun>> + 'a>> {
+) -> Pin<Box<dyn Future<Output = Result<Vec<Action>>> + 'a>> {
     Box::pin(async move {
         let mut renderer = NoopRenderer;
         let mut actions = runner
@@ -210,7 +206,7 @@ pub fn run_one_effect<'a>(
             actions.push(recv_action_with_timeout(action_rx, timeout).await);
         }
 
-        Ok(EffectRun { actions })
+        Ok(actions)
     })
 }
 
