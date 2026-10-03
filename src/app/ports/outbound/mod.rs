@@ -30,8 +30,7 @@ pub use clipboard::{ClipboardError, ClipboardOutcome, ClipboardWriter};
 pub use config_writer::{ConfigWriter, ConfigWriterError};
 pub use connection_store::{ConnectionStore, ConnectionStoreError};
 pub use db_operation_error::{
-    ConnectionFailureKind, DatabaseCli, DbOperationError, SqliteCompatibilityKind,
-    UnsupportedOperationKind,
+    ConnectionFailureKind, DatabaseCli, DbOperationError, UnsupportedOperationKind,
 };
 pub use ddl_generator::DdlGenerator;
 pub use dsn_builder::DsnBuilder;

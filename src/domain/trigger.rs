@@ -112,16 +112,9 @@ mod tests {
         #[case(TriggerTiming::Before, "BEFORE")]
         #[case(TriggerTiming::After, "AFTER")]
         #[case(TriggerTiming::InsteadOf, "INSTEAD OF")]
-        fn display_uses_expected_labels(#[case] timing: TriggerTiming, #[case] expected: &str) {
-            assert_eq!(timing.to_string(), expected);
-        }
-
-        #[rstest]
-        #[case(TriggerTiming::Before)]
-        #[case(TriggerTiming::After)]
-        #[case(TriggerTiming::InsteadOf)]
-        fn display_round_trips(#[case] timing: TriggerTiming) {
-            assert_eq!(timing.to_string().parse::<TriggerTiming>().unwrap(), timing);
+        fn display_and_parse_share_labels(#[case] timing: TriggerTiming, #[case] label: &str) {
+            assert_eq!(timing.to_string(), label);
+            assert_eq!(label.parse::<TriggerTiming>().unwrap(), timing);
         }
 
         #[test]
@@ -141,17 +134,9 @@ mod tests {
         #[case(TriggerEvent::Update, "UPDATE")]
         #[case(TriggerEvent::Delete, "DELETE")]
         #[case(TriggerEvent::Truncate, "TRUNCATE")]
-        fn display_uses_expected_labels(#[case] event: TriggerEvent, #[case] expected: &str) {
-            assert_eq!(event.to_string(), expected);
-        }
-
-        #[rstest]
-        #[case(TriggerEvent::Insert)]
-        #[case(TriggerEvent::Update)]
-        #[case(TriggerEvent::Delete)]
-        #[case(TriggerEvent::Truncate)]
-        fn display_round_trips(#[case] event: TriggerEvent) {
-            assert_eq!(event.to_string().parse::<TriggerEvent>().unwrap(), event);
+        fn display_and_parse_share_labels(#[case] event: TriggerEvent, #[case] label: &str) {
+            assert_eq!(event.to_string(), label);
+            assert_eq!(label.parse::<TriggerEvent>().unwrap(), event);
         }
 
         #[test]
