@@ -281,7 +281,7 @@ mod tests {
                 tx,
             );
 
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::FetchMetadata {
                     dsn: dsn.clone(),
@@ -295,7 +295,7 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -336,7 +336,7 @@ mod tests {
                 tx,
             );
 
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::FetchMetadata {
                     dsn: dsn.clone(),
@@ -350,7 +350,7 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(action, Action::MetadataLoaded { run_id: 7, .. }),
                 "expected MetadataLoaded, got {action:?}"
@@ -375,7 +375,7 @@ mod tests {
                 tx,
             );
 
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::FetchMetadata {
                     dsn: "dsn://miss".to_string(),
@@ -389,7 +389,7 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             assert!(matches!(
                 action,
                 Action::MetadataLoaded {
@@ -416,7 +416,7 @@ mod tests {
                 tx,
             );
 
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::FetchMetadata {
                     dsn: "dsn://err".to_string(),
@@ -430,7 +430,7 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(action, Action::MetadataFailed { run_id: 7, .. }),
                 "expected MetadataFailed, got {action:?}"
@@ -469,7 +469,7 @@ mod tests {
                 tx,
             );
 
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::FetchTableDetail {
                     dsn: "dsn://test".to_string(),
@@ -486,7 +486,7 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -519,7 +519,7 @@ mod tests {
                 tx,
             );
 
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::PrefetchTableColumnsAndFks {
                     dsn: "dsn://test".to_string(),
@@ -535,7 +535,7 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -564,7 +564,7 @@ mod tests {
             let mut completion_engine = CompletionEngine::new();
             completion_engine.cache_table_detail("public.users".to_string(), sample_table());
 
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::PrefetchTableColumnsAndFks {
                     dsn: "dsn://test".to_string(),
@@ -580,7 +580,7 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
