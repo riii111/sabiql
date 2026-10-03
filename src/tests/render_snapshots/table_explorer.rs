@@ -8,32 +8,6 @@ use sabiql_domain::{
 };
 use sabiql_ui::theme::DEFAULT_THEME;
 
-fn row_text(buffer: &ratatui::buffer::Buffer, y: u16) -> String {
-    (buffer.area.left()..buffer.area.right())
-        .filter_map(|x| buffer.cell((x, y)))
-        .map(ratatui::buffer::Cell::symbol)
-        .collect()
-}
-
-fn assert_row_text_color(
-    buffer: &ratatui::buffer::Buffer,
-    y: u16,
-    text: &str,
-    expected: ratatui::style::Color,
-) {
-    let row = row_text(buffer, y);
-    let start = row
-        .find(text)
-        .map(|byte_offset| buffer.area.left() + row[..byte_offset].chars().count() as u16)
-        .expect("expected text in target row");
-    for (offset, _) in text.chars().enumerate() {
-        assert_eq!(
-            buffer.cell((start + offset as u16, y)).unwrap().fg,
-            expected
-        );
-    }
-}
-
 #[test]
 fn table_selection_with_preview() {
     let mut state = table_detail_loaded_state();

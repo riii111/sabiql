@@ -7,22 +7,6 @@ use sabiql_app::update::dispatch_result;
 use sabiql_domain::{Column, ConnectionId, DatabaseMetadata, QueryResult, TableSummary};
 use sabiql_ui::theme::DEFAULT_THEME;
 
-fn find_text_in_row(buffer: &ratatui::buffer::Buffer, y: u16, text: &str) -> Option<u16> {
-    let row = (buffer.area.left()..buffer.area.right())
-        .filter_map(|x| buffer.cell((x, y)))
-        .map(ratatui::buffer::Cell::symbol)
-        .collect::<String>();
-    row.find(text)
-        .map(|byte_offset| buffer.area.left() + row[..byte_offset].chars().count() as u16)
-}
-
-fn row_text(buffer: &ratatui::buffer::Buffer, y: u16) -> String {
-    (buffer.area.left()..buffer.area.right())
-        .filter_map(|x| buffer.cell((x, y)))
-        .map(ratatui::buffer::Cell::symbol)
-        .collect()
-}
-
 fn json_detail_state() -> (AppState, std::time::Instant) {
     let now = test_instant();
     let mut state = create_test_state();
