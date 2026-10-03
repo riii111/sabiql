@@ -1605,55 +1605,18 @@ mod tests {
                 }
             }
 
-            #[test]
-            fn sqlite_incompatible_transaction_preserves_high_risk_acknowledgement() {
-                let result = evaluate_multi_statement_for_database(
-                    DatabaseType::SQLite,
-                    "PRAGMA foreign_keys = OFF; CREATE TABLE users(id INTEGER)",
-                );
-
-                match result {
-                    MultiStatementDecision::Allow { risk, .. } => {
-                        assert!(matches!(
-                            risk.confirmation,
-                            ConfirmationType::Acknowledge {
-                                reason: AcknowledgeReason::TargetNameUnavailable,
-                                ref label,
-                            } if label == "PRAGMA"
-                        ));
-                    }
-                    _ => panic!("expected Allow"),
-                }
-            }
-
-            #[test]
-            fn sqlite_incompatible_transaction_preserves_commented_high_risk_acknowledgement() {
-                let result = evaluate_multi_statement_for_database(
-                    DatabaseType::SQLite,
-                    "PRAGMA foreign_keys = /* comment */ OFF; CREATE TABLE users(id INTEGER)",
-                );
-
-                match result {
-                    MultiStatementDecision::Allow { risk, .. } => {
-                        assert!(matches!(
-                            risk.confirmation,
-                            ConfirmationType::Acknowledge {
-                                reason: AcknowledgeReason::TargetNameUnavailable,
-                                ref label,
-                            } if label == "PRAGMA"
-                        ));
-                    }
-                    _ => panic!("expected Allow"),
-                }
-            }
-
-            #[test]
-            fn sqlite_foreign_keys_no_in_incompatible_transaction_preserves_high_risk_acknowledgement()
-             {
-                let result = evaluate_multi_statement_for_database(
-                    DatabaseType::SQLite,
-                    "PRAGMA foreign_keys = ON; PRAGMA foreign_keys = NO; PRAGMA foreign_keys;",
-                );
+            #[rstest]
+            #[case::foreign_keys_off("PRAGMA foreign_keys = OFF; CREATE TABLE users(id INTEGER)")]
+            #[case::commented_foreign_keys_off(
+                "PRAGMA foreign_keys = /* comment */ OFF; CREATE TABLE users(id INTEGER)"
+            )]
+            #[case::foreign_keys_no(
+                "PRAGMA foreign_keys = ON; PRAGMA foreign_keys = NO; PRAGMA foreign_keys;"
+            )]
+            fn sqlite_incompatible_transaction_preserves_high_risk_acknowledgement(
+                #[case] sql: &str,
+            ) {
+                let result = evaluate_multi_statement_for_database(DatabaseType::SQLite, sql);
 
                 match result {
                     MultiStatementDecision::Allow { risk, .. } => {
