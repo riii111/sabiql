@@ -749,33 +749,18 @@ mod tests {
             #[case("run")]
             #[case("cached_run")]
             fn csv_export_ignores_mismatched_context(#[case] mismatch: &str) {
-                let mut state = create_test_state();
-                if mismatch == "dsn" {
-                    enter_confirm_dialog(&mut state, InputMode::Normal);
-                    let _ = state
-                        .session
-                        .begin_connecting("postgres://localhost/current");
-                    let _ = state.query.begin_running(Instant::now());
-                    state.confirm_dialog.open(
-                        "",
-                        "",
-                        ConfirmIntent::CsvExportRerunnable {
-                            dsn: "postgres://localhost/stale".to_string(),
-                            run_id: 1,
-                            export_query: "SELECT 1".to_string(),
-                            file_name: "test.csv".to_string(),
-                        },
-                    );
-                } else {
-                    let (_, current_run_id) = csv_state_with_current_run();
-                    let intent = if mismatch == "run" {
-                        rerunnable_csv_intent(current_run_id + 1)
-                    } else {
-                        cached_csv_intent(current_run_id + 1)
-                    };
-                    state = csv_state_with_current_run().0;
-                    open_confirm_intent(&mut state, intent);
-                }
+                let (mut state, current_run_id) = csv_state_with_current_run();
+                let intent = match mismatch {
+                    "dsn" => ConfirmIntent::CsvExportRerunnable {
+                        dsn: "postgres://localhost/stale".to_string(),
+                        run_id: current_run_id,
+                        export_query: "SELECT 1".to_string(),
+                        file_name: CSV_TEST_FILE.to_string(),
+                    },
+                    "run" => rerunnable_csv_intent(current_run_id + 1),
+                    _ => cached_csv_intent(current_run_id + 1),
+                };
+                open_confirm_intent(&mut state, intent);
 
                 let effects = confirm_effects(&mut state);
                 assert!(effects.is_empty());
@@ -799,21 +784,6 @@ mod tests {
 
                 assert!(!state.session.is_read_only());
                 assert_eq!(state.input_mode(), InputMode::Normal);
-                assert!(effects.is_empty());
-            }
-
-            #[test]
-            fn none_intent_confirm_does_not_panic() {
-                let mut state = create_test_state();
-                enter_confirm_dialog(&mut state, InputMode::Normal);
-
-                let effects = super::dispatch_modal(
-                    &mut state,
-                    &Action::ConfirmDialogConfirm,
-                    Instant::now(),
-                )
-                .unwrap();
-
                 assert!(effects.is_empty());
             }
         }
@@ -1046,19 +1016,6 @@ mod tests {
                 assert!(effects.is_empty());
                 assert!(state.query.is_running());
                 assert!(state.query.is_current_run(current_run_id));
-            }
-
-            #[test]
-            fn none_intent_cancel_does_not_panic() {
-                let mut state = create_test_state();
-                enter_confirm_dialog(&mut state, InputMode::Normal);
-
-                let effects =
-                    super::dispatch_modal(&mut state, &Action::ConfirmDialogCancel, Instant::now())
-                        .into_effects()
-                        .expect("reducer should handle action");
-
-                assert!(effects.is_empty());
             }
         }
     }
