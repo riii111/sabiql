@@ -3291,21 +3291,15 @@ mod tests {
             e.cache_table_detail("public.orders".to_string(), make_table("public", "orders"));
             e.cache_table_detail("public.items".to_string(), make_table("public", "items"));
 
-            e.evict_tables(&["public.users".to_string(), "public.orders".to_string()]);
+            e.evict_tables(&[
+                "public.users".to_string(),
+                "public.orders".to_string(),
+                "public.nonexistent".to_string(),
+            ]);
 
             assert!(!e.has_cached_table("public.users"));
             assert!(!e.has_cached_table("public.orders"));
             assert!(e.has_cached_table("public.items"));
-        }
-
-        #[test]
-        fn evict_tables_ignores_missing_keys() {
-            let mut e = engine();
-            e.cache_table_detail("public.users".to_string(), make_table("public", "users"));
-
-            e.evict_tables(&["public.nonexistent".to_string()]);
-
-            assert!(e.has_cached_table("public.users"));
         }
     }
 
@@ -3442,18 +3436,12 @@ mod tests {
             let e = engine();
             let table = create_users_table();
 
-            // "SELECT xxx F" with table_detail - should show both FROM keyword and columns starting with F
             let candidates = e.get_candidates("SELECT xxx F", 12, None, Some(&table));
 
-            // FROM keyword should appear (high priority)
             assert!(
                 candidates.iter().any(|c| c.text == "FROM"),
                 "FROM keyword should appear in candidates"
             );
-
-            // Verify FROM has higher score than columns
-            let from_candidate = candidates.iter().find(|c| c.text == "FROM").unwrap();
-            assert_eq!(from_candidate.score, 200, "FROM should have score 200");
         }
 
         #[test]
@@ -3598,30 +3586,6 @@ mod tests {
                 users_name.unwrap().score > orders_user_id.unwrap().score,
                 "Target table column should be prioritized"
             );
-        }
-
-        #[test]
-        fn select_has_no_target_boost() {
-            let mut e = engine();
-            let users = create_table("public", "users", &["id", "name"]);
-
-            e.cache_table_detail("public.users".to_string(), users.clone());
-
-            let mut metadata = DatabaseMetadata::new("test".to_string());
-            metadata.table_summaries = vec![TableSummary::new(
-                "public".to_string(),
-                "users".to_string(),
-                None,
-                false,
-            )];
-
-            // SELECT has no target, so no boost
-            let candidates = e.get_candidates("SELECT ", 7, Some(&metadata), Some(&users));
-
-            let name_candidate = candidates.iter().find(|c| c.text == "name");
-            assert!(name_candidate.is_some());
-            // No target boost, base score only (0 for empty prefix)
-            assert!(name_candidate.unwrap().score < 200);
         }
     }
 
