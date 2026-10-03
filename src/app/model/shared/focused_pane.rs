@@ -22,11 +22,6 @@ mod tests {
     use super::*;
     use rstest::rstest;
 
-    #[test]
-    fn default_is_explorer() {
-        assert_eq!(FocusedPane::default(), FocusedPane::Explorer);
-    }
-
     #[rstest]
     #[case('1', FocusedPane::Explorer)]
     #[case('2', FocusedPane::Inspector)]

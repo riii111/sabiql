@@ -281,10 +281,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(
-                state.modal.return_destination(),
-                InputMode::ConnectionSelector
-            );
+            assert_eq!(state.modal.pop_mode(), InputMode::ConnectionSelector);
         }
     }
 
@@ -462,7 +459,7 @@ mod tests {
                 "SELECT * FROM users WHERE id = 1",
             );
             state.explain.set_error("stale error".to_string());
-            state.ui.set_pending_er_picker(true);
+            state.ui.request_er_picker_after_metadata();
             let _ = state.er_preparation.start_waiting_run();
             state
                 .table_prefetch

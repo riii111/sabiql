@@ -304,10 +304,6 @@ impl UiState {
         self.pending_er_picker
     }
 
-    pub fn set_pending_er_picker(&mut self, pending: bool) {
-        self.pending_er_picker = pending;
-    }
-
     pub fn inspector_tab(&self) -> InspectorTab {
         self.inspector_tab
     }
@@ -610,19 +606,15 @@ mod tests {
         use super::*;
 
         #[test]
-        fn default_creates_empty_state() {
-            let state = UiState::default();
-
-            assert_eq!(state.focused_pane, FocusedPane::default());
-            assert_eq!(state.focus_mode, FocusMode::Normal);
-            assert_eq!(state.explorer_selected, 0);
-            assert!(state.table_picker.filter_input().content().is_empty());
-        }
-
-        #[test]
-        fn new_sets_terminal_height() {
+        fn new_starts_on_explorer_info_with_empty_selection() {
             let state = UiState::new();
 
+            assert_eq!(state.focused_pane, FocusedPane::Explorer);
+            assert_eq!(state.focus_mode, FocusMode::Normal);
+            assert_eq!(state.inspector_tab, InspectorTab::Info);
+            assert_eq!(state.explorer_selected, 0);
+            assert!(state.table_picker.filter_input().content().is_empty());
+            assert_eq!(state.table_picker.selected(), 0);
             assert_eq!(state.terminal_width, 80);
             assert_eq!(state.terminal_height, 24);
         }

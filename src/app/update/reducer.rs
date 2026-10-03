@@ -2684,7 +2684,7 @@ mod tests {
         #[test]
         fn metadata_loaded_with_pending_dispatches_open() {
             let mut state = create_test_state();
-            state.ui.set_pending_er_picker(true);
+            state.ui.request_er_picker_after_metadata();
             state.modal.set_mode(InputMode::Normal);
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state);
@@ -2698,7 +2698,6 @@ mod tests {
         #[test]
         fn metadata_loaded_without_pending_does_not_dispatch_open() {
             let mut state = create_test_state();
-            state.ui.set_pending_er_picker(false);
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state);
 
@@ -2710,7 +2709,7 @@ mod tests {
         #[test]
         fn metadata_loaded_with_pending_but_non_normal_mode_discards() {
             let mut state = create_test_state();
-            state.ui.set_pending_er_picker(true);
+            state.ui.request_er_picker_after_metadata();
             state.modal.set_mode(InputMode::SqlModal);
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state);

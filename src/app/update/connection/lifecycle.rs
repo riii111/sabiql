@@ -770,7 +770,7 @@ mod tests {
         }
 
         fn seed_er_state(state: &mut AppState) {
-            state.ui.set_pending_er_picker(true);
+            state.ui.request_er_picker_after_metadata();
             let _ = state.er_preparation.start_waiting_run();
             state
                 .table_prefetch
@@ -1418,7 +1418,7 @@ mod tests {
         fn switching_clears_pending_er_picker(#[case] cached: bool) {
             let mut state = AppState::new("test".to_string());
             let new_id = ConnectionId::new();
-            state.ui.set_pending_er_picker(true);
+            state.ui.request_er_picker_after_metadata();
             let _ = state.er_preparation.start_waiting_run();
             state
                 .table_prefetch

@@ -1320,7 +1320,7 @@ mod tests {
         #[test]
         fn save_completed_clears_er_state_from_previous_connection() {
             let mut state = AppState::new("test".to_string());
-            state.ui.set_pending_er_picker(true);
+            state.ui.request_er_picker_after_metadata();
             let _ = state.er_preparation.start_waiting_run();
             state
                 .table_prefetch
