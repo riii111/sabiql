@@ -516,29 +516,17 @@ pub fn evaluate_multi_statement_for_database_with_context(
         .collect();
     let has_acknowledge = !ack_reasons.is_empty();
     let mixed_ack_reasons = ack_reasons.windows(2).any(|w| w[0] != w[1]);
-    let sqlite_classifications: Vec<_> = statements
-        .iter()
-        .map(|statement| sqlite_statement_classification(statement))
-        .collect();
-    let transaction_policy = if database_type == DatabaseType::SQLite {
-        sqlite_transaction_policy_for_classifications(&sqlite_classifications)
-    } else {
-        SqliteTransactionPolicy::NotNeeded
-    };
+    let (transaction_policy, has_non_transaction_acknowledge) =
+        if database_type == DatabaseType::SQLite {
+            sqlite_transaction_constraints(&statements, &decisions)
+        } else {
+            (SqliteTransactionPolicy::NotNeeded, false)
+        };
 
     // One dialog can only carry one consent: a typed-name confirmation must not
     // silently approve statements that need their own acknowledgment, and one
     // acknowledgment must not cover statements flagged for a different reason
     // (the dialog would hide the other reason from the user).
-    let has_non_transaction_acknowledge = transaction_policy.requires_acknowledgement()
-        && decisions.iter().enumerate().any(|(index, decision)| {
-            matches!(decision.confirmation, ConfirmationType::Acknowledge { .. })
-                && !matches!(
-                    sqlite_classifications[index],
-                    SqliteStatementClassification::SessionSideEffect
-                        | SqliteStatementClassification::TransactionIncompatible
-                )
-        });
     if (has_table_name_input && has_acknowledge)
         || mixed_ack_reasons
         || has_non_transaction_acknowledge
@@ -583,6 +571,30 @@ pub fn evaluate_multi_statement_for_database_with_context(
     }
 }
 
+fn sqlite_transaction_constraints(
+    statements: &[String],
+    decisions: &[SqlRiskDecision],
+) -> (SqliteTransactionPolicy, bool) {
+    let classifications: Vec<_> = statements
+        .iter()
+        .map(|statement| sqlite_statement_classification(statement))
+        .collect();
+    let policy = sqlite_transaction_policy_for_classifications(&classifications);
+    let has_non_transaction_acknowledge = policy.requires_acknowledgement()
+        && decisions
+            .iter()
+            .zip(&classifications)
+            .any(|(decision, classification)| {
+                matches!(decision.confirmation, ConfirmationType::Acknowledge { .. })
+                    && !matches!(
+                        classification,
+                        SqliteStatementClassification::SessionSideEffect
+                            | SqliteStatementClassification::TransactionIncompatible
+                    )
+            });
+    (policy, has_non_transaction_acknowledge)
+}
+
 fn high_acknowledge_label(label: &str) -> SqlRiskDecision {
     SqlRiskDecision {
         risk_level: RiskLevel::High,
@@ -596,6 +608,20 @@ fn high_acknowledge_label(label: &str) -> SqlRiskDecision {
 
 fn high_acknowledge_keyword(keyword: &str) -> SqlRiskDecision {
     high_acknowledge_label(&keyword.to_uppercase())
+}
+
+fn sqlite_replace_risk(sql: &str) -> SqlRiskDecision {
+    match sqlite_replace_target_in_statement(sql) {
+        Some(target) => SqlRiskDecision {
+            risk_level: RiskLevel::High,
+            confirmation: ConfirmationType::TableNameInput {
+                target,
+                label: "REPLACE",
+            },
+            read_only_allowed: false,
+        },
+        None => high_acknowledge_label("REPLACE"),
+    }
 }
 
 fn sqlite_replace_target_in_statement(sql: &str) -> Option<String> {
@@ -763,37 +789,13 @@ fn evaluate_sqlite_specific_risk(sql: &str) -> Option<SqlRiskDecision> {
         "attach" | "detach" | "vacuum" | "reindex" | "analyze" => {
             Some(high_acknowledge_keyword(&tokens[0]))
         }
-        "replace" => sqlite_replace_target_in_statement(effective).map_or_else(
-            || Some(high_acknowledge_label("REPLACE")),
-            |target| {
-                Some(SqlRiskDecision {
-                    risk_level: RiskLevel::High,
-                    confirmation: ConfirmationType::TableNameInput {
-                        target,
-                        label: "REPLACE",
-                    },
-                    read_only_allowed: false,
-                })
-            },
-        ),
+        "replace" => Some(sqlite_replace_risk(effective)),
         "insert"
             if tokens.get(1).map(String::as_str) == Some("or")
                 && tokens.get(2).map(String::as_str) == Some("replace")
                 && tokens.get(3).map(String::as_str) == Some("into") =>
         {
-            sqlite_replace_target_in_statement(effective).map_or_else(
-                || Some(high_acknowledge_label("REPLACE")),
-                |target| {
-                    Some(SqlRiskDecision {
-                        risk_level: RiskLevel::High,
-                        confirmation: ConfirmationType::TableNameInput {
-                            target,
-                            label: "REPLACE",
-                        },
-                        read_only_allowed: false,
-                    })
-                },
-            )
+            Some(sqlite_replace_risk(effective))
         }
         "drop" => sqlite_drop_risk(effective),
         _ => None,
