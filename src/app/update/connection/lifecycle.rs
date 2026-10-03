@@ -1850,7 +1850,9 @@ mod tests {
                 &first.dsn,
                 first.database.as_deref(),
             );
-            state.session.mark_probe_connected();
+            state
+                .session
+                .mark_connected(Arc::new(DatabaseMetadata::new("a".to_string())));
             state.ui.set_explorer_selected_raw(3);
             let generation = state
                 .session

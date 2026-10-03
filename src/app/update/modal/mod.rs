@@ -1065,6 +1065,9 @@ mod tests {
 
     mod query_history_picker {
         use super::*;
+        use std::sync::Arc;
+
+        use crate::domain::DatabaseMetadata;
         use crate::domain::query_history::{
             QueryHistoryEntry, QueryHistoryScope, QueryResultStatus,
         };
@@ -1104,7 +1107,9 @@ mod tests {
                 &format!("mysql://localhost/{database}"),
                 Some(database),
             );
-            state.session.mark_probe_connected();
+            state
+                .session
+                .mark_connected(Arc::new(DatabaseMetadata::new(database.to_string())));
             state
         }
 
