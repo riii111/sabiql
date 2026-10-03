@@ -148,6 +148,15 @@ mod tests {
         QueryHistoryScope::new(connection_id.clone(), Some(database.to_string()))
     }
 
+    fn seed_history(base_dir: &Path, connection_id: &ConnectionId, count: usize) {
+        let history_dir = base_dir.join("history");
+        std::fs::create_dir_all(&history_dir).unwrap();
+        let content: String = (0..count)
+            .map(|i| serde_json::to_string(&make_entry(&format!("SELECT {i}"))).unwrap() + "\n")
+            .collect();
+        std::fs::write(history_dir.join(format!("{connection_id}.jsonl")), content).unwrap();
+    }
+
     #[tokio::test]
     async fn append_and_load_succeed_for_cli_sqlite_connection_id() {
         let tmp = TempDir::new().unwrap();
@@ -343,63 +352,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn trim_does_not_trigger_at_exact_limit() {
+    async fn appends_at_and_beyond_limit_keep_latest_entries() {
         let tmp = TempDir::new().unwrap();
         let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
         let conn_id = ConnectionId::from_string("test-conn");
+        seed_history(tmp.path(), &conn_id, MAX_HISTORY_ENTRIES - 1);
 
-        for i in 0..MAX_HISTORY_ENTRIES {
+        for dropped in 0..3 {
+            let query = format!("SELECT {}", MAX_HISTORY_ENTRIES - 1 + dropped);
             store
-                .append(
-                    "test",
-                    &scope(&conn_id),
-                    &make_entry(&format!("SELECT {i}")),
-                )
-                .await
-                .unwrap();
-        }
-
-        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
-        assert_eq!(entries.len(), MAX_HISTORY_ENTRIES);
-        assert_eq!(entries[0].query, "SELECT 0");
-        assert_eq!(
-            entries[MAX_HISTORY_ENTRIES - 1].query,
-            format!("SELECT {}", MAX_HISTORY_ENTRIES - 1)
-        );
-    }
-
-    #[tokio::test]
-    async fn multiple_appends_beyond_limit_preserves_latest() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = ConnectionId::from_string("test-conn");
-
-        let total = MAX_HISTORY_ENTRIES + 5;
-        for i in 0..total {
-            store
-                .append(
-                    "test",
-                    &scope(&conn_id),
-                    &make_entry(&format!("SELECT {i}")),
-                )
+                .append("test", &scope(&conn_id), &make_entry(&query))
                 .await
                 .unwrap();
 
-            if i == MAX_HISTORY_ENTRIES {
-                let entries = store.load("test", &scope(&conn_id)).await.unwrap();
-                assert_eq!(entries.len(), MAX_HISTORY_ENTRIES);
-                assert_eq!(entries[0].query, "SELECT 1");
-                assert_eq!(entries[MAX_HISTORY_ENTRIES - 1].query, "SELECT 1000");
-            }
+            let entries = store.load("test", &scope(&conn_id)).await.unwrap();
+            assert_eq!(entries.len(), MAX_HISTORY_ENTRIES);
+            assert_eq!(entries[0].query, format!("SELECT {dropped}"));
+            assert_eq!(entries[MAX_HISTORY_ENTRIES - 1].query, query);
         }
-
-        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
-        assert_eq!(entries.len(), MAX_HISTORY_ENTRIES);
-        assert_eq!(entries[0].query, "SELECT 5");
-        assert_eq!(
-            entries[MAX_HISTORY_ENTRIES - 1].query,
-            format!("SELECT {}", total - 1)
-        );
     }
 
     #[tokio::test]
@@ -407,33 +377,21 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
         let conn_id = ConnectionId::from_string("test-conn");
-
-        // Fill to just above the limit so trim fires on next append
-        for i in 0..MAX_HISTORY_ENTRIES {
-            store
-                .append(
-                    "test",
-                    &scope(&conn_id),
-                    &make_entry(&format!("SELECT {i}")),
-                )
-                .await
-                .unwrap();
-        }
-
-        // Make the .tmp path a directory so fs::write in trim_if_exceeded fails
-        let history_dir = tmp.path().join("history");
-        let tmp_path = history_dir.join(format!("{conn_id}.jsonl.tmp"));
+        seed_history(tmp.path(), &conn_id, MAX_HISTORY_ENTRIES);
+        // A directory at the temporary path makes the trim rewrite fail.
+        let tmp_path = tmp
+            .path()
+            .join("history")
+            .join(format!("{conn_id}.jsonl.tmp"));
         std::fs::create_dir_all(&tmp_path).unwrap();
 
-        // append should still succeed (trim failure is best-effort)
         let result = store
             .append("test", &scope(&conn_id), &make_entry("SELECT final"))
             .await;
-        assert!(result.is_ok());
 
-        // The entry was written even though trim failed
+        assert!(result.is_ok());
         let entries = store.load("test", &scope(&conn_id)).await.unwrap();
-        assert!(entries.len() > MAX_HISTORY_ENTRIES);
+        assert_eq!(entries.len(), MAX_HISTORY_ENTRIES + 1);
         assert_eq!(entries.last().unwrap().query, "SELECT final");
     }
 
