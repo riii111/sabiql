@@ -1,50 +1,11 @@
 use super::*;
-use crate::tests::harness::{focus_connection_field, set_connection_input};
+use crate::tests::harness::{
+    focus_connection_field, json_cell_selected_state, set_connection_input,
+};
 use sabiql_app::model::sql_editor::modal::SQL_MODAL_HEIGHT_PERCENT;
 
 fn json_detail_state() -> (AppState, Instant) {
-    let now = test_instant();
-    let mut state = create_test_state();
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata()));
-    let mut table = fixtures::sample_postgres_table_detail();
-    table.columns.push(Column {
-        name: "settings".to_string(),
-        data_type: "jsonb".to_string(),
-        attributes: ColumnAttributes::NULLABLE,
-        default: None,
-        comment: None,
-        ordinal_position: 4,
-        character_set_name: None,
-        collation_name: None,
-        generation_expression: None,
-        generation_kind: None,
-    });
-    let _ = state.session.set_table_detail(table, 0);
-    state
-        .query
-        .set_current_result(Arc::new(QueryResult::success(
-            "SELECT id, name, email, settings FROM users LIMIT 100".to_string(),
-            vec![
-                "id".to_string(),
-                "name".to_string(),
-                "email".to_string(),
-                "settings".to_string(),
-            ],
-            vec![vec![
-                "1".to_string(),
-                "Alice".to_string(),
-                "alice@example.com".to_string(),
-                r#"{"theme":"dark","count":5,"nested":{"enabled":true,"roles":["admin","writer"]}}"#
-                    .to_string(),
-            ]],
-            1,
-            QuerySource::Preview,
-        )));
-    state.query.pagination.reset_for_table("public", "users");
-    state.ui.set_focused_pane(FocusedPane::Result);
-    state.result_interaction.activate_cell(0, 3);
+    let (mut state, now) = json_cell_selected_state();
     dispatch_result(
         &mut state,
         &Action::OpenModal(ModalKind::JsonDetail),
@@ -59,6 +20,7 @@ fn json_detail_state() -> (AppState, Instant) {
     );
     (state, now)
 }
+
 fn block_cursor_position(buffer: &ratatui::buffer::Buffer) -> Option<(u16, u16)> {
     (buffer.area.top()..buffer.area.bottom())
         .flat_map(|y| (buffer.area.left()..buffer.area.right()).map(move |x| (x, y)))

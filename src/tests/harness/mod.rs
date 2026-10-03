@@ -13,9 +13,12 @@ use ratatui::layout::Position;
 
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::connection::setup::ConnectionField;
+use sabiql_app::model::shared::focused_pane::FocusedPane;
 use sabiql_app::model::shared::text_input::TextInputState;
 use sabiql_app::services::AppServices;
-use sabiql_domain::{ConnectionId, DatabaseType};
+use sabiql_domain::{
+    Column, ColumnAttributes, ConnectionId, DatabaseType, QueryResult, QuerySource,
+};
 use sabiql_ui::shell::layout::MainLayout;
 use sabiql_ui::theme::{ThemePalette, palette_for};
 
@@ -199,4 +202,47 @@ pub fn with_current_result(state: &mut AppState) {
     state
         .query
         .set_current_result(Arc::new(fixtures::sample_query_result()));
+}
+
+pub fn json_cell_selected_state() -> (AppState, Instant) {
+    let now = test_instant();
+    let mut state = postgres_connected_state();
+    let mut table = fixtures::sample_postgres_table_detail();
+    table.columns.push(Column {
+        name: "settings".to_string(),
+        data_type: "jsonb".to_string(),
+        attributes: ColumnAttributes::NULLABLE,
+        default: None,
+        comment: None,
+        ordinal_position: 4,
+        character_set_name: None,
+        collation_name: None,
+        generation_expression: None,
+        generation_kind: None,
+    });
+    let _ = state.session.set_table_detail(table, 0);
+    state
+        .query
+        .set_current_result(Arc::new(QueryResult::success(
+            "SELECT id, name, email, settings FROM users LIMIT 100".to_string(),
+            vec![
+                "id".to_string(),
+                "name".to_string(),
+                "email".to_string(),
+                "settings".to_string(),
+            ],
+            vec![vec![
+                "1".to_string(),
+                "Alice".to_string(),
+                "alice@example.com".to_string(),
+                r#"{"theme":"dark","count":5,"nested":{"enabled":true,"roles":["admin","writer"]}}"#
+                    .to_string(),
+            ]],
+            1,
+            QuerySource::Preview,
+        )));
+    state.query.pagination.reset_for_table("public", "users");
+    state.ui.set_focused_pane(FocusedPane::Result);
+    state.result_interaction.activate_cell(0, 3);
+    (state, now)
 }
