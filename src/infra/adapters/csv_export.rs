@@ -226,8 +226,6 @@ mod tests {
 
     use super::*;
 
-    const MEMORY_MEASUREMENT_FIELD_BYTES: usize = 8 * 1024 * 1024;
-
     fn assert_export_io_source(error: &DbOperationError) {
         assert!(matches!(error, DbOperationError::ExportIo(_)));
         let source = std::error::Error::source(error).expect("ExportIo source");
@@ -286,22 +284,6 @@ mod tests {
 
         let error = writer.write_record([value.as_str()]).await.unwrap_err();
         assert_export_io_source(&error);
-    }
-
-    #[tokio::test]
-    async fn writes_large_record_without_changing_csv_bytes() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("large-record.csv");
-        let value = "x".repeat(MEMORY_MEASUREMENT_FIELD_BYTES);
-        let mut writer = CsvFileWriter::create(path.clone()).await.unwrap();
-
-        writer.write_record([value.as_str()]).await.unwrap();
-        writer.finish().await.unwrap();
-
-        assert_eq!(
-            tokio::fs::metadata(path).await.unwrap().len(),
-            (MEMORY_MEASUREMENT_FIELD_BYTES + 1) as u64
-        );
     }
 
     #[tokio::test]

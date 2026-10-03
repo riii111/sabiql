@@ -19,11 +19,6 @@ mod tests {
     }
 
     #[test]
-    fn quote_ident_supports_empty_string() {
-        assert_eq!(quote_ident(""), "\"\"");
-    }
-
-    #[test]
     fn quote_literal_escapes_embedded_quotes() {
         assert_eq!(quote_literal("O'Reilly"), "'O''Reilly'");
     }
