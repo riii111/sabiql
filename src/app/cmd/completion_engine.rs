@@ -1494,6 +1494,24 @@ mod tests {
             assert_eq!(candidates[0].text, "SELECT");
         }
 
+        #[rstest::rstest]
+        #[case(DatabaseType::PostgreSQL)]
+        #[case(DatabaseType::SQLite)]
+        fn non_mysql_keywords_exclude_mysql_only_keywords(#[case] database_type: DatabaseType) {
+            let e = engine();
+
+            let select = e.keyword_candidates_for_database("SEL", database_type);
+
+            assert!(select.iter().any(|candidate| candidate.text == "SELECT"));
+            for keyword in ["DESCRIBE", "TRUNCATE", "ENGINE", "AUTO_INCREMENT"] {
+                let candidates = e.keyword_candidates_for_database(keyword, database_type);
+                assert!(
+                    !candidates.iter().any(|candidate| candidate.text == keyword),
+                    "{keyword} must not be offered for {database_type:?}"
+                );
+            }
+        }
+
         #[test]
         fn keyword_inventory_preserves_each_database_set() {
             let expected_postgresql = "SELECT FROM WHERE JOIN LEFT RIGHT INNER OUTER CROSS ON AND OR NOT IN IS NULL TRUE FALSE LIKE ILIKE BETWEEN EXISTS CASE WHEN THEN ELSE END AS DISTINCT ORDER BY ASC DESC NULLS FIRST LAST GROUP HAVING LIMIT OFFSET UNION INTERSECT EXCEPT ALL INSERT INTO VALUES UPDATE SET DELETE CREATE DROP ALTER TABLE INDEX VIEW RETURNING WITH RECURSIVE COALESCE NULLIF CAST USING";
