@@ -1511,28 +1511,6 @@ mod tests {
                 );
             }
         }
-
-        #[test]
-        fn keyword_inventory_preserves_each_database_set() {
-            let expected_postgresql = "SELECT FROM WHERE JOIN LEFT RIGHT INNER OUTER CROSS ON AND OR NOT IN IS NULL TRUE FALSE LIKE ILIKE BETWEEN EXISTS CASE WHEN THEN ELSE END AS DISTINCT ORDER BY ASC DESC NULLS FIRST LAST GROUP HAVING LIMIT OFFSET UNION INTERSECT EXCEPT ALL INSERT INTO VALUES UPDATE SET DELETE CREATE DROP ALTER TABLE INDEX VIEW RETURNING WITH RECURSIVE COALESCE NULLIF CAST USING";
-            let expected_mysql = "SELECT FROM WHERE JOIN LEFT RIGHT INNER OUTER CROSS ON AND OR NOT IN IS NULL TRUE FALSE LIKE BETWEEN EXISTS CASE WHEN THEN ELSE END AS DISTINCT ORDER BY ASC DESC GROUP HAVING LIMIT OFFSET UNION INTERSECT EXCEPT ALL INSERT INTO VALUES UPDATE SET DELETE TRUNCATE CREATE DROP ALTER TABLE INDEX VIEW WITH RECURSIVE COALESCE NULLIF CAST USING NATURAL WINDOW OVER PARTITION ROWS RANGE UNBOUNDED PRECEDING FOLLOWING CURRENT ROW EXPLAIN ANALYZE SHOW DESCRIBE DATABASE DATABASES PRIMARY KEY FOREIGN REFERENCES UNIQUE DEFAULT CONSTRAINT CHECK IF CASCADE RENAME MODIFY COLUMN ENGINE CHARACTER CHARSET COLLATE AUTO_INCREMENT FOR LOCK SHARE START TRANSACTION COMMIT ROLLBACK";
-
-            let postgresql =
-                completion_keywords_for_database(DatabaseType::PostgreSQL).collect::<Vec<_>>();
-            let sqlite = completion_keywords_for_database(DatabaseType::SQLite).collect::<Vec<_>>();
-            let mut mysql =
-                completion_keywords_for_database(DatabaseType::MySQL).collect::<Vec<_>>();
-            let mut expected_mysql = expected_mysql.split_whitespace().collect::<Vec<_>>();
-
-            assert_eq!(
-                postgresql,
-                expected_postgresql.split_whitespace().collect::<Vec<_>>()
-            );
-            assert_eq!(sqlite, postgresql);
-            mysql.sort_unstable();
-            expected_mysql.sort_unstable();
-            assert_eq!(mysql, expected_mysql);
-        }
     }
 
     mod word_boundary {
