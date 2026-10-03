@@ -1,4 +1,6 @@
 use std::io::{BufRead, BufReader, Read, Write};
+#[cfg(target_os = "linux")]
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
@@ -48,10 +50,19 @@ fn wait_for_parent_disconnect(input: &mut impl Read) {
 }
 
 pub(super) fn call(request: Request) -> Response {
+    #[cfg(target_os = "linux")]
+    let executable = linux_helper_executable();
+    #[cfg(not(target_os = "linux"))]
     let executable = std::env::current_exe().map_err(|_| SecretStoreError::OperationFailed)?;
     let mut command = Command::new(executable);
     command.arg(HELPER_ARGUMENT);
     call_command(command, request, OPERATION_TIMEOUT)
+}
+
+#[cfg(target_os = "linux")]
+fn linux_helper_executable() -> PathBuf {
+    // A package update can unlink the original pathname while this image is running.
+    PathBuf::from("/proc/self/exe")
 }
 
 fn call_command(mut command: Command, request: Request, timeout: Duration) -> Response {
@@ -146,6 +157,42 @@ fn read_message<T: serde::de::DeserializeOwned>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn helper_reexecutes_running_image_after_its_path_is_unlinked() {
+        const CHILD_FLAG: &str = "SABIQL_UNLINKED_HELPER_TEST_CHILD";
+        if let Some(copy_path) = std::env::var_os(CHILD_FLAG) {
+            // Only the disposable copy made by this test is unlinked.
+            let executable = std::env::current_exe().unwrap();
+            assert_eq!(executable, PathBuf::from(copy_path));
+            std::fs::remove_file(executable).unwrap();
+            let result = Command::new(linux_helper_executable())
+                .arg("--list")
+                .output()
+                .unwrap();
+            assert!(result.status.success());
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let executable = dir.path().join("fixture-test");
+        std::fs::copy(std::env::current_exe().unwrap(), &executable).unwrap();
+        let result = Command::new(&executable)
+            .args([
+                "--exact",
+                "adapters::secret_store::process::tests::helper_reexecutes_running_image_after_its_path_is_unlinked",
+                "--nocapture",
+            ])
+            .env(CHILD_FLAG, &executable)
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert!(!executable.exists());
+    }
 
     #[cfg(unix)]
     #[test]
