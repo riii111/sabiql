@@ -51,6 +51,8 @@ pub enum CliConnectionResolveError {
     UnsupportedFormat,
     #[error("Invalid {0} connection URI")]
     InvalidUri(&'static str),
+    #[error("Invalid {0} connection URI: encode unescaped '?' or '#' as %3F or %23")]
+    AmbiguousUri(&'static str),
     #[error("Connection environment variable {0} is not set or empty")]
     EnvironmentVariableUnavailable(String),
 }
@@ -75,6 +77,7 @@ impl CliUriTarget {
         if remainder.is_empty() || dsn.chars().any(|character| character == '\0') {
             return Err(CliConnectionResolveError::InvalidUri(label));
         }
+        reject_ambiguous_uri_delimiters(dsn, label)?;
 
         let parsed = Url::parse(dsn).ok();
         let database = (database_type == DatabaseType::MySQL)
@@ -107,6 +110,36 @@ impl CliUriTarget {
             dsn: dsn.to_string(),
         })
     }
+}
+
+fn reject_ambiguous_uri_delimiters(
+    dsn: &str,
+    label: &'static str,
+) -> Result<(), CliConnectionResolveError> {
+    let Some(scheme_end) = dsn.find("://") else {
+        return Err(CliConnectionResolveError::InvalidUri(label));
+    };
+    let authority_start = scheme_end + 3;
+    let authority_end = dsn[authority_start..]
+        .find('/')
+        .map_or(dsn.len(), |offset| authority_start + offset);
+    let authority = &dsn[authority_start..authority_end];
+    if let Some(at) = authority.rfind('@')
+        && authority[..at].contains(['?', '#'])
+    {
+        return Err(CliConnectionResolveError::AmbiguousUri(label));
+    }
+
+    let query_start = dsn[authority_start..]
+        .find('?')
+        .map(|offset| authority_start + offset + 1);
+    if let Some(query_start) = query_start {
+        let query = &dsn[query_start..];
+        if query.contains('#') {
+            return Err(CliConnectionResolveError::AmbiguousUri(label));
+        }
+    }
+    Ok(())
 }
 
 fn stable_cli_connection_id(dsn: &str) -> ConnectionId {
@@ -193,10 +226,14 @@ pub fn resolve_cli_connection_env(
         .ok()
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| CliConnectionResolveError::EnvironmentVariableUnavailable(name.into()))?;
-    let target = resolve_cli_connection_target(&value, validator)?;
-    if matches!(&target, CliConnectionTarget::SQLite(_)) {
+    let value = value.trim();
+    let Some((scheme, _)) = value.split_once("://") else {
+        return Err(CliConnectionResolveError::UnsupportedFormat);
+    };
+    if !matches!(scheme, "postgres" | "postgresql" | "mysql") {
         return Err(CliConnectionResolveError::UnsupportedFormat);
     }
+    let target = resolve_cli_connection_target(value, validator)?;
     Ok(target)
 }
 
@@ -290,6 +327,27 @@ mod tests {
     }
 
     #[test]
+    fn pathless_uri_query_password_is_redacted_from_debug_and_identity() {
+        let first = resolve_cli_connection_target(
+            "postgresql://user@localhost?password=first-secret",
+            &AcceptingValidator,
+        )
+        .unwrap();
+        let second = resolve_cli_connection_target(
+            "postgresql://user@localhost?password=second-secret",
+            &AcceptingValidator,
+        )
+        .unwrap();
+        let (CliConnectionTarget::Uri(first), CliConnectionTarget::Uri(second)) = (first, second)
+        else {
+            panic!("expected URI targets");
+        };
+
+        assert_eq!(first.id, second.id);
+        assert!(!format!("{first:?}").contains("first-secret"));
+    }
+
+    #[test]
     fn rejects_unsupported_input_without_echoing_it() {
         let result = resolve_cli_connection_target(
             "redis://user:secret@example.com/db",
@@ -301,6 +359,85 @@ mod tests {
             Err(CliConnectionResolveError::UnsupportedFormat)
         ));
         assert!(!result.unwrap_err().to_string().contains("secret"));
+    }
+
+    #[test]
+    fn rejects_keyword_conninfo_from_environment_without_echoing_value() {
+        let variable = format!("SABIQL_TEST_URI_{}", uuid::Uuid::new_v4());
+        unsafe { std::env::set_var(&variable, "host=db password=synthetic-secret") };
+        let result = resolve_cli_connection_env(&variable, &AcceptingValidator);
+        unsafe { std::env::remove_var(&variable) };
+
+        let Err(error) = result else {
+            panic!("keyword conninfo should be rejected")
+        };
+        assert!(matches!(
+            &error,
+            CliConnectionResolveError::UnsupportedFormat
+        ));
+        assert!(!error.to_string().contains("synthetic-secret"));
+    }
+
+    #[test]
+    fn trims_environment_uri_before_scheme_validation() {
+        let variable = format!("SABIQL_TEST_URI_{}", uuid::Uuid::new_v4());
+        unsafe { std::env::set_var(&variable, "  postgresql://host/db?password=ab?cd  ") };
+        let result = resolve_cli_connection_env(&variable, &AcceptingValidator);
+        unsafe { std::env::remove_var(&variable) };
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn accepts_question_mark_in_query_password_without_exposing_it() {
+        let first = resolve_cli_connection_target(
+            "postgresql://host/db?password=ab?cd",
+            &AcceptingValidator,
+        )
+        .unwrap();
+        let second = resolve_cli_connection_target(
+            "postgresql://host/db?password=another",
+            &AcceptingValidator,
+        )
+        .unwrap();
+        let (CliConnectionTarget::Uri(first), CliConnectionTarget::Uri(second)) = (first, second)
+        else {
+            panic!("expected URI targets");
+        };
+
+        assert_eq!(first.id, second.id);
+        assert!(!format!("{first:?}").contains("ab?cd"));
+    }
+
+    #[test]
+    fn rejects_unescaped_uri_delimiters_without_echoing_credentials() {
+        for uri in [
+            "postgresql://user:pa?ss@localhost/db",
+            "postgresql://user@localhost/db?password=ab#cd",
+            "mysql://user:pa#ss@localhost/db",
+        ] {
+            let result = resolve_cli_connection_target(uri, &AcceptingValidator);
+            let Err(error) = result else {
+                panic!("ambiguous URI delimiters should be rejected")
+            };
+            assert!(matches!(&error, CliConnectionResolveError::AmbiguousUri(_)));
+            let error = error.to_string();
+            assert!(!error.contains("pa?ss"));
+            assert!(!error.contains("ab#cd"));
+            assert!(error.contains("%3F") && error.contains("%23"));
+        }
+    }
+
+    #[test]
+    fn accepts_encoded_uri_delimiters_and_preserves_ipv6_socket_and_multihost_forms() {
+        for uri in [
+            "postgresql://user:pa%3Fss%23word@[::1]:5432/db",
+            "postgresql://user:secret@/db?host=%2Fvar%2Frun%2Fpostgresql",
+            "postgresql://user:secret@host1,host2/db",
+        ] {
+            let result = resolve_cli_connection_target(uri, &AcceptingValidator);
+            assert!(result.is_ok(), "{uri}");
+        }
     }
 
     #[test]

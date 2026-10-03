@@ -42,12 +42,17 @@ arboard.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 apple-native-keyring-store = { version = "1", features = ["keychain"] }
+security-framework = "3"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-native-keyring-store = "1"
 
-[target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]
+[target.'cfg(target_os = "linux")'.dependencies]
 dbus-secret-service-keyring-store = { version = "1", features = ["crypto-rust", "vendored"] }
+
+# libdbus-sys only supports vendored builds on Linux; FreeBSD uses dbus from ports.
+[target.'cfg(target_os = "freebsd")'.dependencies]
+dbus-secret-service-keyring-store = { version = "1", features = ["crypto-rust"] }
 
 [dev-dependencies]
 rstest.workspace = true

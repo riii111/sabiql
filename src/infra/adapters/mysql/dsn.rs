@@ -124,6 +124,24 @@ pub(super) fn parse_mysql_dsn(dsn: &str) -> Result<MySqlDsn, DbOperationError> {
             "Invalid MySQL DSN scheme".to_string(),
         ));
     }
+    for (key, _) in url.query_pairs() {
+        if !matches!(
+            key.as_ref(),
+            "ssl-mode"
+                | "ssl-ca"
+                | "ssl-cert"
+                | "ssl-key"
+                | "server-public-key-path"
+                | "get-server-public-key"
+                | "enable-cleartext-plugin"
+                | "transport"
+                | "transport-path"
+        ) {
+            return Err(DbOperationError::ConnectionFailed(format!(
+                "Unsupported MySQL URI parameter: {key}"
+            )));
+        }
+    }
     let host = url.host_str().ok_or_else(|| {
         DbOperationError::ConnectionFailed("MySQL DSN is missing a host".to_string())
     })?;
@@ -397,6 +415,36 @@ mod tests {
             DbOperationError::ConnectionFailed(details)
                 if details == "Invalid MySQL TLS mode" && !details.contains("secret")
         ));
+    }
+
+    #[test]
+    fn rejects_unknown_uri_parameters_by_name_without_echoing_values() {
+        let error = parse_mysql_dsn(
+            "mysql://user:synthetic-secret@localhost/app?sslmode=require&value=private",
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            &error,
+            DbOperationError::ConnectionFailed(details)
+                if details == "Unsupported MySQL URI parameter: sslmode"
+        ));
+        assert!(!error.to_string().contains("synthetic-secret"));
+        assert!(!error.to_string().contains("private"));
+    }
+
+    #[test]
+    fn accepts_all_supported_uri_parameters() {
+        let dsn = "mysql://user:secret@localhost/app?ssl-mode=VERIFY_CA&ssl-ca=%2Fca.pem&ssl-cert=%2Fcert.pem&ssl-key=%2Fkey.pem&server-public-key-path=%2Fkey.pub&get-server-public-key=true&enable-cleartext-plugin=true&transport=TCP";
+        let parsed = parse_mysql_dsn(dsn).unwrap();
+
+        assert_eq!(parsed.ssl_mode, MySqlSslMode::VerifyCa);
+        assert_eq!(parsed.ssl_ca.as_deref(), Some("/ca.pem"));
+        assert_eq!(parsed.ssl_cert.as_deref(), Some("/cert.pem"));
+        assert_eq!(parsed.ssl_key.as_deref(), Some("/key.pem"));
+        assert_eq!(parsed.server_public_key_path.as_deref(), Some("/key.pub"));
+        assert!(parsed.get_server_public_key);
+        assert!(parsed.enable_cleartext_plugin);
     }
 
     #[test]

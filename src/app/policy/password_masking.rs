@@ -42,6 +42,32 @@ fn mask_url_passwords(text: &str) -> String {
         i += ch.len_utf8();
     }
 
+    mask_uri_query_passwords(&result)
+}
+
+fn mask_uri_query_passwords(text: &str) -> String {
+    let mut ranges = Vec::new();
+    for (query_start, token_end) in uri_query_ranges(text) {
+        let query = &text[query_start..token_end];
+        let mut segment_start = query_start;
+        for segment in query.split('&') {
+            let segment_end = segment_start + segment.len();
+            if let Some(equal_offset) = segment.find('=') {
+                let key = &segment[..equal_offset];
+                if urlencoding::decode(key).is_ok_and(|key| {
+                    key.eq_ignore_ascii_case("password") || key.eq_ignore_ascii_case("sslpassword")
+                }) {
+                    ranges.push((segment_start + equal_offset + 1, segment_end));
+                }
+            }
+            segment_start = segment_end.saturating_add(1);
+        }
+    }
+
+    let mut result = text.to_string();
+    for (start, end) in ranges.into_iter().rev() {
+        result.replace_range(start..end, "****");
+    }
     result
 }
 
@@ -67,7 +93,72 @@ fn find_userinfo_terminator(text: &str, authority_start: usize) -> Option<usize>
 }
 
 fn mask_kv_passwords(text: &str) -> String {
-    mask_after_prefix(text, |pos| password_assignment_prefix_len(text, pos))
+    let query_ranges = uri_query_ranges(text);
+    let mut query_index = 0;
+    mask_after_prefix(text, |pos| {
+        let prefix_len = password_assignment_prefix_len(text, pos)?;
+        while query_ranges
+            .get(query_index)
+            .is_some_and(|(_, end)| pos >= *end)
+        {
+            query_index += 1;
+        }
+        let in_query = query_ranges
+            .get(query_index)
+            .is_some_and(|(start, _)| pos >= *start);
+        (!in_query).then_some(prefix_len)
+    })
+}
+
+fn uri_query_ranges(text: &str) -> Vec<(usize, usize)> {
+    let mut ranges = Vec::new();
+    let mut i = 0;
+    while i < text.len() {
+        let scheme_len = ["postgresql://", "postgres://", "mysql://"]
+            .into_iter()
+            .find(|scheme| starts_with_ascii_ignore_case(text, i, scheme))
+            .map_or(0, str::len);
+        if scheme_len == 0 {
+            i += text[i..].chars().next().unwrap().len_utf8();
+            continue;
+        }
+        let authority_start = i + scheme_len;
+        let token_end = uri_token_end(text, authority_start);
+        if let Some(query_offset) = text[authority_start..token_end].find('?') {
+            ranges.push((authority_start + query_offset + 1, token_end));
+        }
+        i = token_end;
+    }
+    ranges
+}
+
+fn uri_token_end(text: &str, start: usize) -> usize {
+    let mut query_started = false;
+    let mut key_start = None;
+    let mut sensitive_value = false;
+    for (offset, ch) in text[start..].char_indices() {
+        let pos = start + offset;
+        match ch {
+            '\n' | '\r' | ' ' | '\t' | '\'' | '"' => return pos,
+            '?' if !query_started => {
+                query_started = true;
+                key_start = Some(pos + 1);
+            }
+            '&' if query_started => {
+                key_start = Some(pos + 1);
+                sensitive_value = false;
+            }
+            '=' if key_start.is_some() => {
+                let key = &text[key_start.take().unwrap()..pos];
+                sensitive_value = urlencoding::decode(key).is_ok_and(|key| {
+                    key.eq_ignore_ascii_case("password") || key.eq_ignore_ascii_case("sslpassword")
+                });
+            }
+            ',' if !sensitive_value => return pos,
+            _ => {}
+        }
+    }
+    text.len()
 }
 
 fn mask_env_passwords(text: &str) -> String {
@@ -120,11 +211,17 @@ fn password_assignment_prefix_len(text: &str, pos: usize) -> Option<usize> {
         return None;
     }
     let mut key_end = pos;
-    while bytes
-        .get(key_end)
-        .is_some_and(|byte| !byte.is_ascii_whitespace() && *byte != b'=')
+    // Each byte of "sslpassword" can be represented by at most three percent-encoded bytes.
+    const MAX_ENCODED_KEY_BYTES: usize = "sslpassword".len() * 3;
+    while key_end - pos <= MAX_ENCODED_KEY_BYTES
+        && bytes
+            .get(key_end)
+            .is_some_and(|byte| !byte.is_ascii_whitespace() && *byte != b'=')
     {
         key_end += 1;
+    }
+    if key_end - pos > MAX_ENCODED_KEY_BYTES {
+        return None;
     }
     let encoded_key = text.get(pos..key_end)?;
     let decoded_key = urlencoding::decode(encoded_key).ok()?;
@@ -144,7 +241,7 @@ fn password_assignment_prefix_len(text: &str, pos: usize) -> Option<usize> {
     Some(i - pos)
 }
 
-fn mask_after_prefix(text: &str, find_prefix: impl Fn(usize) -> Option<usize>) -> String {
+fn mask_after_prefix(text: &str, mut find_prefix: impl FnMut(usize) -> Option<usize>) -> String {
     let mut result = String::with_capacity(text.len());
     let mut i = 0;
 
@@ -164,7 +261,7 @@ fn mask_after_prefix(text: &str, find_prefix: impl Fn(usize) -> Option<usize>) -
 }
 
 fn is_assignment_terminator(byte: u8) -> bool {
-    byte.is_ascii_whitespace() || matches!(byte, b';' | b'\'' | b'"' | b',' | b'&' | b'#')
+    byte.is_ascii_whitespace() || matches!(byte, b';' | b'\'' | b'"' | b',')
 }
 
 fn skip_masked_assignment_value(text: &str, value_start: usize, result: &mut String) -> usize {
@@ -241,6 +338,10 @@ mod tests {
         "postgresql://user@host/db?pass%77ord=secret&sslmode=require",
         "postgresql://user@host/db?pass%77ord=****&sslmode=require"
     )]
+    #[case(
+        "postgresql://user@host/db?password=ab#cd&sslmode=require",
+        "postgresql://user@host/db?password=****&sslmode=require"
+    )]
     fn masks_passwords_in_urls(#[case] input: &str, #[case] expected: &str) {
         assert_eq!(mask_password(input), expected);
     }
@@ -268,6 +369,8 @@ mod tests {
     #[case("password=secret,host=localhost", "password=****,host=localhost")]
     #[case("password=secret' host=localhost", "password=****' host=localhost")]
     #[case("password=secret\" host=localhost", "password=****\" host=localhost")]
+    #[case("password=ab#cd", "password=****")]
+    #[case("password=ab&cd", "password=****")]
     #[case("password='secret' host=localhost", "password='****' host=localhost")]
     #[case(
         "password=\"secret\" host=localhost",
@@ -294,6 +397,63 @@ mod tests {
     #[case("xPGPASSWORD=secret psql", "xPGPASSWORD=secret psql")]
     fn ignores_non_password_boundaries(#[case] input: &str, #[case] expected: &str) {
         assert_eq!(mask_password(input), expected);
+    }
+
+    #[rstest]
+    #[case(
+        "postgresql://host/db?password=abc,def&sslmode=require",
+        "postgresql://host/db?password=****&sslmode=require"
+    )]
+    #[case(
+        "postgres://host/db?sslpassword=abc,def&password=ab?cd",
+        "postgres://host/db?sslpassword=****&password=****"
+    )]
+    #[case("MYSQL://host/db?password=abc,def", "MYSQL://host/db?password=****")]
+    #[case(
+        "postgresql://host/db?password=abc,def password=outside",
+        "postgresql://host/db?password=**** password=****"
+    )]
+    fn masks_entire_query_password_with_commas(#[case] input: &str, #[case] expected: &str) {
+        assert_eq!(mask_password(input), expected);
+    }
+
+    #[test]
+    fn masks_comma_separated_uris_without_splitting_password_values() {
+        assert_eq!(
+            mask_password(
+                "postgresql://one/db?application_name=x,postgresql://two/db?password=secret"
+            ),
+            "postgresql://one/db?application_name=x,postgresql://two/db?password=****"
+        );
+        assert_eq!(
+            mask_password("postgresql://one/db?application_name=x,password=secret"),
+            "postgresql://one/db?application_name=x,password=****"
+        );
+        assert_eq!(
+            mask_password("%73%73%6c%70%61%73%73%77%6f%72%64=secret"),
+            "%73%73%6c%70%61%73%73%77%6f%72%64=****"
+        );
+        assert_eq!(
+            mask_password("postgresql://one/db?password=abc,postgresql://suffix"),
+            "postgresql://one/db?password=****"
+        );
+        assert_eq!(
+            mask_password(&format!("{} password=secret", "-".repeat(256_000))),
+            format!("{} password=****", "-".repeat(256_000))
+        );
+    }
+
+    #[test]
+    fn preserves_long_non_uri_text_and_masks_following_assignments() {
+        let plain = "x".repeat(256_000);
+        let input = format!(
+            "{plain} password=secret postgresql://host/db?password=abc,def password=outside"
+        );
+
+        assert_eq!(
+            mask_password(&input),
+            format!("{plain} password=**** postgresql://host/db?password=**** password=****")
+        );
     }
 
     #[test]

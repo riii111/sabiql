@@ -189,15 +189,21 @@ mod tests {
         if std::env::var_os("SABIQL_CONFIG_FILE_CHILD").is_some() {
             return;
         }
-        let status = Command::new("sh")
+        let output = Command::new("sh")
             .arg("-c")
             .arg(format!("{setup}; exec \"$1\" --exact \"$2\""))
             .arg("config-file-test")
             .arg(std::env::current_exe().unwrap())
             .arg(format!("adapters::app_config_file::tests::{test}"))
             .env("SABIQL_CONFIG_FILE_CHILD", "1")
-            .status()
+            .output()
             .unwrap();
-        assert!(status.success());
+        assert!(
+            output.status.success(),
+            "isolated test failed: {:?}\n{}\n{}",
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 }

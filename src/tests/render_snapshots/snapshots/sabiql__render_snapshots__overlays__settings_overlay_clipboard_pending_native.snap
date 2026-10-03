@@ -17,27 +17,27 @@ test_project ▸ test_db ▸ -                                                  
 │                                       ││                                                                                                                          │
 │                                ╭ Settings ───────────────────────────────────────────────────────────────────────────────────────╮                                │
 │                                │                  │                                                                              │                                │
-│                                │  > Appearance    │Theme                                                                         │                                │
+│                                │    Appearance    │Copy method                                                                   │                                │
 │                                │    Keymap        │                                                                              │                                │
-│                                │    ER Diagram    │  > Sabiql Dark    saved                                                      │                                │
-│                                │    Clipboard     │    Light                                                                     │                                │
+│                                │    ER Diagram    │    Auto saved                                                                │                                │
+│                                │  > Clipboard     │  > OS clipboard                                                              │                                │
+│                                │                  │    Terminal (OSC 52)                                                         │                                │
 │                                │                  │                                                                              │                                │
-│                                │                  │                                                                              │                                │
-│                                │                  │                                                                              │                                │
-│                                │                  │                                                                              │                                │
+│                                │                  │Auto: terminal over SSH; otherwise OS, then terminal on failure.              │                                │
+│                                │                  │OSC 52 requires terminal/tmux permission. Sending does not confirm copying.   │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │────────────────────────────────┘
 │                                │                  │                                                                              │────────────────────────────────┐
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
-│                                │                  │ Preview ─────────────────────────────────────────────────────────────────────│                                │
-│                                │                  │> Active item        Selected row                                             │                                │
-│                                │                  │  Secondary text     Muted text                                               │                                │
-│                                │                  │╭ Focused panel ─────────────╮                                                │                                │
-│                                │                  ││ Primary text  Accent text  │                                                │                                │
-│                                │                  │╰────────────────────────────╯                                                │                                │
-│                                │                  │Choose a theme that fits your terminal.                                       │                                │
+│                                │                  │                                                                              │                                │
+│                                │                  │                                                                              │                                │
+│                                │                  │                                                                              │                                │
+│                                │                  │                                                                              │                                │
+│                                │                  │                                                                              │                                │
+│                                │                  │                                                                              │                                │
+│                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
 │                                ╰ Enter: Apply │ Tab/⇧Tab: Section │ Esc: Cancel ─────────────────────────────────────────────────╯                                │
 │                                       ││                                                                                                                          │

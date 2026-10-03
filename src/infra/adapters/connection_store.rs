@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use super::app_config_file::{
     self, config_file_path, get_config_dir as app_config_dir, render_config_file, write_config_file,
@@ -19,6 +19,7 @@ use super::secret_store::{PlatformSecretStore, SecretStore, SecretStoreError};
 pub struct TomlConnectionStore {
     config_dir: PathBuf,
     secret_store: Arc<dyn SecretStore>,
+    missing_references: Mutex<HashSet<String>>,
 }
 
 impl TomlConnectionStore {
@@ -27,6 +28,7 @@ impl TomlConnectionStore {
         Ok(Self {
             config_dir,
             secret_store: Arc::new(PlatformSecretStore::new()),
+            missing_references: Mutex::default(),
         })
     }
 
@@ -34,6 +36,7 @@ impl TomlConnectionStore {
         Self {
             config_dir,
             secret_store: Arc::new(PlatformSecretStore::new()),
+            missing_references: Mutex::default(),
         }
     }
 
@@ -111,16 +114,28 @@ impl TomlConnectionStore {
             return Ok(entry.password.clone().unwrap_or_default());
         };
         match self.secret_store.get(reference) {
-            Ok(password) => Ok(password),
-            Err(SecretStoreError::NoEntry) => Ok(String::new()),
-            Err(_) => Err(ConnectionStoreError::SecretStore),
+            Ok(password) => {
+                self.missing_references
+                    .lock()
+                    .expect("missing reference lock poisoned")
+                    .remove(reference);
+                Ok(password)
+            }
+            Err(SecretStoreError::NoEntry) => {
+                self.missing_references
+                    .lock()
+                    .expect("missing reference lock poisoned")
+                    .insert(reference.to_string());
+                Ok(String::new())
+            }
+            Err(error) => Err(error.into()),
         }
     }
 
-    fn delete_secret(&self, reference: &str) -> Result<(), ConnectionStoreError> {
+    fn delete_secret(&self, reference: &str) -> Result<(), SecretStoreError> {
         match self.secret_store.delete(reference) {
             Ok(()) | Err(SecretStoreError::NoEntry) => Ok(()),
-            Err(_) => Err(ConnectionStoreError::SecretStore),
+            Err(error) => Err(error),
         }
     }
 
@@ -143,79 +158,91 @@ impl TomlConnectionStore {
 
 impl ConnectionStore for TomlConnectionStore {
     fn load_all(&self) -> Result<Vec<ConnectionProfile>, ConnectionStoreError> {
-        let _guard = app_config_file::lock();
-        let Some(config) = self.load_config_file()? else {
-            return Ok(vec![]);
+        let config = {
+            let _guard = app_config_file::lock();
+            self.load_config_file()?
         };
-
-        self.load_profiles(&config)
+        match config {
+            Some(config) => self.load_profiles(&config),
+            None => Ok(vec![]),
+        }
     }
 
     fn save(&self, profile: &ConnectionProfile) -> Result<(), ConnectionStoreError> {
-        let _guard = app_config_file::lock();
-        let mut config = self.load_config_file()?.unwrap_or_default();
-        let profiles = Self::validate_profiles_without_secrets(&config)?;
-
-        let normalized_name = profile.name.normalized();
-        if profiles
-            .iter()
-            .any(|p| p.id != profile.id && p.name.normalized() == normalized_name)
-        {
-            return Err(ConnectionStoreError::DuplicateName(
-                profile.name.as_str().to_string(),
-            ));
-        }
-
-        let existing = config
-            .connections
-            .iter()
-            .find(|entry| entry.id == profile.id.as_str())
-            .cloned();
+        let existing = {
+            let _guard = app_config_file::lock();
+            let config = self.load_config_file()?.unwrap_or_default();
+            validate_save(&config, profile)?;
+            config
+                .connections
+                .into_iter()
+                .find(|entry| entry.id == profile.id.as_str())
+        };
         let old_ref = existing
             .as_ref()
             .and_then(|entry| entry.password_ref.clone());
         let password = Self::password(profile).filter(|password| !password.is_empty());
-
+        let mut new_ref = None;
+        let mut keep_missing_ref = false;
         if let Some(password) = password {
-            let previous_config = config.clone();
-            config.version = CURRENT_VERSION;
-            let reference = old_ref.as_ref().map_or_else(
-                || Self::password_ref(profile),
-                |_| Self::replacement_password_ref(profile),
-            );
+            // Unique even on first save: concurrent attempts must not overwrite
+            // the credential belonging to another successful commit.
+            let reference = Self::replacement_password_ref(profile);
             self.secret_store
                 .set(&reference, password)
-                .map_err(|_| ConnectionStoreError::SecretStore)?;
-            let entry = ConnectionConfigEntry::from_profile_with_password_ref(
-                profile,
-                Some(reference.clone()),
-            );
-            replace_entry(&mut config.connections, entry);
-            if let Err(error) = self.write_config(&config) {
-                let _ = self.secret_store.delete(&reference);
-                return Err(error);
-            }
-            if let Some(old_ref) = old_ref
-                && let Err(error) = self.delete_secret(&old_ref)
-            {
-                if self.write_config(&previous_config).is_ok() {
-                    let _ = self.secret_store.delete(&reference);
-                }
-                return Err(error);
-            }
-        } else if let Some(reference) = old_ref {
-            let previous_config = config.clone();
-            let entry = ConnectionConfigEntry::from_profile_with_password_ref(profile, None);
-            replace_entry(&mut config.connections, entry);
-            self.write_config(&config)?;
-            if let Err(error) = self.delete_secret(&reference) {
-                let _ = self.write_config(&previous_config);
-                return Err(error);
-            }
+                .map_err(ConnectionStoreError::from)?;
+            new_ref = Some(reference);
+        } else if let Some(reference) = old_ref.as_deref()
+            && Self::password(profile).is_some()
+        {
+            let was_missing = self
+                .missing_references
+                .lock()
+                .expect("missing reference lock poisoned")
+                .contains(reference);
+            keep_missing_ref = was_missing
+                || match self.secret_store.get(reference) {
+                    Ok(_) => false,
+                    Err(SecretStoreError::NoEntry) => true,
+                    Err(error) => return Err(error.into()),
+                };
+        }
+        let reference = if keep_missing_ref {
+            old_ref.clone()
         } else {
-            let entry = ConnectionConfigEntry::from_profile_with_password_ref(profile, None);
-            replace_entry(&mut config.connections, entry);
-            self.write_config(&config)?;
+            new_ref.clone()
+        };
+        let entry = ConnectionConfigEntry::from_profile_with_password_ref(profile, reference);
+        let committed = (|| {
+            let _guard = app_config_file::lock();
+            let mut config = self.load_config_file()?.unwrap_or_default();
+            validate_save(&config, profile)?;
+            let current = config
+                .connections
+                .iter()
+                .find(|entry| entry.id == profile.id.as_str());
+            if current != existing.as_ref() {
+                return Err(ConnectionStoreError::ConcurrentModification);
+            }
+            if entry.password_ref.is_some() {
+                config.version = CURRENT_VERSION;
+            }
+            replace_entry(&mut config.connections, entry.clone());
+            self.write_config(&config)
+        })();
+        if let Err(error) = committed {
+            if let Some(reference) = new_ref {
+                let _ = self.delete_secret(&reference);
+            }
+            return Err(error);
+        }
+        if !keep_missing_ref
+            && let Some(reference) = old_ref
+            && let Err(error) = self.delete_secret(&reference)
+        {
+            // The delete may have committed before its acknowledgement was lost.
+            // Keep the committed reference and replacement secret; rollback could lose both.
+            return Err(ConnectionStoreError::CleanupIncomplete(error.into()));
         }
         Ok(())
     }
@@ -229,32 +256,46 @@ impl ConnectionStore for TomlConnectionStore {
     }
 
     fn delete(&self, id: &ConnectionId) -> Result<(), ConnectionStoreError> {
-        let _guard = app_config_file::lock();
-        let mut config = self
-            .load_config_file()?
-            .ok_or_else(|| ConnectionStoreError::NotFound(id.to_string()))?;
-        Self::validate_profiles_without_secrets(&config)?;
-        let Some(entry_index) = config
-            .connections
-            .iter()
-            .position(|entry| entry.id == id.as_str())
-        else {
-            return Err(ConnectionStoreError::NotFound(id.to_string()));
+        let existing = {
+            let _guard = app_config_file::lock();
+            let mut config = self
+                .load_config_file()?
+                .ok_or_else(|| ConnectionStoreError::NotFound(id.to_string()))?;
+            Self::validate_profiles_without_secrets(&config)?;
+            let index = config
+                .connections
+                .iter()
+                .position(|entry| entry.id == id.as_str())
+                .ok_or_else(|| ConnectionStoreError::NotFound(id.to_string()))?;
+            let entry = config.connections.remove(index);
+            self.write_config(&config)?;
+            entry
         };
-
-        let old_ref = config.connections[entry_index].password_ref.clone();
-        let previous_config = config.clone();
-        config.connections.remove(entry_index);
-        self.write_config(&config)?;
-        if let Some(reference) = old_ref
-            && let Err(error) = self.delete_secret(&reference)
+        if let Some(reference) = existing.password_ref.as_deref()
+            && let Err(error) = self.delete_secret(reference)
         {
-            let _ = self.write_config(&previous_config);
-            return Err(error);
+            // Removing configuration is already committed. A failed acknowledgement
+            // cannot prove that the deleted credential still exists.
+            return Err(ConnectionStoreError::CleanupIncomplete(error.into()));
         }
-
         Ok(())
     }
+}
+
+fn validate_save(
+    config: &ConnectionConfigFile,
+    profile: &ConnectionProfile,
+) -> Result<(), ConnectionStoreError> {
+    let profiles = TomlConnectionStore::validate_profiles_without_secrets(config)?;
+    if profiles
+        .iter()
+        .any(|other| other.id != profile.id && other.name.normalized() == profile.name.normalized())
+    {
+        return Err(ConnectionStoreError::DuplicateName(
+            profile.name.as_str().to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn replace_entry(entries: &mut Vec<ConnectionConfigEntry>, entry: ConnectionConfigEntry) {
@@ -311,8 +352,13 @@ mod tests {
     };
     use std::collections::HashMap;
     use std::path::Path;
-    use std::sync::Mutex;
     use tempfile::TempDir;
+
+    fn stored_reference(store: &TomlConnectionStore) -> String {
+        let config: ConnectionConfigFile =
+            toml::from_str(&fs::read_to_string(store.storage_path()).unwrap()).unwrap();
+        config.connections[0].password_ref.clone().unwrap()
+    }
 
     #[derive(Default)]
     pub(super) struct TestSecretStore {
@@ -357,6 +403,7 @@ mod tests {
         set_error: Option<SecretStoreError>,
         get_error: Option<SecretStoreError>,
         delete_error: Option<SecretStoreError>,
+        delete_then_error: Option<SecretStoreError>,
     }
 
     impl RecordingSecretStore {
@@ -403,6 +450,9 @@ mod tests {
                 return Err(error.clone());
             }
             state.values.remove(reference);
+            if let Some(error) = state.delete_then_error.take() {
+                return Err(error);
+            }
             Ok(())
         }
     }
@@ -414,6 +464,7 @@ mod tests {
         TomlConnectionStore {
             config_dir: temp_dir.path().to_path_buf(),
             secret_store,
+            missing_references: Mutex::default(),
         }
     }
 
@@ -421,6 +472,7 @@ mod tests {
         TomlConnectionStore {
             config_dir,
             secret_store: Arc::new(TestSecretStore::default()),
+            missing_references: Mutex::default(),
         }
     }
 
@@ -696,7 +748,7 @@ ssl_mode = "prefer"
             store.save(&profile).unwrap();
 
             let content = fs::read_to_string(config_path).unwrap();
-            assert!(content.contains("password_ref = \"connection:legacy-one\""));
+            assert!(content.contains("password_ref = \"connection:legacy-one:"));
             assert!(!content.contains("one-password"));
             assert!(content.contains("password = \"two-password\""));
             let config: ConnectionConfigFile = toml::from_str(&content).unwrap();
@@ -710,7 +762,7 @@ ssl_mode = "prefer"
             let store = store_with_secret_store(&temp_dir, Arc::clone(&secret_store));
             let mut profile = make_test_profile("Production");
             store.save(&profile).unwrap();
-            let old_reference = format!("connection:{}", profile.id);
+            let old_reference = stored_reference(&store);
             secret_store
                 .state
                 .lock()
@@ -744,7 +796,7 @@ ssl_mode = "prefer"
             let store = store_with_secret_store(&temp_dir, Arc::clone(&secret_store));
             let mut profile = make_test_profile("Password");
             store.save(&profile).unwrap();
-            let reference = format!("connection:{}", profile.id);
+            let reference = stored_reference(&store);
 
             profile.config = ConnectionConfig::PostgreSQL(PostgresConnectionConfig::new(
                 "localhost",
@@ -858,7 +910,7 @@ ssl_mode = "prefer"
         }
 
         #[test]
-        fn secret_cleanup_failure_restores_previous_connection() {
+        fn secret_cleanup_failure_preserves_committed_replacement() {
             let temp_dir = TempDir::new().unwrap();
             let secret_store = Arc::new(RecordingSecretStore::default());
             let store = store_with_secret_store(&temp_dir, Arc::clone(&secret_store));
@@ -878,15 +930,19 @@ ssl_mode = "prefer"
 
             let result = store.save(&profile);
 
-            assert!(matches!(result, Err(ConnectionStoreError::SecretStore)));
-            assert_eq!(fs::read_to_string(store.storage_path()).unwrap(), before);
+            assert!(matches!(
+                result,
+                Err(ConnectionStoreError::CleanupIncomplete(_))
+            ));
+            assert_ne!(fs::read_to_string(store.storage_path()).unwrap(), before);
             assert_eq!(
                 store.load_all().unwrap()[0]
                     .postgres_config()
                     .unwrap()
                     .password,
-                "testpass"
+                "newpass"
             );
+            assert_eq!(secret_store.state.lock().unwrap().values.len(), 2);
         }
 
         #[test]
@@ -901,7 +957,7 @@ ssl_mode = "prefer"
             secret_store.set_error(SecretStoreError::OperationFailed);
             let result = store.save(&profile);
 
-            assert!(matches!(result, Err(ConnectionStoreError::SecretStore)));
+            assert!(matches!(result, Err(ConnectionStoreError::SecretStore(_))));
             assert_eq!(fs::read_to_string(store.storage_path()).unwrap(), before);
         }
 
@@ -1048,11 +1104,12 @@ password_ref = "connection:same"
             let profile = make_test_profile("Test");
             store.save(&profile).unwrap();
 
+            let reference = stored_reference(&store);
             store.delete(&profile.id).unwrap();
 
             assert!(store.load_all().unwrap().is_empty());
             assert!(matches!(
-                secret_store.get(&format!("connection:{}", profile.id)),
+                secret_store.get(&reference),
                 Err(SecretStoreError::NoEntry)
             ));
         }
@@ -1069,7 +1126,7 @@ password_ref = "connection:same"
                 .lock()
                 .unwrap()
                 .values
-                .remove(&format!("connection:{}", profile.id));
+                .remove(&stored_reference(&store));
 
             store.delete(&profile.id).unwrap();
 
@@ -1077,19 +1134,22 @@ password_ref = "connection:same"
         }
 
         #[test]
-        fn secret_store_delete_failure_preserves_config() {
+        fn secret_store_delete_failure_keeps_configuration_deleted() {
             let temp_dir = TempDir::new().unwrap();
             let secret_store = Arc::new(RecordingSecretStore::default());
             let store = store_with_secret_store(&temp_dir, Arc::clone(&secret_store));
             let profile = make_test_profile("Test");
             store.save(&profile).unwrap();
-            let before = fs::read_to_string(store.storage_path()).unwrap();
 
             secret_store.delete_error(SecretStoreError::OperationFailed);
             let result = store.delete(&profile.id);
 
-            assert!(matches!(result, Err(ConnectionStoreError::SecretStore)));
-            assert_eq!(fs::read_to_string(store.storage_path()).unwrap(), before);
+            assert!(matches!(
+                result,
+                Err(ConnectionStoreError::CleanupIncomplete(_))
+            ));
+            assert!(store.load_all().unwrap().is_empty());
+            assert_eq!(secret_store.state.lock().unwrap().values.len(), 1);
         }
 
         #[test]
@@ -1145,7 +1205,7 @@ password_ref = "connection:same"
 
             let result = store.load_all();
 
-            assert!(matches!(result, Err(ConnectionStoreError::SecretStore)));
+            assert!(matches!(result, Err(ConnectionStoreError::SecretStore(_))));
         }
 
         #[test]
@@ -1280,6 +1340,339 @@ ssl_mode = "prefer"
                     && p.postgres_config()
                         .is_some_and(|config| config.host == "updated-host")
             }));
+        }
+    }
+    mod responsiveness {
+        use super::*;
+        use crate::app::ports::outbound::connection_store::SecretStoreFailure;
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        struct PausedSecretStore {
+            operation: &'static str,
+            entered: mpsc::Sender<()>,
+            release: Mutex<mpsc::Receiver<()>>,
+            inner: Arc<TestSecretStore>,
+        }
+
+        impl PausedSecretStore {
+            fn pause(&self, operation: &str) -> Result<(), SecretStoreError> {
+                if self.operation == operation {
+                    self.entered.send(()).unwrap();
+                    self.release
+                        .lock()
+                        .unwrap()
+                        .recv_timeout(Duration::from_secs(3))
+                        .unwrap();
+                    return Err(SecretStoreError::TimedOut);
+                }
+                Ok(())
+            }
+        }
+
+        impl SecretStore for PausedSecretStore {
+            fn set(&self, reference: &str, secret: &str) -> Result<(), SecretStoreError> {
+                self.pause("set")?;
+                self.inner.set(reference, secret)
+            }
+            fn get(&self, reference: &str) -> Result<String, SecretStoreError> {
+                self.pause("get")?;
+                self.inner.get(reference)
+            }
+            fn delete(&self, reference: &str) -> Result<(), SecretStoreError> {
+                self.pause("delete")?;
+                self.inner.delete(reference)
+            }
+        }
+
+        struct ConcurrentEditStore {
+            path: PathBuf,
+            inner: Arc<TestSecretStore>,
+        }
+
+        impl SecretStore for ConcurrentEditStore {
+            fn set(&self, reference: &str, secret: &str) -> Result<(), SecretStoreError> {
+                self.inner.set(reference, secret)?;
+                let _guard = app_config_file::lock();
+                let mut config: ConnectionConfigFile =
+                    toml::from_str(&fs::read_to_string(&self.path).unwrap()).unwrap();
+                config.connections[0].name = "Concurrent edit".into();
+                config.theme = Some("light".into());
+                fs::write(&self.path, toml::to_string(&config).unwrap()).unwrap();
+                Ok(())
+            }
+            fn get(&self, reference: &str) -> Result<String, SecretStoreError> {
+                self.inner.get(reference)
+            }
+            fn delete(&self, reference: &str) -> Result<(), SecretStoreError> {
+                self.inner.delete(reference)
+            }
+        }
+
+        #[test]
+        fn concurrent_connection_edit_rejects_stale_commit_and_cleans_new_secret() {
+            let temp = TempDir::new().unwrap();
+            let inner = Arc::new(TestSecretStore::default());
+            let initial = TomlConnectionStore {
+                config_dir: temp.path().into(),
+                secret_store: inner.clone(),
+                missing_references: Mutex::default(),
+            };
+            let profile = make_test_profile("Fixture");
+            initial.save(&profile).unwrap();
+            let reference = stored_reference(&initial);
+            let store = TomlConnectionStore {
+                config_dir: temp.path().into(),
+                secret_store: Arc::new(ConcurrentEditStore {
+                    path: initial.storage_path(),
+                    inner: inner.clone(),
+                }),
+                missing_references: Mutex::default(),
+            };
+
+            let result = store.save(&profile);
+
+            assert!(matches!(
+                result,
+                Err(ConnectionStoreError::ConcurrentModification)
+            ));
+            let config = initial.load_config_file().unwrap().unwrap();
+            assert_eq!(config.connections[0].name, "Concurrent edit");
+            assert_eq!(config.theme.as_deref(), Some("light"));
+            assert_eq!(
+                config.connections[0].password_ref.as_deref(),
+                Some(reference.as_str())
+            );
+            assert_eq!(inner.values.lock().unwrap().len(), 1);
+        }
+
+        #[test]
+        fn settings_save_remains_responsive_during_secret_timeout() {
+            for operation in ["get", "set", "delete"] {
+                let temp = TempDir::new().unwrap();
+                let inner = Arc::new(TestSecretStore::default());
+                let initial = TomlConnectionStore {
+                    config_dir: temp.path().into(),
+                    secret_store: inner.clone(),
+                    missing_references: Mutex::default(),
+                };
+                let profile = make_test_profile("Fixture");
+                initial.save(&profile).unwrap();
+                let reference = stored_reference(&initial);
+                let (entered_tx, entered_rx) = mpsc::channel();
+                let (release_tx, release_rx) = mpsc::channel();
+                let store = TomlConnectionStore {
+                    config_dir: temp.path().into(),
+                    secret_store: Arc::new(PausedSecretStore {
+                        operation,
+                        entered: entered_tx,
+                        release: Mutex::new(release_rx),
+                        inner,
+                    }),
+                    missing_references: Mutex::default(),
+                };
+                let worker = std::thread::spawn(move || match operation {
+                    "get" => store.load_all().map(|_| ()),
+                    "set" => store.save(&profile),
+                    _ => store.delete(&profile.id),
+                });
+                entered_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+                let path = initial.storage_path();
+                let (saved_tx, saved_rx) = mpsc::channel();
+                let settings = std::thread::spawn(move || {
+                    let _guard = app_config_file::lock();
+                    let mut config: ConnectionConfigFile =
+                        toml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+                    config.theme = Some("light".into());
+                    fs::write(path, toml::to_string(&config).unwrap()).unwrap();
+                    saved_tx.send(()).unwrap();
+                });
+
+                let responsive = saved_rx.recv_timeout(Duration::from_millis(500)).is_ok();
+                release_tx.send(()).unwrap();
+                let result = worker.join().unwrap();
+                settings.join().unwrap();
+
+                assert!(responsive, "settings blocked during {operation}");
+                let config = initial.load_config_file().unwrap().unwrap();
+                assert_eq!(config.theme.as_deref(), Some("light"));
+                if operation == "delete" {
+                    assert!(matches!(
+                        result,
+                        Err(ConnectionStoreError::CleanupIncomplete(
+                            SecretStoreFailure::TimedOut
+                        ))
+                    ));
+                    assert!(config.connections.is_empty());
+                } else {
+                    assert!(matches!(
+                        result,
+                        Err(ConnectionStoreError::SecretStore(
+                            SecretStoreFailure::TimedOut
+                        ))
+                    ));
+                    assert_eq!(
+                        config.connections[0].password_ref.as_deref(),
+                        Some(reference.as_str())
+                    );
+                }
+            }
+        }
+    }
+
+    mod uncertain_cleanup {
+        use super::*;
+
+        #[test]
+        fn committed_delete_with_lost_response_keeps_saved_replacement_usable() {
+            for failure in [
+                SecretStoreError::TimedOut,
+                SecretStoreError::OperationFailed,
+            ] {
+                let temp = TempDir::new().unwrap();
+                let secrets = Arc::new(RecordingSecretStore::default());
+                let store = store_with_secret_store(&temp, secrets.clone());
+                let mut profile = make_test_profile("Fixture");
+                store.save(&profile).unwrap();
+                let old_reference = stored_reference(&store);
+                profile.config = ConnectionConfig::PostgreSQL(PostgresConnectionConfig::new(
+                    "localhost",
+                    5432,
+                    "testdb",
+                    "testuser",
+                    "replacement",
+                    SslMode::Prefer,
+                ));
+                secrets.state.lock().unwrap().delete_then_error = Some(failure);
+
+                let result = store.save(&profile);
+
+                assert!(matches!(
+                    result,
+                    Err(ConnectionStoreError::CleanupIncomplete(_))
+                ));
+                let new_reference = stored_reference(&store);
+                assert_ne!(old_reference, new_reference);
+                assert_eq!(secrets.get(&old_reference), Err(SecretStoreError::NoEntry));
+                assert_eq!(secrets.get(&new_reference).unwrap(), "replacement");
+                assert_eq!(
+                    store.load_all().unwrap()[0]
+                        .postgres_config()
+                        .unwrap()
+                        .password,
+                    "replacement"
+                );
+                let reopened = store_with_secret_store(&temp, secrets.clone());
+                assert_eq!(
+                    reopened.load_all().unwrap()[0]
+                        .postgres_config()
+                        .unwrap()
+                        .password,
+                    "replacement"
+                );
+            }
+        }
+
+        #[test]
+        fn committed_delete_with_lost_response_never_restores_dangling_connection() {
+            for failure in [
+                SecretStoreError::TimedOut,
+                SecretStoreError::OperationFailed,
+            ] {
+                let temp = TempDir::new().unwrap();
+                let secrets = Arc::new(RecordingSecretStore::default());
+                let store = store_with_secret_store(&temp, secrets.clone());
+                let profile = make_test_profile("Fixture");
+                store.save(&profile).unwrap();
+                let reference = stored_reference(&store);
+                secrets.state.lock().unwrap().delete_then_error = Some(failure);
+
+                let result = store.delete(&profile.id);
+
+                assert!(matches!(
+                    result,
+                    Err(ConnectionStoreError::CleanupIncomplete(_))
+                ));
+                assert_eq!(secrets.get(&reference), Err(SecretStoreError::NoEntry));
+                assert!(store.load_all().unwrap().is_empty());
+                assert!(
+                    store_with_secret_store(&temp, secrets.clone())
+                        .load_all()
+                        .unwrap()
+                        .is_empty()
+                );
+            }
+        }
+    }
+
+    mod compatibility {
+        use super::*;
+        use crate::domain::connection::ConnectionName;
+
+        #[test]
+        fn missing_secret_reference_survives_unrelated_edit_even_if_secret_reappears() {
+            let temp = TempDir::new().unwrap();
+            let secrets = Arc::new(RecordingSecretStore::default());
+            let store = store_with_secret_store(&temp, secrets.clone());
+            let profile = make_test_profile("Fixture");
+            store.save(&profile).unwrap();
+            let reference = stored_reference(&store);
+            secrets.state.lock().unwrap().values.remove(&reference);
+            let mut loaded = store.load_all().unwrap().remove(0);
+            loaded.name = ConnectionName::new("Renamed").unwrap();
+            secrets.set(&reference, "restored fake password").unwrap();
+
+            store.save(&loaded).unwrap();
+
+            assert_eq!(stored_reference(&store), reference);
+            assert_eq!(secrets.get(&reference).unwrap(), "restored fake password");
+            assert_eq!(store.load_all().unwrap()[0].name.as_str(), "Renamed");
+        }
+
+        #[test]
+        fn passwordless_save_preserves_each_readable_version_and_new_files_use_v3() {
+            for version in [2, 3, 4] {
+                let temp = TempDir::new().unwrap();
+                let store = store_with_test_secret_store(temp.path().into());
+                fs::write(
+                    store.storage_path(),
+                    format!("version = {version}\nconnections = []\n"),
+                )
+                .unwrap();
+                let profile = ConnectionProfile::new_postgres(
+                    "Fixture",
+                    "localhost",
+                    5432,
+                    "db",
+                    "user",
+                    "",
+                    SslMode::Prefer,
+                )
+                .unwrap();
+
+                store.save(&profile).unwrap();
+
+                assert_eq!(store.load_config_file().unwrap().unwrap().version, version);
+            }
+            assert_eq!(ConnectionConfigFile::default().version, 3);
+        }
+
+        #[test]
+        fn unsupported_store_does_not_rewrite_legacy_plaintext() {
+            let temp = TempDir::new().unwrap();
+            let secrets = Arc::new(RecordingSecretStore::default());
+            secrets.set_error(SecretStoreError::UnsupportedPlatform);
+            let store = store_with_secret_store(&temp, secrets);
+            let original = "version = 3\n[[connections]]\nid = 'legacy'\nname = 'Fixture'\ndatabase = 'db'\npassword = 'fake legacy secret'\n";
+            fs::write(store.storage_path(), original).unwrap();
+            let profile = store.load_all().unwrap().remove(0);
+
+            let error = store.save(&profile).unwrap_err();
+
+            assert!(error.to_string().contains("unsupported"));
+            assert!(error.to_string().contains("--connection-env"));
+            assert!(!error.to_string().contains("fake legacy secret"));
+            assert_eq!(fs::read_to_string(store.storage_path()).unwrap(), original);
         }
     }
 }

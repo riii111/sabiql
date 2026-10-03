@@ -626,7 +626,10 @@ mod tests {
             DatabaseMetadata, MetadataState, QueryResult, QuerySource, TableSummary,
         };
         use crate::model::connection::cache::ConnectionCache;
-        use crate::ports::outbound::{ConnectionFailureKind, DbOperationError};
+        use crate::ports::outbound::connection_store::SecretStoreFailure;
+        use crate::ports::outbound::{
+            ConnectionFailureKind, ConnectionStoreError, DbOperationError,
+        };
 
         fn fill_valid_form(state: &mut AppState) {
             state
@@ -970,6 +973,33 @@ mod tests {
 
             reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());
             assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
+        }
+
+        #[test]
+        fn cleanup_warning_preserves_draft_and_clears_pending_save() {
+            let mut state = AppState::new("test".to_string());
+            fill_valid_form(&mut state);
+            state.modal.set_mode(InputMode::ConnectionSetup);
+            let host = state.connection_setup.host.content().to_string();
+            let password = state.connection_setup.password.content().to_string();
+            let run_id = state.session.begin_connection_save();
+            let warning =
+                ConnectionStoreError::CleanupIncomplete(SecretStoreFailure::TimedOut).to_string();
+
+            reduce(
+                &mut state,
+                &Action::ConnectionSaveFailed {
+                    error: ConnectionSaveError::Store(warning.clone()),
+                    run_id,
+                },
+                Instant::now(),
+            );
+
+            assert!(!state.session.is_current_connection_save(run_id));
+            assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
+            assert_eq!(state.connection_setup.host.content(), host);
+            assert_eq!(state.connection_setup.password.content(), password);
+            assert_eq!(state.messages.last_error(), Some(warning.as_str()));
         }
 
         #[test]

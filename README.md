@@ -109,7 +109,11 @@ follow their normal persistence behavior.
 
 Use `Ctrl+R` before browsing data when you want to block writes. Press `?` for help, or open Settings with `,` to change the theme and keymap.
 
-For copying from SSH or a headless host, set `clipboard_backend = "osc52"` at the top of `connections.toml`, before any `[[connections]]` section, then restart sabiql. Your terminal and any multiplexer must support and allow OSC 52; successful output does not guarantee clipboard acceptance. The default is `"native"`; there is no automatic fallback.
+Copying automatically chooses the local clipboard or your SSH terminal. Open Settings with `,` and choose **Clipboard** to change the destination without restarting. Your terminal and any multiplexer must support and allow OSC 52; sending a value does not confirm clipboard acceptance.
+
+### Saved passwords
+
+New or changed passwords are saved in your OS password store. Linux/FreeBSD require Secret Service; Android/Termux cannot save passwords. Back up your configuration before upgrading. See [password storage and recovery](docs/password-storage.md) for setup, compatibility, and error recovery.
 
 ## Roadmap
 

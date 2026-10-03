@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use crate::model::shared::settings::ClipboardBackend;
+
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ClipboardError {
     #[error("{0}")]
@@ -23,5 +25,9 @@ pub enum ClipboardOutcome {
 }
 
 pub trait ClipboardWriter: Send + Sync {
-    fn copy_text(&self, content: &str) -> Result<ClipboardOutcome, ClipboardError>;
+    fn copy_text(
+        &self,
+        content: &str,
+        backend: ClipboardBackend,
+    ) -> Result<ClipboardOutcome, ClipboardError>;
 }

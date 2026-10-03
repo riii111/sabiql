@@ -38,7 +38,7 @@ pub(crate) struct ConnectionConfigFile {
     pub connections: Vec<ConnectionConfigEntry>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ConnectionConfigEntry {
     pub id: String,
     pub name: String,
@@ -83,7 +83,7 @@ pub(crate) struct ConnectionConfigEntry {
 impl Default for ConnectionConfigFile {
     fn default() -> Self {
         Self {
-            version: CURRENT_VERSION,
+            version: 3,
             theme: None,
             keymap_preset: None,
             er_browser: None,

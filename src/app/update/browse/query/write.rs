@@ -1377,6 +1377,27 @@ mod tests {
         }
 
         #[test]
+        fn preconnect_failure_preserves_cell_draft_and_staged_delete() {
+            let mut state = editable_state();
+            state.result_interaction.stage_row(0);
+            let action = write_failed_action(
+                &mut state,
+                DbOperationError::ConnectionFailed(
+                    "connection to server at db failed: timeout expired".to_string(),
+                ),
+            );
+
+            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::CellEdit);
+            assert!(state.result_interaction.cell_edit().is_active());
+            assert_eq!(state.result_interaction.cell_edit().draft_value(), "Bob");
+            assert!(state.result_interaction.staged_delete_rows().contains(&0));
+            assert_eq!(state.query.current_result().unwrap().data_row_count(), 1);
+        }
+
+        #[test]
         fn stale_write_failure_after_change_does_not_clear_draft_or_refresh() {
             let mut state = editable_state();
             let stale_run_id = begin_query_run(&mut state);

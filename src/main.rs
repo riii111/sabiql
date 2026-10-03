@@ -1,3 +1,4 @@
+use sabiql_infra::adapters::run_secret_store_helper;
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::time::Instant;
@@ -18,8 +19,8 @@ use sabiql_app::cmd::runner::{ConnectionDeps, EffectRunner, ErDeps, QueryDeps, U
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::input_mode::InputMode;
 use sabiql_app::ports::outbound::{
-    AppSettings, ClipboardWriter, ConnectionStore, ConnectionStoreError, MySqlConnectionProbe,
-    PgServiceEntryReader, ServiceFileError, SqliteDiagnosticsProvider,
+    AppSettings, ClipboardWriter, ConnectionStore, MySqlConnectionProbe, PgServiceEntryReader,
+    ServiceFileError, SqliteDiagnosticsProvider,
 };
 use sabiql_app::services::AppServices;
 use sabiql_app::update::action::Action;
@@ -80,12 +81,21 @@ enum Command {
     Update,
 }
 
-#[tokio::main]
+fn main() -> Result<()> {
+    if run_secret_store_helper() {
+        return Ok(());
+    }
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(run_application())
+}
+
 #[allow(
     clippy::print_stderr,
     reason = "CLI error output before TUI initialization"
 )]
-async fn main() -> Result<()> {
+async fn run_application() -> Result<()> {
     dotenvy::dotenv().ok();
     panic_hooks::install_hooks()?;
 
@@ -97,8 +107,7 @@ async fn main() -> Result<()> {
         }
         #[cfg(not(feature = "self-update"))]
         {
-            eprintln!("{}", self_update_disabled_message());
-            std::process::exit(1);
+            return Err(color_eyre::eyre::eyre!(self_update_disabled_message()));
         }
     }
 
@@ -169,40 +178,12 @@ fn initialize_state(
     let mut state = AppState::new(project_name);
     apply_app_settings(&mut state, app_settings);
 
-    match infrastructure.connection_store.load_all() {
-        Ok(mut profiles) => {
-            let has_saved_profiles = !profiles.is_empty();
-            profiles.sort_by(|a, b| {
-                a.display_name()
-                    .to_lowercase()
-                    .cmp(&b.display_name().to_lowercase())
-            });
-            state.set_connections(profiles);
-            load_service_entries(&mut state, infrastructure.pg_service_entry_reader.as_ref());
-            configure_initial_connection_view(
-                &mut state,
-                cli_connection.is_some(),
-                has_saved_profiles,
-            );
-        }
-        Err(ConnectionStoreError::VersionMismatch { found, expected })
-            if cli_connection.is_none() =>
-        {
-            eprintln!(
-                "Error: Configuration file version mismatch (found v{}, expected v{}).\n\
-                 Please delete {} and reconfigure.",
-                found,
-                expected,
-                infrastructure.connection_store.storage_path().display()
-            );
-            std::process::exit(1);
-        }
-        Err(_) if cli_connection.is_none() => {
-            state.connection_setup.set_first_run(true);
-            state.modal.set_mode(InputMode::ConnectionSetup);
-        }
-        Err(_) => {}
-    }
+    initialize_connection_list(
+        &mut state,
+        cli_connection.is_some(),
+        infrastructure.connection_store.as_ref(),
+        infrastructure.pg_service_entry_reader.as_ref(),
+    )?;
 
     if let Some(target) = cli_connection {
         activate_cli_connection(&mut state, target, &FsSqlitePathValidator)?;
@@ -211,12 +192,47 @@ fn initialize_state(
     Ok(state)
 }
 
+#[allow(
+    clippy::print_stderr,
+    reason = "sanitized startup warning before TUI initialization"
+)]
+fn initialize_connection_list(
+    state: &mut AppState,
+    has_cli_connection: bool,
+    store: &dyn ConnectionStore,
+    service_reader: &dyn PgServiceEntryReader,
+) -> Result<()> {
+    match store.load_all() {
+        Ok(mut profiles) => {
+            let has_saved_profiles = !profiles.is_empty();
+            profiles.sort_by_key(|profile| profile.display_name().to_lowercase());
+            state.set_connections(profiles);
+            load_service_entries(state, service_reader);
+            configure_initial_connection_view(state, has_cli_connection, has_saved_profiles);
+            Ok(())
+        }
+        Err(error) => {
+            let message = error.load_failure_message();
+            if has_cli_connection {
+                eprintln!("Warning: {message}");
+                state.messages.set_error(message);
+                Ok(())
+            } else {
+                Err(color_eyre::eyre::eyre!(message))
+            }
+        }
+    }
+}
+
 fn apply_app_settings(state: &mut AppState, app_settings: AppSettings) {
     state.ui.set_theme(app_settings.theme_id);
     state
         .settings
         .load_keymap_preset(app_settings.keymap_preset);
     state.settings.load_er_browser(app_settings.er_browser);
+    state
+        .settings
+        .load_clipboard_backend(app_settings.clipboard_backend);
 }
 
 fn load_service_entries(state: &mut AppState, reader: &dyn PgServiceEntryReader) {

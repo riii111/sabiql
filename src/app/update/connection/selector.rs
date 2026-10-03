@@ -60,7 +60,7 @@ pub(super) fn reduce_connection_selector(
             }
             DispatchResult::handled_with(vec![Effect::DeleteConnection { id: id.clone() }])
         }
-        Action::ConnectionDeleted(id) => {
+        Action::ConnectionDeleted(id) | Action::ConnectionDeletedWithCleanupWarning { id, .. } => {
             let was_active = state.session.active_connection_id() == Some(id);
             if state
                 .session
@@ -88,9 +88,13 @@ pub(super) fn reduce_connection_selector(
                 state.modal.set_mode(InputMode::ConnectionSetup);
             }
 
-            state
-                .messages
-                .set_success_at("Connection deleted".to_string(), now);
+            if let Action::ConnectionDeletedWithCleanupWarning { warning, .. } = action {
+                state.messages.set_error(warning.clone());
+            } else {
+                state
+                    .messages
+                    .set_success_at("Connection deleted".to_string(), now);
+            }
             DispatchResult::handled_with(if was_active {
                 termination_effects(&state.query, vec![])
             } else {
@@ -288,6 +292,7 @@ mod tests {
     mod connection_deleted {
         use super::*;
         use crate::domain::SqliteDiagnosticsSnapshot;
+        use crate::model::connection::cache::ConnectionCache;
         use crate::model::connection::state::ConnectionState;
         use crate::model::er_state::ErStatus;
         use crate::model::shared::inspector_tab::InspectorTab;
@@ -316,6 +321,44 @@ mod tests {
 
             assert_eq!(state.connections().len(), 1);
             assert_eq!(state.connections()[0].name.as_str(), "Second");
+        }
+
+        #[test]
+        fn cleanup_warning_removes_deleted_connection_and_remains_visible() {
+            let mut state = AppState::new("test".to_string());
+            let deleted = create_profile("Deleted");
+            let id = deleted.id.clone();
+            state.set_connections(vec![deleted, create_profile("Remaining")]);
+            state.session.activate_connection_with_dsn(
+                &id,
+                "Deleted",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/db",
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::Connected);
+            state
+                .connection_caches
+                .insert(id.clone(), ConnectionCache::default());
+            let deleted_id = id.clone();
+            let warning =
+                "Configuration changes were saved; cleanup could not be confirmed".to_string();
+
+            reduce_connection_selector(
+                &mut state,
+                &Action::ConnectionDeletedWithCleanupWarning {
+                    id,
+                    warning: warning.clone(),
+                },
+                Instant::now(),
+            );
+
+            assert!(state.session.active_connection_id().is_none());
+            assert!(!state.connection_caches.contains_key(&deleted_id));
+            assert_eq!(state.connections().len(), 1);
+            assert_eq!(state.connections()[0].name.as_str(), "Remaining");
+            assert_eq!(state.messages.last_error(), Some(warning.as_str()));
         }
 
         #[test]
