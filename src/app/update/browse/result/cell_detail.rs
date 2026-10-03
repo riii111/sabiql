@@ -11,6 +11,8 @@ use crate::update::action::{Action, InputTarget, ModalKind, ScrollDirection, Scr
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{clipboard_unavailable, find_text_matches};
 
+use super::{selected_cell_uses_json_detail_modal, selected_column_data_type};
+
 pub(in crate::update) fn reduce_cell_detail(
     state: &mut AppState,
     action: &Action,
@@ -157,40 +159,6 @@ fn selected_cell_value(state: &AppState) -> Option<(usize, usize, String, String
     };
     let data_type = selected_column_data_type(state, col_idx).map(ToString::to_string);
     Some((row_idx, col_idx, column_name, cell_value, data_type))
-}
-
-fn selected_cell_uses_json_detail_modal(state: &AppState) -> bool {
-    let Some(col_idx) = state.result_interaction.selection().cell() else {
-        return false;
-    };
-    let Some(row_idx) = state.result_interaction.selection().row() else {
-        return false;
-    };
-    let Some(result) = state.query.visible_result() else {
-        return false;
-    };
-    if matches!(result.value_at(row_idx, col_idx), Some(QueryValue::Null)) {
-        return false;
-    }
-    let Some(column_data_type) = selected_column_data_type(state, col_idx) else {
-        return false;
-    };
-    let policy = CellPresentationPolicy::new(
-        state.session.active_database_type_or_default(),
-        column_data_type,
-        "",
-    );
-    policy.uses_json_detail_modal()
-}
-
-fn selected_column_data_type(state: &AppState, col_idx: usize) -> Option<&str> {
-    let table_detail = state.session.table_detail()?;
-    if !state.query.pagination.matches_table(table_detail) {
-        return None;
-    }
-    state
-        .visible_preview_column(col_idx)
-        .map(|column| column.data_type.as_str())
 }
 
 fn update_search_matches(state: &mut AppState) {
