@@ -25,13 +25,13 @@ fn mask_mysql_diagnostics(diagnostics: &mut [DatabaseDiagnostic]) {
     }
 }
 
-fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
+fn epoch_days_to_ymd(days: u64) -> (u64, u32, u32) {
     // Algorithm from https://howardhinnant.github.io/date_algorithms.html
     let z = days + 719_468;
-    let era = (if z >= 0 { z } else { z - 146_096 }) / 146_097;
+    let era = z / 146_097;
     let doe = (z - era * 146_097) as u32;
     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
-    let y = yoe as i64 + era * 400;
+    let y = u64::from(yoe) + era * 400;
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
     let mp = (5 * doy + 2) / 153;
     let d = doy - (153 * mp + 2) / 5 + 1;
@@ -50,7 +50,7 @@ fn utc_now_iso8601() -> String {
     let hours = time_of_day / 3600;
     let minutes = (time_of_day % 3600) / 60;
     let seconds = time_of_day % 60;
-    let (y, m, d) = epoch_days_to_ymd(days as i64);
+    let (y, m, d) = epoch_days_to_ymd(days);
     format!("{y:04}-{m:02}-{d:02}T{hours:02}:{minutes:02}:{seconds:02}Z")
 }
 

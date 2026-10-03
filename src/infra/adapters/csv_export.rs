@@ -12,12 +12,12 @@ fn new_csv_writer() -> csv::Writer<Vec<u8>> {
     csv::WriterBuilder::new().from_writer(Vec::with_capacity(CSV_FLUSH_THRESHOLD))
 }
 
-fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
+fn epoch_days_to_ymd(days: u64) -> (u64, u32, u32) {
     let z = days + 719_468;
-    let era = (if z >= 0 { z } else { z - 146_096 }) / 146_097;
+    let era = z / 146_097;
     let doe = (z - era * 146_097) as u32;
     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
-    let y = yoe as i64 + era * 400;
+    let y = u64::from(yoe) + era * 400;
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
     let mp = (5 * doy + 2) / 153;
     let d = doy - (153 * mp + 2) / 5 + 1;
@@ -39,7 +39,7 @@ pub(super) fn download_export_path(file_name: &str) -> PathBuf {
     let secs = now.as_secs();
     let days = secs / 86_400;
     let time_of_day = secs % 86_400;
-    let (year, month, day) = epoch_days_to_ymd(days as i64);
+    let (year, month, day) = epoch_days_to_ymd(days);
     let timestamp = format!(
         "{year:04}{month:02}{day:02}_{:02}{:02}{:02}_{:03}",
         time_of_day / 3_600,
