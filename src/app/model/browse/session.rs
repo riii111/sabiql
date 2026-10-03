@@ -1432,7 +1432,7 @@ mod tests {
 
             session.mark_connection_failed();
 
-            assert!(session.connection_state().is_failed());
+            assert_eq!(session.connection_state(), ConnectionState::Failed);
             assert_eq!(session.metadata_state(), &MetadataState::Error);
             assert!(!session.is_reloading());
         }

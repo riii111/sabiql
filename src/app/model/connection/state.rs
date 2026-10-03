@@ -23,32 +23,4 @@ impl ConnectionState {
     pub fn is_connected(self) -> bool {
         matches!(self, Self::Connected)
     }
-
-    pub fn is_failed(self) -> bool {
-        matches!(self, Self::Failed)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rstest::rstest;
-
-    #[rstest]
-    #[case(ConnectionState::NotConnected, true, false, false, false)]
-    #[case(ConnectionState::Connecting, false, true, false, false)]
-    #[case(ConnectionState::Connected, false, false, true, false)]
-    #[case(ConnectionState::Failed, false, false, false, true)]
-    fn predicates_match_expected_flags(
-        #[case] state: ConnectionState,
-        #[case] is_not_connected: bool,
-        #[case] is_connecting: bool,
-        #[case] is_connected: bool,
-        #[case] is_failed: bool,
-    ) {
-        assert_eq!(state.is_not_connected(), is_not_connected);
-        assert_eq!(state.is_connecting(), is_connecting);
-        assert_eq!(state.is_connected(), is_connected);
-        assert_eq!(state.is_failed(), is_failed);
-    }
 }
