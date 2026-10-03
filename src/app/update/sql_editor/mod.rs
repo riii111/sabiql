@@ -410,7 +410,7 @@ mod tests {
                 state.sql_modal.status(),
                 SqlModalStatus::Error(error) if error == "No active connection"
             ));
-            assert!(effects.is_handled_and(Vec::is_empty));
+            assert!(matches!(effects.into_effects().as_deref(), Some([])));
         }
 
         #[test]
@@ -518,7 +518,7 @@ mod tests {
                 state.sql_modal.status(),
                 SqlModalStatus::Error(error) if error == "No active connection"
             ));
-            assert!(effects.is_handled_and(Vec::is_empty));
+            assert!(matches!(effects.into_effects().as_deref(), Some([])));
         }
 
         #[test]
@@ -676,9 +676,9 @@ mod tests {
 
             assert!(matches!(state.sql_modal.status(), SqlModalStatus::Running));
             assert!(
-                effects.is_handled_and(|e| e
-                    .iter()
-                    .any(|ef| matches!(ef, Effect::ExecuteAdhoc { .. })))
+                effects
+                    .into_effects()
+                    .is_some_and(|e| e.iter().any(|ef| matches!(ef, Effect::ExecuteAdhoc { .. })))
             );
         }
     }

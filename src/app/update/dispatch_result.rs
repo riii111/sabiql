@@ -42,24 +42,6 @@ impl DispatchResult {
             Self::Handled(_) => self,
         }
     }
-
-    pub fn is_pass(&self) -> bool {
-        matches!(self, Self::Pass)
-    }
-
-    pub fn is_handled(&self) -> bool {
-        matches!(self, Self::Handled(_))
-    }
-
-    pub fn is_handled_and<F>(&self, f: F) -> bool
-    where
-        F: FnOnce(&Vec<Effect>) -> bool,
-    {
-        match self {
-            Self::Handled(effects) => f(effects),
-            Self::Pass => false,
-        }
-    }
 }
 
 #[cfg(test)]
@@ -67,6 +49,14 @@ mod test_support {
     use super::{DispatchResult, Effect};
 
     impl DispatchResult {
+        pub fn is_pass(&self) -> bool {
+            matches!(self, Self::Pass)
+        }
+
+        pub fn is_handled(&self) -> bool {
+            matches!(self, Self::Handled(_))
+        }
+
         pub fn unwrap(self) -> Vec<Effect> {
             self.into_effects().unwrap()
         }
@@ -87,7 +77,10 @@ mod tests {
 
         let chained = result.or_else(DispatchResult::handled);
 
-        assert!(chained.is_handled_and(|effects| matches!(effects.as_slice(), [Effect::Render])));
+        assert!(matches!(
+            chained.into_effects().as_deref(),
+            Some([Effect::Render])
+        ));
     }
 
     #[test]
@@ -96,20 +89,9 @@ mod tests {
 
         let chained = result.or_else(|| DispatchResult::handled_with(vec![Effect::Render]));
 
-        assert!(chained.is_handled_and(|effects| matches!(effects.as_slice(), [Effect::Render])));
-    }
-
-    #[test]
-    fn is_handled_and_checks_effects() {
-        let result = DispatchResult::handled();
-
-        assert!(result.is_handled_and(Vec::is_empty));
-    }
-
-    #[test]
-    fn is_handled_and_returns_false_on_pass() {
-        let result = DispatchResult::pass();
-
-        assert!(!result.is_handled_and(|_| true));
+        assert!(matches!(
+            chained.into_effects().as_deref(),
+            Some([Effect::Render])
+        ));
     }
 }

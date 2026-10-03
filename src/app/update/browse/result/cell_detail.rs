@@ -476,7 +476,7 @@ mod tests {
 
         let result = reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
 
-        assert!(result.is_handled_and(Vec::is_empty));
+        assert!(matches!(result.into_effects().as_deref(), Some([])));
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert!(state.cell_detail.is_active());
         assert_eq!(state.cell_detail.content(), "NULL");
@@ -507,7 +507,7 @@ mod tests {
 
         let effects = reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
 
-        assert!(effects.is_handled_and(Vec::is_empty));
+        assert!(matches!(effects.into_effects().as_deref(), Some([])));
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert!(state.cell_detail.is_active());
         assert!(!state.json_detail.is_active());
