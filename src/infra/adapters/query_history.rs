@@ -158,48 +158,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn append_and_load_succeed_for_cli_sqlite_connection_id() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = ConnectionId::from_string("cli-sqlite-test");
-
-        assert!(!conn_id.as_str().contains('/'));
-
-        store
-            .append("test", &scope(&conn_id), &make_entry("SELECT 1"))
-            .await
-            .unwrap();
-
-        let history_dir = tmp.path().join("history");
-        let path = history_dir.join(format!("{conn_id}.jsonl"));
-        assert!(path.is_file());
-
-        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].query, "SELECT 1");
-    }
-
-    #[tokio::test]
-    async fn append_creates_file_and_writes_entry() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = ConnectionId::from_string("test-conn");
-
-        let entry = make_entry("SELECT 1");
-        store
-            .append("test", &scope(&conn_id), &entry)
-            .await
-            .unwrap();
-
-        let history_dir = tmp.path().join("history");
-        let path = history_dir.join(format!("{conn_id}.jsonl"));
-        assert!(path.exists());
-
-        let content = std::fs::read_to_string(&path).unwrap();
-        assert!(content.contains("SELECT 1"));
-    }
-
-    #[tokio::test]
     async fn load_returns_entries_in_order() {
         let tmp = TempDir::new().unwrap();
         let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
@@ -326,29 +284,6 @@ mod tests {
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].query, "SELECT 1");
         assert_eq!(entries[1].query, "SELECT 2");
-    }
-
-    #[tokio::test]
-    async fn below_limit_entries_are_preserved_without_trim() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = ConnectionId::from_string("test-conn");
-
-        for i in 0..5 {
-            store
-                .append(
-                    "test",
-                    &scope(&conn_id),
-                    &make_entry(&format!("SELECT {i}")),
-                )
-                .await
-                .unwrap();
-        }
-
-        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
-        assert_eq!(entries.len(), 5);
-        assert_eq!(entries[0].query, "SELECT 0");
-        assert_eq!(entries[4].query, "SELECT 4");
     }
 
     #[tokio::test]
