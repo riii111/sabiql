@@ -4,6 +4,8 @@ use std::io;
 use std::io::Write;
 use std::path::PathBuf;
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use uuid::Uuid;
 
 use crate::app::ports::outbound::DbOperationError;
@@ -191,7 +193,7 @@ fn is_valid_pem_public_key(contents: &str) -> bool {
             .bytes()
             .filter(|byte| !byte.is_ascii_whitespace())
             .collect();
-        let Some(decoded) = decode_base64(&encoded) else {
+        let Ok(decoded) = STANDARD.decode(&encoded) else {
             return false;
         };
         if !contents[body_end + end.len()..]
@@ -206,54 +208,6 @@ fn is_valid_pem_public_key(contents: &str) -> bool {
             _ => false,
         }
     })
-}
-
-fn decode_base64(encoded: &[u8]) -> Option<Vec<u8>> {
-    if encoded.is_empty() || !encoded.len().is_multiple_of(4) {
-        return None;
-    }
-    let mut decoded = Vec::with_capacity(encoded.len() / 4 * 3);
-    for (chunk_index, chunk) in encoded.as_chunks::<4>().0.iter().enumerate() {
-        let last_chunk = chunk_index + 1 == encoded.len() / 4;
-        let first = base64_value(chunk[0])?;
-        let second = base64_value(chunk[1])?;
-        let third = match chunk[2] {
-            b'=' if last_chunk => None,
-            byte => Some(base64_value(byte)?),
-        };
-        let fourth = match chunk[3] {
-            b'=' if last_chunk => None,
-            byte => Some(base64_value(byte)?),
-        };
-        if third.is_none() && fourth.is_some() {
-            return None;
-        }
-        if third.is_none() && second & 0x0f != 0 {
-            return None;
-        }
-        if fourth.is_none() && third.is_some_and(|value| value & 0x03 != 0) {
-            return None;
-        }
-        decoded.push((first << 2) | (second >> 4));
-        if let Some(third) = third {
-            decoded.push((second << 4) | (third >> 2));
-            if let Some(fourth) = fourth {
-                decoded.push((third << 6) | fourth);
-            }
-        }
-    }
-    Some(decoded)
-}
-
-fn base64_value(byte: u8) -> Option<u8> {
-    match byte {
-        b'A'..=b'Z' => Some(byte - b'A'),
-        b'a'..=b'z' => Some(byte - b'a' + 26),
-        b'0'..=b'9' => Some(byte - b'0' + 52),
-        b'+' => Some(62),
-        b'/' => Some(63),
-        _ => None,
-    }
 }
 
 fn is_valid_subject_public_key_info(der: &[u8]) -> bool {
