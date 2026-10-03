@@ -283,45 +283,20 @@ mod tests {
             assert_eq!(format!("{result:?}"), format!("{expected:?}"));
         }
 
-        #[test]
-        fn char_j_edits_custom_browser_when_editing() {
+        #[rstest]
+        #[case('j')]
+        #[case('k')]
+        #[case('B')]
+        fn chars_edit_custom_browser_when_editing(#[case] ch: char) {
             let state = editing_custom_browser_state();
-            let result = handle_settings_keys(combo(Key::Char('j')), &state);
+            let result = handle_settings_keys(combo(Key::Char(ch)), &state);
 
             assert!(matches!(
                 result,
                 Action::TextInput {
                     target: InputTarget::SettingsErBrowser,
-                    ch: 'j'
-                }
-            ));
-        }
-
-        #[test]
-        fn char_k_edits_custom_browser_when_editing() {
-            let state = editing_custom_browser_state();
-            let result = handle_settings_keys(combo(Key::Char('k')), &state);
-
-            assert!(matches!(
-                result,
-                Action::TextInput {
-                    target: InputTarget::SettingsErBrowser,
-                    ch: 'k'
-                }
-            ));
-        }
-
-        #[test]
-        fn other_chars_edit_custom_browser_when_editing() {
-            let state = editing_custom_browser_state();
-            let result = handle_settings_keys(combo(Key::Char('B')), &state);
-
-            assert!(matches!(
-                result,
-                Action::TextInput {
-                    target: InputTarget::SettingsErBrowser,
-                    ch: 'B'
-                }
+                    ch: actual
+                } if actual == ch
             ));
         }
 

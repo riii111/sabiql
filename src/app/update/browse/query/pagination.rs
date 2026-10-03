@@ -174,11 +174,15 @@ pub(in crate::update) fn reduce_pagination(
                 Some(n) => format!("Exported {n} rows → {path}"),
                 None => format!("Exported → {path}"),
             };
-            state.messages.set_success_at(msg, now);
+            state.messages.set_success_at(msg.clone(), now);
             let folder = Path::new(path)
                 .parent()
                 .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
-            DispatchResult::handled_with(vec![Effect::OpenFolder { path: folder }])
+            DispatchResult::handled_with(vec![Effect::OpenFolder {
+                path: folder,
+                message_revision: state.messages.revision(),
+                export_message: msg,
+            }])
         }
 
         Action::CsvExportFailed { run_id, error } => {
@@ -191,10 +195,15 @@ pub(in crate::update) fn reduce_pagination(
             DispatchResult::handled()
         }
 
-        Action::OpenFolderFailed(error) => {
-            state
-                .messages
-                .set_error(format!("Failed to open folder: {error}"));
+        Action::OpenFolderFailed {
+            message_revision,
+            export_message,
+            error,
+        } => {
+            state.messages.keep_success_with_detail(
+                *message_revision,
+                format!("{export_message}; folder could not be opened: {error}"),
+            );
 
             DispatchResult::handled()
         }
@@ -316,18 +325,6 @@ mod tests {
         }
 
         #[test]
-        fn noop_when_reached_end() {
-            let mut state = create_test_state();
-            state.query.set_current_result(preview_result(100));
-            state.query.pagination.set_page_result(0, true);
-            let now = Instant::now();
-
-            let effects = dispatch_query(&mut state, &Action::ResultNextPage, now).unwrap();
-
-            assert!(effects.is_empty());
-        }
-
-        #[test]
         fn noop_for_adhoc() {
             let mut state = create_test_state();
             state.query.set_current_result(adhoc_result());
@@ -362,11 +359,13 @@ mod tests {
             state.result_interaction.activate_cell(2, 1);
             state.result_interaction.stage_row(2);
 
-            dispatch_query(&mut state, &Action::ResultNextPage, Instant::now());
+            let effects =
+                dispatch_query(&mut state, &Action::ResultNextPage, Instant::now()).unwrap();
 
             assert_eq!(state.result_interaction.selection().row(), Some(2));
             assert_eq!(state.result_interaction.selection().cell(), Some(1));
             assert!(state.result_interaction.staged_delete_rows().contains(&2));
+            assert!(effects.is_empty());
         }
 
         #[test]
@@ -462,34 +461,21 @@ mod tests {
         }
 
         #[test]
-        fn noop_on_first_page() {
-            let mut state = create_test_state();
-            state
-                .query
-                .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
-            state.query.pagination.set_current_page(0);
-            let now = Instant::now();
-
-            let effects = dispatch_query(&mut state, &Action::ResultPrevPage, now).unwrap();
-
-            assert!(effects.is_empty());
-        }
-
-        #[test]
         fn preserves_view_state_when_prev_page_noops() {
             let mut state = create_test_state();
             state
                 .query
                 .set_current_result(preview_result_with_two_columns(PREVIEW_PAGE_SIZE));
-            state.query.pagination.set_current_page(0);
             state.result_interaction.activate_cell(1, 1);
             state.result_interaction.stage_row(1);
 
-            dispatch_query(&mut state, &Action::ResultPrevPage, Instant::now());
+            let effects =
+                dispatch_query(&mut state, &Action::ResultPrevPage, Instant::now()).unwrap();
 
             assert_eq!(state.result_interaction.selection().row(), Some(1));
             assert_eq!(state.result_interaction.selection().cell(), Some(1));
             assert!(state.result_interaction.staged_delete_rows().contains(&1));
+            assert!(effects.is_empty());
         }
     }
 
@@ -581,31 +567,24 @@ mod tests {
             assert!(effects.is_empty());
         }
 
-        #[test]
-        fn rerunnable_export_always_confirms_even_when_result_is_small() {
+        #[rstest::rstest]
+        #[case(false)]
+        #[case(true)]
+        fn rerunnable_export_always_confirms_regardless_of_result_size(#[case] large: bool) {
             let mut state = create_test_state();
-            state.query.set_current_result(adhoc_result());
-
-            let effects =
-                dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
-
-            assert!(effects.is_empty());
-            assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
-            assert!(state.confirm_dialog.message().contains("unknown"));
-        }
-
-        #[test]
-        fn rerunnable_export_always_confirms_even_when_result_is_large() {
-            let mut state = create_test_state();
-            let result = QueryResult::success(
-                "SELECT 1".to_string(),
-                vec!["value".to_string()],
-                vec![vec!["1".to_string()]],
-                0,
-                QuerySource::Adhoc,
-            )
-            .with_row_count(200_000);
-            state.query.set_current_result(Arc::new(result));
+            if large {
+                let result = QueryResult::success(
+                    "SELECT 1".to_string(),
+                    vec!["value".to_string()],
+                    vec![vec!["1".to_string()]],
+                    0,
+                    QuerySource::Adhoc,
+                )
+                .with_row_count(200_000);
+                state.query.set_current_result(Arc::new(result));
+            } else {
+                state.query.set_current_result(adhoc_result());
+            }
 
             let effects =
                 dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
@@ -640,6 +619,98 @@ mod tests {
                     .unwrap()
                     .contains("/tmp/export.csv")
             );
+        }
+
+        fn folder_failure(effects: Vec<Effect>) -> Action {
+            let Effect::OpenFolder {
+                path,
+                message_revision,
+                export_message,
+            } = effects.into_iter().next().unwrap()
+            else {
+                panic!("expected folder opener");
+            };
+            assert_eq!(path, PathBuf::from("/tmp"));
+            Action::OpenFolderFailed {
+                message_revision,
+                export_message,
+                error: Arc::new(std::io::Error::other("opener unavailable")),
+            }
+        }
+
+        #[test]
+        fn folder_failure_keeps_saved_path_and_idle_after_success_expires() {
+            let mut state = create_test_state();
+            let now = Instant::now();
+            let action = csv_succeeded_action(&mut state, "/tmp/export.csv", Some(42));
+            let failure = folder_failure(dispatch_query(&mut state, &action, now).unwrap());
+            let later = now + std::time::Duration::from_secs(10);
+            state.messages.clear_expired_at(later);
+
+            let effects = dispatch_query(&mut state, &failure, later).unwrap();
+
+            assert!(effects.is_empty());
+            assert!(!state.query.is_running());
+            assert!(state.messages.last_error().is_none());
+            assert_eq!(
+                state.messages.last_success(),
+                Some(
+                    "Exported 42 rows → /tmp/export.csv; folder could not be opened: opener unavailable"
+                )
+            );
+            assert!(state.messages.expires_at().is_none());
+        }
+
+        #[test]
+        fn old_folder_failure_preserves_new_export_to_same_path() {
+            let mut state = create_test_state();
+            let now = Instant::now();
+            let action = csv_succeeded_action(&mut state, "/tmp/export.csv", Some(42));
+            let failure = folder_failure(dispatch_query(&mut state, &action, now).unwrap());
+            let action = csv_succeeded_action(&mut state, "/tmp/export.csv", Some(42));
+            dispatch_query(&mut state, &action, now).unwrap();
+
+            dispatch_query(&mut state, &failure, now).unwrap();
+
+            assert_eq!(
+                state.messages.last_success(),
+                Some("Exported 42 rows → /tmp/export.csv")
+            );
+            assert!(state.messages.last_error().is_none());
+            assert!(!state.query.is_running());
+        }
+
+        #[test]
+        fn old_folder_failure_preserves_unrelated_success() {
+            let mut state = create_test_state();
+            let now = Instant::now();
+            let action = csv_succeeded_action(&mut state, "/tmp/export.csv", None);
+            let failure = folder_failure(dispatch_query(&mut state, &action, now).unwrap());
+            state.messages.set_success_at("Copied".to_string(), now);
+
+            dispatch_query(&mut state, &failure, now).unwrap();
+
+            assert_eq!(state.messages.last_success(), Some("Copied"));
+        }
+
+        #[test]
+        fn old_folder_failure_preserves_new_export_error() {
+            let mut state = create_test_state();
+            let now = Instant::now();
+            let action = csv_succeeded_action(&mut state, "/tmp/export.csv", None);
+            let failure = folder_failure(dispatch_query(&mut state, &action, now).unwrap());
+            let action = csv_failed_action(
+                &mut state,
+                DbOperationError::QueryFailed("export failed".to_string()),
+            );
+            assert!(dispatch_query(&mut state, &action, now).unwrap().is_empty());
+            let error = state.messages.last_error().unwrap().to_string();
+
+            dispatch_query(&mut state, &failure, now).unwrap();
+
+            assert_eq!(state.messages.last_error(), Some(error.as_str()));
+            assert!(state.messages.last_success().is_none());
+            assert!(!state.query.is_running());
         }
 
         #[test]

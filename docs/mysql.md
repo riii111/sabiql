@@ -10,6 +10,8 @@ MySQL connections can use TCP, a Unix socket file on Unix-like systems, or a Win
 
 Passphrase-protected TLS client keys are not supported. An unencrypted PEM private key can be used, but it weakens at-rest protection; store it with restrictive file permissions.
 
+For [Cloud SQL Auth Proxy](https://docs.cloud.google.com/sql/docs/mysql/connect-auth-proxy) TCP connections to MySQL 8.4 or later users authenticated with `caching_sha2_password`, set the MySQL connection form's **Get Server** option to `enabled`. sabiql then writes `get-server-public-key=true` to its protected temporary option file. The option is disabled by default and is never enabled based on a `localhost` or proxy-looking host. If **Server Key** also names a valid PEM key file, MySQL gives that file precedence over public-key retrieval, as described in the [MySQL connection option documentation](https://dev.mysql.com/doc/refman/8.4/en/connecting-using-uri-or-key-value-pairs.html). This documents the client option only; Cloud SQL, IAM, and Auth Proxy operation are not verified by sabiql.
+
 ## Version differences
 
 The Explorer, Inspector, and query-result panes select metadata and empty-result queries from the server version reported by `VERSION()`:

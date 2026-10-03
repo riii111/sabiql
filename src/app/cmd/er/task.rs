@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 
 use crate::domain::ErTableInfo;
 use crate::ports::outbound::ErDiagramExporter;
@@ -16,7 +17,7 @@ pub(in crate::cmd) fn spawn_er_diagram_task(
     tx: mpsc::Sender<Action>,
     filename: String,
     browser: Option<String>,
-) {
+) -> JoinHandle<()> {
     let table_count = tables.len();
     tokio::spawn(async move {
         let result = tokio::task::spawn_blocking(move || {
@@ -52,19 +53,29 @@ pub(in crate::cmd) fn spawn_er_diagram_task(
                     .await;
             }
         }
-    });
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::test_fixtures::recv_action_with_timeout;
     use crate::ports::outbound::ErExportResult;
     use std::path::Path;
     use std::time::Duration;
 
     mod spawn_er_diagram_task {
         use super::*;
+
+        async fn completed_action(task: JoinHandle<()>, rx: &mut mpsc::Receiver<Action>) -> Action {
+            // Windows panic backtraces can take seconds under a parallel test workload.
+            // Join the task before checking delivery instead of racing a one-second receive.
+            tokio::time::timeout(Duration::from_secs(30), task)
+                .await
+                .expect("ER task did not complete")
+                .expect("ER action dispatcher panicked");
+            rx.try_recv()
+                .expect("completed ER task did not send an action")
+        }
 
         struct SuccessExporter {
             output_path: PathBuf,
@@ -117,7 +128,7 @@ mod tests {
                 output_path: output_path.clone(),
             });
 
-            spawn_er_diagram_task(
+            let task = spawn_er_diagram_task(
                 exporter,
                 vec![],
                 1,
@@ -128,7 +139,7 @@ mod tests {
                 None,
             );
 
-            let action = recv_action_with_timeout(&mut rx, Duration::from_secs(1)).await;
+            let action = completed_action(task, &mut rx).await;
             match action {
                 Action::ErDiagramOpened(ErDiagramInfo {
                     run_id,
@@ -151,7 +162,7 @@ mod tests {
             let (tx, mut rx) = mpsc::channel(1);
             let exporter = Arc::new(FailExporter);
 
-            spawn_er_diagram_task(
+            let task = spawn_er_diagram_task(
                 exporter,
                 vec![],
                 7,
@@ -162,7 +173,7 @@ mod tests {
                 None,
             );
 
-            let action = recv_action_with_timeout(&mut rx, Duration::from_secs(1)).await;
+            let action = completed_action(task, &mut rx).await;
             match action {
                 Action::ErDiagramFailed { run_id, error } => {
                     assert!(error.contains("export failed"));
@@ -178,7 +189,7 @@ mod tests {
             let (tx, mut rx) = mpsc::channel(1);
             let exporter = Arc::new(PanicExporter);
 
-            spawn_er_diagram_task(
+            let task = spawn_er_diagram_task(
                 exporter,
                 vec![],
                 11,
@@ -189,7 +200,7 @@ mod tests {
                 None,
             );
 
-            let action = recv_action_with_timeout(&mut rx, Duration::from_secs(1)).await;
+            let action = completed_action(task, &mut rx).await;
             match action {
                 Action::ErDiagramFailed { run_id, error } => {
                     assert!(error.contains("Task panicked"));

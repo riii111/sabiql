@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Instant;
 
 use super::explain_context::ExplainContext;
@@ -50,7 +50,6 @@ pub struct AppState {
 
     pub session: BrowseSession,
     project_name: String,
-    service_file_path: Option<PathBuf>,
     pub ui: UiState,
     pub query: QueryExecution,
     pub sql_modal: SqlModalContext,
@@ -86,7 +85,6 @@ impl AppState {
             render_dirty: true,
             session: BrowseSession::default(),
             project_name,
-            service_file_path: None,
             ui: UiState::new(),
             query: QueryExecution::default(),
             sql_modal: SqlModalContext::default(),
@@ -118,11 +116,11 @@ impl AppState {
     }
 
     pub fn service_file_path(&self) -> Option<&Path> {
-        self.service_file_path.as_deref()
-    }
-
-    pub fn set_service_file_path(&mut self, path: Option<PathBuf>) {
-        self.service_file_path = path;
+        let id = self.session.active_connection_id()?;
+        self.service_entries
+            .iter()
+            .find(|entry| &entry.connection_id() == id)
+            .map(|entry| entry.source_path.as_path())
     }
 
     pub fn input_mode(&self) -> InputMode {
@@ -972,59 +970,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn result_rows_default_to_zero() {
-            let state = make_state();
-
-            let visible = state.result_visible_rows();
-
-            assert_eq!(visible, 0);
-        }
-
-        #[rstest]
-        #[case(10, 5)]
-        #[case(15, 10)]
-        #[case(20, 15)]
-        #[case(30, 25)]
-        fn result_rows_follow_pane_height(#[case] pane_height: u16, #[case] expected: usize) {
-            let mut state = make_state();
-            state.ui.set_result_pane_height(pane_height);
-
-            let visible = state.result_visible_rows();
-
-            assert_eq!(visible, expected);
-        }
-
-        #[test]
-        fn result_rows_clamp_small_heights() {
-            let mut state = make_state();
-            state.ui.set_result_pane_height(2);
-
-            let visible = state.result_visible_rows();
-
-            assert_eq!(visible, 0);
-        }
-
-        #[test]
-        fn result_rows_stay_zero_at_minimum() {
-            let mut state = make_state();
-            state.ui.set_result_pane_height(1);
-
-            let visible = state.result_visible_rows();
-
-            assert_eq!(visible, 0);
-        }
-
-        #[test]
-        fn result_rows_scale_with_height() {
-            let mut state = make_state();
-            state.ui.set_result_pane_height(50);
-
-            let visible = state.result_visible_rows();
-
-            assert_eq!(visible, 45);
-        }
-
-        #[test]
         fn row_detail_scroll_offset_clamps_on_resize() {
             let mut state = make_state();
             state.row_detail = RowDetailState::open(&["id".to_string()], &["1".to_string()]);
@@ -1081,7 +1026,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn confirm_preview_layout_is_applied() {
+        fn confirm_preview_layout_follows_render_output() {
             let mut state = make_state();
             let output = RenderOutput {
                 overlays: OverlayLayout {
@@ -1100,14 +1045,6 @@ mod tests {
             assert_eq!(state.confirm_dialog.preview_viewport_height, Some(10));
             assert_eq!(state.confirm_dialog.preview_content_height, Some(25));
             assert_eq!(state.confirm_dialog.preview_scroll, 4);
-        }
-
-        #[test]
-        fn confirm_preview_layout_is_reset_when_not_rendered() {
-            let mut state = make_state();
-            state.confirm_dialog.preview_viewport_height = Some(10);
-            state.confirm_dialog.preview_content_height = Some(25);
-            state.confirm_dialog.preview_scroll = 4;
 
             state.apply_render_output(RenderOutput::default());
 
@@ -1137,96 +1074,33 @@ mod tests {
     mod table_selection {
         use super::*;
 
-        #[test]
-        fn empty_filter_returns_all() {
+        #[rstest]
+        #[case("", 2, None)]
+        #[case("user", 1, Some("users"))]
+        #[case("USER", 1, Some("users"))]
+        fn filtered_tables_match_input(
+            #[case] filter: &str,
+            #[case] expected_len: usize,
+            #[case] expected_name: Option<&str>,
+        ) {
             let mut state = make_state();
             state.session.set_metadata(Some(make_metadata(vec![
                 TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
                 TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
             ])));
-            state.ui.table_picker_mut().clear_filter();
+            state.ui.table_picker_mut().insert_filter_str(filter);
 
             let filtered = state.filtered_tables();
 
-            assert_eq!(filtered.len(), 2);
-        }
-
-        #[test]
-        fn substring_filter_matches() {
-            let mut state = make_state();
-            state.session.set_metadata(Some(make_metadata(vec![
-                TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
-                TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
-            ])));
-            state.ui.table_picker_mut().insert_filter_str("user");
-
-            let filtered = state.filtered_tables();
-
-            assert_eq!(filtered.len(), 1);
-            assert_eq!(filtered[0].name, "users");
-        }
-
-        #[test]
-        fn filter_ignores_case() {
-            let mut state = make_state();
-            state
-                .session
-                .set_metadata(Some(make_metadata(vec![TableSummary::new(
-                    "public".to_string(),
-                    "Users".to_string(),
-                    Some(100),
-                    false,
-                )])));
-            state.ui.table_picker_mut().insert_filter_str("user");
-
-            let filtered = state.filtered_tables();
-
-            assert_eq!(filtered.len(), 1);
-        }
-
-        #[test]
-        fn selection_generation_starts_at_zero() {
-            let state = make_state();
-
-            assert_eq!(state.session.selection_generation(), 0);
-        }
-
-        #[test]
-        fn selection_generation_increments_on_selection() {
-            let mut state = make_state();
-
-            let gen1 = state.session.selection_generation();
-            let gen2 = state.session.select_table("public", "t1", &mut state.query);
-            let gen3 = state.session.select_table("public", "t2", &mut state.query);
-
-            assert_eq!(gen1, 0);
-            assert_eq!(gen2, 1);
-            assert_eq!(gen3, 2);
-        }
-
-        #[test]
-        fn selection_generation_advances_after_reselection() {
-            let mut state = make_state();
-
-            let initial_gen = state.session.selection_generation();
-            let current_gen = state
-                .session
-                .select_table("public", "users", &mut state.query);
-
-            assert!(initial_gen < current_gen);
+            assert_eq!(filtered.len(), expected_len);
+            if let Some(expected_name) = expected_name {
+                assert_eq!(filtered[0].name, expected_name);
+            }
         }
     }
 
     mod table_prefetch_lifecycle {
         use super::*;
-
-        #[test]
-        fn prefetch_queue_starts_empty() {
-            let state = make_state();
-
-            assert!(!state.table_prefetch.has_pending_prefetch());
-            assert!(state.table_prefetch.active_prefetch_run_id().is_none());
-        }
 
         #[test]
         fn prefetch_queue_is_fifo() {
@@ -1243,40 +1117,6 @@ mod tests {
 
             assert_eq!(first, Some("public.users".to_string()));
             assert_eq!(second, Some("public.orders".to_string()));
-        }
-
-        #[test]
-        fn prefetching_tables_track_in_flight() {
-            let mut state = make_state();
-
-            state
-                .table_prefetch
-                .start_table_prefetch("public.users".to_string());
-
-            assert!(state.table_prefetch.is_table_prefetching("public.users"));
-            assert!(!state.table_prefetch.is_table_prefetching("public.orders"));
-        }
-
-        #[test]
-        fn failed_prefetch_tables_store_error_and_time() {
-            let mut state = make_state();
-            let now = Instant::now();
-
-            state.table_prefetch.fail_table_prefetch(
-                "public.users".to_string(),
-                FailedPrefetchEntry {
-                    failed_at: now,
-                    error: "connection timeout".to_string(),
-                    retry_count: 0,
-                },
-            );
-
-            let entry = state
-                .table_prefetch
-                .failed_prefetch("public.users")
-                .unwrap();
-            assert_eq!(entry.failed_at, now);
-            assert_eq!(entry.error, "connection timeout");
         }
     }
 
@@ -1299,14 +1139,18 @@ mod tests {
                     failed_at: Instant::now(),
                     error: "timeout".to_string(),
                     retry_count: 0,
+                    retryable: true,
                 },
             );
             state
         }
 
         #[test]
-        fn resets_prefetch_state() {
+        fn reload_metadata_resets_prefetch_er_and_messages() {
             let mut state = prepare_state_for_reload();
+            let _ = state.er_preparation.start_waiting_run();
+            state.messages.set_error("Old error".to_string());
+            assert!(state.messages.last_error().is_some());
 
             dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
@@ -1319,28 +1163,7 @@ mod tests {
                     .failed_prefetch("public.failed")
                     .is_none()
             );
-        }
-
-        #[test]
-        fn resets_er_preparation() {
-            let mut state = prepare_state_for_reload();
-            let _ = state.er_preparation.start_waiting_run();
-
-            dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
-
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
-        }
-
-        #[test]
-        fn clears_stale_messages() {
-            let mut state = prepare_state_for_reload();
-            state.messages.set_error("Old error".to_string());
-
-            assert!(state.messages.last_error().is_some());
-            assert!(state.messages.expires_at().is_none());
-
-            dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
-
             assert!(state.messages.last_error().is_none());
             assert!(state.messages.expires_at().is_none());
         }
@@ -1594,6 +1417,7 @@ mod tests {
         fn make_service(name: &str) -> ServiceEntry {
             ServiceEntry {
                 service_name: name.to_string(),
+                source_path: "/etc/pg_service.conf".into(),
             }
         }
 

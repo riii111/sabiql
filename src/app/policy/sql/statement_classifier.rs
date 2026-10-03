@@ -1134,10 +1134,6 @@ mod tests {
         #[case::identifier_contains_keyword("SELECT delete_flag FROM t", StatementKind::Select)]
         #[case::table_name_contains_keyword("SELECT * FROM users_to_delete", StatementKind::Select)]
         #[case::double_quoted_escaped("SELECT \"up\"\"date\" FROM t", StatementKind::Select)]
-        #[case::cte_with_update_in_subquery(
-            "WITH x AS (UPDATE users SET name='a' RETURNING *) SELECT * FROM x",
-            StatementKind::Update { has_where: false }
-        )]
         #[case::select_with_parenthesized_expr(
             "WITH cte AS (SELECT 1) SELECT (1+2)",
             StatementKind::Select

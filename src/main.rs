@@ -1,3 +1,4 @@
+use sabiql_infra::adapters::run_secret_store_helper;
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::time::Instant;
@@ -7,8 +8,9 @@ use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 use tokio::time::sleep_until;
 
-use sabiql_app::cmd::cli_sqlite::{
-    CliSqliteTarget, activate_cli_sqlite_connection, resolve_cli_sqlite_target,
+use sabiql_app::cmd::cli_connection::{
+    CliConnectionTarget, activate_cli_connection, resolve_cli_connection_env,
+    resolve_cli_connection_target,
 };
 use sabiql_app::cmd::completion_engine::CompletionEngine;
 use sabiql_app::cmd::effect::Effect;
@@ -17,7 +19,7 @@ use sabiql_app::cmd::runner::{ConnectionDeps, EffectRunner, ErDeps, QueryDeps, U
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::input_mode::InputMode;
 use sabiql_app::ports::outbound::{
-    AppSettings, ConnectionStore, ConnectionStoreError, MySqlConnectionProbe, PgServiceEntryReader,
+    AppSettings, ClipboardWriter, ConnectionStore, MySqlConnectionProbe, PgServiceEntryReader,
     ServiceFileError, SqliteDiagnosticsProvider,
 };
 use sabiql_app::services::AppServices;
@@ -26,9 +28,9 @@ use sabiql_app::update::input::handle_event;
 use sabiql_app::update::reducer::reduce;
 use sabiql_infra::adapters::mysql::MySqlAdapter;
 use sabiql_infra::adapters::{
-    ArboardClipboard, CsvCachedResultExporter, DbAdapterRegistry, FileConfigWriter,
-    FileQueryHistoryStore, FsErLogWriter, FsSqlitePathValidator, NativeFolderOpener,
-    PgServiceFileReader, SqliteAdapter, TomlConnectionStore, TomlSettingsStore,
+    CsvCachedResultExporter, DbAdapterRegistry, FileConfigWriter, FileQueryHistoryStore,
+    FsErLogWriter, FsSqlitePathValidator, NativeFolderOpener, PgServiceFileReader, SqliteAdapter,
+    TomlConnectionStore, TomlSettingsStore,
 };
 use sabiql_infra::config::project_root::{find_project_root, get_project_name};
 use sabiql_infra::export::DotExporter;
@@ -53,11 +55,16 @@ mod tests;
 )]
 mod render_snapshots;
 
-#[derive(Parser, Debug)]
+#[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// SQLite database file path or sqlite:// DSN
+    /// SQLite path/DSN or PostgreSQL/MySQL URI (URI credentials may be visible in shell history and process arguments; use --connection-env NAME for an environment variable)
+    #[arg(conflicts_with = "connection_env", value_name = "TARGET")]
     database: Option<String>,
+
+    /// Read a PostgreSQL/MySQL URI from the named environment variable without saving a profile
+    #[arg(long, value_name = "NAME", conflicts_with = "database")]
+    connection_env: Option<String>,
 
     #[command(subcommand)]
     command: Option<Command>,
@@ -74,12 +81,21 @@ enum Command {
     Update,
 }
 
-#[tokio::main]
+fn main() -> Result<()> {
+    if run_secret_store_helper() {
+        return Ok(());
+    }
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(run_application())
+}
+
 #[allow(
     clippy::print_stderr,
     reason = "CLI error output before TUI initialization"
 )]
-async fn main() -> Result<()> {
+async fn run_application() -> Result<()> {
     dotenvy::dotenv().ok();
     panic_hooks::install_hooks()?;
 
@@ -91,12 +107,11 @@ async fn main() -> Result<()> {
         }
         #[cfg(not(feature = "self-update"))]
         {
-            eprintln!("{}", self_update_disabled_message());
-            std::process::exit(1);
+            return Err(color_eyre::eyre::eyre!(self_update_disabled_message()));
         }
     }
 
-    let cli_sqlite = resolve_cli_database(args.database)?;
+    let cli_connection = resolve_cli_connection(args.database, args.connection_env)?;
     let project_root = find_project_root()?;
     let project_name = get_project_name(&project_root);
     let infrastructure = build_infrastructure()?;
@@ -104,17 +119,29 @@ async fn main() -> Result<()> {
     let state = initialize_state(
         project_name,
         app_settings,
-        cli_sqlite.as_ref(),
+        cli_connection.as_ref(),
         &infrastructure,
     )?;
     let runtime = Runtime::new(state, infrastructure)?;
     Box::pin(runtime.run()).await
 }
 
-fn resolve_cli_database(database: Option<String>) -> Result<Option<CliSqliteTarget>> {
-    Ok(database
-        .map(|database| resolve_cli_sqlite_target(&database, &FsSqlitePathValidator))
-        .transpose()?)
+fn resolve_cli_connection(
+    database: Option<String>,
+    connection_env: Option<String>,
+) -> Result<Option<CliConnectionTarget>> {
+    match (database, connection_env) {
+        (Some(database), None) => Ok(Some(resolve_cli_connection_target(
+            &database,
+            &FsSqlitePathValidator,
+        )?)),
+        (None, Some(name)) => Ok(Some(resolve_cli_connection_env(
+            &name,
+            &FsSqlitePathValidator,
+        )?)),
+        (None, None) => Ok(None),
+        (Some(_), Some(_)) => unreachable!("clap rejects conflicting connection inputs"),
+    }
 }
 
 struct Infrastructure {
@@ -122,14 +149,18 @@ struct Infrastructure {
     connection_store: Arc<TomlConnectionStore>,
     settings_store: Arc<TomlSettingsStore>,
     pg_service_entry_reader: Arc<dyn PgServiceEntryReader>,
+    clipboard: Arc<dyn ClipboardWriter>,
 }
 
 fn build_infrastructure() -> Result<Infrastructure> {
+    let settings_store = Arc::new(TomlSettingsStore::new()?);
+    let clipboard = settings_store.load_clipboard()?;
     Ok(Infrastructure {
         adapter_registry: Arc::new(DbAdapterRegistry::new()),
         connection_store: Arc::new(TomlConnectionStore::new()?),
-        settings_store: Arc::new(TomlSettingsStore::new()?),
+        settings_store,
         pg_service_entry_reader: Arc::new(PgServiceFileReader::new()),
+        clipboard,
     })
 }
 
@@ -141,46 +172,56 @@ fn build_infrastructure() -> Result<Infrastructure> {
 fn initialize_state(
     project_name: String,
     app_settings: AppSettings,
-    cli_sqlite: Option<&CliSqliteTarget>,
+    cli_connection: Option<&CliConnectionTarget>,
     infrastructure: &Infrastructure,
 ) -> Result<AppState> {
     let mut state = AppState::new(project_name);
     apply_app_settings(&mut state, app_settings);
 
-    match infrastructure.connection_store.load_all() {
-        Ok(mut profiles) => {
-            let has_saved_profiles = !profiles.is_empty();
-            profiles.sort_by(|a, b| {
-                a.display_name()
-                    .to_lowercase()
-                    .cmp(&b.display_name().to_lowercase())
-            });
-            state.set_connections(profiles);
-            load_service_entries(&mut state, infrastructure.pg_service_entry_reader.as_ref());
-            configure_initial_connection_view(&mut state, cli_sqlite.is_some(), has_saved_profiles);
-        }
-        Err(ConnectionStoreError::VersionMismatch { found, expected }) if cli_sqlite.is_none() => {
-            eprintln!(
-                "Error: Configuration file version mismatch (found v{}, expected v{}).\n\
-                 Please delete {} and reconfigure.",
-                found,
-                expected,
-                infrastructure.connection_store.storage_path().display()
-            );
-            std::process::exit(1);
-        }
-        Err(_) if cli_sqlite.is_none() => {
-            state.connection_setup.set_first_run(true);
-            state.modal.set_mode(InputMode::ConnectionSetup);
-        }
-        Err(_) => {}
-    }
+    initialize_connection_list(
+        &mut state,
+        cli_connection.is_some(),
+        infrastructure.connection_store.as_ref(),
+        infrastructure.pg_service_entry_reader.as_ref(),
+    )?;
 
-    if let Some(target) = cli_sqlite {
-        activate_cli_sqlite_connection(&mut state, target, &FsSqlitePathValidator)?;
+    if let Some(target) = cli_connection {
+        activate_cli_connection(&mut state, target, &FsSqlitePathValidator)?;
     }
 
     Ok(state)
+}
+
+#[allow(
+    clippy::print_stderr,
+    reason = "sanitized startup warning before TUI initialization"
+)]
+fn initialize_connection_list(
+    state: &mut AppState,
+    has_cli_connection: bool,
+    store: &dyn ConnectionStore,
+    service_reader: &dyn PgServiceEntryReader,
+) -> Result<()> {
+    match store.load_all() {
+        Ok(mut profiles) => {
+            let has_saved_profiles = !profiles.is_empty();
+            profiles.sort_by_key(|profile| profile.display_name().to_lowercase());
+            state.set_connections(profiles);
+            load_service_entries(state, service_reader);
+            configure_initial_connection_view(state, has_cli_connection, has_saved_profiles);
+            Ok(())
+        }
+        Err(error) => {
+            let message = error.load_failure_message();
+            if has_cli_connection {
+                eprintln!("Warning: {message}");
+                state.messages.set_error(message);
+                Ok(())
+            } else {
+                Err(color_eyre::eyre::eyre!(message))
+            }
+        }
+    }
 }
 
 fn apply_app_settings(state: &mut AppState, app_settings: AppSettings) {
@@ -189,15 +230,20 @@ fn apply_app_settings(state: &mut AppState, app_settings: AppSettings) {
         .settings
         .load_keymap_preset(app_settings.keymap_preset);
     state.settings.load_er_browser(app_settings.er_browser);
+    state
+        .settings
+        .load_clipboard_backend(app_settings.clipboard_backend);
 }
 
 fn load_service_entries(state: &mut AppState, reader: &dyn PgServiceEntryReader) {
     match reader.read_services() {
-        Ok((services, path)) if !services.is_empty() => {
-            state.set_service_entries(services);
-            state.set_service_file_path(Some(path));
+        Ok(contents) => {
+            state.set_service_entries(contents.entries);
+            if let Some(warning) = contents.warning {
+                state.messages.set_error(warning.to_string());
+            }
         }
-        Ok(_) | Err(ServiceFileError::NotFound(_)) => {}
+        Err(ServiceFileError::NotFound(_)) => {}
         Err(e) => {
             state.messages.set_error(e.to_string());
         }
@@ -206,10 +252,10 @@ fn load_service_entries(state: &mut AppState, reader: &dyn PgServiceEntryReader)
 
 fn configure_initial_connection_view(
     state: &mut AppState,
-    has_cli_database: bool,
+    has_cli_connection: bool,
     has_saved_profiles: bool,
 ) {
-    if has_cli_database {
+    if has_cli_connection {
         return;
     }
 
@@ -337,7 +383,7 @@ impl Runtime {
                 er_log_writer: Arc::new(FsErLogWriter),
             },
             UtilityDeps {
-                clipboard: Arc::new(ArboardClipboard),
+                clipboard: infrastructure.clipboard,
                 folder_opener: Arc::new(NativeFolderOpener),
             },
             Arc::clone(&infrastructure.settings_store) as _,

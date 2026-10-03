@@ -82,7 +82,8 @@ pub(in crate::update) fn reduce_connection_setup(
                 ConnectionField::DatabaseType
                 | ConnectionField::Transport
                 | ConnectionField::SslMode
-                | ConnectionField::CleartextAuth => {}
+                | ConnectionField::CleartextAuth
+                | ConnectionField::GetServerPublicKey => {}
                 _ => {
                     let field = setup.focused_field();
                     if let Some(input) = setup.focused_input_mut()
@@ -250,6 +251,7 @@ pub(in crate::update) fn reduce_connection_setup(
             run_id,
             mysql_lower_case_table_names,
             metadata,
+            effective_user,
         } => {
             if !state.session.is_current_connection_save(*run_id) {
                 return DispatchResult::handled();
@@ -282,6 +284,7 @@ pub(in crate::update) fn reduce_connection_setup(
                 dsn,
                 run_id,
                 metadata.clone(),
+                effective_user.clone(),
             ))
         }
         Action::ConnectionSaveFailed { error: e, run_id } => {
@@ -349,7 +352,8 @@ fn insert_form_text(setup: &mut ConnectionSetupState, text: &str) {
         ConnectionField::DatabaseType
         | ConnectionField::Transport
         | ConnectionField::SslMode
-        | ConnectionField::CleartextAuth => {}
+        | ConnectionField::CleartextAuth
+        | ConnectionField::GetServerPublicKey => {}
         field => {
             if let Some(input) = setup.focused_input_mut() {
                 let remaining = remaining_input_capacity(field, input.char_count());
@@ -438,6 +442,14 @@ mod tests {
                     .unwrap()
                     .content(),
                 "db.example.com"
+            );
+            assert_eq!(
+                state
+                    .connection_setup
+                    .input(ConnectionField::Host)
+                    .unwrap()
+                    .cursor(),
+                14
             );
         }
 
@@ -542,26 +554,6 @@ mod tests {
         }
 
         #[test]
-        fn updates_cursor() {
-            let mut state = setup_state_with_field(ConnectionField::Host);
-
-            reduce(
-                &mut state,
-                &Action::Paste("db.example.com".to_string()),
-                Instant::now(),
-            );
-
-            assert_eq!(
-                state
-                    .connection_setup
-                    .input(ConnectionField::Host)
-                    .unwrap()
-                    .cursor(),
-                14
-            );
-        }
-
-        #[test]
         fn host_paste_respects_limit() {
             let mut state = setup_state_with_field(ConnectionField::Host);
 
@@ -634,7 +626,10 @@ mod tests {
             DatabaseMetadata, MetadataState, QueryResult, QuerySource, TableSummary,
         };
         use crate::model::connection::cache::ConnectionCache;
-        use crate::ports::outbound::{ConnectionFailureKind, DbOperationError};
+        use crate::ports::outbound::connection_store::SecretStoreFailure;
+        use crate::ports::outbound::{
+            ConnectionFailureKind, ConnectionStoreError, DbOperationError,
+        };
 
         fn fill_valid_form(state: &mut AppState) {
             state
@@ -887,6 +882,7 @@ mod tests {
                     run_id,
                     mysql_lower_case_table_names: None,
                     metadata: None,
+                    effective_user: None,
                 },
                 Instant::now(),
             );
@@ -926,6 +922,7 @@ mod tests {
                     run_id: save_run_id,
                     mysql_lower_case_table_names: None,
                     metadata: None,
+                    effective_user: None,
                 },
                 Instant::now(),
             );
@@ -976,6 +973,33 @@ mod tests {
 
             reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());
             assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
+        }
+
+        #[test]
+        fn cleanup_warning_preserves_draft_and_clears_pending_save() {
+            let mut state = AppState::new("test".to_string());
+            fill_valid_form(&mut state);
+            state.modal.set_mode(InputMode::ConnectionSetup);
+            let host = state.connection_setup.host.content().to_string();
+            let password = state.connection_setup.password.content().to_string();
+            let run_id = state.session.begin_connection_save();
+            let warning =
+                ConnectionStoreError::CleanupIncomplete(SecretStoreFailure::TimedOut).to_string();
+
+            reduce(
+                &mut state,
+                &Action::ConnectionSaveFailed {
+                    error: ConnectionSaveError::Store(warning.clone()),
+                    run_id,
+                },
+                Instant::now(),
+            );
+
+            assert!(!state.session.is_current_connection_save(run_id));
+            assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
+            assert_eq!(state.connection_setup.host.content(), host);
+            assert_eq!(state.connection_setup.password.content(), password);
+            assert_eq!(state.messages.last_error(), Some(warning.as_str()));
         }
 
         #[test]
@@ -1160,6 +1184,7 @@ mod tests {
                 run_id,
                 mysql_lower_case_table_names: None,
                 metadata: None,
+                effective_user: None,
             };
             reduce(&mut state, &action, Instant::now());
 
@@ -1206,6 +1231,7 @@ mod tests {
                 run_id,
                 mysql_lower_case_table_names: None,
                 metadata: None,
+                effective_user: None,
             };
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();
 
@@ -1281,6 +1307,7 @@ mod tests {
                 run_id,
                 mysql_lower_case_table_names: None,
                 metadata: None,
+                effective_user: None,
             };
             reduce(&mut state, &action, Instant::now());
 
@@ -1303,6 +1330,7 @@ mod tests {
                 run_id,
                 mysql_lower_case_table_names: None,
                 metadata: None,
+                effective_user: None,
             };
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();
 
@@ -1322,7 +1350,7 @@ mod tests {
         #[test]
         fn save_completed_clears_er_state_from_previous_connection() {
             let mut state = AppState::new("test".to_string());
-            state.ui.set_pending_er_picker(true);
+            state.ui.request_er_picker_after_metadata();
             let _ = state.er_preparation.start_waiting_run();
             state
                 .table_prefetch
@@ -1340,6 +1368,7 @@ mod tests {
                 run_id,
                 mysql_lower_case_table_names: None,
                 metadata: None,
+                effective_user: None,
             };
             reduce(&mut state, &action, Instant::now());
 
@@ -1363,6 +1392,7 @@ mod tests {
                 run_id,
                 mysql_lower_case_table_names: None,
                 metadata: None,
+                effective_user: None,
             };
 
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();
@@ -1388,7 +1418,7 @@ mod tests {
             let result =
                 reduce_connection_setup(&mut state, &Action::ConnectionSetupSave, Instant::now());
 
-            assert!(result.is_handled());
+            assert!(matches!(result.into_effects(), Some(effects) if effects.is_empty()));
             assert_eq!(
                 state
                     .connection_setup
@@ -1458,93 +1488,48 @@ mod tests {
             ));
         }
 
-        #[test]
-        fn opening_setup_clears_pending_probe() {
+        #[derive(Clone, Copy)]
+        enum SetupLifecycle {
+            Open,
+            Edit,
+            Close,
+        }
+
+        fn reduce_setup_lifecycle(state: &mut AppState, lifecycle: SetupLifecycle) -> Vec<Effect> {
+            let action = match lifecycle {
+                SetupLifecycle::Open => Action::OpenModal(ModalKind::ConnectionSetup),
+                SetupLifecycle::Edit => {
+                    Action::ConnectionEditLoaded(Box::new(create_profile("edited")))
+                }
+                SetupLifecycle::Close => {
+                    state.modal.set_mode(InputMode::ConnectionSetup);
+                    Action::CloseModal(ModalKind::ConnectionSetup)
+                }
+            };
+            reduce(state, &action, Instant::now()).unwrap()
+        }
+
+        #[rstest::rstest]
+        #[case(SetupLifecycle::Open)]
+        #[case(SetupLifecycle::Edit)]
+        #[case(SetupLifecycle::Close)]
+        fn setup_lifecycle_clears_pending_probe(#[case] lifecycle: SetupLifecycle) {
             let mut state = state_with_pending_mysql_probe();
 
-            let effects = reduce(
-                &mut state,
-                &Action::OpenModal(ModalKind::ConnectionSetup),
-                Instant::now(),
-            )
-            .unwrap();
+            let effects = reduce_setup_lifecycle(&mut state, lifecycle);
 
             assert!(state.session.pending_mysql_connection_probe().is_none());
             assert!(matches!(effects.as_slice(), [Effect::CancelConnectionTask]));
         }
 
-        #[test]
-        fn opening_setup_retries_interrupted_table_detail() {
+        #[rstest::rstest]
+        #[case(SetupLifecycle::Open)]
+        #[case(SetupLifecycle::Edit)]
+        #[case(SetupLifecycle::Close)]
+        fn setup_lifecycle_retries_interrupted_table_detail(#[case] lifecycle: SetupLifecycle) {
             let mut state = state_with_interrupted_table_detail();
 
-            let effects = reduce(
-                &mut state,
-                &Action::OpenModal(ModalKind::ConnectionSetup),
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert!(state.session.pending_mysql_connection_probe().is_none());
-            assert_table_detail_retry(&effects);
-        }
-
-        #[test]
-        fn loading_edit_clears_pending_probe() {
-            let mut state = state_with_pending_mysql_probe();
-
-            let effects = reduce(
-                &mut state,
-                &Action::ConnectionEditLoaded(Box::new(create_profile("edited"))),
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert!(state.session.pending_mysql_connection_probe().is_none());
-            assert!(matches!(effects.as_slice(), [Effect::CancelConnectionTask]));
-        }
-
-        #[test]
-        fn loading_edit_retries_interrupted_table_detail() {
-            let mut state = state_with_interrupted_table_detail();
-
-            let effects = reduce(
-                &mut state,
-                &Action::ConnectionEditLoaded(Box::new(create_profile("edited"))),
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert!(state.session.pending_mysql_connection_probe().is_none());
-            assert_table_detail_retry(&effects);
-        }
-
-        #[test]
-        fn closing_setup_clears_pending_probe() {
-            let mut state = state_with_pending_mysql_probe();
-            state.modal.set_mode(InputMode::ConnectionSetup);
-
-            let effects = reduce(
-                &mut state,
-                &Action::CloseModal(ModalKind::ConnectionSetup),
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert!(state.session.pending_mysql_connection_probe().is_none());
-            assert!(matches!(effects.as_slice(), [Effect::CancelConnectionTask]));
-        }
-
-        #[test]
-        fn closing_setup_retries_interrupted_table_detail() {
-            let mut state = state_with_interrupted_table_detail();
-            state.modal.set_mode(InputMode::ConnectionSetup);
-
-            let effects = reduce(
-                &mut state,
-                &Action::CloseModal(ModalKind::ConnectionSetup),
-                Instant::now(),
-            )
-            .unwrap();
+            let effects = reduce_setup_lifecycle(&mut state, lifecycle);
 
             assert!(state.session.pending_mysql_connection_probe().is_none());
             assert_table_detail_retry(&effects);

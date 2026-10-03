@@ -54,8 +54,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_label_is_sabiql_dark() {
+    fn default_theme_uses_dark_baseline() {
         assert_eq!(ThemeId::Default.label(), "Sabiql Dark");
+        assert_eq!(ThemeId::Default.config_value(), "dark");
     }
 
     #[test]
@@ -66,11 +67,6 @@ mod tests {
                 Some(theme)
             );
         }
-    }
-
-    #[test]
-    fn default_config_value_is_dark() {
-        assert_eq!(ThemeId::Default.config_value(), "dark");
     }
 
     #[test]

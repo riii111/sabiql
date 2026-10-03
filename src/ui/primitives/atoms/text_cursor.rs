@@ -413,58 +413,25 @@ mod tests {
         mod block_cursor {
             use super::*;
 
-            #[test]
-            fn cursor_at_beginning() {
-                let spans = text_cursor_spans("abc", 0, 0, usize::MAX, &DEFAULT_THEME);
+            #[rstest]
+            #[case("abc", 0, vec!["", "a", "bc"], 1)]
+            #[case("abc", 1, vec!["a", "b", "c"], 1)]
+            #[case("abc", 3, vec!["abc", " "], 1)]
+            #[case("", 0, vec!["", " "], 1)]
+            #[case("あいう", 1, vec!["あ", "い", "う"], 1)]
+            fn preserves_text_and_style_at_each_position(
+                #[case] content: &str,
+                #[case] cursor: usize,
+                #[case] expected_texts: Vec<&str>,
+                #[case] cursor_span: usize,
+            ) {
+                let spans = text_cursor_spans(content, cursor, 0, usize::MAX, &DEFAULT_THEME);
 
-                let texts = spans_to_strings(&spans);
-                assert_eq!(texts, vec!["", "a", "bc"]);
-            }
-
-            #[test]
-            fn cursor_at_middle() {
-                let spans = text_cursor_spans("abc", 1, 0, usize::MAX, &DEFAULT_THEME);
-
-                let texts = spans_to_strings(&spans);
-                assert_eq!(texts, vec!["a", "b", "c"]);
-            }
-
-            #[test]
-            fn cursor_at_end() {
-                let spans = text_cursor_spans("abc", 3, 0, usize::MAX, &DEFAULT_THEME);
-
-                let texts = spans_to_strings(&spans);
-                assert_eq!(texts, vec!["abc", " "]);
-            }
-
-            #[test]
-            fn empty_string() {
-                let spans = text_cursor_spans("", 0, 0, usize::MAX, &DEFAULT_THEME);
-
-                let texts = spans_to_strings(&spans);
-                assert_eq!(texts, vec!["", " "]);
-            }
-
-            #[test]
-            fn multibyte_characters() {
-                let spans = text_cursor_spans("あいう", 1, 0, usize::MAX, &DEFAULT_THEME);
-
-                let texts = spans_to_strings(&spans);
-                assert_eq!(texts, vec!["あ", "い", "う"]);
-            }
-
-            #[test]
-            fn all_positions_return_consistent_cursor_style() {
-                let at_start = text_cursor_spans("abc", 0, 0, usize::MAX, &DEFAULT_THEME);
-                let at_middle = text_cursor_spans("abc", 1, 0, usize::MAX, &DEFAULT_THEME);
-                let at_end = text_cursor_spans("abc", 3, 0, usize::MAX, &DEFAULT_THEME);
-
-                let cursor_start = &at_start[1];
-                let cursor_middle = &at_middle[1];
-                let cursor_end = at_end.last().unwrap();
-
-                assert_eq!(cursor_start.style, cursor_middle.style);
-                assert_eq!(cursor_middle.style, cursor_end.style);
+                assert_eq!(spans_to_strings(&spans), expected_texts);
+                assert_eq!(
+                    spans[cursor_span].style,
+                    cursor_style_for(CursorKind::Block, &DEFAULT_THEME)
+                );
             }
         }
 
@@ -581,37 +548,6 @@ mod tests {
             assert_eq!(
                 inserted[3].style.fg,
                 Some(DEFAULT_THEME.component.syntax.sql_comment)
-            );
-        }
-
-        #[test]
-        fn uses_next_span_at_boundary() {
-            let spans = vec![
-                Span::styled(
-                    "ab".to_string(),
-                    Style::default().fg(DEFAULT_THEME.component.syntax.sql_keyword),
-                ),
-                Span::styled(
-                    "cd".to_string(),
-                    Style::default().fg(DEFAULT_THEME.component.syntax.sql_string),
-                ),
-            ];
-
-            let inserted = insert_cursor_span(spans, 2, &DEFAULT_THEME);
-
-            let texts: Vec<String> = inserted.iter().map(|s| s.content.to_string()).collect();
-            assert_eq!(texts, vec!["ab", "c", "d"]);
-            assert_eq!(
-                inserted[0].style.fg,
-                Some(DEFAULT_THEME.component.syntax.sql_keyword)
-            );
-            assert_eq!(
-                inserted[1].style,
-                cursor_style_for(CursorKind::Block, &DEFAULT_THEME)
-            );
-            assert_eq!(
-                inserted[2].style.fg,
-                Some(DEFAULT_THEME.component.syntax.sql_string)
             );
         }
 

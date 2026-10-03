@@ -1,8 +1,9 @@
 use async_trait::async_trait;
 
-use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
+use crate::app::ports::outbound::{DbOperationError, MetadataFetchResult, MetadataProvider};
 use crate::domain::{
-    Column, DatabaseMetadata, Table, TableKindInfo, TableSignatureSnapshot, TableStorageAttributes,
+    Column, DatabaseMetadata, Schema, Table, TableKindInfo, TableSignatureSnapshot,
+    TableStorageAttributes, TableSummary,
 };
 
 use super::PostgresAdapter;
@@ -24,29 +25,33 @@ fn postgres_table_not_found(schema: &str, table: &str) -> DbOperationError {
     DbOperationError::ObjectMissing(format!("PostgreSQL table not found: {schema}.{table}"))
 }
 
+struct ParsedMetadata {
+    schemas: Vec<Schema>,
+    tables: Vec<TableSummary>,
+    effective_user: Option<String>,
+}
+
 #[async_trait]
 impl MetadataProvider for PostgresAdapter {
-    async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
-        let schemas_json = self.execute_raw_output(dsn, Self::schemas_query()).await?;
-        let tables_json = self.execute_raw_output(dsn, Self::tables_query()).await?;
-
-        let schemas = Self::parse_schemas(&schemas_json)?;
-        let tables = Self::parse_tables(&tables_json)?;
+    async fn fetch_metadata(&self, dsn: &str) -> Result<MetadataFetchResult, DbOperationError> {
+        let metadata_json = self
+            .execute_raw_output(dsn, &Self::metadata_query())
+            .await?;
+        let ParsedMetadata {
+            schemas,
+            tables,
+            effective_user,
+        } = parse_metadata(&metadata_json)?;
 
         let db_name = Self::extract_database_name(dsn);
         let mut metadata = DatabaseMetadata::new(db_name);
         metadata.schemas = schemas;
         metadata.table_summaries = tables;
 
-        Ok(metadata)
-    }
-
-    async fn fetch_effective_user(&self, dsn: &str) -> Result<Option<String>, DbOperationError> {
-        let raw_user = self
-            .execute_raw_output(dsn, Self::effective_user_query())
-            .await?;
-        let user = raw_user.trim();
-        Ok((!user.is_empty()).then(|| user.to_string()))
+        Ok(MetadataFetchResult {
+            metadata,
+            effective_user,
+        })
     }
 
     async fn fetch_table_signatures(
@@ -128,6 +133,38 @@ impl MetadataProvider for PostgresAdapter {
     }
 }
 
+fn parse_metadata(json: &str) -> Result<ParsedMetadata, DbOperationError> {
+    let value: serde_json::Value = serde_json::from_str(json)?;
+    let object = value.as_object().ok_or_else(|| {
+        DbOperationError::MetadataParseFailed(
+            "combined metadata response must be a JSON object".to_string(),
+        )
+    })?;
+    let schemas = object.get("schemas").ok_or_else(|| {
+        DbOperationError::MetadataParseFailed(
+            "combined metadata response is missing schemas".to_string(),
+        )
+    })?;
+    let tables = object.get("tables").ok_or_else(|| {
+        DbOperationError::MetadataParseFailed(
+            "combined metadata response is missing tables".to_string(),
+        )
+    })?;
+    let schemas = PostgresAdapter::parse_schemas(&serde_json::to_string(schemas)?)?;
+    let tables = PostgresAdapter::parse_tables(&serde_json::to_string(tables)?)?;
+    let effective_user = value
+        .get("effective_user")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|user| !user.is_empty())
+        .map(str::to_string);
+    Ok(ParsedMetadata {
+        schemas,
+        tables,
+        effective_user,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -179,6 +216,48 @@ mod tests {
             .map_err(|()| "failed to set PostgreSQL test password".to_string())?;
         url.set_path(&format!("/{database}"));
         Ok(url.to_string())
+    }
+
+    #[test]
+    fn combined_metadata_parses_tables_schemas_and_effective_user() {
+        let ParsedMetadata {
+            schemas,
+            tables,
+            effective_user,
+        } = parse_metadata(
+            r#"{
+                "schemas": [{"name": "public"}],
+                "tables": [{
+                    "schema": "public",
+                    "name": "users",
+                    "row_count_estimate": 4,
+                    "has_rls": true
+                }],
+                "effective_user": " app_user "
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(schemas[0].name, "public");
+        assert_eq!(tables[0].qualified_name(), "public.users");
+        assert!(tables[0].has_rls);
+        assert_eq!(effective_user.as_deref(), Some("app_user"));
+    }
+
+    #[test]
+    fn combined_metadata_rejects_non_object_response() {
+        assert!(matches!(
+            parse_metadata("[]"),
+            Err(DbOperationError::MetadataParseFailed(_))
+        ));
+    }
+
+    #[test]
+    fn combined_metadata_rejects_missing_required_field() {
+        assert!(matches!(
+            parse_metadata(r#"{"schemas": []}"#),
+            Err(DbOperationError::MetadataParseFailed(_))
+        ));
     }
 
     #[tokio::test]

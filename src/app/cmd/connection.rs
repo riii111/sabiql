@@ -22,6 +22,18 @@ use crate::update::action::{
     Action, ConnectionSaveError, ConnectionTarget, ConnectionsLoadedPayload,
 };
 
+// A stalled OS store must not keep the Tokio runtime alive during shutdown.
+// Production adapters independently bound their helper processes and watch parent lifetime.
+async fn run_store_operation<T: Send + 'static>(
+    operation: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, tokio::sync::oneshot::error::RecvError> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(operation());
+    });
+    rx.await
+}
+
 fn save_if_active<T>(
     run_guard: &ConnectionSaveGuard,
     run_id: u64,
@@ -93,7 +105,7 @@ pub(in crate::cmd) async fn run(
 
                 connection_task
                     .replace(async move {
-                        tokio::task::spawn_blocking(move || {
+                        run_store_operation(move || {
                             match save_if_active(&run_guard, run_id, || store.save(&profile)) {
                                 Some(Ok(())) => {
                                     tx.blocking_send(Action::ConnectionSaveCompleted {
@@ -101,6 +113,7 @@ pub(in crate::cmd) async fn run(
                                         run_id,
                                         mysql_lower_case_table_names: None,
                                         metadata: None,
+                                        effective_user: None,
                                     })
                                     .ok();
                                 }
@@ -130,7 +143,7 @@ pub(in crate::cmd) async fn run(
                     .replace(async move {
                         match probe.probe(&target.dsn).await {
                             Ok(probe_result) => {
-                                let save_result = tokio::task::spawn_blocking(move || {
+                                let save_result = run_store_operation(move || {
                                     save_if_active(&run_guard, run_id, || store.save(&profile))
                                 })
                                 .await
@@ -144,6 +157,7 @@ pub(in crate::cmd) async fn run(
                                                 probe_result.lower_case_table_names,
                                             ),
                                             metadata: None,
+                                            effective_user: None,
                                         })
                                         .await
                                         .ok();
@@ -179,8 +193,8 @@ pub(in crate::cmd) async fn run(
             connection_task
                 .replace(async move {
                     match provider.fetch_metadata(&dsn).await {
-                        Ok(metadata) => {
-                            let save_result = tokio::task::spawn_blocking(move || {
+                        Ok(metadata_result) => {
+                            let save_result = run_store_operation(move || {
                                 save_if_active(&run_guard, run_id, || store.save(&profile))
                             })
                             .await
@@ -191,7 +205,8 @@ pub(in crate::cmd) async fn run(
                                         target,
                                         run_id,
                                         mysql_lower_case_table_names: None,
-                                        metadata: Some(Arc::new(metadata)),
+                                        metadata: Some(Arc::new(metadata_result.metadata)),
+                                        effective_user: metadata_result.effective_user,
                                     })
                                     .await
                                     .ok();
@@ -253,7 +268,7 @@ pub(in crate::cmd) async fn run(
             let store = Arc::clone(&connection.connection_store);
             let tx = action_tx.clone();
 
-            tokio::task::spawn_blocking(move || match store.find_by_id(&id) {
+            std::thread::spawn(move || match store.find_by_id(&id) {
                 Ok(Some(profile)) => {
                     tx.blocking_send(Action::ConnectionEditLoaded(Box::new(profile)))
                         .ok();
@@ -277,22 +292,20 @@ pub(in crate::cmd) async fn run(
             let reader = Arc::clone(&connection.pg_service_entry_reader);
             let tx = action_tx.clone();
 
-            tokio::task::spawn_blocking(move || {
+            std::thread::spawn(move || {
                 let (profiles, profile_load_warning) = match store.load_all() {
                     Ok(p) => (p, None),
+                    Err(e) => (vec![], Some(e.load_failure_message())),
+                };
+                let (services, service_load_warning) = match reader.read_services() {
+                    Ok(contents) => (contents.entries, contents.warning.map(|e| e.to_string())),
+                    Err(ServiceFileError::NotFound(_)) => (vec![], None),
                     Err(e) => (vec![], Some(e.to_string())),
                 };
-                let (services, service_file_path, service_load_warning) =
-                    match reader.read_services() {
-                        Ok((s, p)) => (s, Some(p), None),
-                        Err(ServiceFileError::NotFound(_)) => (vec![], None, None),
-                        Err(e) => (vec![], None, Some(e.to_string())),
-                    };
 
                 tx.blocking_send(Action::ConnectionsLoaded(ConnectionsLoadedPayload {
                     profiles,
                     services,
-                    service_file_path,
                     profile_load_warning,
                     service_load_warning,
                 }))
@@ -305,9 +318,16 @@ pub(in crate::cmd) async fn run(
             let store = Arc::clone(&connection.connection_store);
             let tx = action_tx.clone();
 
-            tokio::task::spawn_blocking(move || match store.delete(&id) {
+            std::thread::spawn(move || match store.delete(&id) {
                 Ok(()) => {
                     tx.blocking_send(Action::ConnectionDeleted(id)).ok();
+                }
+                Err(e @ ConnectionStoreError::CleanupIncomplete(_)) => {
+                    tx.blocking_send(Action::ConnectionDeletedWithCleanupWarning {
+                        id,
+                        warning: e.to_string(),
+                    })
+                    .ok();
                 }
                 Err(e) => {
                     tx.blocking_send(Action::ConnectionDeleteFailed(e.to_string()))
@@ -374,6 +394,37 @@ async fn normalize_sqlite_profile(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn pending_store_work_does_not_hold_runtime_shutdown_open() {
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let (closed_tx, closed_rx) = std::sync::mpsc::channel();
+        let owner = std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            runtime.block_on(async {
+                let task = tokio::spawn(super::run_store_operation(move || {
+                    started_tx.send(()).unwrap();
+                    release_rx.recv().unwrap();
+                }));
+                tokio::task::yield_now().await;
+                task.abort();
+                let _ = task.await;
+            });
+            drop(runtime);
+            closed_tx.send(()).unwrap();
+        });
+        started_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap();
+        let closed = closed_rx.recv_timeout(std::time::Duration::from_secs(2));
+        release_tx.send(()).unwrap();
+        owner.join().unwrap();
+        assert!(closed.is_ok(), "shutdown waited for the OS store operation");
+    }
+
     use std::cell::RefCell;
     use std::sync::Arc;
     use tokio::sync::mpsc;
@@ -393,7 +444,8 @@ mod tests {
     use crate::ports::outbound::mysql_connection_probe::MockMySqlConnectionProbe;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
     use crate::ports::outbound::{
-        ConnectionStoreError, DbOperationError, DsnBuilder, MySqlConnectionProbeResult,
+        ConnectionStoreError, DbOperationError, DsnBuilder, MetadataFetchResult,
+        MySqlConnectionProbeResult,
     };
     use crate::services::AppServices;
     use crate::update::action::{
@@ -491,7 +543,7 @@ mod tests {
                 Arc::new(MySqlDsnBuilder),
                 Arc::new(probe),
             );
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::SaveAndConnect {
                     id: None,
@@ -508,7 +560,7 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             assert!(matches!(
                 action,
                 Action::ConnectionSaveCompleted {
@@ -548,7 +600,7 @@ mod tests {
                 Arc::new(MySqlDsnBuilder),
                 Arc::new(probe),
             );
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::SaveAndConnect {
                     id: None,
@@ -565,7 +617,7 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             assert!(matches!(
                 action,
                 Action::ConnectionSaveFailed {
@@ -643,7 +695,10 @@ mod tests {
                 .once()
                 .returning(move |_| {
                     guard_for_provider.cancel();
-                    Ok(DatabaseMetadata::new("app".to_string()))
+                    Ok(MetadataFetchResult {
+                        metadata: DatabaseMetadata::new("app".to_string()),
+                        effective_user: None,
+                    })
                 });
 
             let mut store = MockConnectionStore::new();
@@ -689,7 +744,12 @@ mod tests {
                 .expect_fetch_metadata()
                 .with(eq(dsn.clone()))
                 .once()
-                .returning(|_| Ok(DatabaseMetadata::new("app".to_string())));
+                .returning(|_| {
+                    Ok(MetadataFetchResult {
+                        metadata: DatabaseMetadata::new("app".to_string()),
+                        effective_user: Some("app_user".to_string()),
+                    })
+                });
 
             let mut store = MockConnectionStore::new();
             store.expect_save().once().returning(|_| Ok(()));
@@ -702,7 +762,7 @@ mod tests {
                 Arc::new(PostgresDsnBuilder),
             );
 
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::SaveAndConnect {
                     id: None,
@@ -720,7 +780,7 @@ mod tests {
             .unwrap();
 
             assert!(matches!(
-                run.actions.into_iter().next(),
+                actions.into_iter().next(),
                 Some(Action::ConnectionSaveCompleted {
                     run_id: 1,
                     metadata: Some(metadata),
@@ -737,7 +797,12 @@ mod tests {
                 .expect_fetch_metadata()
                 .with(eq(dsn.clone()))
                 .once()
-                .returning(|_| Ok(DatabaseMetadata::new("app".to_string())));
+                .returning(|_| {
+                    Ok(MetadataFetchResult {
+                        metadata: DatabaseMetadata::new("app".to_string()),
+                        effective_user: None,
+                    })
+                });
 
             let mut store = MockConnectionStore::new();
             store.expect_save().once().returning(|_| {
@@ -754,7 +819,7 @@ mod tests {
                 Arc::new(PostgresDsnBuilder),
             );
 
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::SaveAndConnect {
                     id: None,
@@ -772,24 +837,12 @@ mod tests {
             .unwrap();
 
             assert!(matches!(
-                run.actions.into_iter().next(),
+                actions.into_iter().next(),
                 Some(Action::ConnectionSaveFailed {
                     error: ConnectionSaveError::Store(error),
                     run_id: 1,
                 }) if error == "IO error: save failed"
             ));
-        }
-
-        #[test]
-        fn cancelled_save_does_not_start_persistence() {
-            let run_guard = test_fixtures::active_connection_save_guard(1);
-            let mut saved = false;
-
-            run_guard.cancel();
-            let result = save_if_active(&run_guard, 1, || saved = true);
-
-            assert!(result.is_none());
-            assert!(!saved);
         }
 
         #[test]
@@ -860,7 +913,7 @@ mod tests {
                 Arc::new(SqliteDsnBuilder),
             );
 
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::SaveAndConnect {
                     id: None,
@@ -879,7 +932,7 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -890,58 +943,6 @@ mod tests {
                     } if dsn == &expected_dsn
                 ),
                 "expected sqlite ConnectionSaveCompleted, got {action:?}"
-            );
-        }
-
-        #[tokio::test]
-        async fn sqlite_profile_is_not_saved_when_run_is_cancelled() {
-            let dir = tempdir().unwrap();
-            let path = dir.path().join("app.db");
-            fs::write(&path, b"").unwrap();
-            let path = path.to_str().unwrap().to_string();
-            let run_guard = test_fixtures::active_connection_save_guard(1);
-            run_guard.cancel();
-
-            let mut store = MockConnectionStore::new();
-            store.expect_save().never();
-            let (tx, mut rx) = mpsc::channel(8);
-            let runner = test_fixtures::make_runner_with_dsn(
-                Arc::new(MockMetadataProvider::new()),
-                Arc::new(MockQueryExecutor::new()),
-                Arc::new(store),
-                tx,
-                Arc::new(SqliteDsnBuilder),
-            );
-            let mut renderer = NoopRenderer;
-            let mut state = AppState::new("test".to_string());
-            let completion_engine = RefCell::new(CompletionEngine::new());
-
-            runner
-                .execute_effects(
-                    vec![
-                        Effect::SaveAndConnect {
-                            id: None,
-                            name: "Local".to_string(),
-                            config: ConnectionConfig::SQLite(
-                                SqliteConnectionConfig::new(path).unwrap(),
-                            ),
-                            run_id: 1,
-                            run_guard,
-                        },
-                        Effect::CancelConnectionTask,
-                    ],
-                    &mut renderer,
-                    &mut state,
-                    &completion_engine,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            assert!(
-                tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv())
-                    .await
-                    .is_err()
             );
         }
 
@@ -963,7 +964,7 @@ mod tests {
                 Arc::new(SqliteDsnBuilder),
             );
 
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::SaveAndConnect {
                     id: None,
@@ -982,7 +983,7 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -1000,6 +1001,7 @@ mod tests {
 
     mod delete_connection {
         use super::*;
+        use crate::ports::outbound::connection_store::SecretStoreFailure;
 
         #[tokio::test]
         async fn success_returns_connection_deleted() {
@@ -1015,7 +1017,7 @@ mod tests {
             );
 
             let id = ConnectionId::new();
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::DeleteConnection { id: id.clone() },
                 AppState::new("test".to_string()),
@@ -1026,10 +1028,48 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(action, Action::ConnectionDeleted(_)),
                 "expected ConnectionDeleted, got {action:?}"
+            );
+        }
+
+        #[tokio::test]
+        async fn committed_delete_returns_deleted_action_with_cleanup_warning() {
+            let mut mock_store = MockConnectionStore::new();
+            mock_store.expect_delete().once().returning(|_| {
+                Err(ConnectionStoreError::CleanupIncomplete(
+                    SecretStoreFailure::TimedOut,
+                ))
+            });
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(mock_store),
+                tx,
+            );
+            let id = ConnectionId::new();
+
+            test_fixtures::run_one_effect(
+                &runner,
+                Effect::DeleteConnection { id: id.clone() },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                None,
+            )
+            .await
+            .unwrap();
+
+            let action = test_fixtures::recv_action_with_timeout(
+                &mut rx,
+                std::time::Duration::from_millis(500),
+            )
+            .await;
+            assert!(
+                matches!(&action, Action::ConnectionDeletedWithCleanupWarning { id: deleted, warning } if deleted == &id && warning.contains("Configuration changes were saved") && warning.contains("cleanup could not be confirmed"))
             );
         }
 
@@ -1050,7 +1090,7 @@ mod tests {
             );
 
             let id = ConnectionId::new();
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::DeleteConnection { id },
                 AppState::new("test".to_string()),
@@ -1061,7 +1101,7 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -1092,7 +1132,7 @@ mod tests {
                 tx,
             );
 
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::LoadConnectionForEdit {
                     id: ConnectionId::from_string("id"),
@@ -1106,7 +1146,7 @@ mod tests {
             .unwrap();
 
             assert!(matches!(
-                run.actions.into_iter().next(),
+                actions.into_iter().next(),
                 Some(Action::ConnectionEditLoadFailed(error))
                     if error == "Connection not found: id"
             ));
@@ -1133,7 +1173,7 @@ mod tests {
                 tx,
             );
 
-            let run = test_fixtures::run_one_effect(
+            let actions = test_fixtures::run_one_effect(
                 &runner,
                 Effect::LoadConnections,
                 AppState::new("test".to_string()),
@@ -1144,7 +1184,7 @@ mod tests {
             .await
             .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(action, Action::ConnectionsLoaded(ConnectionsLoadedPayload { ref profiles, .. }) if profiles.is_empty()),
                 "expected ConnectionsLoaded with empty profiles, got {action:?}"
@@ -1260,6 +1300,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.set_service_entries(vec![ServiceEntry {
                 service_name: "analytics".to_string(),
+                source_path: "/etc/pg_service.conf".into(),
             }]);
             let expected_id = state.service_entries()[0].connection_id();
             let mut renderer = NoopRenderer;

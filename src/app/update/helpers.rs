@@ -485,6 +485,7 @@ pub(in crate::update) fn validate_field(state: &mut ConnectionSetupState, field:
                 state.set_validation_error(field, "Requires TLS");
             }
         }
+        ConnectionField::GetServerPublicKey if state.database_type() == DatabaseType::MySQL => {}
         ConnectionField::SslMode if state.database_type() == DatabaseType::MySQL => {
             if state.mysql_transport() == MySqlTransport::NamedPipe
                 && !matches!(
@@ -513,6 +514,7 @@ pub(in crate::update) fn validate_field(state: &mut ConnectionSetupState, field:
         | ConnectionField::SslCert
         | ConnectionField::SslKey
         | ConnectionField::ServerPublicKeyPath
+        | ConnectionField::GetServerPublicKey
         | ConnectionField::CleartextAuth => {}
     }
 }
@@ -588,7 +590,7 @@ mod tests {
                     Some("Must be 50 characters or less")
                 );
             } else {
-                assert!(!state.has_validation_error(ConnectionField::Name));
+                assert!(state.validation_error(ConnectionField::Name).is_none());
             }
         }
 
@@ -596,7 +598,7 @@ mod tests {
         fn valid_name_clears_previous_error() {
             let mut state = ConnectionSetupState::default();
             validate_field(&mut state, ConnectionField::Name);
-            assert!(state.has_validation_error(ConnectionField::Name));
+            assert!(state.validation_error(ConnectionField::Name).is_some());
 
             state
                 .input_mut(ConnectionField::Name)
@@ -604,7 +606,7 @@ mod tests {
                 .set_content("Valid Name".to_string());
             validate_field(&mut state, ConnectionField::Name);
 
-            assert!(!state.has_validation_error(ConnectionField::Name));
+            assert!(state.validation_error(ConnectionField::Name).is_none());
         }
 
         #[test]
@@ -710,7 +712,7 @@ mod tests {
 
             validate_all(&mut state);
 
-            assert!(!state.has_validation_error(ConnectionField::Host));
+            assert!(state.validation_error(ConnectionField::Host).is_none());
         }
     }
 
@@ -1026,21 +1028,6 @@ mod tests {
                 build_bulk_delete_preview(&state),
                 Err(EditGuardrailError::DeletionRequiresPrimaryKey)
             ));
-        }
-
-        #[test]
-        fn sqlite_without_rowid_table_uses_primary_key_for_delete_preview() {
-            let mut state = sqlite_editable_state();
-            let mut detail = state.session.table_detail().cloned().expect("table detail");
-            detail.kind_info.without_rowid = true;
-            state.session.set_table_detail_raw(Some(detail));
-
-            let result = build_bulk_delete_preview(&state).unwrap();
-
-            assert_eq!(
-                result.preview.sql,
-                "DELETE FROM \"users\"\nWHERE \"id\" = '1';"
-            );
         }
 
         #[test]

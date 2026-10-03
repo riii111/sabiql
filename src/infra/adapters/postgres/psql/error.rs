@@ -36,6 +36,66 @@ pub(in crate::adapters::postgres) fn classify_query_error(
     classify_by_stderr(details)
 }
 
+pub(in crate::adapters::postgres) fn is_transport_interruption(
+    error: &DbOperationError,
+    status: ExitStatus,
+    has_stdout: bool,
+) -> bool {
+    // A PostgreSQL server error is definitive even when psql has already
+    // printed output for earlier statements (or our boundary markers). The
+    // exception is SQLSTATEs that mean the connection was lost or shut down.
+    if let Some(sqlstate) = error_sqlstate(error)
+        && !is_connection_interruption_sqlstate(sqlstate)
+    {
+        return false;
+    }
+
+    if status.code() == Some(2) {
+        return !is_definitive_connection_rejection(error);
+    }
+
+    status.code().is_none()
+        || matches!(error, DbOperationError::ConnectionLost(_))
+        || (has_stdout && matches!(error, DbOperationError::QueryFailed(_)))
+}
+
+fn error_sqlstate(error: &DbOperationError) -> Option<&str> {
+    match error {
+        DbOperationError::QueryFailed(details)
+        | DbOperationError::ConnectionFailed(details)
+        | DbOperationError::ConnectionLost(details)
+        | DbOperationError::PermissionDenied(details)
+        | DbOperationError::ForeignKeyViolation(details)
+        | DbOperationError::UniqueViolation(details)
+        | DbOperationError::LockTimeout(details)
+        | DbOperationError::ObjectMissing(details)
+        | DbOperationError::Timeout(details)
+        | DbOperationError::Canceled(details)
+        | DbOperationError::ConnectionFailedWithKind { details, .. } => extract_sqlstate(details),
+        _ => None,
+    }
+}
+
+fn is_connection_interruption_sqlstate(sqlstate: &str) -> bool {
+    sqlstate.starts_with("08") || matches!(sqlstate, "57P01" | "57P02")
+}
+
+fn is_definitive_connection_rejection(error: &DbOperationError) -> bool {
+    match error {
+        DbOperationError::ConnectionFailed(_)
+        | DbOperationError::ConnectionFailedWithKind { .. } => true,
+        DbOperationError::QueryFailed(details) => is_certificate_verification_failure(details),
+        _ => false,
+    }
+}
+
+fn is_certificate_verification_failure(details: &str) -> bool {
+    let lower = details.to_lowercase();
+    lower.contains("certificate verify failed")
+        || lower.contains("certificate verification failed")
+        || (lower.contains("server certificate") && lower.contains("does not match host name"))
+}
+
 fn exit_status_details(status: ExitStatus) -> String {
     if let Some(code) = status.code() {
         return format!("psql exited with status code {code}");
@@ -54,7 +114,9 @@ fn classify_by_sqlstate(sqlstate: &str, details: &str) -> DbOperationError {
         "08003" | "08006" | "08P01" | "57P01" | "57P02" => {
             DbOperationError::ConnectionLost(details.to_string())
         }
-        "08000" | "08001" | "08004" | "08007" => classify_connection_failure(details),
+        "08000" | "08001" | "08004" | "08007" | "53300" | "57P03" => {
+            classify_connection_failure(details)
+        }
         "28000" | "28P01" => connection_failed_with_kind(ConnectionFailureKind::Auth, details),
         "3D000" => connection_failed_with_kind(ConnectionFailureKind::DatabaseNotFound, details),
         "25006" | "42501" => DbOperationError::PermissionDenied(details.to_string()),
@@ -90,6 +152,17 @@ fn classify_by_stderr(details: &str) -> DbOperationError {
     }
 
     if lower.contains("could not connect to server") {
+        return DbOperationError::ConnectionFailed(details.to_string());
+    }
+
+    // libpq 14+ reports connection-establishment failures with a different
+    // prefix than older clients. These errors occur before a SQL statement can
+    // run, so callers must retain pending edits and staged deletes.
+    if (lower.contains("connection to server at ") && lower.contains(" failed:"))
+        || lower.contains("too many clients already")
+        || lower.contains("remaining connection slots are reserved")
+        || lower.contains("the database system is starting up")
+    {
         return DbOperationError::ConnectionFailed(details.to_string());
     }
 
@@ -294,6 +367,54 @@ mod tests {
             }
         }
 
+        #[test]
+        fn sqlstate_query_errors_are_definitive_even_after_stdout() {
+            let error = classify_query_error(
+                "ERROR:  42601: syntax error at or near \"FROM\"",
+                exit_status(1),
+            );
+
+            assert!(matches!(error, DbOperationError::QueryFailed(_)));
+            assert!(!is_transport_interruption(&error, exit_status(1), true));
+        }
+
+        #[rstest]
+        #[case("ERROR:  08006: connection to server was lost")]
+        #[case("FATAL:  57P01: terminating connection due to administrator command")]
+        #[case("FATAL:  57P02: terminating connection due to crash of another server")]
+        fn connection_shutdown_sqlstates_remain_transport_errors(#[case] stderr: &str) {
+            let error = classify_query_error(stderr, exit_status(1));
+
+            assert!(is_transport_interruption(&error, exit_status(1), true));
+        }
+
+        #[rstest]
+        #[case(
+            "psql: error: connection to server at \"db\" (10.0.0.1), port 5432 failed: timeout expired"
+        )]
+        #[case(
+            "FATAL:  remaining connection slots are reserved for non-replication superuser connections"
+        )]
+        #[case("FATAL:  too many clients already")]
+        #[case("FATAL:  the database system is starting up")]
+        fn libpq_preconnect_failures_are_definitive(#[case] stderr: &str) {
+            let error = classify_query_error(stderr, exit_status(2));
+
+            assert!(matches!(error, DbOperationError::ConnectionFailed(_)));
+            assert!(!is_transport_interruption(&error, exit_status(2), false));
+        }
+
+        #[test]
+        fn connection_capacity_sqlstate_is_definitive_before_query_execution() {
+            let error = classify_query_error(
+                "FATAL:  53300: too many connections for role",
+                exit_status(2),
+            );
+
+            assert!(matches!(error, DbOperationError::ConnectionFailed(_)));
+            assert!(!is_transport_interruption(&error, exit_status(2), false));
+        }
+
         fn classify(stderr: &str) -> DbOperationError {
             let status = exit_status(1);
             classify_query_error(stderr, status)
@@ -360,7 +481,11 @@ mod tests {
             "FATAL:  57P02: terminating connection due to crash of another server",
             "ConnectionLost"
         )]
-        #[case("ERROR:  57P03: the database system is starting up", "QueryFailed")]
+        #[case(
+            "ERROR:  57P03: the database system is starting up",
+            "ConnectionFailed"
+        )]
+        #[case("FATAL:  53300: too many connections for role", "ConnectionFailed")]
         #[case("ERROR:  57P04: nearby unknown state", "QueryFailed")]
         #[case("ERROR:  08001: could not connect to server", "ConnectionFailed")]
         #[case("FATAL:  08001: could not translate host name", "HostUnreachable")]
@@ -410,8 +535,8 @@ mod tests {
         )]
         #[case(
             "ERROR:  57P03: the database system is starting up",
-            "Query failed",
-            "Review the database error details and SQL"
+            "Connection failed",
+            "Check the connection settings and database availability"
         )]
         #[case(
             "ERROR:  57P04: nearby unknown state",
@@ -462,23 +587,14 @@ mod tests {
             ));
         }
 
-        #[test]
-        fn nonzero_empty_stderr_includes_status_code() {
+        #[rstest::rstest]
+        #[case("")]
+        #[case(" \n\t")]
+        fn nonzero_empty_or_whitespace_stderr_includes_status_code(#[case] stderr: &str) {
             let status = exit_status(7);
 
             assert!(matches!(
-                classify_query_error("", status),
-                DbOperationError::QueryFailed(details)
-                    if details == "psql exited with status code 7"
-            ));
-        }
-
-        #[test]
-        fn whitespace_stderr_includes_status_code() {
-            let status = exit_status(7);
-
-            assert!(matches!(
-                classify_query_error(" \n\t", status),
+                classify_query_error(stderr, status),
                 DbOperationError::QueryFailed(details)
                     if details == "psql exited with status code 7"
             ));

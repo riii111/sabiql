@@ -73,6 +73,8 @@ sabiql uses the CLI for the database you want to open:
 
 Graphviz is required only for PostgreSQL and MySQL ER diagrams. SQLite does not support ER diagrams.
 
+ER diagrams are generated and opened on the host running sabiql. Running sabiql itself on an SSH or other headless host is outside the guaranteed workflow for ER generation and viewer display; a local sabiql instance connecting to a database through an SSH tunnel remains supported.
+
 Windows support is experimental.
 
 See [MySQL support and limitations](docs/mysql.md) and [SQLite support and limitations](docs/sqlite.md) for supported versions and database-specific limitations.
@@ -91,7 +93,27 @@ You can also open an existing SQLite database directly:
 sabiql /path/to/app.db
 ```
 
+For a non-saved PostgreSQL or MySQL connection, pass a URI or the name of an
+environment variable containing one:
+
+```bash
+sabiql 'postgresql://user@localhost/app'
+sabiql --connection-env DATABASE_URL
+```
+
+Supported URI schemes are `postgres://`, `postgresql://`, and `mysql://`.
+Passing a URI with credentials can expose the secret in shell history and
+process arguments; `--connection-env` avoids putting the URI in the command
+line. The connection profile is not saved, but query history and CSV exports
+follow their normal persistence behavior.
+
 Use `Ctrl+R` before browsing data when you want to block writes. Press `?` for help, or open Settings with `,` to change the theme and keymap.
+
+Copying automatically chooses the local clipboard or your SSH terminal. Open Settings with `,` and choose **Clipboard** to change the destination without restarting. Your terminal and any multiplexer must support and allow OSC 52; sending a value does not confirm clipboard acceptance.
+
+### Saved passwords
+
+New or changed passwords are saved in your OS password store. Linux/FreeBSD require Secret Service; Android/Termux cannot save passwords. Back up your configuration before upgrading. See [password storage and recovery](docs/password-storage.md) for setup, compatibility, and error recovery.
 
 ## Roadmap
 

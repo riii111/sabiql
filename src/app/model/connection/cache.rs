@@ -1,10 +1,12 @@
+use std::fmt;
 use std::sync::Arc;
 
 use crate::domain::{DatabaseMetadata, QueryResult, Table};
 use crate::model::browse::query_execution::PaginationState;
 use crate::model::shared::inspector_tab::InspectorTab;
+use crate::policy::mask_password;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct ConnectionCache {
     pub connection_dsn: Option<String>,
     pub metadata: Option<Arc<DatabaseMetadata>>,
@@ -15,6 +17,24 @@ pub struct ConnectionCache {
     pub pagination: PaginationState,
     pub explorer_selected: usize,
     pub inspector_tab: InspectorTab,
+}
+
+impl fmt::Debug for ConnectionCache {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let connection_dsn = self.connection_dsn.as_deref().map(mask_password);
+        formatter
+            .debug_struct("ConnectionCache")
+            .field("connection_dsn", &connection_dsn)
+            .field("metadata", &self.metadata)
+            .field("effective_user", &self.effective_user)
+            .field("table_detail", &self.table_detail)
+            .field("selected_table_key", &self.selected_table_key)
+            .field("query_result", &self.query_result)
+            .field("pagination", &self.pagination)
+            .field("explorer_selected", &self.explorer_selected)
+            .field("inspector_tab", &self.inspector_tab)
+            .finish()
+    }
 }
 
 impl ConnectionCache {

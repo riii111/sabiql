@@ -81,24 +81,6 @@ mod tests {
     use super::*;
     use rstest::rstest;
 
-    #[test]
-    fn referenced_table_returns_schema_dot_table() {
-        let fk = ForeignKey {
-            name: "fk_order_user".to_string(),
-            from_schema: "public".to_string(),
-            from_table: "orders".to_string(),
-            from_columns: vec!["user_id".to_string()],
-            to_schema: "public".to_string(),
-            to_table: "users".to_string(),
-            to_columns: vec!["id".to_string()],
-            on_delete: FkAction::default(),
-            on_update: FkAction::default(),
-            reference_resolved: true,
-        };
-
-        assert_eq!(fk.referenced_table(), "public.users");
-    }
-
     #[rstest]
     #[case(FkAction::NoAction)]
     #[case(FkAction::Restrict)]

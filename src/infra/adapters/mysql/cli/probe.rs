@@ -418,7 +418,10 @@ mod probe_tests {
             ]
         );
         assert!(!args.iter().any(|argument| argument.contains("JSON_OBJECT")));
-        assert!(!args.iter().any(|argument| argument == "--quick"));
+        assert!(
+            args.iter()
+                .all(|argument| { !argument.contains("password") && !argument.contains("secret") })
+        );
     }
 
     #[test]
@@ -428,16 +431,6 @@ mod probe_tests {
             ["--no-defaults", "--no-login-paths", "--version"]
         );
         assert!(!MYSQL_VERSION_ARGS.contains(&"--quick"));
-    }
-
-    #[test]
-    fn arguments_do_not_contain_credentials() {
-        let args = mysql_probe_args(std::path::Path::new("/tmp/sabiql-mysql.cnf"));
-
-        assert!(
-            args.iter()
-                .all(|argument| { !argument.contains("password") && !argument.contains("secret") })
-        );
     }
 
     #[test]

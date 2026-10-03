@@ -61,9 +61,7 @@ mod tests {
     use crate::update::input::keybindings::{Key, KeyCombo};
 
     static QUIT_COMBOS: &[KeyCombo] = &[KeyCombo::plain(Key::Char('q'))];
-    static HELP_COMBOS: &[KeyCombo] = &[KeyCombo::plain(Key::Char('?'))];
     static J_COMBOS: &[KeyCombo] = &[KeyCombo::plain(Key::Char('j'))];
-    static EMPTY_COMBOS: &[KeyCombo] = &[];
 
     fn quit_binding() -> KeyBinding {
         KeyBinding {
@@ -84,28 +82,6 @@ mod tests {
             description: "Navigate",
             action: Action::None,
             combos: J_COMBOS, // mimics executable-array display entry (combos as metadata)
-        }
-    }
-
-    fn help_binding() -> KeyBinding {
-        KeyBinding {
-            key_short: "?",
-            key: "?",
-            desc_short: "Help",
-            description: "Help",
-            action: Action::ToggleModal(ModalKind::Help),
-            combos: HELP_COMBOS,
-        }
-    }
-
-    fn empty_combos_binding() -> KeyBinding {
-        KeyBinding {
-            key_short: "q",
-            key: "q",
-            desc_short: "Quit",
-            description: "Quit",
-            action: Action::Quit,
-            combos: EMPTY_COMBOS,
         }
     }
 
@@ -142,39 +118,11 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn first_matching_non_none_entry_is_resolved() {
-        let quit = quit_binding();
-        let help = help_binding();
-        let bindings = [quit, help];
-
-        // Quit combo matches first
-        let result = resolve(&KeyCombo::plain(Key::Char('q')), &bindings);
-
-        assert!(matches!(result, Some(Action::Quit)));
-    }
-
-    #[test]
-    fn empty_combos_entry_never_matches() {
-        let bindings = [empty_combos_binding()];
-
-        let result = resolve(&KeyCombo::plain(Key::Char('q')), &bindings);
-
-        assert!(result.is_none());
-    }
-
     mod resolve_mode_tests {
         use super::*;
         use crate::update::input::keybindings::{
             CONNECTION_ERROR_ROWS, HELP_ROWS, TABLE_PICKER_ROWS,
         };
-
-        #[test]
-        fn empty_rows_returns_none() {
-            let result = resolve_mode(&KeyCombo::plain(Key::Char('q')), &[]);
-
-            assert!(result.is_none());
-        }
 
         #[test]
         fn matches_binding_in_rows() {

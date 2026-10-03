@@ -1,4 +1,7 @@
+use std::fmt;
+
 use crate::domain::{ConnectionId, QueryValue};
+use crate::policy::mask_password;
 use crate::update::action::ScrollDirection;
 
 #[derive(Debug, Clone)]
@@ -7,7 +10,7 @@ pub struct CsvExportCacheSnapshot {
     pub values: Vec<Vec<QueryValue>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum ConfirmIntent {
     QuitNoConnection,
     DeleteConnection(ConnectionId),
@@ -29,6 +32,58 @@ pub enum ConfirmIntent {
         snapshot: CsvExportCacheSnapshot,
     },
     DisableReadOnly,
+}
+
+struct MaskedDsn<'a>(&'a str);
+
+impl fmt::Debug for MaskedDsn<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&mask_password(self.0))
+    }
+}
+
+impl fmt::Debug for ConfirmIntent {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::CsvExportRerunnable {
+                dsn,
+                run_id,
+                export_query,
+                file_name,
+            } => formatter
+                .debug_struct("ConfirmIntent::CsvExportRerunnable")
+                .field("dsn", &MaskedDsn(dsn))
+                .field("run_id", run_id)
+                .field("export_query", export_query)
+                .field("file_name", file_name)
+                .finish(),
+            Self::CsvExportCached {
+                dsn,
+                run_id,
+                file_name,
+                row_count,
+                snapshot,
+            } => formatter
+                .debug_struct("ConfirmIntent::CsvExportCached")
+                .field("dsn", &MaskedDsn(dsn))
+                .field("run_id", run_id)
+                .field("file_name", file_name)
+                .field("row_count", row_count)
+                .field("snapshot", snapshot)
+                .finish(),
+            Self::QuitNoConnection => formatter.write_str("ConfirmIntent::QuitNoConnection"),
+            Self::DeleteConnection(id) => formatter
+                .debug_tuple("ConfirmIntent::DeleteConnection")
+                .field(id)
+                .finish(),
+            Self::ExecuteWrite { sql, blocked } => formatter
+                .debug_struct("ConfirmIntent::ExecuteWrite")
+                .field("sql", sql)
+                .field("blocked", blocked)
+                .finish(),
+            Self::DisableReadOnly => formatter.write_str("ConfirmIntent::DisableReadOnly"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -111,5 +166,28 @@ impl Default for ConfirmDialogState {
             preview_viewport_height: None,
             preview_content_height: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn debug_masks_uri_passwords_in_confirm_state() {
+        let intent = ConfirmIntent::CsvExportRerunnable {
+            dsn: "postgresql://user@host/db?pass%77ord=secret".to_string(),
+            run_id: 1,
+            export_query: "SELECT 1".to_string(),
+            file_name: "export.csv".to_string(),
+        };
+        let state = ConfirmDialogState {
+            intent: Some(intent),
+            ..Default::default()
+        };
+        let debug = format!("{state:?}");
+
+        assert!(!debug.contains("secret"));
+        assert!(debug.contains("pass%77ord=****"));
     }
 }

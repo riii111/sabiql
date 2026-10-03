@@ -60,7 +60,7 @@ pub(super) fn reduce_connection_selector(
             }
             DispatchResult::handled_with(vec![Effect::DeleteConnection { id: id.clone() }])
         }
-        Action::ConnectionDeleted(id) => {
+        Action::ConnectionDeleted(id) | Action::ConnectionDeletedWithCleanupWarning { id, .. } => {
             let was_active = state.session.active_connection_id() == Some(id);
             if state
                 .session
@@ -88,9 +88,13 @@ pub(super) fn reduce_connection_selector(
                 state.modal.set_mode(InputMode::ConnectionSetup);
             }
 
-            state
-                .messages
-                .set_success_at("Connection deleted".to_string(), now);
+            if let Action::ConnectionDeletedWithCleanupWarning { warning, .. } = action {
+                state.messages.set_error(warning.clone());
+            } else {
+                state
+                    .messages
+                    .set_success_at("Connection deleted".to_string(), now);
+            }
             DispatchResult::handled_with(if was_active {
                 termination_effects(&state.query, vec![])
             } else {
@@ -152,6 +156,7 @@ mod tests {
         #[test]
         fn sets_mode_and_loads_connections() {
             let mut state = AppState::new("test".to_string());
+            state.ui.set_connection_list_selection(Some(3));
 
             let effects = reduce_connection_selector(
                 &mut state,
@@ -164,19 +169,6 @@ mod tests {
                 .into_effects()
                 .expect("reducer should handle action");
             assert!(effects.iter().any(|e| matches!(e, Effect::LoadConnections)));
-        }
-
-        #[test]
-        fn resets_selection_to_zero() {
-            let mut state = AppState::new("test".to_string());
-            state.ui.set_connection_list_selection(Some(3));
-
-            reduce_connection_selector(
-                &mut state,
-                &Action::OpenModal(ModalKind::ConnectionSelector),
-                Instant::now(),
-            );
-
             assert_eq!(state.ui.connection_list_selected(), 0);
         }
     }
@@ -293,16 +285,14 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(
-                state.modal.return_destination(),
-                InputMode::ConnectionSelector
-            );
+            assert_eq!(state.modal.pop_mode(), InputMode::ConnectionSelector);
         }
     }
 
     mod connection_deleted {
         use super::*;
         use crate::domain::SqliteDiagnosticsSnapshot;
+        use crate::model::connection::cache::ConnectionCache;
         use crate::model::connection::state::ConnectionState;
         use crate::model::er_state::ErStatus;
         use crate::model::shared::inspector_tab::InspectorTab;
@@ -331,6 +321,44 @@ mod tests {
 
             assert_eq!(state.connections().len(), 1);
             assert_eq!(state.connections()[0].name.as_str(), "Second");
+        }
+
+        #[test]
+        fn cleanup_warning_removes_deleted_connection_and_remains_visible() {
+            let mut state = AppState::new("test".to_string());
+            let deleted = create_profile("Deleted");
+            let id = deleted.id.clone();
+            state.set_connections(vec![deleted, create_profile("Remaining")]);
+            state.session.activate_connection_with_dsn(
+                &id,
+                "Deleted",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/db",
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::Connected);
+            state
+                .connection_caches
+                .insert(id.clone(), ConnectionCache::default());
+            let deleted_id = id.clone();
+            let warning =
+                "Configuration changes were saved; cleanup could not be confirmed".to_string();
+
+            reduce_connection_selector(
+                &mut state,
+                &Action::ConnectionDeletedWithCleanupWarning {
+                    id,
+                    warning: warning.clone(),
+                },
+                Instant::now(),
+            );
+
+            assert!(state.session.active_connection_id().is_none());
+            assert!(!state.connection_caches.contains_key(&deleted_id));
+            assert_eq!(state.connections().len(), 1);
+            assert_eq!(state.connections()[0].name.as_str(), "Remaining");
+            assert_eq!(state.messages.last_error(), Some(warning.as_str()));
         }
 
         #[test]
@@ -434,33 +462,6 @@ mod tests {
         }
 
         #[test]
-        fn clears_active_state_when_active_deleted() {
-            let mut state = AppState::new("test".to_string());
-            let profile = create_profile("Production");
-            let profile_id = profile.id.clone();
-            state.set_connections(vec![profile]);
-            state.session.activate_connection_with_dsn(
-                &profile_id,
-                "Production",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/db",
-            );
-            state
-                .session
-                .set_connection_state(ConnectionState::Connected);
-
-            reduce_connection_selector(
-                &mut state,
-                &Action::ConnectionDeleted(profile_id),
-                Instant::now(),
-            );
-
-            assert!(state.session.active_connection_id().is_none());
-            assert!(state.session.dsn().is_none());
-            assert!(state.session.connection_state().is_not_connected());
-        }
-
-        #[test]
         fn resets_postgres_state_when_active_deleted() {
             let mut state = AppState::new("test".to_string());
             let profile = create_profile("Production");
@@ -477,7 +478,7 @@ mod tests {
                 .set_connection_state(ConnectionState::Connected);
 
             // Set state that was previously not reset by ConnectionDeleted.
-            state.query.pagination.set_current_page(3);
+            state.query.pagination.set_page_result(3, false);
             state.result_interaction.activate_cell(5, 0);
             state.result_interaction.set_scroll_offset(10);
             state.result_interaction.set_horizontal_offset(20);
@@ -501,7 +502,7 @@ mod tests {
                 "SELECT * FROM users WHERE id = 1",
             );
             state.explain.set_error("stale error".to_string());
-            state.ui.set_pending_er_picker(true);
+            state.ui.request_er_picker_after_metadata();
             let _ = state.er_preparation.start_waiting_run();
             state
                 .table_prefetch
@@ -513,6 +514,9 @@ mod tests {
                 Instant::now(),
             );
 
+            assert!(state.session.active_connection_id().is_none());
+            assert!(state.session.dsn().is_none());
+            assert!(state.session.connection_state().is_not_connected());
             assert_eq!(state.query.pagination.current_page(), 0);
             assert_eq!(
                 state.result_interaction.selection().mode(),
@@ -644,6 +648,7 @@ mod tests {
                 vec![profile],
                 vec![ServiceEntry {
                     service_name: "mydb".to_string(),
+                    source_path: "/etc/pg_service.conf".into(),
                 }],
             );
             state.modal.set_mode(InputMode::Normal);

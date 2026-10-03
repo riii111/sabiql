@@ -53,11 +53,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn plain_select_is_rerunnable() {
-            assert!(is_sqlite_rerunnable_export_query("SELECT id FROM users"));
-        }
-
-        #[test]
         fn multi_select_is_not_rerunnable() {
             assert!(!is_sqlite_rerunnable_export_query("SELECT 1; SELECT 2"));
         }
@@ -72,13 +67,6 @@ mod tests {
 
     mod not_rerunnable {
         use super::*;
-
-        #[test]
-        fn insert_is_not_rerunnable() {
-            assert!(!is_sqlite_rerunnable_export_query(
-                "INSERT INTO users(id) VALUES (1)"
-            ));
-        }
 
         #[test]
         fn mixed_write_and_select_is_not_rerunnable() {

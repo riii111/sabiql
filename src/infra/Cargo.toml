@@ -14,6 +14,7 @@ test-support = []
 path = "lib.rs"
 
 [dependencies]
+base64.workspace = true
 async-trait.workspace = true
 csv.workspace = true
 dirs.workspace = true
@@ -26,6 +27,7 @@ urlencoding.workspace = true
 url.workspace = true
 quick-xml.workspace = true
 uuid.workspace = true
+keyring-core.workspace = true
 sabiql-app.workspace = true
 sabiql-domain.workspace = true
 
@@ -37,6 +39,20 @@ windows-sys.workspace = true
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 arboard.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+apple-native-keyring-store = { version = "1", features = ["keychain"] }
+security-framework = "3"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-native-keyring-store = "1"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+dbus-secret-service-keyring-store = { version = "1", features = ["crypto-rust", "vendored"] }
+
+# libdbus-sys only supports vendored builds on Linux; FreeBSD uses dbus from ports.
+[target.'cfg(target_os = "freebsd")'.dependencies]
+dbus-secret-service-keyring-store = { version = "1", features = ["crypto-rust"] }
 
 [dev-dependencies]
 rstest.workspace = true

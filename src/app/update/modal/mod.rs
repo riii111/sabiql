@@ -35,6 +35,7 @@ mod tests {
     use crate::model::shared::confirm_dialog::{ConfirmIntent, CsvExportCacheSnapshot};
     use crate::model::shared::help::HelpMode;
     use crate::model::shared::input_mode::InputMode;
+    use crate::model::shared::settings::ClipboardBackend;
     use crate::model::shared::settings::KeymapPreset;
     use crate::ports::outbound::AppSettings;
     use crate::services::AppServices;
@@ -105,22 +106,6 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::CommandPalette);
             assert!(state.ui.help().filter().content().is_empty());
-            assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn escape_returns_to_help_origin_when_filter_is_empty() {
-            let mut state = create_test_state();
-            open_help(&mut state);
-
-            let effects = super::dispatch_modal(
-                &mut state,
-                &Action::CloseModal(ModalKind::Help),
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert_eq!(state.input_mode(), InputMode::CommandPalette);
             assert!(effects.is_empty());
         }
 
@@ -223,45 +208,40 @@ mod tests {
             super::dispatch_modal(state, &Action::TextYank { target }, Instant::now());
         }
 
-        #[test]
-        fn er_filter_kill_then_yank_restores_text() {
+        #[rstest::rstest]
+        #[case(InputTarget::ErFilter, "users")]
+        #[case(InputTarget::QueryHistoryFilter, "SELECT")]
+        #[case(InputTarget::SettingsErBrowser, "Firefox")]
+        fn kill_then_yank_restores_text(#[case] target: InputTarget, #[case] text: &str) {
             let mut state = create_test_state();
-            state.ui.er_picker_mut().insert_filter_str("users");
-
-            kill_then_yank(&mut state, InputTarget::ErFilter);
-
-            assert_eq!(state.ui.er_picker().filter_input().content(), "users");
-            assert_eq!(state.kill_buffer(), Some("users"));
-        }
-
-        #[test]
-        fn query_history_filter_kill_then_yank_restores_text() {
-            let mut state = create_test_state();
-            state.query_history_picker.insert_filter_str("SELECT");
-
-            kill_then_yank(&mut state, InputTarget::QueryHistoryFilter);
-
-            assert_eq!(
-                state.query_history_picker.filter_input().content(),
-                "SELECT"
-            );
-            assert_eq!(state.kill_buffer(), Some("SELECT"));
-        }
-
-        #[test]
-        fn settings_browser_kill_then_yank_restores_text() {
-            let mut state = create_test_state();
-            state.settings.switch_next_section();
-            state.settings.switch_next_section();
-            state.settings.start_custom_browser_edit();
-            for ch in "Firefox".chars() {
-                state.settings.input_custom_browser(ch);
+            match target {
+                InputTarget::ErFilter => state.ui.er_picker_mut().insert_filter_str(text),
+                InputTarget::QueryHistoryFilter => {
+                    state.query_history_picker.insert_filter_str(text);
+                }
+                InputTarget::SettingsErBrowser => {
+                    state.settings.switch_next_section();
+                    state.settings.switch_next_section();
+                    state.settings.start_custom_browser_edit();
+                    for ch in text.chars() {
+                        state.settings.input_custom_browser(ch);
+                    }
+                }
+                _ => unreachable!(),
             }
 
-            kill_then_yank(&mut state, InputTarget::SettingsErBrowser);
+            kill_then_yank(&mut state, target);
 
-            assert_eq!(state.settings.custom_er_browser().content(), "Firefox");
-            assert_eq!(state.kill_buffer(), Some("Firefox"));
+            let actual = match target {
+                InputTarget::ErFilter => state.ui.er_picker().filter_input().content(),
+                InputTarget::QueryHistoryFilter => {
+                    state.query_history_picker.filter_input().content()
+                }
+                InputTarget::SettingsErBrowser => state.settings.custom_er_browser().content(),
+                _ => unreachable!(),
+            };
+            assert_eq!(actual, text);
+            assert_eq!(state.kill_buffer(), Some(text));
         }
     }
 
@@ -430,6 +410,7 @@ mod tests {
                 let effects = super::dispatch_modal(
                     &mut state,
                     &Action::SettingsSaved(AppSettings {
+                        clipboard_backend: ClipboardBackend::Auto,
                         theme_id: ThemeId::Light,
                         keymap_preset: KeymapPreset::Ide,
                         er_browser: Some("Google Chrome".to_string()),
@@ -689,30 +670,6 @@ mod tests {
             }
 
             #[test]
-            fn execute_write_blocked_returns_to_mode_with_no_effects() {
-                let mut state = create_test_state();
-                enter_confirm_dialog(&mut state, InputMode::Normal);
-                state.confirm_dialog.open(
-                    "",
-                    "",
-                    ConfirmIntent::ExecuteWrite {
-                        sql: "UPDATE t SET x=1".to_string(),
-                        blocked: true,
-                    },
-                );
-
-                let effects = super::dispatch_modal(
-                    &mut state,
-                    &Action::ConfirmDialogConfirm,
-                    Instant::now(),
-                )
-                .unwrap();
-
-                assert_eq!(state.input_mode(), InputMode::Normal);
-                assert!(effects.is_empty());
-            }
-
-            #[test]
             fn execute_write_blocked_confirm_clears_preview_state() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
@@ -742,12 +699,18 @@ mod tests {
                     },
                 );
 
-                super::dispatch_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now())
-                    .into_effects()
-                    .expect("reducer should handle action");
+                let effects = super::dispatch_modal(
+                    &mut state,
+                    &Action::ConfirmDialogConfirm,
+                    Instant::now(),
+                )
+                .into_effects()
+                .expect("reducer should handle action");
 
                 assert!(state.result_interaction.pending_write_preview().is_none());
                 assert!(state.query.pending_delete_refresh_target().is_none());
+                assert_eq!(state.input_mode(), InputMode::Normal);
+                assert!(effects.is_empty());
             }
 
             #[test]
@@ -783,48 +746,23 @@ mod tests {
                 assert_cached_export_effect(&effects[0], run_id);
             }
 
-            #[test]
-            fn csv_export_ignores_mismatched_dsn() {
-                let mut state = create_test_state();
-                enter_confirm_dialog(&mut state, InputMode::Normal);
-                let _ = state
-                    .session
-                    .begin_connecting("postgres://localhost/current");
-                let _ = state.query.begin_running(Instant::now());
-                state.confirm_dialog.open(
-                    "",
-                    "",
-                    ConfirmIntent::CsvExportRerunnable {
+            #[rstest::rstest]
+            #[case("dsn")]
+            #[case("run")]
+            #[case("cached_run")]
+            fn csv_export_ignores_mismatched_context(#[case] mismatch: &str) {
+                let (mut state, current_run_id) = csv_state_with_current_run();
+                let intent = match mismatch {
+                    "dsn" => ConfirmIntent::CsvExportRerunnable {
                         dsn: "postgres://localhost/stale".to_string(),
-                        run_id: 1,
+                        run_id: current_run_id,
                         export_query: "SELECT 1".to_string(),
-                        file_name: "test.csv".to_string(),
+                        file_name: CSV_TEST_FILE.to_string(),
                     },
-                );
-
-                let effects = super::dispatch_modal(
-                    &mut state,
-                    &Action::ConfirmDialogConfirm,
-                    Instant::now(),
-                )
-                .unwrap();
-
-                assert!(effects.is_empty());
-            }
-
-            #[test]
-            fn csv_export_ignores_mismatched_run_id() {
-                let (mut state, _) = csv_state_with_current_run();
-                open_confirm_intent(&mut state, rerunnable_csv_intent(2));
-
-                let effects = confirm_effects(&mut state);
-                assert!(effects.is_empty());
-            }
-
-            #[test]
-            fn cached_csv_export_ignores_mismatched_run_id() {
-                let (mut state, _) = csv_state_with_current_run();
-                open_confirm_intent(&mut state, cached_csv_intent(2));
+                    "run" => rerunnable_csv_intent(current_run_id + 1),
+                    _ => cached_csv_intent(current_run_id + 1),
+                };
+                open_confirm_intent(&mut state, intent);
 
                 let effects = confirm_effects(&mut state);
                 assert!(effects.is_empty());
@@ -848,21 +786,6 @@ mod tests {
 
                 assert!(!state.session.is_read_only());
                 assert_eq!(state.input_mode(), InputMode::Normal);
-                assert!(effects.is_empty());
-            }
-
-            #[test]
-            fn none_intent_confirm_does_not_panic() {
-                let mut state = create_test_state();
-                enter_confirm_dialog(&mut state, InputMode::Normal);
-
-                let effects = super::dispatch_modal(
-                    &mut state,
-                    &Action::ConfirmDialogConfirm,
-                    Instant::now(),
-                )
-                .unwrap();
-
                 assert!(effects.is_empty());
             }
         }
@@ -1062,65 +985,48 @@ mod tests {
                 assert_eq!(state.result_interaction.selection().cell(), Some(2));
             }
 
-            #[test]
-            fn current_csv_export_cancel_marks_query_idle() {
+            #[rstest::rstest]
+            #[case(false)]
+            #[case(true)]
+            fn current_csv_export_cancel_marks_query_idle(#[case] cached: bool) {
                 let (mut state, run_id) = csv_state_with_current_run();
-                open_confirm_intent(&mut state, rerunnable_csv_intent(run_id));
+                let intent = if cached {
+                    cached_csv_intent(run_id)
+                } else {
+                    rerunnable_csv_intent(run_id)
+                };
+                open_confirm_intent(&mut state, intent);
 
                 let effects = cancel_effects(&mut state);
                 assert!(effects.is_empty());
                 assert!(!state.query.is_running());
             }
 
-            #[test]
-            fn current_cached_csv_export_cancel_marks_query_idle() {
-                let (mut state, run_id) = csv_state_with_current_run();
-                open_confirm_intent(&mut state, cached_csv_intent(run_id));
-
-                let effects = cancel_effects(&mut state);
-                assert!(effects.is_empty());
-                assert!(!state.query.is_running());
-            }
-
-            #[test]
-            fn stale_csv_export_cancel_keeps_current_run() {
+            #[rstest::rstest]
+            #[case(false)]
+            #[case(true)]
+            fn stale_csv_export_cancel_keeps_current_run(#[case] cached: bool) {
                 let (mut state, stale_run_id, current_run_id) = csv_state_with_stale_run();
-                open_confirm_intent(&mut state, rerunnable_csv_intent(stale_run_id));
+                let intent = if cached {
+                    cached_csv_intent(stale_run_id)
+                } else {
+                    rerunnable_csv_intent(stale_run_id)
+                };
+                open_confirm_intent(&mut state, intent);
 
                 let effects = cancel_effects(&mut state);
                 assert!(effects.is_empty());
                 assert!(state.query.is_running());
                 assert!(state.query.is_current_run(current_run_id));
-            }
-
-            #[test]
-            fn stale_cached_csv_export_cancel_keeps_current_run() {
-                let (mut state, stale_run_id, current_run_id) = csv_state_with_stale_run();
-                open_confirm_intent(&mut state, cached_csv_intent(stale_run_id));
-
-                let effects = cancel_effects(&mut state);
-                assert!(effects.is_empty());
-                assert!(state.query.is_running());
-                assert!(state.query.is_current_run(current_run_id));
-            }
-
-            #[test]
-            fn none_intent_cancel_does_not_panic() {
-                let mut state = create_test_state();
-                enter_confirm_dialog(&mut state, InputMode::Normal);
-
-                let effects =
-                    super::dispatch_modal(&mut state, &Action::ConfirmDialogCancel, Instant::now())
-                        .into_effects()
-                        .expect("reducer should handle action");
-
-                assert!(effects.is_empty());
             }
         }
     }
 
     mod query_history_picker {
         use super::*;
+        use std::sync::Arc;
+
+        use crate::domain::DatabaseMetadata;
         use crate::domain::query_history::{
             QueryHistoryEntry, QueryHistoryScope, QueryResultStatus,
         };
@@ -1160,7 +1066,9 @@ mod tests {
                 &format!("mysql://localhost/{database}"),
                 Some(database),
             );
-            state.session.mark_probe_connected();
+            state
+                .session
+                .mark_connected(Arc::new(DatabaseMetadata::new(database.to_string())));
             state
         }
 
@@ -1220,9 +1128,9 @@ mod tests {
                 .unwrap();
 
                 assert_eq!(state.input_mode(), InputMode::QueryHistoryPicker);
-                assert_eq!(state.modal.return_destination(), InputMode::Normal);
                 assert_eq!(effects.len(), 1);
                 assert!(matches!(&effects[0], Effect::LoadQueryHistory { .. }));
+                assert_eq!(state.modal.pop_mode(), InputMode::Normal);
             }
 
             #[test]
@@ -1238,8 +1146,8 @@ mod tests {
                 .unwrap();
 
                 assert_eq!(state.input_mode(), InputMode::QueryHistoryPicker);
-                assert_eq!(state.modal.return_destination(), InputMode::Normal);
                 assert!(effects.is_empty());
+                assert_eq!(state.modal.pop_mode(), InputMode::Normal);
             }
 
             #[test]
@@ -1510,9 +1418,12 @@ mod tests {
                 let mut state = connected_state();
                 enter_query_history(&mut state, InputMode::Normal);
                 let test_conn = ConnectionId::from_string("test-conn");
-                state
-                    .query_history_picker
-                    .replace_entries(&[make_entry("SELECT * FROM users", &test_conn)]);
+                state.query_history_picker.replace_entries(&[
+                    make_entry("SELECT * FROM users", &test_conn),
+                    make_entry("SELECT 1", &test_conn),
+                    make_entry("SELECT 1", &test_conn),
+                ]);
+                state.query_history_picker.set_selection_for_test(1);
 
                 let effects = super::dispatch_modal(
                     &mut state,

@@ -29,7 +29,7 @@ test_project ▸ - ▸ -                                                        
 │                                       │└──────────│  Name:       [                            ]                │──────────────────────────────────────────────────┘
 │                                       │┌ [3] Resul│  Path:       [ /tmp/app.db                ]                │──────────────────────────────────────────────────┐
 │                                       ││(select a │                                                            │                                                  │
-│                                       ││          │  Note: Connection info is stored locally in plain text     │                                                  │
+│                                       ││          │  Note: Passwords use the OS secret store when supported    │                                                  │
 │                                       ││          │                                                            │                                                  │
 │                                       ││          ╰ Tab/⇧Tab: Field │ Enter: Toggle │ ^S: Connect │ Esc: Cancel╯                                                  │
 │                                       ││                                                                                                                          │

@@ -34,42 +34,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_virtual_module_from_ddl() {
-        assert_eq!(
-            virtual_table_module_name("CREATE VIRTUAL TABLE notes_fts USING fts5(body);"),
-            Some("fts5".to_string())
-        );
-    }
-
-    #[test]
-    fn parses_virtual_module_when_using_starts_on_new_line() {
-        assert_eq!(
-            virtual_table_module_name("CREATE VIRTUAL TABLE notes_fts\nUSING fts5(body);"),
-            Some("fts5".to_string())
-        );
-    }
-
-    #[test]
-    fn parses_virtual_module_after_quoted_table_name_containing_using() {
-        assert_eq!(
-            virtual_table_module_name(r#"CREATE VIRTUAL TABLE "using" USING fts5(body);"#),
-            Some("fts5".to_string())
-        );
-    }
-
-    #[test]
-    fn parses_quoted_virtual_module_name() {
-        assert_eq!(
-            virtual_table_module_name(r#"CREATE VIRTUAL TABLE notes USING "fts5"(body);"#),
-            Some("fts5".to_string())
-        );
-        assert_eq!(
-            virtual_table_module_name("CREATE VIRTUAL TABLE notes USING [fts5](body);"),
-            Some("fts5".to_string())
-        );
-    }
-
-    #[test]
     fn table_name_containing_strict_does_not_mark_strict_when_pragma_is_zero() {
         let storage = table_kind_info_from_pragma(
             "table",

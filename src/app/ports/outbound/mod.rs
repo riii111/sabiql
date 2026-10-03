@@ -26,24 +26,23 @@ pub mod sqlite_path_validator;
 
 pub use access_mode::AccessMode;
 pub use cached_result_exporter::CachedResultExporter;
-pub use clipboard::{ClipboardError, ClipboardWriter};
+pub use clipboard::{ClipboardError, ClipboardOutcome, ClipboardWriter};
 pub use config_writer::{ConfigWriter, ConfigWriterError};
 pub use connection_store::{ConnectionStore, ConnectionStoreError};
 pub use db_operation_error::{
-    ConnectionFailureKind, DatabaseCli, DbOperationError, SqliteCompatibilityKind,
-    UnsupportedOperationKind,
+    ConnectionFailureKind, DatabaseCli, DbOperationError, UnsupportedOperationKind,
 };
 pub use ddl_generator::DdlGenerator;
 pub use dsn_builder::DsnBuilder;
 pub use er_exporter::{ErDiagramExporter, ErExportError, ErExportResult};
 pub use er_log_writer::ErLogWriter;
 pub use folder_opener::FolderOpener;
-pub use metadata::MetadataProvider;
+pub use metadata::{MetadataFetchResult, MetadataProvider};
 pub use mysql_connection_probe::{MySqlConnectionProbe, MySqlConnectionProbeResult};
 pub use query_executor::QueryExecutor;
 pub use query_history::{QueryHistoryError, QueryHistoryStore};
 pub use renderer::{CellDetailViewport, RenderError, RenderOutput, RenderResult, Renderer};
-pub use service_file::{PgServiceEntryReader, ServiceFileError};
+pub use service_file::{PgServiceEntryReader, ServiceFileContents, ServiceFileError};
 pub use settings_store::{AppSettings, SettingsStore, SettingsStoreError};
 pub use sqlite_diagnostics::SqliteDiagnosticsProvider;
 pub use sqlite_path_validator::SqlitePathValidator;

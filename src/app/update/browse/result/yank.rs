@@ -126,6 +126,13 @@ pub(in crate::update) fn reduce_yank(
             state.flash_timers.set(FlashId::Ddl, now);
             DispatchResult::handled()
         }
+        Action::ClipboardSentToTerminal => {
+            state.messages.set_success_at(
+                "Sent via OSC 52; clipboard acceptance unverified".into(),
+                now,
+            );
+            DispatchResult::handled()
+        }
         Action::CopyFailed(e) => {
             state.messages.set_error(e.to_string());
             DispatchResult::handled()
@@ -142,6 +149,25 @@ mod tests {
     };
     use crate::ports::outbound::ddl_generator::DdlGenerator;
     use std::sync::Arc;
+
+    #[test]
+    fn terminal_send_reports_unverified_acceptance_without_copy_feedback() {
+        let mut state = AppState::new("test".into());
+        let now = Instant::now();
+
+        reduce_yank(
+            &mut state,
+            &Action::ClipboardSentToTerminal,
+            &AppServices::stub(),
+            now,
+        );
+
+        assert_eq!(
+            state.messages.last_success(),
+            Some("Sent via OSC 52; clipboard acceptance unverified")
+        );
+        assert!(!state.connection_error.is_copied_visible_at(now));
+    }
 
     mod cell_yank {
         use super::*;
@@ -167,27 +193,15 @@ mod tests {
             state
         }
 
-        #[test]
-        fn out_of_bounds_row_sets_error() {
+        #[rstest::rstest]
+        #[case(true)]
+        #[case(false)]
+        fn out_of_bounds_cell_sets_error(#[case] row_out_of_bounds: bool) {
             let mut state = state_with_grid(3, 3);
-            state.result_interaction.activate_cell(10, 0);
-
-            let effects = reduce_yank(
-                &mut state,
-                &Action::ResultCellYank,
-                &AppServices::stub(),
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert!(effects.is_empty());
-            assert!(state.messages.last_error.is_some());
-        }
-
-        #[test]
-        fn out_of_bounds_col_sets_error() {
-            let mut state = state_with_grid(3, 3);
-            state.result_interaction.activate_cell(0, 10);
+            state.result_interaction.activate_cell(
+                if row_out_of_bounds { 10 } else { 0 },
+                if row_out_of_bounds { 0 } else { 10 },
+            );
 
             let effects = reduce_yank(
                 &mut state,
@@ -332,7 +346,7 @@ mod tests {
 
         #[test]
         fn emits_tsv_copy_effect() {
-            let mut state = state_with_row(vec!["v0", "v1", "v2"]);
+            let mut state = state_with_row(vec!["v0", "a\tb", "c\nd", r"a\b"]);
             state.result_interaction.activate_cell(0, 0);
 
             let effects = reduce_yank(
@@ -350,7 +364,7 @@ mod tests {
                     on_success,
                     ..
                 } => {
-                    assert_eq!(content, "v0\tv1\tv2");
+                    assert_eq!(content, "v0\ta\\tb\tc\\nd\ta\\\\b");
                     assert!(matches!(
                         on_success.as_ref(),
                         Action::ResultRowYankSuccess { row: 0 }
@@ -407,50 +421,6 @@ mod tests {
             let flash = state.result_interaction.yank_flash().expect("flash set");
             assert_eq!(flash.row, 0);
             assert_eq!(flash.col, None);
-        }
-
-        #[test]
-        fn escapes_tab_and_newline() {
-            let mut state = state_with_row(vec!["a\tb", "c\nd"]);
-            state.result_interaction.activate_cell(0, 0);
-
-            let effects = reduce_yank(
-                &mut state,
-                &Action::ResultRowYank,
-                &AppServices::stub(),
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert_eq!(effects.len(), 1);
-            match &effects[0] {
-                Effect::CopyToClipboard { content, .. } => {
-                    assert_eq!(content, "a\\tb\tc\\nd");
-                }
-                other => panic!("expected CopyToClipboard, got {other:?}"),
-            }
-        }
-
-        #[test]
-        fn escapes_backslash() {
-            let mut state = state_with_row(vec!["a\\b"]);
-            state.result_interaction.activate_cell(0, 0);
-
-            let effects = reduce_yank(
-                &mut state,
-                &Action::ResultRowYank,
-                &AppServices::stub(),
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert_eq!(effects.len(), 1);
-            match &effects[0] {
-                Effect::CopyToClipboard { content, .. } => {
-                    assert_eq!(content, "a\\\\b");
-                }
-                other => panic!("expected CopyToClipboard, got {other:?}"),
-            }
         }
 
         #[test]

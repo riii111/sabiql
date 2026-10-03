@@ -101,7 +101,7 @@ pub(in crate::cmd) fn smart_refresh_task(
 
     async move {
         let new_metadata = match metadata_provider.fetch_metadata(&dsn).await {
-            Ok(m) => m,
+            Ok(result) => result.metadata,
             Err(e) => {
                 tx.send(Action::SmartErRefreshFailed(SmartErRefreshError {
                     dsn,
@@ -187,8 +187,20 @@ async fn handle_generate_diagram(
         return Ok(());
     }
 
-    let cache_dir = config_writer.get_cache_dir(&project_name)?;
-    spawn_er_diagram_task(
+    let cache_dir = match config_writer.get_cache_dir(&project_name) {
+        Ok(cache_dir) => cache_dir,
+        Err(error) => {
+            action_tx
+                .send(Action::ErDiagramFailed {
+                    run_id,
+                    error: error.to_string(),
+                })
+                .await
+                .ok();
+            return Ok(());
+        }
+    };
+    drop(spawn_er_diagram_task(
         Arc::clone(er_exporter),
         tables,
         run_id,
@@ -197,7 +209,7 @@ async fn handle_generate_diagram(
         action_tx.clone(),
         filename,
         browser,
-    );
+    ));
     Ok(())
 }
 
@@ -357,9 +369,117 @@ fn collect_cached_table_names(completion_engine: &RefCell<CompletionEngine>) -> 
 
 #[cfg(test)]
 mod tests {
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Instant;
+
     use super::*;
+    use crate::cmd::test_fixtures::{NoopErLogWriter, sample_query_result};
     use crate::domain::{ConnectionId, DatabaseType, TableSignature};
+    use crate::ports::outbound::{ConfigWriterError, ErExportResult};
+    use crate::services::AppServices;
     use crate::test_support::table;
+    use crate::update::reducer::reduce;
+
+    struct FailingConfigWriter {
+        missing_base: bool,
+    }
+
+    impl ConfigWriter for FailingConfigWriter {
+        fn get_cache_dir(&self, _project_name: &str) -> Result<PathBuf, ConfigWriterError> {
+            Err(if self.missing_base {
+                ConfigWriterError::MissingCacheDir
+            } else {
+                ConfigWriterError::Io(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
+            })
+        }
+    }
+
+    struct RecordingExporter(Arc<AtomicUsize>);
+
+    impl ErDiagramExporter for RecordingExporter {
+        fn generate_and_export(
+            &self,
+            _tables: &[ErTableInfo],
+            _filename: &str,
+            _cache_dir: &Path,
+            _browser: Option<&str>,
+        ) -> ErExportResult<PathBuf> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Ok(PathBuf::from("unused.svg"))
+        }
+    }
+
+    #[rstest::rstest]
+    #[case(true, false)]
+    #[case(false, true)]
+    #[tokio::test]
+    async fn cache_failure_preserves_session_without_exporting(
+        #[case] missing_base: bool,
+        #[case] stale: bool,
+    ) {
+        let dsn = "mysql://localhost/app";
+        let mut state = state_with_mysql_dsn(dsn);
+        state.er_preparation.mark_rendering();
+        let run_id = state.er_preparation.run_id();
+        let result = Arc::new(sample_query_result());
+        state.query.set_current_result(Arc::clone(&result));
+        let completion_engine = RefCell::new(CompletionEngine::new());
+        completion_engine
+            .borrow_mut()
+            .cache_table_detail("app.items".to_string(), table::minimal("app", "items"));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let exporter: Arc<dyn ErDiagramExporter> = Arc::new(RecordingExporter(Arc::clone(&calls)));
+        let writer: Arc<dyn ConfigWriter> = Arc::new(FailingConfigWriter { missing_base });
+        let logger: Arc<dyn ErLogWriter> = Arc::new(NoopErLogWriter);
+        let expected_error = writer.get_cache_dir("test").unwrap_err().to_string();
+        let (action_tx, mut action_rx) = mpsc::channel(1);
+
+        run(
+            Effect::GenerateErDiagramFromCache {
+                run_id,
+                total_tables: 1,
+                project_name: "test".to_string(),
+                target_tables: vec![],
+            },
+            &action_tx,
+            &exporter,
+            &writer,
+            &logger,
+            &state,
+            &completion_engine,
+        )
+        .await
+        .expect("cache failure must return normally to the runner");
+
+        assert_eq!(Arc::strong_count(&exporter), 1);
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        let action = action_rx.try_recv().unwrap();
+        assert!(
+            matches!(&action, Action::ErDiagramFailed { run_id: id, error }
+            if *id == run_id && *error == expected_error)
+        );
+        if stale {
+            state.er_preparation.reset();
+            let _ = state.er_preparation.start_waiting_run();
+        }
+        let current_run = state.er_preparation.run_id();
+        let effects = reduce(&mut state, action, Instant::now(), &AppServices::stub());
+
+        assert!(effects.is_empty());
+        assert!(!state.should_quit);
+        assert!(state.session.dsn_matches(dsn));
+        assert!(std::ptr::eq(
+            state.query.visible_result().unwrap(),
+            result.as_ref()
+        ));
+        assert_eq!(state.er_preparation.run_id(), current_run);
+        assert_eq!(state.er_preparation.is_busy(), stale);
+        assert_eq!(
+            state.messages.last_error.as_deref(),
+            (!stale).then_some(expected_error.as_str())
+        );
+    }
 
     fn state_with_mysql_dsn(dsn: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
@@ -379,7 +499,7 @@ mod tests {
         let state = state_with_mysql_dsn(dsn);
         let completion_engine = RefCell::new(CompletionEngine::new());
         let (action_tx, mut action_rx) = mpsc::channel(1);
-        let table = table::minimal("app", "items");
+        let cached_table = table::minimal("app", "items");
 
         handle_smart_refresh_cache_and_diff(
             &action_tx,
@@ -389,50 +509,25 @@ mod tests {
             1,
             Arc::new(DatabaseMetadata::new("app".to_string())),
             Arc::new(TableSignatureSnapshot {
-                signatures: vec![TableSignature {
-                    schema: "app".to_string(),
-                    name: "items".to_string(),
-                    signature: "signature".to_string(),
-                }],
-                prefetched_table_details: vec![table],
+                signatures: vec![
+                    TableSignature {
+                        schema: "app".to_string(),
+                        name: "items".to_string(),
+                        signature: "signature".to_string(),
+                    },
+                    TableSignature {
+                        schema: "app".to_string(),
+                        name: "new_table".to_string(),
+                        signature: "signature".to_string(),
+                    },
+                ],
+                prefetched_table_details: vec![cached_table],
             }),
         )
         .await
         .unwrap();
 
         assert!(completion_engine.borrow().has_cached_table("app.items"));
-        let Action::SmartErRefreshCompleted(result) = action_rx.recv().await.unwrap() else {
-            panic!("expected smart refresh completion");
-        };
-        assert!(result.missing_in_cache.is_empty());
-    }
-
-    #[tokio::test]
-    async fn uncached_new_tables_are_reported_as_missing_in_cache() {
-        let dsn = "mysql://user:password@localhost:3306/app";
-        let state = state_with_mysql_dsn(dsn);
-        let completion_engine = RefCell::new(CompletionEngine::new());
-        let (action_tx, mut action_rx) = mpsc::channel(1);
-
-        handle_smart_refresh_cache_and_diff(
-            &action_tx,
-            &state,
-            &completion_engine,
-            dsn.to_string(),
-            1,
-            Arc::new(DatabaseMetadata::new("app".to_string())),
-            Arc::new(TableSignatureSnapshot {
-                signatures: vec![TableSignature {
-                    schema: "app".to_string(),
-                    name: "new_table".to_string(),
-                    signature: "signature".to_string(),
-                }],
-                prefetched_table_details: vec![],
-            }),
-        )
-        .await
-        .unwrap();
-
         let Action::SmartErRefreshCompleted(result) = action_rx.recv().await.unwrap() else {
             panic!("expected smart refresh completion");
         };

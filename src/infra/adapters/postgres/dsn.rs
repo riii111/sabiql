@@ -11,6 +11,28 @@ impl PostgresAdapter {
         if let Some(db) = find_conninfo_value(dsn, "dbname") {
             return decode_database_name(&db);
         }
+        if dsn.starts_with("postgres://") || dsn.starts_with("postgresql://") {
+            let Some(scheme_end) = dsn.find("://") else {
+                return "unknown".to_string();
+            };
+            let authority_start = scheme_end + 3;
+            let path_limit = dsn[authority_start..]
+                .find(['?', '#'])
+                .map_or(dsn.len(), |offset| authority_start + offset);
+            let Some(path_offset) = dsn[authority_start..path_limit].find('/') else {
+                return "unknown".to_string();
+            };
+            let path_start = authority_start + path_offset;
+            let path_end = dsn[path_start + 1..]
+                .find(['?', '#'])
+                .map_or(dsn.len(), |offset| path_start + 1 + offset);
+            let database = &dsn[path_start + 1..path_end];
+            return if database.is_empty() {
+                "unknown".to_string()
+            } else {
+                decode_database_name(database)
+            };
+        }
         if let Some(db) = dsn
             .rsplit('/')
             .next()
@@ -49,12 +71,168 @@ fn push_conninfo_part(parts: &mut Vec<String>, key: &str, value: &str) {
     }
 }
 
-fn quote_conninfo_value(value: &str) -> String {
+pub(super) fn quote_conninfo_value(value: &str) -> String {
     let escaped = value.replace('\\', "\\\\").replace('\'', "\\'");
     format!("'{escaped}'")
 }
 
 fn find_conninfo_value(dsn: &str, key: &str) -> Option<String> {
+    find_conninfo_part(dsn, key).map(|(value, _)| value)
+}
+
+// Keep credentials out of child argv for generated conninfo and PostgreSQL URIs.
+pub(super) fn take_explicit_password(dsn: &str) -> Result<Option<(String, String)>, &'static str> {
+    if let Some((password, range)) = find_conninfo_part(dsn, "password") {
+        if password.is_empty() {
+            return Ok(None);
+        }
+        let mut connection = dsn.to_string();
+        // An explicit empty password suppresses service/environment defaults while allowing passfile.
+        connection.replace_range(range, "password=''");
+        return Ok(Some((connection, password)));
+    }
+    take_uri_password(dsn)
+}
+
+fn take_uri_password(dsn: &str) -> Result<Option<(String, String)>, &'static str> {
+    if !(dsn.starts_with("postgres://") || dsn.starts_with("postgresql://")) {
+        return Ok(None);
+    }
+
+    let Some(scheme_end) = dsn.find("://") else {
+        return Ok(None);
+    };
+    let authority_start = scheme_end + 3;
+    let authority_path_end = dsn[authority_start..]
+        .find('/')
+        .map_or(dsn.len(), |offset| authority_start + offset);
+    let authority_path = &dsn[authority_start..authority_path_end];
+    let authority_end = dsn[authority_start..]
+        .find(['/', '?', '#'])
+        .map_or(dsn.len(), |offset| authority_start + offset);
+    let authority = &dsn[authority_start..authority_end];
+    if let Some(at_offset) = authority_path.rfind('@')
+        && authority_path[..at_offset].contains(['?', '#'])
+    {
+        return Err(
+            "PostgreSQL URI contains an unescaped '?' or '#' in userinfo; percent-encode it as %3F or %23",
+        );
+    }
+    if let Some(at_offset) = authority.rfind('@')
+        && authority[..at_offset].contains(['?', '#'])
+    {
+        return Err(
+            "PostgreSQL URI contains an unescaped '?' or '#' in userinfo; percent-encode it as %3F or %23",
+        );
+    }
+    let mut password = None;
+    let mut ranges = Vec::new();
+
+    if let Some(at_offset) = authority.rfind('@') {
+        let userinfo = &authority[..at_offset];
+        if let Some(colon_offset) = userinfo.find(':') {
+            let password_start = authority_start + colon_offset + 1;
+            let password_end = authority_start + at_offset;
+            let encoded_password = &dsn[password_start..password_end];
+            if !encoded_password.is_empty() {
+                password = Some(
+                    decode_uri_component(encoded_password)
+                        .map_err(|()| "Invalid PostgreSQL URI password encoding")?,
+                );
+                ranges.push((authority_start + colon_offset, password_end));
+            }
+        }
+    }
+
+    if let Some(query_offset) = dsn[authority_end..].find('?') {
+        let query_start = authority_end + query_offset + 1;
+        let query_end = dsn[query_start..]
+            .find('#')
+            .map_or(dsn.len(), |offset| query_start + offset);
+        let query = &dsn[query_start..query_end];
+        let mut segment_start = query_start;
+        for segment in query.split('&') {
+            let segment_end = segment_start + segment.len();
+            if let Some(equal_offset) = segment.find('=') {
+                let key = decode_uri_component(&segment[..equal_offset])
+                    .map_err(|()| "Invalid PostgreSQL URI parameter encoding")?;
+                let value_start = segment_start + equal_offset + 1;
+                let encoded_value = &dsn[value_start..segment_end];
+                if key.eq_ignore_ascii_case("sslpassword") {
+                    if !encoded_value.is_empty()
+                        && !decode_uri_component(encoded_value)
+                            .map_err(|()| "Invalid PostgreSQL URI password encoding")?
+                            .is_empty()
+                    {
+                        return Err("PostgreSQL URI sslpassword cannot be passed securely to psql");
+                    }
+                } else if key.eq_ignore_ascii_case("password") && !encoded_value.is_empty() {
+                    if encoded_value.contains('#') {
+                        return Err(
+                            "PostgreSQL URI contains an unescaped '?' or '#' in a password; percent-encode it as %3F or %23",
+                        );
+                    }
+                    let decoded_password = decode_uri_component(encoded_value)
+                        .map_err(|()| "Invalid PostgreSQL URI password encoding")?;
+                    if !decoded_password.is_empty() {
+                        // libpq applies later non-empty URI keywords last.
+                        password = Some(decoded_password);
+                    }
+                    ranges.push((value_start, segment_end));
+                }
+            }
+            segment_start = segment_end.saturating_add(1);
+        }
+    }
+
+    let Some(password) = password else {
+        return Ok(None);
+    };
+    if dsn[authority_end..].contains('#') {
+        return Err(
+            "PostgreSQL URI contains an unescaped '?' or '#' in a password; percent-encode it as %3F or %23",
+        );
+    }
+    let mut connection = dsn.to_string();
+    for (start, end) in ranges.into_iter().rev() {
+        connection.replace_range(start..end, "");
+    }
+    Ok(Some((connection, password)))
+}
+
+pub(super) fn add_uri_password_file(dsn: &str, passfile: &str) -> String {
+    let separator = if dsn.contains('?') { '&' } else { '?' };
+    format!(
+        "{dsn}{separator}password=&passfile={}",
+        urlencoding::encode(passfile)
+    )
+}
+
+fn decode_uri_component(value: &str) -> Result<String, ()> {
+    let bytes = value.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            if bytes
+                .get(i + 1)
+                .is_none_or(|byte| !byte.is_ascii_hexdigit())
+                || bytes
+                    .get(i + 2)
+                    .is_none_or(|byte| !byte.is_ascii_hexdigit())
+            {
+                return Err(());
+            }
+            i += 3;
+        } else {
+            i += 1;
+        }
+    }
+    urlencoding::decode(value)
+        .map(std::borrow::Cow::into_owned)
+        .map_err(|_| ())
+}
+
+fn find_conninfo_part(dsn: &str, key: &str) -> Option<(String, std::ops::Range<usize>)> {
     let bytes = dsn.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
@@ -78,7 +256,7 @@ fn find_conninfo_value(dsn: &str, key: &str) -> Option<String> {
         i += 1;
         let (value, next) = parse_conninfo_value(dsn, i);
         if candidate.eq_ignore_ascii_case(key) {
-            return Some(value);
+            return Some((value, key_start..next));
         }
         i = next;
     }
@@ -128,6 +306,24 @@ mod tests {
             SslMode::Prefer,
         )
         .unwrap()
+    }
+
+    #[test]
+    fn query_question_mark_is_extracted_without_relaxing_authority_guards() {
+        let extracted = take_uri_password("postgresql://host/db?password=ab?cd&sslmode=require")
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            extracted,
+            (
+                "postgresql://host/db?password=&sslmode=require".into(),
+                "ab?cd".into()
+            )
+        );
+        assert!(take_uri_password("postgresql://user:ab?cd@host/db").is_err());
+        assert!(take_uri_password("postgresql://host?application_name=alice@example.com").is_err());
+        assert!(take_uri_password("postgresql://host/db?password=ab#cd").is_err());
     }
 
     mod dsn_builder {
@@ -222,6 +418,17 @@ mod tests {
             );
         }
 
+        #[rstest]
+        #[case("postgresql://app:secret@db:5432", "unknown")]
+        #[case("postgresql://app:secret@db:5432?host=/var/run/postgresql", "unknown")]
+        #[case("postgresql://app:secret@/mydb?host=/var/run/postgresql", "mydb")]
+        fn uri_without_database_path_never_uses_authority_or_query(
+            #[case] dsn: &str,
+            #[case] expected: &str,
+        ) {
+            assert_eq!(PostgresAdapter::extract_database_name(dsn), expected);
+        }
+
         #[test]
         fn key_value_decodes_percent_encoded_dbname() {
             assert_eq!(
@@ -288,6 +495,21 @@ mod tests {
             let dsn = adapter.build_dsn(&profile);
 
             assert_eq!(PostgresAdapter::extract_database_name(&dsn), "my/db");
+        }
+    }
+
+    mod uri_password_file {
+        use super::*;
+
+        #[test]
+        fn forces_explicit_passwords_to_the_generated_file_after_service_and_uri_passfile() {
+            let dsn = "postgresql://user@localhost/db?service=sample&passfile=%2Fmissing%2Fservice.pgpass";
+            let rewritten = add_uri_password_file(dsn, "/tmp/sabiql pass.pgpass");
+
+            assert_eq!(
+                rewritten,
+                "postgresql://user@localhost/db?service=sample&passfile=%2Fmissing%2Fservice.pgpass&password=&passfile=%2Ftmp%2Fsabiql%20pass.pgpass"
+            );
         }
     }
 }

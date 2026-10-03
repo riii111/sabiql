@@ -15,8 +15,8 @@ use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 use super::helpers::{
-    begin_explain_running, finish_explain_unsupported_analyze, is_multi_statement,
-    show_explain_error_on_plan,
+    ExplainRequestInput, begin_explain_running, explain_request_input,
+    finish_explain_unsupported_analyze, is_multi_statement, show_explain_error_on_plan,
 };
 
 pub(super) fn reduce_analyze(
@@ -26,19 +26,9 @@ pub(super) fn reduce_analyze(
 ) -> DispatchResult {
     match action {
         Action::ExplainAnalyzeRequest => {
-            if reject_pending_mysql_connection_probe(state) {
-                return DispatchResult::handled();
-            }
-            let content = state.sql_modal.editor.content().trim().to_string();
-            if content.is_empty() {
-                return DispatchResult::handled();
-            }
-            let Some(dsn) = state.session.dsn().map(String::from) else {
+            let Some(ExplainRequestInput { content, dsn }) = explain_request_input(state) else {
                 return DispatchResult::handled();
             };
-            if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
-                return DispatchResult::handled();
-            }
             let database_type = state.session.active_database_type_or_default();
             if database_type != DatabaseType::MySQL && is_multi_statement(database_type, &content) {
                 show_explain_error_on_plan(

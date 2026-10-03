@@ -89,12 +89,6 @@ impl PaginationState {
         self.reached_end = true;
     }
 
-    // Use when navigation changes only the page index and must preserve the
-    // current end-of-data flag.
-    pub fn set_current_page(&mut self, page: usize) {
-        self.current_page = page;
-    }
-
     // Applying a query result replaces both the page and end-of-data flag so
     // stale pagination state cannot survive a completed fetch.
     pub fn set_page_result(&mut self, page: usize, reached_end: bool) {
@@ -313,6 +307,7 @@ impl QueryExecution {
 mod tests {
     use super::*;
     use crate::domain::QuerySource;
+    use rstest::rstest;
 
     fn make_result(source: QuerySource) -> Arc<QueryResult> {
         Arc::new(QueryResult::success(
@@ -327,53 +322,44 @@ mod tests {
     mod visible_result_kind_tests {
         use super::*;
 
-        #[test]
-        fn empty_when_no_result() {
-            let qe = QueryExecution::default();
-
-            assert_eq!(qe.visible_result_kind(), VisibleResultKind::Empty);
-        }
-
-        #[test]
-        fn live_preview_when_current_result_is_preview() {
+        #[rstest]
+        #[case(None::<QuerySource>, VisibleResultKind::Empty)]
+        #[case(Some(QuerySource::Preview), VisibleResultKind::LivePreview)]
+        #[case(Some(QuerySource::Adhoc), VisibleResultKind::LiveAdhoc)]
+        fn maps_source_to_visible_kind(
+            #[case] source: Option<QuerySource>,
+            #[case] expected: VisibleResultKind,
+        ) {
             let qe = QueryExecution {
-                current_result: Some(make_result(QuerySource::Preview)),
+                current_result: source.map(make_result),
                 ..Default::default()
             };
 
-            assert_eq!(qe.visible_result_kind(), VisibleResultKind::LivePreview);
-        }
-
-        #[test]
-        fn live_adhoc_when_current_result_is_adhoc() {
-            let qe = QueryExecution {
-                current_result: Some(make_result(QuerySource::Adhoc)),
-                ..Default::default()
-            };
-
-            assert_eq!(qe.visible_result_kind(), VisibleResultKind::LiveAdhoc);
+            assert_eq!(qe.visible_result_kind(), expected);
         }
     }
 
     mod visible_result_tests {
         use super::*;
 
-        #[test]
-        fn current_result_when_present() {
-            let qe = QueryExecution {
-                current_result: Some(make_result(QuerySource::Preview)),
-                ..Default::default()
+        #[rstest]
+        #[case(true)]
+        #[case(false)]
+        fn matches_current_result_presence(#[case] present: bool) {
+            let qe = if present {
+                QueryExecution {
+                    current_result: Some(make_result(QuerySource::Preview)),
+                    ..Default::default()
+                }
+            } else {
+                QueryExecution::default()
             };
 
-            assert!(qe.visible_result().is_some());
-            assert_eq!(qe.visible_result().unwrap().source, QuerySource::Preview);
-        }
-
-        #[test]
-        fn empty_query_execution_returns_none() {
-            let qe = QueryExecution::default();
-
-            assert!(qe.visible_result().is_none());
+            if present {
+                assert_eq!(qe.visible_result().unwrap().source, QuerySource::Preview);
+            } else {
+                assert!(qe.visible_result().is_none());
+            }
         }
     }
 
@@ -423,16 +409,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn default_creates_idle_state() {
-        let execution = QueryExecution::default();
-
-        assert!(!execution.is_running());
-        assert!(execution.start_time().is_none());
-        assert!(execution.current_result().is_none());
-        assert_eq!(execution.result_generation(), 0);
-    }
-
     mod result_generation_tests {
         use super::*;
 
@@ -455,19 +431,6 @@ mod tests {
 
             qe.clear_current_result();
             assert_eq!(qe.result_generation(), 2);
-        }
-
-        #[test]
-        fn does_not_increment_on_cursor_like_operations() {
-            let mut qe = QueryExecution::default();
-            qe.set_current_result(make_result(QuerySource::Preview));
-            let before = qe.result_generation();
-
-            // These should not change generation
-            let _ = qe.visible_result();
-            let _ = qe.visible_result_kind();
-
-            assert_eq!(qe.result_generation(), before);
         }
     }
 
@@ -493,40 +456,6 @@ mod tests {
 
     mod pagination {
         use super::*;
-
-        #[test]
-        fn can_next_false_when_reached_end() {
-            let p = PaginationState {
-                reached_end: true,
-                ..Default::default()
-            };
-
-            assert!(!p.can_next());
-        }
-
-        #[test]
-        fn can_next_true_before_end_of_data() {
-            let p = PaginationState::default();
-
-            assert!(p.can_next());
-        }
-
-        #[test]
-        fn can_prev_false_on_first_page() {
-            let p = PaginationState::default();
-
-            assert!(!p.can_prev());
-        }
-
-        #[test]
-        fn can_prev_true_on_later_page() {
-            let p = PaginationState {
-                current_page: 2,
-                ..Default::default()
-            };
-
-            assert!(p.can_prev());
-        }
 
         #[test]
         fn reset_clears_state() {

@@ -1,55 +1,11 @@
 use super::*;
-use harness::{table_detail_loaded_state, with_current_result};
+use crate::tests::harness::render_and_get_buffer;
+use harness::{json_cell_selected_state, table_detail_loaded_state, with_current_result};
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use sabiql_app::update::dispatch_result;
 use sabiql_domain::{Column, ConnectionId, DatabaseMetadata, QueryResult, TableSummary};
-
-fn json_detail_state() -> (AppState, std::time::Instant) {
-    let now = test_instant();
-    let mut state = create_test_state();
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata()));
-    let mut table = fixtures::sample_postgres_table_detail();
-    table.columns.push(Column {
-        name: "settings".to_string(),
-        data_type: "jsonb".to_string(),
-        attributes: ColumnAttributes::NULLABLE,
-        default: None,
-        comment: None,
-        ordinal_position: 4,
-        character_set_name: None,
-        collation_name: None,
-        generation_expression: None,
-        generation_kind: None,
-    });
-    let _ = state.session.set_table_detail(table, 0);
-    state
-        .query
-        .set_current_result(Arc::new(QueryResult::success(
-            "SELECT id, name, email, settings FROM users LIMIT 100".to_string(),
-            vec![
-                "id".to_string(),
-                "name".to_string(),
-                "email".to_string(),
-                "settings".to_string(),
-            ],
-            vec![vec![
-                "1".to_string(),
-                "Alice".to_string(),
-                "alice@example.com".to_string(),
-                r#"{"theme":"dark","count":5,"nested":{"enabled":true,"roles":["admin","writer"]}}"#
-                    .to_string(),
-            ]],
-            1,
-            QuerySource::Preview,
-        )));
-    state.query.pagination.reset_for_table("public", "users");
-    state.ui.set_focused_pane(FocusedPane::Result);
-    state.result_interaction.activate_cell(0, 3);
-    (state, now)
-}
+use sabiql_ui::theme::DEFAULT_THEME;
 
 fn cell_detail_state() -> (AppState, std::time::Instant) {
     let now = test_instant();
@@ -342,9 +298,26 @@ fn result_pane_first_cell_active_mode() {
     state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 0);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let first_cell_x = find_text_in_row(&buffer, 27, "1").expect("first result cell");
+    let first_cell = buffer
+        .cell((first_cell_x, 27))
+        .expect("first result cell style");
+    assert_eq!(first_cell.symbol(), "1");
+    assert_eq!(
+        first_cell.bg, DEFAULT_THEME.component.table.result_cell_active_bg,
+        "PK cell should use the active-cell background"
+    );
+    assert!(!row_text(&buffer, 49).contains("i:Edit"));
 
-    insta::assert_snapshot!(output);
+    let mut ordinary_state = table_detail_loaded_state();
+    let ordinary_buffer = {
+        with_current_result(&mut ordinary_state);
+        ordinary_state.ui.set_focused_pane(FocusedPane::Result);
+        ordinary_state.result_interaction.activate_cell(1, 2);
+        render_and_get_buffer(&mut terminal, &mut ordinary_state)
+    };
+    assert!(row_text(&ordinary_buffer, 49).contains("i:Edit"));
 }
 
 #[test]
@@ -432,14 +405,27 @@ fn result_pane_staged_delete_row() {
     state.result_interaction.activate_cell(0, 0);
     state.result_interaction.stage_row(1);
 
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
+    let buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let row0_x = find_text_in_row(&buffer, 27, "1").expect("row 0 result cell");
+    let row1_x = find_text_in_row(&buffer, 28, "2").expect("row 1 result cell");
+    let row0_cell = buffer.cell((row0_x, 27)).expect("row 0 cell style");
+    let row1_cell = buffer.cell((row1_x, 28)).expect("row 1 cell style");
+    assert_ne!(
+        row0_cell.bg, DEFAULT_THEME.component.table.staged_delete_bg,
+        "unstaged row 0 must not use the staged-delete background"
+    );
+    assert_eq!(
+        row1_cell.bg, DEFAULT_THEME.component.table.staged_delete_bg,
+        "staged row 1 should use the staged-delete background"
+    );
+    let footer = row_text(&buffer, 49);
+    assert!(footer.contains("u:Unstage"));
+    assert!(footer.contains(":w:Write"));
 }
 
 #[test]
 fn result_pane_json_detail_mode() {
-    let (mut state, now) = json_detail_state();
+    let (mut state, now) = json_cell_selected_state();
     let mut terminal = create_test_terminal();
 
     dispatch_result(
@@ -493,7 +479,7 @@ fn result_pane_sqlite_json_text_cell_detail_mode() {
 
 #[test]
 fn result_pane_json_detail_shows_vertical_scrollbar() {
-    let (mut state, now) = json_detail_state();
+    let (mut state, now) = json_cell_selected_state();
     let mut terminal = create_test_terminal_sized(100, 25);
     let long_json = format!(
         "{{{}}}",
@@ -538,7 +524,7 @@ fn result_pane_json_detail_shows_vertical_scrollbar() {
 
 #[test]
 fn result_pane_json_edit_mode() {
-    let (mut state, now) = json_detail_state();
+    let (mut state, now) = json_cell_selected_state();
     let mut terminal = create_test_terminal();
 
     dispatch_result(

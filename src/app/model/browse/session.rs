@@ -96,6 +96,7 @@ pub struct PendingMySqlConnectionProbe {
     pub name: String,
     pub dsn: String,
     pub database: Option<String>,
+    pub origin: ConnectionOrigin,
     pub run_id: u64,
     table_detail: Option<InterruptedTableDetail>,
 }
@@ -108,6 +109,7 @@ impl fmt::Debug for PendingMySqlConnectionProbe {
             .field("name", &self.name)
             .field("dsn", &mask_password(&self.dsn))
             .field("database", &self.database)
+            .field("origin", &self.origin)
             .field("run_id", &self.run_id)
             .field("table_detail", &self.table_detail)
             .finish()
@@ -129,7 +131,7 @@ impl fmt::Debug for PendingMySqlConnectionProbe {
 // where the aggregate API does not cover the exact semantics needed.
 // `set_connection_state` and `set_metadata_state` are test-only lifecycle
 // fixtures.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct BrowseSession {
     // -- co-dependent: connection lifecycle --
     connection_state: ConnectionState,
@@ -145,7 +147,6 @@ pub struct BrowseSession {
     metadata_run: AsyncRun,
     metadata_detail_generation: Option<u64>,
     effective_user: Option<String>,
-    effective_user_run: AsyncRun,
     table_detail_run: AsyncRun,
     connection_save_run: AsyncRun,
     connection_save_guard: Arc<ConnectionSaveGuard>,
@@ -162,6 +163,48 @@ pub struct BrowseSession {
     is_reloading: bool,
 }
 
+impl fmt::Debug for BrowseSession {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let dsn = self.dsn.as_deref().map(mask_password);
+        formatter
+            .debug_struct("BrowseSession")
+            .field("connection_state", &self.connection_state)
+            .field("metadata_state", &self.metadata_state)
+            .field("selected_table_key", &self.selected_table_key)
+            .field("table_detail_state", &self.table_detail_state)
+            .field("selection_generation", &self.selection_generation)
+            .field("metadata", &self.metadata)
+            .field("metadata_run", &self.metadata_run)
+            .field(
+                "metadata_detail_generation",
+                &self.metadata_detail_generation,
+            )
+            .field("effective_user", &self.effective_user)
+            .field("table_detail_run", &self.table_detail_run)
+            .field("connection_save_run", &self.connection_save_run)
+            .field("connection_save_guard", &self.connection_save_guard)
+            .field("dsn", &dsn)
+            .field("active_connection", &self.active_connection)
+            .field(
+                "mysql_connection_probe_run",
+                &self.mysql_connection_probe_run,
+            )
+            .field(
+                "pending_mysql_connection_probe",
+                &self.pending_mysql_connection_probe,
+            )
+            .field(
+                "mysql_lower_case_table_names",
+                &self.mysql_lower_case_table_names,
+            )
+            .field("connection_generation", &self.connection_generation)
+            .field("database_generation", &self.database_generation)
+            .field("read_only", &self.read_only)
+            .field("is_reloading", &self.is_reloading)
+            .finish()
+    }
+}
+
 impl Default for BrowseSession {
     fn default() -> Self {
         Self {
@@ -174,7 +217,6 @@ impl Default for BrowseSession {
             metadata_run: AsyncRun::default(),
             metadata_detail_generation: None,
             effective_user: None,
-            effective_user_run: AsyncRun::default(),
             table_detail_run: AsyncRun::default(),
             connection_save_run: AsyncRun::default(),
             connection_save_guard: Arc::new(ConnectionSaveGuard::default()),
@@ -310,7 +352,6 @@ impl BrowseSession {
         self.connection_state = ConnectionState::Connecting;
         self.metadata_state = MetadataState::Loading;
         self.effective_user = None;
-        self.effective_user_run.clear_active();
     }
 
     #[must_use]
@@ -348,6 +389,40 @@ impl BrowseSession {
         dsn: &str,
         database: Option<&str>,
     ) -> u64 {
+        self.begin_mysql_connection_probe_with_origin(
+            id,
+            name,
+            dsn,
+            database,
+            ConnectionOrigin::Profile,
+        )
+    }
+
+    #[must_use]
+    pub fn begin_cli_mysql_connection_probe(
+        &mut self,
+        id: &ConnectionId,
+        name: &str,
+        dsn: &str,
+        database: Option<&str>,
+    ) -> u64 {
+        self.begin_mysql_connection_probe_with_origin(
+            id,
+            name,
+            dsn,
+            database,
+            ConnectionOrigin::CliEphemeral,
+        )
+    }
+
+    fn begin_mysql_connection_probe_with_origin(
+        &mut self,
+        id: &ConnectionId,
+        name: &str,
+        dsn: &str,
+        database: Option<&str>,
+        origin: ConnectionOrigin,
+    ) -> u64 {
         let table_detail =
             self.dsn
                 .clone()
@@ -365,6 +440,7 @@ impl BrowseSession {
             name: name.to_string(),
             dsn: dsn.to_string(),
             database: database.map(str::to_string),
+            origin,
             run_id,
             table_detail,
         });
@@ -377,7 +453,6 @@ impl BrowseSession {
 
     fn invalidate_inflight_state_for_mysql_probe(&mut self) {
         self.metadata_run.clear_active();
-        self.effective_user_run.clear_active();
         self.table_detail_run.clear_active();
         self.is_reloading = false;
         match self.connection_state {
@@ -445,12 +520,31 @@ impl BrowseSession {
         dsn: &str,
         database: Option<&str>,
     ) {
+        self.activate_connection_with_target_and_origin(
+            id,
+            name,
+            database_type,
+            dsn,
+            database,
+            ConnectionOrigin::Profile,
+        );
+    }
+
+    pub fn activate_connection_with_target_and_origin(
+        &mut self,
+        id: &ConnectionId,
+        name: &str,
+        database_type: DatabaseType,
+        dsn: &str,
+        database: Option<&str>,
+        origin: ConnectionOrigin,
+    ) {
         self.database_generation = self.database_generation.wrapping_add(1);
         self.active_connection = Some(ActiveConnection {
             id: id.clone(),
             name: name.to_string(),
             database_type,
-            origin: ConnectionOrigin::Profile,
+            origin,
             database: database.map(str::to_string),
         });
         self.dsn = Some(dsn.to_string());
@@ -460,17 +554,31 @@ impl BrowseSession {
     }
 
     pub fn activate_cli_ephemeral_connection(&mut self, id: &ConnectionId, name: &str, dsn: &str) {
-        self.active_connection = Some(ActiveConnection {
-            id: id.clone(),
-            name: name.to_string(),
-            database_type: DatabaseType::SQLite,
-            origin: ConnectionOrigin::CliEphemeral,
-            database: None,
-        });
-        self.dsn = Some(dsn.to_string());
-        self.mysql_lower_case_table_names = 0;
-        self.read_only = false;
-        self.clear_mysql_connection_probe();
+        self.activate_cli_ephemeral_connection_with_target(
+            id,
+            name,
+            DatabaseType::SQLite,
+            dsn,
+            None,
+        );
+    }
+
+    pub fn activate_cli_ephemeral_connection_with_target(
+        &mut self,
+        id: &ConnectionId,
+        name: &str,
+        database_type: DatabaseType,
+        dsn: &str,
+        database: Option<&str>,
+    ) {
+        self.activate_connection_with_target_and_origin(
+            id,
+            name,
+            database_type,
+            dsn,
+            database,
+            ConnectionOrigin::CliEphemeral,
+        );
     }
 
     pub fn clear_connection(&mut self) {
@@ -482,23 +590,20 @@ impl BrowseSession {
     }
 
     pub fn mark_connected(&mut self, metadata: Arc<DatabaseMetadata>) {
+        self.mark_connected_with_user(metadata, None);
+    }
+
+    pub fn mark_connected_with_user(
+        &mut self,
+        metadata: Arc<DatabaseMetadata>,
+        effective_user: Option<String>,
+    ) {
         self.connection_state = ConnectionState::Connected;
         self.metadata_state = MetadataState::Loaded;
         self.metadata = Some(metadata);
         self.metadata_run.clear_active();
         self.metadata_detail_generation = None;
-        self.effective_user = None;
-        self.effective_user_run.clear_active();
-    }
-
-    pub fn mark_probe_connected(&mut self) {
-        self.connection_state = ConnectionState::Connected;
-        self.metadata_state = MetadataState::NotLoaded;
-        self.metadata = None;
-        self.metadata_run.clear_active();
-        self.metadata_detail_generation = None;
-        self.effective_user = None;
-        self.effective_user_run.clear_active();
+        self.effective_user = effective_user;
     }
 
     // On reload failure (already Connected), keeps Connected to preserve
@@ -509,7 +614,6 @@ impl BrowseSession {
         self.metadata_run.clear_active();
         if !self.connection_state.is_connected() {
             self.effective_user = None;
-            self.effective_user_run.clear_active();
             self.connection_state = ConnectionState::Failed;
         }
     }
@@ -530,7 +634,6 @@ impl BrowseSession {
         self.is_reloading = false;
         self.metadata_run.clear_active();
         self.effective_user = None;
-        self.effective_user_run.clear_active();
         self.table_detail_run.clear_active();
         self.clear_mysql_connection_probe();
     }
@@ -584,20 +687,6 @@ impl BrowseSession {
             && self.metadata_generation() == metadata_generation
     }
 
-    #[must_use]
-    pub fn begin_effective_user_fetch(&mut self) -> u64 {
-        self.effective_user_run.begin()
-    }
-
-    pub fn is_current_effective_user_run(&self, run_id: u64) -> bool {
-        self.effective_user_run.is_current(run_id)
-    }
-
-    pub fn mark_effective_user_loaded(&mut self, effective_user: Option<String>) {
-        self.effective_user = effective_user;
-        self.effective_user_run.clear_active();
-    }
-
     // ── Cache operations ─────────────────────────────────────────────
 
     pub fn to_cache(
@@ -637,7 +726,6 @@ impl BrowseSession {
         self.metadata_detail_generation = None;
         self.is_reloading = false;
         self.metadata_run.clear_active();
-        self.effective_user_run.clear_active();
         self.table_detail_run.clear_active();
         self.clear_mysql_connection_probe();
         match &cache.query_result {
@@ -660,6 +748,12 @@ impl BrowseSession {
         self.activate_connection_with_target(id, name, database_type, dsn, database);
     }
 
+    pub fn set_active_connection_origin(&mut self, origin: ConnectionOrigin) {
+        if let Some(connection) = self.active_connection.as_mut() {
+            connection.origin = origin;
+        }
+    }
+
     // Caller must also call `result_interaction.reset_view()` and restore UI state.
     pub fn reset(&mut self, query: &mut QueryExecution) {
         query.reset_for_context_change();
@@ -672,7 +766,6 @@ impl BrowseSession {
         self.metadata_run.clear_active();
         self.metadata_detail_generation = None;
         self.effective_user = None;
-        self.effective_user_run.clear_active();
         self.table_detail_run.clear_active();
         self.clear_connection();
         self.read_only = false;
@@ -874,6 +967,7 @@ mod tests {
 
     use super::*;
     use crate::domain::QuerySource;
+    use rstest::rstest;
 
     fn make_metadata(db_name: &str) -> Arc<DatabaseMetadata> {
         Arc::new({
@@ -911,78 +1005,34 @@ mod tests {
         use super::*;
 
         #[test]
-        fn increments_generation() {
+        fn selecting_table_resets_related_state() {
             let mut session = BrowseSession::default();
             let mut query = QueryExecution::default();
+            session.set_table_detail_raw(Some(make_table_detail()));
+            query.pagination.reset_for_table("old", "old");
+            query.pagination.set_page_result(5, true);
+            let run_id = query.begin_running(std::time::Instant::now());
+            query.set_current_result(make_query_result());
 
             let gen1 = session.select_table("public", "users", &mut query);
-            let gen2 = session.select_table("public", "posts", &mut query);
 
             assert_eq!(gen1, 1);
-            assert_eq!(gen2, 2);
-        }
-
-        #[test]
-        fn clears_table_detail() {
-            let mut session = BrowseSession::default();
-            session.set_table_detail_raw(Some(make_table_detail()));
-            let mut query = QueryExecution::default();
-
-            let _ = session.select_table("public", "users", &mut query);
-
             assert!(session.table_detail().is_none());
             assert!(matches!(
                 session.table_detail_state(),
                 TableDetailState::Loading
             ));
-        }
-
-        #[test]
-        fn sets_selected_table_key() {
-            let mut session = BrowseSession::default();
-            let mut query = QueryExecution::default();
-
-            let _ = session.select_table("public", "users", &mut query);
-
             assert_eq!(session.selected_table_key(), Some("public.users"));
-        }
-
-        #[test]
-        fn resets_pagination() {
-            let mut session = BrowseSession::default();
-            let mut query = QueryExecution::default();
-            query.pagination.reset_for_table("old", "old");
-            query.pagination.set_page_result(5, true);
-
-            let _ = session.select_table("public", "users", &mut query);
-
             assert_eq!(query.pagination.current_page(), 0);
             assert!(!query.pagination.reached_end());
             assert_eq!(query.pagination.schema(), "public");
             assert_eq!(query.pagination.table(), "users");
-        }
-
-        #[test]
-        fn terminates_active_query_run() {
-            let mut session = BrowseSession::default();
-            let mut query = QueryExecution::default();
-            let run_id = query.begin_running(std::time::Instant::now());
-
-            let _ = session.select_table("public", "users", &mut query);
-
             assert!(!query.is_running());
             assert!(!query.is_current_run(run_id));
-        }
-
-        #[test]
-        fn clears_previous_query_result() {
-            let mut session = BrowseSession::default();
-            let mut query = QueryExecution::default();
-            query.set_current_result(make_query_result());
-
-            let _ = session.select_table("public", "users", &mut query);
-
             assert!(query.current_result().is_none());
+
+            let gen2 = session.select_table("public", "posts", &mut query);
+            assert_eq!(gen2, 2);
         }
     }
 
@@ -990,22 +1040,6 @@ mod tests {
 
     mod set_table_detail_tests {
         use super::*;
-
-        #[test]
-        fn accepts_matching_generation() {
-            let mut session = BrowseSession::default();
-            let mut query = QueryExecution::default();
-            let generation = session.select_table("public", "users", &mut query);
-
-            let accepted = session.set_table_detail(make_table_detail(), generation);
-
-            assert!(accepted);
-            assert!(session.table_detail().is_some());
-            assert!(matches!(
-                session.table_detail_state(),
-                TableDetailState::Loaded(_)
-            ));
-        }
 
         #[test]
         fn rejects_stale_generation() {
@@ -1048,6 +1082,10 @@ mod tests {
             assert!(!session.is_current_table_detail_run(run_id));
             assert_eq!(session.selection_generation(), generation);
             assert!(session.table_detail().is_some());
+            assert!(matches!(
+                session.table_detail_state(),
+                TableDetailState::Loaded(_)
+            ));
             assert_eq!(session.begin_table_detail_run(), run_id + 1);
         }
 
@@ -1075,23 +1113,6 @@ mod tests {
             let _ = session.begin_table_detail_run();
 
             assert!(session.table_detail().is_none());
-            assert!(matches!(
-                session.table_detail_state(),
-                TableDetailState::Loading
-            ));
-        }
-
-        #[test]
-        fn starting_detail_run_keeps_current_query_result_visible() {
-            let mut session = BrowseSession::default();
-            let mut query = QueryExecution::default();
-            let generation = session.select_table("public", "users", &mut query);
-            let _ = session.set_table_detail(make_table_detail(), generation);
-            query.set_current_result(make_query_result());
-
-            let _ = session.begin_table_detail_run();
-
-            assert!(query.current_result().is_some());
             assert!(matches!(
                 session.table_detail_state(),
                 TableDetailState::Loading
@@ -1302,12 +1323,14 @@ mod tests {
     // ── clear_table_selection ────────────────────────────────────────
 
     #[test]
-    fn clear_table_selection_clears_all() {
+    fn clear_table_selection_resets_state_and_invalidates_pending_work() {
         let mut session = BrowseSession::default();
         let mut query = QueryExecution::default();
-        let _ = session.select_table("public", "users", &mut query);
+        let pre_clear_gen = session.select_table("public", "users", &mut query);
         let _ = session.set_table_detail(make_table_detail(), session.selection_generation());
         query.set_current_result(make_query_result());
+        query.pagination.set_page_result(3, true);
+        let run_id = query.begin_running(std::time::Instant::now());
 
         session.clear_table_selection(&mut query);
 
@@ -1319,17 +1342,9 @@ mod tests {
         ));
         assert!(query.current_result().is_none());
         assert_eq!(query.pagination.current_page(), 0);
-    }
+        assert!(!query.is_running());
+        assert!(!query.is_current_run(run_id));
 
-    #[test]
-    fn clear_table_selection_invalidates_pending_detail() {
-        let mut session = BrowseSession::default();
-        let mut query = QueryExecution::default();
-        let pre_clear_gen = session.select_table("public", "users", &mut query);
-
-        session.clear_table_selection(&mut query);
-
-        // A TableDetailLoaded arriving with the pre-clear generation must be rejected
         let accepted = session.set_table_detail(make_table_detail(), pre_clear_gen);
         assert!(!accepted);
         assert!(session.table_detail().is_none());
@@ -1337,18 +1352,6 @@ mod tests {
             session.table_detail_state(),
             TableDetailState::NotSelected
         ));
-    }
-
-    #[test]
-    fn clear_table_selection_terminates_active_query_run() {
-        let mut session = BrowseSession::default();
-        let mut query = QueryExecution::default();
-        let run_id = query.begin_running(std::time::Instant::now());
-
-        session.clear_table_selection(&mut query);
-
-        assert!(!query.is_running());
-        assert!(!query.is_current_run(run_id));
     }
 
     // ── Connection lifecycle ─────────────────────────────────────────
@@ -1376,7 +1379,7 @@ mod tests {
                 DatabaseType::PostgreSQL,
                 "postgres://localhost/test",
             );
-            session.mark_effective_user_loaded(Some("old_user".to_string()));
+            session.mark_connected_with_user(make_metadata("test"), Some("old_user".to_string()));
 
             session.mark_connecting();
 
@@ -1429,7 +1432,7 @@ mod tests {
 
             session.mark_connection_failed();
 
-            assert!(session.connection_state().is_failed());
+            assert_eq!(session.connection_state(), ConnectionState::Failed);
             assert_eq!(session.metadata_state(), &MetadataState::Error);
             assert!(!session.is_reloading());
         }
@@ -1437,9 +1440,8 @@ mod tests {
         #[test]
         fn mark_connection_failed_when_connected_keeps_connected() {
             let mut session = BrowseSession::default();
-            session.mark_connected(make_metadata("db"));
+            session.mark_connected_with_user(make_metadata("db"), Some("postgres".to_string()));
             let _ = session.begin_reload();
-            session.mark_effective_user_loaded(Some("postgres".to_string()));
 
             session.mark_connection_failed();
 
@@ -1450,15 +1452,11 @@ mod tests {
         }
 
         #[test]
-        fn effective_user_completion_updates_state() {
+        fn metadata_completion_updates_effective_user() {
             let mut session = BrowseSession::default();
-            let run_id = session.begin_effective_user_fetch();
-
-            assert!(session.is_current_effective_user_run(run_id));
-            session.mark_effective_user_loaded(Some("postgres".to_string()));
+            session.mark_connected_with_user(make_metadata("db"), Some("postgres".to_string()));
 
             assert_eq!(session.effective_user(), Some("postgres"));
-            assert!(!session.is_current_effective_user_run(run_id));
         }
 
         #[test]
@@ -1531,8 +1529,10 @@ mod tests {
         #[test]
         fn round_trip_preserves_state() {
             let mut session = BrowseSession::default();
-            session.mark_connected(make_metadata("round_trip_db"));
-            session.mark_effective_user_loaded(Some("postgres".to_string()));
+            session.mark_connected_with_user(
+                make_metadata("round_trip_db"),
+                Some("postgres".to_string()),
+            );
             let mut query = QueryExecution::default();
             let _ = session.select_table("public", "users", &mut query);
             let _ = session.set_table_detail(make_table_detail(), session.selection_generation());
@@ -1721,15 +1721,6 @@ mod tests {
         }
 
         #[test]
-        fn cleared_after_reset() {
-            let mut session = BrowseSession::default();
-            session.mark_connected(make_metadata("mydb"));
-            let mut query = QueryExecution::default();
-            session.reset(&mut query);
-            assert!(session.database_name().is_none());
-        }
-
-        #[test]
         fn synced_after_restore_from_cache() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("cached_db"));
@@ -1763,36 +1754,52 @@ mod tests {
     mod query_history_scope_tests {
         use super::*;
 
-        #[test]
-        fn mysql_scope_includes_selected_database() {
+        #[rstest]
+        #[case(
+            DatabaseType::MySQL,
+            "mysql://localhost/app",
+            "mysql-connection",
+            "app",
+            Some("app")
+        )]
+        #[case(
+            DatabaseType::PostgreSQL,
+            "dsn://connection",
+            "postgres-connection",
+            "database",
+            None
+        )]
+        #[case(
+            DatabaseType::SQLite,
+            "dsn://connection",
+            "sqlite-connection",
+            "database",
+            None
+        )]
+        fn uses_database_only_for_mysql(
+            #[case] database_type: DatabaseType,
+            #[case] dsn: &str,
+            #[case] connection_id: &str,
+            #[case] selected_database: &str,
+            #[case] expected_database: Option<&str>,
+        ) {
             let mut session = BrowseSession::default();
+            let id = ConnectionId::from_string(connection_id);
             session.activate_connection_with_target(
-                &ConnectionId::from_string("mysql"),
-                "mysql",
-                DatabaseType::MySQL,
-                "mysql://localhost/app",
-                Some("app"),
+                &id,
+                connection_id,
+                database_type,
+                dsn,
+                Some(selected_database),
             );
 
-            let scope = session.query_history_scope().unwrap();
-
-            assert_eq!(scope.database.as_deref(), Some("app"));
-        }
-
-        #[test]
-        fn postgres_and_sqlite_scopes_omit_database() {
-            for database_type in [DatabaseType::PostgreSQL, DatabaseType::SQLite] {
-                let mut session = BrowseSession::default();
-                session.activate_connection_with_target(
-                    &ConnectionId::from_string("connection"),
-                    "connection",
-                    database_type,
-                    "dsn://connection",
-                    Some("database"),
-                );
-
-                assert_eq!(session.query_history_scope().unwrap().database, None);
-            }
+            assert_eq!(
+                session.query_history_scope(),
+                Some(QueryHistoryScope::new(
+                    id,
+                    expected_database.map(str::to_owned),
+                ))
+            );
         }
     }
 
@@ -1814,22 +1821,16 @@ mod tests {
             assert_eq!(session.tables().len(), 2);
         }
 
-        #[test]
-        fn is_service_connection_detects_service_dsn() {
+        #[rstest]
+        #[case("service=myservice", true)]
+        #[case("postgres://localhost/db", false)]
+        fn is_service_connection_matches_dsn_shape(#[case] dsn: &str, #[case] expected: bool) {
             let session = BrowseSession {
-                dsn: Some("service=myservice".to_string()),
+                dsn: Some(dsn.to_string()),
                 ..Default::default()
             };
-            assert!(session.is_service_connection());
-        }
 
-        #[test]
-        fn is_service_connection_false_for_normal_dsn() {
-            let session = BrowseSession {
-                dsn: Some("postgres://localhost/db".to_string()),
-                ..Default::default()
-            };
-            assert!(!session.is_service_connection());
+            assert_eq!(session.is_service_connection(), expected);
         }
 
         #[test]

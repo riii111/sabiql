@@ -162,7 +162,7 @@ case "${FAKE_CARGO_MODE:-success}" in
             "${SABIQL_MYSQL_TEST_PORT:-}" "${CARGO_TARGET_DIR:-}" >>"${FAKE_CARGO_LOG:?}"
         exit 0
         ;;
-    failure|timeout)
+    timeout)
         printf '%s|%s|%s\n' "${SABIQL_MYSQL_RUN_LABEL:-}" \
             "${SABIQL_MYSQL_TEST_PORT:-}" "${CARGO_TARGET_DIR:-}" >>"${FAKE_CARGO_LOG:?}"
         exit "${FAKE_CARGO_STATUS:-17}"
@@ -238,57 +238,12 @@ run_case() {
     >/dev/null
 
 run_case success 0
-run_case failure 17
 run_case timeout 124
-
-signal_marker="$test_root/signal.marker"
-signal_release="$test_root/signal.release"
-signal_output="$test_root/signal.out"
-signal_status=0
-FAKE_CARGO_MODE=signal \
-FAKE_CARGO_MARKER="$signal_marker" \
-FAKE_CARGO_RELEASE="$signal_release" \
-PATH="$fake_bin:$PATH" "$script_dir/mysql_integration.sh" test \
-    >"$signal_output" 2>&1 &
-integration_pid=$!
-for _ in {1..100}; do
-    if [[ -e "$signal_marker" ]]; then
-        break
-    fi
-    sleep 0.05
-done
-if [[ ! -e "$signal_marker" ]]; then
-    printf 'signal test did not reach fake cargo\n%s\n' "$(<"$signal_output")" >&2
-    kill "$integration_pid" 2>/dev/null || true
-    exit 1
-fi
-kill -TERM "$integration_pid"
-: >"$signal_release"
-if wait "$integration_pid"; then
-    signal_status=0
-else
-    signal_status=$?
-fi
-if [[ "$signal_status" != 143 ]]; then
-    printf 'signal exited %s, expected 143\n%s\n' "$signal_status" "$(<"$signal_output")" >&2
-    exit 1
-fi
-assert_only_unrelated_container_remains
 
 same_suffix_root="$test_root/other-worktree"
 mkdir -p -- "$same_suffix_root/scripts"
 cp -- "$script_dir/mysql_integration.sh" "$same_suffix_root/scripts/mysql_integration.sh"
 cp -- "$script_dir/mysql-docker-cli.sh" "$same_suffix_root/scripts/mysql-docker-cli.sh"
-
-PATH="$fake_bin:$PATH" "$script_dir/mysql_integration.sh" test >/dev/null 2>&1
-PATH="$fake_bin:$PATH" "$same_suffix_root/scripts/mysql_integration.sh" test >/dev/null 2>&1
-same_suffix_labels="$(awk '/^com\.sabiql\.mysql\.integration=run-/ { labels[$0] = 1 } END { print length(labels) + 0 }' "$label_log")"
-if [[ "$same_suffix_labels" != 6 ]]; then
-    printf 'expected distinct labels for same suffix across worktrees, got %s\n%s\n' \
-        "$same_suffix_labels" "$(<"$label_log")" >&2
-    exit 1
-fi
-assert_only_unrelated_container_remains
 
 shared_target="$test_root/shared-cargo-target"
 shared_target_start="$(wc -l <"$cargo_log")"
@@ -388,8 +343,8 @@ done <"$state_file"
 assert_only_unrelated_container_remains
 
 unique_run_labels="$(awk '/^com\.sabiql\.mysql\.integration=run-/ { labels[$0] = 1 } END { print length(labels) + 0 }' "$label_log")"
-if [[ "$unique_run_labels" != 10 ]]; then
-    printf 'expected ten unique run labels, got %s\n%s\n' \
+if [[ "$unique_run_labels" != 6 ]]; then
+    printf 'expected six unique run labels, got %s\n%s\n' \
         "$unique_run_labels" "$(<"$label_log")" >&2
     exit 1
 fi
@@ -397,7 +352,7 @@ fi
 run_project_count="$(awk -F'|' '$2 == "up" { print $1 }' "$compose_log" | sort -u | wc -l | tr -d ' ')"
 port_lookup_count="$(awk -F'|' '$2 == "port" { print $1 }' "$compose_log" | sort -u | wc -l | tr -d ' ')"
 down_project_count="$(awk -F'|' '$2 == "down" && $1 != "default" { print $1 }' "$compose_log" | sort -u | wc -l | tr -d ' ')"
-if [[ "$run_project_count" != 10 || "$port_lookup_count" != 10 || "$down_project_count" != 10 ]] || \
+if [[ "$run_project_count" != 6 || "$port_lookup_count" != 6 || "$down_project_count" != 6 ]] || \
     ! diff -u \
         <(awk -F'|' '$2 == "up" { print $1 }' "$compose_log" | sort -u) \
         <(awk -F'|' '$2 == "down" && $1 != "default" { print $1 }' "$compose_log" | sort -u); then

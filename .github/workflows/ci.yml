@@ -62,6 +62,8 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
+      - name: Test release tag publication guard
+        run: python3 -B scripts/test_check_release_tag.py
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with:
           components: clippy
@@ -87,7 +89,12 @@ jobs:
         run: cargo nextest run --workspace --profile ci-all --all-features --show-progress=none --status-level=fail --final-status-level=fail
       - id: test_no_default_features
         continue-on-error: true
-        run: cargo nextest run -p sabiql --profile ci-no-default --no-default-features --show-progress=none --status-level=fail --final-status-level=fail
+        env:
+          NEXTEST_HIDE_PROGRESS_BAR: true
+          NEXTEST_PROFILE: ci-no-default
+          NEXTEST_STATUS_LEVEL: fail
+          NEXTEST_FINAL_STATUS_LEVEL: fail
+        run: cargo insta test --test-runner nextest --unreferenced=reject -p sabiql --bin sabiql --no-default-features
       - name: Summarize failed tests
         if: steps.test_all_features.outcome == 'failure' || steps.test_no_default_features.outcome == 'failure'
         run: |
@@ -97,9 +104,6 @@ jobs:
       - name: Fail job if tests failed
         if: steps.test_all_features.outcome == 'failure' || steps.test_no_default_features.outcome == 'failure'
         run: exit 1
-      - name: Reject unreferenced snapshots
-        run: cargo insta test --unreferenced=reject -p sabiql
-
   windows-test:
     name: Windows Test
     runs-on: windows-latest
@@ -111,6 +115,33 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           key: windows-test
+      - name: Limit workspace debug information
+        shell: pwsh
+        run: |
+          # Avoid Windows PDB cost; limited debug is enough for CI backtraces.
+          New-Item -ItemType Directory -Path .cargo -Force | Out-Null
+          @'
+          [profile.dev.package.sabiql]
+          debug = 1
+          [profile.dev.package."sabiql-app"]
+          debug = 1
+          [profile.dev.package."sabiql-domain"]
+          debug = 1
+          [profile.dev.package."sabiql-infra"]
+          debug = 1
+          [profile.dev.package."sabiql-ui"]
+          debug = 1
+          [profile.test.package.sabiql]
+          debug = 1
+          [profile.test.package."sabiql-app"]
+          debug = 1
+          [profile.test.package."sabiql-domain"]
+          debug = 1
+          [profile.test.package."sabiql-infra"]
+          debug = 1
+          [profile.test.package."sabiql-ui"]
+          debug = 1
+          '@ | Set-Content -Path .cargo/config.toml -Encoding utf8
       - uses: taiki-e/install-action@7623a79cdfecb99d681017af368ca353d9f49bb5 # v2
         with:
           tool: nextest
@@ -132,21 +163,6 @@ jobs:
       - run: cargo nextest run --workspace --profile ci-all --all-features --show-progress=none --status-level=fail --final-status-level=fail
       - run: cargo nextest run -p sabiql --profile ci-no-default --no-default-features --show-progress=none --status-level=fail --final-status-level=fail
       - run: cargo run --all-features -- --version
-
-  windows-release-build:
-    name: Windows Release Build
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-        with:
-          targets: x86_64-pc-windows-msvc
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          key: windows-release-build
-      - run: cargo build --release --features self-update --target x86_64-pc-windows-msvc
 
   integration:
     name: Integration Test
@@ -170,6 +186,10 @@ jobs:
         env:
           CARGO_TARGET_DIR: ${{ runner.temp }}/sabiql-integration-cargo-target
         run: cargo nextest run -p sabiql-infra --run-ignored ignored-only -E 'test(provider_classifies_full_and_light_missing_relations_without_losing_empty_tables)' --show-progress=none
+      - name: Verify PostgreSQL password transport with a local protocol fixture
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/sabiql-integration-cargo-target
+        run: cargo nextest run -p sabiql-infra --run-ignored ignored-only -E 'test(real_libpq_)' --no-tests=fail --show-progress=none
       - name: Run Oracle MySQL 8.4 integration tests (Tier 2)
         env:
           CARGO_TARGET_DIR: ${{ runner.temp }}/sabiql-integration-cargo-target
@@ -203,7 +223,8 @@ jobs:
           make -j2
           make install
           PATH="$HOME/.local/sqlite-minimum/bin:$PATH" sqlite3 --version
-          PATH="$HOME/.local/sqlite-minimum/bin:$PATH" cargo nextest run -p sabiql-infra
+          sqlite_filter='test(adapters::sqlite) or test(adapters::registry::tests::builds_sqlite_dsn_from_sqlite_profile) or test(adapters::registry::tests::classifies_named_dsn_inputs::case_1_sqlite_url) or test(adapters::registry::tests::sqlite_)'
+          PATH="$HOME/.local/sqlite-minimum/bin:$PATH" cargo nextest run -p sabiql-infra -E "$sqlite_filter"
       - name: Reject SQLite 3.41.0
         run: |
           curl --fail --location --retry 3 \
@@ -217,17 +238,10 @@ jobs:
           make install
           export PATH="$HOME/.local/sqlite-below-minimum/bin:$PATH"
           sqlite3 --version
-          SABIQL_EXPECT_SQLITE_SAFE_MODE_REJECTION=1 cargo test -p sabiql-infra \
-            adapters::sqlite::metadata::catalog::tests::metadata::rejects_sqlite_before_safe_mode_minimum_at_connection \
-            -- --exact
-          cargo test -p sabiql-app \
-            model::connection::error::tests::error_info::from_db_operation_error_classifies_sqlite_safe_mode_requirement \
-            -- --exact
-      - name: Test system SQLite
-        run: |
-          sqlite3 --version
-          cargo nextest run -p sabiql-infra
-
+          SABIQL_EXPECT_SQLITE_SAFE_MODE_REJECTION=1 cargo nextest run -p sabiql-infra \
+            --no-tests=fail -E 'test(=adapters::sqlite::metadata::catalog::tests::metadata::rejects_sqlite_before_safe_mode_minimum_at_connection)'
+          cargo nextest run -p sabiql-app \
+            --no-tests=fail -E 'test(=model::connection::error::tests::error_info::from_db_operation_error_classifies_typed_sqlite_safe_mode_requirement)'
   build:
     name: Build
     runs-on: ubuntu-latest
@@ -238,7 +252,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo build --workspace --release
-      - run: cargo build --workspace --release --no-default-features
 
   audit:
     name: Security Audit

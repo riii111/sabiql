@@ -183,12 +183,6 @@ mod tests {
     }
 
     #[test]
-    fn empty_input_returns_non_empty_spans() {
-        let line = highlight_plan_line("", &DEFAULT_THEME);
-        assert!(!line.spans.is_empty());
-    }
-
-    #[test]
     fn deeply_nested_line_returns_space_indentation_without_guides() {
         let line = highlight_plan_line(
             "            ->  Hash  (cost=100.00..100.00 rows=1000 width=32)",

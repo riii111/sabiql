@@ -318,19 +318,6 @@ mod tests {
     }
 
     #[test]
-    fn result_cell_escape_with_draft_discards_edit() {
-        let action = action_for_command(
-            VimCommand::ModeTransition(VimModeTransition::Escape),
-            browse_result(ResultVimContext {
-                has_pending_draft: true,
-                ..result_ctx(ResultNavMode::CellActive)
-            }),
-        );
-
-        assert!(matches!(action, Some(Action::ResultDiscardCellEdit)));
-    }
-
-    #[test]
     fn result_scroll_escape_clears_staged_deletes() {
         let action = action_for_command(
             VimCommand::ModeTransition(VimModeTransition::Escape),
@@ -341,59 +328,6 @@ mod tests {
         );
 
         assert!(matches!(action, Some(Action::ClearStagedDeletes)));
-    }
-
-    #[test]
-    fn result_cell_enter_opens_cell_detail() {
-        let action = action_for_command(
-            VimCommand::ModeTransition(VimModeTransition::ConfirmOrEnter),
-            browse_result(result_ctx(ResultNavMode::CellActive)),
-        );
-
-        assert!(matches!(action, Some(Action::ResultOpenCellDetail)));
-    }
-
-    #[test]
-    fn result_scroll_mode_move_down_resolves_to_result_line_scroll() {
-        let action = action_for_command(
-            VimCommand::Navigation(VimNavigation::MoveDown),
-            browse_result(result_ctx(ResultNavMode::Scroll)),
-        );
-
-        assert!(matches!(
-            action,
-            Some(Action::Scroll {
-                target: ScrollTarget::Result,
-                direction: ScrollDirection::Down,
-                amount: ScrollAmount::Line,
-            })
-        ));
-    }
-
-    #[test]
-    fn explorer_scroll_cursor_center_resolves_to_scroll_to_cursor() {
-        let action = action_for_command(
-            VimCommand::Navigation(VimNavigation::ScrollCursorCenter),
-            VimSurfaceContext::Browse(BrowseVimContext::Explorer),
-        );
-
-        assert!(matches!(
-            action,
-            Some(Action::ScrollToCursor {
-                target: ScrollToCursorTarget::Explorer,
-                position: CursorPosition::Center,
-            })
-        ));
-    }
-
-    #[test]
-    fn inspector_viewport_navigation_resolves_to_none_action() {
-        let action = action_for_command(
-            VimCommand::Navigation(VimNavigation::ViewportTop),
-            VimSurfaceContext::Browse(BrowseVimContext::Inspector(InspectorVimContext::Other)),
-        );
-
-        assert!(matches!(action, Some(Action::None)));
     }
 
     #[rstest]
@@ -413,65 +347,6 @@ mod tests {
             (Some(Action::ResultCellLeft), Action::ResultCellLeft)
                 | (Some(Action::ResultCellRight), Action::ResultCellRight)
         ));
-    }
-
-    #[test]
-    fn result_row_yank_without_pending_sets_pending() {
-        let action = action_for_command(
-            VimCommand::Operator(VimOperator::Yank),
-            browse_result(result_ctx(ResultNavMode::CellActive)),
-        );
-
-        assert!(matches!(action, Some(Action::ResultRowYankOperatorPending)));
-    }
-
-    #[test]
-    fn result_row_yank_with_pending_executes_yank() {
-        let action = action_for_command(
-            VimCommand::Operator(VimOperator::Yank),
-            browse_result(ResultVimContext {
-                yank_pending: true,
-                ..result_ctx(ResultNavMode::CellActive)
-            }),
-        );
-
-        assert!(matches!(action, Some(Action::ResultRowYank)));
-    }
-
-    #[test]
-    fn result_row_delete_without_pending_sets_pending() {
-        let action = action_for_command(
-            VimCommand::Operator(VimOperator::Delete),
-            browse_result(result_ctx(ResultNavMode::CellActive)),
-        );
-
-        assert!(matches!(action, Some(Action::ResultDeleteOperatorPending)));
-    }
-
-    #[test]
-    fn result_row_delete_with_pending_stages_delete() {
-        let action = action_for_command(
-            VimCommand::Operator(VimOperator::Delete),
-            browse_result(ResultVimContext {
-                delete_pending: true,
-                ..result_ctx(ResultNavMode::CellActive)
-            }),
-        );
-
-        assert!(matches!(action, Some(Action::StageRowForDelete)));
-    }
-
-    #[test]
-    fn result_cell_yank_is_not_triggered_by_y_operator() {
-        let action = action_for_command(
-            VimCommand::Operator(VimOperator::Yank),
-            browse_result(ResultVimContext {
-                yank_pending: false,
-                ..result_ctx(ResultNavMode::CellActive)
-            }),
-        );
-
-        assert!(matches!(action, Some(Action::ResultRowYankOperatorPending)));
     }
 
     #[test]

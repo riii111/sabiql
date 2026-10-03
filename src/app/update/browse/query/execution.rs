@@ -912,7 +912,7 @@ mod tests {
         #[test]
         fn adhoc_does_not_update_pagination() {
             let mut state = create_test_state();
-            state.query.pagination.set_current_page(3);
+            state.query.pagination.set_page_result(3, false);
             let result = adhoc_result();
             let now = Instant::now();
             let action = query_completed_action(&mut state, result, 0, None);
@@ -1424,29 +1424,6 @@ mod tests {
         }
 
         #[test]
-        fn adhoc_timeout_after_data_change_refreshes_preview() {
-            let mut state = state_with_table("public", "users");
-            let action = query_failed_action(
-                &mut state,
-                DbOperationError::QueryFailedAfterChange {
-                    source: Arc::new(DbOperationError::Timeout(
-                        "mysql query exceeded the execution timeout".to_string(),
-                    )),
-                    refresh_scope: RefreshScope::Data,
-                },
-                0,
-                QuerySource::Adhoc,
-            );
-
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
-
-            assert!(effects.iter().any(|effect| matches!(
-                effect,
-                Effect::ExecutePreview { table, .. } if table == "users"
-            )));
-        }
-
-        #[test]
         fn adhoc_failure_after_schema_change_refreshes_metadata() {
             let mut state = state_with_table("public", "users");
             let action = query_failed_action(
@@ -1506,24 +1483,6 @@ mod tests {
     mod adhoc_refresh {
         use super::*;
         use crate::domain::CommandTag;
-
-        #[test]
-        fn dml_with_table_selected_emits_execute_preview() {
-            let mut state = state_with_table("public", "users");
-            let action = query_completed_action(
-                &mut state,
-                adhoc_result_with_tag(CommandTag::Update(3)),
-                0,
-                None,
-            );
-
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
-
-            assert_eq!(effects.len(), 1);
-            assert!(
-                matches!(&effects[0], Effect::ExecutePreview { table, .. } if table == "users")
-            );
-        }
 
         #[test]
         fn dml_without_table_selected_emits_no_effects() {
@@ -1756,7 +1715,9 @@ mod tests {
             let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(effects.len(), 1);
-            assert!(matches!(&effects[0], Effect::ExecutePreview { .. }));
+            assert!(
+                matches!(&effects[0], Effect::ExecutePreview { table, .. } if table == "users")
+            );
 
             let new_preview = preview_result(5);
             let action = query_completed_action(&mut state, Arc::clone(&new_preview), 0, Some(0));
@@ -1788,7 +1749,11 @@ mod tests {
 
             let metadata = make_metadata(vec![("public", "orders"), ("public", "users")]);
             let run_id = state.session.begin_metadata_refresh();
-            let action = Action::MetadataLoaded { run_id, metadata };
+            let action = Action::MetadataLoaded {
+                run_id,
+                metadata,
+                effective_user: None,
+            };
             let meta_effects = dispatch_metadata(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(state.ui.explorer_selected(), 1);
@@ -1821,7 +1786,11 @@ mod tests {
 
             let metadata = make_metadata(vec![("public", "orders")]);
             let run_id = state.session.begin_metadata_refresh();
-            let action = Action::MetadataLoaded { run_id, metadata };
+            let action = Action::MetadataLoaded {
+                run_id,
+                metadata,
+                effective_user: None,
+            };
             dispatch_metadata(&mut state, &action, Instant::now());
 
             assert!(state.query.pagination.table().is_empty());

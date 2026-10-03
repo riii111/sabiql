@@ -206,13 +206,6 @@ pub fn classify_mysql_multi_statement_with_lower_case_table_names(
     Ok(classified)
 }
 
-pub fn validate_mysql_statements(
-    statements: &[MySqlStatement],
-    selected_database: Option<&str>,
-) -> Result<(), String> {
-    validate_mysql_statements_with_lower_case_table_names(statements, selected_database, 0)
-}
-
 pub fn validate_mysql_statements_with_lower_case_table_names(
     statements: &[MySqlStatement],
     selected_database: Option<&str>,
@@ -564,12 +557,6 @@ mod tests {
             assert_eq!(statements.len(), 1);
             assert_eq!(statements[0].kind(), &MySqlStatementKind::Replace);
             assert_eq!(statements[0].target(), Some("items"));
-        }
-
-        #[test]
-        fn preserves_mysql_split_errors_for_callers() {
-            assert!(classify_mysql_multi_statement("SELECT 'unfinished", Some("app")).is_err());
-            assert!(classify_mysql_multi_statement("SELECT 1 /* unfinished", Some("app")).is_err());
         }
 
         #[test]

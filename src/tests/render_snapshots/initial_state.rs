@@ -1,5 +1,17 @@
 use super::*;
+use crate::tests::harness::{TEST_HEIGHT, render_and_get_buffer};
 use sabiql_domain::ConnectionId;
+use sabiql_ui::theme::DEFAULT_THEME;
+
+fn explorer_text(output: &str) -> String {
+    output
+        .lines()
+        .skip(2)
+        .take(TEST_HEIGHT as usize - 3)
+        .filter_map(|line| line.split('│').nth(1))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
 
 #[test]
 fn initial_state_no_metadata() {
@@ -18,8 +30,10 @@ fn explorer_shows_retry_when_metadata_reload_fails() {
     let mut terminal = create_test_terminal();
 
     let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
+    let rows = output.lines().collect::<Vec<_>>();
+    assert!(rows[2].contains("Metadata load failed"));
+    assert!(rows[3].contains("r: retry, Enter: details"));
+    assert!(!explorer_text(&output).contains("public."));
 }
 
 #[test]
@@ -29,8 +43,10 @@ fn explorer_shows_not_connected_when_no_active_connection() {
     let mut terminal = create_test_terminal();
 
     let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
+    let rows = output.lines().collect::<Vec<_>>();
+    assert!(rows[0].contains("no dsn | -"));
+    assert!(rows[2].contains("Press 'c' to select a connection"));
+    assert!(!explorer_text(&output).contains("public."));
 }
 
 #[test]
@@ -42,14 +58,22 @@ fn header_shows_effective_user_at_normal_width() {
         DatabaseType::PostgreSQL,
         "postgresql://localhost/test",
     );
+    let metadata = state.session.metadata().cloned().expect("metadata");
     state
         .session
-        .mark_effective_user_loaded(Some("app_user".to_string()));
+        .mark_connected_with_user(Arc::new(metadata), Some("app_user".to_string()));
     let mut terminal = create_test_terminal();
 
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
+    let buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let header = row_text(&buffer, 0);
+    assert!(header.contains("connected | user: app_user | test"));
+    assert!(header.contains("user: app_user"));
+    assert_row_text_color(
+        &buffer,
+        0,
+        "user: app_user",
+        DEFAULT_THEME.semantic.text.secondary,
+    );
 }
 
 #[test]
@@ -61,9 +85,10 @@ fn mysql_header_shows_effective_user_without_dsn_password() {
         DatabaseType::MySQL,
         "mysql://app:header-secret@localhost/app",
     );
+    let metadata = state.session.metadata().cloned().expect("metadata");
     state
         .session
-        .mark_effective_user_loaded(Some("app@%".to_string()));
+        .mark_connected_with_user(Arc::new(metadata), Some("app@%".to_string()));
     let mut terminal = create_test_terminal();
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -81,9 +106,10 @@ fn header_truncates_connection_name_at_narrow_width() {
         DatabaseType::PostgreSQL,
         "postgresql://localhost/test",
     );
+    let metadata = state.session.metadata().cloned().expect("metadata");
     state
         .session
-        .mark_effective_user_loaded(Some("app_user".to_string()));
+        .mark_connected_with_user(Arc::new(metadata), Some("app_user".to_string()));
     let mut terminal = create_test_terminal_sized(60, 20);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -101,9 +127,10 @@ fn header_shows_read_only_badge_at_narrow_width() {
         "postgresql://localhost/test",
     );
     state.session.enable_read_only();
+    let metadata = state.session.metadata().cloned().expect("metadata");
     state
         .session
-        .mark_effective_user_loaded(Some("app_user".to_string()));
+        .mark_connected_with_user(Arc::new(metadata), Some("app_user".to_string()));
     let mut terminal = create_test_terminal_sized(80, 20);
 
     let output = render_to_string(&mut terminal, &mut state);

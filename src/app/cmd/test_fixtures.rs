@@ -11,7 +11,7 @@ use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::effect::Effect;
 use crate::cmd::runner::{ConnectionDeps, EffectRunner, ErDeps, QueryDeps, UtilityDeps};
 use crate::domain::SqliteDiagnosticsSnapshot;
-use crate::domain::connection::{ConnectionProfile, ServiceEntry};
+use crate::domain::connection::ConnectionProfile;
 use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
 use crate::domain::{
     DatabaseMetadata, DiagnosticField, ErTableInfo, QueryResult, QuerySource, QueryValue,
@@ -19,14 +19,15 @@ use crate::domain::{
 };
 use crate::model::app_state::AppState;
 use crate::model::browse::session::ConnectionSaveGuard;
+use crate::model::shared::settings::ClipboardBackend;
 use crate::ports::outbound::DbOperationError;
 use crate::ports::outbound::{
-    AppSettings, CachedResultExporter, ClipboardError, ClipboardWriter, ConfigWriter,
-    ConfigWriterError, ConnectionStore, DsnBuilder, ErDiagramExporter, ErExportResult, ErLogWriter,
-    FolderOpener, MetadataProvider, MySqlConnectionProbe, MySqlConnectionProbeResult,
-    PgServiceEntryReader, QueryExecutor, QueryHistoryError, QueryHistoryStore, RenderOutput,
-    RenderResult, Renderer, ServiceFileError, SettingsStore, SettingsStoreError,
-    SqliteDiagnosticsProvider, SqlitePathValidator,
+    AppSettings, CachedResultExporter, ClipboardError, ClipboardOutcome, ClipboardWriter,
+    ConfigWriter, ConfigWriterError, ConnectionStore, DsnBuilder, ErDiagramExporter,
+    ErExportResult, ErLogWriter, FolderOpener, MetadataProvider, MySqlConnectionProbe,
+    MySqlConnectionProbeResult, PgServiceEntryReader, QueryExecutor, QueryHistoryError,
+    QueryHistoryStore, RenderOutput, RenderResult, Renderer, ServiceFileContents, ServiceFileError,
+    SettingsStore, SettingsStoreError, SqliteDiagnosticsProvider, SqlitePathValidator,
 };
 use crate::services::AppServices;
 use crate::update::action::Action;
@@ -142,15 +143,22 @@ impl MySqlConnectionProbe for NoopMySqlConnectionProbe {
 
 pub struct NoopPgServiceEntryReader;
 impl PgServiceEntryReader for NoopPgServiceEntryReader {
-    fn read_services(&self) -> Result<(Vec<ServiceEntry>, PathBuf), ServiceFileError> {
-        Ok((vec![], PathBuf::new()))
+    fn read_services(&self) -> Result<ServiceFileContents, ServiceFileError> {
+        Ok(ServiceFileContents {
+            entries: vec![],
+            warning: None,
+        })
     }
 }
 
 pub struct NoopClipboardWriter;
 impl ClipboardWriter for NoopClipboardWriter {
-    fn copy_text(&self, _content: &str) -> Result<(), ClipboardError> {
-        Ok(())
+    fn copy_text(
+        &self,
+        _content: &str,
+        _backend: ClipboardBackend,
+    ) -> Result<ClipboardOutcome, ClipboardError> {
+        Ok(ClipboardOutcome::Copied)
     }
 }
 
@@ -179,10 +187,6 @@ pub fn active_connection_save_guard(run_id: u64) -> Arc<ConnectionSaveGuard> {
     guard
 }
 
-pub struct EffectRun {
-    pub actions: Vec<Action>,
-}
-
 pub fn run_one_effect<'a>(
     runner: &'a EffectRunner,
     effect: Effect,
@@ -190,7 +194,7 @@ pub fn run_one_effect<'a>(
     completion_engine: RefCell<CompletionEngine>,
     action_rx: &'a mut mpsc::Receiver<Action>,
     action_timeout: Option<Duration>,
-) -> Pin<Box<dyn Future<Output = Result<EffectRun>> + 'a>> {
+) -> Pin<Box<dyn Future<Output = Result<Vec<Action>>> + 'a>> {
     Box::pin(async move {
         let mut renderer = NoopRenderer;
         let mut actions = runner
@@ -207,7 +211,7 @@ pub fn run_one_effect<'a>(
             actions.push(recv_action_with_timeout(action_rx, timeout).await);
         }
 
-        Ok(EffectRun { actions })
+        Ok(actions)
     })
 }
 

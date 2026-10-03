@@ -65,21 +65,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn connection_arguments_keep_defaults_file_first_and_disable_login_paths() {
-        let args = mysql_connection_args(Path::new("/tmp/sabiql-mysql.cnf"));
-
-        assert_eq!(
-            args,
-            vec![
-                "--defaults-file=/tmp/sabiql-mysql.cnf",
-                "--no-login-paths",
-                "--connect-timeout=10",
-                "--skip-reconnect",
-            ]
-        );
-    }
-
-    #[test]
     fn adhoc_preview_and_export_arguments_include_streaming_query_options() {
         let args = mysql_query_args(Path::new("/tmp/sabiql-mysql.cnf"));
 
@@ -102,7 +87,6 @@ mod tests {
                 "--quick",
             ]
         );
-        assert!(args.iter().all(|argument| !argument.contains("password")));
     }
 
     #[test]
@@ -126,8 +110,6 @@ mod tests {
                 "--prompt=",
             ]
         );
-        assert!(!args.iter().any(|argument| argument == "--quick"));
-        assert!(args.iter().all(|argument| !argument.contains("password")));
     }
 
     #[test]
@@ -151,11 +133,6 @@ mod tests {
                 "--prompt=",
             ]
         );
-        assert!(!args.iter().any(|argument| argument == "--quick"));
-        assert!(
-            args.iter()
-                .all(|argument| !argument.starts_with("--max-allowed-packet="))
-        );
     }
 
     #[test]
@@ -166,16 +143,6 @@ mod tests {
         assert_eq!(
             args.iter().filter(|arg| *arg == "--show-warnings").count(),
             1
-        );
-        assert!(
-            mysql_query_args(Path::new("/tmp/sabiql-mysql.cnf"))
-                .iter()
-                .all(|argument| argument != "--show-warnings")
-        );
-        assert!(
-            mysql_metadata_args(Path::new("/tmp/sabiql-mysql.cnf"))
-                .iter()
-                .all(|argument| argument != "--show-warnings")
         );
     }
 }

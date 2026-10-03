@@ -77,6 +77,7 @@ fn has_sqlite_text_affinity(column_data_type: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     #[test]
     fn sqlite_columns_always_use_raw_text() {
@@ -137,18 +138,13 @@ mod tests {
         assert!(!policy.uses_json_detail_modal());
     }
 
-    #[test]
-    fn postgresql_json_uses_raw_text_for_diff() {
+    #[rstest]
+    #[case("json")]
+    #[case("text")]
+    fn postgresql_columns_use_raw_text_for_diff(#[case] column_data_type: &str) {
         assert_eq!(
-            CellPresentationPolicy::new(DatabaseType::PostgreSQL, "json", "").diff_handling(),
-            PreviewCellTextDiffHandling::RawText
-        );
-    }
-
-    #[test]
-    fn postgresql_text_uses_raw_text_for_diff() {
-        assert_eq!(
-            CellPresentationPolicy::new(DatabaseType::PostgreSQL, "text", "").diff_handling(),
+            CellPresentationPolicy::new(DatabaseType::PostgreSQL, column_data_type, "")
+                .diff_handling(),
             PreviewCellTextDiffHandling::RawText
         );
     }

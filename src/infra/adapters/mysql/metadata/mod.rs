@@ -1,12 +1,14 @@
 use async_trait::async_trait;
 
-use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
+use crate::app::ports::outbound::{DbOperationError, MetadataFetchResult, MetadataProvider};
 use crate::domain::{DatabaseMetadata, Schema, Table, TableSignatureSnapshot};
 
 use super::adapter::MySqlAdapter;
 use super::cli::MySqlResultSet;
 use super::dsn::parse_and_validate_mysql_dsn;
-use super::sql::{EFFECTIVE_USER_QUERY, EFFECTIVE_USER_RESULT_COLUMNS};
+use super::sql::{
+    EFFECTIVE_USER_QUERY, EFFECTIVE_USER_RESULT_COLUMNS, TABLES_QUERY, TABLES_RESULT_COLUMNS,
+};
 
 mod catalog;
 mod preview;
@@ -51,25 +53,34 @@ pub(super) use preview::{convert_preview_values_with_binary_charset, execute_pre
 
 #[async_trait]
 impl MetadataProvider for MySqlAdapter {
-    async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
+    async fn fetch_metadata(&self, dsn: &str) -> Result<MetadataFetchResult, DbOperationError> {
         let target = parse_and_validate_mysql_dsn(dsn)?;
         let database = catalog::selected_database(&target)?;
-        let tables = catalog::fetch_metadata_snapshot(&target, database).await?;
+        let (capabilities, table_result, effective_user_result) =
+            catalog::execute_table_query_with_optional_effective_user(
+                &target,
+                TABLES_QUERY,
+                TABLES_RESULT_COLUMNS,
+                EFFECTIVE_USER_QUERY,
+                EFFECTIVE_USER_RESULT_COLUMNS,
+            )
+            .await?;
+        let tables = catalog::metadata_snapshot_from_result(
+            database,
+            None,
+            &table_result,
+            capabilities.lower_case_table_names,
+        )?;
+        let effective_user = effective_user_result
+            .as_ref()
+            .and_then(effective_user_from_result);
         let mut metadata = DatabaseMetadata::new(database.to_string());
         metadata.schemas = vec![Schema::new(database.to_string())];
         metadata.table_summaries = tables.into_iter().map(catalog::table_summary).collect();
-        Ok(metadata)
-    }
-
-    async fn fetch_effective_user(&self, dsn: &str) -> Result<Option<String>, DbOperationError> {
-        let target = parse_and_validate_mysql_dsn(dsn)?;
-        let (_, result) = catalog::execute_metadata_query(
-            &target,
-            EFFECTIVE_USER_QUERY,
-            EFFECTIVE_USER_RESULT_COLUMNS,
-        )
-        .await?;
-        Ok(effective_user_from_result(&result))
+        Ok(MetadataFetchResult {
+            metadata,
+            effective_user,
+        })
     }
 
     async fn fetch_table_detail(

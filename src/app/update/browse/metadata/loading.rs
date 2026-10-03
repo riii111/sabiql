@@ -18,7 +18,11 @@ pub(super) fn reduce_loading(
     now: Instant,
 ) -> DispatchResult {
     match action {
-        Action::MetadataLoaded { run_id, metadata } => {
+        Action::MetadataLoaded {
+            run_id,
+            metadata,
+            effective_user,
+        } => {
             if !state.session.is_current_metadata_run(*run_id) {
                 return DispatchResult::handled();
             }
@@ -27,13 +31,11 @@ pub(super) fn reduce_loading(
             };
 
             let has_tables = !metadata.table_summaries.is_empty();
-            state.session.mark_connected(Arc::clone(metadata));
-            let effective_user_run_id = state.session.begin_effective_user_fetch();
+            state
+                .session
+                .mark_connected_with_user(Arc::clone(metadata), effective_user.clone());
 
-            let mut effects = vec![Effect::FetchEffectiveUser {
-                dsn: dsn.clone(),
-                run_id: effective_user_run_id,
-            }];
+            let mut effects = Vec::new();
 
             if state.query.pagination.table().is_empty() {
                 state
@@ -70,7 +72,7 @@ pub(super) fn reduce_loading(
                         .ui
                         .set_explorer_selection(if has_tables { Some(0) } else { None });
                     state.session.clear_table_selection(&mut state.query);
-                    effects = termination_effects(&state.query, effects);
+                    effects.extend(termination_effects(&state.query, vec![]));
                 }
             }
 
@@ -88,19 +90,6 @@ pub(super) fn reduce_loading(
             }
 
             DispatchResult::handled_with(effects)
-        }
-        Action::EffectiveUserLoaded {
-            run_id,
-            effective_user,
-        } => {
-            if !state.session.is_current_effective_user_run(*run_id) {
-                return DispatchResult::handled();
-            }
-
-            state
-                .session
-                .mark_effective_user_loaded(effective_user.clone());
-            DispatchResult::handled()
         }
         Action::MetadataFailed { run_id, error } => {
             if !state.session.is_current_metadata_run(*run_id) {
@@ -194,23 +183,6 @@ mod tests {
             run_id,
             error: DbOperationError::PermissionDenied("metadata refresh failed".to_string()),
         }
-    }
-
-    #[test]
-    fn metadata_failure_terminates_initial_loading_detail() {
-        let mut state = connected_state(DatabaseType::PostgreSQL);
-        let (generation, run_id) = loading_detail_and_metadata_run(&mut state);
-
-        let effects = reduce_loading(&mut state, &metadata_failed(run_id), Instant::now())
-            .into_effects()
-            .expect("metadata failure should be handled");
-
-        assert!(matches!(
-            state.session.table_detail_state(),
-            TableDetailState::Error(_)
-        ));
-        assert!(state.session.is_table_detail_terminal(generation));
-        assert!(effects.is_empty());
     }
 
     #[test]

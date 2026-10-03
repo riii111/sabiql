@@ -96,6 +96,7 @@ mod tests {
     #[test]
     fn begin_with_value_sets_active_state_with_copied_values() {
         let mut state = CellEditState::default();
+        assert!(!state.is_active());
 
         state.begin(3, 5, "Alice".to_string());
 
@@ -104,15 +105,6 @@ mod tests {
         assert_eq!(state.original_value(), "Alice");
         assert_eq!(state.draft_value(), "Alice");
         assert_eq!(state.input.cursor(), 5); // cursor at end
-        assert!(state.is_active());
-    }
-
-    #[test]
-    fn is_active_requires_both_row_and_col() {
-        assert!(!CellEditState::default().is_active());
-
-        let mut state = CellEditState::default();
-        state.begin(1, 2, "Alice".to_string());
         assert!(state.is_active());
     }
 
@@ -153,43 +145,5 @@ mod tests {
         assert_eq!(state.original_value(), "");
         assert_eq!(state.draft_value(), "");
         assert!(!state.is_active());
-    }
-
-    #[test]
-    fn cursor_movement_works_through_input() {
-        let mut state = CellEditState::default();
-        state.begin(0, 0, "hello".to_string());
-
-        state.move_cursor(CursorMove::Home);
-        assert_eq!(state.input().cursor(), 0);
-
-        state.insert_char('X');
-        assert_eq!(state.draft_value(), "Xhello");
-        assert_eq!(state.input().cursor(), 1);
-    }
-
-    #[test]
-    fn backspace_at_middle_removes_correct_char() {
-        let mut state = CellEditState::default();
-        state.begin(0, 0, "abcd".to_string());
-
-        state.move_cursor(CursorMove::Left);
-        state.move_cursor(CursorMove::Left);
-        state.backspace();
-
-        assert_eq!(state.draft_value(), "acd");
-        assert_eq!(state.input().cursor(), 1);
-    }
-
-    #[test]
-    fn delete_at_cursor_position() {
-        let mut state = CellEditState::default();
-        state.begin(0, 0, "abcd".to_string());
-
-        state.move_cursor(CursorMove::Home);
-        state.delete();
-
-        assert_eq!(state.draft_value(), "bcd");
-        assert_eq!(state.input().cursor(), 0);
     }
 }

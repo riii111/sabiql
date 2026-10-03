@@ -146,6 +146,7 @@ impl ConnectionErrorState {
 mod tests {
     use super::*;
     use crate::model::connection::error::test_support;
+    use rstest::rstest;
 
     fn sample_error() -> ConnectionErrorInfo {
         test_support::from_parts(
@@ -271,67 +272,46 @@ mod tests {
     mod scroll {
         use super::*;
 
-        #[test]
-        fn up_decrements_offset() {
+        #[rstest]
+        #[case(true, 5, 10, 4)]
+        #[case(true, 0, 10, 0)]
+        #[case(false, 0, 10, 1)]
+        #[case(false, 10, 10, 10)]
+        fn respects_direction_and_bounds(
+            #[case] up: bool,
+            #[case] initial: usize,
+            #[case] max_offset: usize,
+            #[case] expected: usize,
+        ) {
             let mut state = ConnectionErrorState::default();
-            scroll_to(&mut state, 5);
+            scroll_to(&mut state, initial);
 
-            state.scroll_up();
+            if up {
+                state.scroll_up();
+            } else {
+                state.scroll_down(max_offset);
+            }
 
-            assert_eq!(state.scroll_offset(), 4);
-        }
-
-        #[test]
-        fn up_stops_at_zero() {
-            let mut state = ConnectionErrorState::default();
-
-            state.scroll_up();
-
-            assert_eq!(state.scroll_offset(), 0);
-        }
-
-        #[test]
-        fn down_increments_offset() {
-            let mut state = ConnectionErrorState::default();
-
-            state.scroll_down(10);
-
-            assert_eq!(state.scroll_offset(), 1);
-        }
-
-        #[test]
-        fn down_stops_at_max() {
-            let mut state = ConnectionErrorState::default();
-            scroll_to(&mut state, 10);
-
-            state.scroll_down(10);
-
-            assert_eq!(state.scroll_offset(), 10);
+            assert_eq!(state.scroll_offset(), expected);
         }
     }
 
     mod copied_feedback {
         use super::*;
 
-        #[test]
-        fn visible_before_expiry() {
+        #[rstest]
+        #[case(2, true)]
+        #[case(4, false)]
+        fn visibility_changes_at_expiry(#[case] elapsed_secs: u64, #[case] expected: bool) {
             let mut state = ConnectionErrorState::default();
             let t = now();
 
             state.mark_copied_at(t);
 
-            assert!(state.is_copied_visible_at(t));
-            assert!(state.is_copied_visible_at(t + Duration::from_secs(2)));
-        }
-
-        #[test]
-        fn hidden_after_expiry() {
-            let mut state = ConnectionErrorState::default();
-            let t = now();
-
-            state.mark_copied_at(t);
-
-            assert!(!state.is_copied_visible_at(t + Duration::from_secs(4)));
+            assert_eq!(
+                state.is_copied_visible_at(t + Duration::from_secs(elapsed_secs)),
+                expected
+            );
         }
     }
 
