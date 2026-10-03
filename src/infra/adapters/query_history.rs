@@ -80,7 +80,7 @@ impl QueryHistoryStore for FileQueryHistoryStore {
         tokio::task::spawn_blocking(move || {
             append_entry(&path, &history_dir, &line)?;
             // Trim is best-effort: auxiliary data, next successful append will retry.
-            if let Err(_err) = trim_if_exceeded(&path, MAX_HISTORY_ENTRIES) {}
+            let _ = trim_if_exceeded(&path, MAX_HISTORY_ENTRIES);
             Ok(())
         })
         .await?
