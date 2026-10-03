@@ -135,17 +135,6 @@ fn reject_ambiguous_uri_delimiters(
         .map(|offset| authority_start + offset + 1);
     if let Some(query_start) = query_start {
         let query = &dsn[query_start..];
-        for segment in query.split('&') {
-            let Some((key, value)) = segment.split_once('=') else {
-                continue;
-            };
-            let key = urlencoding::decode(key).unwrap_or_default();
-            let sensitive_value =
-                key.eq_ignore_ascii_case("password") || key.eq_ignore_ascii_case("sslpassword");
-            if sensitive_value && value.contains(['?', '#']) {
-                return Err(CliConnectionResolveError::AmbiguousUri(label));
-            }
-        }
         if query.contains('#') {
             return Err(CliConnectionResolveError::AmbiguousUri(label));
         }
@@ -237,13 +226,14 @@ pub fn resolve_cli_connection_env(
         .ok()
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| CliConnectionResolveError::EnvironmentVariableUnavailable(name.into()))?;
+    let value = value.trim();
     let Some((scheme, _)) = value.split_once("://") else {
         return Err(CliConnectionResolveError::UnsupportedFormat);
     };
     if !matches!(scheme, "postgres" | "postgresql" | "mysql") {
         return Err(CliConnectionResolveError::UnsupportedFormat);
     }
-    let target = resolve_cli_connection_target(&value, validator)?;
+    let target = resolve_cli_connection_target(value, validator)?;
     Ok(target)
 }
 
@@ -386,6 +376,37 @@ mod tests {
             CliConnectionResolveError::UnsupportedFormat
         ));
         assert!(!error.to_string().contains("synthetic-secret"));
+    }
+
+    #[test]
+    fn trims_environment_uri_before_scheme_validation() {
+        let variable = format!("SABIQL_TEST_URI_{}", uuid::Uuid::new_v4());
+        unsafe { std::env::set_var(&variable, "  postgresql://host/db?password=ab?cd  ") };
+        let result = resolve_cli_connection_env(&variable, &AcceptingValidator);
+        unsafe { std::env::remove_var(&variable) };
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn accepts_question_mark_in_query_password_without_exposing_it() {
+        let first = resolve_cli_connection_target(
+            "postgresql://host/db?password=ab?cd",
+            &AcceptingValidator,
+        )
+        .unwrap();
+        let second = resolve_cli_connection_target(
+            "postgresql://host/db?password=another",
+            &AcceptingValidator,
+        )
+        .unwrap();
+        let (CliConnectionTarget::Uri(first), CliConnectionTarget::Uri(second)) = (first, second)
+        else {
+            panic!("expected URI targets");
+        };
+
+        assert_eq!(first.id, second.id);
+        assert!(!format!("{first:?}").contains("ab?cd"));
     }
 
     #[test]

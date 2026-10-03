@@ -167,7 +167,7 @@ fn take_uri_password(dsn: &str) -> Result<Option<(String, String)>, &'static str
                         return Err("PostgreSQL URI sslpassword cannot be passed securely to psql");
                     }
                 } else if key.eq_ignore_ascii_case("password") && !encoded_value.is_empty() {
-                    if encoded_value.contains(['?', '#']) {
+                    if encoded_value.contains('#') {
                         return Err(
                             "PostgreSQL URI contains an unescaped '?' or '#' in a password; percent-encode it as %3F or %23",
                         );
@@ -306,6 +306,24 @@ mod tests {
             SslMode::Prefer,
         )
         .unwrap()
+    }
+
+    #[test]
+    fn query_question_mark_is_extracted_without_relaxing_authority_guards() {
+        let extracted = take_uri_password("postgresql://host/db?password=ab?cd&sslmode=require")
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            extracted,
+            (
+                "postgresql://host/db?password=&sslmode=require".into(),
+                "ab?cd".into()
+            )
+        );
+        assert!(take_uri_password("postgresql://user:ab?cd@host/db").is_err());
+        assert!(take_uri_password("postgresql://host?application_name=alice@example.com").is_err());
+        assert!(take_uri_password("postgresql://host/db?password=ab#cd").is_err());
     }
 
     mod dsn_builder {
