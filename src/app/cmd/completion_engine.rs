@@ -180,9 +180,10 @@ impl CompletionEngine {
             return vec![];
         }
 
-        let (current_token, context) = self.analyze_with_precomputed(
+        let current_token = prep.current_token.as_str();
+        let context = self.analyze_with_precomputed(
             &prep.before_cursor,
-            &prep.current_token,
+            current_token,
             &prep.context,
             &prep.candidate_context,
             &prep.tokens,
@@ -191,20 +192,20 @@ impl CompletionEngine {
 
         let mut candidates = match &context {
             CompletionContext::Keyword => {
-                self.keyword_candidates_for_database(&current_token, scope.database_type)
+                self.keyword_candidates_for_database(current_token, scope.database_type)
             }
             CompletionContext::Table => {
-                self.table_candidates_for_database(metadata, &current_token, scope)
+                self.table_candidates_for_database(metadata, current_token, scope)
             }
             CompletionContext::Column => {
-                let keywords = self.primary_clause_keywords(&current_token);
+                let keywords = self.primary_clause_keywords(current_token);
                 let written_columns =
                     Self::written_columns_for_completion(&prep.tokens, cursor_pos);
 
                 let before_token = prep
                     .before_cursor
                     .trim_end()
-                    .strip_suffix(&current_token)
+                    .strip_suffix(current_token)
                     .unwrap_or(&prep.before_cursor)
                     .trim_end();
                 let after_comma = before_token.ends_with(',');
@@ -213,7 +214,7 @@ impl CompletionEngine {
                     self.qualified_name_from_ref_for_database(t, metadata, scope.database_type)
                 });
 
-                let mut columns = self.column_candidates_with_fk(table_detail, &current_token);
+                let mut columns = self.column_candidates_with_fk(table_detail, current_token);
 
                 // UPDATE/DELETE/INSERT target table columns get priority
                 if let (Some(detail), Some(target)) = (table_detail, &target_qualified)
@@ -253,7 +254,7 @@ impl CompletionEngine {
                         continue;
                     }
                     let mut cached_columns =
-                        self.column_candidates_with_fk(Some(cached_table), &current_token);
+                        self.column_candidates_with_fk(Some(cached_table), current_token);
                     if target_qualified.as_ref() == Some(qualified_name) {
                         for col in &mut cached_columns {
                             col.score += 200;
@@ -299,25 +300,25 @@ impl CompletionEngine {
                 mixed
             }
             CompletionContext::SchemaQualified(schema) => {
-                self.schema_qualified_candidates_for_database(metadata, schema, &current_token)
+                self.schema_qualified_candidates_for_database(metadata, schema, current_token)
             }
             CompletionContext::AliasColumn(alias) => self.alias_column_candidates(
                 alias,
                 &prep.context,
                 metadata,
-                &current_token,
+                current_token,
                 scope.database_type,
             ),
             CompletionContext::CteOrTable => self.cte_or_table_candidates_for_database(
                 &prep.candidate_context,
                 metadata,
-                &current_token,
+                current_token,
                 scope,
             ),
         };
 
         if candidates.is_empty() && context != CompletionContext::Keyword {
-            return self.keyword_candidates_for_database(&current_token, scope.database_type);
+            return self.keyword_candidates_for_database(current_token, scope.database_type);
         }
 
         let mysql_database_names: HashSet<String> = if scope.database_type == DatabaseType::MySQL {
@@ -354,21 +355,15 @@ impl CompletionEngine {
         candidate_context: &SqlContext,
         tokens: &[Token],
         cursor_pos: usize,
-    ) -> (String, CompletionContext) {
+    ) -> CompletionContext {
         // Check for alias.column pattern first (e.g., "u." or "u.na")
         if let Some(alias) = self.detect_alias_prefix(before_cursor, current_token, sql_context) {
-            return (
-                current_token.to_string(),
-                CompletionContext::AliasColumn(alias),
-            );
+            return CompletionContext::AliasColumn(alias);
         }
 
         // Check for schema-qualified context: "schema."
         if let Some(schema) = self.detect_schema_prefix(before_cursor, current_token) {
-            return (
-                current_token.to_string(),
-                CompletionContext::SchemaQualified(schema),
-            );
+            return CompletionContext::SchemaQualified(schema);
         }
 
         // Detect context from tokens (ignores strings/comments)
@@ -376,10 +371,10 @@ impl CompletionEngine {
 
         // If in FROM clause and CTEs are defined, suggest CTE names too
         if base_context == CompletionContext::Table && !candidate_context.ctes.is_empty() {
-            return (current_token.to_string(), CompletionContext::CteOrTable);
+            return CompletionContext::CteOrTable;
         }
 
-        (current_token.to_string(), base_context)
+        base_context
     }
 
     fn detect_alias_prefix(
@@ -1287,14 +1282,15 @@ mod tests {
         ) -> (String, CompletionContext) {
             let before_cursor: String = content.chars().take(cursor_pos).collect();
             let current_token = self.extract_current_token(&before_cursor);
-            self.analyze_with_precomputed(
+            let context = self.analyze_with_precomputed(
                 &before_cursor,
                 &current_token,
                 sql_context,
                 sql_context,
                 tokens,
                 cursor_pos,
-            )
+            );
+            (current_token, context)
         }
 
         fn keyword_candidates(&self, prefix: &str) -> Vec<CompletionCandidate> {
