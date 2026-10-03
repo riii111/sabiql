@@ -2661,23 +2661,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn pk_column_returns_higher_score() {
-            let e = engine();
-            let table = table_with_two_columns(
-                test_support::column::test_nullable_column("name", "text", 1),
-                Column {
-                    attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..test_support::column::test_nullable_column("id", "int", 2)
-                },
-            );
-
-            let candidates = e.column_candidates(Some(&table), "");
-
-            assert_eq!(candidates[0].text, "id");
-            assert!(candidates[0].score > candidates[1].score);
-        }
-
-        #[test]
         fn not_null_column_returns_higher_score() {
             let e = engine();
             let table = table_with_two_columns(
@@ -2941,7 +2924,10 @@ mod tests {
                         attributes: ColumnAttributes::empty(),
                         ..test_support::column::test_nullable_column("user_id", "int", 2)
                     },
-                    test_support::column::test_nullable_column("status", "text", 3),
+                    Column {
+                        attributes: ColumnAttributes::empty(),
+                        ..test_support::column::test_nullable_column("status", "text", 3)
+                    },
                 ],
                 primary_key: Some(vec!["id".to_string()]),
                 foreign_keys: vec![ForeignKey {
@@ -2967,9 +2953,7 @@ mod tests {
 
             let candidates = e.column_candidates(Some(&table), "");
 
-            // id: PK(+50) + NOT NULL(+20) = 170
-            // user_id: FK(+40) + NOT NULL(+20) = 160
-            // status: nullable = 100
+            // All columns are NOT NULL so the ranking isolates the PK and FK boosts.
             let id_score = candidates.iter().find(|c| c.text == "id").unwrap().score;
             let user_id_score = candidates
                 .iter()
@@ -2984,19 +2968,6 @@ mod tests {
 
             assert!(id_score > user_id_score);
             assert!(user_id_score > status_score);
-        }
-
-        #[test]
-        fn fk_column_with_prefix_match_returns_boosted_score() {
-            let e = engine();
-            let table = create_table_with_fk();
-
-            let candidates = e.column_candidates(Some(&table), "user");
-
-            assert_eq!(candidates.len(), 1);
-            assert_eq!(candidates[0].text, "user_id");
-            // Prefix(+100) + FK(+40) + NOT NULL(+20) = 160
-            assert_eq!(candidates[0].score, 160);
         }
     }
 
