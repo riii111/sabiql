@@ -200,7 +200,7 @@ async fn handle_generate_diagram(
             return Ok(());
         }
     };
-    spawn_er_diagram_task(
+    drop(spawn_er_diagram_task(
         Arc::clone(er_exporter),
         tables,
         run_id,
@@ -209,7 +209,7 @@ async fn handle_generate_diagram(
         action_tx.clone(),
         filename,
         browser,
-    );
+    ));
     Ok(())
 }
 
