@@ -84,10 +84,6 @@ impl ResultInteraction {
         self.selection.move_cell(col);
     }
 
-    pub fn clamp_selection(&mut self, max_rows: usize, max_cols: usize) {
-        self.selection.clamp(max_rows, max_cols);
-    }
-
     pub fn begin_cell_edit(&mut self, row: usize, col: usize, value: String) {
         self.cell_edit.begin(row, col, value);
     }
