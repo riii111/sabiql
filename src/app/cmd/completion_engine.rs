@@ -214,7 +214,7 @@ impl CompletionEngine {
                     self.qualified_name_from_ref_for_database(t, metadata, scope.database_type)
                 });
 
-                let mut columns = self.column_candidates_with_fk(table_detail, current_token);
+                let mut columns = self.column_candidates(table_detail, current_token);
 
                 // UPDATE/DELETE/INSERT target table columns get priority
                 if let (Some(detail), Some(target)) = (table_detail, &target_qualified)
@@ -254,7 +254,7 @@ impl CompletionEngine {
                         continue;
                     }
                     let mut cached_columns =
-                        self.column_candidates_with_fk(Some(cached_table), current_token);
+                        self.column_candidates(Some(cached_table), current_token);
                     if target_qualified.as_ref() == Some(qualified_name) {
                         for col in &mut cached_columns {
                             col.score += 200;
@@ -823,14 +823,6 @@ impl CompletionEngine {
     }
 
     fn column_candidates(
-        &self,
-        table_detail: Option<&Table>,
-        prefix: &str,
-    ) -> Vec<CompletionCandidate> {
-        self.column_candidates_with_fk(table_detail, prefix)
-    }
-
-    fn column_candidates_with_fk(
         &self,
         table_detail: Option<&Table>,
         prefix: &str,
@@ -2977,7 +2969,7 @@ mod tests {
             let e = engine();
             let table = create_table_with_fk();
 
-            let candidates = e.column_candidates_with_fk(Some(&table), "");
+            let candidates = e.column_candidates(Some(&table), "");
 
             // id: PK(+50) + NOT NULL(+20) = 170
             // user_id: FK(+40) + NOT NULL(+20) = 160
@@ -3003,7 +2995,7 @@ mod tests {
             let e = engine();
             let table = create_table_with_fk();
 
-            let candidates = e.column_candidates_with_fk(Some(&table), "user");
+            let candidates = e.column_candidates(Some(&table), "user");
 
             assert_eq!(candidates.len(), 1);
             assert_eq!(candidates[0].text, "user_id");
@@ -3029,7 +3021,7 @@ mod tests {
             };
 
             // "id" is contained in "user_id"
-            let candidates = e.column_candidates_with_fk(Some(&table), "id");
+            let candidates = e.column_candidates(Some(&table), "id");
 
             assert_eq!(candidates.len(), 1);
             assert_eq!(candidates[0].text, "user_id");
@@ -3048,7 +3040,7 @@ mod tests {
                 ..test_support::table::minimal("", "")
             };
 
-            let candidates = e.column_candidates_with_fk(Some(&table), "id");
+            let candidates = e.column_candidates(Some(&table), "id");
 
             // "id" is prefix match (+100), "user_id" is contains match (+10)
             assert_eq!(candidates.len(), 2);
