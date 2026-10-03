@@ -1,7 +1,6 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
 use crate::model::shared::detail_view::{DetailDisplayMode, ReadOnlyDetailState};
 use crate::model::shared::flash_timer::FlashId;
@@ -174,7 +173,9 @@ mod tests {
     use super::*;
     use crate::domain::Column;
     use crate::domain::connection::ConnectionId;
-    use crate::domain::{ColumnAttributes, DatabaseType, QueryResult, QuerySource, Table};
+    use crate::domain::{
+        ColumnAttributes, DatabaseType, QueryResult, QuerySource, QueryValue, Table,
+    };
     use std::sync::Arc;
 
     fn state_with_cell(data_type: &str, cell_value: &str) -> AppState {
