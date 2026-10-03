@@ -590,7 +590,7 @@ mod tests {
                     Some("Must be 50 characters or less")
                 );
             } else {
-                assert!(!state.has_validation_error(ConnectionField::Name));
+                assert!(state.validation_error(ConnectionField::Name).is_none());
             }
         }
 
@@ -598,7 +598,7 @@ mod tests {
         fn valid_name_clears_previous_error() {
             let mut state = ConnectionSetupState::default();
             validate_field(&mut state, ConnectionField::Name);
-            assert!(state.has_validation_error(ConnectionField::Name));
+            assert!(state.validation_error(ConnectionField::Name).is_some());
 
             state
                 .input_mut(ConnectionField::Name)
@@ -606,7 +606,7 @@ mod tests {
                 .set_content("Valid Name".to_string());
             validate_field(&mut state, ConnectionField::Name);
 
-            assert!(!state.has_validation_error(ConnectionField::Name));
+            assert!(state.validation_error(ConnectionField::Name).is_none());
         }
 
         #[test]
@@ -712,7 +712,7 @@ mod tests {
 
             validate_all(&mut state);
 
-            assert!(!state.has_validation_error(ConnectionField::Host));
+            assert!(state.validation_error(ConnectionField::Host).is_none());
         }
     }
 

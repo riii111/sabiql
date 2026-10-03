@@ -1388,7 +1388,7 @@ mod tests {
             let result =
                 reduce_connection_setup(&mut state, &Action::ConnectionSetupSave, Instant::now());
 
-            assert!(result.is_handled());
+            assert!(matches!(result.into_effects(), Some(effects) if effects.is_empty()));
             assert_eq!(
                 state
                     .connection_setup
