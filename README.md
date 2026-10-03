@@ -109,21 +109,11 @@ follow their normal persistence behavior.
 
 Use `Ctrl+R` before browsing data when you want to block writes. Press `?` for help, or open Settings with `,` to change the theme and keymap.
 
-Copying defaults to **Auto**: on SSH (`SSH_CONNECTION` or `SSH_TTY` is nonempty), sabiql sends OSC 52 to your terminal; otherwise it tries the OS clipboard and falls back to OSC 52 if that fails. Open Settings with `,`, select **Clipboard**, and choose Auto, OS clipboard, or Terminal (OSC 52). A saved change applies to the next copy, without a restart. Cancel or a failed save leaves the previous choice active. Existing explicit `clipboard_backend = "native"` or `"osc52"` settings remain respected; an omitted value means `"auto"`.
+Copying automatically chooses the local clipboard or your SSH terminal. Open Settings with `,` and choose **Clipboard** to change the destination without restarting. Your terminal and any multiplexer must support and allow OSC 52; sending a value does not confirm clipboard acceptance.
 
-Your terminal and any multiplexer must support and allow OSC 52. The success message distinguishes OS copying from sending to the terminal: sending cannot confirm clipboard acceptance. Values over 74,994 UTF-8 bytes are rejected without truncation. SSH variables may be absent inside containers; use the manual choice when necessary.
+### Saved passwords
 
-### Saved passwords and recovery
-
-New or edited passwords are stored in macOS Keychain, Windows Credential Manager, or Secret Service on Linux/FreeBSD. Linux needs an available Secret Service implementation, such as GNOME Keyring, KWallet, or KeePassXC, and a working login/session bus. FreeBSD source builds additionally require system `dbus` and `pkgconf`; its keyring dependency is not vendored. Android/Termux does not support password storage. Existing plaintext passwords remain readable and are migrated only when that connection is edited and saved; there is no automatic plaintext fallback.
-
-If secure storage is unavailable, PostgreSQL can use an empty saved password with `.pgpass` or a PostgreSQL service. Both PostgreSQL and MySQL can use a URI from `--connection-env`. MySQL does not read the user's usual option/login-path files through this adapter. Renaming a legacy connection with a password also needs secure storage; clear its password first if using an alternative authentication source.
-
-A failed password lookup does not mean your saved connections were deleted. Fix the store's lock, permissions, service or login session, then restart sabiql. Store operations have a 60-second deadline and do not hold the settings-file lock while awaiting an OS prompt. A missing credential keeps its reference when unrelated connection fields are edited; set a new password to restore it. Configuration files do not carry the OS store entries between machines. After a configuration change is written, an old-password cleanup failure does not roll it back: a save keeps its replacement credential, and a deleted connection stays deleted. The warning means an old OS-store credential may remain, or deletion completed without acknowledgement. Verify the affected credential before removing it manually.
-
-Settings retain their existing configuration version, and new passwordless files use version 3. Saving a password reference upgrades the file to version 4, which sabiql v3.0.1 and earlier cannot read. Back up configuration before upgrading if you need to roll back; do not delete the file in response to a version mismatch. Use a compatible sabiql version instead.
-
-PostgreSQL URI password values containing literal `?` or `#` must encode them as `%3F` or `%23`. MySQL URI options use their documented spelling (for example `ssl-mode=VERIFY_IDENTITY`); unknown query parameters are rejected. See [release validation](docs/release-validation.md) for the checks required before publishing.
+New or changed passwords are saved in your OS password store. Linux/FreeBSD require Secret Service; Android/Termux cannot save passwords. Back up your configuration before upgrading. See [password storage and recovery](docs/password-storage.md) for setup, compatibility, and error recovery.
 
 ## Roadmap
 

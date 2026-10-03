@@ -6,8 +6,10 @@ each release candidate. Do not publish a tag just to test builds.
 
 ## Build without publishing
 
-The **Release Build Validation** workflow runs manually and is reused by CI and
-Release. It checks Android compilation and builds all five distributed binaries:
+Run **Release Build Validation** manually on the release candidate before tagging.
+The Release workflow also runs the same validation before publishing; everyday
+PR/main CI does not build the distribution matrix. Validation checks Android
+compilation and builds all five distributed binaries:
 macOS Intel/Apple Silicon, Linux x86_64/ARM64 and Windows x86_64. It uploads build
 artifacts but does not create a GitHub Release or publish crates. Also run a
 native FreeBSD build with system dbus/pkg-config and `nix build` before claiming

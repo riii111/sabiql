@@ -164,12 +164,6 @@ jobs:
       - run: cargo nextest run -p sabiql --profile ci-no-default --no-default-features --show-progress=none --status-level=fail --final-status-level=fail
       - run: cargo run --all-features -- --version
 
-  release-build:
-    name: Release Build Validation
-    uses: ./.github/workflows/release-build.yml
-    permissions:
-      contents: read
-
   integration:
     name: Integration Test
     runs-on: ubuntu-latest
