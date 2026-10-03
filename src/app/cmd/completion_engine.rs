@@ -1494,19 +1494,45 @@ mod tests {
             assert_eq!(candidates[0].text, "SELECT");
         }
 
+        // Hidden keywords are present in the lexer's keyword source but excluded from
+        // completion, so the cases fail if the exclusion policy is dropped.
         #[rstest::rstest]
-        #[case(DatabaseType::PostgreSQL)]
-        #[case(DatabaseType::SQLite)]
-        fn non_mysql_keywords_exclude_mysql_only_keywords(#[case] database_type: DatabaseType) {
+        #[case(
+            DatabaseType::PostgreSQL,
+            &["ILIKE", "RETURNING", "NULLS"],
+            &["ONLY", "LATERAL", "MERGE", "BEGIN", "OVER", "TRUNCATE"]
+        )]
+        #[case(
+            DatabaseType::SQLite,
+            &["ILIKE", "RETURNING", "NULLS"],
+            &["ONLY", "LATERAL", "MERGE", "BEGIN", "OVER", "TRUNCATE"]
+        )]
+        #[case(
+            DatabaseType::MySQL,
+            &["DESCRIBE", "TRUNCATE", "OVER"],
+            &["STRAIGHT_JOIN", "REPLACE", "CALL", "SAVEPOINT", "USE"]
+        )]
+        fn offers_dialect_keywords_and_hides_excluded_ones(
+            #[case] database_type: DatabaseType,
+            #[case] offered: &[&str],
+            #[case] hidden: &[&str],
+        ) {
             let e = engine();
+            let is_offered = |keyword: &str| {
+                e.keyword_candidates_for_database(keyword, database_type)
+                    .iter()
+                    .any(|candidate| candidate.text == keyword)
+            };
 
-            let select = e.keyword_candidates_for_database("SEL", database_type);
-
-            assert!(select.iter().any(|candidate| candidate.text == "SELECT"));
-            for keyword in ["DESCRIBE", "TRUNCATE", "ENGINE", "AUTO_INCREMENT"] {
-                let candidates = e.keyword_candidates_for_database(keyword, database_type);
+            for keyword in offered {
                 assert!(
-                    !candidates.iter().any(|candidate| candidate.text == keyword),
+                    is_offered(keyword),
+                    "{keyword} must be offered for {database_type:?}"
+                );
+            }
+            for keyword in hidden {
+                assert!(
+                    !is_offered(keyword),
                     "{keyword} must not be offered for {database_type:?}"
                 );
             }
@@ -2907,7 +2933,7 @@ mod tests {
         }
     }
 
-    mod fk_column_scoring {
+    mod key_column_ranking {
         use super::*;
         use crate::domain::{FkAction, ForeignKey};
 
@@ -2947,7 +2973,7 @@ mod tests {
         }
 
         #[test]
-        fn fk_column_returns_higher_score() {
+        fn key_columns_rank_pk_then_fk_then_plain() {
             let e = engine();
             let table = create_table_with_fk();
 
