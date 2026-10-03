@@ -1221,7 +1221,7 @@ mod tests {
         #[test]
         fn execute_write_success_refreshes_preview_page() {
             let mut state = editable_state();
-            state.query.pagination.set_current_page(2);
+            state.query.pagination.set_page_result(2, false);
             let action = write_succeeded_action(&mut state, 1);
 
             let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();

@@ -1884,7 +1884,7 @@ mod tests {
                     QuerySource::Preview,
                 )));
             state.query.pagination.reset_for_table("public", "users");
-            state.query.pagination.set_current_page(2);
+            state.query.pagination.set_page_result(2, false);
             let query_run_id = state.query.begin_running(std::time::Instant::now());
 
             let second = ConnectionTarget {

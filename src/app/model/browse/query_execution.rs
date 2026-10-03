@@ -89,12 +89,6 @@ impl PaginationState {
         self.reached_end = true;
     }
 
-    // Use when navigation changes only the page index and must preserve the
-    // current end-of-data flag.
-    pub fn set_current_page(&mut self, page: usize) {
-        self.current_page = page;
-    }
-
     // Applying a query result replaces both the page and end-of-data flag so
     // stale pagination state cannot survive a completed fetch.
     pub fn set_page_result(&mut self, page: usize, reached_end: bool) {
