@@ -1164,9 +1164,9 @@ mod tests {
                 .unwrap();
 
                 assert_eq!(state.input_mode(), InputMode::QueryHistoryPicker);
-                assert_eq!(state.modal.return_destination(), InputMode::Normal);
                 assert_eq!(effects.len(), 1);
                 assert!(matches!(&effects[0], Effect::LoadQueryHistory { .. }));
+                assert_eq!(state.modal.pop_mode(), InputMode::Normal);
             }
 
             #[test]
@@ -1182,8 +1182,8 @@ mod tests {
                 .unwrap();
 
                 assert_eq!(state.input_mode(), InputMode::QueryHistoryPicker);
-                assert_eq!(state.modal.return_destination(), InputMode::Normal);
                 assert!(effects.is_empty());
+                assert_eq!(state.modal.pop_mode(), InputMode::Normal);
             }
 
             #[test]
