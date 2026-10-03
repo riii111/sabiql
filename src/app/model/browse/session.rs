@@ -606,15 +606,6 @@ impl BrowseSession {
         self.effective_user = effective_user;
     }
 
-    pub fn mark_probe_connected(&mut self) {
-        self.connection_state = ConnectionState::Connected;
-        self.metadata_state = MetadataState::NotLoaded;
-        self.metadata = None;
-        self.metadata_run.clear_active();
-        self.metadata_detail_generation = None;
-        self.effective_user = None;
-    }
-
     // On reload failure (already Connected), keeps Connected to preserve
     // the current browse session while surfacing the error.
     pub fn mark_connection_failed(&mut self) {
@@ -1441,7 +1432,7 @@ mod tests {
 
             session.mark_connection_failed();
 
-            assert!(session.connection_state().is_failed());
+            assert_eq!(session.connection_state(), ConnectionState::Failed);
             assert_eq!(session.metadata_state(), &MetadataState::Error);
             assert!(!session.is_reloading());
         }

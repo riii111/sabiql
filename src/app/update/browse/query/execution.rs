@@ -912,7 +912,7 @@ mod tests {
         #[test]
         fn adhoc_does_not_update_pagination() {
             let mut state = create_test_state();
-            state.query.pagination.set_current_page(3);
+            state.query.pagination.set_page_result(3, false);
             let result = adhoc_result();
             let now = Instant::now();
             let action = query_completed_action(&mut state, result, 0, None);

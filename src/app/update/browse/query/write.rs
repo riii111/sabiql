@@ -1221,7 +1221,7 @@ mod tests {
         #[test]
         fn execute_write_success_refreshes_preview_page() {
             let mut state = editable_state();
-            state.query.pagination.set_current_page(2);
+            state.query.pagination.set_page_result(2, false);
             let action = write_succeeded_action(&mut state, 1);
 
             let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
@@ -1496,11 +1496,11 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
-            assert_eq!(state.modal.return_destination(), InputMode::Normal);
             assert_eq!(
                 state.confirm_dialog.title(),
                 "Confirm DELETE: 1 row from users"
             );
+            assert_eq!(state.modal.pop_mode(), InputMode::Normal);
         }
 
         #[test]

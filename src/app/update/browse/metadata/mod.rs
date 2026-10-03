@@ -1720,7 +1720,6 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.table_prefetch.begin_er_prefetch();
             let _ = state.er_preparation.start_waiting_run();
-            state.er_preparation.mark_fk_unexpanded();
             let effects = check_er_completion(&mut state);
 
             assert!(effects.iter().any(|e| matches!(
@@ -1824,7 +1823,6 @@ mod tests {
             let mut state = state_with_pending_mysql_probe();
             let run_id = state.table_prefetch.begin_er_prefetch();
             let _ = state.er_preparation.start_waiting_run();
-            state.er_preparation.mark_fk_unexpanded();
 
             let effects = dispatch_metadata(
                 &mut state,

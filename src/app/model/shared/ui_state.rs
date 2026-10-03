@@ -81,20 +81,14 @@ pub struct YankFlash {
     pub until: Instant,
 }
 
-// Invariant: `row` and `cell` are both `Some` for CellActive, or both `None` for Scroll.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ResultSelection {
-    row: Option<usize>,
-    cell: Option<usize>,
+    active_cell: Option<(usize, usize)>,
 }
 
 impl ResultSelection {
-    fn is_consistent(&self) -> bool {
-        self.row.is_some() == self.cell.is_some()
-    }
-
     pub fn mode(&self) -> ResultNavMode {
-        if self.row.is_some() && self.cell.is_some() {
+        if self.active_cell.is_some() {
             ResultNavMode::CellActive
         } else {
             ResultNavMode::Scroll
@@ -102,64 +96,31 @@ impl ResultSelection {
     }
 
     pub fn row(&self) -> Option<usize> {
-        if self.is_consistent() { self.row } else { None }
+        self.active_cell.map(|(row, _)| row)
     }
 
     pub fn cell(&self) -> Option<usize> {
-        if self.is_consistent() {
-            self.cell
-        } else {
-            None
-        }
+        self.active_cell.map(|(_, col)| col)
     }
 
     pub fn enter_cell(&mut self, row: usize, col: usize) {
-        self.row = Some(row);
-        self.cell = Some(col);
-        debug_assert!(self.is_consistent());
+        self.active_cell = Some((row, col));
     }
 
     pub fn move_row(&mut self, row: usize) {
-        debug_assert!(self.is_consistent());
-        if self.cell.is_some() {
-            self.row = Some(row);
+        if let Some((active_row, _)) = &mut self.active_cell {
+            *active_row = row;
         }
-        debug_assert!(self.is_consistent());
     }
 
     pub fn move_cell(&mut self, col: usize) {
-        debug_assert!(self.is_consistent());
-        if self.row.is_some() {
-            self.cell = Some(col);
+        if let Some((_, active_col)) = &mut self.active_cell {
+            *active_col = col;
         }
-        debug_assert!(self.is_consistent());
     }
 
     pub fn reset(&mut self) {
-        self.row = None;
-        self.cell = None;
-    }
-
-    pub fn clamp(&mut self, max_rows: usize, max_cols: usize) {
-        if max_rows == 0 {
-            self.reset();
-            return;
-        }
-        if let Some(r) = self.row
-            && r >= max_rows
-        {
-            self.reset();
-            return;
-        }
-        if max_cols == 0 {
-            self.reset();
-            return;
-        }
-        if let Some(c) = self.cell
-            && c >= max_cols
-        {
-            self.cell = Some(max_cols - 1);
-        }
+        self.active_cell = None;
     }
 }
 
@@ -341,10 +302,6 @@ impl UiState {
 
     pub fn pending_er_picker(&self) -> bool {
         self.pending_er_picker
-    }
-
-    pub fn set_pending_er_picker(&mut self, pending: bool) {
-        self.pending_er_picker = pending;
     }
 
     pub fn inspector_tab(&self) -> InspectorTab {
@@ -649,19 +606,15 @@ mod tests {
         use super::*;
 
         #[test]
-        fn default_creates_empty_state() {
-            let state = UiState::default();
-
-            assert_eq!(state.focused_pane, FocusedPane::default());
-            assert_eq!(state.focus_mode, FocusMode::Normal);
-            assert_eq!(state.explorer_selected, 0);
-            assert!(state.table_picker.filter_input().content().is_empty());
-        }
-
-        #[test]
-        fn new_sets_terminal_height() {
+        fn new_starts_on_explorer_info_with_empty_selection() {
             let state = UiState::new();
 
+            assert_eq!(state.focused_pane, FocusedPane::Explorer);
+            assert_eq!(state.focus_mode, FocusMode::Normal);
+            assert_eq!(state.inspector_tab, InspectorTab::Info);
+            assert_eq!(state.explorer_selected, 0);
+            assert!(state.table_picker.filter_input().content().is_empty());
+            assert_eq!(state.table_picker.selected(), 0);
             assert_eq!(state.terminal_width, 80);
             assert_eq!(state.terminal_height, 24);
         }
@@ -990,57 +943,6 @@ mod tests {
 
             assert_eq!(sel.mode(), ResultNavMode::Scroll);
             assert_eq!(sel.row(), None);
-        }
-
-        #[rstest]
-        #[case(5, 0, 0, 10)]
-        #[case(10, 2, 5, 10)]
-        #[case(0, 3, 10, 0)]
-        fn clamp_resets_for_invalid_selection(
-            #[case] row: usize,
-            #[case] cell: usize,
-            #[case] rows: usize,
-            #[case] cols: usize,
-        ) {
-            let mut sel = ResultSelection::default();
-            sel.enter_cell(row, cell);
-
-            sel.clamp(rows, cols);
-
-            assert_eq!(sel.mode(), ResultNavMode::Scroll);
-        }
-
-        #[test]
-        fn clamp_caps_cell_to_max_cols() {
-            let mut sel = ResultSelection::default();
-            sel.enter_cell(0, 9);
-
-            sel.clamp(10, 5);
-
-            assert_eq!(sel.cell(), Some(4));
-        }
-
-        #[test]
-        fn clamp_preserves_valid_selection() {
-            let mut sel = ResultSelection::default();
-            sel.enter_cell(3, 2);
-
-            sel.clamp(10, 10);
-
-            assert_eq!(sel.row(), Some(3));
-            assert_eq!(sel.cell(), Some(2));
-        }
-
-        #[test]
-        fn accessors_hide_inconsistent_state() {
-            let sel = ResultSelection {
-                row: Some(1),
-                cell: None,
-            };
-
-            assert_eq!(sel.row(), None);
-            assert_eq!(sel.cell(), None);
-            assert_eq!(sel.mode(), ResultNavMode::Scroll);
         }
     }
 }

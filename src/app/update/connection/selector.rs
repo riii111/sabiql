@@ -281,10 +281,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(
-                state.modal.return_destination(),
-                InputMode::ConnectionSelector
-            );
+            assert_eq!(state.modal.pop_mode(), InputMode::ConnectionSelector);
         }
     }
 
@@ -438,7 +435,7 @@ mod tests {
                 .set_connection_state(ConnectionState::Connected);
 
             // Set state that was previously not reset by ConnectionDeleted.
-            state.query.pagination.set_current_page(3);
+            state.query.pagination.set_page_result(3, false);
             state.result_interaction.activate_cell(5, 0);
             state.result_interaction.set_scroll_offset(10);
             state.result_interaction.set_horizontal_offset(20);
@@ -462,7 +459,7 @@ mod tests {
                 "SELECT * FROM users WHERE id = 1",
             );
             state.explain.set_error("stale error".to_string());
-            state.ui.set_pending_er_picker(true);
+            state.ui.request_er_picker_after_metadata();
             let _ = state.er_preparation.start_waiting_run();
             state
                 .table_prefetch

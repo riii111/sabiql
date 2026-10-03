@@ -770,7 +770,7 @@ mod tests {
         }
 
         fn seed_er_state(state: &mut AppState) {
-            state.ui.set_pending_er_picker(true);
+            state.ui.request_er_picker_after_metadata();
             let _ = state.er_preparation.start_waiting_run();
             state
                 .table_prefetch
@@ -1418,7 +1418,7 @@ mod tests {
         fn switching_clears_pending_er_picker(#[case] cached: bool) {
             let mut state = AppState::new("test".to_string());
             let new_id = ConnectionId::new();
-            state.ui.set_pending_er_picker(true);
+            state.ui.request_er_picker_after_metadata();
             let _ = state.er_preparation.start_waiting_run();
             state
                 .table_prefetch
@@ -1588,7 +1588,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(state.session.connection_state().is_failed());
+            assert_eq!(state.session.connection_state(), ConnectionState::Failed);
             assert_eq!(state.modal.active_mode(), InputMode::ConnectionError);
             assert!(state.connection_error.error_info().is_some());
             assert!(matches!(
@@ -1850,7 +1850,9 @@ mod tests {
                 &first.dsn,
                 first.database.as_deref(),
             );
-            state.session.mark_probe_connected();
+            state
+                .session
+                .mark_connected(Arc::new(DatabaseMetadata::new("a".to_string())));
             state.ui.set_explorer_selected_raw(3);
             let generation = state
                 .session
@@ -1882,7 +1884,7 @@ mod tests {
                     QuerySource::Preview,
                 )));
             state.query.pagination.reset_for_table("public", "users");
-            state.query.pagination.set_current_page(2);
+            state.query.pagination.set_page_result(2, false);
             let query_run_id = state.query.begin_running(std::time::Instant::now());
 
             let second = ConnectionTarget {
@@ -2354,7 +2356,7 @@ mod tests {
             );
 
             assert!(!state.session.connection_state().is_connected());
-            assert!(state.session.connection_state().is_failed());
+            assert_eq!(state.session.connection_state(), ConnectionState::Failed);
             assert_eq!(state.modal.active_mode(), InputMode::ConnectionError);
             assert_eq!(
                 state.connection_error.error_info().unwrap().summary(),

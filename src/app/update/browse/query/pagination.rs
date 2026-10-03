@@ -466,7 +466,6 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result_with_two_columns(PREVIEW_PAGE_SIZE));
-            state.query.pagination.set_current_page(0);
             state.result_interaction.activate_cell(1, 1);
             state.result_interaction.stage_row(1);
 
