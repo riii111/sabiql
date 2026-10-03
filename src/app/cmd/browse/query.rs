@@ -330,13 +330,10 @@ pub(in crate::cmd) async fn run(
         } => {
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
-            let export_dsn = dsn.clone();
 
             query_tasks
                 .replace(async move {
-                    let result = executor
-                        .export_to_csv(&export_dsn, &query, &file_name)
-                        .await;
+                    let result = executor.export_to_csv(&dsn, &query, &file_name).await;
                     match result {
                         Ok(path) => {
                             tx.send(Action::CsvExportSucceeded {
