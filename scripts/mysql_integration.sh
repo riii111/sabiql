@@ -32,7 +32,6 @@ mysql_option_file=''
 mysql_bin_dir=''
 mysql_run_label=''
 mysql_client_label=''
-cleanup_failed=0
 
 create_client_container_label() {
     mysql_run_label="run-${repo_hash}-${run_id}"
@@ -100,44 +99,34 @@ cleanup_client_containers() {
 }
 
 cleanup() {
-    local status="$1"
-    cleanup_failed=0
+    local failed=0
 
     if ! cleanup_client_containers; then
         printf 'failed to clean up MySQL client containers for %s\n' "$mysql_client_label" >&2
-        cleanup_failed=1
+        failed=1
     fi
     if [[ -n "$compose_project" ]] && ! run_compose down --volumes --remove-orphans >/dev/null 2>&1; then
         printf 'failed to clean up MySQL Compose project %s\n' "$compose_project" >&2
-        cleanup_failed=1
+        failed=1
     fi
     if [[ -n "$mysql_option_file" ]] && ! rm -f -- "$mysql_option_file"; then
-        cleanup_failed=1
+        failed=1
     fi
     if [[ -n "$mysql_bin_dir" ]] && ! rm -rf -- "$mysql_bin_dir"; then
-        cleanup_failed=1
+        failed=1
     fi
     if [[ -n "$run_dir" ]] && ! rm -rf -- "$run_dir"; then
-        cleanup_failed=1
+        failed=1
     fi
-    if [[ "$status" == 0 && "$cleanup_failed" != 0 ]]; then
-        status=1
-    fi
-    return "$status"
+    return "$failed"
 }
 
 handle_exit() {
     local status="$1"
-    local cleanup_status
 
     trap - EXIT HUP INT TERM
-    if cleanup "$status"; then
-        cleanup_status=0
-    else
-        cleanup_status=$?
-    fi
-    if [[ "$status" == 0 && "$cleanup_status" != 0 ]]; then
-        exit "$cleanup_status"
+    if ! cleanup && [[ "$status" == 0 ]]; then
+        status=1
     fi
     exit "$status"
 }
@@ -146,9 +135,8 @@ handle_signal() {
     local status="$1"
 
     trap - EXIT HUP INT TERM
-    cleanup "$status" || :
-    if [[ "$cleanup_failed" != 0 ]]; then
-        exit 1
+    if ! cleanup; then
+        status=1
     fi
     exit "$status"
 }
