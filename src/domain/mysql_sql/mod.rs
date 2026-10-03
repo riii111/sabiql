@@ -206,13 +206,6 @@ pub fn classify_mysql_multi_statement_with_lower_case_table_names(
     Ok(classified)
 }
 
-pub fn validate_mysql_statements(
-    statements: &[MySqlStatement],
-    selected_database: Option<&str>,
-) -> Result<(), String> {
-    validate_mysql_statements_with_lower_case_table_names(statements, selected_database, 0)
-}
-
 pub fn validate_mysql_statements_with_lower_case_table_names(
     statements: &[MySqlStatement],
     selected_database: Option<&str>,

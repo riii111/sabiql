@@ -23,10 +23,6 @@ fn strip_sqlite_explain_query_plan_prefix(trimmed: &str) -> Option<&str> {
         .map(str::trim_start)
 }
 
-pub fn is_sqlite_explain_query_plan_sql(query: &str) -> bool {
-    strip_sqlite_explain_query_plan_prefix(query.trim()).is_some()
-}
-
 fn supports_sqlite_query_plan(statement: &str) -> bool {
     if split_sqlite_statements(statement).statements().len() != 1 {
         return false;
@@ -166,15 +162,5 @@ mod tests {
             build_sqlite_explain_query_plan_sql("-- filter\nSELECT 1"),
             Some("EXPLAIN QUERY PLAN -- filter\nSELECT 1".to_string())
         );
-    }
-
-    #[test]
-    fn detects_query_plan_prefix_only_at_a_valid_boundary() {
-        assert!(is_sqlite_explain_query_plan_sql(
-            "EXPLAIN QUERY PLAN SELECT 1"
-        ));
-        assert!(!is_sqlite_explain_query_plan_sql(
-            "EXPLAIN QUERY PLANSELECT 1"
-        ));
     }
 }

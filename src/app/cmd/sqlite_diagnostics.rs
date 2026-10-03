@@ -177,7 +177,7 @@ mod tests {
             Action::SqliteDiagnosticsCoreLoaded {
                 snapshot,
                 ..
-            } if snapshot.db_file.is_err()
+            } if matches!(snapshot.db_file, DiagnosticField::Err(_))
         ));
     }
 
