@@ -521,16 +521,10 @@ pub fn evaluate_multi_statement_for_database_with_context(
         .map(|statement| sqlite_statement_classification(statement))
         .collect();
     let transaction_policy = if database_type == DatabaseType::SQLite {
-        sqlite_transaction_policy_for_classifications(statements.len(), &sqlite_classifications)
+        sqlite_transaction_policy_for_classifications(&sqlite_classifications)
     } else {
         SqliteTransactionPolicy::NotNeeded
     };
-
-    if transaction_policy.is_invalid() {
-        return MultiStatementDecision::Block {
-            reason: "SQLite transaction policy could not classify all statements".to_string(),
-        };
-    }
 
     // One dialog can only carry one consent: a typed-name confirmation must not
     // silently approve statements that need their own acknowledgment, and one
