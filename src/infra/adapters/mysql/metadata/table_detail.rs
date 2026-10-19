@@ -871,16 +871,21 @@ done
             )
             .await
         });
-        for _ in 0..1_000 {
-            if std::fs::read_to_string(&transcript)
-                .unwrap()
-                .lines()
-                .any(|line| line.starts_with("process="))
-            {
-                break;
+        // The PID is logged before the option-file check, so it is not a readiness signal.
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if std::fs::read_to_string(&transcript)
+                    .unwrap()
+                    .lines()
+                    .any(|line| line == "option-exists=yes")
+                {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
             }
-            tokio::time::sleep(Duration::from_millis(5)).await;
-        }
+        })
+        .await
+        .expect("fake MySQL CLI did not confirm the option file before cancellation");
         task.abort();
         assert!(task.await.unwrap_err().is_cancelled());
 
