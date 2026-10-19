@@ -26,11 +26,11 @@ fn update_subcommand_is_recognized() {
 mod self_update_selection {
     use super::super::latest_stable_release;
 
-    fn release(version: &str) -> self_update::update::Release {
-        self_update::update::Release {
-            version: version.to_owned(),
-            ..Default::default()
-        }
+    fn release(version: &str) -> self_update::Release {
+        self_update::Release::builder()
+            .version(version)
+            .build()
+            .unwrap()
     }
 
     #[test]
@@ -39,7 +39,7 @@ mod self_update_selection {
 
         let selected = latest_stable_release("1.14.0", &releases).unwrap();
 
-        assert_eq!(selected.version, "2.0.0");
+        assert_eq!(selected.version(), "2.0.0");
     }
 }
 
