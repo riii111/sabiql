@@ -12,8 +12,8 @@ mod shared {
 mod connection {
 
     use crate::tests::harness::mysql::{
-        MYSQL_FIXTURE_TABLE, mysql_cache_miss_config, mysql_integration_config, mysql_tls_config,
-        with_mysql_test_db,
+        MYSQL_FIXTURE_TABLE, mysql_cache_miss_config, mysql_cache_miss_retrieval_config,
+        mysql_integration_config, mysql_tls_config, with_mysql_test_db,
     };
     use sabiql_app::model::connection::error::ConnectionErrorInfo;
     use sabiql_app::ports::outbound::{
@@ -109,7 +109,7 @@ mod connection {
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
-    async fn connects_to_oracle_mysql_84_without_tls_with_trusted_server_public_key() {
+    async fn connects_to_oracle_mysql_84_without_tls_with_trusted_or_retrieved_server_public_key() {
         let adapter = MySqlAdapter::new();
         let trusted_config = mysql_cache_miss_config();
         assert_eq!(trusted_config.ssl_mode, MySqlSslMode::Disabled);
@@ -133,6 +133,24 @@ mod connection {
             }
             error => panic!("unexpected error kind: {error:?}"),
         }
+
+        let retrieval_config = mysql_cache_miss_retrieval_config()
+            .with_server_public_key_path(None)
+            .with_get_server_public_key(true);
+        let retrieval_profile =
+            mysql_profile("mysql-caching-sha2-public-key-retrieval", retrieval_config);
+        let retrieval_dsn = adapter.build_dsn(&retrieval_profile);
+
+        adapter.probe(&retrieval_dsn).await.unwrap();
+        let result = adapter
+            .execute_adhoc(
+                &retrieval_dsn,
+                &format!("SELECT id FROM {MYSQL_FIXTURE_TABLE}"),
+                AccessMode::ReadWrite,
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.values(), [[QueryValue::Text("1".to_string())]]);
 
         let trusted_profile = mysql_profile("mysql-caching-sha2-public-key", trusted_config);
         let dsn = adapter.build_dsn(&trusted_profile);
@@ -291,9 +309,10 @@ mod metadata_fetch {
             Box::pin(async move {
                 let registry = DbAdapterRegistry::new();
                 let effective_user = registry
-                    .fetch_effective_user(db.dsn())
+                    .fetch_metadata(db.dsn())
                     .await
                     .map_err(|error| format!("{error:?}"))?
+                    .effective_user
                     .ok_or_else(|| "MySQL effective user was empty".to_string())?;
                 let config = mysql_integration_config();
 
@@ -320,15 +339,20 @@ mod metadata_fetch {
                     .await
                     .map_err(|error| format!("{error:?}"))?;
                 if metadata
+                    .metadata
                     .schemas
                     .iter()
                     .map(|schema| schema.name.as_str())
                     .collect::<Vec<_>>()
                     != ["sabiql_test"]
                 {
-                    return Err(format!("unexpected MySQL schemas: {:?}", metadata.schemas));
+                    return Err(format!(
+                        "unexpected MySQL schemas: {:?}",
+                        metadata.metadata.schemas
+                    ));
                 }
                 let table = metadata
+                    .metadata
                     .table_summaries
                     .iter()
                     .find(|summary| summary.name == MYSQL_FIXTURE_TABLE)
@@ -2326,71 +2350,39 @@ mod query_execution {
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
-    async fn preserves_empty_show_columns() {
+    async fn preserves_empty_metadata_columns_for_all_query_forms() {
         with_mysql_test_db(|db| {
             Box::pin(async move {
-                let show = db
-                    .adapter()
-                    .execute_adhoc(
-                        db.dsn(),
-                        "SHOW TABLES LIKE 'sabiql_empty_metadata_missing'",
-                        AccessMode::ReadWrite,
-                    )
-                    .await
-                    .map_err(|error| format!("empty SHOW failed: {error:?}"))?;
-                if show.columns != ["Tables_in_sabiql_test (sabiql_empty_metadata_missing)"]
-                    || !show.values().is_empty()
-                {
-                    return Err(format!("unexpected empty SHOW result: {show:?}"));
-                }
-                Ok(())
-            })
-        })
-        .await;
-    }
+                let cases = [
+                    (
+                        "SHOW",
+                        "SHOW TABLES LIKE 'sabiql_empty_metadata_missing'".to_string(),
+                        vec!["Tables_in_sabiql_test (sabiql_empty_metadata_missing)"],
+                    ),
+                    (
+                        "DESCRIBE",
+                        format!("DESCRIBE {MYSQL_EMPTY_TABLE} 'missing_column'"),
+                        vec!["Field", "Type", "Null", "Key", "Default", "Extra"],
+                    ),
+                    (
+                        "TABLE",
+                        format!("TABLE {MYSQL_EMPTY_TABLE}"),
+                        vec!["id", "payload"],
+                    ),
+                ];
 
-    #[tokio::test]
-    #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
-    async fn preserves_empty_describe_columns() {
-        with_mysql_test_db(|db| {
-            Box::pin(async move {
-                let describe = db
-                    .adapter()
-                    .execute_adhoc(
-                        db.dsn(),
-                        &format!("DESCRIBE {MYSQL_EMPTY_TABLE} 'missing_column'"),
-                        AccessMode::ReadWrite,
-                    )
-                    .await
-                    .map_err(|error| format!("empty DESCRIBE failed: {error:?}"))?;
-                if describe.columns != ["Field", "Type", "Null", "Key", "Default", "Extra"]
-                    || !describe.values().is_empty()
-                {
-                    return Err(format!("unexpected empty DESCRIBE result: {describe:?}"));
+                for (label, query, expected_columns) in cases {
+                    let result = db
+                        .adapter()
+                        .execute_adhoc(db.dsn(), &query, AccessMode::ReadWrite)
+                        .await
+                        .map_err(|error| format!("empty {label} failed: {error:?}"))?;
+                    let columns: Vec<_> = result.columns.iter().map(String::as_str).collect();
+                    if columns != expected_columns || !result.values().is_empty() {
+                        return Err(format!("unexpected empty {label} result: {result:?}"));
+                    }
                 }
-                Ok(())
-            })
-        })
-        .await;
-    }
 
-    #[tokio::test]
-    #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
-    async fn preserves_empty_table_columns() {
-        with_mysql_test_db(|db| {
-            Box::pin(async move {
-                let table = db
-                    .adapter()
-                    .execute_adhoc(
-                        db.dsn(),
-                        &format!("TABLE {MYSQL_EMPTY_TABLE}"),
-                        AccessMode::ReadWrite,
-                    )
-                    .await
-                    .map_err(|error| format!("empty TABLE failed: {error:?}"))?;
-                if table.columns != ["id", "payload"] || !table.values().is_empty() {
-                    return Err(format!("unexpected empty TABLE result: {table:?}"));
-                }
                 Ok(())
             })
         })
@@ -3472,7 +3464,6 @@ mod csv_export {
                 let output_directory = tempdir().map_err(|error| error.to_string())?;
                 for (name, query) in [
                     ("select", format!("SELECT id FROM {MYSQL_FIXTURE_TABLE}")),
-                    ("table", format!("TABLE {MYSQL_EMPTY_TABLE}")),
                     ("show", format!("SHOW TABLES LIKE '{MYSQL_FIXTURE_TABLE}'")),
                     ("describe", format!("DESCRIBE {MYSQL_FIXTURE_TABLE}")),
                 ] {

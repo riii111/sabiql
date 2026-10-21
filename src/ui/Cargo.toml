@@ -28,7 +28,6 @@ sabiql-domain.workspace = true
 
 [dev-dependencies]
 rstest.workspace = true
-sabiql-app = { workspace = true, features = ["test-support"] }
 
 [lints]
 workspace = true

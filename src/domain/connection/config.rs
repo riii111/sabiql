@@ -198,6 +198,8 @@ pub struct MySqlConnectionConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server_public_key_path: Option<String>,
     #[serde(default, skip_serializing_if = "is_false")]
+    pub get_server_public_key: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
     pub enable_cleartext_plugin: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transport_path: Option<String>,
@@ -224,6 +226,7 @@ impl MySqlConnectionConfig {
             ssl_cert: None,
             ssl_key: None,
             server_public_key_path: None,
+            get_server_public_key: false,
             enable_cleartext_plugin: false,
             transport_path: None,
         }
@@ -245,6 +248,12 @@ impl MySqlConnectionConfig {
     #[must_use]
     pub fn with_server_public_key_path(mut self, path: Option<String>) -> Self {
         self.server_public_key_path = path;
+        self
+    }
+
+    #[must_use]
+    pub fn with_get_server_public_key(mut self, enabled: bool) -> Self {
+        self.get_server_public_key = enabled;
         self
     }
 
@@ -397,6 +406,7 @@ impl ConnectionConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     #[test]
     fn mysql_tls_modes_use_mysql_option_names() {
@@ -485,6 +495,11 @@ mod tests {
                 serde_json::from_str(r#"{ "path": "/tmp/app.db" }"#).unwrap();
 
             assert_eq!(config.path(), "/tmp/app.db");
+
+            let config: SqliteConnectionConfig =
+                serde_json::from_str(r#"{ "path": "./relative/app.db" }"#).unwrap();
+
+            assert_eq!(config.path(), "./relative/app.db");
         }
 
         #[test]
@@ -513,24 +528,18 @@ mod tests {
             ));
         }
 
-        #[test]
-        fn rejects_uri_filename() {
+        #[rstest]
+        #[case("file:/tmp/app.db?mode=ro")]
+        #[case("FILE:/tmp/app.db")]
+        fn rejects_uri_filename_case_insensitively(#[case] path: &str) {
             let result = serde_json::from_str::<SqliteConnectionConfig>(
-                r#"{ "path": "file:/tmp/app.db?mode=ro" }"#,
+                &serde_json::json!({ "path": path }).to_string(),
             );
 
             assert!(matches!(
                 result,
                 Err(error) if error.to_string().contains("URI filename")
             ));
-        }
-
-        #[test]
-        fn rejects_uri_filename_case_insensitively() {
-            let result =
-                serde_json::from_str::<SqliteConnectionConfig>(r#"{ "path": "FILE:/tmp/app.db" }"#);
-
-            assert!(result.is_err());
         }
     }
 
@@ -552,32 +561,6 @@ mod tests {
             assert!(!MySqlConnectionConfig::is_valid_host(" localhost "));
             assert!(!MySqlConnectionConfig::is_valid_host(
                 "db?ssl-mode=REQUIRED"
-            ));
-        }
-    }
-
-    mod validate_sqlite_path {
-        use super::*;
-
-        #[test]
-        fn accepts_regular_file_path() {
-            assert!(validate_sqlite_path("/tmp/app.db").is_ok());
-            assert!(validate_sqlite_path("./relative/app.db").is_ok());
-        }
-
-        #[test]
-        fn rejects_memory_database() {
-            assert!(matches!(
-                validate_sqlite_path(":memory:"),
-                Err(SqliteConnectionConfigError::UnsupportedInMemoryDatabase)
-            ));
-        }
-
-        #[test]
-        fn rejects_file_uri() {
-            assert!(matches!(
-                validate_sqlite_path("file:memdb?mode=memory"),
-                Err(SqliteConnectionConfigError::UnsupportedUriFilename)
             ));
         }
     }

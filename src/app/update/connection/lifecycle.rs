@@ -2,6 +2,7 @@ use crate::cmd::effect::Effect;
 use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::connection::error::ConnectionErrorInfo;
+use crate::model::connection::origin::ConnectionOrigin;
 use crate::model::shared::input_mode::InputMode;
 use crate::services::AppServices;
 use crate::update::action::{Action, ConnectionTarget};
@@ -11,7 +12,8 @@ use crate::update::query_context::termination_effects;
 use crate::update::dispatch_result::DispatchResult;
 
 use super::helpers::{
-    mysql_connection_completion_effects, reset_for_new_connection, restore_cache,
+    mysql_connection_completion_effects, reset_for_new_connection,
+    reset_for_new_connection_with_origin, restore_cache, restore_cache_with_origin,
     save_current_connection_cache,
 };
 
@@ -69,14 +71,7 @@ pub(in crate::update) fn reduce_connection_lifecycle(
 
             if let Some(cached) = state.connection_caches.get(id).cloned() {
                 restore_cache(state, &cached, target);
-                let mut effects = vec![Effect::ClearCompletionEngineCache];
-                if state.session.effective_user().is_none() {
-                    let run_id = state.session.begin_effective_user_fetch();
-                    effects.push(Effect::FetchEffectiveUser {
-                        dsn: dsn.clone(),
-                        run_id,
-                    });
-                }
+                let effects = vec![Effect::ClearCompletionEngineCache];
                 DispatchResult::handled_with(termination_effects(&state.query, effects))
             } else {
                 // No cache: reset and fetch metadata
@@ -111,9 +106,13 @@ pub(in crate::update) fn reduce_connection_lifecycle(
             {
                 return DispatchResult::handled();
             }
+            let origin = state
+                .session
+                .pending_mysql_connection_probe()
+                .map_or(ConnectionOrigin::Profile, |pending| pending.origin);
             let cached = state.connection_caches.get(id).cloned();
             if let Some(cached) = cached.filter(|cache| cache.is_valid_mysql_snapshot(dsn)) {
-                restore_cache(state, &cached, target);
+                restore_cache_with_origin(state, &cached, target, origin);
                 state
                     .session
                     .set_mysql_lower_case_table_names(*lower_case_table_names);
@@ -125,7 +124,7 @@ pub(in crate::update) fn reduce_connection_lifecycle(
             }
 
             state.connection_caches.remove(id);
-            reset_for_new_connection(state, target);
+            reset_for_new_connection_with_origin(state, target, origin);
             state
                 .session
                 .set_mysql_lower_case_table_names(*lower_case_table_names);
@@ -206,12 +205,21 @@ pub(super) fn try_connect(state: &mut AppState) -> Vec<Effect> {
             database_type: DatabaseType::MySQL,
             database: state.session.active_database().map(str::to_string),
         };
-        let run_id = state.session.begin_mysql_connection_probe(
-            &target.id,
-            &target.name,
-            &target.dsn,
-            target.database.as_deref(),
-        );
+        let run_id = if state.session.is_ephemeral_connection() {
+            state.session.begin_cli_mysql_connection_probe(
+                &target.id,
+                &target.name,
+                &target.dsn,
+                target.database.as_deref(),
+            )
+        } else {
+            state.session.begin_mysql_connection_probe(
+                &target.id,
+                &target.name,
+                &target.dsn,
+                target.database.as_deref(),
+            )
+        };
         clear_query_confirmation(state);
         state.query.reset_for_context_change();
         state.session.mark_connecting();
@@ -539,29 +547,6 @@ mod tests {
     mod cache_tests {
         use super::*;
 
-        #[test]
-        fn saves_current_cache_before_switching() {
-            let mut state = AppState::new("test".to_string());
-            let current_id = ConnectionId::new();
-            let new_id = ConnectionId::new();
-
-            state.session.activate_connection_with_dsn(
-                &current_id,
-                "current",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/current",
-            );
-            state.ui.set_explorer_selected_raw(5);
-            state.ui.set_inspector_tab(InspectorTab::Indexes);
-
-            let action = create_postgres_switch_action(&new_id, "new_db");
-            reduce(&mut state, &action);
-
-            let saved = &state.connection_caches[&current_id];
-            assert_eq!(saved.explorer_selected, 5);
-            assert_eq!(saved.inspector_tab, InspectorTab::Indexes);
-        }
-
         fn assert_non_mysql_cache_survives_mysql_switch(
             database_type: DatabaseType,
             dsn: &str,
@@ -615,22 +600,15 @@ mod tests {
             assert_eq!(state.ui.inspector_tab(), InspectorTab::Indexes);
         }
 
-        #[test]
-        fn restores_postgres_cache_after_switching_through_mysql() {
-            assert_non_mysql_cache_survives_mysql_switch(
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/current",
-                "postgres",
-            );
-        }
-
-        #[test]
-        fn restores_sqlite_cache_after_switching_through_mysql() {
-            assert_non_mysql_cache_survives_mysql_switch(
-                DatabaseType::SQLite,
-                "sqlite:///tmp/current.db",
-                "sqlite",
-            );
+        #[rstest::rstest]
+        #[case(DatabaseType::PostgreSQL, "postgres://localhost/current", "postgres")]
+        #[case(DatabaseType::SQLite, "sqlite:///tmp/current.db", "sqlite")]
+        fn restores_non_mysql_cache_after_switching_through_mysql(
+            #[case] database_type: DatabaseType,
+            #[case] dsn: &str,
+            #[case] name: &str,
+        ) {
+            assert_non_mysql_cache_survives_mysql_switch(database_type, dsn, name);
         }
 
         #[test]
@@ -647,9 +625,10 @@ mod tests {
             state
                 .session
                 .mark_connected(Arc::new(DatabaseMetadata::new("current".to_string())));
+            let metadata = state.session.metadata().cloned().expect("metadata");
             state
                 .session
-                .mark_effective_user_loaded(Some("user@localhost".to_string()));
+                .mark_connected_with_user(Arc::new(metadata), Some("user@localhost".to_string()));
             state.ui.set_explorer_selected_raw(5);
             state.ui.set_inspector_tab(InspectorTab::Indexes);
             state
@@ -791,7 +770,7 @@ mod tests {
         }
 
         fn seed_er_state(state: &mut AppState) {
-            state.ui.set_pending_er_picker(true);
+            state.ui.request_er_picker_after_metadata();
             let _ = state.er_preparation.start_waiting_run();
             state
                 .table_prefetch
@@ -852,14 +831,11 @@ mod tests {
             assert_explain_state_cleared(&state);
         }
 
-        #[test]
-        fn reconciles_postgres_to_sqlite_feature_state_without_cache() {
-            assert_reconciles_postgres_to_sqlite_feature_state(false);
-        }
-
-        #[test]
-        fn reconciles_postgres_to_sqlite_feature_state_with_cache() {
-            assert_reconciles_postgres_to_sqlite_feature_state(true);
+        #[rstest::rstest]
+        #[case(false)]
+        #[case(true)]
+        fn reconciles_postgres_to_sqlite_feature_state(#[case] cached: bool) {
+            assert_reconciles_postgres_to_sqlite_feature_state(cached);
         }
 
         fn assert_reconciles_sqlite_diagnostics_on_postgres_switch(cached: bool) {
@@ -894,14 +870,11 @@ mod tests {
             assert_explain_state_cleared(&state);
         }
 
-        #[test]
-        fn reconciles_sqlite_diagnostics_when_switching_to_postgres_without_cache() {
-            assert_reconciles_sqlite_diagnostics_on_postgres_switch(false);
-        }
-
-        #[test]
-        fn reconciles_sqlite_diagnostics_when_switching_to_postgres_with_cache() {
-            assert_reconciles_sqlite_diagnostics_on_postgres_switch(true);
+        #[rstest::rstest]
+        #[case(false)]
+        #[case(true)]
+        fn reconciles_sqlite_diagnostics_when_switching_to_postgres(#[case] cached: bool) {
+            assert_reconciles_sqlite_diagnostics_on_postgres_switch(cached);
         }
 
         #[test]
@@ -964,13 +937,30 @@ mod tests {
     mod fetching_tests {
         use super::*;
 
-        #[test]
-        fn fetches_metadata_when_no_cache_exists() {
+        #[rstest::rstest]
+        #[case(DatabaseType::PostgreSQL)]
+        #[case(DatabaseType::SQLite)]
+        fn fetches_metadata_when_no_cache_exists(#[case] database_type: DatabaseType) {
             let mut state = AppState::new("test".to_string());
             let new_id = ConnectionId::new();
 
-            let action = create_postgres_switch_action(&new_id, "fresh_db");
+            let action = match database_type {
+                DatabaseType::PostgreSQL => create_postgres_switch_action(&new_id, "fresh_db"),
+                DatabaseType::SQLite => Action::SwitchConnection(ConnectionTarget {
+                    id: new_id.clone(),
+                    dsn: "sqlite:///tmp/app.db".to_string(),
+                    name: "app.db".to_string(),
+                    database_type,
+                    database: None,
+                }),
+                DatabaseType::MySQL => unreachable!(),
+            };
             let effects = reduce(&mut state, &action).unwrap();
+            let (expected_dsn, expected_name) = match database_type {
+                DatabaseType::PostgreSQL => ("postgres://localhost/fresh_db", "fresh_db"),
+                DatabaseType::SQLite => ("sqlite:///tmp/app.db", "app.db"),
+                DatabaseType::MySQL => unreachable!(),
+            };
 
             assert!(
                 effects
@@ -982,41 +972,9 @@ mod tests {
                 ConnectionState::Connecting
             );
             assert_eq!(state.session.active_connection_id(), Some(&new_id));
-            assert_eq!(state.session.dsn(), Some("postgres://localhost/fresh_db"));
-            assert_eq!(state.session.active_connection_name(), Some("fresh_db"));
-            assert_eq!(
-                state.session.active_database_type(),
-                Some(DatabaseType::PostgreSQL)
-            );
-        }
-
-        #[test]
-        fn sqlite_switch_without_cache_fetches_metadata() {
-            let mut state = AppState::new("test".to_string());
-            let new_id = ConnectionId::new();
-
-            let action = Action::SwitchConnection(ConnectionTarget {
-                id: new_id,
-                dsn: "sqlite:///tmp/app.db".to_string(),
-                name: "app.db".to_string(),
-                database_type: DatabaseType::SQLite,
-                database: None,
-            });
-            let effects = reduce(&mut state, &action).unwrap();
-
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::FetchMetadata { .. }))
-            );
-            assert_eq!(
-                state.session.connection_state(),
-                ConnectionState::Connecting
-            );
-            assert_eq!(
-                state.session.active_database_type(),
-                Some(DatabaseType::SQLite)
-            );
+            assert_eq!(state.session.dsn(), Some(expected_dsn));
+            assert_eq!(state.session.active_connection_name(), Some(expected_name));
+            assert_eq!(state.session.active_database_type(), Some(database_type));
         }
     }
 
@@ -1091,11 +1049,6 @@ mod tests {
                     .iter()
                     .any(|effect| matches!(effect, Effect::CancelTrackedTasks))
             );
-            assert!(
-                !effects
-                    .iter()
-                    .any(|effect| matches!(effect, Effect::FetchEffectiveUser { .. }))
-            );
             let metadata_run_id = effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -1136,6 +1089,7 @@ mod tests {
                 Action::MetadataLoaded {
                     run_id: metadata_run_id,
                     metadata: refreshed_metadata,
+                    effective_user: None,
                 },
                 std::time::Instant::now(),
                 &AppServices::stub(),
@@ -1256,6 +1210,7 @@ mod tests {
                 Action::MetadataLoaded {
                     run_id: stale_run_id,
                     metadata: Arc::new(DatabaseMetadata::new("stale".to_string())),
+                    effective_user: None,
                 },
                 std::time::Instant::now(),
                 &AppServices::stub(),
@@ -1457,38 +1412,24 @@ mod tests {
     mod pending_state_tests {
         use super::*;
 
-        #[test]
-        fn switch_without_cache_clears_pending_er_picker() {
+        #[rstest::rstest]
+        #[case(false)]
+        #[case(true)]
+        fn switching_clears_pending_er_picker(#[case] cached: bool) {
             let mut state = AppState::new("test".to_string());
             let new_id = ConnectionId::new();
-            state.ui.set_pending_er_picker(true);
+            state.ui.request_er_picker_after_metadata();
             let _ = state.er_preparation.start_waiting_run();
             state
                 .table_prefetch
                 .queue_table_prefetch("public.users".to_string());
+            if cached {
+                state
+                    .connection_caches
+                    .insert(new_id.clone(), ConnectionCache::default());
+            }
 
             let action = create_postgres_switch_action(&new_id, "fresh_db");
-            reduce(&mut state, &action);
-
-            assert!(!state.ui.pending_er_picker());
-            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
-            assert!(!state.table_prefetch.has_pending_prefetch());
-        }
-
-        #[test]
-        fn cached_switch_clears_pending_er_picker() {
-            let mut state = AppState::new("test".to_string());
-            let target_id = ConnectionId::new();
-            state.ui.set_pending_er_picker(true);
-            let _ = state.er_preparation.start_waiting_run();
-            state
-                .table_prefetch
-                .queue_table_prefetch("public.users".to_string());
-            state
-                .connection_caches
-                .insert(target_id.clone(), ConnectionCache::default());
-
-            let action = create_postgres_switch_action(&target_id, "cached_db");
             reduce(&mut state, &action);
 
             assert!(!state.ui.pending_er_picker());
@@ -1551,6 +1492,46 @@ mod tests {
         }
 
         #[test]
+        fn cli_mysql_connection_stays_ephemeral_after_probe() {
+            let mut state = AppState::new("test".to_string());
+            let id = ConnectionId::from_string("cli:mysql");
+            let dsn = "mysql://user@localhost:3306/app";
+            state.session.activate_cli_ephemeral_connection_with_target(
+                &id,
+                "localhost/app",
+                DatabaseType::MySQL,
+                dsn,
+                Some("app"),
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::NotConnected);
+
+            let effects = reduce(&mut state, &Action::TryConnect).unwrap();
+            let (target, run_id) = effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeMySqlConnection { target, run_id } => {
+                        Some((target.clone(), *run_id))
+                    }
+                    _ => None,
+                })
+                .expect("CLI MySQL connection should start a probe");
+
+            reduce(
+                &mut state,
+                &Action::MySqlConnectionProbeCompleted {
+                    target,
+                    run_id,
+                    lower_case_table_names: 0,
+                },
+            );
+
+            assert!(state.session.is_ephemeral_connection());
+            assert!(!state.session.can_reenter_connection_setup());
+        }
+
+        #[test]
         fn mysql_probe_completed_fetches_metadata_for_selected_database() {
             let mut state = AppState::new("test".to_string());
             let target = ConnectionTarget {
@@ -1607,7 +1588,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(state.session.connection_state().is_failed());
+            assert_eq!(state.session.connection_state(), ConnectionState::Failed);
             assert_eq!(state.modal.active_mode(), InputMode::ConnectionError);
             assert!(state.connection_error.error_info().is_some());
             assert!(matches!(
@@ -1869,7 +1850,9 @@ mod tests {
                 &first.dsn,
                 first.database.as_deref(),
             );
-            state.session.mark_probe_connected();
+            state
+                .session
+                .mark_connected(Arc::new(DatabaseMetadata::new("a".to_string())));
             state.ui.set_explorer_selected_raw(3);
             let generation = state
                 .session
@@ -1901,7 +1884,7 @@ mod tests {
                     QuerySource::Preview,
                 )));
             state.query.pagination.reset_for_table("public", "users");
-            state.query.pagination.set_current_page(2);
+            state.query.pagination.set_page_result(2, false);
             let query_run_id = state.query.begin_running(std::time::Instant::now());
 
             let second = ConnectionTarget {
@@ -2373,7 +2356,7 @@ mod tests {
             );
 
             assert!(!state.session.connection_state().is_connected());
-            assert!(state.session.connection_state().is_failed());
+            assert_eq!(state.session.connection_state(), ConnectionState::Failed);
             assert_eq!(state.modal.active_mode(), InputMode::ConnectionError);
             assert_eq!(
                 state.connection_error.error_info().unwrap().summary(),
@@ -2385,17 +2368,23 @@ mod tests {
     mod reset_tests {
         use super::*;
 
-        #[test]
-        fn resets_result_selection_when_restoring_cache() {
+        #[rstest::rstest]
+        #[case(true)]
+        #[case(false)]
+        fn switching_resets_result_selection(#[case] cached: bool) {
             let mut state = AppState::new("test".to_string());
             let target_id = ConnectionId::new();
 
-            state
-                .connection_caches
-                .insert(target_id.clone(), ConnectionCache::default());
-            state.result_interaction.activate_cell(3, 2);
+            if cached {
+                state
+                    .connection_caches
+                    .insert(target_id.clone(), ConnectionCache::default());
+                state.result_interaction.activate_cell(3, 2);
+            } else {
+                state.result_interaction.activate_cell(5, 0);
+            }
 
-            let action = create_postgres_switch_action(&target_id, "cached_db");
+            let action = create_postgres_switch_action(&target_id, "target");
             reduce(&mut state, &action);
 
             assert_eq!(
@@ -2404,55 +2393,27 @@ mod tests {
             );
         }
 
-        #[test]
-        fn switch_with_cache_resets_sql_prefetch() {
+        #[rstest::rstest]
+        #[case(true)]
+        #[case(false)]
+        fn switching_resets_sql_prefetch(#[case] cached: bool) {
             let mut state = AppState::new("test".to_string());
             let target_id = ConnectionId::new();
-            state
-                .connection_caches
-                .insert(target_id.clone(), ConnectionCache::default());
+            if cached {
+                state
+                    .connection_caches
+                    .insert(target_id.clone(), ConnectionCache::default());
+            }
             let _ = state.table_prefetch.begin_er_prefetch();
             state
                 .table_prefetch
                 .queue_table_prefetch("public.users".to_string());
 
-            let action = create_postgres_switch_action(&target_id, "cached_db");
+            let action = create_postgres_switch_action(&target_id, "target");
             reduce(&mut state, &action);
 
             assert!(state.table_prefetch.active_prefetch_run_id().is_none());
             assert!(!state.table_prefetch.has_pending_prefetch());
-        }
-
-        #[test]
-        fn switch_without_cache_resets_sql_prefetch() {
-            let mut state = AppState::new("test".to_string());
-            let new_id = ConnectionId::new();
-            let _ = state.table_prefetch.begin_er_prefetch();
-            state
-                .table_prefetch
-                .queue_table_prefetch("public.users".to_string());
-
-            let action = create_postgres_switch_action(&new_id, "fresh_db");
-            reduce(&mut state, &action);
-
-            assert!(state.table_prefetch.active_prefetch_run_id().is_none());
-            assert!(!state.table_prefetch.has_pending_prefetch());
-        }
-
-        #[test]
-        fn resets_result_selection_when_no_cache() {
-            let mut state = AppState::new("test".to_string());
-            let new_id = ConnectionId::new();
-
-            state.result_interaction.activate_cell(5, 0);
-
-            let action = create_postgres_switch_action(&new_id, "fresh_db");
-            reduce(&mut state, &action);
-
-            assert_eq!(
-                state.result_interaction.selection().mode(),
-                ResultNavMode::Scroll
-            );
         }
     }
 

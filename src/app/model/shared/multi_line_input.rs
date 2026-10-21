@@ -402,9 +402,6 @@ fn find_cursor_position(line_spans: &[LineSpan], cursor: usize) -> (usize, usize
 }
 
 #[cfg(test)]
-mod perf_tests;
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use rstest::rstest;
@@ -875,6 +872,7 @@ mod tests {
             s.backspace();
             assert_eq!(s.content(), "abcdef");
             assert_eq!(s.cursor(), 3);
+            assert_eq!(s.cursor_to_position(), (0, 3));
         }
 
         #[test]
@@ -919,43 +917,29 @@ mod tests {
 
             assert_eq!(s.cursor_to_position(), (2, 3));
         }
-
-        #[test]
-        fn backspace_rebuilds_cached_cursor_position() {
-            let mut s = ml("abc\ndef", 4);
-
-            s.backspace();
-
-            assert_eq!(s.content(), "abcdef");
-            assert_eq!(s.cursor_to_position(), (0, 3));
-        }
     }
 
     mod viewport_position {
         use super::*;
 
-        #[test]
-        fn top_preserves_column() {
-            let mut s = ml("aa\nbb\ncc\ndd", 10);
-            s.scroll_row = 1;
-            s.move_cursor_to_viewport_position(CursorMove::ViewportTop, 3);
-            assert_eq!(s.cursor(), 4);
-        }
+        #[rstest]
+        #[case("aa\nbb\ncc\ndd", 10, 1, CursorMove::ViewportTop, 3, 4)]
+        #[case("aa\nbb\ncc\ndd\nee", 13, 1, CursorMove::ViewportMiddle, 3, 7)]
+        #[case("aa\nbb\ncc\ndd\nee", 1, 1, CursorMove::ViewportBottom, 3, 10)]
+        fn moves_cursor_to_viewport_position(
+            #[case] content: &str,
+            #[case] cursor: usize,
+            #[case] scroll_row: usize,
+            #[case] movement: CursorMove,
+            #[case] visible_rows: usize,
+            #[case] expected_cursor: usize,
+        ) {
+            let mut s = ml(content, cursor);
+            s.scroll_row = scroll_row;
 
-        #[test]
-        fn middle_preserves_column() {
-            let mut s = ml("aa\nbb\ncc\ndd\nee", 13);
-            s.scroll_row = 1;
-            s.move_cursor_to_viewport_position(CursorMove::ViewportMiddle, 3);
-            assert_eq!(s.cursor(), 7);
-        }
+            s.move_cursor_to_viewport_position(movement, visible_rows);
 
-        #[test]
-        fn bottom_preserves_column() {
-            let mut s = ml("aa\nbb\ncc\ndd\nee", 1);
-            s.scroll_row = 1;
-            s.move_cursor_to_viewport_position(CursorMove::ViewportBottom, 3);
-            assert_eq!(s.cursor(), 10);
+            assert_eq!(s.cursor(), expected_cursor);
         }
     }
 
@@ -1082,24 +1066,19 @@ mod tests {
     mod byte_index {
         use super::*;
 
-        #[test]
-        fn ascii_returns_same_index() {
-            let s = ml("abcdef", 0);
-            assert_eq!(s.char_to_byte_index(3), 3);
-        }
+        #[rstest]
+        #[case("abcdef", 3, 3)]
+        #[case("あいう", 1, 3)]
+        #[case("あいう", 2, 6)]
+        #[case("abc", 100, 3)]
+        fn maps_character_index_to_byte_index(
+            #[case] content: &str,
+            #[case] char_index: usize,
+            #[case] expected: usize,
+        ) {
+            let s = ml(content, 0);
 
-        #[test]
-        fn multibyte_returns_correct_byte_indices() {
-            let s = ml("あいう", 0);
-            // each hiragana is 3 bytes
-            assert_eq!(s.char_to_byte_index(1), 3);
-            assert_eq!(s.char_to_byte_index(2), 6);
-        }
-
-        #[test]
-        fn past_end_returns_content_byte_len() {
-            let s = ml("abc", 0);
-            assert_eq!(s.char_to_byte_index(100), 3);
+            assert_eq!(s.char_to_byte_index(char_index), expected);
         }
     }
 }

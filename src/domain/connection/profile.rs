@@ -325,16 +325,6 @@ mod tests {
         }
     }
 
-    mod display_name {
-        use super::*;
-
-        #[test]
-        fn formats_connection_name() {
-            let profile = make_test_profile();
-            assert_eq!(profile.display_name(), "Test Connection");
-        }
-    }
-
     mod database_type {
         use super::*;
 

@@ -565,7 +565,11 @@ fn connection_setup_current_rows(
 ) -> Vec<HelpRow> {
     let is_dropdown_field = matches!(
         focused_field,
-        ConnectionField::DatabaseType | ConnectionField::Transport | ConnectionField::SslMode
+        ConnectionField::DatabaseType
+            | ConnectionField::Transport
+            | ConnectionField::SslMode
+            | ConnectionField::CleartextAuth
+            | ConnectionField::GetServerPublicKey
     );
     let submit = if is_dropdown_field {
         &connection_setup::ENTER_DROPDOWN
@@ -881,12 +885,14 @@ mod tests {
         );
     }
 
-    #[test]
-    fn result_scroll_help_omits_row_detail() {
+    #[rstest::rstest]
+    #[case::scroll(false)]
+    #[case::active(true)]
+    fn result_help_lists_row_detail_only_when_result_active(#[case] result_active: bool) {
         let document = HelpDocument::new(
             HelpOrigin::Normal {
                 focused_pane: FocusedPane::Result,
-                result_active: false,
+                result_active,
                 staged_delete_in_progress: false,
                 can_write_preview: true,
                 can_edit_selected_cell: true,
@@ -896,35 +902,11 @@ mod tests {
             "",
         );
 
-        assert!(
-            !document.sections()[0]
-                .rows()
-                .iter()
-                .any(|row| row.description() == "Open Row Detail")
-        );
-    }
-
-    #[test]
-    fn result_active_help_includes_row_detail() {
-        let document = HelpDocument::new(
-            HelpOrigin::Normal {
-                focused_pane: FocusedPane::Result,
-                result_active: true,
-                staged_delete_in_progress: false,
-                can_write_preview: true,
-                can_edit_selected_cell: true,
-                pending_cell_edit_draft: false,
-                keymap_preset: KeymapPreset::default(),
-            },
-            "",
-        );
-
-        assert!(
-            document.sections()[0]
-                .rows()
-                .iter()
-                .any(|row| row.description() == "Open Row Detail")
-        );
+        let lists_row_detail = document.sections()[0]
+            .rows()
+            .iter()
+            .any(|row| row.description() == "Open Row Detail");
+        assert_eq!(lists_row_detail, result_active);
     }
 
     #[test]

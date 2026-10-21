@@ -1751,60 +1751,26 @@ mod tests {
 
     mod cursor_context {
         use super::*;
+        use rstest::rstest;
 
-        #[test]
-        fn cursor_in_string_returns_true() {
+        #[rstest]
+        #[case("SELECT 'hel", 11, true)]
+        #[case("SELECT -- com", 13, true)]
+        #[case("SELECT /* com", 13, true)]
+        #[case("SELECT * FROM ", 14, false)]
+        #[case("SELECT 'hello' FROM ", 20, false)]
+        fn matches_string_or_comment_state(
+            #[case] sql: &str,
+            #[case] cursor_pos: usize,
+            #[case] expected: bool,
+        ) {
             let l = lexer();
-            let sql = "SELECT 'hel";
+            let result = SqlLexer::is_in_string_or_comment_from_tokens(
+                &l.tokenize(sql, sql.len()),
+                cursor_pos,
+            );
 
-            let result =
-                SqlLexer::is_in_string_or_comment_from_tokens(&l.tokenize(sql, sql.len()), 11);
-
-            assert!(result);
-        }
-
-        #[test]
-        fn cursor_in_line_comment_returns_true() {
-            let l = lexer();
-            let sql = "SELECT -- com";
-
-            let result =
-                SqlLexer::is_in_string_or_comment_from_tokens(&l.tokenize(sql, sql.len()), 13);
-
-            assert!(result);
-        }
-
-        #[test]
-        fn cursor_in_block_comment_returns_true() {
-            let l = lexer();
-            let sql = "SELECT /* com";
-
-            let result =
-                SqlLexer::is_in_string_or_comment_from_tokens(&l.tokenize(sql, sql.len()), 13);
-
-            assert!(result);
-        }
-
-        #[test]
-        fn cursor_in_normal_context_returns_false() {
-            let l = lexer();
-            let sql = "SELECT * FROM ";
-
-            let result =
-                SqlLexer::is_in_string_or_comment_from_tokens(&l.tokenize(sql, sql.len()), 14);
-
-            assert!(!result);
-        }
-
-        #[test]
-        fn cursor_after_closed_string_returns_false() {
-            let l = lexer();
-            let sql = "SELECT 'hello' FROM ";
-
-            let result =
-                SqlLexer::is_in_string_or_comment_from_tokens(&l.tokenize(sql, sql.len()), 20);
-
-            assert!(!result);
+            assert_eq!(result, expected);
         }
     }
 
@@ -2229,85 +2195,30 @@ mod tests {
 
         mod locking_clauses {
             use super::*;
+            use rstest::rstest;
 
-            #[test]
-            fn for_update_is_not_target() {
+            #[rstest]
+            #[case("SELECT * FROM users FOR UPDATE")]
+            #[case("SELECT * FROM users FOR NO KEY UPDATE")]
+            fn excludes_locking_clauses_from_targets_and_references(#[case] sql: &str) {
                 let l = lexer();
-                let sql = "SELECT * FROM users FOR UPDATE";
                 let tokens = l.tokenize(sql, sql.len());
 
                 let target = l.extract_target_table(&tokens, sql.len());
 
                 assert!(target.is_none());
-            }
-
-            #[test]
-            fn for_update_not_in_references() {
-                let l = lexer();
-                let sql = "SELECT * FROM users FOR UPDATE";
-                let tokens = l.tokenize(sql, sql.len());
-
-                let refs = l.extract_table_references(&tokens);
-
-                // Only "users" should be included, FOR UPDATE should not add a reference
-                assert_eq!(refs.len(), 1);
-                assert_eq!(refs[0].table, "users");
-            }
-
-            #[test]
-            fn for_no_key_update_not_in_references() {
-                let l = lexer();
-                let sql = "SELECT * FROM users FOR NO KEY UPDATE";
-                let tokens = l.tokenize(sql, sql.len());
-
                 let refs = l.extract_table_references(&tokens);
 
                 assert_eq!(refs.len(), 1);
                 assert_eq!(refs[0].table, "users");
             }
 
-            #[test]
-            fn for_no_key_update_is_not_target() {
+            #[rstest]
+            #[case("SELECT * FROM users FOR SHARE; UPDATE orders SET status = 'done'")]
+            #[case("SELECT * FROM users FOR UPDATE; UPDATE orders SET status = 'done'")]
+            #[case("SELECT * FROM users FOR NO KEY UPDATE; UPDATE orders SET status = 'done'")]
+            fn preserves_statement_references_with_locking_clauses(#[case] sql: &str) {
                 let l = lexer();
-                let sql = "SELECT * FROM users FOR NO KEY UPDATE";
-                let tokens = l.tokenize(sql, sql.len());
-
-                let target = l.extract_target_table(&tokens, sql.len());
-
-                assert!(target.is_none());
-            }
-
-            #[test]
-            fn multi_statement_for_share_then_update_extracts_both_tables() {
-                let l = lexer();
-                let sql = "SELECT * FROM users FOR SHARE; UPDATE orders SET status = 'done'";
-                let tokens = l.tokenize(sql, sql.len());
-
-                let refs = l.extract_table_references(&tokens);
-
-                assert_eq!(refs.len(), 2);
-                assert_eq!(refs[0].table, "users");
-                assert_eq!(refs[1].table, "orders");
-            }
-
-            #[test]
-            fn multi_statement_for_update_then_update_extracts_both_tables() {
-                let l = lexer();
-                let sql = "SELECT * FROM users FOR UPDATE; UPDATE orders SET status = 'done'";
-                let tokens = l.tokenize(sql, sql.len());
-
-                let refs = l.extract_table_references(&tokens);
-
-                assert_eq!(refs.len(), 2);
-                assert_eq!(refs[0].table, "users");
-                assert_eq!(refs[1].table, "orders");
-            }
-
-            #[test]
-            fn multi_statement_for_no_key_update_then_update_extracts_both_tables() {
-                let l = lexer();
-                let sql =
-                    "SELECT * FROM users FOR NO KEY UPDATE; UPDATE orders SET status = 'done'";
                 let tokens = l.tokenize(sql, sql.len());
 
                 let refs = l.extract_table_references(&tokens);
@@ -2320,6 +2231,7 @@ mod tests {
 
         mod table_reference_edge_cases {
             use super::*;
+            use rstest::rstest;
 
             #[test]
             fn with_clause_update_extracts_target() {
@@ -2346,76 +2258,26 @@ mod tests {
                 assert_eq!(refs[0].table, "users");
             }
 
-            #[test]
-            fn update_only_skips_only_keyword() {
+            #[rstest]
+            #[case("UPDATE ONLY users SET name = 'foo'", "users")]
+            #[case("DELETE FROM ONLY orders WHERE id = 1", "orders")]
+            #[case("INSERT INTO ONLY posts (title) VALUES ('test')", "posts")]
+            fn only_targets_are_preserved_in_references_and_targets(
+                #[case] sql: &str,
+                #[case] expected_table: &str,
+            ) {
                 let l = lexer();
-                let sql = "UPDATE ONLY users SET name = 'foo'";
                 let tokens = l.tokenize(sql, sql.len());
 
                 let refs = l.extract_table_references(&tokens);
-
                 assert_eq!(refs.len(), 1);
-                assert_eq!(refs[0].table, "users");
-            }
-
-            #[test]
-            fn update_only_target_table() {
-                let l = lexer();
-                let sql = "UPDATE ONLY users SET name = 'foo'";
-                let tokens = l.tokenize(sql, sql.len());
+                assert_eq!(refs[0].table, expected_table);
 
                 let target = l.extract_target_table(&tokens, sql.len());
-
-                assert!(target.is_some());
-                assert_eq!(target.unwrap().table, "users");
-            }
-
-            #[test]
-            fn delete_from_only_skips_only_keyword() {
-                let l = lexer();
-                let sql = "DELETE FROM ONLY orders WHERE id = 1";
-                let tokens = l.tokenize(sql, sql.len());
-
-                let refs = l.extract_table_references(&tokens);
-
-                assert_eq!(refs.len(), 1);
-                assert_eq!(refs[0].table, "orders");
-            }
-
-            #[test]
-            fn delete_from_only_target_table() {
-                let l = lexer();
-                let sql = "DELETE FROM ONLY orders WHERE id = 1";
-                let tokens = l.tokenize(sql, sql.len());
-
-                let target = l.extract_target_table(&tokens, sql.len());
-
-                assert!(target.is_some());
-                assert_eq!(target.unwrap().table, "orders");
-            }
-
-            #[test]
-            fn insert_into_only_skips_only_keyword() {
-                let l = lexer();
-                let sql = "INSERT INTO ONLY posts (title) VALUES ('test')";
-                let tokens = l.tokenize(sql, sql.len());
-
-                let refs = l.extract_table_references(&tokens);
-
-                assert_eq!(refs.len(), 1);
-                assert_eq!(refs[0].table, "posts");
-            }
-
-            #[test]
-            fn insert_into_only_target_table() {
-                let l = lexer();
-                let sql = "INSERT INTO ONLY posts (title) VALUES ('test')";
-                let tokens = l.tokenize(sql, sql.len());
-
-                let target = l.extract_target_table(&tokens, sql.len());
-
-                assert!(target.is_some());
-                assert_eq!(target.unwrap().table, "posts");
+                assert_eq!(
+                    target.as_ref().map(|table| table.table.as_str()),
+                    Some(expected_table)
+                );
             }
 
             #[test]
@@ -2433,116 +2295,43 @@ mod tests {
 
         mod multi_statement_cursor {
             use super::*;
+            use rstest::rstest;
 
-            #[test]
-            fn cursor_in_first_update() {
+            #[rstest]
+            #[case("UPDATE users SET x = 1; UPDATE orders SET y = 2", 10, Some("users"))]
+            #[case("UPDATE users SET x = 1; UPDATE orders SET y = 2", 35, Some("orders"))]
+            #[case("UPDATE users SET x = 1; UPDATE orders SET y = 2", 23, Some("orders"))]
+            #[case("UPDATE users SET x = 1; UPDATE orders SET y = 2", 47, Some("orders"))]
+            #[case("SELECT * FROM users; UPDATE orders SET status = 'done'", 10, None)]
+            #[case(
+                "SELECT * FROM users; UPDATE orders SET status = 'done'",
+                30,
+                Some("orders")
+            )]
+            #[case(
+                "UPDATE users SET x = 1; DELETE FROM posts WHERE id = 1; INSERT INTO orders (status) VALUES ('new')",
+                40,
+                Some("posts")
+            )]
+            #[case(
+                "UPDATE users SET x = 1; DELETE FROM posts WHERE id = 1; INSERT INTO orders (status) VALUES ('new')",
+                80,
+                Some("orders")
+            )]
+            fn target_matches_statement_at_cursor(
+                #[case] sql: &str,
+                #[case] cursor_pos: usize,
+                #[case] expected_table: Option<&str>,
+            ) {
                 let l = lexer();
-                let sql = "UPDATE users SET x = 1; UPDATE orders SET y = 2";
-                // Cursor at position 10 (in "users")
-                let cursor_pos = 10;
                 let tokens = l.tokenize(sql, sql.len());
 
                 let target = l.extract_target_table(&tokens, cursor_pos);
 
-                assert!(target.is_some());
-                assert_eq!(target.unwrap().table, "users");
-            }
-
-            #[test]
-            fn cursor_in_second_update() {
-                let l = lexer();
-                let sql = "UPDATE users SET x = 1; UPDATE orders SET y = 2";
-                // Cursor at position 35 (in "orders")
-                let cursor_pos = 35;
-                let tokens = l.tokenize(sql, sql.len());
-
-                let target = l.extract_target_table(&tokens, cursor_pos);
-
-                assert!(target.is_some());
-                assert_eq!(target.unwrap().table, "orders");
-            }
-
-            #[test]
-            fn cursor_immediately_after_semicolon_uses_next_statement() {
-                let l = lexer();
-                let sql = "UPDATE users SET x = 1; UPDATE orders SET y = 2";
-                let cursor_pos = sql.find(';').unwrap() + 1;
-                let tokens = l.tokenize(sql, sql.len());
-
-                let target = l.extract_target_table(&tokens, cursor_pos);
-
-                assert!(target.is_some());
-                assert_eq!(target.unwrap().table, "orders");
-            }
-
-            #[test]
-            fn cursor_at_end_of_second_update() {
-                let l = lexer();
-                let sql = "UPDATE users SET x = 1; UPDATE orders SET y = 2";
-                // Cursor at end of SQL
-                let cursor_pos = sql.len();
-                let tokens = l.tokenize(sql, sql.len());
-
-                let target = l.extract_target_table(&tokens, cursor_pos);
-
-                assert!(target.is_some());
-                assert_eq!(target.unwrap().table, "orders");
-            }
-
-            #[test]
-            fn select_then_update_cursor_in_select() {
-                let l = lexer();
-                let sql = "SELECT * FROM users; UPDATE orders SET status = 'done'";
-                // Cursor at position 10 (in SELECT statement)
-                let cursor_pos = 10;
-                let tokens = l.tokenize(sql, sql.len());
-
-                let target = l.extract_target_table(&tokens, cursor_pos);
-
-                // SELECT has no target table
-                assert!(target.is_none());
-            }
-
-            #[test]
-            fn select_then_update_cursor_in_update() {
-                let l = lexer();
-                let sql = "SELECT * FROM users; UPDATE orders SET status = 'done'";
-                // Cursor at position 30 (in UPDATE statement)
-                let cursor_pos = 30;
-                let tokens = l.tokenize(sql, sql.len());
-
-                let target = l.extract_target_table(&tokens, cursor_pos);
-
-                assert!(target.is_some());
-                assert_eq!(target.unwrap().table, "orders");
-            }
-
-            #[test]
-            fn three_statements_cursor_in_middle() {
-                let l = lexer();
-                let sql = "UPDATE users SET x = 1; DELETE FROM posts WHERE id = 1; INSERT INTO orders (status) VALUES ('new')";
-                // Cursor at position 40 (in DELETE statement)
-                let cursor_pos = 40;
-                let tokens = l.tokenize(sql, sql.len());
-
-                let target = l.extract_target_table(&tokens, cursor_pos);
-
-                assert!(target.is_some());
-                assert_eq!(target.unwrap().table, "posts");
-            }
-
-            #[test]
-            fn three_statements_cursor_in_last() {
-                let l = lexer();
-                let sql = "UPDATE users SET x = 1; DELETE FROM posts WHERE id = 1; INSERT INTO orders (status) VALUES ('new')";
-                // Cursor at position 80 (in INSERT statement)
-                let cursor_pos = 80;
-                let tokens = l.tokenize(sql, sql.len());
-
-                let target = l.extract_target_table(&tokens, cursor_pos);
-
-                assert!(target.is_some());
-                assert_eq!(target.unwrap().table, "orders");
+                assert_eq!(
+                    target.as_ref().map(|table| table.table.as_str()),
+                    expected_table
+                );
             }
         }
     }

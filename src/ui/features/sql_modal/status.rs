@@ -359,78 +359,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn command_tag_message_singular_row() {
-        assert_eq!(
-            command_tag_message(&CommandTag::Insert(1)),
-            "1 row inserted"
-        );
-        assert_eq!(
-            command_tag_message(&CommandTag::Affected(1)),
-            "1 row affected"
-        );
-        assert_eq!(command_tag_message(&CommandTag::Delete(1)), "1 row deleted");
-    }
+    fn command_tag_messages_match_display_contract() {
+        let cases = vec![
+            (CommandTag::Insert(1), "1 row inserted"),
+            (CommandTag::Affected(1), "1 row affected"),
+            (CommandTag::Delete(1), "1 row deleted"),
+            (CommandTag::Select(5), "5 rows selected"),
+            (CommandTag::Update(10), "10 rows updated"),
+            (CommandTag::Delete(0), "0 rows deleted"),
+            (CommandTag::Affected(0), "0 rows affected"),
+            (CommandTag::Create("TABLE".to_string()), "table created"),
+            (CommandTag::Drop("INDEX".to_string()), "index dropped"),
+            (CommandTag::Alter("TABLE".to_string()), "table altered"),
+            (CommandTag::Truncate, "table truncated"),
+            (CommandTag::Begin, "transaction started"),
+            (CommandTag::Commit, "committed"),
+            (CommandTag::Rollback, "rolled back"),
+            (CommandTag::Other("VACUUM".to_string()), "vacuum"),
+        ];
 
-    #[test]
-    fn command_tag_message_plural_rows() {
-        assert_eq!(
-            command_tag_message(&CommandTag::Select(5)),
-            "5 rows selected"
-        );
-        assert_eq!(
-            command_tag_message(&CommandTag::Update(10)),
-            "10 rows updated"
-        );
-    }
-
-    #[test]
-    fn command_tag_message_zero_rows() {
-        assert_eq!(
-            command_tag_message(&CommandTag::Delete(0)),
-            "0 rows deleted"
-        );
-        assert_eq!(
-            command_tag_message(&CommandTag::Affected(0)),
-            "0 rows affected"
-        );
-    }
-
-    #[test]
-    fn command_tag_message_ddl() {
-        assert_eq!(
-            command_tag_message(&CommandTag::Create("TABLE".to_string())),
-            "table created"
-        );
-        assert_eq!(
-            command_tag_message(&CommandTag::Drop("INDEX".to_string())),
-            "index dropped"
-        );
-        assert_eq!(
-            command_tag_message(&CommandTag::Alter("TABLE".to_string())),
-            "table altered"
-        );
-    }
-
-    #[test]
-    fn command_tag_message_tcl() {
-        assert_eq!(
-            command_tag_message(&CommandTag::Truncate),
-            "table truncated"
-        );
-        assert_eq!(
-            command_tag_message(&CommandTag::Begin),
-            "transaction started"
-        );
-        assert_eq!(command_tag_message(&CommandTag::Commit), "committed");
-        assert_eq!(command_tag_message(&CommandTag::Rollback), "rolled back");
-    }
-
-    #[test]
-    fn command_tag_message_other() {
-        assert_eq!(
-            command_tag_message(&CommandTag::Other("VACUUM".to_string())),
-            "vacuum"
-        );
+        for (tag, expected) in cases {
+            assert_eq!(command_tag_message(&tag), expected);
+        }
     }
 
     #[test]

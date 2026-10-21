@@ -12,20 +12,89 @@ use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{CommandTag, QueryResult, QuerySource, RefreshScope, WriteExecutionResult};
 
 use super::super::PostgresAdapter;
-use super::error::{classify_cli_spawn_error, classify_query_error};
+use super::super::dsn::{add_uri_password_file, quote_conninfo_value, take_explicit_password};
+use super::error::{classify_cli_spawn_error, classify_query_error, is_transport_interruption};
 use super::parser::{ParseCommandTagError, split_sql_statements};
+use super::passfile::Passfile;
+
+#[derive(Debug)]
+enum PsqlExecutionFailure {
+    BeforeSpawn(DbOperationError),
+    Transport {
+        error: DbOperationError,
+        stdout: String,
+    },
+    Definitive {
+        error: DbOperationError,
+        stdout: String,
+    },
+}
+
+impl PsqlExecutionFailure {
+    fn into_db_operation_error(self) -> DbOperationError {
+        match self {
+            Self::BeforeSpawn(error)
+            | Self::Definitive { error, .. }
+            | Self::Transport { error, .. } => error,
+        }
+    }
+
+    fn into_write_error(self, read_only: bool) -> DbOperationError {
+        match self {
+            Self::BeforeSpawn(error) | Self::Definitive { error, .. } => error,
+            Self::Transport { error, .. } if read_only => error,
+            Self::Transport { error, .. } => DbOperationError::QueryFailedAfterChange {
+                source: Arc::new(error),
+                refresh_scope: RefreshScope::Data,
+            },
+        }
+    }
+
+    fn into_query_error(
+        self,
+        query: &str,
+        read_only: bool,
+        marker: Option<&str>,
+    ) -> DbOperationError {
+        match self {
+            Self::Definitive { error, stdout }
+                if !read_only
+                    && let Some(refresh_scope) =
+                        PostgresAdapter::committed_refresh_scope(&stdout, query, marker) =>
+            {
+                DbOperationError::QueryFailedAfterChange {
+                    source: Arc::new(error),
+                    refresh_scope,
+                }
+            }
+            Self::BeforeSpawn(error) | Self::Definitive { error, .. } => error,
+            Self::Transport { error, .. } if read_only => error,
+            Self::Transport { error, stdout } => DbOperationError::QueryFailedAfterChange {
+                source: Arc::new(error),
+                refresh_scope: PostgresAdapter::uncertain_query_refresh_scope(
+                    &stdout, query, marker,
+                ),
+            },
+        }
+    }
+}
 
 async fn collect_csv_output(
-    mut child: tokio::process::Child,
+    mut process: PsqlProcess,
     path: &Path,
     timeout_duration: Duration,
 ) -> Result<(), DbOperationError> {
+    let file = match tokio::fs::File::create(path).await {
+        Ok(file) => file,
+        Err(error) => {
+            process.stop().await;
+            return Err(DbOperationError::ExportIo(Arc::new(error)));
+        }
+    };
+    let child = process.child.as_mut().expect("owned psql child");
     let mut stdout = child.stdout.take().expect("piped psql stdout");
     let mut stderr_handle = child.stderr.take().expect("piped psql stderr");
 
-    let file = tokio::fs::File::create(path)
-        .await
-        .map_err(|e| DbOperationError::ExportIo(Arc::new(e)))?;
     let mut writer = tokio::io::BufWriter::new(file);
 
     let result = timeout(timeout_duration, async {
@@ -58,6 +127,9 @@ async fn collect_csv_output(
     .await;
 
     drop(writer);
+    if !matches!(&result, Ok(Ok(_))) {
+        process.stop().await;
+    }
     match result {
         Ok(Ok((status, _))) if status.success() => Ok(()),
         Ok(Ok((status, stderr))) => {
@@ -136,42 +208,19 @@ fn select_result_segment<'a>(segments: &[&'a str]) -> Option<&'a str> {
 impl PostgresAdapter {
     const PGOPTIONS_READ_ONLY: &str = "-c default_transaction_read_only=on";
 
-    async fn run_psql(
-        &self,
-        dsn: &str,
-        extra_args: &[&str],
-        query: &str,
-        read_only: bool,
-    ) -> Result<String, DbOperationError> {
-        self.run_psql_args(dsn, extra_args, &["-c", query], read_only)
-            .await
-    }
-
-    async fn run_psql_args(
-        &self,
-        dsn: &str,
-        extra_args: &[&str],
-        query_args: &[&str],
-        read_only: bool,
-    ) -> Result<String, DbOperationError> {
-        let mut cmd = Self::build_psql_command(dsn, extra_args, query_args, read_only);
-
-        Self::collect_output(&mut cmd, self.timeout_secs).await
-    }
-
     fn build_psql_command(
         dsn: &str,
         extra_args: &[&str],
         query_args: &[&str],
         read_only: bool,
-    ) -> Command {
+    ) -> Result<(Command, Option<Passfile>), DbOperationError> {
         let mut cmd = Command::new("psql");
         if read_only {
             Self::apply_read_only_pgoptions(&mut cmd);
         }
-        Self::apply_psql_base_args(&mut cmd, dsn);
+        let passfile = Self::apply_psql_base_args(&mut cmd, dsn)?;
         cmd.args(extra_args).args(query_args);
-        cmd
+        Ok((cmd, passfile))
     }
 
     fn apply_read_only_pgoptions(cmd: &mut Command) {
@@ -182,27 +231,61 @@ impl PostgresAdapter {
         cmd.env("PGOPTIONS", merged);
     }
 
-    fn apply_psql_base_args(cmd: &mut Command, dsn: &str) {
-        cmd.arg(dsn)
-            .arg("-X")
+    fn apply_psql_base_args(
+        cmd: &mut Command,
+        dsn: &str,
+    ) -> Result<Option<Passfile>, DbOperationError> {
+        let passfile = if let Some((mut connection, password)) = take_explicit_password(dsn)
+            .map_err(|message| DbOperationError::ConnectionFailed(message.into()))?
+        {
+            let passfile = Passfile::create(&password)?;
+            let path = passfile.path.to_str().ok_or_else(|| {
+                DbOperationError::ConnectionFailed(
+                    "PostgreSQL password file path is not UTF-8".into(),
+                )
+            })?;
+            if dsn.starts_with("postgres://") || dsn.starts_with("postgresql://") {
+                cmd.arg(add_uri_password_file(&connection, path))
+                    .env("PGPASSFILE", path)
+                    .env_remove("PGPASSWORD");
+            } else {
+                connection.push_str(" passfile=");
+                connection.push_str(&quote_conninfo_value(path));
+                cmd.arg(connection).env_remove("PGPASSWORD");
+            }
+            Some(passfile)
+        } else {
+            cmd.arg(dsn);
+            None
+        };
+        cmd.arg("-X")
             .arg("-v")
             .arg("ON_ERROR_STOP=1")
             .arg("-v")
             .arg("VERBOSITY=verbose")
             .arg("-v")
             .arg("SHOW_CONTEXT=never");
+        Ok(passfile)
     }
 
     async fn collect_output(
         cmd: &mut Command,
+        passfile: Option<Passfile>,
         timeout_secs: u64,
     ) -> Result<String, DbOperationError> {
-        let mut child = cmd
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(classify_cli_spawn_error)?;
+        Self::collect_output_with_phase(cmd, passfile, timeout_secs)
+            .await
+            .map_err(PsqlExecutionFailure::into_db_operation_error)
+    }
+
+    async fn collect_output_with_phase(
+        cmd: &mut Command,
+        passfile: Option<Passfile>,
+        timeout_secs: u64,
+    ) -> Result<String, PsqlExecutionFailure> {
+        let mut process =
+            PsqlProcess::spawn(cmd, passfile).map_err(PsqlExecutionFailure::BeforeSpawn)?;
+        let child = process.child.as_mut().expect("owned psql child");
 
         let mut stdout_handle = child.stdout.take().expect("piped psql stdout");
         let mut stderr_handle = child.stderr.take().expect("piped psql stderr");
@@ -227,13 +310,28 @@ impl PostgresAdapter {
 
             Ok::<_, std::io::Error>((status, stdout, stderr))
         })
-        .await
-        .map_err(|e| DbOperationError::Timeout(e.to_string()))?
-        .map_err(|e| DbOperationError::QueryFailed(e.to_string()))?;
-
-        let (status, stdout, stderr) = result;
+        .await;
+        if !matches!(&result, Ok(Ok(_))) {
+            process.stop().await;
+        }
+        let (status, stdout, stderr) = result
+            .map_err(|e| PsqlExecutionFailure::Transport {
+                error: DbOperationError::Timeout(e.to_string()),
+                stdout: String::new(),
+            })?
+            .map_err(|e| PsqlExecutionFailure::Transport {
+                error: DbOperationError::QueryFailed(e.to_string()),
+                stdout: String::new(),
+            })?;
         if !status.success() {
-            return Err(classify_query_error(&stderr, status));
+            let error = classify_query_error(&stderr, status);
+            return Err(
+                if is_transport_interruption(&error, status, !stdout.trim().is_empty()) {
+                    PsqlExecutionFailure::Transport { error, stdout }
+                } else {
+                    PsqlExecutionFailure::Definitive { error, stdout }
+                },
+            );
         }
         Ok(stdout)
     }
@@ -243,7 +341,10 @@ impl PostgresAdapter {
         dsn: &str,
         query: &str,
     ) -> Result<String, DbOperationError> {
-        self.run_psql(dsn, &["-t", "-A"], query, false).await
+        let (mut cmd, passfile) =
+            Self::build_psql_command(dsn, &["-t", "-A"], &["-c", query], false)?;
+
+        Self::collect_output(&mut cmd, passfile, self.timeout_secs).await
     }
 
     pub(in crate::adapters::postgres) async fn execute_query_result(
@@ -278,7 +379,16 @@ impl PostgresAdapter {
         )]
         let start = Instant::now();
 
-        let output = self.run_psql(dsn, &["--csv"], query, read_only).await?;
+        let (mut cmd, passfile) =
+            Self::build_psql_command(dsn, &["--csv"], &["-c", query], read_only).map_err(
+                |error| {
+                    PsqlExecutionFailure::BeforeSpawn(error)
+                        .into_query_error(query, read_only, None)
+                },
+            )?;
+        let output = Self::collect_output_with_phase(&mut cmd, passfile, self.timeout_secs)
+            .await
+            .map_err(|error| error.into_query_error(query, read_only, None))?;
 
         let elapsed = start.elapsed().as_millis() as u64;
 
@@ -317,9 +427,17 @@ impl PostgresAdapter {
         let marker = boundary_marker();
         let args = segmented_query_args(statements, &marker);
         let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        let output = self
-            .run_psql_args(dsn, &["--csv"], &arg_refs, read_only)
-            .await?;
+        let (mut cmd, passfile) = Self::build_psql_command(dsn, &["--csv"], &arg_refs, read_only)
+            .map_err(|error| {
+            PsqlExecutionFailure::BeforeSpawn(error).into_query_error(
+                query,
+                read_only,
+                Some(&marker),
+            )
+        })?;
+        let output = Self::collect_output_with_phase(&mut cmd, passfile, self.timeout_secs)
+            .await
+            .map_err(|error| error.into_query_error(query, read_only, Some(&marker)))?;
 
         let elapsed = start.elapsed().as_millis() as u64;
 
@@ -364,6 +482,52 @@ impl PostgresAdapter {
             .with_command_tag(tag)
     }
 
+    fn uncertain_query_refresh_scope(
+        stdout: &str,
+        query: &str,
+        marker: Option<&str>,
+    ) -> RefreshScope {
+        let output = if let Some(marker) = marker {
+            let segments = split_marker_segments(stdout, marker);
+            let expected = split_sql_statements(query).len();
+            if segments.len() != expected
+                || segments.iter().any(|segment| segment.trim().is_empty())
+            {
+                return RefreshScope::Metadata;
+            }
+            segments.join("\n")
+        } else {
+            stdout.to_string()
+        };
+
+        Self::parse_aggregate_command_tag(&output, query)
+            .map_or(RefreshScope::Metadata, |tag| tag.refresh_scope())
+    }
+
+    fn committed_refresh_scope(
+        stdout: &str,
+        query: &str,
+        marker: Option<&str>,
+    ) -> Option<RefreshScope> {
+        let marker = marker?;
+        let segments = split_marker_segments(stdout, marker);
+        let expected = split_sql_statements(query).len();
+        if segments.is_empty() || segments.len() > expected {
+            return None;
+        }
+
+        let saw_commit = segments
+            .iter()
+            .any(|segment| matches!(Self::parse_command_tag(segment), Ok(CommandTag::Commit)));
+        if !saw_commit {
+            return None;
+        }
+
+        let output = segments.join("\n");
+        let refresh_scope = Self::parse_aggregate_command_tag(&output, query)?.refresh_scope();
+        (refresh_scope != RefreshScope::None).then_some(refresh_scope)
+    }
+
     fn csv_result(
         query: &str,
         csv_block: &str,
@@ -398,9 +562,19 @@ impl PostgresAdapter {
         query: &str,
         read_only: bool,
     ) -> Result<WriteExecutionResult, DbOperationError> {
-        let output = self.run_psql(dsn, &[], query, read_only).await?;
+        let (mut cmd, passfile) = Self::build_psql_command(dsn, &[], &["-c", query], read_only)
+            .map_err(|error| {
+                PsqlExecutionFailure::BeforeSpawn(error).into_write_error(read_only)
+            })?;
+        let output = Self::collect_output_with_phase(&mut cmd, passfile, self.timeout_secs)
+            .await
+            .map_err(|error| error.into_write_error(read_only))?;
 
-        let affected_rows = Self::parse_affected_rows_with_source(&output).map_err(
+        Self::write_result_from_output(&output)
+    }
+
+    fn write_result_from_output(output: &str) -> Result<WriteExecutionResult, DbOperationError> {
+        let affected_rows = Self::parse_affected_rows_with_source(output).map_err(
             |error: ParseCommandTagError| DbOperationError::QueryFailedAfterChange {
                 source: Arc::new(DbOperationError::CommandTagParseFailed(error.to_string())),
                 refresh_scope: RefreshScope::Data,
@@ -420,16 +594,11 @@ impl PostgresAdapter {
         path: &std::path::Path,
         read_only: bool,
     ) -> Result<(), DbOperationError> {
-        let mut cmd = Self::build_psql_command(dsn, &["--csv"], &["-c", query], read_only);
+        let (mut cmd, passfile) =
+            Self::build_psql_command(dsn, &["--csv"], &["-c", query], read_only)?;
+        let process = PsqlProcess::spawn(&mut cmd, passfile)?;
 
-        let child = cmd
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(classify_cli_spawn_error)?;
-
-        collect_csv_output(child, path, Duration::from_secs(self.timeout_secs * 10)).await?;
+        collect_csv_output(process, path, Duration::from_secs(self.timeout_secs * 10)).await?;
 
         Ok(())
     }
@@ -459,6 +628,54 @@ impl PostgresAdapter {
             })
     }
 }
+
+struct PsqlProcess {
+    child: Option<tokio::process::Child>,
+    passfile: Option<Passfile>,
+}
+
+impl PsqlProcess {
+    async fn stop(&mut self) {
+        if let Some(child) = self.child.as_mut() {
+            let _ = child.kill().await;
+        }
+    }
+
+    fn spawn(cmd: &mut Command, passfile: Option<Passfile>) -> Result<Self, DbOperationError> {
+        let child = cmd
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(classify_cli_spawn_error)?;
+        Ok(Self {
+            child: Some(child),
+            passfile,
+        })
+    }
+}
+
+impl Drop for PsqlProcess {
+    fn drop(&mut self) {
+        let Some(mut child) = self.child.take() else {
+            return;
+        };
+        if matches!(child.try_wait(), Ok(Some(_))) {
+            return;
+        }
+        let _ = child.start_kill();
+        let passfile = self.passfile.take();
+        // Cancellation must keep the secret file owned until the child has been reaped.
+        tokio::spawn(async move {
+            let _ = child.wait().await;
+            drop(passfile);
+        });
+    }
+}
+
+#[cfg(test)]
+#[path = "password_tests.rs"]
+mod password_tests;
 
 #[cfg(test)]
 mod tests {
@@ -700,9 +917,16 @@ mod tests {
                 .spawn()
                 .unwrap();
 
-            collect_csv_output(child, &path, std::time::Duration::from_secs(2))
-                .await
-                .unwrap();
+            collect_csv_output(
+                super::super::PsqlProcess {
+                    child: Some(child),
+                    passfile: None,
+                },
+                &path,
+                std::time::Duration::from_secs(2),
+            )
+            .await
+            .unwrap();
 
             assert_eq!(
                 tokio::fs::read_to_string(path).await.unwrap(),
@@ -725,7 +949,15 @@ mod tests {
                 .spawn()
                 .unwrap();
 
-            let result = collect_csv_output(child, &path, std::time::Duration::from_secs(2)).await;
+            let result = collect_csv_output(
+                super::super::PsqlProcess {
+                    child: Some(child),
+                    passfile: None,
+                },
+                &path,
+                std::time::Duration::from_secs(2),
+            )
+            .await;
 
             assert!(matches!(result, Err(DbOperationError::PermissionDenied(_))));
             assert!(!path.exists());
@@ -744,7 +976,15 @@ mod tests {
                 .spawn()
                 .unwrap();
 
-            let result = collect_csv_output(child, &path, std::time::Duration::from_secs(2)).await;
+            let result = collect_csv_output(
+                super::super::PsqlProcess {
+                    child: Some(child),
+                    passfile: None,
+                },
+                &path,
+                std::time::Duration::from_secs(2),
+            )
+            .await;
 
             assert!(matches!(
                 result,
@@ -767,7 +1007,7 @@ mod tests {
             let mut command = Command::new("sh");
             command.args(["-c", "exit 7"]);
 
-            let result = PostgresAdapter::collect_output(&mut command, 2).await;
+            let result = PostgresAdapter::collect_output(&mut command, None, 2).await;
 
             assert!(matches!(
                 result,
@@ -784,7 +1024,7 @@ mod tests {
                 "printf 'ERROR:  42501: permission denied\\n' >&2; exit 7",
             ]);
 
-            let result = PostgresAdapter::collect_output(&mut command, 2).await;
+            let result = PostgresAdapter::collect_output(&mut command, None, 2).await;
 
             assert!(matches!(
                 result,
@@ -799,7 +1039,7 @@ mod tests {
             command.args(["-c", "exit 0"]);
 
             assert_eq!(
-                PostgresAdapter::collect_output(&mut command, 2)
+                PostgresAdapter::collect_output(&mut command, None, 2)
                     .await
                     .unwrap(),
                 ""
@@ -811,12 +1051,511 @@ mod tests {
             let mut command = Command::new("sh");
             command.args(["-c", "kill -TERM $$"]);
 
-            let result = PostgresAdapter::collect_output(&mut command, 2).await;
+            let result = PostgresAdapter::collect_output(&mut command, None, 2).await;
 
             assert!(matches!(
                 result,
                 Err(DbOperationError::QueryFailed(details))
                     if details == "psql terminated by signal 15"
+            ));
+        }
+    }
+
+    #[cfg(unix)]
+    mod adhoc_execution {
+        use std::process::Stdio;
+
+        use tokio::process::Command;
+
+        use crate::app::ports::outbound::{ConnectionFailureKind, DbOperationError};
+        use crate::domain::RefreshScope;
+
+        use super::super::PostgresAdapter;
+
+        async fn run_fake_adhoc(
+            script: &str,
+            query: &str,
+            timeout_secs: u64,
+            read_only: bool,
+            marker: Option<&str>,
+        ) -> Result<(), DbOperationError> {
+            let mut command = Command::new("sh");
+            command
+                .args(["-c", script])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+
+            PostgresAdapter::collect_output_with_phase(&mut command, None, timeout_secs)
+                .await
+                .map(|_| ())
+                .map_err(|error| error.into_query_error(query, read_only, marker))
+        }
+
+        #[tokio::test]
+        async fn spawn_failure_stays_a_normal_error() {
+            let mut command = Command::new("/nonexistent/sabiql-cf03-psql");
+            let error = PostgresAdapter::collect_output_with_phase(&mut command, None, 1)
+                .await
+                .expect_err("spawn should fail")
+                .into_query_error("UPDATE users SET name = 'new'", false, None);
+
+            assert!(matches!(error, DbOperationError::CommandNotFound { .. }));
+        }
+
+        #[tokio::test]
+        async fn authentication_and_tls_rejection_stay_normal_errors() {
+            let auth = run_fake_adhoc(
+                "printf 'FATAL:  28P01: password authentication failed\\n' >&2; exit 2",
+                "UPDATE users SET name = 'new'",
+                1,
+                false,
+                None,
+            )
+            .await;
+            assert!(matches!(
+                auth,
+                Err(DbOperationError::ConnectionFailedWithKind {
+                    kind: ConnectionFailureKind::Auth,
+                    ..
+                })
+            ));
+
+            let tls = run_fake_adhoc(
+                "printf 'psql: error: SSL error: certificate verify failed\\n' >&2; exit 2",
+                "UPDATE users SET name = 'new'",
+                1,
+                false,
+                None,
+            )
+            .await;
+            assert!(matches!(tls, Err(DbOperationError::QueryFailed(_))));
+        }
+
+        #[tokio::test]
+        async fn sqlstate_syntax_error_after_marker_output_is_definitive() {
+            let result = run_fake_adhoc(
+                "printf 'M\\nSELECT 1\\nM\\n'; printf 'ERROR:  42601: syntax error at or near FROM\\n' >&2; exit 3",
+                "SELECT 1; SELECT FROM users",
+                1,
+                false,
+                Some("M"),
+            )
+            .await;
+
+            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+        }
+
+        #[tokio::test]
+        async fn read_only_transport_failure_stays_a_normal_error() {
+            let result = run_fake_adhoc(
+                "printf 'connection to server was lost\\n' >&2; exit 1",
+                "SELECT pg_sleep(30)",
+                1,
+                true,
+                None,
+            )
+            .await;
+
+            assert!(matches!(result, Err(DbOperationError::ConnectionLost(_))));
+        }
+
+        #[tokio::test]
+        async fn bare_status_two_is_result_unknown_with_conservative_scope() {
+            let result =
+                run_fake_adhoc("exit 2", "UPDATE users SET name = 'new'", 1, false, None).await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    refresh_scope: RefreshScope::Metadata,
+                    ..
+                })
+            ));
+        }
+
+        #[tokio::test]
+        async fn signal_after_start_is_result_unknown() {
+            let result = run_fake_adhoc(
+                "kill -TERM $$",
+                "UPDATE users SET name = 'new'",
+                1,
+                false,
+                None,
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    refresh_scope: RefreshScope::Metadata,
+                    ..
+                })
+            ));
+        }
+
+        #[tokio::test]
+        async fn timeout_after_start_is_result_unknown() {
+            let result = run_fake_adhoc(
+                "exec sleep 30",
+                "UPDATE users SET name = 'new'",
+                0,
+                false,
+                None,
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    refresh_scope: RefreshScope::Metadata,
+                    source,
+                }) if matches!(source.as_ref(), DbOperationError::Timeout(_))
+            ));
+        }
+
+        #[tokio::test]
+        async fn known_dml_tag_narrows_result_unknown_to_data() {
+            let result = run_fake_adhoc(
+                "printf 'UPDATE 1\\n'; exit 7",
+                "UPDATE users SET name = 'new'",
+                1,
+                false,
+                None,
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    refresh_scope: RefreshScope::Data,
+                    ..
+                })
+            ));
+        }
+
+        #[tokio::test]
+        async fn known_select_tag_is_used_instead_of_query_prefix() {
+            let result = run_fake_adhoc(
+                "printf 'SELECT 1\\n'; exit 7",
+                "SELECT pg_sleep(30)",
+                1,
+                false,
+                None,
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    refresh_scope: RefreshScope::None,
+                    ..
+                })
+            ));
+        }
+
+        #[tokio::test]
+        async fn unknown_tag_uses_metadata_scope() {
+            let result = run_fake_adhoc(
+                "printf 'MERGE 1\\n'; exit 7",
+                "MERGE INTO users USING incoming ON users.id = incoming.id WHEN MATCHED THEN UPDATE SET name = incoming.name",
+                1,
+                false,
+                None,
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    refresh_scope: RefreshScope::Metadata,
+                    ..
+                })
+            ));
+        }
+
+        #[tokio::test]
+        async fn complete_explicit_commit_uses_observed_dml_tag() {
+            let result = run_fake_adhoc(
+                "printf 'M\\nBEGIN\\nM\\nUPDATE 1\\nM\\nCOMMIT\\n'; exit 7",
+                "BEGIN; UPDATE users SET name = 'new'; COMMIT",
+                1,
+                false,
+                Some("M"),
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    refresh_scope: RefreshScope::Data,
+                    ..
+                })
+            ));
+        }
+
+        #[tokio::test]
+        async fn incomplete_multi_statement_response_uses_metadata_scope() {
+            let result = run_fake_adhoc(
+                "printf 'M\\nBEGIN\\nM\\nUPDATE 1\\n'; printf 'connection to server was lost\\n' >&2; exit 1",
+                "BEGIN; UPDATE users SET name = 'new'; COMMIT",
+                1,
+                false,
+                Some("M"),
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    refresh_scope: RefreshScope::Metadata,
+                    source,
+                }) if matches!(source.as_ref(), DbOperationError::ConnectionLost(_))
+            ));
+        }
+
+        #[tokio::test]
+        async fn committed_change_is_refreshed_before_a_later_definitive_error() {
+            let result = run_fake_adhoc(
+                "printf 'M\\nBEGIN\\nM\\nUPDATE 1\\nM\\nCOMMIT\\nM\\n'; printf 'ERROR:  23505: duplicate key value violates unique constraint\\n' >&2; exit 1",
+                "BEGIN; UPDATE users SET name = 'new'; COMMIT; INSERT INTO users(id) VALUES (1)",
+                1,
+                false,
+                Some("M"),
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    refresh_scope: RefreshScope::Data,
+                    source,
+                }) if matches!(source.as_ref(), DbOperationError::UniqueViolation(_))
+            ));
+        }
+
+        #[tokio::test]
+        async fn explicit_commit_before_returning_syntax_error_still_refreshes() {
+            let result = run_fake_adhoc(
+                "printf 'M\\nBEGIN\\nM\\nUPDATE 1\\nM\\nCOMMIT\\nM\\n'; printf 'ERROR:  42601: syntax error at or near RETURNING\\n' >&2; exit 3",
+                "BEGIN; UPDATE users SET name = 'new'; COMMIT; INSERT INTO users(id) VALUES (1) RETURNING",
+                1,
+                false,
+                Some("M"),
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    refresh_scope: RefreshScope::Data,
+                    source,
+                }) if matches!(source.as_ref(), DbOperationError::QueryFailed(_))
+            ));
+        }
+
+        #[tokio::test]
+        async fn rolled_back_change_stays_a_definitive_error() {
+            let result = run_fake_adhoc(
+                "printf 'M\\nBEGIN\\nM\\nUPDATE 1\\nM\\nROLLBACK\\nM\\n'; printf 'ERROR:  23505: duplicate key value violates unique constraint\\n' >&2; exit 1",
+                "BEGIN; UPDATE users SET name = 'new'; ROLLBACK; INSERT INTO users(id) VALUES (1)",
+                1,
+                false,
+                Some("M"),
+            )
+            .await;
+
+            assert!(matches!(result, Err(DbOperationError::UniqueViolation(_))));
+        }
+    }
+
+    #[cfg(unix)]
+    mod write_execution {
+        use std::process::Stdio;
+
+        use tokio::process::Command;
+
+        use crate::app::ports::outbound::{ConnectionFailureKind, DbOperationError};
+        use crate::domain::WriteExecutionResult;
+
+        use crate::adapters::postgres::PostgresAdapter;
+
+        async fn run_fake_write(
+            script: &str,
+            timeout_secs: u64,
+            read_only: bool,
+        ) -> Result<WriteExecutionResult, DbOperationError> {
+            let mut command = Command::new("sh");
+            command
+                .args(["-c", script])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+
+            let output =
+                PostgresAdapter::collect_output_with_phase(&mut command, None, timeout_secs)
+                    .await
+                    .map_err(|error| error.into_write_error(read_only))?;
+            PostgresAdapter::write_result_from_output(&output)
+        }
+
+        #[tokio::test]
+        async fn spawn_failure_stays_a_normal_error() {
+            let mut command = Command::new("/nonexistent/sabiql-cf03-psql");
+            let error = PostgresAdapter::collect_output_with_phase(&mut command, None, 1)
+                .await
+                .expect_err("spawn should fail");
+
+            assert!(matches!(
+                &error,
+                super::super::PsqlExecutionFailure::BeforeSpawn(
+                    DbOperationError::CommandNotFound { .. }
+                )
+            ));
+            assert!(matches!(
+                error.into_write_error(false),
+                DbOperationError::CommandNotFound { .. }
+            ));
+        }
+
+        #[tokio::test]
+        async fn authentication_and_certificate_rejection_stay_normal_errors() {
+            let auth = run_fake_write(
+                "printf 'FATAL:  28P01: password authentication failed\\n' >&2; exit 2",
+                1,
+                false,
+            )
+            .await;
+            assert!(matches!(
+                auth,
+                Err(DbOperationError::ConnectionFailedWithKind {
+                    kind: ConnectionFailureKind::Auth,
+                    ..
+                })
+            ));
+
+            let tls = run_fake_write(
+                "printf 'psql: error: SSL error: certificate verify failed\\n' >&2; exit 2",
+                1,
+                false,
+            )
+            .await;
+            assert!(matches!(tls, Err(DbOperationError::QueryFailed(_))));
+        }
+
+        #[tokio::test]
+        async fn tls_transport_drop_is_result_unknown() {
+            let result = run_fake_write(
+                "printf 'psql: error: SSL SYSCALL error: EOF detected\\n' >&2; exit 2",
+                1,
+                false,
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange { .. })
+            ));
+        }
+
+        #[tokio::test]
+        async fn bare_psql_connection_failure_status_is_result_unknown() {
+            let result = run_fake_write("exit 2", 1, false).await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange { .. })
+            ));
+        }
+
+        #[tokio::test]
+        async fn constraint_violation_stays_a_normal_error() {
+            let result = run_fake_write(
+                "printf 'ERROR:  23503: violates foreign key constraint\\n' >&2; exit 1",
+                1,
+                false,
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::ForeignKeyViolation(_))
+            ));
+        }
+
+        #[tokio::test]
+        async fn statement_timeout_stays_a_normal_error() {
+            let result = run_fake_write(
+                "printf 'ERROR:  57014: canceling statement due to statement timeout\\n' >&2; exit 1",
+                1,
+                false,
+            )
+            .await;
+
+            assert!(matches!(result, Err(DbOperationError::Timeout(_))));
+        }
+
+        #[tokio::test]
+        async fn connection_lost_sqlstate_is_result_unknown() {
+            let result = run_fake_write(
+                "printf 'ERROR:  08006: connection to server was lost\\n' >&2; exit 1",
+                1,
+                false,
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange { .. })
+            ));
+        }
+
+        #[tokio::test]
+        async fn output_followed_by_nonzero_exit_is_result_unknown() {
+            let result = run_fake_write("printf 'UPDATE 1\\n'; exit 7", 1, false).await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange { .. })
+            ));
+        }
+
+        #[tokio::test]
+        async fn signal_after_start_is_result_unknown() {
+            let result = run_fake_write("kill -TERM $$", 1, false).await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange { .. })
+            ));
+        }
+
+        #[tokio::test]
+        async fn outer_timeout_is_result_unknown() {
+            let result = run_fake_write("exec sleep 30", 0, false).await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange { .. })
+            ));
+        }
+
+        #[tokio::test]
+        async fn read_only_outer_timeout_does_not_refresh_a_write() {
+            let result = run_fake_write("exec sleep 30", 0, true).await;
+
+            assert!(matches!(result, Err(DbOperationError::Timeout(_))));
+        }
+
+        #[tokio::test]
+        async fn normal_tag_succeeds_and_parse_failure_is_result_unknown() {
+            let success = run_fake_write("printf 'UPDATE 1\\n'", 1, false)
+                .await
+                .expect("command tag should parse");
+            assert_eq!(success.affected_rows, 1);
+
+            let parse_failure = run_fake_write("printf 'not a command tag\\n'", 1, false).await;
+            assert!(matches!(
+                parse_failure,
+                Err(DbOperationError::QueryFailedAfterChange { .. })
             ));
         }
     }

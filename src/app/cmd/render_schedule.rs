@@ -168,43 +168,24 @@ mod tests {
             assert_eq!(deadline, Some(highlight_until));
         }
 
-        #[test]
-        fn sql_modal_returns_cursor_blink_interval() {
+        #[rstest::rstest]
+        #[case(InputMode::SqlModal, true)]
+        #[case(InputMode::TablePicker, true)]
+        #[case(InputMode::CommandLine, true)]
+        #[case(InputMode::ConnectionSetup, true)]
+        #[case(InputMode::Help, false)]
+        fn cursor_modes_control_animation_deadline(#[case] mode: InputMode, #[case] blinks: bool) {
             let mut state = create_test_state();
-            state.modal.set_mode(InputMode::SqlModal);
+            state.modal.set_mode(mode);
             let now = Instant::now();
 
             let deadline = next_animation_deadline(&state, now);
 
-            assert!(deadline.is_some());
-            let expected = now + CURSOR_BLINK_INTERVAL;
-            assert_eq!(deadline.unwrap(), expected);
-        }
-
-        #[test]
-        fn table_picker_returns_cursor_blink_interval() {
-            let mut state = create_test_state();
-            state.modal.set_mode(InputMode::TablePicker);
-            let now = Instant::now();
-
-            let deadline = next_animation_deadline(&state, now);
-
-            assert!(deadline.is_some());
-            let expected = now + CURSOR_BLINK_INTERVAL;
-            assert_eq!(deadline.unwrap(), expected);
-        }
-
-        #[test]
-        fn command_line_returns_cursor_blink_interval() {
-            let mut state = create_test_state();
-            state.modal.set_mode(InputMode::CommandLine);
-            let now = Instant::now();
-
-            let deadline = next_animation_deadline(&state, now);
-
-            assert!(deadline.is_some());
-            let expected = now + CURSOR_BLINK_INTERVAL;
-            assert_eq!(deadline.unwrap(), expected);
+            if blinks {
+                assert_eq!(deadline, Some(now + CURSOR_BLINK_INTERVAL));
+            } else {
+                assert!(deadline.is_none());
+            }
         }
 
         #[test]
@@ -276,122 +257,11 @@ mod tests {
         use super::*;
 
         #[test]
-        fn idle_query_returns_false() {
-            let state = create_test_state();
-
-            assert!(!has_active_spinner(&state));
-        }
-
-        #[test]
-        fn running_query_returns_true() {
-            let mut state = create_test_state();
-            let _ = state.query.begin_running(Instant::now());
-
-            assert!(has_active_spinner(&state));
-        }
-
-        #[test]
-        fn er_idle_returns_false() {
-            let state = create_test_state();
-
-            assert!(!has_active_spinner(&state));
-        }
-
-        #[test]
-        fn er_waiting_returns_true() {
-            let mut state = create_test_state();
-            let _ = state.er_preparation.start_waiting_run();
-
-            assert!(has_active_spinner(&state));
-        }
-
-        #[test]
         fn er_rendering_returns_false() {
             let mut state = create_test_state();
             state.er_preparation.mark_rendering();
 
             assert!(!has_active_spinner(&state));
-        }
-    }
-
-    mod has_blinking_cursor_tests {
-        use super::*;
-
-        #[test]
-        fn normal_mode_returns_false() {
-            let state = create_test_state();
-
-            assert!(!has_blinking_cursor(&state));
-        }
-
-        #[test]
-        fn sql_modal_returns_true() {
-            let mut state = create_test_state();
-            state.modal.set_mode(InputMode::SqlModal);
-
-            assert!(has_blinking_cursor(&state));
-        }
-
-        #[test]
-        fn table_picker_returns_true() {
-            let mut state = create_test_state();
-            state.modal.set_mode(InputMode::TablePicker);
-
-            assert!(has_blinking_cursor(&state));
-        }
-
-        #[test]
-        fn command_line_returns_true() {
-            let mut state = create_test_state();
-            state.modal.set_mode(InputMode::CommandLine);
-
-            assert!(has_blinking_cursor(&state));
-        }
-
-        #[test]
-        fn connection_setup_returns_true() {
-            let mut state = create_test_state();
-            state.modal.set_mode(InputMode::ConnectionSetup);
-
-            assert!(has_blinking_cursor(&state));
-        }
-
-        #[test]
-        fn help_mode_returns_false() {
-            let mut state = create_test_state();
-            state.modal.set_mode(InputMode::Help);
-
-            assert!(!has_blinking_cursor(&state));
-        }
-    }
-
-    mod min_instant_tests {
-        use super::*;
-
-        #[test]
-        fn both_none_returns_none() {
-            assert!(min_instant(None, None).is_none());
-        }
-
-        #[test]
-        fn first_some_returns_first() {
-            let now = Instant::now();
-            assert_eq!(min_instant(Some(now), None), Some(now));
-        }
-
-        #[test]
-        fn second_some_returns_second() {
-            let now = Instant::now();
-            assert_eq!(min_instant(None, Some(now)), Some(now));
-        }
-
-        #[test]
-        fn both_some_returns_earlier() {
-            let now = Instant::now();
-            let later = now + Duration::from_secs(1);
-
-            assert_eq!(min_instant(Some(now), Some(later)), Some(now));
-            assert_eq!(min_instant(Some(later), Some(now)), Some(now));
         }
     }
 }

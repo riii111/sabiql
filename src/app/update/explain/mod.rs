@@ -418,18 +418,6 @@ mod tests {
         }
 
         #[test]
-        fn starts_query_timer() {
-            let mut state = sql_modal_state();
-            state.sql_modal.editor.set_content("SELECT 1".to_string());
-            activate_postgres_connection(&mut state);
-
-            reduce_explain(&mut state, &Action::ExplainRequest, Instant::now());
-
-            assert!(state.query.is_running());
-            assert!(state.query.start_time().is_some());
-        }
-
-        #[test]
         fn delete_success_then_explain_then_preview_completion_clears_selection() {
             let mut state = test_fixtures::state_after_delete_success();
             state.modal.set_mode(InputMode::SqlModal);
@@ -1271,6 +1259,8 @@ mod tests {
 
             // Step 1: First EXPLAIN
             reduce_explain(&mut state, &Action::ExplainRequest, now);
+            assert!(state.query.is_running());
+            assert_eq!(state.query.start_time(), Some(now));
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {

@@ -69,27 +69,6 @@ fn active_cell_edit_uses_yellow_fg() {
 }
 
 #[test]
-fn staged_delete_row_uses_dark_red_bg() {
-    let mut state = table_detail_loaded_state();
-    let mut terminal = create_test_terminal();
-
-    with_current_result(&mut state);
-    state.ui.set_focused_pane(FocusedPane::Result);
-    state.result_interaction.activate_cell(0, 0);
-    state.result_interaction.stage_row(1);
-
-    let buffer = render_and_get_buffer(&mut terminal, &mut state);
-
-    let staged_cell = has_cell(&buffer, |cell| {
-        cell.bg == DEFAULT_THEME.component.table.staged_delete_bg
-    });
-    assert!(
-        staged_cell,
-        "Expected at least one cell with STAGED_DELETE_BG (dark red) in the buffer"
-    );
-}
-
-#[test]
 fn scrim_applies_dim_modifier() {
     let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();

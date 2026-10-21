@@ -34,6 +34,9 @@ impl Renderer for TuiAdapter<'_> {
         services: &AppServices,
         now: Instant,
     ) -> RenderResult<RenderOutput> {
+        // Keep background terminal clipboard output outside the entire frame.
+        let stdout = std::io::stdout();
+        let _output_lock = stdout.lock();
         let mut output = RenderOutput::default();
         self.tui.terminal().draw(|frame| {
             output = MainLayout::render(frame, state, None, services, now);

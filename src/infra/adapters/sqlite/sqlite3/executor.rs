@@ -930,7 +930,7 @@ esac
                     test_support::display_row(&result, 0),
                     vec!["Grace".to_string()]
                 );
-                assert_eq!(metadata.table_summaries.len(), 1);
+                assert_eq!(metadata.metadata.table_summaries.len(), 1);
                 assert_eq!(
                     (
                         test_support::display_row(&preview, 0),

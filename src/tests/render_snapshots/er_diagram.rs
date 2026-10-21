@@ -1,6 +1,15 @@
 use super::*;
 use harness::explorer_selected_state;
 
+fn picker_rows(output: &str) -> Vec<&str> {
+    let lines = output.lines().collect::<Vec<_>>();
+    let mode = lines
+        .iter()
+        .position(|line| line.contains("Mode:"))
+        .expect("expected ER picker mode row");
+    lines[mode..].iter().take(6).copied().collect()
+}
+
 #[test]
 fn er_waiting_progress() {
     let mut state = explorer_selected_state();
@@ -60,8 +69,14 @@ fn er_table_picker_single_select() {
         .replace_er_selected_tables(["public.users".to_string()]);
 
     let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
+    let rows = picker_rows(&output);
+    assert!(rows[0].contains("Mode:    Partial ER"));
+    assert!(rows[1].contains("Targets: public.users"));
+    assert!(rows[2].contains("Output:  er_partial_public_users.dot"));
+    assert!(rows[3].contains("✔ public.users"));
+    assert!(!rows[4].contains("✔"));
+    assert!(!rows[5].contains("✔"));
+    assert!(output.lines().any(|line| line.contains("1/3 selected")));
 }
 
 #[test]
@@ -75,8 +90,14 @@ fn er_table_picker_multi_select() {
         .replace_er_selected_tables(["public.users".to_string(), "public.posts".to_string()]);
 
     let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
+    let rows = picker_rows(&output);
+    assert!(rows[0].contains("Mode:    Partial ER"));
+    assert!(rows[1].contains("Targets: 2 tables"));
+    assert!(rows[2].contains("Output:  er_partial_multi_2_89466781.dot"));
+    assert!(rows[3].contains("✔ public.users"));
+    assert!(rows[4].contains("✔ public.posts"));
+    assert!(!rows[5].contains("✔"));
+    assert!(output.lines().any(|line| line.contains("2/3 selected")));
 }
 
 #[test]
@@ -92,8 +113,14 @@ fn er_table_picker_all_selected() {
     ]);
 
     let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
+    let rows = picker_rows(&output);
+    assert!(rows[0].contains("Mode:    Full ER"));
+    assert!(rows[1].contains("Targets: all 3 tables"));
+    assert!(rows[2].contains("Output:  er_full.dot"));
+    assert!(rows[3].contains("✔ public.users"));
+    assert!(rows[4].contains("✔ public.posts"));
+    assert!(rows[5].contains("✔ public.comments"));
+    assert!(output.lines().any(|line| line.contains("3/3 selected")));
 }
 
 #[test]

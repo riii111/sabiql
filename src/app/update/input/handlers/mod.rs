@@ -444,22 +444,17 @@ mod tests {
             state
         }
 
-        #[test]
-        fn sql_modal_pastes_text() {
-            let state = make_state(InputMode::SqlModal);
+        #[rstest]
+        #[case(InputMode::SqlModal, "hello")]
+        #[case(InputMode::TablePicker, "world")]
+        #[case(InputMode::QueryHistoryPicker, "users")]
+        #[case(InputMode::CellDetail, "needle")]
+        fn text_editing_modes_paste_text(#[case] mode: InputMode, #[case] text: &str) {
+            let state = make_state(mode);
 
-            let result = handle_paste_event("hello".to_string(), &state);
+            let result = handle_paste_event(text.to_string(), &state);
 
-            assert!(matches!(result, Action::Paste(t) if t == "hello"));
-        }
-
-        #[test]
-        fn table_picker_pastes_text() {
-            let state = make_state(InputMode::TablePicker);
-
-            let result = handle_paste_event("world".to_string(), &state);
-
-            assert!(matches!(result, Action::Paste(t) if t == "world"));
+            assert!(matches!(result, Action::Paste(t) if t == text));
         }
 
         #[test]
@@ -492,36 +487,11 @@ mod tests {
             assert!(matches!(result, Action::None));
         }
 
-        #[test]
-        fn query_history_picker_pastes_text() {
-            let state = make_state(InputMode::QueryHistoryPicker);
-
-            let result = handle_paste_event("users".to_string(), &state);
-
-            assert!(matches!(result, Action::Paste(t) if t == "users"));
-        }
-
-        #[test]
-        fn cell_detail_pastes_text() {
-            let state = make_state(InputMode::CellDetail);
-
-            let result = handle_paste_event("needle".to_string(), &state);
-
-            assert!(matches!(result, Action::Paste(t) if t == "needle"));
-        }
-
-        #[test]
-        fn normal_mode_ignores_paste() {
-            let state = make_state(InputMode::Normal);
-
-            let result = handle_paste_event("text".to_string(), &state);
-
-            assert!(matches!(result, Action::None));
-        }
-
-        #[test]
-        fn help_mode_ignores_paste() {
-            let state = make_state(InputMode::Help);
+        #[rstest]
+        #[case(InputMode::Normal)]
+        #[case(InputMode::Help)]
+        fn non_editing_modes_ignore_paste(#[case] mode: InputMode) {
+            let state = make_state(mode);
 
             let result = handle_paste_event("text".to_string(), &state);
 

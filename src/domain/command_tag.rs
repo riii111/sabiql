@@ -18,10 +18,6 @@ pub enum CommandTag {
 }
 
 impl CommandTag {
-    pub fn is_data_modifying(&self) -> bool {
-        !matches!(self, Self::Select(_) | Self::Other(_))
-    }
-
     pub fn is_schema_modifying(&self) -> bool {
         matches!(self, Self::Create(_) | Self::Drop(_) | Self::Alter(_))
             || matches!(self, Self::Other(tag) if matches!(tag.as_str(), "ATTACH" | "DETACH"))

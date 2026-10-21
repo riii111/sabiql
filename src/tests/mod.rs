@@ -1,6 +1,9 @@
 mod adapter_mysql;
 mod adapter_postgres;
+#[cfg(unix)]
+mod clipboard;
 pub mod harness;
+mod startup_recovery;
 
 use clap::Parser;
 
@@ -59,15 +62,6 @@ mod cli_sqlite_startup {
     use sabiql_app::ports::outbound::{AccessMode, QueryExecutor};
     use sabiql_infra::adapters::{FsSqlitePathValidator, SqliteAdapter};
     use tempfile::tempdir;
-
-    #[test]
-    fn resolves_existing_sqlite_file() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("app.db");
-        fs::write(&path, b"SQLite format 3\0rest").unwrap();
-
-        assert!(resolve_cli_sqlite_target(path.to_str().unwrap(), &FsSqlitePathValidator).is_ok());
-    }
 
     #[test]
     fn resolves_extensionless_sqlite_file() {

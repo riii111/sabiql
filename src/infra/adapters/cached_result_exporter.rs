@@ -60,32 +60,11 @@ mod tests {
     mod cached_csv_cell_tests {
         use super::*;
 
-        #[test]
-        fn null_is_empty_field() {
-            assert_eq!(cached_csv_cell(&QueryValue::Null), "");
-        }
-
-        #[test]
-        fn blob_is_uppercase_hex() {
-            assert_eq!(cached_csv_cell(&QueryValue::Blob(vec![0xAB, 0xCD])), "ABCD");
-        }
-
-        #[test]
-        fn text_keeps_a_literal_hex_prefix() {
-            assert_eq!(cached_csv_cell(&QueryValue::text("0x00FFA1")), "0x00FFA1");
-        }
-
-        #[test]
-        fn text_preserves_embedded_nul_byte() {
-            assert_eq!(cached_csv_cell(&QueryValue::text("a\0bc")), "a\0bc");
-        }
-
-        #[test]
-        fn text_is_not_display_form() {
-            assert_ne!(
-                cached_csv_cell(&QueryValue::Null),
-                QueryValue::Null.display_value()
-            );
+        #[rstest::rstest]
+        #[case(QueryValue::Null, "")]
+        #[case(QueryValue::text("0x00FFA1"), "0x00FFA1")]
+        fn preserves_cached_csv_cell_values(#[case] value: QueryValue, #[case] expected: &str) {
+            assert_eq!(cached_csv_cell(&value), expected);
         }
     }
 

@@ -5,6 +5,7 @@ too-many-arguments-threshold = 8
 absolute-paths-allowed-crates = [
     "alloc",
     "arboard",
+    "base64",
     "async_trait",
     "clap",
     "color_eyre",

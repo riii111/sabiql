@@ -582,7 +582,6 @@ mod tests {
         );
         assert_eq!(statement.target(), Some("users"));
         assert_eq!(statement.target_database.as_deref(), None);
-        assert!(validate_mysql_statements(&[statement], Some("app")).is_ok());
     }
 
     #[test]

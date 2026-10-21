@@ -16,7 +16,7 @@ use sabiql_app::model::shared::theme_id::ThemeId;
 use sabiql_app::model::shared::ui_state::{HELP_MODAL_HEIGHT_PERCENT, HELP_MODAL_WIDTH_PERCENT};
 use sabiql_app::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use sabiql_app::update::dispatch_result;
-use sabiql_domain::{Column, ConnectionId, QueryResult};
+use sabiql_domain::ConnectionId;
 use sabiql_ui::theme::{
     ComponentTokens, DEFAULT_THEME, EditorTokens, LIGHT_THEME, ModalTokens, SemanticTokens,
     SurfaceTokens, ThemePalette,

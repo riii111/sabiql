@@ -28,6 +28,7 @@ pub enum ConnectionField {
     SslCert,
     SslKey,
     ServerPublicKeyPath,
+    GetServerPublicKey,
 }
 
 impl ConnectionField {
@@ -59,6 +60,7 @@ impl ConnectionField {
                 fields.extend([Self::Database, Self::User, Self::Password, Self::SslMode]);
                 fields.push(Self::CleartextAuth);
                 fields.push(Self::ServerPublicKeyPath);
+                fields.push(Self::GetServerPublicKey);
                 match mysql_ssl_mode {
                     MySqlSslMode::Disabled => {}
                     MySqlSslMode::Preferred | MySqlSslMode::Required => {
@@ -84,7 +86,11 @@ impl ConnectionField {
             | Self::ServerPublicKeyPath => Some(4096),
             Self::Host | Self::Database | Self::User | Self::Password => Some(255),
             Self::Port => Some(5),
-            Self::DatabaseType | Self::Transport | Self::SslMode | Self::CleartextAuth => None,
+            Self::DatabaseType
+            | Self::Transport
+            | Self::SslMode
+            | Self::CleartextAuth
+            | Self::GetServerPublicKey => None,
         }
     }
 
@@ -122,6 +128,7 @@ impl ConnectionField {
             Self::SslCert => "Cert Path:",
             Self::SslKey => "Key Path:",
             Self::ServerPublicKeyPath => "Server Key:",
+            Self::GetServerPublicKey => "Get Server:",
         }
     }
 }
@@ -161,6 +168,7 @@ pub struct ConnectionSetupState {
     pub(crate) mysql_ssl_mode: MySqlSslMode,
     pub(crate) mysql_transport: MySqlTransport,
     pub(crate) enable_cleartext_plugin: bool,
+    pub(crate) get_server_public_key: bool,
 
     pub(crate) focused_field: ConnectionField,
     pub(crate) database_type_dropdown: DropdownState,
@@ -193,6 +201,7 @@ impl Default for ConnectionSetupState {
             mysql_ssl_mode: MySqlSslMode::Preferred,
             mysql_transport: MySqlTransport::Tcp,
             enable_cleartext_plugin: false,
+            get_server_public_key: false,
             focused_field: ConnectionField::DatabaseType,
             database_type_dropdown: DropdownState::default(),
             transport_dropdown: DropdownState::default(),
@@ -225,6 +234,10 @@ impl ConnectionSetupState {
         self.enable_cleartext_plugin
     }
 
+    pub fn get_server_public_key_enabled(&self) -> bool {
+        self.get_server_public_key
+    }
+
     pub fn focused_field(&self) -> ConnectionField {
         self.focused_field
     }
@@ -253,10 +266,6 @@ impl ConnectionSetupState {
         self.validation_errors.get(&field).map(String::as_str)
     }
 
-    pub fn has_validation_error(&self, field: ConnectionField) -> bool {
-        self.validation_errors.contains_key(&field)
-    }
-
     pub fn has_validation_errors(&self) -> bool {
         !self.validation_errors.is_empty()
     }
@@ -280,7 +289,8 @@ impl ConnectionSetupState {
             ConnectionField::DatabaseType
             | ConnectionField::Transport
             | ConnectionField::SslMode
-            | ConnectionField::CleartextAuth => None,
+            | ConnectionField::CleartextAuth
+            | ConnectionField::GetServerPublicKey => None,
             ConnectionField::Name => Some(&self.name),
             ConnectionField::SqlitePath => Some(&self.sqlite_path),
             ConnectionField::TransportPath => Some(&self.transport_path),
@@ -305,7 +315,8 @@ impl ConnectionSetupState {
             ConnectionField::DatabaseType
             | ConnectionField::Transport
             | ConnectionField::SslMode
-            | ConnectionField::CleartextAuth => None,
+            | ConnectionField::CleartextAuth
+            | ConnectionField::GetServerPublicKey => None,
             ConnectionField::Name => Some(&mut self.name),
             ConnectionField::SqlitePath => Some(&mut self.sqlite_path),
             ConnectionField::TransportPath => Some(&mut self.transport_path),
@@ -331,10 +342,6 @@ impl ConnectionSetupState {
 
     pub fn focused_input_mut(&mut self) -> Option<&mut TextInputState> {
         self.input_mut(self.focused_field)
-    }
-
-    pub fn clear_errors(&mut self) {
-        self.validation_errors.clear();
     }
 
     pub fn reset(&mut self) {
@@ -422,7 +429,9 @@ impl ConnectionSetupState {
                         .unwrap_or(0);
                 }
             }
-            ConnectionField::SslMode | ConnectionField::CleartextAuth => {
+            ConnectionField::SslMode
+            | ConnectionField::CleartextAuth
+            | ConnectionField::GetServerPublicKey => {
                 self.ssl_dropdown.is_open = !self.ssl_dropdown.is_open;
                 self.database_type_dropdown.is_open = false;
                 self.transport_dropdown.is_open = false;
@@ -430,6 +439,8 @@ impl ConnectionSetupState {
                     self.ssl_dropdown.selected_index =
                         if self.focused_field == ConnectionField::CleartextAuth {
                             usize::from(self.enable_cleartext_plugin)
+                        } else if self.focused_field == ConnectionField::GetServerPublicKey {
+                            usize::from(self.get_server_public_key)
                         } else if self.database_type == DatabaseType::MySQL {
                             MySqlSslMode::all_variants()
                                 .iter()
@@ -459,7 +470,10 @@ impl ConnectionSetupState {
                 self.transport_dropdown.selected_index += 1;
             }
         } else if self.ssl_dropdown.is_open {
-            let max = if self.focused_field == ConnectionField::CleartextAuth {
+            let max = if matches!(
+                self.focused_field,
+                ConnectionField::CleartextAuth | ConnectionField::GetServerPublicKey
+            ) {
                 1
             } else if self.database_type == DatabaseType::MySQL {
                 MySqlSslMode::all_variants().len() - 1
@@ -502,6 +516,8 @@ impl ConnectionSetupState {
             if self.database_type == DatabaseType::MySQL {
                 if self.focused_field == ConnectionField::CleartextAuth {
                     self.enable_cleartext_plugin = self.ssl_dropdown.selected_index == 1;
+                } else if self.focused_field == ConnectionField::GetServerPublicKey {
+                    self.get_server_public_key = self.ssl_dropdown.selected_index == 1;
                 } else if let Some(mode) =
                     MySqlSslMode::all_variants().get(self.ssl_dropdown.selected_index)
                 {
@@ -623,6 +639,7 @@ impl ConnectionSetupState {
                         .flatten(),
                 )
                 .with_server_public_key_path(optional_path(&self.server_public_key_path))
+                .with_get_server_public_key(self.get_server_public_key)
                 .with_cleartext_auth_plugin(self.enable_cleartext_plugin),
             ),
         })
@@ -690,6 +707,7 @@ impl From<&ConnectionProfile> for ConnectionSetupState {
                     TextInputState::new(&config.password, config.password.chars().count());
                 state.mysql_ssl_mode = config.ssl_mode;
                 state.enable_cleartext_plugin = config.enable_cleartext_plugin;
+                state.get_server_public_key = config.get_server_public_key;
                 if config.ssl_mode.uses_ca()
                     && let Some(path) = config.ssl_ca.as_deref()
                 {
@@ -773,6 +791,7 @@ mod tests {
                     ConnectionField::SslMode,
                     ConnectionField::CleartextAuth,
                     ConnectionField::ServerPublicKeyPath,
+                    ConnectionField::GetServerPublicKey,
                     ConnectionField::SslCert,
                     ConnectionField::SslKey,
                 ]
@@ -799,6 +818,7 @@ mod tests {
                     ConnectionField::SslMode,
                     ConnectionField::CleartextAuth,
                     ConnectionField::ServerPublicKeyPath,
+                    ConnectionField::GetServerPublicKey,
                 ]
             );
         }
@@ -816,6 +836,7 @@ mod tests {
             assert_eq!(ConnectionField::SslMode.max_chars(), None);
             assert_eq!(ConnectionField::CleartextAuth.max_chars(), None);
             assert_eq!(ConnectionField::ServerPublicKeyPath.max_chars(), Some(4096));
+            assert_eq!(ConnectionField::GetServerPublicKey.max_chars(), None);
         }
 
         #[rstest]
@@ -877,6 +898,22 @@ mod tests {
                 panic!("expected MySQL config");
             };
             assert!(config.enable_cleartext_plugin);
+        }
+
+        #[test]
+        fn server_public_key_retrieval_dropdown_updates_config() {
+            let mut state = ConnectionSetupState::default();
+            state.set_database_type(DatabaseType::MySQL);
+            state.focused_field = ConnectionField::GetServerPublicKey;
+            state.toggle_focused_dropdown();
+            state.dropdown_next();
+            state.confirm_dropdown();
+
+            assert!(state.get_server_public_key_enabled());
+            let ConnectionConfig::MySQL(config) = state.to_connection_config().unwrap() else {
+                panic!("expected MySQL config");
+            };
+            assert!(config.get_server_public_key);
         }
     }
 
@@ -999,34 +1036,6 @@ mod tests {
         }
 
         #[test]
-        fn has_errors_returns_false_when_empty() {
-            let state = ConnectionSetupState::default();
-            assert!(!state.has_validation_errors());
-        }
-
-        #[test]
-        fn has_errors_returns_true_when_errors_exist() {
-            let mut state = ConnectionSetupState::default();
-            state
-                .validation_errors
-                .insert(ConnectionField::Host, "Required".to_string());
-            assert!(state.has_validation_errors());
-        }
-
-        #[test]
-        fn clear_errors_removes_all_errors() {
-            let mut state = ConnectionSetupState::default();
-            state
-                .validation_errors
-                .insert(ConnectionField::Host, "Required".to_string());
-            state
-                .validation_errors
-                .insert(ConnectionField::Port, "Invalid".to_string());
-            state.clear_errors();
-            assert!(!state.has_validation_errors());
-        }
-
-        #[test]
         fn from_sqlite_profile_inherits_default_field_baselines() {
             let profile = ConnectionProfile::new_sqlite("Local", "/tmp/app.db").unwrap();
 
@@ -1067,45 +1076,42 @@ mod tests {
             assert!(!state.is_first_run());
         }
 
-        #[test]
-        fn is_edit_mode_returns_false_for_new() {
-            let state = ConnectionSetupState::default();
-            assert!(!state.is_edit_mode());
+        #[rstest]
+        #[case(false)]
+        #[case(true)]
+        fn is_edit_mode_matches_profile_presence(#[case] editing: bool) {
+            let state = if editing {
+                let profile = ConnectionProfile::new_postgres(
+                    "Test",
+                    "localhost",
+                    5432,
+                    "db",
+                    "user",
+                    "",
+                    SslMode::Prefer,
+                )
+                .unwrap();
+                ConnectionSetupState::from(&profile)
+            } else {
+                ConnectionSetupState::default()
+            };
+
+            assert_eq!(state.is_edit_mode(), editing);
         }
 
-        #[test]
-        fn is_edit_mode_returns_true_for_edit() {
-            let profile = ConnectionProfile::new_postgres(
-                "Test",
-                "localhost",
-                5432,
-                "db",
-                "user",
-                "",
-                SslMode::Prefer,
-            )
-            .unwrap();
-            let state = ConnectionSetupState::from(&profile);
-            assert!(state.is_edit_mode());
-        }
-
-        #[test]
-        fn focused_input_returns_correct_field() {
+        #[rstest]
+        #[case(ConnectionField::Host, Some("localhost"))]
+        #[case(ConnectionField::SslMode, None)]
+        fn focused_input_matches_field(
+            #[case] field: ConnectionField,
+            #[case] expected: Option<&str>,
+        ) {
             let state = ConnectionSetupState {
-                focused_field: ConnectionField::Host,
+                focused_field: field,
                 ..Default::default()
             };
-            assert!(state.focused_input().is_some());
-            assert_eq!(state.focused_input().unwrap().content(), "localhost");
-        }
 
-        #[test]
-        fn focused_input_returns_none_for_ssl() {
-            let state = ConnectionSetupState {
-                focused_field: ConnectionField::SslMode,
-                ..Default::default()
-            };
-            assert!(state.focused_input().is_none());
+            assert_eq!(state.focused_input().map(TextInputState::content), expected);
         }
     }
 }

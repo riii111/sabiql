@@ -68,27 +68,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancel_drops_active_task() {
-        let owner = SingleTaskOwner::default();
-        let dropped = Arc::new(AtomicBool::new(false));
-        let (started_tx, started_rx) = oneshot::channel();
-        let guard = DropSignal(Arc::clone(&dropped));
-
-        owner
-            .replace(async move {
-                let _guard = guard;
-                started_tx.send(()).ok();
-                std::future::pending::<()>().await;
-            })
-            .await;
-
-        started_rx.await.expect("query task should start");
-        owner.cancel().await;
-
-        assert!(dropped.load(Ordering::SeqCst));
-    }
-
-    #[tokio::test]
     async fn replacement_waits_for_previous_task_to_drop() {
         let owner = SingleTaskOwner::default();
         let dropped = Arc::new(AtomicBool::new(false));

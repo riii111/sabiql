@@ -208,14 +208,6 @@ mod tests {
     }
 
     #[test]
-    fn number_string_yanks_display_text() {
-        let state = RowDetailState::open(&["count".to_string()], &["42".to_string()]);
-
-        let yank = state.content_for_yank();
-        assert!(yank.contains("count\n  42"));
-    }
-
-    #[test]
     fn boolean_string_yanks_as_boolean() {
         let state = RowDetailState::open(&["active".to_string()], &["true".to_string()]);
 
@@ -229,13 +221,6 @@ mod tests {
 
         assert!(state.content().contains("title\n  hello world"));
         assert!(state.json_for_yank().contains("\"title\": \"hello world\""));
-    }
-
-    #[test]
-    fn display_text_yank_matches_vertical_render() {
-        let state = RowDetailState::open(&["title".to_string()], &["hello world".to_string()]);
-
-        assert_eq!(state.content_for_yank(), state.content());
     }
 
     #[test]

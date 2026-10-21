@@ -1,4 +1,4 @@
-use crate::app::ports::outbound::{DatabaseCli, DbOperationError, SqliteCompatibilityKind};
+use crate::app::ports::outbound::{DatabaseCli, DbOperationError};
 
 const SQLITE_SAFE_MODE_MIN_VERSION: SqliteVersion = SqliteVersion::new(3, 41, 1);
 
@@ -84,12 +84,9 @@ fn is_safe_mode_unavailable(lower: &str) -> bool {
 }
 
 fn safe_mode_required_error(details: &str) -> DbOperationError {
-    DbOperationError::UnsupportedOperationWithSqliteKind {
-        kind: SqliteCompatibilityKind::SafeMode,
-        details: format!(
-            "sqlite3 3.41.1 or later is required for safe SQLite execution ({details})"
-        ),
-    }
+    DbOperationError::SqliteSafeModeRequired(format!(
+        "sqlite3 3.41.1 or later is required for safe SQLite execution ({details})"
+    ))
 }
 
 impl SqliteVersion {
@@ -150,10 +147,7 @@ mod tests {
 
     fn classified_kind(error: &DbOperationError) -> ClassifiedKind {
         match error {
-            DbOperationError::UnsupportedOperationWithSqliteKind {
-                kind: SqliteCompatibilityKind::SafeMode,
-                ..
-            } => ClassifiedKind::SafeMode,
+            DbOperationError::SqliteSafeModeRequired(_) => ClassifiedKind::SafeMode,
             DbOperationError::PermissionDenied(_) => ClassifiedKind::PermissionDenied,
             DbOperationError::ForeignKeyViolation(_) => ClassifiedKind::ForeignKeyViolation,
             DbOperationError::UniqueViolation(_) => ClassifiedKind::UniqueViolation,
@@ -281,12 +275,6 @@ mod tests {
             assert_eq!(SqliteVersion::parse(output), expected);
         }
 
-        #[test]
-        fn safe_mode_requires_sqlite_3_41_1_or_later() {
-            assert!(SqliteVersion::new(3, 41, 0) < SQLITE_SAFE_MODE_MIN_VERSION);
-            assert!(SqliteVersion::new(3, 41, 1) >= SQLITE_SAFE_MODE_MIN_VERSION);
-        }
-
         #[rstest]
         #[case("3.41.1", true)]
         #[case("3.51.0", true)]
@@ -302,10 +290,8 @@ mod tests {
 
             assert!(matches!(
                 error,
-                DbOperationError::UnsupportedOperationWithSqliteKind {
-                    kind: SqliteCompatibilityKind::SafeMode,
-                    details,
-                } if details == "sqlite3 3.41.1 or later is required for safe SQLite execution (could not determine the installed sqlite3 version)"
+                DbOperationError::SqliteSafeModeRequired(details)
+                    if details == "sqlite3 3.41.1 or later is required for safe SQLite execution (could not determine the installed sqlite3 version)"
             ));
         }
 
@@ -315,10 +301,8 @@ mod tests {
 
             assert!(matches!(
                 error,
-                DbOperationError::UnsupportedOperationWithSqliteKind {
-                    kind: SqliteCompatibilityKind::SafeMode,
-                    details,
-                } if details == "sqlite3 3.41.1 or later is required for safe SQLite execution (found sqlite3 3.41.0)"
+                DbOperationError::SqliteSafeModeRequired(details)
+                    if details == "sqlite3 3.41.1 or later is required for safe SQLite execution (found sqlite3 3.41.0)"
             ));
         }
     }

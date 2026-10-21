@@ -23,19 +23,8 @@ impl DiagnosticField {
         }
     }
 
-    pub fn err_message(&self) -> Option<&str> {
-        match self {
-            Self::Err(message) => Some(message.as_str()),
-            Self::Unavailable | Self::Pending | Self::Ok(_) => None,
-        }
-    }
-
     pub fn is_ok(&self) -> bool {
         matches!(self, Self::Ok(_))
-    }
-
-    pub fn is_err(&self) -> bool {
-        matches!(self, Self::Err(_))
     }
 
     pub fn is_pending(&self) -> bool {
@@ -82,25 +71,6 @@ impl SqliteDiagnosticsSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn diagnostic_field_rejects_invalid_public_construction() {
-        let field = DiagnosticField::ok("value");
-
-        assert_eq!(field.ok_value(), Some("value"));
-        assert!(field.err_message().is_none());
-    }
-
-    #[test]
-    fn diagnostic_field_pending_contract() {
-        let field = DiagnosticField::Pending;
-
-        assert!(field.is_pending());
-        assert!(!field.is_ok());
-        assert!(!field.is_err());
-        assert!(field.ok_value().is_none());
-        assert!(field.err_message().is_none());
-    }
 
     #[test]
     fn quick_check_is_ok_detects_ok_summary() {

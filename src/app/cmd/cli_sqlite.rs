@@ -146,6 +146,7 @@ mod tests {
             let target = CliSqliteTarget::parse_cli_argument("sqlite:///tmp/app.db").unwrap();
 
             assert_eq!(target.path(), "/tmp/app.db");
+            assert_eq!(target.display_name(), "app.db");
         }
 
         #[rstest]
@@ -192,42 +193,19 @@ mod tests {
         }
     }
 
-    mod display_name {
-        use super::*;
-
-        #[test]
-        fn uses_file_name() {
-            let target = CliSqliteTarget::parse_cli_argument("/tmp/projects/app.db").unwrap();
-
-            assert_eq!(target.display_name(), "app.db");
-        }
-    }
-
     mod connection_id_for_path {
         use super::*;
 
         #[test]
-        fn is_stable_for_same_path() {
+        fn is_stable_safe_and_path_specific() {
             let first = connection_id_for_path("/tmp/app.db");
             let second = connection_id_for_path("/tmp/app.db");
+            let other = connection_id_for_path("/tmp/other.db");
 
             assert_eq!(first, second);
-        }
-
-        #[test]
-        fn is_file_name_safe() {
-            let connection_id = connection_id_for_path("/tmp/app.db");
-
-            assert!(connection_id.as_str().starts_with("cli-sqlite-"));
-            assert!(!connection_id.as_str().contains('/'));
-        }
-
-        #[test]
-        fn differs_for_different_paths() {
-            let first = connection_id_for_path("/tmp/app.db");
-            let second = connection_id_for_path("/tmp/other.db");
-
-            assert_ne!(first, second);
+            assert_ne!(first, other);
+            assert!(first.as_str().starts_with("cli-sqlite-"));
+            assert!(!first.as_str().contains('/'));
         }
     }
 }

@@ -275,6 +275,7 @@ fn matches_mysql_numeric_lexeme(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     #[test]
     fn sql_literal_integer_is_inline_editable() {
@@ -296,28 +297,18 @@ mod tests {
         );
     }
 
-    #[test]
-    fn sql_literal_real_accepts_integer_like_draft_and_keeps_real_literal() {
+    #[rstest]
+    #[case("42", "42.0")]
+    #[case(".5", "0.5")]
+    fn sql_literal_real_accepts_valid_drafts(#[case] draft: &str, #[case] expected: &str) {
         let value = build_inline_edited_value(
             DatabaseType::SQLite,
             &QueryValue::SqlLiteral("3.14".to_string()),
-            "42",
+            draft,
         )
         .unwrap();
 
-        assert_eq!(value, QueryValue::SqlLiteral("42.0".to_string()));
-    }
-
-    #[test]
-    fn sql_literal_real_accepts_leading_decimal_draft() {
-        let value = build_inline_edited_value(
-            DatabaseType::SQLite,
-            &QueryValue::SqlLiteral("3.14".to_string()),
-            ".5",
-        )
-        .unwrap();
-
-        assert_eq!(value, QueryValue::SqlLiteral("0.5".to_string()));
+        assert_eq!(value, QueryValue::SqlLiteral(expected.to_string()));
     }
 
     #[test]
@@ -332,28 +323,21 @@ mod tests {
         assert_eq!(error, InlineCellEditError::IntegerOverflow);
     }
 
-    #[test]
-    fn sql_literal_real_rejects_non_finite_input() {
+    #[rstest]
+    #[case("1e999", InlineCellEditError::NonFiniteReal)]
+    #[case("NaN", InlineCellEditError::InvalidReal)]
+    fn sql_literal_real_rejects_invalid_input(
+        #[case] draft: &str,
+        #[case] expected: InlineCellEditError,
+    ) {
         let error = build_inline_edited_value(
             DatabaseType::SQLite,
             &QueryValue::SqlLiteral("1.0".to_string()),
-            "1e999",
+            draft,
         )
         .unwrap_err();
 
-        assert_eq!(error, InlineCellEditError::NonFiniteReal);
-    }
-
-    #[test]
-    fn sql_literal_real_rejects_non_numeric_input() {
-        let error = build_inline_edited_value(
-            DatabaseType::SQLite,
-            &QueryValue::SqlLiteral("1.0".to_string()),
-            "NaN",
-        )
-        .unwrap_err();
-
-        assert_eq!(error, InlineCellEditError::InvalidReal);
+        assert_eq!(error, expected);
     }
 
     #[test]
@@ -367,34 +351,22 @@ mod tests {
         assert_eq!(error, InlineCellEditError::UnsupportedCellType);
     }
 
-    #[test]
-    fn mysql_numeric_literal_preserves_large_integer_without_f64_conversion() {
-        let original = QueryValue::SqlLiteral("18446744073709551615".to_string());
-        let value =
-            build_inline_edited_value(DatabaseType::MySQL, &original, "18446744073709551615")
-                .unwrap();
-
-        assert_eq!(value, original);
-    }
-
-    #[test]
-    fn mysql_numeric_literal_preserves_decimal_and_exponent_lexemes() {
-        for draft in [
-            "12345678901234567890123456789012345.12345678901234567890",
-            "1.23e100",
-            ".5",
-            "1.",
-        ] {
-            assert_eq!(
-                build_inline_edited_value(
-                    DatabaseType::MySQL,
-                    &QueryValue::SqlLiteral("1".to_string()),
-                    draft,
-                )
-                .unwrap(),
-                QueryValue::SqlLiteral(draft.to_string())
-            );
-        }
+    #[rstest]
+    #[case("18446744073709551615")]
+    #[case("12345678901234567890123456789012345.12345678901234567890")]
+    #[case("1.23e100")]
+    #[case(".5")]
+    #[case("1.")]
+    fn mysql_numeric_literal_preserves_lexemes(#[case] draft: &str) {
+        assert_eq!(
+            build_inline_edited_value(
+                DatabaseType::MySQL,
+                &QueryValue::SqlLiteral("1".to_string()),
+                draft,
+            )
+            .unwrap(),
+            QueryValue::SqlLiteral(draft.to_string())
+        );
     }
 
     #[test]

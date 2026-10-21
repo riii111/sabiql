@@ -28,27 +28,18 @@ pub enum SqliteTransactionPolicy {
     NotNeeded,
     UserManaged,
     IncompatibleStatement,
-    ClassificationMismatch,
 }
 
 impl SqliteTransactionPolicy {
     pub fn requires_acknowledgement(self) -> bool {
         matches!(self, Self::IncompatibleStatement)
     }
-
-    pub fn is_invalid(self) -> bool {
-        matches!(self, Self::ClassificationMismatch)
-    }
 }
 
 pub fn sqlite_transaction_policy_for_classifications(
-    statement_count: usize,
     classifications: &[SqliteStatementClassification],
 ) -> SqliteTransactionPolicy {
-    if statement_count != classifications.len() {
-        return SqliteTransactionPolicy::ClassificationMismatch;
-    }
-    if statement_count < 2 {
+    if classifications.len() < 2 {
         return SqliteTransactionPolicy::NotNeeded;
     }
     if classifications.iter().any(|classification| {
@@ -441,19 +432,11 @@ mod tests {
             SqliteStatementClassification::TransactionalWrite
         );
         assert_eq!(
-            sqlite_transaction_policy_for_classifications(
-                2,
-                &[classification, SqliteStatementClassification::ReadOnly],
-            ),
+            sqlite_transaction_policy_for_classifications(&[
+                classification,
+                SqliteStatementClassification::ReadOnly
+            ]),
             SqliteTransactionPolicy::AutoWrap
-        );
-    }
-
-    #[test]
-    fn transaction_policy_rejects_mismatched_classifications() {
-        assert_eq!(
-            sqlite_transaction_policy_for_classifications(1, &[]),
-            SqliteTransactionPolicy::ClassificationMismatch
         );
     }
 

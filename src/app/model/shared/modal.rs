@@ -34,13 +34,6 @@ impl ModalState {
         self.return_stack.pop();
         self.mode = target;
     }
-
-    pub fn return_destination(&self) -> InputMode {
-        self.return_stack
-            .last()
-            .copied()
-            .unwrap_or(InputMode::Normal)
-    }
 }
 
 #[cfg(test)]
@@ -48,21 +41,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_mode_is_normal() {
-        let modal = ModalState::default();
-
-        assert_eq!(modal.active_mode(), InputMode::Normal);
-    }
-
-    #[test]
     fn set_mode_changes_mode_and_clears_stack() {
         let mut modal = ModalState::default();
+        modal.set_mode(InputMode::SqlModal);
         modal.push_mode(InputMode::CommandLine);
 
         modal.set_mode(InputMode::TablePicker);
 
         assert_eq!(modal.active_mode(), InputMode::TablePicker);
-        assert_eq!(modal.return_destination(), InputMode::Normal);
+        assert_eq!(modal.pop_mode(), InputMode::Normal);
     }
 
     #[test]
@@ -72,7 +59,6 @@ mod tests {
         modal.push_mode(InputMode::CommandLine);
 
         assert_eq!(modal.active_mode(), InputMode::CommandLine);
-        assert_eq!(modal.return_destination(), InputMode::Normal);
 
         let returned = modal.pop_mode();
 
@@ -88,7 +74,6 @@ mod tests {
         modal.push_mode(InputMode::QueryHistoryPicker);
 
         assert_eq!(modal.active_mode(), InputMode::QueryHistoryPicker);
-        assert_eq!(modal.return_destination(), InputMode::SqlModal);
 
         let returned = modal.pop_mode();
         assert_eq!(returned, InputMode::SqlModal);
@@ -129,34 +114,18 @@ mod tests {
         modal.replace_mode(InputMode::ConnectionError);
 
         assert_eq!(modal.active_mode(), InputMode::ConnectionError);
-        assert_eq!(modal.return_destination(), InputMode::ConnectionSelector);
+        assert_eq!(modal.pop_mode(), InputMode::ConnectionSelector);
     }
 
     #[test]
-    fn pop_mode_override_ignores_stack() {
+    fn pop_mode_override_consumes_stack_entry() {
         let mut modal = ModalState::default();
+        modal.set_mode(InputMode::SqlModal);
         modal.push_mode(InputMode::ConfirmDialog);
 
         modal.pop_mode_override(InputMode::ConnectionSetup);
 
         assert_eq!(modal.active_mode(), InputMode::ConnectionSetup);
-        // Stack entry was consumed
-        assert_eq!(modal.return_destination(), InputMode::Normal);
-    }
-
-    #[test]
-    fn return_destination_with_empty_stack() {
-        let modal = ModalState::default();
-
-        assert_eq!(modal.return_destination(), InputMode::Normal);
-    }
-
-    #[test]
-    fn return_destination_shows_last_pushed() {
-        let mut modal = ModalState::default();
-        modal.set_mode(InputMode::SqlModal);
-        modal.push_mode(InputMode::QueryHistoryPicker);
-
-        assert_eq!(modal.return_destination(), InputMode::SqlModal);
+        assert_eq!(modal.pop_mode(), InputMode::Normal);
     }
 }

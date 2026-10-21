@@ -73,9 +73,11 @@ fn connection_selector_with_service_entries() {
         vec![
             ServiceEntry {
                 service_name: "dev-db".to_string(),
+                source_path: "/etc/pg_service.conf".into(),
             },
             ServiceEntry {
                 service_name: "prod-replica".to_string(),
+                source_path: "/etc/pg_service.conf".into(),
             },
         ],
     );
@@ -100,10 +102,12 @@ fn connection_selector_with_long_service_name() {
 
     state.set_service_entries(vec![
         ServiceEntry {
-            service_name: "my-very-long-service-name-that-exceeds-normal-length".to_string(),
+            service_name: "my-service-name-that-is-long-enough-to-cross-the-visible-selector-limit-and-truncate".to_string(),
+            source_path: "/etc/pg_service.conf".into(),
         },
         ServiceEntry {
             service_name: "short".to_string(),
+            source_path: "/etc/pg_service.conf".into(),
         },
     ]);
     state.modal.set_mode(InputMode::ConnectionSelector);
@@ -112,6 +116,14 @@ fn connection_selector_with_long_service_name() {
     let output = render_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
+    let mut rows = output
+        .lines()
+        .filter(|line| line.contains("from pg_service.conf"));
+    let long_row = rows.next().expect("expected long service row");
+    let short_row = rows.next().expect("expected adjacent short service row");
+    assert!(long_row.contains("…"));
+    assert!(long_row.contains("from pg_service.conf"));
+    assert!(short_row.contains("short"));
 }
 
 #[test]
@@ -122,9 +134,11 @@ fn connection_selector_with_active_service() {
     state.set_service_entries(vec![
         ServiceEntry {
             service_name: "dev-local".to_string(),
+            source_path: "/etc/pg_service.conf".into(),
         },
         ServiceEntry {
             service_name: "prod-replica".to_string(),
+            source_path: "/etc/pg_service.conf".into(),
         },
     ]);
     // Set active connection to the first service entry
@@ -151,6 +165,7 @@ fn connection_selector_with_multibyte_service_name() {
 
     state.set_service_entries(vec![ServiceEntry {
         service_name: "本番データベース接続".to_string(),
+        source_path: "/etc/pg_service.conf".into(),
     }]);
     state.modal.set_mode(InputMode::ConnectionSelector);
     state.ui.set_connection_list_selection(Some(0));

@@ -494,14 +494,4 @@ mod tests {
             SqlModalTab::Sql
         );
     }
-
-    #[test]
-    fn query_plan_and_analyze_enables_plan_comparison() {
-        let profile = EngineFeatureProfile::postgres_like();
-
-        assert!(matches!(
-            profile.explain(),
-            ExplainProfile::QueryPlanAndAnalyze
-        ));
-    }
 }

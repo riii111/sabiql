@@ -60,7 +60,7 @@
         {
           default = rustPlatform.buildRustPackage {
             pname = "sabiql";
-            version = "3.0.0";
+            version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.version;
 
             src = self;
             cargoLock.lockFile = ./Cargo.lock;

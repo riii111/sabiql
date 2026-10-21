@@ -93,8 +93,12 @@ impl PostgresAdapter {
         "
     }
 
-    pub(in crate::adapters::postgres) fn effective_user_query() -> &'static str {
-        "SELECT current_user"
+    pub(in crate::adapters::postgres) fn metadata_query() -> String {
+        format!(
+            "SELECT json_build_object('schemas', ({schemas}), 'tables', ({tables}), 'effective_user', current_user)",
+            schemas = Self::schemas_query().trim(),
+            tables = Self::tables_query().trim(),
+        )
     }
 
     pub(in crate::adapters::postgres) fn columns_query(schema: &str, table: &str) -> String {
@@ -409,14 +413,6 @@ impl PostgresAdapter {
 mod tests {
     use crate::adapters::postgres::PostgresAdapter;
 
-    #[test]
-    fn effective_user_query_selects_current_user() {
-        assert_eq!(
-            PostgresAdapter::effective_user_query(),
-            "SELECT current_user"
-        );
-    }
-
     mod preview_query {
         use super::*;
 
@@ -650,6 +646,21 @@ mod tests {
                 sql.contains(ESCAPED),
                 "Hostile input must be quote_literal-escaped in: {sql}"
             );
+        }
+    }
+
+    mod combined_metadata_query {
+        use super::*;
+
+        #[test]
+        fn contains_catalog_queries_and_current_user_in_one_statement() {
+            let sql = PostgresAdapter::metadata_query();
+
+            assert!(sql.starts_with("SELECT json_build_object("));
+            assert!(sql.contains("'schemas'"));
+            assert!(sql.contains("'tables'"));
+            assert!(sql.contains("'effective_user', current_user"));
+            assert_eq!(sql.matches("SELECT json_agg").count(), 2);
         }
     }
 }

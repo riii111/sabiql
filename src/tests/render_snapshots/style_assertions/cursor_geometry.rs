@@ -1,49 +1,11 @@
 use super::*;
-use crate::tests::harness::{focus_connection_field, set_connection_input};
+use crate::tests::harness::{
+    focus_connection_field, json_cell_selected_state, set_connection_input,
+};
+use sabiql_app::model::sql_editor::modal::SQL_MODAL_HEIGHT_PERCENT;
 
 fn json_detail_state() -> (AppState, Instant) {
-    let now = test_instant();
-    let mut state = create_test_state();
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata()));
-    let mut table = fixtures::sample_postgres_table_detail();
-    table.columns.push(Column {
-        name: "settings".to_string(),
-        data_type: "jsonb".to_string(),
-        attributes: ColumnAttributes::NULLABLE,
-        default: None,
-        comment: None,
-        ordinal_position: 4,
-        character_set_name: None,
-        collation_name: None,
-        generation_expression: None,
-        generation_kind: None,
-    });
-    let _ = state.session.set_table_detail(table, 0);
-    state
-        .query
-        .set_current_result(Arc::new(QueryResult::success(
-            "SELECT id, name, email, settings FROM users LIMIT 100".to_string(),
-            vec![
-                "id".to_string(),
-                "name".to_string(),
-                "email".to_string(),
-                "settings".to_string(),
-            ],
-            vec![vec![
-                "1".to_string(),
-                "Alice".to_string(),
-                "alice@example.com".to_string(),
-                r#"{"theme":"dark","count":5,"nested":{"enabled":true,"roles":["admin","writer"]}}"#
-                    .to_string(),
-            ]],
-            1,
-            QuerySource::Preview,
-        )));
-    state.query.pagination.reset_for_table("public", "users");
-    state.ui.set_focused_pane(FocusedPane::Result);
-    state.result_interaction.activate_cell(0, 3);
+    let (mut state, now) = json_cell_selected_state();
     dispatch_result(
         &mut state,
         &Action::OpenModal(ModalKind::JsonDetail),
@@ -58,6 +20,7 @@ fn json_detail_state() -> (AppState, Instant) {
     );
     (state, now)
 }
+
 fn block_cursor_position(buffer: &ratatui::buffer::Buffer) -> Option<(u16, u16)> {
     (buffer.area.top()..buffer.area.bottom())
         .flat_map(|y| (buffer.area.left()..buffer.area.right()).map(move |x| (x, y)))
@@ -67,6 +30,31 @@ fn block_cursor_position(buffer: &ratatui::buffer::Buffer) -> Option<(u16, u16)>
                     && cell.fg == DEFAULT_THEME.semantic.cursor.text_fg
             })
         })
+}
+
+fn sql_modal_area() -> Rect {
+    let width = TEST_WIDTH * 80 / 100;
+    let height = TEST_HEIGHT * SQL_MODAL_HEIGHT_PERCENT / 100 + 1;
+    Rect::new(
+        (TEST_WIDTH - width) / 2,
+        (TEST_HEIGHT - height) / 2,
+        width,
+        height,
+    )
+}
+
+fn find_text_in_area(buffer: &Buffer, area: Rect, text: &str) -> Option<(u16, u16)> {
+    for y in area.top()..area.bottom() {
+        let row = (area.left()..area.right())
+            .filter_map(|x| buffer.cell((x, y)))
+            .map(ratatui::buffer::Cell::symbol)
+            .collect::<String>();
+        if let Some(byte_offset) = row.find(text) {
+            let offset = row[..byte_offset].chars().count() as u16;
+            return Some((area.left() + offset, y));
+        }
+    }
+    None
 }
 
 #[test]
@@ -177,6 +165,10 @@ fn sql_modal_normal_cursor_position_tracks_head_middle_and_tail() {
     let tail_buffer = render_and_get_buffer(&mut terminal, &mut state);
     let tail = block_cursor_position(&tail_buffer)
         .expect("Expected block cursor in SQL normal mode at tail");
+    let modal_area = sql_modal_area();
+    assert!(find_text_in_area(&tail_buffer, modal_area, "SELECT 1").is_some());
+    assert!(find_text_in_area(&tail_buffer, modal_area, "[NORMAL]").is_some());
+    assert!(find_text_in_area(&tail_buffer, modal_area, "i: Insert").is_some());
 
     assert_eq!(
         head.1, middle.1,

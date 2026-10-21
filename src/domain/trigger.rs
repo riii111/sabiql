@@ -108,27 +108,13 @@ mod tests {
     mod trigger_timing_display {
         use super::*;
 
-        #[test]
-        fn before_displays_uppercase() {
-            assert_eq!(TriggerTiming::Before.to_string(), "BEFORE");
-        }
-
-        #[test]
-        fn after_displays_uppercase() {
-            assert_eq!(TriggerTiming::After.to_string(), "AFTER");
-        }
-
-        #[test]
-        fn instead_of_displays_with_space() {
-            assert_eq!(TriggerTiming::InsteadOf.to_string(), "INSTEAD OF");
-        }
-
         #[rstest]
-        #[case(TriggerTiming::Before)]
-        #[case(TriggerTiming::After)]
-        #[case(TriggerTiming::InsteadOf)]
-        fn display_round_trips(#[case] timing: TriggerTiming) {
-            assert_eq!(timing.to_string().parse::<TriggerTiming>().unwrap(), timing);
+        #[case(TriggerTiming::Before, "BEFORE")]
+        #[case(TriggerTiming::After, "AFTER")]
+        #[case(TriggerTiming::InsteadOf, "INSTEAD OF")]
+        fn display_and_parse_share_labels(#[case] timing: TriggerTiming, #[case] label: &str) {
+            assert_eq!(timing.to_string(), label);
+            assert_eq!(label.parse::<TriggerTiming>().unwrap(), timing);
         }
 
         #[test]
@@ -143,33 +129,14 @@ mod tests {
     mod trigger_event_display {
         use super::*;
 
-        #[test]
-        fn insert_displays_uppercase() {
-            assert_eq!(TriggerEvent::Insert.to_string(), "INSERT");
-        }
-
-        #[test]
-        fn update_displays_uppercase() {
-            assert_eq!(TriggerEvent::Update.to_string(), "UPDATE");
-        }
-
-        #[test]
-        fn delete_displays_uppercase() {
-            assert_eq!(TriggerEvent::Delete.to_string(), "DELETE");
-        }
-
-        #[test]
-        fn truncate_displays_uppercase() {
-            assert_eq!(TriggerEvent::Truncate.to_string(), "TRUNCATE");
-        }
-
         #[rstest]
-        #[case(TriggerEvent::Insert)]
-        #[case(TriggerEvent::Update)]
-        #[case(TriggerEvent::Delete)]
-        #[case(TriggerEvent::Truncate)]
-        fn display_round_trips(#[case] event: TriggerEvent) {
-            assert_eq!(event.to_string().parse::<TriggerEvent>().unwrap(), event);
+        #[case(TriggerEvent::Insert, "INSERT")]
+        #[case(TriggerEvent::Update, "UPDATE")]
+        #[case(TriggerEvent::Delete, "DELETE")]
+        #[case(TriggerEvent::Truncate, "TRUNCATE")]
+        fn display_and_parse_share_labels(#[case] event: TriggerEvent, #[case] label: &str) {
+            assert_eq!(event.to_string(), label);
+            assert_eq!(label.parse::<TriggerEvent>().unwrap(), event);
         }
 
         #[test]

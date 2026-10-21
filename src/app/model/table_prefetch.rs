@@ -10,6 +10,7 @@ pub struct FailedPrefetchEntry {
     pub failed_at: Instant,
     pub error: String,
     pub retry_count: u32,
+    pub retryable: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -167,7 +168,7 @@ impl TablePrefetchState {
     }
 
     fn is_permanent_failure(&self, table: &str, entry: &FailedPrefetchEntry) -> bool {
-        entry.retry_count >= MAX_PREFETCH_RETRIES
+        (!entry.retryable || entry.retry_count >= MAX_PREFETCH_RETRIES)
             && !self.is_prefetch_queued(table)
             && !self.prefetching_tables.contains(table)
     }
@@ -189,6 +190,7 @@ mod tests {
                 failed_at: Instant::now(),
                 error: "error".to_string(),
                 retry_count: 0,
+                retryable: true,
             },
         );
 
@@ -211,30 +213,8 @@ mod tests {
         assert!(state.has_pending_prefetch());
         assert!(state.is_prefetch_queued("public.users"));
         assert!(state.is_table_prefetching("public.orders"));
-        assert_eq!(state.prefetch_in_flight_count(), 1);
-    }
-
-    #[test]
-    fn retry_preserves_failure_and_requeues_table() {
-        let mut state = TablePrefetchState::default();
-        let failed_at = Instant::now();
-
-        state.start_table_prefetch("public.users".to_string());
-        state.retry_table_prefetch(
-            "public.users".to_string(),
-            FailedPrefetchEntry {
-                failed_at,
-                error: "timeout".to_string(),
-                retry_count: 1,
-            },
-        );
-
         assert!(!state.is_table_prefetching("public.users"));
-        assert!(state.is_prefetch_queued("public.users"));
-        assert_eq!(
-            state.failed_prefetch("public.users").unwrap().retry_count,
-            1
-        );
+        assert_eq!(state.prefetch_in_flight_count(), 1);
     }
 
     #[test]
@@ -246,6 +226,7 @@ mod tests {
                 failed_at: Instant::now(),
                 error: "timeout".to_string(),
                 retry_count: 3,
+                retryable: true,
             },
         );
 
@@ -263,11 +244,18 @@ mod tests {
                 failed_at: Instant::now(),
                 error: "timeout".to_string(),
                 retry_count: 1,
+                retryable: true,
             },
         );
 
         assert_eq!(state.failed_prefetch_count(), 0);
         assert!(!state.has_failures());
+        assert!(!state.is_table_prefetching("public.users"));
+        assert!(state.is_prefetch_queued("public.users"));
+        assert_eq!(
+            state.failed_prefetch("public.users").unwrap().retry_count,
+            1
+        );
 
         let _ = state.take_next_prefetch();
         state.fail_table_prefetch(
@@ -276,6 +264,7 @@ mod tests {
                 failed_at: Instant::now(),
                 error: "timeout".to_string(),
                 retry_count: MAX_PREFETCH_RETRIES,
+                retryable: true,
             },
         );
 

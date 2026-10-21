@@ -37,13 +37,10 @@ get_latest_version() {
 }
 
 verify_checksum() {
-    local file="$1"
-    local checksum_file="$2"
-
     if command -v sha256sum > /dev/null 2>&1; then
-        sha256sum -c "$checksum_file" > /dev/null 2>&1
+        sha256sum -c "$1" > /dev/null 2>&1
     elif command -v shasum > /dev/null 2>&1; then
-        shasum -a 256 -c "$checksum_file" > /dev/null 2>&1
+        shasum -a 256 -c "$1" > /dev/null 2>&1
     else
         echo "Warning: No checksum tool available, skipping verification"
         return 0
@@ -75,7 +72,7 @@ install() {
 
     echo "Verifying checksum..."
     cd "$TEMP_DIR"
-    if ! verify_checksum "$TEMP_FILE" "$CHECKSUM_FILE"; then
+    if ! verify_checksum "$CHECKSUM_FILE"; then
         echo "Error: Checksum verification failed!"
         rm -rf "$TEMP_DIR"
         exit 1

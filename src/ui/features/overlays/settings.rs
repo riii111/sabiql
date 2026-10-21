@@ -5,7 +5,9 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
-use crate::app::model::shared::settings::{ErBrowserChoice, KeymapPreset, SettingsSection};
+use crate::app::model::shared::settings::{
+    ClipboardBackend, ErBrowserChoice, KeymapPreset, SettingsSection,
+};
 use crate::app::model::shared::theme_id::ThemeId;
 use crate::features::settings::hints::settings_modal_hint_bar;
 use crate::primitives::atoms::{CursorKind, text_cursor_spans_with_kind};
@@ -43,6 +45,7 @@ impl SettingsOverlay {
         frame.render_widget(Paragraph::new(divider_lines), divider);
 
         match state.settings.section() {
+            SettingsSection::Clipboard => Self::render_clipboard(frame, content, state, theme),
             SettingsSection::Appearance => Self::render_appearance(frame, content, state, theme),
             SettingsSection::Keymap => Self::render_keymap(frame, content, state, theme),
             SettingsSection::ErDiagram => Self::render_er_diagram(frame, content, state, theme),
@@ -70,6 +73,33 @@ impl SettingsOverlay {
             ]));
         }
         lines
+    }
+
+    fn render_clipboard(frame: &mut Frame, content: Rect, state: &AppState, theme: &ThemePalette) {
+        let mut lines = vec![Line::raw(""), Line::raw("Copy method"), Line::raw("")];
+        for backend in ClipboardBackend::ALL {
+            let selected = state.settings.selected_clipboard_backend() == backend;
+            let saved = state.settings.saved_clipboard_backend() == backend;
+            let marker = if selected { ">" } else { " " };
+            let suffix = if saved { " saved" } else { "" };
+            let style = if selected {
+                theme.picker_selected_style()
+            } else {
+                Style::default().fg(theme.semantic.text.secondary)
+            };
+            lines.push(Line::styled(
+                format!("  {marker} {}{suffix}", backend.label()),
+                style,
+            ));
+        }
+        lines.extend([
+            Line::raw(""),
+            Line::raw("Auto: terminal over SSH; otherwise OS, then terminal on failure."),
+            Line::raw(
+                "OSC 52 requires terminal/tmux permission. Sending does not confirm copying.",
+            ),
+        ]);
+        frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), content);
     }
 
     fn render_appearance(frame: &mut Frame, content: Rect, state: &AppState, theme: &ThemePalette) {

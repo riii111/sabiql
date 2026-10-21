@@ -3,6 +3,7 @@ use std::time::Instant;
 use crate::cmd::effect::Effect;
 use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
+use crate::model::connection::origin::ConnectionOrigin;
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::ConnectionTarget;
 use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
@@ -91,12 +92,21 @@ pub(super) fn reduce_connection_error(
                     database_type: DatabaseType::MySQL,
                     database: pending.database,
                 };
-                let run_id = state.session.begin_mysql_connection_probe(
-                    &target.id,
-                    &target.name,
-                    &target.dsn,
-                    target.database.as_deref(),
-                );
+                let run_id = if pending.origin == ConnectionOrigin::CliEphemeral {
+                    state.session.begin_cli_mysql_connection_probe(
+                        &target.id,
+                        &target.name,
+                        &target.dsn,
+                        target.database.as_deref(),
+                    )
+                } else {
+                    state.session.begin_mysql_connection_probe(
+                        &target.id,
+                        &target.name,
+                        &target.dsn,
+                        target.database.as_deref(),
+                    )
+                };
                 state.connection_error.clear();
                 if state.session.dsn_matches(&target.dsn) {
                     state.session.mark_connecting();
@@ -136,12 +146,21 @@ pub(super) fn reduce_connection_error(
                         database_type: DatabaseType::MySQL,
                         database: state.session.active_database().map(str::to_string),
                     };
-                    let run_id = state.session.begin_mysql_connection_probe(
-                        &target.id,
-                        &target.name,
-                        &target.dsn,
-                        target.database.as_deref(),
-                    );
+                    let run_id = if state.session.is_ephemeral_connection() {
+                        state.session.begin_cli_mysql_connection_probe(
+                            &target.id,
+                            &target.name,
+                            &target.dsn,
+                            target.database.as_deref(),
+                        )
+                    } else {
+                        state.session.begin_mysql_connection_probe(
+                            &target.id,
+                            &target.name,
+                            &target.dsn,
+                            target.database.as_deref(),
+                        )
+                    };
                     state.session.mark_connecting();
                     state.modal.set_mode(InputMode::Normal);
                     return DispatchResult::handled_with(vec![Effect::ProbeMySqlConnection {
@@ -283,6 +302,47 @@ mod tests {
                 .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
         );
         assert!(state.session.connection_state().is_connecting());
+    }
+
+    #[test]
+    fn retry_cli_mysql_preserves_ephemeral_origin() {
+        let mut state = AppState::new("test".to_string());
+        let id = ConnectionId::from_string("cli:mysql");
+        let dsn = "mysql://user@localhost:3306/app?ssl-mode=PREFERRED";
+        state.session.activate_cli_ephemeral_connection_with_target(
+            &id,
+            "mysql",
+            DatabaseType::MySQL,
+            dsn,
+            Some("app"),
+        );
+        let _ = state
+            .session
+            .begin_cli_mysql_connection_probe(&id, "mysql", dsn, Some("app"));
+        state.connection_error.set_error(test_support::from_parts(
+            "Connection refused",
+            "Check the host, port, and server availability",
+            true,
+            "connection refused",
+        ));
+        state.modal.set_mode(InputMode::ConnectionError);
+
+        let effects = reduce_connection_error(&mut state, &Action::RetryConnection, Instant::now())
+            .into_effects()
+            .unwrap();
+
+        assert!(
+            effects
+                .iter()
+                .any(|effect| matches!(effect, Effect::ProbeMySqlConnection { .. }))
+        );
+        assert!(state.session.is_ephemeral_connection());
+        assert!(
+            state
+                .session
+                .pending_mysql_connection_probe()
+                .is_some_and(|pending| pending.origin == ConnectionOrigin::CliEphemeral)
+        );
     }
 
     #[test]

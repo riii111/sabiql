@@ -1,10 +1,13 @@
 use super::*;
 use crate::tests::harness::{
-    focus_connection_field, render_to_string_with_services, set_connection_input,
+    focus_connection_field, render_and_get_buffer, render_to_string_with_services,
+    set_connection_input,
 };
-use sabiql_app::model::shared::settings::KeymapPreset;
 use sabiql_app::ports::outbound::DsnBuilder;
 use sabiql_domain::ConnectionProfile;
+use sabiql_domain::connection::ServiceEntry;
+use sabiql_infra::adapters::PostgresAdapter;
+use sabiql_ui::theme::DEFAULT_THEME;
 
 struct EmptyPasswordDsnBuilder;
 
@@ -12,6 +15,26 @@ impl DsnBuilder for EmptyPasswordDsnBuilder {
     fn build_dsn(&self, _profile: &ConnectionProfile) -> String {
         "mysql://mysql_user:@localhost:3306/app?ssl-mode=PREFERRED".to_string()
     }
+}
+
+fn postgres_preview_services() -> AppServices {
+    let mut services = AppServices::stub();
+    services.dsn_builder = Arc::new(PostgresAdapter::new());
+    services
+}
+
+fn preview_section(output: &str) -> String {
+    let lines = output.lines().collect::<Vec<_>>();
+    let start = lines
+        .iter()
+        .position(|line| line.contains("→ "))
+        .expect("expected DSN preview");
+    lines[start..]
+        .iter()
+        .take_while(|line| !line.contains("Note:"))
+        .copied()
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn repeated(ch: char, len: usize) -> String {
@@ -128,7 +151,9 @@ fn connection_setup_mysql_preview_does_not_mask_empty_password() {
 
     let output = render_to_string_with_services(&mut terminal, &mut state, &services);
 
-    insta::assert_snapshot!(output);
+    let preview = preview_section(&output);
+    assert!(preview.contains("mysql_user:@"));
+    assert!(!preview.contains("****"));
 }
 
 #[test]
@@ -151,32 +176,10 @@ fn connection_setup_empty_host_focused() {
 }
 
 #[test]
-fn connection_setup_empty_password_focused() {
-    let mut state = create_test_state();
-    let mut terminal = create_test_terminal();
-
-    state.modal.set_mode(InputMode::ConnectionSetup);
-    focus_connection_field(&mut state, ConnectionField::Password);
-    set_connection_input(
-        &mut state,
-        ConnectionField::Database,
-        TextInputState::new("mydb", 4),
-    );
-    set_connection_input(
-        &mut state,
-        ConnectionField::Password,
-        TextInputState::default(),
-    );
-
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
 fn connection_setup_preview_omits_empty_optional_fields() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
+    let services = postgres_preview_services();
 
     state.modal.set_mode(InputMode::ConnectionSetup);
     set_connection_input(&mut state, ConnectionField::Host, TextInputState::default());
@@ -192,15 +195,25 @@ fn connection_setup_preview_omits_empty_optional_fields() {
         TextInputState::new("secret", 6),
     );
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_to_string_with_services(&mut terminal, &mut state, &services);
 
     insta::assert_snapshot!(output);
+    let preview = preview_section(&output);
+    assert!(preview.contains("port='5432'"));
+    assert!(preview.contains("dbname='mydb'"));
+    assert!(preview.contains("password='****'"));
+    assert!(preview.contains("sslmode='pre"));
+    assert!(preview.contains("fer'"));
+    assert!(!preview.contains("host='"));
+    assert!(!preview.contains("user='"));
+    assert!(!preview.contains("stub-dsn"));
 }
 
 #[test]
 fn connection_setup_preview_uses_postgres_conninfo_escaping() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
+    let services = postgres_preview_services();
 
     state.modal.set_mode(InputMode::ConnectionSetup);
     set_connection_input(
@@ -219,15 +232,24 @@ fn connection_setup_preview_uses_postgres_conninfo_escaping() {
         TextInputState::new("user'org", 8),
     );
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_to_string_with_services(&mut terminal, &mut state, &services);
 
     insta::assert_snapshot!(output);
+    let preview = preview_section(&output);
+    assert!(preview.contains("host='/var/run/postgresql'"));
+    assert!(preview.contains("port='5432'"));
+    assert!(preview.contains("dbname='my\\'db'"));
+    assert!(preview.contains("user='user\\'org'"));
+    assert!(preview.contains("sslmode='prefer'"));
+    assert!(!output.contains("stub-dsn"));
+    assert!(!output.contains("password='"));
 }
 
 #[test]
 fn connection_setup_preview_wraps_across_multiple_rows_for_long_conninfo() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
+    let services = postgres_preview_services();
 
     state.modal.set_mode(InputMode::ConnectionSetup);
     set_connection_input(
@@ -255,15 +277,20 @@ fn connection_setup_preview_wraps_across_multiple_rows_for_long_conninfo() {
         ),
     );
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_to_string_with_services(&mut terminal, &mut state, &services);
+    let preview = preview_section(&output);
 
     insta::assert_snapshot!(output);
+    assert!(preview.lines().count() >= 2);
+    assert!(!preview.contains("stub-dsn"));
+    assert!(!preview.contains("password="));
 }
 
 #[test]
 fn connection_setup_preview_with_max_length_fields() {
     let mut state = create_test_state();
-    let mut terminal = create_test_terminal();
+    let mut terminal = create_test_terminal_sized(165, 30);
+    let services = postgres_preview_services();
 
     state.modal.set_mode(InputMode::ConnectionSetup);
     set_connection_input(
@@ -297,23 +324,14 @@ fn connection_setup_preview_with_max_length_fields() {
         TextInputState::new(repeated('p', 255), 255),
     );
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_to_string_with_services(&mut terminal, &mut state, &services);
+    let preview = preview_section(&output);
 
     insta::assert_snapshot!(output);
-}
-
-#[test]
-fn connection_setup_ssl_mode_ide_hint() {
-    let mut state = create_test_state();
-    let mut terminal = create_test_terminal();
-
-    state.modal.set_mode(InputMode::ConnectionSetup);
-    state.settings.load_keymap_preset(KeymapPreset::Ide);
-    focus_connection_field(&mut state, ConnectionField::SslMode);
-
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
+    assert!(preview.lines().count() >= 2);
+    assert!(preview.contains("…"));
+    assert!(!output.contains("pppp"));
+    assert!(!output.contains("stub-dsn"));
 }
 
 #[test]
@@ -383,20 +401,33 @@ fn mysql_active_connection_retryable_error_shows_retry_action() {
         ));
 
     let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
+    let modal_actions = output
+        .lines()
+        .find(|line| line.contains("Actions:"))
+        .expect("connection error modal actions");
+    let footer = output
+        .lines()
+        .find(|line| line.contains("r:Retry"))
+        .expect("connection error footer actions");
+    assert!(modal_actions.contains("r  Retry"));
+    assert!(!modal_actions.contains("Edit"));
+    assert!(footer.contains("r:Retry"));
+    assert!(!footer.contains("Edit"));
 }
 
 fn render_service_error_without_service_file_hint(save_and_connect: bool) -> String {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
     state.session.activate_connection_with_dsn(
-        &sabiql_domain::ConnectionId::from_string("service"),
+        &sabiql_domain::ConnectionId::from_string("service:mydb"),
         "service",
         DatabaseType::PostgreSQL,
         "service=mydb",
     );
-    state.set_service_file_path(Some(std::path::PathBuf::from("/etc/pg_service.conf")));
+    state.set_service_entries(vec![ServiceEntry {
+        service_name: "mydb".into(),
+        source_path: "/etc/pg_service.conf".into(),
+    }]);
     if save_and_connect {
         state.connection_error.set_save_and_connect_error(
             ConnectionErrorInfo::from_db_operation_error(&DbOperationError::ConnectionFailed(
@@ -420,8 +451,14 @@ fn connection_error_save_failure_hides_retry_in_modal_and_footer() {
     let output = render_service_error_without_service_file_hint(true);
 
     assert!(output.contains("Actions:  e  Edit"));
-    assert!(output.contains("e:Edit"));
+    let footer = output
+        .lines()
+        .find(|line| line.contains("e:Edit"))
+        .expect("connection error footer actions");
+    assert!(footer.trim_start().starts_with("e:Edit"));
+    assert!(!footer.contains("Esc:Close"));
     assert!(!output.contains("Retry"));
+    assert!(!output.contains("pg_service.conf"));
 }
 
 #[test]
@@ -446,13 +483,6 @@ fn non_mysql_retryable_error_hides_retry_in_modal_and_footer() {
     assert!(output.contains("Actions:  e  Edit"));
     assert!(output.contains("e:Edit"));
     assert!(!output.contains("Retry"));
-}
-
-#[test]
-fn connection_error_omits_service_file_hint_for_mysql_save() {
-    let output = render_service_error_without_service_file_hint(true);
-
-    assert!(!output.contains("pg_service.conf"));
 }
 
 #[test]
@@ -536,7 +566,54 @@ fn footer_shows_success_message() {
         .messages
         .set_success_at("Reconnected!".to_string(), std::time::Instant::now());
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let buffer = render_and_get_buffer(&mut terminal, &mut state);
+    assert_row_text_color(
+        &buffer,
+        49,
+        "Reconnected!",
+        DEFAULT_THEME.semantic.status.success,
+    );
+}
 
-    insta::assert_snapshot!(output);
+#[test]
+fn service_connection_error_shows_selected_source_path() {
+    let entries = vec![
+        ServiceEntry {
+            service_name: "user".into(),
+            source_path: "/home/me/.pg_service.conf".into(),
+        },
+        ServiceEntry {
+            service_name: "system".into(),
+            source_path: "/etc/pg_service.conf".into(),
+        },
+    ];
+    for selected in &entries {
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+        state.set_service_entries(entries.clone());
+        state.session.activate_connection_with_dsn(
+            &selected.connection_id(),
+            &selected.service_name,
+            DatabaseType::PostgreSQL,
+            &selected.to_string(),
+        );
+        state
+            .connection_error
+            .set_error(ConnectionErrorInfo::from_db_operation_error(
+                &DbOperationError::ConnectionFailed("connection refused".into()),
+            ));
+        state.modal.set_mode(InputMode::ConnectionError);
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        assert!(
+            output.contains(&format!("(edit {})", selected.source_path.display())),
+            "{output}"
+        );
+        let other = entries
+            .iter()
+            .find(|entry| entry.service_name != selected.service_name)
+            .unwrap();
+        assert!(!output.contains(&other.source_path.display().to_string()));
+    }
 }

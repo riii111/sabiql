@@ -35,6 +35,34 @@ fn trim_line_endings(output: &str) -> String {
         .join("\n")
 }
 
+fn row_text(buffer: &ratatui::buffer::Buffer, y: u16) -> String {
+    (buffer.area.left()..buffer.area.right())
+        .filter_map(|x| buffer.cell((x, y)))
+        .map(ratatui::buffer::Cell::symbol)
+        .collect()
+}
+
+fn find_text_in_row(buffer: &ratatui::buffer::Buffer, y: u16, text: &str) -> Option<u16> {
+    let row = row_text(buffer, y);
+    row.find(text)
+        .map(|byte_offset| buffer.area.left() + row[..byte_offset].chars().count() as u16)
+}
+
+fn assert_row_text_color(
+    buffer: &ratatui::buffer::Buffer,
+    y: u16,
+    text: &str,
+    expected: ratatui::style::Color,
+) {
+    let start = find_text_in_row(buffer, y, text).expect("expected text in target row");
+    for (offset, _) in text.chars().enumerate() {
+        assert_eq!(
+            buffer.cell((start + offset as u16, y)).unwrap().fg,
+            expected
+        );
+    }
+}
+
 mod confirm_dialogs;
 mod connection_flow;
 mod connection_management;

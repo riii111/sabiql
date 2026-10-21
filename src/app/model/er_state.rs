@@ -132,10 +132,6 @@ impl ErPreparationState {
         self.fk_expanded = true;
     }
 
-    pub fn mark_fk_unexpanded(&mut self) {
-        self.fk_expanded = false;
-    }
-
     pub fn apply_refresh_metadata(
         &mut self,
         signatures: HashMap<String, String>,

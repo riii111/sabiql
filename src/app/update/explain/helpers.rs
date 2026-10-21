@@ -6,6 +6,27 @@ use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
 use crate::policy::sql::statement_classifier;
 use crate::policy::write::sql_risk::split_statements_for_database;
 use crate::policy::{FeaturePolicy, FeatureRequirement};
+use crate::update::helpers::reject_pending_mysql_connection_probe;
+
+pub(super) struct ExplainRequestInput {
+    pub(super) content: String,
+    pub(super) dsn: String,
+}
+
+pub(super) fn explain_request_input(state: &mut AppState) -> Option<ExplainRequestInput> {
+    if reject_pending_mysql_connection_probe(state) {
+        return None;
+    }
+    let content = state.sql_modal.editor.content().trim().to_string();
+    if content.is_empty() {
+        return None;
+    }
+    let dsn = state.session.dsn()?.to_string();
+    if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
+        return None;
+    }
+    Some(ExplainRequestInput { content, dsn })
+}
 
 pub(super) fn explain_unsupported_query_message(database_type: DatabaseType) -> &'static str {
     match database_type {

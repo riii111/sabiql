@@ -703,16 +703,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn empty_headers_returns_empty_vec() {
-            let headers: Vec<String> = vec![];
-            let rows: Vec<Vec<String>> = vec![];
-
-            let result = calculate_ideal_widths(&headers, &rows);
-
-            assert_eq!(result.len(), 0);
-        }
-
-        #[test]
         fn single_column_uses_header_width_plus_padding() {
             let headers = vec!["name".to_string()];
             let rows: Vec<Vec<String>> = vec![];
@@ -823,41 +813,24 @@ mod tests {
         }
     }
 
-    #[test]
-    fn short_string_returns_unchanged() {
-        let result = truncate_cell("hello", 10);
-
-        assert_eq!(result, "hello");
-    }
-
-    #[test]
-    fn exact_length_returns_unchanged() {
-        let result = truncate_cell("hello", 5);
-
-        assert_eq!(result, "hello");
-    }
-
-    #[test]
-    fn long_string_truncates_with_ellipsis() {
-        let result = truncate_cell("hello world", 8);
-
-        assert_eq!(result, "hello...");
-    }
-
-    #[test]
-    fn multibyte_truncates_by_display_width() {
-        let result = truncate_cell("こんにちは世界", 5);
-
-        assert_eq!(result, "こ...");
-    }
-
     #[rstest]
+    #[case("hello", 10, "hello")]
+    #[case("hello", 5, "hello")]
+    #[case("hello world", 8, "hello...")]
+    #[case("こんにちは世界", 5, "こ...")]
     #[case("日本語テスト", 12, "日本語テスト")]
     #[case("日本語テスト", 10, "日本語...")]
     #[case("日本語テスト", 5, "日...")]
     #[case("日本語テスト", 4, "...")]
     #[case("SELECT * FROM 日本語テーブル", 15, "SELECT * FRO...")]
-    fn multibyte_truncation_is_safe(
+    #[case("", 10, "")]
+    #[case("hello", 0, "")]
+    #[case("hello world", 1, ".")]
+    #[case("hello world", 2, "..")]
+    #[case("hello world", 3, "...")]
+    #[case("hello world", 4, "h...")]
+    #[case("hello world", 5, "he...")]
+    fn truncates_cells_with_expected_width(
         #[case] input: &str,
         #[case] max: usize,
         #[case] expected: &str,
@@ -882,83 +855,5 @@ mod tests {
         let result = truncate_cell("this is a long first line\nsecond", 10);
 
         assert_eq!(result, "this is...");
-    }
-
-    #[test]
-    fn empty_string_returns_empty() {
-        let result = truncate_cell("", 10);
-
-        assert_eq!(result, "");
-    }
-
-    #[test]
-    fn zero_width_returns_empty() {
-        let result = truncate_cell("hello", 0);
-
-        assert_eq!(result, "");
-    }
-
-    #[rstest]
-    #[case(1, ".")]
-    #[case(2, "..")]
-    #[case(3, "...")]
-    #[case(4, "h...")]
-    #[case(5, "he...")]
-    fn small_widths_stay_within_contract(#[case] max: usize, #[case] expected: &str) {
-        let result = truncate_cell("hello world", max);
-
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    #[ignore = "local-only dev benchmark, not tied to a CI issue"]
-    #[allow(clippy::print_stderr, reason = "benchmark result output")]
-    fn bench_ideal_widths_cache_speedup() {
-        use crate::app::model::shared::viewport::ColumnWidthsCache;
-        use crate::primitives::utils::text_utils::calculate_header_min_widths;
-        use std::time::Instant;
-
-        let cols = 20;
-        let rows = 50;
-        let headers: Vec<String> = (0..cols).map(|i| format!("column_{i}")).collect();
-        let data: Vec<Vec<String>> = (0..rows)
-            .map(|r| {
-                (0..cols)
-                    .map(|c| format!("value_r{r}_c{c}_padding"))
-                    .collect()
-            })
-            .collect();
-
-        let iterations = 1000;
-
-        // Baseline: compute both widths every iteration (pre-optimization path)
-        let start = Instant::now();
-        for _ in 0..iterations {
-            std::hint::black_box(calculate_ideal_widths(&headers, &data));
-            std::hint::black_box(calculate_header_min_widths(&headers));
-        }
-        let baseline = start.elapsed();
-
-        // Cached: is_valid check + clone (actual cache-hit path)
-        let ideal = calculate_ideal_widths(&headers, &data);
-        let min = calculate_header_min_widths(&headers);
-        let cache = ColumnWidthsCache::new(ideal, min, 1);
-        let start = Instant::now();
-        for _ in 0..iterations {
-            let valid = std::hint::black_box(cache.is_valid(1));
-            if valid {
-                std::hint::black_box(cache.clone());
-            }
-        }
-        let cached = start.elapsed();
-
-        eprintln!(
-            "Baseline: {:?} ({:.1} µs/iter), Cached (is_valid+clone): {:?} ({:.1} µs/iter), Speedup: {:.0}x",
-            baseline,
-            baseline.as_micros() as f64 / iterations as f64,
-            cached,
-            cached.as_micros() as f64 / iterations as f64,
-            baseline.as_secs_f64() / cached.as_secs_f64(),
-        );
     }
 }

@@ -305,28 +305,28 @@ mod tests {
     fn scalar_field_maps_query_failure_to_error() {
         let field = scalar_field(Err(DbOperationError::QueryFailed("boom".to_string())));
 
-        assert!(field.is_err());
+        assert!(matches!(field, DiagnosticField::Err(_)));
     }
 
     #[test]
     fn scalar_field_maps_empty_rows_to_error() {
         let field = scalar_field(Ok(empty_query_result()));
 
-        assert_eq!(field.err_message(), Some("empty result"));
+        assert_eq!(field, DiagnosticField::err("empty result"));
     }
 
     #[test]
     fn quick_check_field_maps_empty_rows_to_error() {
         let field = quick_check_field(Ok(empty_query_result()));
 
-        assert_eq!(field.err_message(), Some("quick_check: empty result"));
+        assert_eq!(field, DiagnosticField::err("quick_check: empty result"));
     }
 
     #[test]
     fn database_list_field_maps_empty_rows_to_error() {
         let field = database_list_field(Ok(empty_query_result()));
 
-        assert_eq!(field.err_message(), Some("database_list: empty result"));
+        assert_eq!(field, DiagnosticField::err("database_list: empty result"));
     }
 
     #[test]

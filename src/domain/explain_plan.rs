@@ -494,6 +494,7 @@ pub fn compare_plans(baseline: &ExplainPlan, current: &ExplainPlan) -> Compariso
 mod tests {
     use super::*;
     use crate::query_result::QuerySource;
+    use rstest::rstest;
 
     mod parse {
         use super::*;
@@ -850,26 +851,15 @@ Execution Time: 0.600 ms";
             assert_eq!(result.verdict, ComparisonVerdict::Similar);
         }
 
-        #[test]
-        fn both_costs_none() {
-            let baseline = make_plan(None, None, None);
-            let current = make_plan(None, None, None);
-
-            let result = compare_plans(&baseline, &current);
-
-            assert_eq!(result.verdict, ComparisonVerdict::Unavailable);
-            assert!(
-                result
-                    .reasons
-                    .iter()
-                    .any(|r| r.contains("Could not parse cost"))
-            );
-        }
-
-        #[test]
-        fn one_cost_none() {
-            let baseline = make_plan(Some(100.0), None, None);
-            let current = make_plan(None, None, None);
+        #[rstest]
+        #[case(None, None)]
+        #[case(Some(100.0), None)]
+        fn missing_costs_are_unavailable(
+            #[case] baseline_cost: Option<f64>,
+            #[case] current_cost: Option<f64>,
+        ) {
+            let baseline = make_plan(baseline_cost, None, None);
+            let current = make_plan(current_cost, None, None);
 
             let result = compare_plans(&baseline, &current);
 

@@ -1077,32 +1077,14 @@ mod tests {
         }
 
         #[test]
-        fn completion_next_wraps_around() {
+        fn completion_navigation_wraps_around() {
             let mut state = create_test_state();
             state.sql_modal.apply_completion_update(
-                &[make_candidate("a"), make_candidate("b")],
-                0,
-                true,
-            );
-            state.sql_modal.completion_next();
-            let now = Instant::now();
-
-            let effects = reduce(
-                &mut state,
-                Action::CompletionNext,
-                now,
-                &AppServices::stub(),
-            );
-
-            assert_eq!(state.sql_modal.completion().selected_index, 0);
-            assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn completion_prev_wraps_around() {
-            let mut state = create_test_state();
-            state.sql_modal.apply_completion_update(
-                &[make_candidate("a"), make_candidate("b")],
+                &[
+                    make_candidate("a"),
+                    make_candidate("b"),
+                    make_candidate("c"),
+                ],
                 0,
                 true,
             );
@@ -1115,7 +1097,17 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.sql_modal.completion().selected_index, 1);
+            assert_eq!(state.sql_modal.completion().selected_index, 2);
+            assert!(effects.is_empty());
+
+            let effects = reduce(
+                &mut state,
+                Action::CompletionNext,
+                now,
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.sql_modal.completion().selected_index, 0);
             assert!(effects.is_empty());
         }
 
@@ -1158,6 +1150,7 @@ mod tests {
             Action::MetadataLoaded {
                 run_id,
                 metadata: Arc::new(metadata),
+                effective_user: None,
             }
         }
 
@@ -1182,30 +1175,16 @@ mod tests {
         }
 
         #[test]
-        fn metadata_loaded_starts_effective_user_fetch() {
-            let mut state = create_test_state();
-            let action =
-                metadata_loaded_action(&mut state, DatabaseMetadata::new("test".to_string()));
-
-            let effects = reduce(&mut state, action, Instant::now(), &AppServices::stub());
-
-            assert!(
-                effects
-                    .iter()
-                    .any(|effect| matches!(effect, Effect::FetchEffectiveUser { .. }))
-            );
-        }
-
-        #[test]
-        fn effective_user_loaded_updates_session_state() {
+        fn metadata_loaded_updates_effective_user_without_extra_effect() {
             let mut state = create_test_state();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let run_id = state.session.begin_effective_user_fetch();
+            let run_id = state.session.begin_metadata_refresh();
 
-            reduce(
+            let effects = reduce(
                 &mut state,
-                Action::EffectiveUserLoaded {
+                Action::MetadataLoaded {
                     run_id,
+                    metadata: Arc::new(DatabaseMetadata::new("test".to_string())),
                     effective_user: Some("postgres".to_string()),
                 },
                 Instant::now(),
@@ -1213,85 +1192,11 @@ mod tests {
             );
 
             assert_eq!(state.session.effective_user(), Some("postgres"));
-        }
-
-        #[test]
-        fn stale_effective_user_loaded_does_not_replace_current_state() {
-            let mut state = create_test_state();
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let old_run_id = state.session.begin_effective_user_fetch();
-            let _ = state.session.begin_effective_user_fetch();
-
-            reduce(
-                &mut state,
-                Action::EffectiveUserLoaded {
-                    run_id: old_run_id,
-                    effective_user: Some("old_user".to_string()),
-                },
-                Instant::now(),
-                &AppServices::stub(),
+            assert!(
+                !effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
             );
-
-            assert!(state.session.effective_user().is_none());
-        }
-
-        #[test]
-        fn reload_failure_keeps_pending_effective_user_fetch_alive() {
-            let mut state = create_test_state();
-            let metadata_action =
-                metadata_loaded_action(&mut state, DatabaseMetadata::new("test".to_string()));
-            let metadata_effects = reduce(
-                &mut state,
-                metadata_action,
-                Instant::now(),
-                &AppServices::stub(),
-            );
-            let user_run_id = metadata_effects
-                .iter()
-                .find_map(|effect| match effect {
-                    Effect::FetchEffectiveUser { run_id, .. } => Some(*run_id),
-                    _ => None,
-                })
-                .expect("metadata load should start user fetch");
-
-            let reload_effects = reduce(
-                &mut state,
-                Action::ReloadMetadata,
-                Instant::now(),
-                &AppServices::stub(),
-            );
-            let reload_run_id = reload_effects
-                .iter()
-                .find_map(|effect| match effect {
-                    Effect::FetchMetadata { run_id, .. } => Some(*run_id),
-                    _ => None,
-                })
-                .expect("reload should start metadata fetch");
-
-            reduce(
-                &mut state,
-                Action::MetadataFailed {
-                    run_id: reload_run_id,
-                    error: DbOperationError::ConnectionFailed("reload failed".to_string()),
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert!(state.session.connection_state().is_connected());
-            assert!(state.session.is_current_effective_user_run(user_run_id));
-
-            reduce(
-                &mut state,
-                Action::EffectiveUserLoaded {
-                    run_id: user_run_id,
-                    effective_user: Some("postgres".to_string()),
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert_eq!(state.session.effective_user(), Some("postgres"));
         }
 
         #[test]
@@ -1366,7 +1271,7 @@ mod tests {
             assert!(state.session.selected_table_key().is_none());
             assert!(state.query.current_result().is_none());
             assert_eq!(state.ui.explorer_selected(), 0);
-            assert!(state.session.connection_state().is_failed());
+            assert_eq!(state.session.connection_state(), ConnectionState::Failed);
         }
 
         #[test]
@@ -1435,32 +1340,18 @@ mod tests {
         }
 
         #[test]
-        fn close_keeps_error_info_for_reopen() {
+        fn close_resets_view_and_reopen_preserves_error_info() {
             let mut state = state_with_error();
+            state.session.set_metadata_state(MetadataState::Error);
+            state.ui.set_focused_pane(FocusedPane::Explorer);
+            let now = Instant::now();
+            let error_info = state.connection_error.error_info().cloned();
+
             state.connection_error.toggle_details();
             state.connection_error.scroll_down(usize::MAX);
-            let now = Instant::now();
-
-            reduce(
-                &mut state,
-                Action::CloseConnectionError,
-                now,
-                &AppServices::stub(),
-            );
-
-            // error_info is kept so Enter can re-open modal
-            assert!(state.connection_error.has_error());
-            assert_eq!(state.input_mode(), InputMode::Normal);
-            // UI state is reset
-            assert!(!state.connection_error.details_expanded());
-            assert_eq!(state.connection_error.scroll_offset(), 0);
-        }
-
-        #[test]
-        fn close_clears_copied_feedback() {
-            let mut state = state_with_error();
-            let now = Instant::now();
             state.connection_error.mark_copied_at(now);
+            assert!(state.connection_error.details_expanded());
+            assert!(state.connection_error.scroll_offset() > 0);
             assert!(state.connection_error.is_copied_visible_at(now));
 
             reduce(
@@ -1469,28 +1360,12 @@ mod tests {
                 now,
                 &AppServices::stub(),
             );
-
-            // Copied feedback is cleared on close
-            assert!(!state.connection_error.is_copied_visible_at(now));
-        }
-
-        #[test]
-        fn reopen_modal_after_close_shows_same_error() {
-            let mut state = state_with_error();
-            state.session.set_metadata_state(MetadataState::Error);
-            state.ui.set_focused_pane(FocusedPane::Explorer);
-            let now = Instant::now();
-
-            // Close modal
-            reduce(
-                &mut state,
-                Action::CloseConnectionError,
-                now,
-                &AppServices::stub(),
-            );
             assert_eq!(state.input_mode(), InputMode::Normal);
+            assert_eq!(state.connection_error.error_info(), error_info.as_ref());
+            assert!(!state.connection_error.details_expanded());
+            assert_eq!(state.connection_error.scroll_offset(), 0);
+            assert!(!state.connection_error.is_copied_visible_at(now));
 
-            // Re-open with Enter
             reduce(
                 &mut state,
                 Action::ConfirmSelection,
@@ -1498,7 +1373,7 @@ mod tests {
                 &AppServices::stub(),
             );
             assert_eq!(state.input_mode(), InputMode::ConnectionError);
-            assert!(state.connection_error.has_error());
+            assert_eq!(state.connection_error.error_info(), error_info.as_ref());
         }
 
         #[test]
@@ -1679,22 +1554,6 @@ mod tests {
         }
 
         #[test]
-        fn reload_metadata_sets_is_reloading_flag() {
-            let mut state = create_test_state();
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let now = Instant::now();
-
-            reduce(
-                &mut state,
-                Action::ReloadMetadata,
-                now,
-                &AppServices::stub(),
-            );
-
-            assert!(state.session.is_reloading());
-        }
-
-        #[test]
         fn reload_then_metadata_loaded_shows_reloaded_message() {
             let mut state = create_test_state();
             state.session.activate_connection_with_dsn(
@@ -1719,6 +1578,7 @@ mod tests {
             let action = Action::MetadataLoaded {
                 run_id: 1,
                 metadata: Arc::new(metadata),
+                effective_user: None,
             };
             reduce(&mut state, action, now, &AppServices::stub());
 
@@ -1732,17 +1592,6 @@ mod tests {
         use super::*;
         use crate::domain::DatabaseMetadata;
         use crate::model::er_state::ErStatus;
-
-        #[test]
-        fn er_open_while_rendering_returns_no_effects() {
-            let mut state = create_test_state();
-            state.er_preparation.mark_rendering();
-            let now = Instant::now();
-
-            let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
-
-            assert!(effects.is_empty());
-        }
 
         #[test]
         fn unsupported_er_open_direct_dispatch_has_no_side_effect() {
@@ -1784,52 +1633,6 @@ mod tests {
             assert!(state.table_prefetch.active_prefetch_run_id().is_none());
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
-        }
-
-        #[test]
-        fn active_prefetch_run_emits_smart_refresh() {
-            let mut state = create_test_state();
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            state
-                .session
-                .set_metadata(Some(Arc::new(DatabaseMetadata::new("test".to_string()))));
-            let _ = state.table_prefetch.begin_er_prefetch();
-            let now = Instant::now();
-
-            let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
-
-            assert!(state.table_prefetch.active_prefetch_run_id().is_none());
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
-        }
-
-        #[test]
-        fn no_prefetch_emits_smart_refresh() {
-            let mut state = create_test_state();
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            state
-                .session
-                .set_metadata(Some(Arc::new(DatabaseMetadata::new("test".to_string()))));
-            let now = Instant::now();
-
-            let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
-
-            assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
-        }
-
-        #[test]
-        fn no_metadata_returns_error() {
-            let mut state = create_test_state();
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let _ = state.table_prefetch.begin_er_prefetch();
-            let now = Instant::now();
-
-            let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
-
-            assert!(state.messages.last_error.is_some());
-            assert!(effects.is_empty());
         }
 
         #[test]
@@ -2080,6 +1883,7 @@ mod tests {
                     run_id,
                     mysql_lower_case_table_names: None,
                     metadata: Some(Arc::new(DatabaseMetadata::new("validated".to_string()))),
+                    effective_user: None,
                 },
                 now,
                 &AppServices::stub(),
@@ -2455,6 +2259,7 @@ mod tests {
                 Action::MetadataLoaded {
                     run_id,
                     metadata: Arc::new(metadata),
+                    effective_user: None,
                 },
                 now,
                 &AppServices::stub(),
@@ -2487,7 +2292,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(state.session.connection_state().is_failed());
+            assert_eq!(state.session.connection_state(), ConnectionState::Failed);
             assert!(matches!(
                 state.session.metadata_state(),
                 MetadataState::Error
@@ -2611,6 +2416,7 @@ mod tests {
                     run_id,
                     mysql_lower_case_table_names: None,
                     metadata: Some(Arc::new(DatabaseMetadata::new("validated".to_string()))),
+                    effective_user: None,
                 },
                 now,
                 &AppServices::stub(),
@@ -2640,6 +2446,7 @@ mod tests {
                 .session
                 .set_connection_state(ConnectionState::Connected);
             state.ui.set_explorer_selected_raw(5);
+            state.ui.set_inspector_tab(InspectorTab::Indexes);
             let now = Instant::now();
 
             let effects = reduce(
@@ -2659,6 +2466,10 @@ mod tests {
             assert!(state.session.connection_state().is_connecting());
             assert!(state.connection_caches.contains_key(&conn_a));
             assert_eq!(state.connection_caches[&conn_a].explorer_selected, 5);
+            assert_eq!(
+                state.connection_caches[&conn_a].inspector_tab,
+                InspectorTab::Indexes
+            );
             assert!(matches!(
                 effects.as_slice(),
                 [
@@ -2725,8 +2536,7 @@ mod tests {
                 effects.as_slice(),
                 [
                     Effect::CancelTrackedTasks,
-                    Effect::ClearCompletionEngineCache,
-                    Effect::FetchEffectiveUser { .. }
+                    Effect::ClearCompletionEngineCache
                 ]
             ));
             assert!(
@@ -2777,86 +2587,6 @@ mod tests {
                     .iter()
                     .any(|effect| matches!(effect, Effect::CancelSqliteDiagnostics))
             );
-        }
-
-        #[test]
-        fn switch_connection_reloads_missing_effective_user_after_round_trip() {
-            let mut state = create_test_state();
-            let conn_a = ConnectionId::new();
-            let conn_b = ConnectionId::new();
-            let dsn_a = "postgres://localhost/a".to_string();
-
-            state.session.activate_connection_with_dsn(
-                &conn_a,
-                "A",
-                DatabaseType::PostgreSQL,
-                &dsn_a,
-            );
-            state
-                .session
-                .mark_connected(Arc::new(DatabaseMetadata::new("a".to_string())));
-            let old_a_run_id = state.session.begin_effective_user_fetch();
-
-            reduce(
-                &mut state,
-                Action::SwitchConnection(ConnectionTarget {
-                    id: conn_b,
-                    dsn: "postgres://localhost/b".to_string(),
-                    name: "B".to_string(),
-                    database_type: DatabaseType::PostgreSQL,
-                    database: None,
-                }),
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            let effects = reduce(
-                &mut state,
-                Action::SwitchConnection(ConnectionTarget {
-                    id: conn_a,
-                    dsn: dsn_a.clone(),
-                    name: "A".to_string(),
-                    database_type: DatabaseType::PostgreSQL,
-                    database: None,
-                }),
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            let new_a_run_id = effects
-                .iter()
-                .find_map(|effect| match effect {
-                    Effect::FetchEffectiveUser { dsn, run_id }
-                        if dsn.as_str() == dsn_a.as_str() =>
-                    {
-                        Some(run_id.to_owned())
-                    }
-                    _ => None,
-                })
-                .expect("cached user miss should trigger a refetch");
-            assert_ne!(new_a_run_id, old_a_run_id);
-
-            reduce(
-                &mut state,
-                Action::EffectiveUserLoaded {
-                    run_id: old_a_run_id,
-                    effective_user: Some("old_a_user".to_string()),
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
-            assert!(state.session.effective_user().is_none());
-
-            reduce(
-                &mut state,
-                Action::EffectiveUserLoaded {
-                    run_id: new_a_run_id,
-                    effective_user: Some("a_user".to_string()),
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
-            assert_eq!(state.session.effective_user(), Some("a_user"));
         }
     }
 
@@ -2940,6 +2670,7 @@ mod tests {
             Action::MetadataLoaded {
                 run_id,
                 metadata: sample_metadata(),
+                effective_user: None,
             }
         }
 
@@ -2953,7 +2684,7 @@ mod tests {
         #[test]
         fn metadata_loaded_with_pending_dispatches_open() {
             let mut state = create_test_state();
-            state.ui.set_pending_er_picker(true);
+            state.ui.request_er_picker_after_metadata();
             state.modal.set_mode(InputMode::Normal);
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state);
@@ -2967,7 +2698,6 @@ mod tests {
         #[test]
         fn metadata_loaded_without_pending_does_not_dispatch_open() {
             let mut state = create_test_state();
-            state.ui.set_pending_er_picker(false);
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state);
 
@@ -2979,7 +2709,7 @@ mod tests {
         #[test]
         fn metadata_loaded_with_pending_but_non_normal_mode_discards() {
             let mut state = create_test_state();
-            state.ui.set_pending_er_picker(true);
+            state.ui.request_er_picker_after_metadata();
             state.modal.set_mode(InputMode::SqlModal);
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state);
@@ -3076,7 +2806,7 @@ mod tests {
         }
 
         #[test]
-        fn failed_refresh_prefetches_source_and_selected_tables() {
+        fn schema_race_prefetches_source_and_selected_tables() {
             let mut state = state_with_metadata();
             state
                 .er_preparation
@@ -3088,8 +2818,12 @@ mod tests {
                 Action::SmartErRefreshFailed(SmartErRefreshError {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id,
-                    error: DbOperationError::Timeout("timed out".to_string()),
-                    new_metadata: None,
+                    error: DbOperationError::ObjectMissing("table removed".to_string()),
+                    new_metadata: state_with_metadata()
+                        .session
+                        .metadata()
+                        .cloned()
+                        .map(Arc::new),
                 }),
                 Instant::now(),
                 &AppServices::stub(),
@@ -3167,6 +2901,7 @@ mod tests {
                     failed_at: now,
                     error: "timeout".to_string(),
                     retry_count: 3,
+                    retryable: true,
                 },
             );
             let effects = reduce(
@@ -3219,6 +2954,7 @@ mod tests {
                 Action::MetadataLoaded {
                     run_id,
                     metadata: Arc::new(metadata),
+                    effective_user: None,
                 },
                 now,
                 &AppServices::stub(),

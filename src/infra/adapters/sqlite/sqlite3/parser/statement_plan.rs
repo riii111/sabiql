@@ -48,7 +48,7 @@ pub(in crate::adapters::sqlite) fn sqlite_statement_plan(
         .iter()
         .map(|statement| sqlite_statement_classification(statement))
         .collect();
-    let wrap_mode = if sqlite_transaction_policy_for_classifications(statements.len(), &classes)
+    let wrap_mode = if sqlite_transaction_policy_for_classifications(&classes)
         == SqliteTransactionPolicy::AutoWrap
     {
         SqliteWrapMode::BeginCommit

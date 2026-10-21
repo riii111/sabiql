@@ -948,6 +948,7 @@ mod tests {
                     TriggerEvent::Truncate,
                 ]
             );
+            assert_eq!(result[0].security_context.as_deref(), Some("INVOKER"));
         }
 
         #[test]
@@ -961,20 +962,6 @@ mod tests {
             let json = r"[]";
             let result = PostgresAdapter::parse_triggers(json).unwrap();
             assert!(result.is_empty());
-        }
-
-        #[test]
-        fn invoker_security_context_stays_invoker() {
-            let json = r#"[{
-                "name": "test",
-                "timing": "AFTER",
-                "events": ["INSERT"],
-                "definition": "func",
-                "security_context": "INVOKER"
-            }]"#;
-
-            let result = PostgresAdapter::parse_triggers(json).unwrap();
-            assert_eq!(result[0].security_context.as_deref(), Some("INVOKER"));
         }
 
         #[test]

@@ -140,6 +140,7 @@ fn collapse_context(tags: &[DiffTag], context_lines: usize) -> Vec<JsonDiffLine>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     #[test]
     fn non_json_returns_none() {
@@ -278,29 +279,24 @@ mod tests {
         );
     }
 
-    #[test]
-    fn change_at_start_returns_no_leading_ellipsis() {
-        let before = r#"{"a": 1, "b": 2}"#;
-        let after = r#"{"a": 99, "b": 2}"#;
-
+    #[rstest]
+    #[case(r#"{"a": 1, "b": 2}"#, r#"{"a": 99, "b": 2}"#, true)]
+    #[case(r#"{"a": 1, "b": 2}"#, r#"{"a": 1, "b": 99}"#, false)]
+    fn boundary_changes_omit_outer_ellipsis(
+        #[case] before: &str,
+        #[case] after: &str,
+        #[case] at_start: bool,
+    ) {
         let result = compute_json_diff(before, after, 1).unwrap();
+        let outer_line = if at_start {
+            result.first()
+        } else {
+            result.last()
+        };
 
         assert!(
-            !matches!(result.first(), Some(JsonDiffLine::Ellipsis)),
-            "first line should not be Ellipsis when change is at start"
-        );
-    }
-
-    #[test]
-    fn change_at_end_returns_no_trailing_ellipsis() {
-        let before = r#"{"a": 1, "b": 2}"#;
-        let after = r#"{"a": 1, "b": 99}"#;
-
-        let result = compute_json_diff(before, after, 1).unwrap();
-
-        assert!(
-            !matches!(result.last(), Some(JsonDiffLine::Ellipsis)),
-            "last line should not be Ellipsis when change is at end"
+            !matches!(outer_line, Some(JsonDiffLine::Ellipsis)),
+            "a boundary change should not have an outer Ellipsis"
         );
     }
 

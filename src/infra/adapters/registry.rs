@@ -1,10 +1,9 @@
 use crate::app::ports::outbound::{
-    AccessMode, DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, QueryExecutor,
+    AccessMode, DbOperationError, DdlGenerator, DsnBuilder, MetadataFetchResult, MetadataProvider,
+    QueryExecutor,
 };
 use crate::domain::connection::{ConnectionProfile, DatabaseType};
-use crate::domain::{
-    DatabaseMetadata, QueryResult, Table, TableSignatureSnapshot, WriteExecutionResult,
-};
+use crate::domain::{QueryResult, Table, TableSignatureSnapshot, WriteExecutionResult};
 use async_trait::async_trait;
 use std::path::PathBuf;
 
@@ -50,12 +49,8 @@ impl DsnBuilder for DbAdapterRegistry {
 
 #[async_trait]
 impl MetadataProvider for DbAdapterRegistry {
-    async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
+    async fn fetch_metadata(&self, dsn: &str) -> Result<MetadataFetchResult, DbOperationError> {
         self.metadata_provider(dsn)?.fetch_metadata(dsn).await
-    }
-
-    async fn fetch_effective_user(&self, dsn: &str) -> Result<Option<String>, DbOperationError> {
-        self.metadata_provider(dsn)?.fetch_effective_user(dsn).await
     }
 
     async fn fetch_table_detail(
@@ -178,12 +173,15 @@ impl DbAdapterRegistry {
         if dsn.starts_with("mysql://") {
             return Ok(DatabaseType::MySQL);
         }
-        if dsn.starts_with("postgres://") || is_postgres_conninfo_dsn(dsn) {
+        if dsn.starts_with("postgres://")
+            || dsn.starts_with("postgresql://")
+            || is_postgres_conninfo_dsn(dsn)
+        {
             return Ok(DatabaseType::PostgreSQL);
         }
-        Err(DbOperationError::ConnectionFailed(format!(
-            "Unsupported database DSN scheme: {dsn}"
-        )))
+        Err(DbOperationError::ConnectionFailed(
+            "Unsupported database DSN scheme".to_string(),
+        ))
     }
 }
 
@@ -286,10 +284,20 @@ mod tests {
     #[case::sqlite_url("sqlite:///tmp/app.db", Some(DatabaseType::SQLite))]
     #[case::mysql_url("mysql://localhost/db", Some(DatabaseType::MySQL))]
     #[case::postgres_url("postgres://localhost/db", Some(DatabaseType::PostgreSQL))]
+    #[case::postgresql_url("postgresql://localhost/db", Some(DatabaseType::PostgreSQL))]
     #[case::postgres_conninfo("host='localhost' dbname='db'", Some(DatabaseType::PostgreSQL))]
     #[case::unsupported_scheme("redis://localhost", None)]
     fn classifies_named_dsn_inputs(#[case] dsn: &str, #[case] expected: Option<DatabaseType>) {
         assert_eq!(DbAdapterRegistry::db_type_from_dsn(dsn).ok(), expected);
+    }
+
+    #[test]
+    fn unsupported_dsn_error_does_not_echo_credentials() {
+        let error = DbAdapterRegistry::db_type_from_dsn("redis://user:secret@example.com/database")
+            .unwrap_err();
+
+        assert!(!error.user_message().contains("secret"));
+        assert!(!format!("{error:?}").contains("secret"));
     }
 
     #[tokio::test]
@@ -300,26 +308,19 @@ mod tests {
 
         let metadata = registry.fetch_metadata(&dsn).await.unwrap();
 
-        assert_eq!(metadata.table_summaries[0].qualified_name(), "main.users");
+        assert_eq!(
+            metadata.metadata.table_summaries[0].qualified_name(),
+            "main.users"
+        );
+        assert_eq!(metadata.effective_user, None);
     }
 
     #[tokio::test]
-    async fn sqlite_effective_user_dispatch_preserves_unknown_user() {
-        let (_dir, dsn) =
-            test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-        let registry = DbAdapterRegistry::new();
-
-        let effective_user = registry.fetch_effective_user(&dsn).await.unwrap();
-
-        assert_eq!(effective_user, None);
-    }
-
-    #[tokio::test]
-    async fn mysql_effective_user_dispatch_does_not_expose_password_on_validation_failure() {
+    async fn mysql_metadata_dispatch_does_not_expose_password_on_validation_failure() {
         let registry = DbAdapterRegistry::new();
 
         let error = registry
-            .fetch_effective_user("mysql://app:header-secret%01@localhost/app")
+            .fetch_metadata("mysql://app:header-secret%01@localhost/app")
             .await
             .unwrap_err();
 

@@ -72,16 +72,11 @@ mod tests {
         assert!(matches!(result, Action::CellDetailSearchSubmit));
     }
 
-    #[test]
-    fn ctrl_char_is_not_inserted_into_search() {
-        let result = handle_cell_detail_keys(modified_combo(Key::Char('n'), Modifiers::CTRL), true);
-
-        assert!(matches!(result, Action::None));
-    }
-
-    #[test]
-    fn alt_char_is_not_inserted_into_search() {
-        let result = handle_cell_detail_keys(modified_combo(Key::Char('n'), Modifiers::ALT), true);
+    #[rstest::rstest]
+    #[case(Modifiers::CTRL)]
+    #[case(Modifiers::ALT)]
+    fn modified_char_is_not_inserted_into_search(#[case] modifiers: Modifiers) {
+        let result = handle_cell_detail_keys(modified_combo(Key::Char('n'), modifiers), true);
 
         assert!(matches!(result, Action::None));
     }

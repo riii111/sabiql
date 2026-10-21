@@ -20,7 +20,7 @@ test_project ▸ test_db ▸ -                                                  
 │                                │    Appearance    │ER Diagram                                                                    │                                │
 │                                │    Keymap        │                                                                              │                                │
 │                                │  > ER Diagram    │Browser                                                                       │                                │
-│                                │                  │                                                                              │                                │
+│                                │    Clipboard     │                                                                              │                                │
 │                                │                  │  > System default     saved                                                  │                                │
 │                                │                  │    Google Chrome                                                             │                                │
 │                                │                  │    Firefox                                                                   │                                │

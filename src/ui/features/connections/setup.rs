@@ -24,7 +24,7 @@ const FIELD_HEIGHT: u16 = 1;
 const MODAL_VERTICAL_CHROME: u16 = 6;
 const MODAL_HORIZONTAL_CHROME: u16 = 6;
 const MIN_PREVIEW_LINES: usize = 2;
-const CLEARTEXT_AUTH_OPTIONS: &[&str] = &["disabled", "enabled"];
+const BOOLEAN_OPTIONS: &[&str] = &["disabled", "enabled"];
 
 fn bracketed_input(content: &str, border_style: Style, theme: &ThemePalette) -> Line<'static> {
     Line::from(vec![
@@ -140,6 +140,15 @@ impl ConnectionSetup {
                     form_state.validation_error(ConnectionField::CleartextAuth),
                     theme,
                 ),
+                ConnectionField::GetServerPublicKey => Self::render_dropdown_field(
+                    frame,
+                    chunks[idx],
+                    field.label(),
+                    get_server_public_key_label(form_state),
+                    form_state.focused_field() == ConnectionField::GetServerPublicKey,
+                    form_state.validation_error(ConnectionField::GetServerPublicKey),
+                    theme,
+                ),
                 field => Self::render_text_field(
                     frame,
                     chunks[idx],
@@ -159,11 +168,11 @@ impl ConnectionSetup {
             vec![
                 Line::from("Note: password is sent via mysql_clear_password"),
                 Line::from("TLS required: REQUIRED, VERIFY_CA, or VERIFY_IDENTITY"),
-                Line::from("Note: Connection info is stored locally in plain text"),
+                Line::from("Note: Passwords use the OS secret store when supported"),
             ]
         } else {
             vec![Line::from(
-                "Note: Connection info is stored locally in plain text",
+                "Note: Passwords use the OS secret store when supported",
             )]
         };
         let notice_para =
@@ -207,19 +216,22 @@ impl ConnectionSetup {
             && let Some(field_area) = Self::open_dropdown_field_area(
                 chunks.as_ref(),
                 &visible_fields,
-                if form_state.focused_field() == ConnectionField::CleartextAuth {
-                    ConnectionField::CleartextAuth
-                } else {
-                    ConnectionField::SslMode
+                match form_state.focused_field() {
+                    ConnectionField::CleartextAuth => ConnectionField::CleartextAuth,
+                    ConnectionField::GetServerPublicKey => ConnectionField::GetServerPublicKey,
+                    _ => ConnectionField::SslMode,
                 },
             )
         {
             if form_state.database_type() == DatabaseType::MySQL {
-                if form_state.focused_field() == ConnectionField::CleartextAuth {
+                if matches!(
+                    form_state.focused_field(),
+                    ConnectionField::CleartextAuth | ConnectionField::GetServerPublicKey
+                ) {
                     Self::render_dropdown_list(
                         frame,
                         field_area,
-                        CLEARTEXT_AUTH_OPTIONS.iter().copied(),
+                        BOOLEAN_OPTIONS.iter().copied(),
                         form_state.ssl_dropdown().selected_index(),
                         theme,
                     );
@@ -271,6 +283,7 @@ impl ConnectionSetup {
                 | ConnectionField::Transport
                 | ConnectionField::SslMode
                 | ConnectionField::CleartextAuth
+                | ConnectionField::GetServerPublicKey
         ) {
             vec![
                 connection_setup::ENTER_DROPDOWN.as_hint(),
@@ -526,6 +539,14 @@ fn cleartext_auth_label(state: &ConnectionSetupState) -> &'static str {
     }
 }
 
+fn get_server_public_key_label(state: &ConnectionSetupState) -> &'static str {
+    if state.get_server_public_key_enabled() {
+        "enabled"
+    } else {
+        "disabled"
+    }
+}
+
 fn focused_placeholder_spans(
     placeholder: &str,
     effective_width: usize,
@@ -629,6 +650,7 @@ mod tests {
     use super::*;
     use crate::app::model::shared::settings::KeymapPreset;
     use crate::domain::connection::ConnectionConfig;
+    use rstest::rstest;
 
     fn focus_field(state: &mut ConnectionSetupState, field: ConnectionField) {
         while state.focused_field() != field {
@@ -636,11 +658,13 @@ mod tests {
         }
     }
 
-    #[test]
-    fn submit_hints_include_toggle_and_save_on_ssl_field() {
+    #[rstest]
+    #[case(ConnectionField::SslMode)]
+    #[case(ConnectionField::DatabaseType)]
+    fn submit_hints_toggle_and_save_for_toggle_fields(#[case] field: ConnectionField) {
         let state = AppState::new("test".to_string());
         let mut form_state = ConnectionSetupState::default();
-        focus_field(&mut form_state, ConnectionField::SslMode);
+        focus_field(&mut form_state, field);
 
         assert_eq!(
             ConnectionSetup::submit_hints(&state, &form_state, "Connect"),
@@ -648,39 +672,21 @@ mod tests {
         );
     }
 
-    #[test]
-    fn submit_hint_uses_toggle_on_database_type_field() {
-        let state = AppState::new("test".to_string());
-        let form_state = ConnectionSetupState::default();
-
-        assert_eq!(
-            ConnectionSetup::submit_hints(&state, &form_state, "Connect"),
-            vec![("Enter", "Toggle"), ("^S", "Connect")]
-        );
-    }
-
-    #[test]
-    fn submit_hints_use_preset_save_key_off_ssl_field() {
+    #[rstest]
+    #[case(KeymapPreset::Default, "^S")]
+    #[case(KeymapPreset::Ide, "Enter")]
+    fn submit_hints_use_keymap_save_key_on_text_field(
+        #[case] preset: KeymapPreset,
+        #[case] save_key: &str,
+    ) {
         let mut state = AppState::new("test".to_string());
-        state.settings.load_keymap_preset(KeymapPreset::Ide);
+        state.settings.load_keymap_preset(preset);
         let mut form_state = ConnectionSetupState::default();
         form_state.focus_next_field();
 
         assert_eq!(
             ConnectionSetup::submit_hints(&state, &form_state, "Connect"),
-            vec![("Enter", "Connect")]
-        );
-    }
-
-    #[test]
-    fn submit_hints_use_default_save_key_on_text_field() {
-        let state = AppState::new("test".to_string());
-        let mut form_state = ConnectionSetupState::default();
-        form_state.focus_next_field();
-
-        assert_eq!(
-            ConnectionSetup::submit_hints(&state, &form_state, "Connect"),
-            vec![("^S", "Connect")]
+            vec![(save_key, "Connect")]
         );
     }
 
@@ -789,26 +795,32 @@ mod tests {
     }
 
     #[test]
-    fn preview_lines_use_two_rows_with_ellipsis() {
-        assert_eq!(
-            preview_lines("host='localhost' port='5432'", 12, 2),
-            vec!["→ host='loca".to_string(), "  lhost' po…".to_string()]
-        );
-    }
+    fn preview_lines_preserve_ascii_and_unicode_rows() {
+        let cases = [
+            (
+                "host='localhost' port='5432'",
+                12,
+                2,
+                vec!["→ host='loca".to_string(), "  lhost' po…".to_string()],
+            ),
+            (
+                "dbname='日本語db' sslmode='prefer'",
+                12,
+                2,
+                vec!["→ dbname='日".to_string(), "  本語db' s…".to_string()],
+            ),
+        ];
 
-    #[test]
-    fn preview_lines_respect_display_width() {
-        let lines = preview_lines("dbname='日本語db' sslmode='prefer'", 12, 2);
+        for (input, width, rows, expected) in cases {
+            let lines = preview_lines(input, width, rows);
 
-        assert_eq!(
-            lines,
-            vec!["→ dbname='日".to_string(), "  本語db' s…".to_string()]
-        );
-        assert!(
-            lines
-                .iter()
-                .all(|line| UnicodeWidthStr::width(line.as_str()) <= 12)
-        );
+            assert_eq!(lines, expected);
+            assert!(
+                lines
+                    .iter()
+                    .all(|line| UnicodeWidthStr::width(line.as_str()) <= width)
+            );
+        }
     }
 
     #[test]

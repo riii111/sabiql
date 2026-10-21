@@ -211,6 +211,7 @@ mod tests {
     use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
     use crate::update::action::CursorMove;
     use crate::update::input::keybindings::Key;
+    use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {
         KeyCombo::plain(k)
@@ -237,37 +238,21 @@ mod tests {
     mod json_detail {
         use super::*;
 
-        #[test]
-        fn ctrl_n_moves_cursor_down_in_normal_mode() {
-            let result = handle_json_detail_keys(
-                combo_ctrl(Key::Char('n')),
-                InputInteraction::Viewing,
-                None,
-            );
+        #[rstest]
+        #[case(Key::Char('n'), CursorMove::Down)]
+        #[case(Key::Char('p'), CursorMove::Up)]
+        fn ctrl_aliases_move_cursor_in_normal_mode(
+            #[case] key: Key,
+            #[case] direction: CursorMove,
+        ) {
+            let result = handle_json_detail_keys(combo_ctrl(key), InputInteraction::Viewing, None);
 
             assert!(matches!(
                 result,
                 Action::TextMoveCursor {
                     target: InputTarget::JsonEdit,
-                    direction: CursorMove::Down,
-                }
-            ));
-        }
-
-        #[test]
-        fn ctrl_p_moves_cursor_up_in_normal_mode() {
-            let result = handle_json_detail_keys(
-                combo_ctrl(Key::Char('p')),
-                InputInteraction::Viewing,
-                None,
-            );
-
-            assert!(matches!(
-                result,
-                Action::TextMoveCursor {
-                    target: InputTarget::JsonEdit,
-                    direction: CursorMove::Up,
-                }
+                    direction: actual,
+                } if actual == direction
             ));
         }
 
@@ -277,6 +262,14 @@ mod tests {
                 handle_json_detail_keys(combo(Key::Enter), InputInteraction::Viewing, None);
 
             assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn append_enters_edit_mode() {
+            let result =
+                handle_json_detail_keys(combo(Key::Char('A')), InputInteraction::Viewing, None);
+
+            assert!(matches!(result, Action::JsonAppendInsert));
         }
 
         #[test]
@@ -290,6 +283,27 @@ mod tests {
                     target: InputTarget::JsonEdit,
                     direction: CursorMove::Left,
                 }
+            ));
+        }
+
+        #[rstest]
+        #[case(Key::Char('0'), CursorMove::LineStart)]
+        #[case(Key::Char('$'), CursorMove::LineEnd)]
+        #[case(Key::Char('w'), CursorMove::WordForward)]
+        #[case(Key::Char('b'), CursorMove::WordBackward)]
+        #[case(Key::Char('G'), CursorMove::LastLine)]
+        #[case(Key::Char('H'), CursorMove::ViewportTop)]
+        #[case(Key::Char('M'), CursorMove::ViewportMiddle)]
+        #[case(Key::Char('L'), CursorMove::ViewportBottom)]
+        fn vim_aliases_move_json_cursor(#[case] key: Key, #[case] expected: CursorMove) {
+            let result = handle_json_detail_keys(combo(key), InputInteraction::Viewing, None);
+
+            assert!(matches!(
+                result,
+                Action::TextMoveCursor {
+                    target: InputTarget::JsonEdit,
+                    direction,
+                } if direction == expected
             ));
         }
 
@@ -450,10 +464,12 @@ mod tests {
     mod json_search {
         use super::*;
 
-        #[test]
-        fn ctrl_n_still_falls_through_to_search_input() {
+        #[rstest]
+        #[case(Key::Char('n'))]
+        #[case(Key::Char('p'))]
+        fn ctrl_aliases_fall_through_to_search_input(#[case] key: Key) {
             let result = handle_json_detail_keys(
-                combo_ctrl(Key::Char('n')),
+                combo_ctrl(key),
                 InputInteraction::FormEditing(InputTarget::JsonSearch),
                 None,
             );
@@ -462,25 +478,8 @@ mod tests {
                 result,
                 Action::TextInput {
                     target: InputTarget::JsonSearch,
-                    ch: 'n',
-                }
-            ));
-        }
-
-        #[test]
-        fn ctrl_p_still_falls_through_to_search_input() {
-            let result = handle_json_detail_keys(
-                combo_ctrl(Key::Char('p')),
-                InputInteraction::FormEditing(InputTarget::JsonSearch),
-                None,
-            );
-
-            assert!(matches!(
-                result,
-                Action::TextInput {
-                    target: InputTarget::JsonSearch,
-                    ch: 'p',
-                }
+                    ch: actual,
+                } if actual == match key { Key::Char(ch) => ch, _ => unreachable!() }
             ));
         }
 
