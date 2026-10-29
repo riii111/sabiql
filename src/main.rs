@@ -187,7 +187,6 @@ fn apply_app_settings(state: &mut AppState, app_settings: AppSettings) {
     state
         .settings
         .load_keymap_preset(app_settings.keymap_preset);
-    state.settings.load_er_browser(app_settings.er_browser);
 }
 
 fn load_service_entries(state: &mut AppState, reader: &dyn PgServiceEntryReader) {

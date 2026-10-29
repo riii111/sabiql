@@ -19,7 +19,7 @@ test_project ▸ test_db ▸ -                                                  
 │                                │                  │                                                                              │                                │
 │                                │    Appearance    │Keymap                                                                        │                                │
 │                                │  > Keymap        │                                                                              │                                │
-│                                │    ER Diagram    │Keymap preset                                                                 │                                │
+│                                │                  │Keymap preset                                                                 │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │  > Default        saved                                                      │                                │
 │                                │                  │    IDE                                                                       │                                │

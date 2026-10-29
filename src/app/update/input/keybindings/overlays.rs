@@ -964,17 +964,6 @@ pub mod settings {
         ],
     };
 
-    pub const EDIT: ModeRow = ModeRow {
-        key_short: "i",
-        key: "i",
-        desc_short: "Edit",
-        description: "Edit custom browser",
-        bindings: &[ExecBinding {
-            action: Action::SettingsStartCustomBrowserEdit,
-            combos: &[KeyCombo::plain(Key::Char('i'))],
-        }],
-    };
-
     pub const SECTION: ModeRow = ModeRow {
         key_short: "Tab/⇧Tab",
         key: "Tab / Shift+Tab",
@@ -1007,7 +996,6 @@ pub mod settings {
 pub const SETTINGS_ROWS: &[ModeRow] = &[
     settings::APPLY,
     settings::SELECT,
-    settings::EDIT,
     settings::SECTION,
     settings::CANCEL,
 ];

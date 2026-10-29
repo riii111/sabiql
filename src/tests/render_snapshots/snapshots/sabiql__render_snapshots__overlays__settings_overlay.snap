@@ -19,7 +19,7 @@ test_project ▸ test_db ▸ -                                                  
 │                                │                  │                                                                              │                                │
 │                                │  > Appearance    │Theme                                                                         │                                │
 │                                │    Keymap        │                                                                              │                                │
-│                                │    ER Diagram    │  > Sabiql Dark    saved                                                      │                                │
+│                                │                  │  > Sabiql Dark    saved                                                      │                                │
 │                                │                  │    Light                                                                     │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │

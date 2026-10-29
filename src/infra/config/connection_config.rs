@@ -31,8 +31,6 @@ pub(crate) struct ConnectionConfigFile {
     pub theme: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub keymap_preset: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub er_browser: Option<String>,
     pub connections: Vec<ConnectionConfigEntry>,
 }
 
@@ -80,7 +78,6 @@ impl Default for ConnectionConfigFile {
             version: CURRENT_VERSION,
             theme: None,
             keymap_preset: None,
-            er_browser: None,
             connections: Vec::new(),
         }
     }

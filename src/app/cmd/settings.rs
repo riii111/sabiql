@@ -52,16 +52,11 @@ mod tests {
             AppSettings {
                 theme_id: ThemeId::Light,
                 keymap_preset: KeymapPreset::Ide,
-                er_browser: Some("Firefox".to_string()),
             },
             &(store.clone() as Arc<dyn SettingsStore>),
         );
 
         assert_eq!(store.saved.lock().unwrap()[0].theme_id, ThemeId::Light);
-        assert_eq!(
-            store.saved.lock().unwrap()[0].er_browser.as_deref(),
-            Some("Firefox")
-        );
         assert_eq!(
             store.saved.lock().unwrap()[0].keymap_preset,
             KeymapPreset::Ide
@@ -71,7 +66,6 @@ mod tests {
             Action::SettingsSaved(settings)
                 if settings.theme_id == ThemeId::Light
                     && settings.keymap_preset == KeymapPreset::Ide
-                    && settings.er_browser.as_deref() == Some("Firefox")
         ));
     }
 
@@ -83,7 +77,6 @@ mod tests {
             AppSettings {
                 theme_id: ThemeId::Light,
                 keymap_preset: KeymapPreset::default(),
-                er_browser: None,
             },
             &(store as Arc<dyn SettingsStore>),
         );

@@ -70,7 +70,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
         InputMode::CellEdit => editors::handle_cell_edit_keys(combo),
         InputMode::TablePicker => pickers::handle_table_picker_keys(combo),
         InputMode::CommandPalette => pickers::handle_command_palette_keys(combo),
-        InputMode::Settings => pickers::handle_settings_keys(combo, state),
+        InputMode::Settings => pickers::handle_settings_keys(combo),
         InputMode::Help => {
             overlays::handle_help_keys_with_policy(combo, interaction, &feature_policy)
         }
@@ -120,7 +120,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::shared::settings::{KeymapPreset, SettingsSection};
+    use crate::model::shared::settings::KeymapPreset;
     use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel};
     use crate::ports::inbound::Key;
     use crate::update::action::ModalKind;
@@ -242,7 +242,6 @@ mod tests {
         TableFilter,
         ErFilter,
         QueryHistoryFilter,
-        SettingsBrowser,
         ConnectionSetup,
         SqlModalHighRisk,
         SqlModalAnalyzeHighRisk,
@@ -272,14 +271,6 @@ mod tests {
             FormSurface::QueryHistoryFilter => {
                 state.modal.set_mode(InputMode::QueryHistoryPicker);
                 InputTarget::QueryHistoryFilter
-            }
-            FormSurface::SettingsBrowser => {
-                state.modal.set_mode(InputMode::Settings);
-                state.settings.switch_next_section();
-                state.settings.switch_next_section();
-                assert_eq!(state.settings.section(), SettingsSection::ErDiagram);
-                state.settings.start_custom_browser_edit();
-                InputTarget::SettingsErBrowser
             }
             FormSurface::ConnectionSetup => {
                 state.modal.set_mode(InputMode::ConnectionSetup);
@@ -325,7 +316,6 @@ mod tests {
     #[case(FormSurface::TableFilter)]
     #[case(FormSurface::ErFilter)]
     #[case(FormSurface::QueryHistoryFilter)]
-    #[case(FormSurface::SettingsBrowser)]
     #[case(FormSurface::ConnectionSetup)]
     #[case(FormSurface::SqlModalHighRisk)]
     #[case(FormSurface::SqlModalAnalyzeHighRisk)]
@@ -350,7 +340,6 @@ mod tests {
     #[case(InputTarget::Filter)]
     #[case(InputTarget::ErFilter)]
     #[case(InputTarget::QueryHistoryFilter)]
-    #[case(InputTarget::SettingsErBrowser)]
     #[case(InputTarget::ConnectionSetup)]
     #[case(InputTarget::SqlModalHighRisk)]
     #[case(InputTarget::SqlModalAnalyzeHighRisk)]

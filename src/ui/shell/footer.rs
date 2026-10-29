@@ -231,13 +231,7 @@ impl Footer {
             | InputMode::RowDetail
             | InputMode::ConnectionSelector
             | InputMode::QueryHistoryPicker => vec![],
-            InputMode::Settings => {
-                if state.settings.is_editing_custom_er_browser() {
-                    vec![]
-                } else {
-                    vec![settings::SELECT.as_hint()]
-                }
-            }
+            InputMode::Settings => vec![settings::SELECT.as_hint()],
             InputMode::SqlModal => {
                 if matches!(state.sql_modal.status(), SqlModalStatus::Editing) {
                     vec![sql_modal::MOVE.as_hint()]
@@ -609,28 +603,11 @@ mod tests {
     fn settings_footer_keeps_only_selection_hint() {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::Settings);
-        state.settings.switch_next_section();
-        state.settings.switch_next_section();
-        state.settings.start_custom_browser_edit();
-        state.settings.stop_custom_browser_edit();
 
         assert_eq!(
             Footer::get_context_hints(&state),
             vec![settings::SELECT.as_hint()]
         );
-    }
-
-    #[test]
-    fn settings_custom_browser_edit_footer_hides_modal_hints() {
-        let mut state = AppState::new("test".to_string());
-        state.modal.set_mode(InputMode::Settings);
-        state.settings.switch_next_section();
-        state.settings.switch_next_section();
-        state.settings.start_custom_browser_edit();
-
-        let hints = Footer::get_context_hints(&state);
-
-        assert!(hints.is_empty());
     }
 
     #[test]

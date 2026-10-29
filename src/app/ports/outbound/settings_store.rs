@@ -7,7 +7,6 @@ use crate::model::shared::theme_id::ThemeId;
 pub struct AppSettings {
     pub theme_id: ThemeId,
     pub keymap_preset: KeymapPreset,
-    pub er_browser: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -15,7 +14,6 @@ impl Default for AppSettings {
         Self {
             theme_id: ThemeId::Default,
             keymap_preset: KeymapPreset::Default,
-            er_browser: None,
         }
     }
 }

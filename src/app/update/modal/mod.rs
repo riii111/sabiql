@@ -247,22 +247,6 @@ mod tests {
             );
             assert_eq!(state.kill_buffer(), Some("SELECT"));
         }
-
-        #[test]
-        fn settings_browser_kill_then_yank_restores_text() {
-            let mut state = create_test_state();
-            state.settings.switch_next_section();
-            state.settings.switch_next_section();
-            state.settings.start_custom_browser_edit();
-            for ch in "Firefox".chars() {
-                state.settings.input_custom_browser(ch);
-            }
-
-            kill_then_yank(&mut state, InputTarget::SettingsErBrowser);
-
-            assert_eq!(state.settings.custom_er_browser().content(), "Firefox");
-            assert_eq!(state.kill_buffer(), Some("Firefox"));
-        }
     }
 
     mod settings {
@@ -348,70 +332,7 @@ mod tests {
                 assert!(matches!(
                     effects.as_slice(),
                     [Effect::SaveSettings { settings }]
-                        if settings.theme_id == ThemeId::Light && settings.er_browser.is_none()
-                ));
-            }
-
-            #[test]
-            fn apply_emits_er_browser_save_effect() {
-                let mut state = create_test_state();
-                super::dispatch_modal(
-                    &mut state,
-                    &Action::OpenModal(ModalKind::Settings),
-                    Instant::now(),
-                );
-                super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
-                super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
-                super::dispatch_modal(&mut state, &Action::SettingsSelectNext, Instant::now());
-
-                let effects =
-                    super::dispatch_modal(&mut state, &Action::SettingsApply, Instant::now())
-                        .into_effects()
-                        .expect("reducer should handle action");
-
-                assert_eq!(state.input_mode(), InputMode::Settings);
-                assert_eq!(state.settings.saved_er_browser(), None);
-                assert!(matches!(
-                    effects.as_slice(),
-                    [Effect::SaveSettings { settings }]
-                        if settings.er_browser.as_deref() == Some("Google Chrome")
-                ));
-            }
-
-            #[test]
-            fn custom_browser_input_is_saved() {
-                let mut state = create_test_state();
-                super::dispatch_modal(
-                    &mut state,
-                    &Action::OpenModal(ModalKind::Settings),
-                    Instant::now(),
-                );
-                super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
-                super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
-                super::dispatch_modal(
-                    &mut state,
-                    &Action::SettingsStartCustomBrowserEdit,
-                    Instant::now(),
-                );
-                super::dispatch_modal(
-                    &mut state,
-                    &Action::TextInput {
-                        target: InputTarget::SettingsErBrowser,
-                        ch: 'B',
-                    },
-                    Instant::now(),
-                );
-
-                let effects =
-                    super::dispatch_modal(&mut state, &Action::SettingsApply, Instant::now())
-                        .into_effects()
-                        .expect("reducer should handle action");
-
-                assert_eq!(state.input_mode(), InputMode::Settings);
-                assert!(matches!(
-                    effects.as_slice(),
-                    [Effect::SaveSettings { settings }]
-                        if settings.er_browser.as_deref() == Some("B")
+                        if settings.theme_id == ThemeId::Light
                 ));
             }
 
@@ -432,7 +353,6 @@ mod tests {
                     &Action::SettingsSaved(AppSettings {
                         theme_id: ThemeId::Light,
                         keymap_preset: KeymapPreset::Ide,
-                        er_browser: Some("Google Chrome".to_string()),
                     }),
                     Instant::now(),
                 )
@@ -441,7 +361,6 @@ mod tests {
                 assert_eq!(state.ui.theme_id(), ThemeId::Light);
                 assert_eq!(state.settings.previous_theme(), ThemeId::Light);
                 assert_eq!(state.settings.saved_keymap_preset(), KeymapPreset::Ide);
-                assert_eq!(state.settings.saved_er_browser(), Some("Google Chrome"));
                 assert!(
                     state
                         .messages

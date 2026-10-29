@@ -23,9 +23,6 @@ pub(super) fn resolve_input_interaction(state: &AppState) -> InputInteraction {
         InputMode::QueryHistoryPicker => {
             InputInteraction::FormEditing(InputTarget::QueryHistoryFilter)
         }
-        InputMode::Settings if state.settings.is_editing_custom_er_browser() => {
-            InputInteraction::FormEditing(InputTarget::SettingsErBrowser)
-        }
         InputMode::ConnectionSetup if state.connection_setup.focused_input().is_some() => {
             InputInteraction::FormEditing(InputTarget::ConnectionSetup)
         }
