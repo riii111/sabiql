@@ -31,6 +31,8 @@ const MIN_ZOOM: f64 = 0.2;
 // beyond this, tables are packed in a grid instead.
 const LAYERED_LAYOUT_MAX_TABLES: usize = 800;
 const FIT_PADDING: f64 = 1.0;
+// Fit must reach below the manual zoom floor, or large diagrams stay cut off.
+const FIT_MIN_ZOOM: f64 = 0.01;
 const MAX_STATUS_LINES: u16 = 3;
 const SELF_REFERENCE_MARK: &str = "↻";
 
@@ -120,6 +122,7 @@ impl ErDiagramView {
             ErViewerCommand::FitView => {
                 flow.request_fit_view_with_options(FitViewOptions {
                     padding: FIT_PADDING,
+                    min_zoom: Some(FIT_MIN_ZOOM),
                     max_zoom: Some(1.0),
                     ..FitViewOptions::default()
                 });
@@ -157,11 +160,11 @@ impl ErDiagramViewer {
             Constraint::Percentage(92),
             &title,
             FooterHintBar::new([
+                er_diagram::FK_NAMES.as_hint(),
                 er_diagram::SELECT.as_hint(),
                 er_diagram::PAN.as_hint(),
                 er_diagram::ZOOM.as_hint(),
                 er_diagram::FIT.as_hint(),
-                er_diagram::FK_NAMES.as_hint(),
                 er_diagram::HELP.as_hint(),
                 er_diagram::ESC_CLOSE.as_hint(),
             ]),
@@ -287,11 +290,21 @@ pub fn layout_tables(tables: &[ErTableInfo], seed_tables: &[String]) -> ErLayout
 }
 
 fn graph_flow(tables: &[ErTableInfo], relations: &[Relation]) -> Result<ErFlow, rataflow::Error> {
+    let mut self_references: HashMap<&str, &[String]> = HashMap::new();
+    for r in relations.iter().filter(|r| r.from == r.to) {
+        self_references.insert(r.from.as_str(), &r.fk_names);
+    }
     let mut seen = HashSet::new();
     let nodes: Vec<Node<TextContent>> = tables
         .iter()
         .filter(|table| seen.insert(table.qualified_name.as_str()))
-        .map(|table| table_node(table, relations))
+        .map(|table| {
+            let fk_names = self_references
+                .get(table.qualified_name.as_str())
+                .copied()
+                .unwrap_or_default();
+            table_node(table, fk_names)
+        })
         .collect();
     let edges = relation_edges(relations, |id| seen.contains(id));
     ErFlow::with_graph(nodes, edges)
@@ -328,13 +341,11 @@ fn build_flow(
     Ok(flow)
 }
 
-fn table_node(table: &ErTableInfo, relations: &[Relation]) -> Node<TextContent> {
+fn table_node(table: &ErTableInfo, self_reference_fks: &[String]) -> Node<TextContent> {
     let mut lines = vec![table.name.clone()];
     lines.extend(
-        relations
+        self_reference_fks
             .iter()
-            .filter(|r| r.from == table.qualified_name && r.to == table.qualified_name)
-            .flat_map(|r| &r.fk_names)
             .map(|name| format!("{SELF_REFERENCE_MARK} {name}")),
     );
     let title = format!(" {} ", table.schema);
@@ -640,6 +651,8 @@ mod tests {
     use crate::app::model::shared::theme_id::ThemeId;
     use crate::domain::er::ErFkInfo;
     use crate::theme::palette_for;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
 
     fn table(qualified: &str, fks: &[(&str, &str)]) -> ErTableInfo {
         let (schema, name) = qualified.split_once('.').unwrap();
@@ -667,6 +680,13 @@ mod tests {
             total_tables,
             layout,
         }
+    }
+
+    fn render_flow(flow: &mut ErFlow, width: u16, height: u16) {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        terminal
+            .draw(|frame| frame.render_widget(&mut *flow, frame.area()))
+            .unwrap();
     }
 
     fn sample_tables() -> Vec<ErTableInfo> {
@@ -733,11 +753,12 @@ mod tests {
         let tables = sample_tables();
         let relations = collect_relations(&tables);
 
-        let node = table_node(&tables[2], &relations);
+        let flow = graph_flow(&tables, &relations).unwrap();
 
-        assert_eq!(node.content.label(), "comments");
-        assert_eq!(node.content.text.lines.len(), 2);
-        assert_eq!(node.content.text.lines[1].to_string(), "↻ fk_parent");
+        let content = &flow.node("public.comments").unwrap().content;
+        assert_eq!(content.label(), "comments");
+        assert_eq!(content.text.lines.len(), 2);
+        assert_eq!(content.text.lines[1].to_string(), "↻ fk_parent");
     }
 
     fn assert_no_overlap(tables: &[ErTableInfo], layout: &ErLayout) {
@@ -886,13 +907,40 @@ mod tests {
     fn first_directional_select_starts_from_view_center() {
         let mut view = ErDiagramView::default();
         view.sync(Some(&diagram(1, sample_tables())));
-        let flow = view.flow.as_ref().unwrap();
-        let expected = table_nearest_view_center(flow);
+        // The initial fit centers comments → posts → users; posts sits in the middle.
+        render_flow(view.flow.as_mut().unwrap(), 100, 30);
 
         view.apply(ErViewerCommand::SelectRight);
 
-        assert!(expected.is_some());
-        assert_eq!(view.selected_table(), expected);
+        assert_eq!(view.selected_table().as_deref(), Some("public.posts"));
+    }
+
+    #[test]
+    fn fit_shows_every_table_of_a_large_diagram() {
+        let tables: Vec<ErTableInfo> = (0..=LAYERED_LAYOUT_MAX_TABLES)
+            .map(|i| table(&format!("public.t{i}"), &[]))
+            .collect();
+        let mut view = ErDiagramView::default();
+        view.sync(Some(&diagram(1, tables)));
+        let flow = view.flow.as_mut().unwrap();
+        render_flow(flow, 100, 30);
+
+        view.apply(ErViewerCommand::FitView);
+        let flow = view.flow.as_mut().unwrap();
+        render_flow(flow, 100, 30);
+
+        for node in flow.nodes() {
+            let (left, top) = flow.world_to_terminal(node.position);
+            let (right, bottom) = flow.world_to_terminal(Position::new(
+                node.position.x + node.width,
+                node.position.y + node.height,
+            ));
+            assert!(
+                left >= 0 && top >= 0 && right <= 100 && bottom <= 30,
+                "{} is cut off",
+                node.id
+            );
+        }
     }
 
     #[test]

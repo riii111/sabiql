@@ -50,5 +50,5 @@ test_project ▸ test_db ▸ -                                                  
 │  │                                                                                                                                                             │  │
 │  │                                                                                                                                                             │  │
 │  │ public.posts  → public.users (fk_posts_author, fk_posts_editor)  ← public.comments (fk_comments_post)                                                       │  │
-└──╰ hjkl/←↓↑→: Select │ HJKL: Pan │ +/-: Zoom │ f: Fit │ n: FK names │ ?: Help │ Esc: Close ────────────────────────────────────────────────────────────────────╯──┘
+└──╰ n: FK names │ hjkl/←↓↑→: Select │ HJKL: Pan │ +/-: Zoom │ f: Fit │ ?: Help │ Esc: Close ────────────────────────────────────────────────────────────────────╯──┘
 Tab/⇧Tab:Next/Prev  c:Center  0:100%

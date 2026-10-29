@@ -123,7 +123,8 @@ mod tests {
             tx,
         );
 
-        let action = recv_action_with_timeout(&mut rx, Duration::from_secs(1)).await;
+        // The panic hook prints a backtrace first, which can exceed a second on a busy machine.
+        let action = recv_action_with_timeout(&mut rx, Duration::from_secs(10)).await;
         match action {
             Action::ErDiagramFailed { run_id, error } => {
                 assert!(error.contains("Task panicked"));
