@@ -31,12 +31,9 @@ const MIN_ZOOM: f64 = 0.2;
 // beyond this, tables are packed in a grid instead.
 const LAYERED_LAYOUT_MAX_TABLES: usize = 800;
 const FIT_PADDING: f64 = 1.0;
-// Fit must reach below the manual zoom floor, or large diagrams stay cut off.
-const FIT_MIN_ZOOM: f64 = 0.01;
 const MAX_STATUS_LINES: u16 = 3;
 const SELF_REFERENCE_MARK: &str = "↻";
 
-/// FK constraints between one ordered pair of tables.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Relation {
     from: String,
@@ -89,6 +86,9 @@ impl ErDiagramView {
         let Some(flow) = self.flow.as_mut() else {
             return;
         };
+        // Fit may go below the manual zoom floor; zooming out from there must not
+        // jump back up to it.
+        flow.min_zoom = flow.min_zoom.min(flow.viewport.zoom);
         let directional = matches!(
             command,
             ErViewerCommand::SelectLeft
@@ -122,7 +122,8 @@ impl ErDiagramView {
             ErViewerCommand::FitView => {
                 flow.request_fit_view_with_options(FitViewOptions {
                     padding: FIT_PADDING,
-                    min_zoom: Some(FIT_MIN_ZOOM),
+                    // Whatever it takes to show everything.
+                    min_zoom: Some(0.0),
                     max_zoom: Some(1.0),
                     ..FitViewOptions::default()
                 });
@@ -401,7 +402,6 @@ fn relations_by_pair(relations: &[Relation]) -> HashMap<(&str, &str), &Relation>
         .collect()
 }
 
-/// FK names drawn on the edge between two tables, in both directions.
 fn edge_label(by_pair: &HashMap<(&str, &str), &Relation>, from: &str, to: &str) -> String {
     [(from, to), (to, from)]
         .iter()
@@ -682,6 +682,21 @@ mod tests {
         }
     }
 
+    fn assert_all_tables_on_screen(flow: &ErFlow, width: i32, height: i32) {
+        for node in flow.nodes() {
+            let (left, top) = flow.world_to_terminal(node.position);
+            let (right, bottom) = flow.world_to_terminal(Position::new(
+                node.position.x + node.width,
+                node.position.y + node.height,
+            ));
+            assert!(
+                left >= 0 && top >= 0 && right <= width && bottom <= height,
+                "{} is cut off",
+                node.id
+            );
+        }
+    }
+
     fn render_flow(flow: &mut ErFlow, width: u16, height: u16) {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
         terminal
@@ -922,25 +937,52 @@ mod tests {
             .collect();
         let mut view = ErDiagramView::default();
         view.sync(Some(&diagram(1, tables)));
-        let flow = view.flow.as_mut().unwrap();
-        render_flow(flow, 100, 30);
+        render_flow(view.flow.as_mut().unwrap(), 100, 30);
 
         view.apply(ErViewerCommand::FitView);
         let flow = view.flow.as_mut().unwrap();
         render_flow(flow, 100, 30);
 
-        for node in flow.nodes() {
-            let (left, top) = flow.world_to_terminal(node.position);
-            let (right, bottom) = flow.world_to_terminal(Position::new(
-                node.position.x + node.width,
-                node.position.y + node.height,
-            ));
-            assert!(
-                left >= 0 && top >= 0 && right <= 100 && bottom <= 30,
-                "{} is cut off",
-                node.id
-            );
-        }
+        assert_all_tables_on_screen(flow, 100, 30);
+    }
+
+    #[test]
+    fn fit_shows_every_table_of_a_long_fk_chain() {
+        let names: Vec<String> = (0..200).map(|i| format!("public.{i:0>56}")).collect();
+        let tables: Vec<ErTableInfo> = names
+            .iter()
+            .enumerate()
+            .map(|(i, name)| match i.checked_sub(1) {
+                Some(prev) => table(name, &[("fk", names[prev].as_str())]),
+                None => table(name, &[]),
+            })
+            .collect();
+        let mut view = ErDiagramView::default();
+        view.sync(Some(&diagram(1, tables)));
+        render_flow(view.flow.as_mut().unwrap(), 100, 30);
+
+        view.apply(ErViewerCommand::FitView);
+        let flow = view.flow.as_mut().unwrap();
+        render_flow(flow, 100, 30);
+
+        assert_all_tables_on_screen(flow, 100, 30);
+    }
+
+    #[test]
+    fn zoom_out_after_fit_never_zooms_in() {
+        let tables: Vec<ErTableInfo> = (0..=LAYERED_LAYOUT_MAX_TABLES)
+            .map(|i| table(&format!("public.t{i}"), &[]))
+            .collect();
+        let mut view = ErDiagramView::default();
+        view.sync(Some(&diagram(1, tables)));
+        render_flow(view.flow.as_mut().unwrap(), 100, 30);
+        view.apply(ErViewerCommand::FitView);
+        render_flow(view.flow.as_mut().unwrap(), 100, 30);
+        let fitted = view.flow.as_ref().unwrap().viewport.zoom;
+
+        view.apply(ErViewerCommand::ZoomOut);
+
+        assert!(view.flow.as_ref().unwrap().viewport.zoom <= fitted);
     }
 
     #[test]

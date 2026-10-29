@@ -85,7 +85,6 @@ impl ErTablePicker {
             theme,
         );
 
-        // 2-line execution preview
         let preview_lines = vec![
             Line::from(vec![
                 Span::styled(
