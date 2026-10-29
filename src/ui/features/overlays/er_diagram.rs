@@ -531,7 +531,7 @@ fn flow_palette(theme: &ThemePalette) -> Palette {
     Palette {
         canvas_bg: ratatui::style::Color::Reset,
         surface: ratatui::style::Color::Reset,
-        muted: theme.semantic.surface.unfocus_border,
+        muted: theme.semantic.text.secondary,
         subtle: theme.semantic.text.dim,
         accent: theme.semantic.surface.focus_border,
         text: theme.semantic.text.primary,
