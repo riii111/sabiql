@@ -25,22 +25,17 @@ test_project ▸ test_db ▸ -                                                  
 │  │                                                                                                                                                             │  │
 │  │                                                                                                                                                             │  │
 │  │                                                                                                                                                             │  │
-│  │            ╭ public ──────────────╮                                    ╭ public ──╮                                                ╭ public ──╮             │  │
-│  │            │       comments       │          fk_comments_post─────────▶│  posts   │────────fk_posts_author, fk_posts_editor───────▶│  users   │             │──┘
-│  │            │↻ fk_comments_parent  │──────────────────╯                 ╰──────────╯                                                ╰──────────╯             │──┐
-│  │            ╰──────────────────────╯                                                                                                                         │  │
+│  │             ╭ public ──────────────╮                                    ╭ public ──╮                                                ╭ public ──╮            │  │
+│  │             │       comments       │                  ╭────────────────▶│  posts   │───────────────────────────────────────────────▶│  users   │            │──┘
+│  │             │↻ fk_comments_parent  │──────────────────╯                 ╰──────────╯                                                ╰──────────╯            │──┐
+│  │             ╰──────────────────────╯                                                                                                                        │  │
 │  │                                                                                                                                                             │  │
 │  │                                                                                                                                                             │  │
 │  │                                                                                                                                                             │  │
 │  │                                                                                                                                                             │  │
-│  │            ╭ public ──╮                                                ╭ public ──╮        ╭ audit ──╮                                                      │  │
-│  │            │ members  │▶────────fk_members_team, fk_teams_lead────────▶│  teams   │        │  logs   │                                                      │  │
-│  │            ╰──────────╯                                                ╰──────────╯        ╰─────────╯                                                      │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
+│  │             ╭ public ──╮                                                ╭ public ──╮        ╭ audit ──╮                                                     │  │
+│  │             │ members  │▶──────────────────────────────────────────────▶│  teams   │        │  logs   │                                                     │  │
+│  │             ╰──────────╯                                                ╰──────────╯        ╰─────────╯                                                     │  │
 │  │                                                                                                                                                             │  │
 │  │                                                                                                                                                             │  │
 │  │                                                                                                                                                             │  │
@@ -49,6 +44,11 @@ test_project ▸ test_db ▸ -                                                  
 │  │                                                                                                                                                             │  │
 │  │                                                                                                                                                             │  │
 │  │                                                                                                                                                             │  │
-│  │ 6 tables · 6 foreign keys — press hjkl/←↓↑→ to select a table                                                                                               │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │ 6 tables · 6 foreign keys — press hjkl/←↓↑→ to select a table and show its foreign keys                                                                     │  │
 └──╰ hjkl/←↓↑→: Select │ HJKL: Pan │ +/-: Zoom │ f: Fit │ ?: Help │ Esc/q: Close ────────────────────────────────────────────────────────────────────────────────╯──┘
 Tab/⇧Tab:Next/Prev  c:Center  0:100%

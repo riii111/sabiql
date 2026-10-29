@@ -9,13 +9,14 @@ use crate::update::action::{Action, ErDiagramInfo};
 pub(in crate::cmd) fn spawn_er_layout_task(
     layout_engine: Arc<dyn ErDiagramLayout>,
     tables: Vec<ErTableInfo>,
+    seed_tables: Vec<String>,
     run_id: u64,
     total_tables: usize,
     tx: mpsc::Sender<Action>,
 ) {
     tokio::spawn(async move {
         let result = tokio::task::spawn_blocking(move || {
-            let layout = layout_engine.layout(&tables);
+            let layout = layout_engine.layout(&tables, &seed_tables);
             (tables, layout)
         })
         .await;
@@ -46,20 +47,20 @@ mod tests {
 
     struct FixedLayout;
     impl ErDiagramLayout for FixedLayout {
-        fn layout(&self, tables: &[ErTableInfo]) -> ErLayout {
+        fn layout(&self, tables: &[ErTableInfo], seed_tables: &[String]) -> ErLayout {
             ErLayout {
                 positions: tables
                     .iter()
                     .map(|t| (t.qualified_name.clone(), (1.0, 2.0)))
                     .collect(),
-                focus_tables: vec![],
+                focus_tables: seed_tables.to_vec(),
             }
         }
     }
 
     struct PanicLayout;
     impl ErDiagramLayout for PanicLayout {
-        fn layout(&self, _tables: &[ErTableInfo]) -> ErLayout {
+        fn layout(&self, _tables: &[ErTableInfo], _seed_tables: &[String]) -> ErLayout {
             panic!("intentional panic")
         }
     }
@@ -81,7 +82,14 @@ mod tests {
     async fn success_sends_opened_action_with_layout() {
         let (tx, mut rx) = mpsc::channel(1);
 
-        spawn_er_layout_task(Arc::new(FixedLayout), vec![users_table()], 3, 5, tx);
+        spawn_er_layout_task(
+            Arc::new(FixedLayout),
+            vec![users_table()],
+            vec!["public.users".to_string()],
+            3,
+            5,
+            tx,
+        );
 
         let action = recv_action_with_timeout(&mut rx, Duration::from_secs(1)).await;
         match action {
@@ -95,6 +103,7 @@ mod tests {
                 assert_eq!(total_tables, 5);
                 assert_eq!(tables.len(), 1);
                 assert_eq!(layout.positions.get("public.users"), Some(&(1.0, 2.0)));
+                assert_eq!(layout.focus_tables, vec!["public.users"]);
             }
             _ => panic!("expected ErDiagramOpened, got {action:?}"),
         }
@@ -104,7 +113,14 @@ mod tests {
     async fn panic_sends_failed_action() {
         let (tx, mut rx) = mpsc::channel(1);
 
-        spawn_er_layout_task(Arc::new(PanicLayout), vec![users_table()], 11, 5, tx);
+        spawn_er_layout_task(
+            Arc::new(PanicLayout),
+            vec![users_table()],
+            vec![],
+            11,
+            5,
+            tx,
+        );
 
         let action = recv_action_with_timeout(&mut rx, Duration::from_secs(1)).await;
         match action {

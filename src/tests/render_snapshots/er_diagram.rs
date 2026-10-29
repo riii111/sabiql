@@ -167,10 +167,10 @@ fn er_table(schema: &str, name: &str, fks: &[(&str, &str)]) -> ErTableInfo {
     }
 }
 
-fn er_viewer_state(tables: Vec<ErTableInfo>) -> AppState {
+fn er_viewer_state(tables: Vec<ErTableInfo>, seed_tables: &[String]) -> AppState {
     let mut state = explorer_selected_state();
     let total_tables = tables.len();
-    let layout = RataflowErLayout.layout(&tables);
+    let layout = RataflowErLayout.layout(&tables, seed_tables);
     state.er_diagram = Some(ErDiagram {
         id: 1,
         tables,
@@ -181,9 +181,8 @@ fn er_viewer_state(tables: Vec<ErTableInfo>) -> AppState {
     state
 }
 
-#[test]
-fn er_viewer_lays_out_cycles_self_references_and_parallel_fks() {
-    let mut state = er_viewer_state(vec![
+fn er_sample_tables() -> Vec<ErTableInfo> {
+    vec![
         er_table("public", "users", &[]),
         er_table(
             "public",
@@ -204,7 +203,22 @@ fn er_viewer_lays_out_cycles_self_references_and_parallel_fks() {
         er_table("public", "teams", &[("fk_teams_lead", "public.members")]),
         er_table("public", "members", &[("fk_members_team", "public.teams")]),
         er_table("audit", "logs", &[]),
-    ]);
+    ]
+}
+
+#[test]
+fn er_viewer_lays_out_cycles_self_references_and_parallel_fks() {
+    let mut state = er_viewer_state(er_sample_tables(), &[]);
+    let mut terminal = create_test_terminal();
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn er_viewer_partial_diagram_selects_seed_and_labels_its_fks() {
+    let mut state = er_viewer_state(er_sample_tables(), &["public.posts".to_string()]);
     let mut terminal = create_test_terminal();
 
     let output = render_to_string(&mut terminal, &mut state);

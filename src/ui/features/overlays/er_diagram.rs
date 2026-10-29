@@ -8,7 +8,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Clear, Paragraph};
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::model::app_state::AppState;
@@ -22,7 +22,7 @@ type ErFlow = Flow<TextContent, FloatingEdge>;
 
 const NODE_SPACING: f64 = 2.0;
 const MIN_RANK_SPACING: usize = 8;
-const MAX_RANK_SPACING: usize = 48;
+const MAX_RANK_SPACING: usize = 36;
 const COMPONENT_GAP: f64 = 4.0;
 const COMPONENT_COLUMN_GAP: f64 = COMPONENT_GAP * 2.0;
 const MIN_ZOOM: f64 = 0.2;
@@ -161,7 +161,16 @@ impl ErDiagramViewer {
         };
         flow.theme = Theme::Custom(flow_palette(theme));
         apply_edge_styles(flow, &view.relations, selected.as_deref(), theme);
-        frame.render_widget(flow, canvas_area);
+        frame.render_widget(&mut *flow, canvas_area);
+        // Fit and center can leave a half-cell pan offset, which makes box borders
+        // and edge endpoints round to different rows. Snap to whole cells.
+        let (x, y) = (flow.viewport.x.round(), flow.viewport.y.round());
+        if (x, y) != (flow.viewport.x, flow.viewport.y) {
+            flow.viewport.x = x;
+            flow.viewport.y = y;
+            frame.render_widget(Clear, canvas_area);
+            frame.render_widget(flow, canvas_area);
+        }
     }
 }
 
@@ -189,7 +198,7 @@ fn collect_relations(tables: &[ErTableInfo]) -> Vec<Relation> {
 
 /// Computes table positions with rataflow's Sugiyama layout. Runs on a
 /// blocking task because it is slow for large schemas.
-pub fn layout_tables(tables: &[ErTableInfo]) -> ErLayout {
+pub fn layout_tables(tables: &[ErTableInfo], seed_tables: &[String]) -> ErLayout {
     let relations = collect_relations(tables);
     let Ok(mut flow) = graph_flow(tables, &relations) else {
         return ErLayout::default();
@@ -209,12 +218,25 @@ pub fn layout_tables(tables: &[ErTableInfo]) -> ErLayout {
             .with_rank_spacing(rank_spacing as f64)
             .with_node_spacing(NODE_SPACING),
     );
-    let focus_tables = pack_components(&mut flow);
+    let main_component = pack_components(&mut flow);
+    let seeds: Vec<String> = seed_tables
+        .iter()
+        .filter(|id| flow.node(id).is_some())
+        .cloned()
+        .collect();
+    let focus_tables = if seeds.is_empty() {
+        main_component
+    } else {
+        seeds
+    };
 
     ErLayout {
         positions: flow
             .nodes()
-            .map(|node| (node.id.clone(), (node.position.x, node.position.y)))
+            .map(|node| {
+                let position = (node.position.x.round(), node.position.y.round());
+                (node.id.clone(), position)
+            })
             .collect(),
         focus_tables,
     }
@@ -247,6 +269,10 @@ fn build_flow(
     let ids: Vec<String> = flow.nodes().map(|node| node.id.clone()).collect();
     for id in &ids {
         flow.set_handles_hidden(id, true);
+    }
+    // A single focused table is the picked table of a partial diagram.
+    if let [only] = layout.focus_tables.as_slice() {
+        flow.select_node(only);
     }
     // Start at full size so names stay legible; `f` zooms out to show everything.
     flow.request_fit_view_with_options(FitViewOptions {
@@ -432,28 +458,39 @@ fn flow_palette(theme: &ThemePalette) -> Palette {
     }
 }
 
-/// Edges touching the selected table are drawn in the accent color so its
-/// relationships stand out in dense diagrams.
+/// Edges touching the selected table are drawn in the accent color and carry
+/// their FK names; the rest stay unlabeled so dense diagrams remain readable
+/// (labels do not shrink when zoomed out).
 fn apply_edge_styles(
     flow: &mut ErFlow,
     relations: &[Relation],
     selected: Option<&str>,
     theme: &ThemePalette,
 ) {
-    let pairs: HashSet<(&str, &str)> = relations
+    let fk_names: HashMap<(&str, &str), &[String]> = relations
         .iter()
-        .map(|r| (r.from.as_str(), r.to.as_str()))
+        .map(|r| ((r.from.as_str(), r.to.as_str()), r.fk_names.as_slice()))
         .collect();
-    let edges: Vec<(String, bool, bool)> = flow
+    let edges: Vec<(String, bool, bool, Option<String>)> = flow
         .edges()
         .iter()
         .map(|edge| {
             let highlighted = selected.is_some_and(|id| edge.source == id || edge.target == id);
-            let bidirectional = pairs.contains(&(edge.target.as_str(), edge.source.as_str()));
-            (edge.id.clone(), highlighted, bidirectional)
+            let forward = fk_names.get(&(edge.source.as_str(), edge.target.as_str()));
+            let reverse = fk_names.get(&(edge.target.as_str(), edge.source.as_str()));
+            let label = highlighted.then(|| {
+                forward
+                    .into_iter()
+                    .chain(reverse)
+                    .flat_map(|names| names.iter())
+                    .map(String::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            });
+            (edge.id.clone(), highlighted, reverse.is_some(), label)
         })
         .collect();
-    for (id, highlighted, bidirectional) in edges {
+    for (id, highlighted, bidirectional, label_text) in edges {
         let (stroke, label) = if highlighted {
             let accent = Style::default().fg(theme.semantic.surface.focus_border);
             (accent, accent.add_modifier(Modifier::BOLD))
@@ -472,6 +509,7 @@ fn apply_edge_styles(
         if let Some(content) = flow.edge_content_mut(&id) {
             content.style = Some(style);
         }
+        flow.set_edge_label(&id, label_text);
     }
 }
 
@@ -486,7 +524,7 @@ fn status_line(
         let fk_count: usize = relations.iter().map(|r| r.fk_names.len()).sum();
         return Line::from(Span::styled(
             format!(
-                " {} tables · {fk_count} foreign keys — press {} to select a table",
+                " {} tables · {fk_count} foreign keys — press {} to select a table and show its foreign keys",
                 diagram.tables.len(),
                 er_diagram::SELECT.key_short,
             ),
@@ -545,7 +583,7 @@ mod tests {
 
     fn diagram(id: u64, tables: Vec<ErTableInfo>) -> ErDiagram {
         let total_tables = tables.len();
-        let layout = layout_tables(&tables);
+        let layout = layout_tables(&tables, &[]);
         ErDiagram {
             id,
             tables,
@@ -629,7 +667,7 @@ mod tests {
     fn layout_places_every_table_without_overlap() {
         let tables = sample_tables();
         let relations = collect_relations(&tables);
-        let layout = layout_tables(&tables);
+        let layout = layout_tables(&tables, &[]);
 
         let flow = build_flow(&tables, &relations, &layout).unwrap();
 
@@ -677,6 +715,32 @@ mod tests {
         view.sync(Some(&diagram));
 
         assert!(view.selected_table().is_some());
+    }
+
+    #[test]
+    fn single_seed_table_starts_selected() {
+        let tables = sample_tables();
+        let layout = layout_tables(&tables, &["public.posts".to_string()]);
+        let total_tables = tables.len();
+        let mut view = ErDiagramView::default();
+
+        view.sync(Some(&ErDiagram {
+            id: 1,
+            tables,
+            total_tables,
+            layout,
+        }));
+
+        assert_eq!(view.selected_table().as_deref(), Some("public.posts"));
+    }
+
+    #[test]
+    fn full_diagram_focuses_largest_component() {
+        let layout = layout_tables(&sample_tables(), &[]);
+
+        let mut focus = layout.focus_tables;
+        focus.sort();
+        assert_eq!(focus, ["public.comments", "public.posts", "public.users"]);
     }
 
     #[test]
