@@ -83,6 +83,7 @@ pub struct OverlayLayout {
     pub explain_compare_viewport_height: Option<u16>,
     pub sqlite_diagnostics_content_line_count: Option<usize>,
     pub sqlite_diagnostics_viewport_height: Option<usize>,
+    pub er_diagram_has_selection: Option<bool>,
 }
 
 #[derive(Default)]

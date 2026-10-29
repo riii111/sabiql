@@ -181,6 +181,7 @@ fn er_viewer_state(tables: Vec<ErTableInfo>, seed_tables: &[String]) -> AppState
         tables,
         total_tables,
         layout,
+        has_selection: false,
     });
     state.modal.push_mode(InputMode::ErDiagram);
     state

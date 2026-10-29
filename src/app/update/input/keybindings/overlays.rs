@@ -665,6 +665,31 @@ pub mod er_diagram {
         ],
     };
 
+    pub const PAGE: ModeRow = ModeRow {
+        key_short: "^D/^U ^F/^B",
+        key: "Ctrl+D / Ctrl+U / Ctrl+F / Ctrl+B",
+        desc_short: "Page",
+        description: "Pan half a page / a full page down or up",
+        bindings: &[
+            ExecBinding {
+                action: Action::ErViewer(ErViewerCommand::PanHalfPageDown),
+                combos: &[KeyCombo::ctrl(Key::Char('d'))],
+            },
+            ExecBinding {
+                action: Action::ErViewer(ErViewerCommand::PanHalfPageUp),
+                combos: &[KeyCombo::ctrl(Key::Char('u'))],
+            },
+            ExecBinding {
+                action: Action::ErViewer(ErViewerCommand::PanPageDown),
+                combos: &[KeyCombo::ctrl(Key::Char('f'))],
+            },
+            ExecBinding {
+                action: Action::ErViewer(ErViewerCommand::PanPageUp),
+                combos: &[KeyCombo::ctrl(Key::Char('b'))],
+            },
+        ],
+    };
+
     pub const ZOOM: ModeRow = ModeRow {
         key_short: "+/-",
         key: "+ / -",
@@ -726,7 +751,7 @@ pub mod er_diagram {
         key_short: "n",
         key: "n",
         desc_short: "FK names",
-        description: "Show FK names on every edge / only the selected table's",
+        description: "Show every FK edge with its name / only the selected table's",
         bindings: &[ExecBinding {
             action: Action::ErViewer(ErViewerCommand::ToggleFkNames),
             combos: &[KeyCombo::plain(Key::Char('n'))],
@@ -744,14 +769,25 @@ pub mod er_diagram {
         }],
     };
 
-    pub const ESC_CLOSE: ModeRow = ModeRow {
+    pub const ESC: ModeRow = ModeRow {
         key_short: "Esc",
-        key: "Esc / q",
+        key: "Esc",
+        desc_short: "Close",
+        description: "Clear selection, or close when nothing is selected",
+        bindings: &[ExecBinding {
+            action: Action::ErViewerEscape,
+            combos: &[KeyCombo::plain(Key::Esc)],
+        }],
+    };
+
+    pub const CLOSE: ModeRow = ModeRow {
+        key_short: "q",
+        key: "q",
         desc_short: "Close",
         description: "Close ER diagram",
         bindings: &[ExecBinding {
             action: Action::CloseModal(ModalKind::ErDiagram),
-            combos: &[KeyCombo::plain(Key::Esc), KeyCombo::plain(Key::Char('q'))],
+            combos: &[KeyCombo::plain(Key::Char('q'))],
         }],
     };
 }
@@ -760,13 +796,15 @@ pub const ER_DIAGRAM_ROWS: &[ModeRow] = &[
     er_diagram::SELECT,
     er_diagram::CYCLE,
     er_diagram::PAN,
+    er_diagram::PAGE,
     er_diagram::ZOOM,
     er_diagram::RESET_ZOOM,
     er_diagram::FIT,
     er_diagram::CENTER,
     er_diagram::FK_NAMES,
     er_diagram::HELP,
-    er_diagram::ESC_CLOSE,
+    er_diagram::ESC,
+    er_diagram::CLOSE,
 ];
 
 // =============================================================================

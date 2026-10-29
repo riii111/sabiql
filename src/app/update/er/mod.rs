@@ -461,6 +461,7 @@ mod tests {
         use crate::domain::ErTableInfo;
         use crate::model::er_state::ErViewerCommand;
         use crate::model::shared::input_mode::InputMode;
+        use crate::model::shared::render_output::{OverlayLayout, RenderOutput};
         use crate::services::AppServices;
         use crate::update::action::ModalKind;
         use crate::update::reducer;
@@ -542,6 +543,45 @@ mod tests {
             let mut state = opened_state();
 
             reduce(&mut state, Action::CloseModal(ModalKind::ErDiagram));
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(state.er_diagram.is_none());
+        }
+
+        #[test]
+        fn escape_with_selection_clears_it_and_keeps_viewer_open() {
+            let mut state = opened_state();
+            state.er_diagram.as_mut().unwrap().has_selection = true;
+
+            let effects = reduce(&mut state, Action::ErViewerEscape);
+
+            assert_eq!(state.input_mode(), InputMode::ErDiagram);
+            assert!(effects.iter().any(|effect| matches!(
+                effect,
+                Effect::ApplyErViewerCommand(ErViewerCommand::ClearSelection)
+            )));
+        }
+
+        #[test]
+        fn render_output_reports_viewer_selection() {
+            let mut state = opened_state();
+
+            state.apply_render_output(RenderOutput {
+                overlays: OverlayLayout {
+                    er_diagram_has_selection: Some(true),
+                    ..OverlayLayout::default()
+                },
+                ..RenderOutput::default()
+            });
+
+            assert!(state.er_diagram.as_ref().unwrap().has_selection);
+        }
+
+        #[test]
+        fn escape_without_selection_closes_viewer() {
+            let mut state = opened_state();
+
+            reduce(&mut state, Action::ErViewerEscape);
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.er_diagram.is_none());

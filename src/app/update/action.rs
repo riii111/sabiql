@@ -649,6 +649,7 @@ pub enum Action {
     },
     ErLogWriteFailed(String),
     ErViewer(ErViewerCommand),
+    ErViewerEscape,
 }
 
 impl Action {

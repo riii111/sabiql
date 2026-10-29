@@ -2,13 +2,15 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use rataflow::{
     ControlsAction, Edge, EdgeMarker, EdgeStyle, EventResponse, FitViewOptions, FloatingAttachment,
-    FloatingEdge, Flow, FlowAction, Node, Palette, Position, Sugiyama, TextContent, Theme,
+    FloatingEdge, Flow, FlowAction, Node, NodeContent, NodeRenderContext, Palette, Position,
+    Sugiyama, Theme,
 };
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout};
-use ratatui::style::{Modifier, Style};
+use ratatui::buffer::Buffer;
+use ratatui::layout::{Alignment, Constraint, Layout, Rect};
+use ratatui::style::{Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Clear, Paragraph, Wrap};
+use ratatui::widgets::{Block, BorderType, Clear, Paragraph, Widget, Wrap};
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::model::app_state::AppState;
@@ -19,7 +21,7 @@ use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::primitives::utils::text_utils::wrapped_line_count;
 use crate::theme::ThemePalette;
 
-type ErFlow = Flow<TextContent, FloatingEdge>;
+type ErFlow = Flow<TableNode, FloatingEdge>;
 
 const NODE_SPACING: f64 = 2.0;
 const MIN_RANK_SPACING: usize = 8;
@@ -33,6 +35,65 @@ const LAYERED_LAYOUT_MAX_TABLES: usize = 800;
 const FIT_PADDING: f64 = 1.0;
 const MAX_STATUS_LINES: u16 = 3;
 const SELF_REFERENCE_MARK: &str = "↻";
+
+/// A table box. When zoomed out too far for a box with text inside, the name
+/// moves onto the border so tables stay identifiable.
+#[derive(Debug)]
+struct TableNode {
+    name: String,
+    /// Shown only when the diagram spans several schemas.
+    schema: Option<String>,
+    self_reference_fks: Vec<String>,
+}
+
+impl NodeContent for TableNode {
+    fn render(&self, ctx: &NodeRenderContext, buf: &mut Buffer) {
+        let palette = ctx.theme.palette();
+        let border = if ctx.selected {
+            Style::default()
+                .fg(palette.accent)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(palette.muted)
+        };
+        let block = Block::bordered()
+            .border_type(BorderType::Rounded)
+            .border_style(border)
+            .bg(palette.surface);
+        let text = Style::default().fg(palette.text);
+
+        if ctx.area.height < 3 {
+            block
+                .title(Span::styled(self.name.as_str(), text))
+                .render(ctx.area, buf);
+            return;
+        }
+
+        let block = match &self.schema {
+            Some(schema) => block.title(format!(" {schema} ")),
+            None => block,
+        };
+        let inner = block.inner(ctx.area);
+        block.render(ctx.area, buf);
+
+        let mut lines = vec![Line::styled(self.name.as_str(), text)];
+        lines.extend(self.self_reference_fks.iter().map(|name| {
+            Line::styled(
+                format!("{SELF_REFERENCE_MARK} {name}"),
+                Style::default().fg(palette.muted),
+            )
+        }));
+        let top_padding = inner.height.saturating_sub(lines.len() as u16) / 2;
+        let text_area = Rect {
+            y: inner.y + top_padding,
+            height: inner.height - top_padding,
+            ..inner
+        };
+        Paragraph::new(lines)
+            .alignment(Alignment::Center)
+            .render(text_area, buf);
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Relation {
@@ -114,6 +175,11 @@ impl ErDiagramView {
             ErViewerCommand::PanDown => flow.apply(FlowAction::PanDown),
             ErViewerCommand::PanUp => flow.apply(FlowAction::PanUp),
             ErViewerCommand::PanRight => flow.apply(FlowAction::PanRight),
+            ErViewerCommand::PanHalfPageDown => pan_by_page(flow, 0.5),
+            ErViewerCommand::PanHalfPageUp => pan_by_page(flow, -0.5),
+            ErViewerCommand::PanPageDown => pan_by_page(flow, 1.0),
+            ErViewerCommand::PanPageUp => pan_by_page(flow, -1.0),
+            ErViewerCommand::ClearSelection => flow.apply(FlowAction::ClearSelection),
             ErViewerCommand::CenterOnSelected => flow.apply(FlowAction::CenterOnSelected),
             ErViewerCommand::ZoomIn => flow.apply_controls_action(ControlsAction::ZoomIn),
             ErViewerCommand::ZoomOut => flow.apply_controls_action(ControlsAction::ZoomOut),
@@ -137,17 +203,29 @@ impl ErDiagramView {
     }
 }
 
+fn pan_by_page(flow: &mut ErFlow, pages: f64) -> EventResponse {
+    let dy = flow.canvas_size().height * pages;
+    flow.apply(FlowAction::Pan { dx: 0.0, dy })
+}
+
 pub struct ErDiagramViewer;
 
 impl ErDiagramViewer {
+    /// Returns whether a table is selected, which decides what Esc does.
     pub fn render(
         frame: &mut Frame,
         state: &AppState,
         view: &mut ErDiagramView,
         theme: &ThemePalette,
-    ) {
+    ) -> bool {
         let Some(diagram) = state.er_diagram.as_ref() else {
-            return;
+            return false;
+        };
+        let selected = view.selected_table();
+        let esc_hint = if selected.is_some() {
+            (er_diagram::ESC.key_short, "Deselect")
+        } else {
+            er_diagram::ESC.as_hint()
         };
 
         let title = format!(
@@ -167,11 +245,10 @@ impl ErDiagramViewer {
                 er_diagram::ZOOM.as_hint(),
                 er_diagram::FIT.as_hint(),
                 er_diagram::HELP.as_hint(),
-                er_diagram::ESC_CLOSE.as_hint(),
+                esc_hint,
             ]),
             theme,
         );
-        let selected = view.selected_table();
         let status = status_line(selected.as_deref(), &view.relations, diagram, theme);
         let status_height =
             wrapped_line_count(&status.to_string(), inner.width).clamp(1, MAX_STATUS_LINES);
@@ -191,7 +268,7 @@ impl ErDiagramViewer {
                 )),
                 canvas_area,
             );
-            return;
+            return false;
         };
         flow.theme = Theme::Custom(flow_palette(theme));
         apply_edge_styles(
@@ -211,6 +288,7 @@ impl ErDiagramViewer {
             frame.render_widget(Clear, canvas_area);
             frame.render_widget(flow, canvas_area);
         }
+        selected.is_some()
     }
 }
 
@@ -295,8 +373,14 @@ fn graph_flow(tables: &[ErTableInfo], relations: &[Relation]) -> Result<ErFlow, 
     for r in relations.iter().filter(|r| r.from == r.to) {
         self_references.insert(r.from.as_str(), &r.fk_names);
     }
+    let multi_schema = tables
+        .iter()
+        .map(|table| table.schema.as_str())
+        .collect::<HashSet<_>>()
+        .len()
+        > 1;
     let mut seen = HashSet::new();
-    let nodes: Vec<Node<TextContent>> = tables
+    let nodes: Vec<Node<TableNode>> = tables
         .iter()
         .filter(|table| seen.insert(table.qualified_name.as_str()))
         .map(|table| {
@@ -304,7 +388,7 @@ fn graph_flow(tables: &[ErTableInfo], relations: &[Relation]) -> Result<ErFlow, 
                 .get(table.qualified_name.as_str())
                 .copied()
                 .unwrap_or_default();
-            table_node(table, fk_names)
+            table_node(table, fk_names, multi_schema)
         })
         .collect();
     let edges = relation_edges(relations, |id| seen.contains(id));
@@ -342,28 +426,32 @@ fn build_flow(
     Ok(flow)
 }
 
-fn table_node(table: &ErTableInfo, self_reference_fks: &[String]) -> Node<TextContent> {
-    let mut lines = vec![table.name.clone()];
-    lines.extend(
-        self_reference_fks
-            .iter()
-            .map(|name| format!("{SELF_REFERENCE_MARK} {name}")),
-    );
-    let title = format!(" {} ", table.schema);
-    let width = lines
+fn table_node(
+    table: &ErTableInfo,
+    self_reference_fks: &[String],
+    show_schema: bool,
+) -> Node<TableNode> {
+    let content = TableNode {
+        name: table.name.clone(),
+        schema: show_schema.then(|| table.schema.clone()),
+        self_reference_fks: self_reference_fks.to_vec(),
+    };
+    let width = content
+        .self_reference_fks
         .iter()
-        .map(|line| line.width())
-        .chain([title.width()])
+        .map(|name| SELF_REFERENCE_MARK.width() + 1 + name.width())
+        .chain([content.name.width()])
+        .chain(content.schema.iter().map(|schema| schema.width() + 2))
         .max()
         .unwrap_or(0)
         + 4;
-    let height = lines.len() + 2;
+    let height = content.self_reference_fks.len() + 3;
 
     Node::new(
         table.qualified_name.clone(),
         (0.0, 0.0),
         (width as f64, height as f64),
-        TextContent::new(lines.join("\n")).with_title(title),
+        content,
     )
 }
 
@@ -541,7 +629,8 @@ fn flow_palette(theme: &ThemePalette) -> Palette {
 }
 
 /// Edges touching the selected table are drawn in the accent color and carry
-/// their FK names. Other edges are labeled only on request: labels do not
+/// their FK names, and the rest are hidden so its relationships read clearly.
+/// Without a selection edges are labeled only on request: labels do not
 /// shrink when zoomed out and quickly bury dense diagrams.
 fn apply_edge_styles(
     flow: &mut ErFlow,
@@ -551,7 +640,7 @@ fn apply_edge_styles(
     theme: &ThemePalette,
 ) {
     let by_pair = relations_by_pair(relations);
-    let edges: Vec<(String, bool, bool, Option<String>)> = flow
+    let edges: Vec<(String, bool, bool, Option<String>, bool)> = flow
         .edges()
         .iter()
         .map(|edge| {
@@ -560,10 +649,11 @@ fn apply_edge_styles(
             let bidirectional = by_pair.contains_key(&(target, source));
             let label =
                 (highlighted || show_all_fk_names).then(|| edge_label(&by_pair, source, target));
-            (edge.id.clone(), highlighted, bidirectional, label)
+            let hidden = selected.is_some() && !highlighted && !show_all_fk_names;
+            (edge.id.clone(), highlighted, bidirectional, label, hidden)
         })
         .collect();
-    for (id, highlighted, bidirectional, label_text) in edges {
+    for (id, highlighted, bidirectional, label_text, hidden) in edges {
         let (stroke, label) = if highlighted {
             let accent = Style::default().fg(theme.semantic.surface.focus_border);
             (accent, accent.add_modifier(Modifier::BOLD))
@@ -589,6 +679,7 @@ fn apply_edge_styles(
             content.style = Some(style);
         }
         flow.set_edge_label(&id, label_text);
+        flow.set_edge_hidden(&id, hidden);
     }
 }
 
@@ -679,6 +770,7 @@ mod tests {
             tables,
             total_tables,
             layout,
+            has_selection: false,
         }
     }
 
@@ -771,9 +863,8 @@ mod tests {
         let flow = graph_flow(&tables, &relations).unwrap();
 
         let content = &flow.node("public.comments").unwrap().content;
-        assert_eq!(content.label(), "comments");
-        assert_eq!(content.text.lines.len(), 2);
-        assert_eq!(content.text.lines[1].to_string(), "↻ fk_parent");
+        assert_eq!(content.name, "comments");
+        assert_eq!(content.self_reference_fks, ["fk_parent"]);
     }
 
     fn assert_no_overlap(tables: &[ErTableInfo], layout: &ErLayout) {
@@ -845,6 +936,7 @@ mod tests {
             tables,
             total_tables,
             layout,
+            has_selection: false,
         }));
 
         assert_eq!(view.selected_table().as_deref(), Some("public.posts"));
@@ -983,6 +1075,99 @@ mod tests {
         view.apply(ErViewerCommand::ZoomOut);
 
         assert!(view.flow.as_ref().unwrap().viewport.zoom <= fitted);
+    }
+
+    #[test]
+    fn schema_is_shown_only_when_schemas_are_mixed() {
+        let mut tables = sample_tables();
+        let relations = collect_relations(&tables);
+        let single = graph_flow(&tables, &relations).unwrap();
+        tables.push(table("audit.logs", &[]));
+
+        let mixed = graph_flow(&tables, &relations).unwrap();
+
+        assert_eq!(single.node("public.users").unwrap().content.schema, None);
+        assert_eq!(
+            mixed
+                .node("public.users")
+                .unwrap()
+                .content
+                .schema
+                .as_deref(),
+            Some("public")
+        );
+    }
+
+    #[test]
+    fn zoomed_out_table_keeps_its_name_on_the_border() {
+        let node = table_node(&table("public.users", &[]), &[], true);
+        let area = Rect::new(0, 0, 12, 2);
+        let mut buf = Buffer::empty(area);
+
+        node.content.render(
+            &NodeRenderContext {
+                id: "public.users",
+                area,
+                selected: false,
+                dragging: false,
+                position_absolute: Position::new(0.0, 0.0),
+                theme: Theme::default(),
+                animation_phase: 0,
+            },
+            &mut buf,
+        );
+
+        let top: String = (0..area.width)
+            .map(|x| buf[(x, 0)].symbol().to_string())
+            .collect();
+        assert!(top.contains("users"), "{top}");
+    }
+
+    #[test]
+    fn selection_hides_unrelated_edges() {
+        let tables = sample_tables();
+        let relations = collect_relations(&tables);
+        let mut flow = build_flow(&tables, &relations, &layout_tables(&tables, &[])).unwrap();
+
+        apply_edge_styles(
+            &mut flow,
+            &relations,
+            Some("public.users"),
+            false,
+            palette_for(ThemeId::Default),
+        );
+
+        let visible: Vec<_> = flow
+            .edges()
+            .iter()
+            .filter(|e| !e.hidden)
+            .map(|e| (e.source.as_str(), e.target.as_str()))
+            .collect();
+        assert_eq!(visible, [("public.posts", "public.users")]);
+    }
+
+    #[test]
+    fn half_page_pans_by_half_the_canvas_height() {
+        let mut view = ErDiagramView::default();
+        view.sync(Some(&diagram(1, sample_tables())));
+        render_flow(view.flow.as_mut().unwrap(), 100, 30);
+        let before = view.flow.as_ref().unwrap().viewport.y;
+
+        view.apply(ErViewerCommand::PanHalfPageDown);
+
+        let moved = before - view.flow.as_ref().unwrap().viewport.y;
+        assert!((moved - 15.0).abs() < 1.0, "moved {moved}");
+    }
+
+    #[test]
+    fn clear_selection_deselects_the_table() {
+        let mut view = ErDiagramView::default();
+        view.sync(Some(&diagram(1, sample_tables())));
+        view.apply(ErViewerCommand::SelectNext);
+
+        view.apply(ErViewerCommand::ClearSelection);
+
+        assert!(view.selected_table().is_none());
     }
 
     #[test]

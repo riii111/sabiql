@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
-use crate::model::er_state::ErDiagram;
+use crate::model::er_state::{ErDiagram, ErViewerCommand};
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ErDiagramInfo, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
@@ -51,9 +51,18 @@ pub(super) fn reduce_diagram_lifecycle(
                 tables: tables.clone(),
                 total_tables: *total_tables,
                 layout: layout.clone(),
+                has_selection: false,
             });
             state.modal.push_mode(InputMode::ErDiagram);
             DispatchResult::handled()
+        }
+        Action::ErViewerEscape => {
+            if state.er_diagram.as_ref().is_some_and(|d| d.has_selection) {
+                return DispatchResult::handled_with(vec![Effect::ApplyErViewerCommand(
+                    ErViewerCommand::ClearSelection,
+                )]);
+            }
+            reduce_diagram_lifecycle(state, &Action::CloseModal(ModalKind::ErDiagram), now)
         }
         Action::CloseModal(ModalKind::ErDiagram) => {
             state.er_diagram = None;

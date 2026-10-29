@@ -26,10 +26,10 @@ test_project ▸ test_db ▸ -                                                  
 │  │                                                                                                                                                             │  │
 │  │                                                                                                                                                             │  │
 │  │                                                                                                                                                             │  │
-│  │             ╭ public ──────────────╮                                    ╭ public ──╮                                                ╭ public ──╮            │──┘
-│  │             │       comments       │──────────fk_comments_post─────────▶│  posts   │────────fk_posts_author, fk_posts_editor───────▶│  users   │            │──┐
-│  │             │↻ fk_comments_parent  │                                    ╰──────────╯                                                ╰──────────╯            │  │
-│  │             ╰──────────────────────╯                                                                                                                        │  │
+│  │              ╭──────────────────────╮                                    ╭───────╮                                                   ╭───────╮              │──┘
+│  │              │       comments       │──────────fk_comments_post─────────▶│ posts │─────────fk_posts_author, fk_posts_editor─────────▶│ users │              │──┐
+│  │              │ ↻ fk_comments_parent │                                    ╰───────╯                                                   ╰───────╯              │  │
+│  │              ╰──────────────────────╯                                                                                                                       │  │
 │  │                                                                                                                                                             │  │
 │  │                                                                                                                                                             │  │
 │  │                                                                                                                                                             │  │
@@ -50,5 +50,5 @@ test_project ▸ test_db ▸ -                                                  
 │  │                                                                                                                                                             │  │
 │  │                                                                                                                                                             │  │
 │  │ public.posts  → public.users (fk_posts_author, fk_posts_editor)  ← public.comments (fk_comments_post)                                                       │  │
-└──╰ n: FK names │ hjkl/←↓↑→: Select │ HJKL: Pan │ +/-: Zoom │ f: Fit │ ?: Help │ Esc: Close ────────────────────────────────────────────────────────────────────╯──┘
+└──╰ n: FK names │ hjkl/←↓↑→: Select │ HJKL: Pan │ +/-: Zoom │ f: Fit │ ?: Help │ Esc: Deselect ─────────────────────────────────────────────────────────────────╯──┘
 Tab/⇧Tab:Next/Prev  c:Center  0:100%

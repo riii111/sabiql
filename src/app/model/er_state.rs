@@ -20,6 +20,8 @@ pub struct ErDiagram {
     pub tables: Vec<ErTableInfo>,
     pub total_tables: usize,
     pub layout: ErLayout,
+    /// Reported back by the renderer, which owns the selection.
+    pub has_selection: bool,
 }
 
 /// Precomputed node positions, keyed by qualified table name. Layout runs off
@@ -47,11 +49,16 @@ pub enum ErViewerCommand {
     PanDown,
     PanUp,
     PanRight,
+    PanHalfPageDown,
+    PanHalfPageUp,
+    PanPageDown,
+    PanPageUp,
     ZoomIn,
     ZoomOut,
     ResetZoom,
     FitView,
     CenterOnSelected,
+    ClearSelection,
     ToggleFkNames,
 }
 

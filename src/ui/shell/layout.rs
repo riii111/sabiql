@@ -156,9 +156,13 @@ impl MainLayout {
                 _ => (None, None),
             };
 
+        let er_diagram_has_selection = match state.input_mode() {
+            InputMode::ErDiagram => Some(ErDiagramViewer::render(frame, state, er_view, theme)),
+            _ => None,
+        };
+
         match state.input_mode() {
             InputMode::CommandPalette => CommandPalette::render(frame, state, theme),
-            InputMode::ErDiagram => ErDiagramViewer::render(frame, state, er_view, theme),
             InputMode::Settings => SettingsOverlay::render(frame, state, theme),
             InputMode::Help => HelpOverlay::render(frame, state, theme),
             InputMode::ConnectionSetup => ConnectionSetup::render(frame, state, services, theme),
@@ -187,6 +191,7 @@ impl MainLayout {
                 explain_compare_viewport_height,
                 sqlite_diagnostics_content_line_count,
                 sqlite_diagnostics_viewport_height,
+                er_diagram_has_selection,
             },
         }
     }

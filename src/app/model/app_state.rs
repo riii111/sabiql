@@ -263,6 +263,11 @@ impl AppState {
             self.sqlite_diagnostics
                 .apply_viewport_metrics(content, viewport);
         }
+        if let (Some(has_selection), Some(diagram)) =
+            (layout.er_diagram_has_selection, self.er_diagram.as_mut())
+        {
+            diagram.has_selection = has_selection;
+        }
     }
 
     pub fn result_visible_rows(&self) -> usize {

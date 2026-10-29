@@ -472,17 +472,26 @@ mod tests {
         #[case(combo(Key::Char('0')), ErViewerCommand::ResetZoom)]
         #[case(combo(Key::Char('f')), ErViewerCommand::FitView)]
         #[case(combo(Key::Char('c')), ErViewerCommand::CenterOnSelected)]
+        #[case(combo_ctrl(Key::Char('d')), ErViewerCommand::PanHalfPageDown)]
+        #[case(combo_ctrl(Key::Char('u')), ErViewerCommand::PanHalfPageUp)]
+        #[case(combo_ctrl(Key::Char('f')), ErViewerCommand::PanPageDown)]
+        #[case(combo_ctrl(Key::Char('b')), ErViewerCommand::PanPageUp)]
         fn viewer_keys_map_to_commands(#[case] key: KeyCombo, #[case] expected: ErViewerCommand) {
             let result = handle_er_diagram_keys(key);
 
             assert!(matches!(result, Action::ErViewer(command) if command == expected));
         }
 
-        #[rstest]
-        #[case(Key::Esc)]
-        #[case(Key::Char('q'))]
-        fn close_keys_close_viewer(#[case] key: Key) {
-            let result = handle_er_diagram_keys(combo(key));
+        #[test]
+        fn esc_goes_back_one_step() {
+            let result = handle_er_diagram_keys(combo(Key::Esc));
+
+            assert!(matches!(result, Action::ErViewerEscape));
+        }
+
+        #[test]
+        fn q_closes_viewer() {
+            let result = handle_er_diagram_keys(combo(Key::Char('q')));
 
             assert!(matches!(result, Action::CloseModal(ModalKind::ErDiagram)));
         }
@@ -507,9 +516,11 @@ mod tests {
         fn sqlite_without_er_support_still_closes_viewer() {
             let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::sqlite_like());
 
-            let result = handle_er_diagram_keys_with_policy(combo(Key::Esc), &feature_policy);
+            let esc = handle_er_diagram_keys_with_policy(combo(Key::Esc), &feature_policy);
+            let q = handle_er_diagram_keys_with_policy(combo(Key::Char('q')), &feature_policy);
 
-            assert!(matches!(result, Action::CloseModal(ModalKind::ErDiagram)));
+            assert!(matches!(esc, Action::ErViewerEscape));
+            assert!(matches!(q, Action::CloseModal(ModalKind::ErDiagram)));
         }
     }
 }
