@@ -14,10 +14,10 @@ test_project ▸ test_db ▸ -                                                  
 │                                │  >                                                                                              │                                │
 │                                │  Mode:    Invalid                                                                               │                                │
 │                                │  Targets: —                                                                                     │                                │
-│                                │  Output:  —                                                                                     │                                │
 │                                │▸     public.users                                                                               │                                │
 │                                │      public.posts                                                                               │                                │
 │                                │      public.comments                                                                            │                                │
+│                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │

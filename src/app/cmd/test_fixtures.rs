@@ -19,14 +19,15 @@ use crate::domain::{
 };
 use crate::model::app_state::AppState;
 use crate::model::browse::session::ConnectionSaveGuard;
+use crate::model::er_state::{ErLayout, ErViewerCommand};
 use crate::ports::outbound::DbOperationError;
 use crate::ports::outbound::{
     AppSettings, CachedResultExporter, ClipboardError, ClipboardWriter, ConfigWriter,
-    ConfigWriterError, ConnectionStore, DsnBuilder, ErDiagramExporter, ErExportResult, ErLogWriter,
-    FolderOpener, MetadataProvider, MySqlConnectionProbe, MySqlConnectionProbeResult,
-    PgServiceEntryReader, QueryExecutor, QueryHistoryError, QueryHistoryStore, RenderOutput,
-    RenderResult, Renderer, ServiceFileError, SettingsStore, SettingsStoreError,
-    SqliteDiagnosticsProvider, SqlitePathValidator,
+    ConfigWriterError, ConnectionStore, DsnBuilder, ErDiagramLayout, ErLogWriter, FolderOpener,
+    MetadataProvider, MySqlConnectionProbe, MySqlConnectionProbeResult, PgServiceEntryReader,
+    QueryExecutor, QueryHistoryError, QueryHistoryStore, RenderOutput, RenderResult, Renderer,
+    ServiceFileError, SettingsStore, SettingsStoreError, SqliteDiagnosticsProvider,
+    SqlitePathValidator,
 };
 use crate::services::AppServices;
 use crate::update::action::Action;
@@ -99,16 +100,10 @@ impl ConfigWriter for NoopConfigWriter {
     }
 }
 
-pub struct NoopErExporter;
-impl ErDiagramExporter for NoopErExporter {
-    fn generate_and_export(
-        &self,
-        _tables: &[ErTableInfo],
-        _filename: &str,
-        _cache_dir: &Path,
-        _browser: Option<&str>,
-    ) -> ErExportResult<PathBuf> {
-        Ok(PathBuf::from("/tmp/er.svg"))
+pub struct NoopErLayout;
+impl ErDiagramLayout for NoopErLayout {
+    fn layout(&self, _tables: &[ErTableInfo]) -> ErLayout {
+        ErLayout::default()
     }
 }
 
@@ -171,6 +166,8 @@ impl Renderer for NoopRenderer {
     ) -> RenderResult<RenderOutput> {
         Ok(RenderOutput::default())
     }
+
+    fn apply_er_viewer_command(&mut self, _command: ErViewerCommand) {}
 }
 
 pub fn active_connection_save_guard(run_id: u64) -> Arc<ConnectionSaveGuard> {
@@ -360,7 +357,7 @@ fn make_runner_with_dsn_and_cached_result_exporter_and_probe(
             cached_result_exporter,
         },
         ErDeps {
-            er_exporter: Arc::new(NoopErExporter),
+            er_layout: Arc::new(NoopErLayout),
             config_writer: Arc::new(NoopConfigWriter),
             er_log_writer: Arc::new(NoopErLogWriter),
         },

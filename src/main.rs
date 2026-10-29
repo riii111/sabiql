@@ -31,8 +31,7 @@ use sabiql_infra::adapters::{
     PgServiceFileReader, SqliteAdapter, TomlConnectionStore, TomlSettingsStore,
 };
 use sabiql_infra::config::project_root::{find_project_root, get_project_name};
-use sabiql_infra::export::DotExporter;
-use sabiql_ui::adapters::TuiAdapter;
+use sabiql_ui::adapters::{RataflowErLayout, TuiAdapter};
 use sabiql_ui::tui::TuiRunner;
 
 mod panic_hooks;
@@ -332,7 +331,7 @@ impl Runtime {
                 cached_result_exporter: Arc::new(CsvCachedResultExporter),
             },
             ErDeps {
-                er_exporter: Arc::new(DotExporter::new()),
+                er_layout: Arc::new(RataflowErLayout),
                 config_writer: Arc::new(FileConfigWriter::new()),
                 er_log_writer: Arc::new(FsErLogWriter),
             },

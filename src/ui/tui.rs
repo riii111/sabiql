@@ -19,6 +19,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::app::ports::inbound::InputEvent;
+use crate::features::overlays::er_diagram::ErDiagramView;
 
 pub type Tui = Terminal<CrosstermBackend<Stdout>>;
 type TerminalEvent = Result<InputEvent, io::Error>;
@@ -72,6 +73,7 @@ pub struct TuiRunner {
     task: Option<JoinHandle<()>>,
     cancellation_token: CancellationToken,
     terminal_state: TerminalState,
+    er_view: ErDiagramView,
 }
 
 impl TuiRunner {
@@ -87,6 +89,7 @@ impl TuiRunner {
             task: None,
             cancellation_token,
             terminal_state: TerminalState::default(),
+            er_view: ErDiagramView::default(),
         })
     }
 
@@ -179,6 +182,14 @@ impl TuiRunner {
 
     pub fn terminal(&mut self) -> &mut Tui {
         &mut self.terminal
+    }
+
+    pub fn terminal_and_er_view(&mut self) -> (&mut Tui, &mut ErDiagramView) {
+        (&mut self.terminal, &mut self.er_view)
+    }
+
+    pub fn er_view_mut(&mut self) -> &mut ErDiagramView {
+        &mut self.er_view
     }
 
     fn restore_terminal(&mut self) -> Result<()> {

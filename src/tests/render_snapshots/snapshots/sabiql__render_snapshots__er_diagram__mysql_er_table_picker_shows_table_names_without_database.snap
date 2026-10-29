@@ -14,10 +14,10 @@ test_project ▸ app ▸ -                                                      
 │                                │  >                                                                                              │                                │
 │                                │  Mode:    Invalid                                                                               │                                │
 │                                │  Targets: —                                                                                     │                                │
-│                                │  Output:  —                                                                                     │                                │
 │                                │▸     users                                                                                      │                                │
 │                                │      posts                                                                                      │                                │
 │                                │      comments                                                                                   │                                │
+│                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │

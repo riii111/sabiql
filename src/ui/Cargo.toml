@@ -17,6 +17,7 @@ test-support = ["sabiql-app/test-support"]
 color-eyre.workspace = true
 crossterm.workspace = true
 futures.workspace = true
+rataflow.workspace = true
 ratatui.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true

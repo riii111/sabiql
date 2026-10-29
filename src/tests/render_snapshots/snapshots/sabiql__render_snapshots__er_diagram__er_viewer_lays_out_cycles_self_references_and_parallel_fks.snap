@@ -1,0 +1,54 @@
+---
+source: src/tests/render_snapshots/er_diagram.rs
+expression: output
+---
+test_project ▸ test_db ▸ -                                                                                                            connected | localhost:5432/test
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
+│> ╭ ER Diagram (6/6 tables) ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮──┐
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │            ╭ public ──────────────╮                                    ╭ public ──╮                                                ╭ public ──╮             │  │
+│  │            │       comments       │          fk_comments_post─────────▶│  posts   │────────fk_posts_author, fk_posts_editor───────▶│  users   │             │──┘
+│  │            │↻ fk_comments_parent  │──────────────────╯                 ╰──────────╯                                                ╰──────────╯             │──┐
+│  │            ╰──────────────────────╯                                                                                                                         │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │            ╭ public ──╮                                                ╭ public ──╮        ╭ audit ──╮                                                      │  │
+│  │            │ members  │▶────────fk_members_team, fk_teams_lead────────▶│  teams   │        │  logs   │                                                      │  │
+│  │            ╰──────────╯                                                ╰──────────╯        ╰─────────╯                                                      │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │                                                                                                                                                             │  │
+│  │ 6 tables · 6 foreign keys — press hjkl/←↓↑→ to select a table                                                                                               │  │
+└──╰ hjkl/←↓↑→: Select │ HJKL: Pan │ +/-: Zoom │ f: Fit │ ?: Help │ Esc/q: Close ────────────────────────────────────────────────────────────────────────────────╯──┘
+Tab/⇧Tab:Next/Prev  c:Center  0:100%

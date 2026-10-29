@@ -370,7 +370,7 @@ mod tests {
     mod feature_policy_guard {
         use super::*;
         use crate::domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
-        use crate::model::er_state::ErStatus;
+        use crate::model::er_state::{ErLayout, ErStatus};
         use crate::model::shared::flash_timer::FlashId;
         use crate::model::shared::key_sequence::Prefix;
         use crate::update::action::{ErDiagramInfo, ScrollAmount, ScrollDirection, ScrollTarget};
@@ -420,8 +420,8 @@ mod tests {
                 &mut state,
                 Action::ErDiagramOpened(ErDiagramInfo {
                     run_id: 0,
-                    path: "diagram.svg".to_string(),
-                    table_count: 1,
+                    tables: vec![],
+                    layout: ErLayout::default(),
                     total_tables: 1,
                 }),
             );

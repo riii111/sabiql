@@ -20,6 +20,7 @@ absolute-paths-allowed-crates = [
     "mockall",
     "nucleo_matcher",
     "quick_xml",
+    "rataflow",
     "ratatui",
     "rstest",
     "self_update",

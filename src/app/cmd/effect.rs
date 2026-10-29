@@ -4,6 +4,7 @@ use crate::domain::connection::{ConnectionConfig, ConnectionId, DatabaseType};
 use crate::domain::query_history::QueryHistoryScope;
 use crate::domain::{DatabaseMetadata, QueryValue, Table, TableSignatureSnapshot};
 use crate::model::browse::session::ConnectionSaveGuard;
+use crate::model::er_state::ErViewerCommand;
 use crate::ports::outbound::{AccessMode, AppSettings};
 use crate::update::action::{Action, ConnectionTarget};
 
@@ -128,9 +129,9 @@ pub enum Effect {
     GenerateErDiagramFromCache {
         run_id: u64,
         total_tables: usize,
-        project_name: String,
         target_tables: Vec<String>,
     },
+    ApplyErViewerCommand(ErViewerCommand),
     WriteErFailureLog {
         failed_tables: Vec<(String, String)>,
     },

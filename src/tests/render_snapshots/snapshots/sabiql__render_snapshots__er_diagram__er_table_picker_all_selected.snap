@@ -14,10 +14,10 @@ test_project ▸ test_db ▸ -                                                  
 │                                │  >                                                                                              │                                │
 │                                │  Mode:    Full ER                                                                               │                                │
 │                                │  Targets: all 3 tables                                                                          │                                │
-│                                │  Output:  er_full.dot                                                                           │                                │
 │                                │▸   ✔ public.users                                                                               │                                │
 │                                │    ✔ public.posts                                                                               │                                │
 │                                │    ✔ public.comments                                                                            │                                │
+│                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │

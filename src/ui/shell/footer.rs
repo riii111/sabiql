@@ -13,9 +13,10 @@ use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::policy::{FeaturePolicy, FeatureRequirement};
 use crate::app::update::input::keybindings::{
     cell_detail, cell_detail_search, cell_edit, command_palette as command_palette_key,
-    connection_error, csv_export, er_picker, exit_read_only, footer_nav, global, inspector_ddl,
-    json_detail, json_edit, json_search, overlay, query_history, read_only, result_active,
-    settings, sql_modal, sqlite_diagnostics, table_picker, table_picker as table_picker_key,
+    connection_error, csv_export, er_diagram, er_picker, exit_read_only, footer_nav, global,
+    inspector_ddl, json_detail, json_edit, json_search, overlay, query_history, read_only,
+    result_active, settings, sql_modal, sqlite_diagnostics, table_picker,
+    table_picker as table_picker_key,
 };
 use crate::primitives::atoms::key_text;
 use crate::primitives::atoms::spinner_char;
@@ -271,6 +272,19 @@ impl Footer {
                     FeaturePolicy::new(&state.session.active_engine_feature_profile());
                 if feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
                     vec![er_picker::TYPE_FILTER.as_hint()]
+                } else {
+                    vec![]
+                }
+            }
+            InputMode::ErDiagram => {
+                let feature_policy =
+                    FeaturePolicy::new(&state.session.active_engine_feature_profile());
+                if feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
+                    vec![
+                        er_diagram::CYCLE.as_hint(),
+                        er_diagram::CENTER.as_hint(),
+                        er_diagram::RESET_ZOOM.as_hint(),
+                    ]
                 } else {
                     vec![]
                 }

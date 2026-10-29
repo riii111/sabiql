@@ -7,6 +7,7 @@ use crate::domain::connection::{
 use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
 use crate::model::app_state::AppState;
 use crate::model::browse::json_detail::JsonDetailMode;
+use crate::model::er_state::{ErLayout, ErViewerCommand};
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::Prefix;
@@ -18,7 +19,7 @@ use std::collections::HashMap;
 
 use crate::domain::SqliteDiagnosticsSnapshot;
 use crate::domain::{
-    DatabaseDiagnostic, DatabaseMetadata, DiagnosticField, QueryResult, Table,
+    DatabaseDiagnostic, DatabaseMetadata, DiagnosticField, ErTableInfo, QueryResult, Table,
     TableSignatureSnapshot,
 };
 
@@ -176,6 +177,7 @@ pub enum ModalKind {
     Help,
     SqlModal,
     ErTablePicker,
+    ErDiagram,
     QueryHistoryPicker,
     JsonDetail,
     CellDetail,
@@ -215,8 +217,8 @@ pub struct SmartErRefreshError {
 #[derive(Debug, Clone)]
 pub struct ErDiagramInfo {
     pub run_id: u64,
-    pub path: String,
-    pub table_count: usize,
+    pub tables: Vec<ErTableInfo>,
+    pub layout: ErLayout,
     pub total_tables: usize,
 }
 
@@ -649,6 +651,7 @@ pub enum Action {
         error: String,
     },
     ErLogWriteFailed(String),
+    ErViewer(ErViewerCommand),
 }
 
 impl Action {
@@ -680,6 +683,7 @@ impl Action {
             | Self::ErDiagramOpened(_)
             | Self::ErDiagramFailed { .. }
             | Self::ErLogWriteFailed(_)
+            | Self::ErViewer(_)
             | Self::TextInput {
                 target: InputTarget::ErFilter,
                 ..

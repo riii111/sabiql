@@ -326,6 +326,7 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
         HelpOrigin::ErTablePicker { keymap_preset } => {
             rows_from_mode_rows_if_visible(er_picker_rows(keymap_preset), feature_policy)
         }
+        HelpOrigin::ErDiagram => rows_from_mode_rows_if_visible(ER_DIAGRAM_ROWS, feature_policy),
         HelpOrigin::QueryHistoryPicker => rows_from_mode_rows(QUERY_HISTORY_PICKER_ROWS),
         HelpOrigin::JsonDetail { mode } => json_current_rows(mode, feature_policy),
         HelpOrigin::JsonEdit => rows_from_mode_rows_if_visible(JSON_EDIT_ROWS, feature_policy),

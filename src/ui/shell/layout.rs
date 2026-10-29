@@ -22,6 +22,7 @@ use crate::features::connections::error::ConnectionError;
 use crate::features::connections::selector::ConnectionSelector;
 use crate::features::connections::setup::ConnectionSetup;
 use crate::features::overlays::confirm_dialog::ConfirmDialog;
+use crate::features::overlays::er_diagram::{ErDiagramView, ErDiagramViewer};
 use crate::features::overlays::help::HelpOverlay;
 use crate::features::overlays::settings::SettingsOverlay;
 use crate::features::overlays::sqlite_diagnostics::SqliteDiagnosticsOverlay;
@@ -44,6 +45,7 @@ impl MainLayout {
         time_ms: Option<u128>,
         services: &AppServices,
         now: Instant,
+        er_view: &mut ErDiagramView,
     ) -> RenderOutput {
         Self::render_impl(
             frame,
@@ -51,6 +53,7 @@ impl MainLayout {
             time_ms,
             services,
             now,
+            er_view,
             palette_for(state.ui.theme_id()),
         )
     }
@@ -61,6 +64,7 @@ impl MainLayout {
         time_ms: Option<u128>,
         services: &AppServices,
         now: Instant,
+        er_view: &mut ErDiagramView,
         theme: &ThemePalette,
     ) -> RenderOutput {
         let area = frame.area();
@@ -148,6 +152,7 @@ impl MainLayout {
 
         match state.input_mode() {
             InputMode::CommandPalette => CommandPalette::render(frame, state, theme),
+            InputMode::ErDiagram => ErDiagramViewer::render(frame, state, er_view, theme),
             InputMode::Settings => SettingsOverlay::render(frame, state, theme),
             InputMode::Help => HelpOverlay::render(frame, state, theme),
             InputMode::ConnectionSetup => ConnectionSetup::render(frame, state, services, theme),
@@ -237,7 +242,10 @@ impl MainLayout {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support {
-    use super::{AppServices, AppState, Frame, Instant, MainLayout, RenderOutput, ThemePalette};
+    use super::{
+        AppServices, AppState, ErDiagramView, Frame, Instant, MainLayout, RenderOutput,
+        ThemePalette,
+    };
 
     impl MainLayout {
         #[doc(hidden)]
@@ -249,7 +257,8 @@ pub mod test_support {
             now: Instant,
             theme: &ThemePalette,
         ) -> RenderOutput {
-            Self::render_impl(frame, state, time_ms, services, now, theme)
+            let mut er_view = ErDiagramView::default();
+            Self::render_impl(frame, state, time_ms, services, now, &mut er_view, theme)
         }
     }
 }

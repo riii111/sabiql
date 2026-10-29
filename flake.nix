@@ -51,7 +51,6 @@
 
           runtimePath = pkgs.lib.makeBinPath (
             [
-              pkgs.graphviz
               pkgs.postgresql
             ]
             ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.xdg-utils ]
@@ -100,7 +99,6 @@
               pkgs.cargo-audit
               pkgs.cargo-insta
               pkgs.cargo-nextest
-              pkgs.graphviz
               pkgs.lefthook
               pkgs.mysql84
               pkgs.postgresql

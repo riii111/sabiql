@@ -14,10 +14,10 @@ test_project ▸ test_db ▸ -                                                  
 │                                │  >                                                                                              │                                │
 │                                │  Mode:    Partial ER                                                                            │                                │
 │                                │  Targets: public.users                                                                          │                                │
-│                                │  Output:  er_partial_public_users.dot                                                           │                                │
 │                                │▸   ✔ public.users                                                                               │                                │
 │                                │      public.posts                                                                               │                                │
 │                                │      public.comments                                                                            │                                │
+│                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │

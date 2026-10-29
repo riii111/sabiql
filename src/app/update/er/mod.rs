@@ -45,7 +45,7 @@ mod tests {
         ConnectionId, DatabaseMetadata, DatabaseType, TableSignatureSnapshot, TableSummary,
     };
     use crate::model::app_state::AppState;
-    use crate::model::er_state::ErStatus;
+    use crate::model::er_state::{ErLayout, ErStatus};
     use crate::update::action::{
         ErDiagramInfo, SmartErRefreshError, SmartErRefreshFetched, SmartErRefreshResult,
     };
@@ -233,8 +233,8 @@ mod tests {
                 }),
                 Action::ErDiagramOpened(ErDiagramInfo {
                     run_id,
-                    path: "diagram.svg".to_string(),
-                    table_count: 1,
+                    tables: vec![],
+                    layout: ErLayout::default(),
                     total_tables: 1,
                 }),
                 Action::ErDiagramFailed {
@@ -275,8 +275,8 @@ mod tests {
                 &mut state,
                 &Action::ErDiagramOpened(ErDiagramInfo {
                     run_id,
-                    path: "diagram.svg".to_string(),
-                    table_count: 1,
+                    tables: vec![],
+                    layout: ErLayout::default(),
                     total_tables: 1,
                 }),
                 Instant::now(),
@@ -441,8 +441,8 @@ mod tests {
                 &mut state,
                 &Action::ErDiagramOpened(ErDiagramInfo {
                     run_id,
-                    path: "stale.svg".to_string(),
-                    table_count: 1,
+                    tables: vec![],
+                    layout: ErLayout::default(),
                     total_tables: 1,
                 }),
                 Instant::now(),
@@ -453,6 +453,112 @@ mod tests {
             assert!(effects.is_empty());
             assert!(state.messages.last_success().is_none());
             assert!(state.messages.last_error().is_none());
+        }
+    }
+
+    mod diagram_viewer {
+        use super::*;
+        use crate::domain::ErTableInfo;
+        use crate::model::er_state::ErViewerCommand;
+        use crate::model::shared::input_mode::InputMode;
+        use crate::services::AppServices;
+        use crate::update::action::ModalKind;
+        use crate::update::reducer;
+
+        fn users_table() -> ErTableInfo {
+            ErTableInfo {
+                qualified_name: "public.users".to_string(),
+                name: "users".to_string(),
+                schema: "public".to_string(),
+                foreign_keys: vec![],
+            }
+        }
+
+        fn opened_state() -> AppState {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let run_id = state.er_preparation.start_waiting_run();
+            state.er_preparation.mark_rendering();
+            reduce(
+                &mut state,
+                Action::ErDiagramOpened(ErDiagramInfo {
+                    run_id,
+                    tables: vec![users_table()],
+                    layout: ErLayout::default(),
+                    total_tables: 3,
+                }),
+            );
+            state
+        }
+
+        fn reduce(state: &mut AppState, action: Action) -> Vec<Effect> {
+            reducer::reduce(state, action, Instant::now(), &AppServices::stub())
+        }
+
+        #[test]
+        fn completion_opens_viewer_with_diagram() {
+            let state = opened_state();
+
+            assert_eq!(state.input_mode(), InputMode::ErDiagram);
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+            let diagram = state.er_diagram.as_ref().expect("diagram should be stored");
+            assert_eq!(diagram.tables.len(), 1);
+            assert_eq!(diagram.total_tables, 3);
+        }
+
+        #[test]
+        fn completion_over_another_modal_returns_there_on_close() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.modal.set_mode(InputMode::SqlModal);
+            let run_id = state.er_preparation.start_waiting_run();
+            reduce(
+                &mut state,
+                Action::ErDiagramOpened(ErDiagramInfo {
+                    run_id,
+                    tables: vec![users_table()],
+                    layout: ErLayout::default(),
+                    total_tables: 1,
+                }),
+            );
+            assert_eq!(state.input_mode(), InputMode::ErDiagram);
+
+            reduce(&mut state, Action::CloseModal(ModalKind::ErDiagram));
+
+            assert_eq!(state.input_mode(), InputMode::SqlModal);
+        }
+
+        #[test]
+        fn close_drops_diagram_and_returns_to_normal() {
+            let mut state = opened_state();
+
+            reduce(&mut state, Action::CloseModal(ModalKind::ErDiagram));
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(state.er_diagram.is_none());
+        }
+
+        #[test]
+        fn viewer_command_is_forwarded_to_renderer() {
+            let mut state = opened_state();
+
+            let effects = reduce(&mut state, Action::ErViewer(ErViewerCommand::ZoomIn));
+
+            assert!(effects.iter().any(|effect| matches!(
+                effect,
+                Effect::ApplyErViewerCommand(ErViewerCommand::ZoomIn)
+            )));
+        }
+
+        #[test]
+        fn viewer_command_without_diagram_is_ignored() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+
+            let effects = reduce(&mut state, Action::ErViewer(ErViewerCommand::ZoomIn));
+
+            assert!(
+                !effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::ApplyErViewerCommand(_)))
+            );
         }
     }
 

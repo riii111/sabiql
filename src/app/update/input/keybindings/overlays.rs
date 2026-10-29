@@ -590,6 +590,171 @@ pub fn er_picker_select_all(preset: KeymapPreset) -> &'static ModeRow {
 }
 
 // =============================================================================
+// ER Diagram Viewer
+// =============================================================================
+
+pub mod er_diagram {
+    use crate::model::er_state::ErViewerCommand;
+    use crate::update::action::{Action, ModalKind};
+    use crate::update::input::keybindings::{ExecBinding, Key, KeyCombo, ModeRow};
+
+    pub const SELECT: ModeRow = ModeRow {
+        key_short: "hjkl/←↓↑→",
+        key: "h / j / k / l / ← / ↓ / ↑ / →",
+        desc_short: "Select",
+        description: "Select nearest table in direction",
+        bindings: &[
+            ExecBinding {
+                action: Action::ErViewer(ErViewerCommand::SelectLeft),
+                combos: &[KeyCombo::plain(Key::Char('h')), KeyCombo::plain(Key::Left)],
+            },
+            ExecBinding {
+                action: Action::ErViewer(ErViewerCommand::SelectDown),
+                combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
+            },
+            ExecBinding {
+                action: Action::ErViewer(ErViewerCommand::SelectUp),
+                combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+            },
+            ExecBinding {
+                action: Action::ErViewer(ErViewerCommand::SelectRight),
+                combos: &[KeyCombo::plain(Key::Char('l')), KeyCombo::plain(Key::Right)],
+            },
+        ],
+    };
+
+    pub const CYCLE: ModeRow = ModeRow {
+        key_short: "Tab/⇧Tab",
+        key: "Tab / Shift+Tab",
+        desc_short: "Next/Prev",
+        description: "Select next / previous table",
+        bindings: &[
+            ExecBinding {
+                action: Action::ErViewer(ErViewerCommand::SelectNext),
+                combos: &[KeyCombo::plain(Key::Tab)],
+            },
+            ExecBinding {
+                action: Action::ErViewer(ErViewerCommand::SelectPrev),
+                combos: &[KeyCombo::plain(Key::BackTab), KeyCombo::shift(Key::BackTab)],
+            },
+        ],
+    };
+
+    pub const PAN: ModeRow = ModeRow {
+        key_short: "HJKL",
+        key: "H / J / K / L",
+        desc_short: "Pan",
+        description: "Pan the diagram",
+        bindings: &[
+            ExecBinding {
+                action: Action::ErViewer(ErViewerCommand::PanLeft),
+                combos: &[KeyCombo::plain(Key::Char('H'))],
+            },
+            ExecBinding {
+                action: Action::ErViewer(ErViewerCommand::PanDown),
+                combos: &[KeyCombo::plain(Key::Char('J'))],
+            },
+            ExecBinding {
+                action: Action::ErViewer(ErViewerCommand::PanUp),
+                combos: &[KeyCombo::plain(Key::Char('K'))],
+            },
+            ExecBinding {
+                action: Action::ErViewer(ErViewerCommand::PanRight),
+                combos: &[KeyCombo::plain(Key::Char('L'))],
+            },
+        ],
+    };
+
+    pub const ZOOM: ModeRow = ModeRow {
+        key_short: "+/-",
+        key: "+ / -",
+        desc_short: "Zoom",
+        description: "Zoom in / out",
+        bindings: &[
+            ExecBinding {
+                action: Action::ErViewer(ErViewerCommand::ZoomIn),
+                combos: &[
+                    KeyCombo::plain(Key::Char('+')),
+                    KeyCombo::shift(Key::Char('+')),
+                    KeyCombo::plain(Key::Char('=')),
+                ],
+            },
+            ExecBinding {
+                action: Action::ErViewer(ErViewerCommand::ZoomOut),
+                combos: &[KeyCombo::plain(Key::Char('-'))],
+            },
+        ],
+    };
+
+    pub const RESET_ZOOM: ModeRow = ModeRow {
+        key_short: "0",
+        key: "0",
+        desc_short: "100%",
+        description: "Reset zoom",
+        bindings: &[ExecBinding {
+            action: Action::ErViewer(ErViewerCommand::ResetZoom),
+            combos: &[KeyCombo::plain(Key::Char('0'))],
+        }],
+    };
+
+    pub const FIT: ModeRow = ModeRow {
+        key_short: "f",
+        key: "f",
+        desc_short: "Fit",
+        description: "Fit the whole diagram on screen",
+        bindings: &[ExecBinding {
+            action: Action::ErViewer(ErViewerCommand::FitView),
+            combos: &[KeyCombo::plain(Key::Char('f'))],
+        }],
+    };
+
+    pub const CENTER: ModeRow = ModeRow {
+        key_short: "c",
+        key: "c",
+        desc_short: "Center",
+        description: "Center on selected table",
+        bindings: &[ExecBinding {
+            action: Action::ErViewer(ErViewerCommand::CenterOnSelected),
+            combos: &[KeyCombo::plain(Key::Char('c'))],
+        }],
+    };
+
+    pub const HELP: ModeRow = ModeRow {
+        key_short: "?",
+        key: "?",
+        desc_short: "Help",
+        description: "Toggle help",
+        bindings: &[ExecBinding {
+            action: Action::ToggleModal(ModalKind::Help),
+            combos: &[KeyCombo::plain(Key::Char('?'))],
+        }],
+    };
+
+    pub const ESC_CLOSE: ModeRow = ModeRow {
+        key_short: "Esc/q",
+        key: "Esc / q",
+        desc_short: "Close",
+        description: "Close ER diagram",
+        bindings: &[ExecBinding {
+            action: Action::CloseModal(ModalKind::ErDiagram),
+            combos: &[KeyCombo::plain(Key::Esc), KeyCombo::plain(Key::Char('q'))],
+        }],
+    };
+}
+
+pub const ER_DIAGRAM_ROWS: &[ModeRow] = &[
+    er_diagram::SELECT,
+    er_diagram::CYCLE,
+    er_diagram::PAN,
+    er_diagram::ZOOM,
+    er_diagram::RESET_ZOOM,
+    er_diagram::FIT,
+    er_diagram::CENTER,
+    er_diagram::HELP,
+    er_diagram::ESC_CLOSE,
+];
+
+// =============================================================================
 // Query History Picker
 // =============================================================================
 

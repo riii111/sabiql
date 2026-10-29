@@ -14,10 +14,10 @@ test_project ▸ app ▸ -                                                      
 │                                │  >                                                                                              │                                │
 │                                │  Mode:    Partial ER                                                                            │                                │
 │                                │  Targets: users                                                                                 │                                │
-│                                │  Output:  er_partial_app_users.dot                                                              │                                │
 │                                │▸   ✔ users                                                                                      │                                │
 │                                │      posts                                                                                      │                                │
 │                                │      comments                                                                                   │                                │
+│                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │

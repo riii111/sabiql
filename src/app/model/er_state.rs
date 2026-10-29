@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::domain::ErTableInfo;
 use crate::model::shared::async_run::AsyncRun;
 use crate::model::table_prefetch::TablePrefetchState;
 
@@ -9,6 +10,46 @@ pub enum ErStatus {
     Idle,
     Waiting,
     Rendering,
+}
+
+/// Tables shown by the in-app ER diagram viewer. `id` changes on every
+/// generation so the renderer knows when to rebuild its view.
+#[derive(Debug, Clone)]
+pub struct ErDiagram {
+    pub id: u64,
+    pub tables: Vec<ErTableInfo>,
+    pub total_tables: usize,
+    pub layout: ErLayout,
+}
+
+/// Precomputed node positions, keyed by qualified table name. Layout runs off
+/// the render path because it can take seconds on large schemas.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ErLayout {
+    pub positions: HashMap<String, (f64, f64)>,
+    /// Tables the initial viewport is fitted to.
+    pub focus_tables: Vec<String>,
+}
+
+/// Viewer operations applied by the renderer, which owns the diagram's
+/// layout, viewport and selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErViewerCommand {
+    SelectLeft,
+    SelectDown,
+    SelectUp,
+    SelectRight,
+    SelectNext,
+    SelectPrev,
+    PanLeft,
+    PanDown,
+    PanUp,
+    PanRight,
+    ZoomIn,
+    ZoomOut,
+    ResetZoom,
+    FitView,
+    CenterOnSelected,
 }
 
 #[derive(Debug, Clone, Default)]

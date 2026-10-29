@@ -14,6 +14,7 @@ pub enum InputMode {
     ConfirmDialog,
     ConnectionSelector,
     ErTablePicker,
+    ErDiagram,
     QueryHistoryPicker,
     JsonDetail,
     JsonEdit,

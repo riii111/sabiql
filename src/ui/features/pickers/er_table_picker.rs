@@ -8,7 +8,6 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::shared::render_output::PickerLayout;
 use crate::app::policy::table_kind::{table_display_name, table_key_display_name};
 use crate::app::update::input::keybindings;
-use crate::domain::er::er_output_filename;
 use crate::primitives::molecules::{FooterHintBar, render_filter_input_line, render_modal};
 use crate::theme::ThemePalette;
 
@@ -51,12 +50,6 @@ impl ErTablePicker {
             )
         };
 
-        let output_label = if selected_count == 0 {
-            "—".to_string()
-        } else {
-            let selected_vec: Vec<String> = state.ui.er_selected_tables().iter().cloned().collect();
-            er_output_filename(&selected_vec, total_count)
-        };
         let select_all_hint =
             keybindings::er_picker_select_all(state.settings.saved_keymap_preset()).as_hint();
 
@@ -79,7 +72,7 @@ impl ErTablePicker {
 
         let [filter_area, preview_area, list_area] = Layout::vertical([
             Constraint::Length(1),
-            Constraint::Length(3),
+            Constraint::Length(2),
             Constraint::Min(1),
         ])
         .areas(inner);
@@ -92,7 +85,7 @@ impl ErTablePicker {
             theme,
         );
 
-        // 3-line execution preview
+        // 2-line execution preview
         let preview_lines = vec![
             Line::from(vec![
                 Span::styled(
@@ -107,13 +100,6 @@ impl ErTablePicker {
                     Style::default().fg(theme.semantic.text.muted),
                 ),
                 Span::styled(targets_label, Style::default().fg(preview_color)),
-            ]),
-            Line::from(vec![
-                Span::styled(
-                    "  Output:  ",
-                    Style::default().fg(theme.semantic.text.muted),
-                ),
-                Span::styled(output_label, Style::default().fg(preview_color)),
             ]),
         ];
         frame.render_widget(Paragraph::new(preview_lines), preview_area);

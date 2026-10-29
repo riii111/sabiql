@@ -5,6 +5,7 @@ use crossterm::execute;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::browse::json_detail::JsonDetailMode;
+use crate::app::model::er_state::ErViewerCommand;
 use crate::app::model::shared::help::HelpMode;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
@@ -35,8 +36,9 @@ impl Renderer for TuiAdapter<'_> {
         now: Instant,
     ) -> RenderResult<RenderOutput> {
         let mut output = RenderOutput::default();
-        self.tui.terminal().draw(|frame| {
-            output = MainLayout::render(frame, state, None, services, now);
+        let (terminal, er_view) = self.tui.terminal_and_er_view();
+        terminal.draw(|frame| {
+            output = MainLayout::render(frame, state, None, services, now, er_view);
         })?;
         let uses_insert = uses_insert_cursor(state);
         if self.last_cursor_insert != Some(uses_insert) {
@@ -51,6 +53,10 @@ impl Renderer for TuiAdapter<'_> {
             self.last_cursor_insert = Some(uses_insert);
         }
         Ok(output)
+    }
+
+    fn apply_er_viewer_command(&mut self, command: ErViewerCommand) {
+        self.tui.er_view_mut().apply(command);
     }
 }
 

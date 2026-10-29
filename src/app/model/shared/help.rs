@@ -158,6 +158,7 @@ pub enum HelpOrigin {
     ErTablePicker {
         keymap_preset: KeymapPreset,
     },
+    ErDiagram,
     QueryHistoryPicker,
     JsonDetail {
         mode: JsonHelpMode,
@@ -186,6 +187,7 @@ impl HelpOrigin {
             | Self::SqliteDiagnostics
             | Self::ConfirmDialog
             | Self::ConnectionSelector
+            | Self::ErDiagram
             | Self::QueryHistoryPicker
             | Self::JsonDetail { .. }
             | Self::JsonEdit
@@ -229,6 +231,7 @@ impl HelpOrigin {
             InputMode::ErTablePicker => Self::ErTablePicker {
                 keymap_preset: state.settings.saved_keymap_preset(),
             },
+            InputMode::ErDiagram => Self::ErDiagram,
             InputMode::QueryHistoryPicker => Self::QueryHistoryPicker,
             InputMode::JsonDetail => Self::JsonDetail {
                 mode: JsonHelpMode::from_state(state),
@@ -268,6 +271,7 @@ impl HelpOrigin {
             Self::ConfirmDialog => "Confirm Dialog",
             Self::ConnectionSelector => "Connection Selector",
             Self::ErTablePicker { .. } => "ER Table Picker",
+            Self::ErDiagram => "ER Diagram",
             Self::QueryHistoryPicker => "Query History Picker",
             Self::JsonDetail { mode } => mode.label(),
             Self::JsonEdit => "JSON Edit",

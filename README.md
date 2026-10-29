@@ -26,7 +26,7 @@ Safety follows a plan-before-apply flow familiar from Terraform: inline edits an
 - **Browse in read-only mode** (`Ctrl+R`) — Block writes while investigating data
 - **Analyze queries** — View and compare PostgreSQL or MySQL execution plans, or inspect SQLite query plans
 - **Work with data** — Copy cell values, export CSV, and inspect or edit PostgreSQL and MySQL JSON documents
-- **Visualize relationships** — Generate PostgreSQL and MySQL ER diagrams with Graphviz and open them in your browser
+- **Visualize relationships** — Explore PostgreSQL and MySQL ER diagrams right in the terminal, with automatic layout, zoom, pan and table selection
 
 Press `?` inside sabiql to see all commands and keybindings.
 
@@ -71,7 +71,7 @@ sabiql uses the CLI for the database you want to open:
 - **To use MySQL:** install the Oracle MySQL `mysql` CLI 8.4.x. Oracle MySQL servers 5.7, 8.0, and 8.4 can be connected to; 8.4 is the continuously validated server version and older or newer Oracle server versions are not fully guaranteed.
 - **To use SQLite:** macOS includes `sqlite3` by default. Check that it is version 3.41.1 or later; additional installation is usually unnecessary. On Linux and other platforms, install `sqlite3` version 3.41.1 or later.
 
-Graphviz is required only for PostgreSQL and MySQL ER diagrams. SQLite does not support ER diagrams.
+SQLite does not support ER diagrams.
 
 Windows support is experimental.
 

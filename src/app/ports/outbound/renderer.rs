@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use crate::model::app_state::AppState;
+use crate::model::er_state::ErViewerCommand;
 use crate::services::AppServices;
 
 pub use crate::model::shared::render_output::{CellDetailViewport, RenderOutput};
@@ -18,4 +19,6 @@ pub trait Renderer {
         services: &AppServices,
         now: Instant,
     ) -> RenderResult<RenderOutput>;
+
+    fn apply_er_viewer_command(&mut self, command: ErViewerCommand);
 }

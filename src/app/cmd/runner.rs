@@ -23,7 +23,7 @@ use crate::cmd::utility as cmd_utility;
 use crate::model::app_state::AppState;
 use crate::ports::outbound::{
     CachedResultExporter, ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder,
-    ErDiagramExporter, ErLogWriter, FolderOpener, MetadataProvider, MySqlConnectionProbe,
+    ErDiagramLayout, ErLogWriter, FolderOpener, MetadataProvider, MySqlConnectionProbe,
     PgServiceEntryReader, QueryExecutor, QueryHistoryStore, Renderer, SettingsStore,
     SqliteDiagnosticsProvider, SqlitePathValidator,
 };
@@ -46,7 +46,7 @@ pub struct QueryDeps {
 }
 
 pub struct ErDeps {
-    pub er_exporter: Arc<dyn ErDiagramExporter>,
+    pub er_layout: Arc<dyn ErDiagramLayout>,
     pub config_writer: Arc<dyn ConfigWriter>,
     pub er_log_writer: Arc<dyn ErLogWriter>,
 }
@@ -142,6 +142,11 @@ impl EffectRunner {
             }
 
             Effect::DispatchActions(actions) => Ok(actions),
+
+            Effect::ApplyErViewerCommand(command) => {
+                tui.apply_er_viewer_command(command);
+                Ok(vec![])
+            }
 
             e @ (Effect::CopyToClipboard { .. } | Effect::OpenFolder { .. }) => {
                 cmd_utility::run(
@@ -257,7 +262,7 @@ impl EffectRunner {
                 cmd_er::run(
                     e,
                     &self.action_tx,
-                    &self.er.er_exporter,
+                    &self.er.er_layout,
                     &self.er.config_writer,
                     &self.er.er_log_writer,
                     state,
@@ -346,6 +351,7 @@ mod tests {
     use super::*;
     use crate::cmd::test_fixtures::{self, NoopRenderer};
     use crate::domain::{DatabaseMetadata, TableSignatureSnapshot, TableSummary};
+    use crate::model::er_state::ErViewerCommand;
     use crate::model::shared::render_output::{
         BrowseLayout, DetailLayout, ExplorerLayout, JsonDetailLayout,
     };
@@ -386,6 +392,8 @@ mod tests {
                     ..RenderOutput::default()
                 })
             }
+
+            fn apply_er_viewer_command(&mut self, _command: ErViewerCommand) {}
         }
 
         impl Renderer for JsonVisibleRowsRenderer {
@@ -405,6 +413,8 @@ mod tests {
                     ..RenderOutput::default()
                 })
             }
+
+            fn apply_er_viewer_command(&mut self, _command: ErViewerCommand) {}
         }
 
         #[tokio::test]

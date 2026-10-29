@@ -14,10 +14,10 @@ test_project ▸ test_db ▸ -                                                  
 │                                │  >                                                                                              │                                │
 │                                │  Mode:    Partial ER                                                                            │                                │
 │                                │  Targets: 2 tables                                                                              │                                │
-│                                │  Output:  er_partial_multi_2_89466781.dot                                                       │                                │
 │                                │▸   ✔ public.users                                                                               │                                │
 │                                │    ✔ public.posts                                                                               │                                │
 │                                │      public.comments                                                                            │                                │
+│                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │

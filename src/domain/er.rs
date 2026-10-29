@@ -1,6 +1,4 @@
-use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::hash::{Hash, Hasher};
 
 use crate::Table;
 
@@ -17,31 +15,6 @@ pub struct ErTableInfo {
     pub name: String,
     pub schema: String,
     pub foreign_keys: Vec<ErFkInfo>,
-}
-
-pub fn er_output_filename(selected: &[String], total: usize) -> String {
-    if selected.is_empty() || selected.len() == total {
-        "er_full.dot".to_string()
-    } else if selected.len() == 1 {
-        let safe: String = selected[0]
-            .chars()
-            .map(|c| {
-                if c.is_alphanumeric() || c == '_' {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .collect();
-        format!("er_partial_{safe}.dot")
-    } else {
-        let mut sorted: Vec<&String> = selected.iter().collect();
-        sorted.sort();
-        let mut hasher = DefaultHasher::new();
-        sorted.hash(&mut hasher);
-        let hash = format!("{:016x}", hasher.finish());
-        format!("er_partial_multi_{}_{}.dot", selected.len(), &hash[..8])
-    }
 }
 
 pub fn fk_neighbors_of_seeds(

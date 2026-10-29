@@ -63,6 +63,15 @@ pub(super) fn handle_confirm_dialog_keys(combo: KeyCombo) -> Action {
     keymap::resolve(&combo, keybindings::CONFIRM_DIALOG_KEYS).unwrap_or(Action::None)
 }
 
+pub(super) fn handle_er_diagram_keys_with_policy(
+    combo: KeyCombo,
+    feature_policy: &FeaturePolicy,
+) -> Action {
+    keybindings::ER_DIAGRAM
+        .resolve_with_policy(&combo, feature_policy)
+        .unwrap_or(Action::None)
+}
+
 pub(super) fn handle_sqlite_diagnostics_keys_with_policy(
     combo: KeyCombo,
     feature_policy: &FeaturePolicy,
@@ -437,6 +446,61 @@ mod tests {
             let result = handle_sqlite_diagnostics_keys(combo(Key::Char('r')));
 
             assert!(matches!(result, Action::RunSqliteDiagnosticsQuickCheck));
+        }
+    }
+
+    mod er_diagram_keys {
+        use super::*;
+        use crate::model::er_state::ErViewerCommand;
+
+        fn handle_er_diagram_keys(combo: KeyCombo) -> Action {
+            let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::postgres_like());
+            handle_er_diagram_keys_with_policy(combo, &feature_policy)
+        }
+
+        #[rstest]
+        #[case(combo(Key::Char('h')), ErViewerCommand::SelectLeft)]
+        #[case(combo(Key::Char('j')), ErViewerCommand::SelectDown)]
+        #[case(combo(Key::Up), ErViewerCommand::SelectUp)]
+        #[case(combo(Key::Right), ErViewerCommand::SelectRight)]
+        #[case(combo(Key::Tab), ErViewerCommand::SelectNext)]
+        #[case(combo(Key::BackTab), ErViewerCommand::SelectPrev)]
+        #[case(combo(Key::Char('H')), ErViewerCommand::PanLeft)]
+        #[case(combo(Key::Char('J')), ErViewerCommand::PanDown)]
+        #[case(combo(Key::Char('+')), ErViewerCommand::ZoomIn)]
+        #[case(combo(Key::Char('-')), ErViewerCommand::ZoomOut)]
+        #[case(combo(Key::Char('0')), ErViewerCommand::ResetZoom)]
+        #[case(combo(Key::Char('f')), ErViewerCommand::FitView)]
+        #[case(combo(Key::Char('c')), ErViewerCommand::CenterOnSelected)]
+        fn viewer_keys_map_to_commands(#[case] key: KeyCombo, #[case] expected: ErViewerCommand) {
+            let result = handle_er_diagram_keys(key);
+
+            assert!(matches!(result, Action::ErViewer(command) if command == expected));
+        }
+
+        #[rstest]
+        #[case(Key::Esc)]
+        #[case(Key::Char('q'))]
+        fn close_keys_close_viewer(#[case] key: Key) {
+            let result = handle_er_diagram_keys(combo(key));
+
+            assert!(matches!(result, Action::CloseModal(ModalKind::ErDiagram)));
+        }
+
+        #[test]
+        fn question_mark_toggles_help() {
+            let result = handle_er_diagram_keys(combo(Key::Char('?')));
+
+            assert!(matches!(result, Action::ToggleModal(ModalKind::Help)));
+        }
+
+        #[test]
+        fn sqlite_without_er_support_ignores_viewer_keys() {
+            let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::sqlite_like());
+
+            let result = handle_er_diagram_keys_with_policy(combo(Key::Char('h')), &feature_policy);
+
+            assert!(matches!(result, Action::None));
         }
     }
 }

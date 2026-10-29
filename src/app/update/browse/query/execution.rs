@@ -366,6 +366,7 @@ mod tests {
     use crate::cmd::test_fixtures;
     use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType};
     use crate::model::er_state::ErStatus;
+    use crate::model::er_state::ErViewerCommand;
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
@@ -405,6 +406,8 @@ mod tests {
             });
             Ok(RenderOutput::default())
         }
+
+        fn apply_er_viewer_command(&mut self, _command: ErViewerCommand) {}
     }
 
     fn append_runtime_render(state: &AppState, effects: &mut Vec<Effect>) {

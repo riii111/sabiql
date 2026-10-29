@@ -5,29 +5,21 @@ use std::sync::Arc;
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
-use super::task::spawn_er_diagram_task;
+use super::task::spawn_er_layout_task;
 use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::effect::Effect;
-use crate::domain::er::{er_output_filename, fk_neighbors_of_seeds, fk_reachable_tables_multi};
+use crate::domain::er::{fk_neighbors_of_seeds, fk_reachable_tables_multi};
 use crate::domain::{DatabaseMetadata, ErTableInfo, TableSignatureSnapshot};
 use crate::model::app_state::AppState;
-use crate::ports::outbound::{ConfigWriter, ErDiagramExporter, ErLogWriter, MetadataProvider};
+use crate::ports::outbound::{ConfigWriter, ErDiagramLayout, ErLogWriter, MetadataProvider};
 use crate::update::action::{
     Action, SmartErRefreshError, SmartErRefreshFetched, SmartErRefreshResult,
 };
 
-struct GenerateErDiagramRequest {
-    run_id: u64,
-    total_tables: usize,
-    project_name: String,
-    target_tables: Vec<String>,
-    browser: Option<String>,
-}
-
 pub(in crate::cmd) async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
-    er_exporter: &Arc<dyn ErDiagramExporter>,
+    er_layout: &Arc<dyn ErDiagramLayout>,
     config_writer: &Arc<dyn ConfigWriter>,
     er_log_writer: &Arc<dyn ErLogWriter>,
     state: &AppState,
@@ -37,21 +29,15 @@ pub(in crate::cmd) async fn run(
         Effect::GenerateErDiagramFromCache {
             run_id,
             total_tables,
-            project_name,
             target_tables,
         } => {
             handle_generate_diagram(
                 action_tx,
-                er_exporter,
-                config_writer,
+                er_layout,
                 completion_engine,
-                GenerateErDiagramRequest {
-                    run_id,
-                    total_tables,
-                    project_name,
-                    target_tables,
-                    browser: state.settings.saved_er_browser().map(str::to_string),
-                },
+                run_id,
+                total_tables,
+                &target_tables,
             )
             .await
         }
@@ -144,18 +130,12 @@ pub(in crate::cmd) fn smart_refresh_task(
 
 async fn handle_generate_diagram(
     action_tx: &mpsc::Sender<Action>,
-    er_exporter: &Arc<dyn ErDiagramExporter>,
-    config_writer: &Arc<dyn ConfigWriter>,
+    er_layout: &Arc<dyn ErDiagramLayout>,
     completion_engine: &RefCell<CompletionEngine>,
-    request: GenerateErDiagramRequest,
+    run_id: u64,
+    total_tables: usize,
+    target_tables: &[String],
 ) -> Result<()> {
-    let GenerateErDiagramRequest {
-        run_id,
-        total_tables,
-        project_name,
-        target_tables,
-        browser,
-    } = request;
     let all_tables = collect_cached_er_tables(completion_engine);
     if all_tables.is_empty() {
         action_tx
@@ -169,11 +149,10 @@ async fn handle_generate_diagram(
     }
 
     let total = all_tables.len();
-    let filename = er_output_filename(&target_tables, total);
-    let tables = if target_tables.is_empty() || target_tables.len() == total {
+    let mut tables = if target_tables.is_empty() || target_tables.len() == total {
         all_tables
     } else {
-        fk_reachable_tables_multi(&all_tables, &target_tables, 1)
+        fk_reachable_tables_multi(&all_tables, target_tables, 1)
     };
 
     if tables.is_empty() {
@@ -187,16 +166,13 @@ async fn handle_generate_diagram(
         return Ok(());
     }
 
-    let cache_dir = config_writer.get_cache_dir(&project_name)?;
-    spawn_er_diagram_task(
-        Arc::clone(er_exporter),
+    tables.sort_by(|a, b| a.qualified_name.cmp(&b.qualified_name));
+    spawn_er_layout_task(
+        Arc::clone(er_layout),
         tables,
         run_id,
         total_tables,
-        cache_dir,
         action_tx.clone(),
-        filename,
-        browser,
     );
     Ok(())
 }

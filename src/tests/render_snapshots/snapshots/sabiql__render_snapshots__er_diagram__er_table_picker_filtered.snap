@@ -14,8 +14,8 @@ test_project ▸ test_db ▸ -                                                  
 │                                │  > user                                                                                         │                                │
 │                                │  Mode:    Invalid                                                                               │                                │
 │                                │  Targets: —                                                                                     │                                │
-│                                │  Output:  —                                                                                     │                                │
 │                                │▸     public.users                                                                               │                                │
+│                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │

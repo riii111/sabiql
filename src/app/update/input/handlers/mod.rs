@@ -98,6 +98,9 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
         }
         InputMode::ConnectionSelector => connections::handle_connection_selector_keys(combo),
         InputMode::ErTablePicker => pickers::handle_er_table_picker_keys(combo, state),
+        InputMode::ErDiagram => {
+            overlays::handle_er_diagram_keys_with_policy(combo, &feature_policy)
+        }
         InputMode::QueryHistoryPicker => pickers::handle_query_history_picker_keys(combo),
         InputMode::JsonDetail => json::handle_json_detail_keys_with_policy(
             combo,

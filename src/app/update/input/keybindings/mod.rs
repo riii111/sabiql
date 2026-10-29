@@ -94,6 +94,9 @@ pub const TABLE_PICKER: ModeBindings = ModeBindings {
 pub const ER_PICKER: ModeBindings = ModeBindings {
     rows: ER_PICKER_ROWS,
 };
+pub const ER_DIAGRAM: ModeBindings = ModeBindings {
+    rows: ER_DIAGRAM_ROWS,
+};
 pub const QUERY_HISTORY_PICKER: ModeBindings = ModeBindings {
     rows: QUERY_HISTORY_PICKER_ROWS,
 };
@@ -127,6 +130,7 @@ pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("CONNECTION_ERROR", &CONNECTION_ERROR),
     ("TABLE_PICKER", &TABLE_PICKER),
     ("ER_PICKER", &ER_PICKER),
+    ("ER_DIAGRAM", &ER_DIAGRAM),
     ("QUERY_HISTORY_PICKER", &QUERY_HISTORY_PICKER),
     ("COMMAND_PALETTE", &COMMAND_PALETTE),
     ("SETTINGS", &SETTINGS),

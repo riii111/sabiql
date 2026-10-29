@@ -36,6 +36,7 @@ mockall = "0.13"
 nucleo-matcher = "0.3"
 quick-xml = { version = "0.38", features = ["async-tokio"] }
 ratatui = "0.30"
+rataflow = { version = "0.1", default-features = false, features = ["sugiyama"] }
 rstest = "0.19"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

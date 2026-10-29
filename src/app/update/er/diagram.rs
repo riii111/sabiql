@@ -2,7 +2,9 @@ use std::time::Instant;
 
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
-use crate::update::action::{Action, ErDiagramInfo};
+use crate::model::er_state::ErDiagram;
+use crate::model::shared::input_mode::InputMode;
+use crate::update::action::{Action, ErDiagramInfo, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 
@@ -14,8 +16,8 @@ pub(super) fn reduce_diagram_lifecycle(
     match action {
         Action::ErDiagramOpened(ErDiagramInfo {
             run_id,
-            path,
-            table_count,
+            tables,
+            layout,
             total_tables,
         }) => {
             if !state.er_preparation.is_current_run(*run_id) {
@@ -26,11 +28,32 @@ pub(super) fn reduce_diagram_lifecycle(
             state.table_prefetch.invalidate_prefetch();
             state.messages.set_success_at(
                 format!(
-                    "✓ Opened {path} ({table_count}/{total_tables} tables) — Stale? Press r to reload"
+                    "✓ ER diagram ready ({}/{total_tables} tables)",
+                    tables.len()
                 ),
                 now,
             );
+            state.er_diagram = Some(ErDiagram {
+                id: *run_id,
+                tables: tables.clone(),
+                total_tables: *total_tables,
+                layout: layout.clone(),
+            });
+            if state.input_mode() != InputMode::ErDiagram {
+                state.modal.push_mode(InputMode::ErDiagram);
+            }
             DispatchResult::handled()
+        }
+        Action::CloseModal(ModalKind::ErDiagram) => {
+            state.er_diagram = None;
+            state.modal.pop_mode();
+            DispatchResult::handled()
+        }
+        Action::ErViewer(command) => {
+            if state.er_diagram.is_none() {
+                return DispatchResult::handled();
+            }
+            DispatchResult::handled_with(vec![Effect::ApplyErViewerCommand(*command)])
         }
         Action::ErDiagramFailed { run_id, error } => {
             if !state.er_preparation.is_current_run(*run_id) {
@@ -86,7 +109,6 @@ pub(super) fn reduce_diagram_lifecycle(
             DispatchResult::handled_with(vec![Effect::GenerateErDiagramFromCache {
                 run_id,
                 total_tables,
-                project_name: state.project_name().to_string(),
                 target_tables: state.er_preparation.target_tables().to_vec(),
             }])
         }
