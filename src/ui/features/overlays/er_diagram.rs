@@ -1,14 +1,14 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use rataflow::{
-    ControlsAction, Edge, EdgeMarker, EdgeStyle, EventResponse, FitViewOptions, FloatingEdge, Flow,
-    FlowAction, Node, Palette, Position, Sugiyama, TextContent, Theme,
+    ControlsAction, Edge, EdgeMarker, EdgeStyle, EventResponse, FitViewOptions, FloatingAttachment,
+    FloatingEdge, Flow, FlowAction, Node, Palette, Position, Sugiyama, TextContent, Theme,
 };
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Clear, Paragraph};
+use ratatui::widgets::{Clear, Paragraph, Wrap};
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::model::app_state::AppState;
@@ -16,6 +16,7 @@ use crate::app::model::er_state::{ErDiagram, ErLayout, ErViewerCommand};
 use crate::app::update::input::keybindings::er_diagram;
 use crate::domain::ErTableInfo;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
+use crate::primitives::utils::text_utils::wrapped_line_count;
 use crate::theme::ThemePalette;
 
 type ErFlow = Flow<TextContent, FloatingEdge>;
@@ -26,7 +27,11 @@ const MAX_RANK_SPACING: usize = 36;
 const COMPONENT_GAP: f64 = 4.0;
 const COMPONENT_COLUMN_GAP: f64 = COMPONENT_GAP * 2.0;
 const MIN_ZOOM: f64 = 0.2;
+// rataflow's Sugiyama layout grows superlinearly (seconds past ~1000 tables);
+// beyond this, tables are packed in a grid instead.
+const LAYERED_LAYOUT_MAX_TABLES: usize = 800;
 const FIT_PADDING: f64 = 1.0;
+const MAX_STATUS_LINES: u16 = 3;
 const SELF_REFERENCE_MARK: &str = "↻";
 
 /// FK constraints between one ordered pair of tables.
@@ -47,6 +52,7 @@ pub struct ErDiagramView {
     flow: Option<ErFlow>,
     relations: Vec<Relation>,
     build_error: Option<String>,
+    show_all_fk_names: bool,
 }
 
 impl ErDiagramView {
@@ -69,13 +75,32 @@ impl ErDiagramView {
             flow,
             relations,
             build_error,
+            show_all_fk_names: false,
         };
     }
 
     pub fn apply(&mut self, command: ErViewerCommand) {
+        if command == ErViewerCommand::ToggleFkNames {
+            self.show_all_fk_names = !self.show_all_fk_names;
+            return;
+        }
         let Some(flow) = self.flow.as_mut() else {
             return;
         };
+        let directional = matches!(
+            command,
+            ErViewerCommand::SelectLeft
+                | ErViewerCommand::SelectDown
+                | ErViewerCommand::SelectUp
+                | ErViewerCommand::SelectRight
+        );
+        if directional && flow.first_selected_node_id().is_none() {
+            // rataflow would jump to the first table; start where the user is looking.
+            if let Some(id) = table_nearest_view_center(flow) {
+                flow.select_node(&id);
+            }
+            return;
+        }
         let _ = match command {
             ErViewerCommand::SelectLeft => flow.apply(FlowAction::SelectLeft),
             ErViewerCommand::SelectDown => flow.apply(FlowAction::SelectDown),
@@ -91,6 +116,7 @@ impl ErDiagramView {
             ErViewerCommand::ZoomIn => flow.apply_controls_action(ControlsAction::ZoomIn),
             ErViewerCommand::ZoomOut => flow.apply_controls_action(ControlsAction::ZoomOut),
             ErViewerCommand::ResetZoom => flow.apply_controls_action(ControlsAction::ResetZoom),
+            ErViewerCommand::ToggleFkNames => EventResponse::NotHandled,
             ErViewerCommand::FitView => {
                 flow.request_fit_view_with_options(FitViewOptions {
                     padding: FIT_PADDING,
@@ -116,7 +142,6 @@ impl ErDiagramViewer {
         view: &mut ErDiagramView,
         theme: &ThemePalette,
     ) {
-        view.sync(state.er_diagram.as_ref());
         let Some(diagram) = state.er_diagram.as_ref() else {
             return;
         };
@@ -136,17 +161,22 @@ impl ErDiagramViewer {
                 er_diagram::PAN.as_hint(),
                 er_diagram::ZOOM.as_hint(),
                 er_diagram::FIT.as_hint(),
+                er_diagram::FK_NAMES.as_hint(),
                 er_diagram::HELP.as_hint(),
                 er_diagram::ESC_CLOSE.as_hint(),
             ]),
             theme,
         );
-        let [canvas_area, status_area] =
-            Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
-
         let selected = view.selected_table();
         let status = status_line(selected.as_deref(), &view.relations, diagram, theme);
-        frame.render_widget(Paragraph::new(status), status_area);
+        let status_height =
+            wrapped_line_count(&status.to_string(), inner.width).clamp(1, MAX_STATUS_LINES);
+        let [canvas_area, status_area] =
+            Layout::vertical([Constraint::Min(1), Constraint::Length(status_height)]).areas(inner);
+        frame.render_widget(
+            Paragraph::new(status).wrap(Wrap { trim: false }),
+            status_area,
+        );
 
         let Some(flow) = view.flow.as_mut() else {
             let message = view.build_error.as_deref().unwrap_or("Nothing to draw");
@@ -160,7 +190,13 @@ impl ErDiagramViewer {
             return;
         };
         flow.theme = Theme::Custom(flow_palette(theme));
-        apply_edge_styles(flow, &view.relations, selected.as_deref(), theme);
+        apply_edge_styles(
+            flow,
+            &view.relations,
+            selected.as_deref(),
+            view.show_all_fk_names,
+            theme,
+        );
         frame.render_widget(&mut *flow, canvas_area);
         // Fit and center can leave a half-cell pan offset, which makes box borders
         // and edge endpoints round to different rows. Snap to whole cells.
@@ -212,18 +248,25 @@ pub fn layout_tables(tables: &[ErTableInfo], seed_tables: &[String]) -> ErLayout
         .max()
         .map_or(MIN_RANK_SPACING, |width| width + 4)
         .clamp(MIN_RANK_SPACING, MAX_RANK_SPACING);
-    // Left-to-right keeps FK labels on horizontal segments, where they read best.
-    flow.apply_layout(
-        Sugiyama::horizontal()
-            .with_rank_spacing(rank_spacing as f64)
-            .with_node_spacing(NODE_SPACING),
-    );
-    let main_component = pack_components(&mut flow);
+    let layered = flow.nodes().count() <= LAYERED_LAYOUT_MAX_TABLES;
+    if layered {
+        // Left-to-right keeps FK labels on horizontal segments, where they read best.
+        flow.apply_layout(
+            Sugiyama::horizontal()
+                .with_rank_spacing(rank_spacing as f64)
+                .with_node_spacing(NODE_SPACING),
+        );
+    }
+    let main_component = pack_components(&mut flow, layered);
     let seeds: Vec<String> = seed_tables
         .iter()
         .filter(|id| flow.node(id).is_some())
         .cloned()
         .collect();
+    let selected_table = match seeds.as_slice() {
+        [only] => Some(only.clone()),
+        _ => None,
+    };
     let focus_tables = if seeds.is_empty() {
         main_component
     } else {
@@ -239,6 +282,7 @@ pub fn layout_tables(tables: &[ErTableInfo], seed_tables: &[String]) -> ErLayout
             })
             .collect(),
         focus_tables,
+        selected_table,
     }
 }
 
@@ -270,9 +314,8 @@ fn build_flow(
     for id in &ids {
         flow.set_handles_hidden(id, true);
     }
-    // A single focused table is the picked table of a partial diagram.
-    if let [only] = layout.focus_tables.as_slice() {
-        flow.select_node(only);
+    if let Some(table) = &layout.selected_table {
+        flow.select_node(table);
     }
     // Start at full size so names stay legible; `f` zooms out to show everything.
     flow.request_fit_view_with_options(FitViewOptions {
@@ -318,40 +361,51 @@ fn relation_edges(
     relations: &[Relation],
     is_known: impl Fn(&str) -> bool,
 ) -> Vec<Edge<FloatingEdge>> {
-    let by_pair: HashMap<(&str, &str), &Relation> = relations
-        .iter()
-        .map(|r| ((r.from.as_str(), r.to.as_str()), r))
-        .collect();
+    let by_pair = relations_by_pair(relations);
 
     relations
         .iter()
         .filter(|r| r.from != r.to && is_known(&r.from) && is_known(&r.to))
-        .filter_map(|r| {
+        .enumerate()
+        .filter_map(|(i, r)| {
             let reverse = by_pair.get(&(r.to.as_str(), r.from.as_str()));
             if reverse.is_some() && r.from > r.to {
                 return None;
             }
-            let mut names = r.fk_names.clone();
-            if let Some(reverse) = reverse {
-                names.extend(reverse.fk_names.iter().cloned());
-            }
             Some(
-                Edge::new(edge_id(&r.from, &r.to), r.from.as_str(), r.to.as_str())
-                    .with_label(names.join(", "))
-                    .with_content(FloatingEdge::stepped()),
+                Edge::new(format!("fk-{i}"), r.from.as_str(), r.to.as_str())
+                    .with_label(edge_label(&by_pair, &r.from, &r.to))
+                    .with_content(
+                        FloatingEdge::stepped().with_attachment(FloatingAttachment::Perimeter),
+                    ),
             )
         })
         .collect()
 }
 
-fn edge_id(from: &str, to: &str) -> String {
-    format!("{from}->{to}")
+fn relations_by_pair(relations: &[Relation]) -> HashMap<(&str, &str), &Relation> {
+    relations
+        .iter()
+        .map(|r| ((r.from.as_str(), r.to.as_str()), r))
+        .collect()
+}
+
+/// FK names drawn on the edge between two tables, in both directions.
+fn edge_label(by_pair: &HashMap<(&str, &str), &Relation>, from: &str, to: &str) -> String {
+    [(from, to), (to, from)]
+        .iter()
+        .filter_map(|pair| by_pair.get(pair))
+        .flat_map(|r| &r.fk_names)
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Sugiyama lays out each connected component from the origin, so components
 /// (and FK-less tables) would pile up on top of each other. Arrange them in
 /// rows instead, largest first, and return the ids of the largest component.
-fn pack_components(flow: &mut ErFlow) -> Vec<String> {
+/// Without a layered layout every table is packed on its own.
+fn pack_components(flow: &mut ErFlow, keep_connected: bool) -> Vec<String> {
     let ids: Vec<String> = flow.nodes().map(|node| node.id.clone()).collect();
     let index: HashMap<&str, usize> = ids
         .iter()
@@ -359,7 +413,7 @@ fn pack_components(flow: &mut ErFlow) -> Vec<String> {
         .map(|(i, id)| (id.as_str(), i))
         .collect();
     let mut parent: Vec<usize> = (0..ids.len()).collect();
-    for edge in flow.edges() {
+    for edge in flow.edges().iter().filter(|_| keep_connected) {
         if let (Some(&a), Some(&b)) = (
             index.get(edge.source.as_str()),
             index.get(edge.target.as_str()),
@@ -437,6 +491,23 @@ fn pack_components(flow: &mut ErFlow) -> Vec<String> {
         .unwrap_or_default()
 }
 
+fn table_nearest_view_center(flow: &ErFlow) -> Option<String> {
+    let canvas = flow.canvas_size();
+    let viewport = &flow.viewport;
+    let center = Position::new(
+        (canvas.width / 2.0 - viewport.x) / viewport.zoom,
+        (canvas.height / 2.0 - viewport.y) / viewport.zoom,
+    );
+    flow.nodes()
+        .map(|node| {
+            let dx = node.position.x + node.width / 2.0 - center.x;
+            let dy = node.position.y + node.height / 2.0 - center.y;
+            (node.id.clone(), dx.hypot(dy))
+        })
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(id, _)| id)
+}
+
 fn find_root(parent: &mut [usize], mut i: usize) -> usize {
     while parent[i] != i {
         parent[i] = parent[parent[i]];
@@ -459,35 +530,26 @@ fn flow_palette(theme: &ThemePalette) -> Palette {
 }
 
 /// Edges touching the selected table are drawn in the accent color and carry
-/// their FK names; the rest stay unlabeled so dense diagrams remain readable
-/// (labels do not shrink when zoomed out).
+/// their FK names. Other edges are labeled only on request: labels do not
+/// shrink when zoomed out and quickly bury dense diagrams.
 fn apply_edge_styles(
     flow: &mut ErFlow,
     relations: &[Relation],
     selected: Option<&str>,
+    show_all_fk_names: bool,
     theme: &ThemePalette,
 ) {
-    let fk_names: HashMap<(&str, &str), &[String]> = relations
-        .iter()
-        .map(|r| ((r.from.as_str(), r.to.as_str()), r.fk_names.as_slice()))
-        .collect();
+    let by_pair = relations_by_pair(relations);
     let edges: Vec<(String, bool, bool, Option<String>)> = flow
         .edges()
         .iter()
         .map(|edge| {
-            let highlighted = selected.is_some_and(|id| edge.source == id || edge.target == id);
-            let forward = fk_names.get(&(edge.source.as_str(), edge.target.as_str()));
-            let reverse = fk_names.get(&(edge.target.as_str(), edge.source.as_str()));
-            let label = highlighted.then(|| {
-                forward
-                    .into_iter()
-                    .chain(reverse)
-                    .flat_map(|names| names.iter())
-                    .map(String::as_str)
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            });
-            (edge.id.clone(), highlighted, reverse.is_some(), label)
+            let (source, target) = (edge.source.as_str(), edge.target.as_str());
+            let highlighted = selected.is_some_and(|id| source == id || target == id);
+            let bidirectional = by_pair.contains_key(&(target, source));
+            let label =
+                (highlighted || show_all_fk_names).then(|| edge_label(&by_pair, source, target));
+            (edge.id.clone(), highlighted, bidirectional, label)
         })
         .collect();
     for (id, highlighted, bidirectional, label_text) in edges {
@@ -504,7 +566,13 @@ fn apply_edge_styles(
             .with_stroke_style(stroke)
             .with_label_style(label);
         if bidirectional {
-            style = style.with_marker_start(EdgeMarker::ArrowClosed);
+            // rataflow points start markers away from the source; point back into it.
+            style = style.with_marker_start(EdgeMarker::CustomDirectional {
+                left: '▶',
+                right: '◀',
+                top: '▼',
+                bottom: '▲',
+            });
         }
         if let Some(content) = flow.edge_content_mut(&id) {
             content.style = Some(style);
@@ -521,7 +589,16 @@ fn status_line(
 ) -> Line<'static> {
     let muted = Style::default().fg(theme.semantic.text.muted);
     let Some(selected) = selected else {
-        let fk_count: usize = relations.iter().map(|r| r.fk_names.len()).sum();
+        let shown: HashSet<&str> = diagram
+            .tables
+            .iter()
+            .map(|t| t.qualified_name.as_str())
+            .collect();
+        let fk_count: usize = relations
+            .iter()
+            .filter(|r| shown.contains(r.from.as_str()) && shown.contains(r.to.as_str()))
+            .map(|r| r.fk_names.len())
+            .sum();
         return Line::from(Span::styled(
             format!(
                 " {} tables · {fk_count} foreign keys — press {} to select a table and show its foreign keys",
@@ -620,7 +697,7 @@ mod tests {
 
         let edge = edges
             .iter()
-            .find(|e| e.id == edge_id("public.posts", "public.users"))
+            .find(|e| e.connects_directed("public.posts", "public.users"))
             .unwrap();
         assert_eq!(edge.label.as_deref(), Some("fk_author, fk_editor"));
     }
@@ -663,14 +740,8 @@ mod tests {
         assert_eq!(node.content.text.lines[1].to_string(), "↻ fk_parent");
     }
 
-    #[test]
-    fn layout_places_every_table_without_overlap() {
-        let tables = sample_tables();
-        let relations = collect_relations(&tables);
-        let layout = layout_tables(&tables, &[]);
-
-        let flow = build_flow(&tables, &relations, &layout).unwrap();
-
+    fn assert_no_overlap(tables: &[ErTableInfo], layout: &ErLayout) {
+        let flow = build_flow(tables, &collect_relations(tables), layout).unwrap();
         let bounds: Vec<_> = flow.nodes().map(Node::bounds).collect();
         assert_eq!(bounds.len(), tables.len());
         for (i, a) in bounds.iter().enumerate() {
@@ -682,6 +753,15 @@ mod tests {
                 assert!(!overlaps, "{a:?} overlaps {b:?}");
             }
         }
+    }
+
+    #[test]
+    fn layout_places_every_table_without_overlap() {
+        let tables = sample_tables();
+
+        let layout = layout_tables(&tables, &[]);
+
+        assert_no_overlap(&tables, &layout);
     }
 
     #[test]
@@ -741,6 +821,78 @@ mod tests {
         let mut focus = layout.focus_tables;
         focus.sort();
         assert_eq!(focus, ["public.comments", "public.posts", "public.users"]);
+    }
+
+    #[test]
+    fn full_diagram_starts_without_selection() {
+        let tables = vec![table("public.a", &[]), table("public.b", &[])];
+
+        let layout = layout_tables(&tables, &[]);
+
+        assert_eq!(layout.selected_table, None);
+    }
+
+    #[test]
+    fn grid_fallback_places_tables_without_overlap() {
+        let tables: Vec<ErTableInfo> = (0..=LAYERED_LAYOUT_MAX_TABLES)
+            .map(|i| {
+                let target = format!("public.t{}", i / 2);
+                table(&format!("public.t{i}"), &[("fk", target.as_str())])
+            })
+            .collect();
+
+        let layout = layout_tables(&tables, &[]);
+
+        assert_no_overlap(&tables, &layout);
+    }
+
+    #[test]
+    fn toggle_labels_every_edge() {
+        let tables = sample_tables();
+        let relations = collect_relations(&tables);
+        let mut flow = build_flow(&tables, &relations, &layout_tables(&tables, &[])).unwrap();
+        let theme = palette_for(ThemeId::Default);
+
+        apply_edge_styles(&mut flow, &relations, None, false, theme);
+        assert!(flow.edges().iter().all(|e| e.label.is_none()));
+
+        apply_edge_styles(&mut flow, &relations, None, true, theme);
+        assert!(flow.edges().iter().all(|e| e.label.is_some()));
+    }
+
+    #[test]
+    fn selection_labels_only_its_edges() {
+        let tables = sample_tables();
+        let relations = collect_relations(&tables);
+        let mut flow = build_flow(&tables, &relations, &layout_tables(&tables, &[])).unwrap();
+
+        apply_edge_styles(
+            &mut flow,
+            &relations,
+            Some("public.users"),
+            false,
+            palette_for(ThemeId::Default),
+        );
+
+        let labeled: Vec<_> = flow
+            .edges()
+            .iter()
+            .filter_map(|e| e.label.as_deref())
+            .collect();
+        assert_eq!(labeled, ["fk_author, fk_editor"]);
+    }
+
+    #[test]
+    fn first_directional_select_starts_from_view_center() {
+        let mut view = ErDiagramView::default();
+        view.sync(Some(&diagram(1, sample_tables())));
+        let flow = view.flow.as_ref().unwrap();
+        let expected = table_nearest_view_center(flow);
+
+        view.apply(ErViewerCommand::SelectRight);
+
+        assert!(expected.is_some());
+        assert_eq!(view.selected_table(), expected);
     }
 
     #[test]

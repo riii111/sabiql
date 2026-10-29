@@ -506,10 +506,11 @@ mod tests {
         }
 
         #[test]
-        fn completion_over_another_modal_returns_there_on_close() {
+        fn completion_does_not_take_over_another_view() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.modal.set_mode(InputMode::SqlModal);
             let run_id = state.er_preparation.start_waiting_run();
+
             reduce(
                 &mut state,
                 Action::ErDiagramOpened(ErDiagramInfo {
@@ -519,11 +520,21 @@ mod tests {
                     total_tables: 1,
                 }),
             );
-            assert_eq!(state.input_mode(), InputMode::ErDiagram);
-
-            reduce(&mut state, Action::CloseModal(ModalKind::ErDiagram));
 
             assert_eq!(state.input_mode(), InputMode::SqlModal);
+            assert!(state.er_diagram.is_none());
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+            assert!(state.messages.last_success().is_some());
+        }
+
+        #[test]
+        fn help_over_viewer_returns_to_viewer() {
+            let mut state = opened_state();
+
+            reduce(&mut state, Action::ToggleModal(ModalKind::Help));
+            reduce(&mut state, Action::ToggleModal(ModalKind::Help));
+
+            assert_eq!(state.input_mode(), InputMode::ErDiagram);
         }
 
         #[test]

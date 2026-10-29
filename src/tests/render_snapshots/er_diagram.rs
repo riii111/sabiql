@@ -4,7 +4,7 @@ use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::er_state::ErDiagram;
 use sabiql_app::ports::outbound::ErDiagramLayout;
 use sabiql_domain::ErTableInfo;
-use sabiql_domain::er::ErFkInfo;
+use sabiql_domain::er::{ErFkInfo, fk_reachable_tables_multi};
 use sabiql_ui::adapters::RataflowErLayout;
 
 #[test]
@@ -170,6 +170,11 @@ fn er_table(schema: &str, name: &str, fks: &[(&str, &str)]) -> ErTableInfo {
 fn er_viewer_state(tables: Vec<ErTableInfo>, seed_tables: &[String]) -> AppState {
     let mut state = explorer_selected_state();
     let total_tables = tables.len();
+    let tables = if seed_tables.is_empty() {
+        tables
+    } else {
+        fk_reachable_tables_multi(&tables, seed_tables, 1)
+    };
     let layout = RataflowErLayout.layout(&tables, seed_tables);
     state.er_diagram = Some(ErDiagram {
         id: 1,

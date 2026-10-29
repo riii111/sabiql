@@ -68,6 +68,12 @@ impl MainLayout {
         theme: &ThemePalette,
     ) -> RenderOutput {
         let area = frame.area();
+        // Help can sit on top of the viewer; anywhere else the cached flow is dropped.
+        er_view.sync(
+            matches!(state.input_mode(), InputMode::ErDiagram | InputMode::Help)
+                .then_some(state.er_diagram.as_ref())
+                .flatten(),
+        );
 
         let [header_area, main_area, footer_area, cmdline_area] = Layout::vertical([
             Constraint::Length(1),

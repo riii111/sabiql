@@ -29,6 +29,8 @@ pub struct ErLayout {
     pub positions: HashMap<String, (f64, f64)>,
     /// Tables the initial viewport is fitted to.
     pub focus_tables: Vec<String>,
+    /// The single table picked for a partial diagram, selected on open.
+    pub selected_table: Option<String>,
 }
 
 /// Viewer operations applied by the renderer, which owns the diagram's
@@ -50,6 +52,7 @@ pub enum ErViewerCommand {
     ResetZoom,
     FitView,
     CenterOnSelected,
+    ToggleFkNames,
 }
 
 #[derive(Debug, Clone, Default)]

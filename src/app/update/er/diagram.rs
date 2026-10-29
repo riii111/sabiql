@@ -7,6 +7,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ErDiagramInfo, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
+use crate::update::input::keybindings::global;
 
 pub(super) fn reduce_diagram_lifecycle(
     state: &mut AppState,
@@ -26,6 +27,18 @@ pub(super) fn reduce_diagram_lifecycle(
             state.er_preparation.mark_idle();
             // Reset so next ErOpenDiagram re-evaluates target_tables from scratch.
             state.table_prefetch.invalidate_prefetch();
+            // Never take over the keyboard from a view the user moved on to while
+            // the diagram was being prepared.
+            if state.input_mode() != InputMode::Normal {
+                state.messages.set_success_at(
+                    format!(
+                        "ER diagram finished while another view was open — press {} to open it again",
+                        global::ER_DIAGRAM.key_short
+                    ),
+                    now,
+                );
+                return DispatchResult::handled();
+            }
             state.messages.set_success_at(
                 format!(
                     "✓ ER diagram ready ({}/{total_tables} tables)",
@@ -39,14 +52,14 @@ pub(super) fn reduce_diagram_lifecycle(
                 total_tables: *total_tables,
                 layout: layout.clone(),
             });
-            if state.input_mode() != InputMode::ErDiagram {
-                state.modal.push_mode(InputMode::ErDiagram);
-            }
+            state.modal.push_mode(InputMode::ErDiagram);
             DispatchResult::handled()
         }
         Action::CloseModal(ModalKind::ErDiagram) => {
             state.er_diagram = None;
-            state.modal.pop_mode();
+            if state.input_mode() == InputMode::ErDiagram {
+                state.modal.pop_mode();
+            }
             DispatchResult::handled()
         }
         Action::ErViewer(command) => {

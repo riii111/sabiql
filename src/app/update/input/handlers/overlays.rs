@@ -502,5 +502,14 @@ mod tests {
 
             assert!(matches!(result, Action::None));
         }
+
+        #[test]
+        fn sqlite_without_er_support_still_closes_viewer() {
+            let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::sqlite_like());
+
+            let result = handle_er_diagram_keys_with_policy(combo(Key::Esc), &feature_policy);
+
+            assert!(matches!(result, Action::CloseModal(ModalKind::ErDiagram)));
+        }
     }
 }

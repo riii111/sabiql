@@ -54,6 +54,7 @@ mod tests {
                     .map(|t| (t.qualified_name.clone(), (1.0, 2.0)))
                     .collect(),
                 focus_tables: seed_tables.to_vec(),
+                selected_table: None,
             }
         }
     }

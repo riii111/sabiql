@@ -432,6 +432,10 @@ fn reference_sections(
             er_picker_rows(keymap_preset),
             feature_policy,
         ));
+        advanced_rows.extend(rows_from_mode_rows_if_visible(
+            ER_DIAGRAM_ROWS,
+            feature_policy,
+        ));
     }
     if feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail) {
         advanced_rows.extend(rows_from_mode_rows_if_visible(

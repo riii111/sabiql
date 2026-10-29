@@ -681,7 +681,10 @@ pub mod er_diagram {
             },
             ExecBinding {
                 action: Action::ErViewer(ErViewerCommand::ZoomOut),
-                combos: &[KeyCombo::plain(Key::Char('-'))],
+                combos: &[
+                    KeyCombo::plain(Key::Char('-')),
+                    KeyCombo::plain(Key::Char('_')),
+                ],
             },
         ],
     };
@@ -719,6 +722,17 @@ pub mod er_diagram {
         }],
     };
 
+    pub const FK_NAMES: ModeRow = ModeRow {
+        key_short: "n",
+        key: "n",
+        desc_short: "FK names",
+        description: "Show FK names on every edge / only the selected table's",
+        bindings: &[ExecBinding {
+            action: Action::ErViewer(ErViewerCommand::ToggleFkNames),
+            combos: &[KeyCombo::plain(Key::Char('n'))],
+        }],
+    };
+
     pub const HELP: ModeRow = ModeRow {
         key_short: "?",
         key: "?",
@@ -731,7 +745,7 @@ pub mod er_diagram {
     };
 
     pub const ESC_CLOSE: ModeRow = ModeRow {
-        key_short: "Esc/q",
+        key_short: "Esc",
         key: "Esc / q",
         desc_short: "Close",
         description: "Close ER diagram",
@@ -750,6 +764,7 @@ pub const ER_DIAGRAM_ROWS: &[ModeRow] = &[
     er_diagram::RESET_ZOOM,
     er_diagram::FIT,
     er_diagram::CENTER,
+    er_diagram::FK_NAMES,
     er_diagram::HELP,
     er_diagram::ESC_CLOSE,
 ];

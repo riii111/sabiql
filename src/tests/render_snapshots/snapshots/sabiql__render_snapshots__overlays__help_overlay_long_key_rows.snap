@@ -21,7 +21,7 @@ test_project ▸ test_db ▸ -                                                  
 │                        │  Enter                                        Execute the confirmed statement                                  ││                        │
 │                        │  Esc                                          Cancel and return to editor                                      ││                        │
 │                        │  Esc                                          Return to Normal mode                                            ││                        │
-│                        │  ↑↓←→                                         Move cursor                                                      ││                        │
+│                        │  ↑↓←→                                         Move cursor                                                      ┃│                        │
 │                        │  Home / End                                   Line start/end                                                   ┃│                        │
 │                        │                                                                                                                ┃│                        │
 │                        │▸ Search / Filter                                                                                               ┃│                        │
@@ -29,7 +29,7 @@ test_project ▸ test_db ▸ -                                                  
 │                        │  type                                         Type to filter                                                   ┃│────────────────────────┘
 │                        │  type                                         Type to filter                                                   ┃│────────────────────────┐
 │                        │  type                                         Type to search                                                   ┃│                        │
-│                        │  Enter                                        Confirm search                                                   ┃│                        │
+│                        │  Enter                                        Confirm search                                                   ││                        │
 │                        │  Esc                                          Cancel search                                                    ││                        │
 │                        │  Ctrl+N / Ctrl+P / j / k / ↑ / ↓              Scroll down / up                                                 ││                        │
 │                        │  Home / End                                   Jump to top / bottom                                             ││                        │
