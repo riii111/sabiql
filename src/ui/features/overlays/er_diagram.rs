@@ -646,7 +646,7 @@ fn apply_edge_styles(
             (accent, accent.add_modifier(Modifier::BOLD))
         } else {
             (
-                Style::default().fg(theme.semantic.surface.unfocus_border),
+                Style::default().fg(theme.component.modal.border),
                 Style::default().fg(theme.semantic.text.secondary),
             )
         };
