@@ -18,7 +18,7 @@ use crate::app::model::er_state::{ErDiagram, ErLayout, ErViewerCommand};
 use crate::app::update::input::keybindings::er_diagram;
 use crate::domain::ErTableInfo;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
-use crate::primitives::utils::text_utils::wrapped_line_count;
+use crate::primitives::utils::text_utils::{truncate_to_width_with, wrapped_line_count};
 use crate::theme::ThemePalette;
 
 type ErFlow = Flow<TableNode, FloatingEdge>;
@@ -63,9 +63,13 @@ impl NodeContent for TableNode {
         let text = Style::default().fg(palette.text);
 
         if ctx.area.height < 3 {
-            block
-                .title(Span::styled(self.name.as_str(), text))
-                .render(ctx.area, buf);
+            // Too small for text inside: the name takes the whole top row,
+            // corners included, and shows an ellipsis when it is cut.
+            let area = ctx.area;
+            block.render(area, buf);
+            let name = truncate_to_width_with(&self.name, area.width as usize, "…");
+            buf.set_string(area.x, area.y, " ".repeat(area.width as usize), border);
+            buf.set_string(area.x, area.y, name, text);
             return;
         }
 
@@ -177,8 +181,6 @@ impl ErDiagramView {
             ErViewerCommand::PanRight => flow.apply(FlowAction::PanRight),
             ErViewerCommand::PanHalfPageDown => pan_by_page(flow, 0.5),
             ErViewerCommand::PanHalfPageUp => pan_by_page(flow, -0.5),
-            ErViewerCommand::PanPageDown => pan_by_page(flow, 1.0),
-            ErViewerCommand::PanPageUp => pan_by_page(flow, -1.0),
             ErViewerCommand::ClearSelection => flow.apply(FlowAction::ClearSelection),
             ErViewerCommand::CenterOnSelected => flow.apply(FlowAction::CenterOnSelected),
             ErViewerCommand::ZoomIn => flow.apply_controls_action(ControlsAction::ZoomIn),
@@ -339,20 +341,10 @@ pub fn layout_tables(tables: &[ErTableInfo], seed_tables: &[String]) -> ErLayout
                 .with_node_spacing(NODE_SPACING),
         );
     }
-    let main_component = pack_components(&mut flow, layered);
-    let seeds: Vec<String> = seed_tables
-        .iter()
-        .filter(|id| flow.node(id).is_some())
-        .cloned()
-        .collect();
-    let selected_table = match seeds.as_slice() {
-        [only] => Some(only.clone()),
+    pack_components(&mut flow, layered);
+    let selected_table = match seed_tables {
+        [only] if flow.node(only).is_some() => Some(only.clone()),
         _ => None,
-    };
-    let focus_tables = if seeds.is_empty() {
-        main_component
-    } else {
-        seeds
     };
 
     ErLayout {
@@ -363,7 +355,6 @@ pub fn layout_tables(tables: &[ErTableInfo], seed_tables: &[String]) -> ErLayout
                 (node.id.clone(), position)
             })
             .collect(),
-        focus_tables,
         selected_table,
     }
 }
@@ -420,7 +411,8 @@ fn build_flow(
         padding: FIT_PADDING,
         min_zoom: Some(1.0),
         max_zoom: Some(1.0),
-        nodes: layout.focus_tables.clone(),
+        // The picked table of a partial diagram, otherwise the whole diagram.
+        nodes: layout.selected_table.iter().cloned().collect(),
         ..FitViewOptions::default()
     });
     Ok(flow)
@@ -502,9 +494,9 @@ fn edge_label(by_pair: &HashMap<(&str, &str), &Relation>, from: &str, to: &str) 
 
 /// Sugiyama lays out each connected component from the origin, so components
 /// (and FK-less tables) would pile up on top of each other. Arrange them in
-/// rows instead, largest first, and return the ids of the largest component.
-/// Without a layered layout every table is packed on its own.
-fn pack_components(flow: &mut ErFlow, keep_connected: bool) -> Vec<String> {
+/// rows instead, largest first. Without a layered layout every table is packed
+/// on its own.
+fn pack_components(flow: &mut ErFlow, keep_connected: bool) {
     let ids: Vec<String> = flow.nodes().map(|node| node.id.clone()).collect();
     let index: HashMap<&str, usize> = ids
         .iter()
@@ -583,11 +575,6 @@ fn pack_components(flow: &mut ErFlow, keep_connected: bool) -> Vec<String> {
         row_height = row_height.max(height);
     }
     flow.set_node_positions(positions);
-
-    components
-        .first()
-        .map(|members| members.iter().map(|&i| ids[i].clone()).collect())
-        .unwrap_or_default()
 }
 
 fn table_nearest_view_center(flow: &ErFlow) -> Option<String> {
@@ -943,12 +930,30 @@ mod tests {
     }
 
     #[test]
-    fn full_diagram_focuses_largest_component() {
-        let layout = layout_tables(&sample_tables(), &[]);
+    fn initial_view_centers_the_whole_diagram() {
+        let mut view = ErDiagramView::default();
+        view.sync(Some(&diagram(1, sample_tables())));
+        let flow = view.flow.as_mut().unwrap();
 
-        let mut focus = layout.focus_tables;
-        focus.sort();
-        assert_eq!(focus, ["public.comments", "public.posts", "public.users"]);
+        render_flow(flow, 200, 60);
+
+        let (mut left, mut top, mut right, mut bottom) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
+        for node in flow.nodes() {
+            let (x0, y0) = flow.world_to_terminal(node.position);
+            let (x1, y1) = flow.world_to_terminal(Position::new(
+                node.position.x + node.width,
+                node.position.y + node.height,
+            ));
+            (left, top, right, bottom) = (left.min(x0), top.min(y0), right.max(x1), bottom.max(y1));
+        }
+        assert!(
+            (i32::midpoint(left, right) - 100).abs() <= 1,
+            "x: {left}..{right}"
+        );
+        assert!(
+            (i32::midpoint(top, bottom) - 30).abs() <= 1,
+            "y: {top}..{bottom}"
+        );
     }
 
     #[test]
@@ -1098,6 +1103,32 @@ mod tests {
         );
     }
 
+    fn render_small_table(name: &str, width: u16) -> String {
+        let node = table_node(&table(&format!("public.{name}"), &[]), &[], true);
+        let area = Rect::new(0, 0, width, 2);
+        let mut buf = Buffer::empty(area);
+        node.content.render(
+            &NodeRenderContext {
+                id: name,
+                area,
+                selected: false,
+                dragging: false,
+                position_absolute: Position::new(0.0, 0.0),
+                theme: Theme::default(),
+                animation_phase: 0,
+            },
+            &mut buf,
+        );
+        (0..area.width)
+            .map(|x| buf[(x, 0)].symbol().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn zoomed_out_table_marks_a_cut_name() {
+        assert_eq!(render_small_table("organizations", 6), "organ…");
+    }
+
     #[test]
     fn zoomed_out_table_keeps_its_name_on_the_border() {
         let node = table_node(&table("public.users", &[]), &[], true);
@@ -1120,7 +1151,7 @@ mod tests {
         let top: String = (0..area.width)
             .map(|x| buf[(x, 0)].symbol().to_string())
             .collect();
-        assert!(top.contains("users"), "{top}");
+        assert_eq!(top.trim_end(), "users");
     }
 
     #[test]

@@ -642,34 +642,46 @@ pub mod er_diagram {
 
     pub const PAN: ModeRow = ModeRow {
         key_short: "HJKL",
-        key: "H / J / K / L",
+        key: "HJKL / Ctrl+B/N/P/F",
         desc_short: "Pan",
         description: "Pan the diagram",
         bindings: &[
             ExecBinding {
                 action: Action::ErViewer(ErViewerCommand::PanLeft),
-                combos: &[KeyCombo::plain(Key::Char('H'))],
+                combos: &[
+                    KeyCombo::plain(Key::Char('H')),
+                    KeyCombo::ctrl(Key::Char('b')),
+                ],
             },
             ExecBinding {
                 action: Action::ErViewer(ErViewerCommand::PanDown),
-                combos: &[KeyCombo::plain(Key::Char('J'))],
+                combos: &[
+                    KeyCombo::plain(Key::Char('J')),
+                    KeyCombo::ctrl(Key::Char('n')),
+                ],
             },
             ExecBinding {
                 action: Action::ErViewer(ErViewerCommand::PanUp),
-                combos: &[KeyCombo::plain(Key::Char('K'))],
+                combos: &[
+                    KeyCombo::plain(Key::Char('K')),
+                    KeyCombo::ctrl(Key::Char('p')),
+                ],
             },
             ExecBinding {
                 action: Action::ErViewer(ErViewerCommand::PanRight),
-                combos: &[KeyCombo::plain(Key::Char('L'))],
+                combos: &[
+                    KeyCombo::plain(Key::Char('L')),
+                    KeyCombo::ctrl(Key::Char('f')),
+                ],
             },
         ],
     };
 
     pub const PAGE: ModeRow = ModeRow {
-        key_short: "^D/^U ^F/^B",
-        key: "Ctrl+D / Ctrl+U / Ctrl+F / Ctrl+B",
-        desc_short: "Page",
-        description: "Pan half a page / a full page down or up",
+        key_short: "^D/^U",
+        key: "Ctrl+D / Ctrl+U",
+        desc_short: "Half page",
+        description: "Pan half a page down / up",
         bindings: &[
             ExecBinding {
                 action: Action::ErViewer(ErViewerCommand::PanHalfPageDown),
@@ -678,14 +690,6 @@ pub mod er_diagram {
             ExecBinding {
                 action: Action::ErViewer(ErViewerCommand::PanHalfPageUp),
                 combos: &[KeyCombo::ctrl(Key::Char('u'))],
-            },
-            ExecBinding {
-                action: Action::ErViewer(ErViewerCommand::PanPageDown),
-                combos: &[KeyCombo::ctrl(Key::Char('f'))],
-            },
-            ExecBinding {
-                action: Action::ErViewer(ErViewerCommand::PanPageUp),
-                combos: &[KeyCombo::ctrl(Key::Char('b'))],
             },
         ],
     };

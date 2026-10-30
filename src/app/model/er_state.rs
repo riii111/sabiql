@@ -29,9 +29,7 @@ pub struct ErDiagram {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ErLayout {
     pub positions: HashMap<String, (f64, f64)>,
-    /// Tables the initial viewport is fitted to.
-    pub focus_tables: Vec<String>,
-    /// The single table picked for a partial diagram, selected on open.
+    /// The single table picked for a partial diagram, selected and centered on open.
     pub selected_table: Option<String>,
 }
 
@@ -51,8 +49,6 @@ pub enum ErViewerCommand {
     PanRight,
     PanHalfPageDown,
     PanHalfPageUp,
-    PanPageDown,
-    PanPageUp,
     ZoomIn,
     ZoomOut,
     ResetZoom,

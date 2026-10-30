@@ -53,8 +53,7 @@ mod tests {
                     .iter()
                     .map(|t| (t.qualified_name.clone(), (1.0, 2.0)))
                     .collect(),
-                focus_tables: seed_tables.to_vec(),
-                selected_table: None,
+                selected_table: seed_tables.first().cloned(),
             }
         }
     }
@@ -104,7 +103,7 @@ mod tests {
                 assert_eq!(total_tables, 5);
                 assert_eq!(tables.len(), 1);
                 assert_eq!(layout.positions.get("public.users"), Some(&(1.0, 2.0)));
-                assert_eq!(layout.focus_tables, vec!["public.users"]);
+                assert_eq!(layout.selected_table.as_deref(), Some("public.users"));
             }
             _ => panic!("expected ErDiagramOpened, got {action:?}"),
         }

@@ -474,8 +474,10 @@ mod tests {
         #[case(combo(Key::Char('c')), ErViewerCommand::CenterOnSelected)]
         #[case(combo_ctrl(Key::Char('d')), ErViewerCommand::PanHalfPageDown)]
         #[case(combo_ctrl(Key::Char('u')), ErViewerCommand::PanHalfPageUp)]
-        #[case(combo_ctrl(Key::Char('f')), ErViewerCommand::PanPageDown)]
-        #[case(combo_ctrl(Key::Char('b')), ErViewerCommand::PanPageUp)]
+        #[case(combo_ctrl(Key::Char('b')), ErViewerCommand::PanLeft)]
+        #[case(combo_ctrl(Key::Char('n')), ErViewerCommand::PanDown)]
+        #[case(combo_ctrl(Key::Char('p')), ErViewerCommand::PanUp)]
+        #[case(combo_ctrl(Key::Char('f')), ErViewerCommand::PanRight)]
         fn viewer_keys_map_to_commands(#[case] key: KeyCombo, #[case] expected: ErViewerCommand) {
             let result = handle_er_diagram_keys(key);
 
