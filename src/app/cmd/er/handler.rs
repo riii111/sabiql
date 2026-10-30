@@ -149,16 +149,18 @@ async fn handle_generate_diagram(
     }
 
     let total = all_tables.len();
-    let is_full = target_tables.is_empty() || target_tables.len() == total;
-    let mut tables = if is_full {
-        all_tables
+    let (mut tables, selected_table) = if target_tables.is_empty() || target_tables.len() == total {
+        (all_tables, None)
     } else {
-        fk_reachable_tables_multi(&all_tables, target_tables, 1)
-    };
-    let seed_tables = if is_full {
-        vec![]
-    } else {
-        target_tables.to_vec()
+        // A single picked table starts selected so its FKs show right away.
+        let selected_table = match target_tables {
+            [only] => Some(only.clone()),
+            _ => None,
+        };
+        (
+            fk_reachable_tables_multi(&all_tables, target_tables, 1),
+            selected_table,
+        )
     };
 
     if tables.is_empty() {
@@ -176,7 +178,7 @@ async fn handle_generate_diagram(
     spawn_er_layout_task(
         Arc::clone(er_layout),
         tables,
-        seed_tables,
+        selected_table,
         run_id,
         total_tables,
         action_tx.clone(),

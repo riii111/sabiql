@@ -167,20 +167,22 @@ fn er_table(schema: &str, name: &str, fks: &[(&str, &str)]) -> ErTableInfo {
     }
 }
 
-fn er_viewer_state(tables: Vec<ErTableInfo>, seed_tables: &[String]) -> AppState {
+/// `picked` mirrors the ER picker with a single table: its neighbors only, and
+/// the table itself selected.
+fn er_viewer_state(tables: Vec<ErTableInfo>, picked: Option<&str>) -> AppState {
     let mut state = explorer_selected_state();
     let total_tables = tables.len();
-    let tables = if seed_tables.is_empty() {
-        tables
-    } else {
-        fk_reachable_tables_multi(&tables, seed_tables, 1)
+    let tables = match picked {
+        Some(table) => fk_reachable_tables_multi(&tables, &[table.to_string()], 1),
+        None => tables,
     };
-    let layout = RataflowErLayout.layout(&tables, seed_tables);
+    let layout = RataflowErLayout.layout(&tables);
     state.er_diagram = Some(ErDiagram {
         id: 1,
         tables,
         total_tables,
         layout,
+        selected_table: picked.map(str::to_string),
         has_selection: false,
     });
     state.modal.push_mode(InputMode::ErDiagram);
@@ -214,7 +216,7 @@ fn er_sample_tables() -> Vec<ErTableInfo> {
 
 #[test]
 fn er_viewer_lays_out_cycles_self_references_and_parallel_fks() {
-    let mut state = er_viewer_state(er_sample_tables(), &[]);
+    let mut state = er_viewer_state(er_sample_tables(), None);
     let mut terminal = create_test_terminal();
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -224,7 +226,7 @@ fn er_viewer_lays_out_cycles_self_references_and_parallel_fks() {
 
 #[test]
 fn er_viewer_partial_diagram_selects_seed_and_labels_its_fks() {
-    let mut state = er_viewer_state(er_sample_tables(), &["public.posts".to_string()]);
+    let mut state = er_viewer_state(er_sample_tables(), Some("public.posts"));
     let mut terminal = create_test_terminal();
 
     let output = render_to_string(&mut terminal, &mut state);

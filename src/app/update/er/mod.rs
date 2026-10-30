@@ -235,6 +235,7 @@ mod tests {
                     run_id,
                     tables: vec![],
                     layout: ErLayout::default(),
+                    selected_table: None,
                     total_tables: 1,
                 }),
                 Action::ErDiagramFailed {
@@ -277,6 +278,7 @@ mod tests {
                     run_id,
                     tables: vec![],
                     layout: ErLayout::default(),
+                    selected_table: None,
                     total_tables: 1,
                 }),
                 Instant::now(),
@@ -443,6 +445,7 @@ mod tests {
                     run_id,
                     tables: vec![],
                     layout: ErLayout::default(),
+                    selected_table: None,
                     total_tables: 1,
                 }),
                 Instant::now(),
@@ -485,6 +488,7 @@ mod tests {
                     run_id,
                     tables: vec![users_table()],
                     layout: ErLayout::default(),
+                    selected_table: None,
                     total_tables: 3,
                 }),
             );
@@ -518,6 +522,7 @@ mod tests {
                     run_id,
                     tables: vec![users_table()],
                     layout: ErLayout::default(),
+                    selected_table: None,
                     total_tables: 1,
                 }),
             );

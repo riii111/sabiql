@@ -102,7 +102,7 @@ impl ConfigWriter for NoopConfigWriter {
 
 pub struct NoopErLayout;
 impl ErDiagramLayout for NoopErLayout {
-    fn layout(&self, _tables: &[ErTableInfo], _seed_tables: &[String]) -> ErLayout {
+    fn layout(&self, _tables: &[ErTableInfo]) -> ErLayout {
         ErLayout::default()
     }
 }

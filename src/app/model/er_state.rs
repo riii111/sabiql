@@ -20,6 +20,8 @@ pub struct ErDiagram {
     pub tables: Vec<ErTableInfo>,
     pub total_tables: usize,
     pub layout: ErLayout,
+    /// The single table picked for a partial diagram, selected and centered on open.
+    pub selected_table: Option<String>,
     /// Reported back by the renderer, which owns the selection.
     pub has_selection: bool,
 }
@@ -29,8 +31,6 @@ pub struct ErDiagram {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ErLayout {
     pub positions: HashMap<String, (f64, f64)>,
-    /// The single table picked for a partial diagram, selected and centered on open.
-    pub selected_table: Option<String>,
 }
 
 /// Viewer operations applied by the renderer, which owns the diagram's

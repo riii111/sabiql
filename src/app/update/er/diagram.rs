@@ -19,6 +19,7 @@ pub(super) fn reduce_diagram_lifecycle(
             run_id,
             tables,
             layout,
+            selected_table,
             total_tables,
         }) => {
             if !state.er_preparation.is_current_run(*run_id) {
@@ -51,6 +52,7 @@ pub(super) fn reduce_diagram_lifecycle(
                 tables: tables.clone(),
                 total_tables: *total_tables,
                 layout: layout.clone(),
+                selected_table: selected_table.clone(),
                 has_selection: false,
             });
             state.modal.push_mode(InputMode::ErDiagram);

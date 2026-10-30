@@ -9,14 +9,14 @@ use crate::update::action::{Action, ErDiagramInfo};
 pub(in crate::cmd) fn spawn_er_layout_task(
     layout_engine: Arc<dyn ErDiagramLayout>,
     tables: Vec<ErTableInfo>,
-    seed_tables: Vec<String>,
+    selected_table: Option<String>,
     run_id: u64,
     total_tables: usize,
     tx: mpsc::Sender<Action>,
 ) {
     tokio::spawn(async move {
         let result = tokio::task::spawn_blocking(move || {
-            let layout = layout_engine.layout(&tables, &seed_tables);
+            let layout = layout_engine.layout(&tables);
             (tables, layout)
         })
         .await;
@@ -26,6 +26,7 @@ pub(in crate::cmd) fn spawn_er_layout_task(
                 run_id,
                 tables,
                 layout,
+                selected_table,
                 total_tables,
             }),
             Err(e) => Action::ErDiagramFailed {
@@ -47,20 +48,19 @@ mod tests {
 
     struct FixedLayout;
     impl ErDiagramLayout for FixedLayout {
-        fn layout(&self, tables: &[ErTableInfo], seed_tables: &[String]) -> ErLayout {
+        fn layout(&self, tables: &[ErTableInfo]) -> ErLayout {
             ErLayout {
                 positions: tables
                     .iter()
                     .map(|t| (t.qualified_name.clone(), (1.0, 2.0)))
                     .collect(),
-                selected_table: seed_tables.first().cloned(),
             }
         }
     }
 
     struct PanicLayout;
     impl ErDiagramLayout for PanicLayout {
-        fn layout(&self, _tables: &[ErTableInfo], _seed_tables: &[String]) -> ErLayout {
+        fn layout(&self, _tables: &[ErTableInfo]) -> ErLayout {
             panic!("intentional panic")
         }
     }
@@ -85,7 +85,7 @@ mod tests {
         spawn_er_layout_task(
             Arc::new(FixedLayout),
             vec![users_table()],
-            vec!["public.users".to_string()],
+            Some("public.users".to_string()),
             3,
             5,
             tx,
@@ -97,13 +97,14 @@ mod tests {
                 run_id,
                 tables,
                 layout,
+                selected_table,
                 total_tables,
             }) => {
                 assert_eq!(run_id, 3);
                 assert_eq!(total_tables, 5);
                 assert_eq!(tables.len(), 1);
                 assert_eq!(layout.positions.get("public.users"), Some(&(1.0, 2.0)));
-                assert_eq!(layout.selected_table.as_deref(), Some("public.users"));
+                assert_eq!(selected_table.as_deref(), Some("public.users"));
             }
             _ => panic!("expected ErDiagramOpened, got {action:?}"),
         }
@@ -113,14 +114,7 @@ mod tests {
     async fn panic_sends_failed_action() {
         let (tx, mut rx) = mpsc::channel(1);
 
-        spawn_er_layout_task(
-            Arc::new(PanicLayout),
-            vec![users_table()],
-            vec![],
-            11,
-            5,
-            tx,
-        );
+        spawn_er_layout_task(Arc::new(PanicLayout), vec![users_table()], None, 11, 5, tx);
 
         // The panic hook prints a backtrace first, which can exceed a second on a busy machine.
         let action = recv_action_with_timeout(&mut rx, Duration::from_secs(10)).await;

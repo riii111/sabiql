@@ -422,6 +422,7 @@ mod tests {
                     run_id: 0,
                     tables: vec![],
                     layout: ErLayout::default(),
+                    selected_table: None,
                     total_tables: 1,
                 }),
             );

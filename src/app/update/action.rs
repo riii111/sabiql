@@ -218,6 +218,7 @@ pub struct ErDiagramInfo {
     pub run_id: u64,
     pub tables: Vec<ErTableInfo>,
     pub layout: ErLayout,
+    pub selected_table: Option<String>,
     pub total_tables: usize,
 }
 
