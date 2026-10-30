@@ -93,6 +93,9 @@ pub(super) struct FkEdge {
     /// FKs run both ways between the two tables.
     pub(super) bidirectional: bool,
     pub(super) style: EdgeStyle,
+    /// How much earlier than [`EDGE_APPROACH`] the edge turns in, which keeps
+    /// edges into different tables off each other's turn-in lines.
+    pub(super) extra_approach: f64,
 }
 
 impl EdgeContent for FkEdge {
@@ -102,19 +105,21 @@ impl EdgeContent for FkEdge {
             return Path::straight(ctx.from, ctx.to);
         };
         let source = ctx.source_bounds;
-        let source_side = HandlePosition::facing(&source, target.center());
-        let target_side = HandlePosition::facing(&target, source.center());
+        let (source_side, target_side) = facing_sides(&source, &target);
         let from = departure_point(&source, source_side, target.center());
         let to = side_midpoint(&target, target_side);
 
         // Facing sides closer than a stem plus an approach would fold back on
-        // themselves, so they split the gap instead.
+        // themselves, so they split the gap instead. An earlier turn-in never
+        // reaches back past the stem.
+        let approach = EDGE_APPROACH + self.extra_approach;
         let (stem, approach) = match gap_between(from, to, source_side, target_side) {
             Some(gap) if gap < EDGE_STEM + EDGE_APPROACH => {
                 let half = (gap / 2.0).max(0.0);
                 (half, half)
             }
-            _ => (EDGE_STEM, EDGE_APPROACH),
+            Some(gap) => (EDGE_STEM, approach.min(gap - EDGE_STEM)),
+            None => (EDGE_STEM, approach),
         };
         let lane_start = step(from, source_side, stem);
         let turn_in = step(to, target_side, approach);
@@ -135,6 +140,24 @@ impl EdgeContent for FkEdge {
     fn render(&self, ctx: &EdgeRenderContext, buf: &mut Buffer) {
         let label = ctx.label.map(Text::raw);
         ctx.render_path(&self.style, label.as_ref(), buf);
+    }
+}
+
+/// The sides an edge leaves `source` and enters `target` by. Tables in
+/// different columns always connect left and right, so edges follow their
+/// source's row instead of running down past the tables stacked in a column.
+pub(super) fn facing_sides(
+    source: &rataflow::Rect,
+    target: &rataflow::Rect,
+) -> (HandlePosition, HandlePosition) {
+    if source.right() <= target.x() {
+        (HandlePosition::Right, HandlePosition::Left)
+    } else if target.right() <= source.x() {
+        (HandlePosition::Left, HandlePosition::Right)
+    } else if source.center().y < target.center().y {
+        (HandlePosition::Bottom, HandlePosition::Top)
+    } else {
+        (HandlePosition::Top, HandlePosition::Bottom)
     }
 }
 
@@ -179,7 +202,11 @@ fn side_midpoint(bounds: &rataflow::Rect, side: HandlePosition) -> Position {
 /// Where an edge toward `toward` leaves `bounds` on `side`: where a ray from the
 /// center would cross that side, kept off the corners so the edge never runs
 /// along the border itself.
-fn departure_point(bounds: &rataflow::Rect, side: HandlePosition, toward: Position) -> Position {
+pub(super) fn departure_point(
+    bounds: &rataflow::Rect,
+    side: HandlePosition,
+    toward: Position,
+) -> Position {
     let center = bounds.center();
     let (dx, dy) = (toward.x - center.x, toward.y - center.y);
     let inset = |value: f64, low: f64, high: f64| {
@@ -259,7 +286,19 @@ mod tests {
     }
 
     fn fk_path(source: rataflow::Rect, target: rataflow::Rect) -> Path {
-        FkEdge::default().compute_path(&EdgePathContext {
+        fk_path_with_extra_approach(source, target, 0.0)
+    }
+
+    fn fk_path_with_extra_approach(
+        source: rataflow::Rect,
+        target: rataflow::Rect,
+        extra_approach: f64,
+    ) -> Path {
+        FkEdge {
+            extra_approach,
+            ..FkEdge::default()
+        }
+        .compute_path(&EdgePathContext {
             from: source.center(),
             to: target.center(),
             source_position: HandlePosition::Right,
@@ -291,20 +330,45 @@ mod tests {
 
     #[test]
     fn fk_never_leaves_from_a_corner() {
-        let source = rect(0.0, 10.0, 10.0, 3.0);
+        let source = rect(0.0, 0.0, 10.0, 5.0);
 
-        // Up and to the right: leaves the top side short of its right corner (x = 10).
-        let path = fk_path(source, rect(30.0, 0.0, 10.0, 3.0));
+        // Far down and to the right: leaves the right side short of its bottom corner (y = 5).
+        let path = fk_path(source, rect(30.0, 20.0, 10.0, 3.0));
 
-        assert_eq!(path.start(), Some(Position::new(8.5, 10.0)));
+        assert_eq!(path.start(), Some(Position::new(10.0, 3.5)));
+    }
+
+    #[test]
+    fn fk_between_columns_runs_sideways() {
+        let source = rect(0.0, 0.0, 10.0, 3.0);
+        let target = rect(15.0, 20.0, 10.0, 3.0);
+
+        // Close in x but far below: still leaves and enters through the sides.
+        let path = fk_path(source, target);
+
+        assert_eq!(
+            (path.source_position, path.target_position),
+            (HandlePosition::Right, HandlePosition::Left)
+        );
+    }
+
+    #[test]
+    fn extra_approach_turns_in_earlier() {
+        let (source, target) = (rect(0.0, 0.0, 10.0, 3.0), rect(30.0, 20.0, 10.0, 3.0));
+        let turn_in_x = |path: Path| path.points[path.points.len() - 2].x;
+
+        let usual = turn_in_x(fk_path(source, target));
+        let earlier = turn_in_x(fk_path_with_extra_approach(source, target, 2.0));
+
+        assert_eq!(usual - earlier, 2.0);
     }
 
     #[test]
     fn fk_between_close_facing_sides_never_folds_back() {
         let source = rect(0.0, 0.0, 40.0, 3.0);
 
-        // Wide tables two rows apart: they face each other bottom to top.
-        let path = fk_path(source, rect(60.0, 5.0, 40.0, 3.0));
+        // Wide tables two rows apart in one column: they face each other bottom to top.
+        let path = fk_path(source, rect(30.0, 5.0, 40.0, 3.0));
 
         let ys: Vec<f64> = path.points.iter().map(|point| point.y).collect();
         assert!(ys.windows(2).all(|pair| pair[0] <= pair[1]), "{ys:?}");

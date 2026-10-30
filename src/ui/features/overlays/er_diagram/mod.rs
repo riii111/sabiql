@@ -19,7 +19,7 @@ use crate::app::update::input::keybindings::er_diagram;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::primitives::utils::text_utils::wrapped_line_count;
 use crate::theme::ThemePalette;
-use graph::{ErFlow, Relation, collect_relations, table_graph};
+use graph::{ErFlow, Relation, assign_tracks, collect_relations, table_graph};
 
 pub use graph::layout_tables;
 
@@ -163,6 +163,7 @@ fn positioned_graph(
             .iter()
             .map(|(id, &(x, y))| (id, Position::new(x, y))),
     );
+    assign_tracks(&mut flow);
 
     let ids: Vec<String> = flow.nodes().map(|node| node.id.clone()).collect();
     for id in &ids {
