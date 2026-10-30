@@ -645,10 +645,10 @@ fn apply_edge_styles(
             let accent = Style::default().fg(theme.semantic.surface.focus_border);
             (accent, accent.add_modifier(Modifier::BOLD))
         } else {
-            (
-                Style::default().fg(theme.component.modal.border),
-                Style::default().fg(theme.semantic.text.secondary),
-            )
+            // Same color as the stroke: rataflow recolors label cells that a later
+            // edge crosses, which would otherwise leave mismatched letters.
+            let stroke = Style::default().fg(theme.component.modal.border);
+            (stroke, stroke)
         };
         let mut style = EdgeStyle::default()
             .with_stroke_style(stroke)
