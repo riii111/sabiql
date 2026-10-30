@@ -103,8 +103,7 @@ impl NodeContent for TableNode {
     }
 }
 
-/// A stepped FK edge. It leaves the source where a ray toward the target exits
-/// it and keeps to that lane until just before the target, then turns into the
+/// A stepped FK edge. It leaves the source's facing side toward the target and keeps to that lane until just before the target, then turns into the
 /// middle of the target's facing side. FKs into one table therefore merge only
 /// next to their shared arrowhead, so where each edge comes from stays visible.
 /// rataflow's step edges turn halfway and share one attachment rule for both
@@ -128,7 +127,7 @@ impl EdgeContent for FkEdge {
         let source = ctx.source_bounds;
         let source_side = HandlePosition::facing(&source, target.center());
         let target_side = HandlePosition::facing(&target, source.center());
-        let from = perimeter_point(&source, target.center());
+        let from = departure_point(&source, source_side, target.center());
         let to = side_midpoint(&target, target_side);
 
         let lane_start = step(from, source_side, EDGE_STEM);
@@ -174,17 +173,38 @@ fn side_midpoint(bounds: &rataflow::Rect, side: HandlePosition) -> Position {
     }
 }
 
-/// Where a ray from the center of `bounds` toward `toward` leaves it.
-fn perimeter_point(bounds: &rataflow::Rect, toward: Position) -> Position {
+/// Where an edge toward `toward` leaves `bounds` on `side`: where a ray from the
+/// center would cross that side, kept off the corners so the edge never runs
+/// along the border itself.
+fn departure_point(bounds: &rataflow::Rect, side: HandlePosition, toward: Position) -> Position {
     let center = bounds.center();
     let (dx, dy) = (toward.x - center.x, toward.y - center.y);
-    let scale_x = (bounds.width() / 2.0) / dx.abs();
-    let scale_y = (bounds.height() / 2.0) / dy.abs();
-    let scale = scale_x.min(scale_y);
-    if scale.is_finite() {
-        Position::new(dx.mul_add(scale, center.x), dy.mul_add(scale, center.y))
-    } else {
-        center
+    let inset = |value: f64, low: f64, high: f64| {
+        if value.is_finite() {
+            value.clamp(low + 1.5, (high - 1.5).max(low + 1.5))
+        } else {
+            f64::midpoint(low, high)
+        }
+    };
+    match side {
+        HandlePosition::Left | HandlePosition::Right => {
+            let y = dy.mul_add((bounds.width() / 2.0) / dx.abs(), center.y);
+            let x = if side == HandlePosition::Left {
+                bounds.x()
+            } else {
+                bounds.right()
+            };
+            Position::new(x, inset(y, bounds.y(), bounds.bottom()))
+        }
+        HandlePosition::Top | HandlePosition::Bottom => {
+            let x = dx.mul_add((bounds.height() / 2.0) / dy.abs(), center.x);
+            let y = if side == HandlePosition::Top {
+                bounds.y()
+            } else {
+                bounds.bottom()
+            };
+            Position::new(inset(x, bounds.x(), bounds.right()), y)
+        }
     }
 }
 
@@ -1307,13 +1327,23 @@ mod tests {
     }
 
     #[test]
-    fn fks_out_of_one_table_leave_from_separate_points() {
+    fn fks_out_of_one_side_leave_from_separate_points() {
+        let source = rataflow::Rect::from_coords(0.0, 20.0, 30.0, 3.0);
+
+        let left = fk_path(source, rataflow::Rect::from_coords(0.0, 0.0, 10.0, 3.0));
+        let right = fk_path(source, rataflow::Rect::from_coords(25.0, 0.0, 10.0, 3.0));
+
+        assert_ne!(left.start(), right.start());
+    }
+
+    #[test]
+    fn fk_never_leaves_from_a_corner() {
         let source = rataflow::Rect::from_coords(0.0, 10.0, 10.0, 3.0);
 
-        let upper = fk_path(source, rataflow::Rect::from_coords(50.0, 0.0, 10.0, 3.0));
-        let lower = fk_path(source, rataflow::Rect::from_coords(50.0, 20.0, 10.0, 3.0));
+        // Up and to the right: leaves the top side short of its right corner (x = 10).
+        let path = fk_path(source, rataflow::Rect::from_coords(30.0, 0.0, 10.0, 3.0));
 
-        assert_ne!(upper.start(), lower.start());
+        assert_eq!(path.start(), Some(Position::new(8.5, 10.0)));
     }
 
     #[test]
