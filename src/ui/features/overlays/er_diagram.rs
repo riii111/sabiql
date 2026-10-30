@@ -1,15 +1,15 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use rataflow::{
-    ControlsAction, Edge, EdgeMarker, EdgeStyle, EventResponse, FitViewOptions, FloatingAttachment,
-    FloatingEdge, Flow, FlowAction, Node, NodeContent, NodeRenderContext, Palette, Position,
-    Sugiyama, Theme,
+    ControlsAction, Edge, EdgeContent, EdgeMarker, EdgePathContext, EdgeRenderContext, EdgeStyle,
+    EventResponse, FitViewOptions, Flow, FlowAction, HandlePosition, Node, NodeContent,
+    NodeRenderContext, Palette, Path, Position, Sugiyama, Theme, compute_step_path,
 };
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style, Stylize};
-use ratatui::text::{Line, Span};
+use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, BorderType, Clear, Paragraph, Widget, Wrap};
 use unicode_width::UnicodeWidthStr;
 
@@ -21,7 +21,7 @@ use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::primitives::utils::text_utils::{truncate_to_width_with, wrapped_line_count};
 use crate::theme::ThemePalette;
 
-type ErFlow = Flow<TableNode, FloatingEdge>;
+type ErFlow = Flow<TableNode, FkEdge>;
 
 const NODE_SPACING: f64 = 2.0;
 const MIN_RANK_SPACING: usize = 8;
@@ -35,6 +35,8 @@ const LAYERED_LAYOUT_MAX_TABLES: usize = 800;
 const FIT_PADDING: f64 = 1.0;
 const MAX_STATUS_LINES: u16 = 3;
 const SELF_REFERENCE_MARK: &str = "↻";
+// Straight run out of a table before an edge may turn, as in rataflow's step edges.
+const EDGE_STEM: f64 = 1.0;
 
 /// A table box. When zoomed out too far for a box with text inside, the name
 /// moves onto the border so tables stay identifiable.
@@ -96,6 +98,69 @@ impl NodeContent for TableNode {
         Paragraph::new(lines)
             .alignment(Alignment::Center)
             .render(text_area, buf);
+    }
+}
+
+/// A stepped FK edge. It arrives at the middle of the target's facing side, so
+/// FKs into one table share a single arrowhead, but leaves the source where a
+/// ray toward the target exits it, so where each edge comes from stays visible.
+/// rataflow's floating edge applies one attachment rule to both ends.
+#[derive(Debug, Default)]
+struct FkEdge {
+    style: Option<EdgeStyle>,
+}
+
+impl EdgeContent for FkEdge {
+    fn compute_path(&self, ctx: &EdgePathContext) -> Path {
+        let Some(target) = ctx.target_bounds else {
+            return compute_step_path(
+                ctx.from,
+                ctx.to,
+                ctx.source_position,
+                ctx.target_position,
+                EDGE_STEM,
+            );
+        };
+        let source = ctx.source_bounds;
+        let source_side = HandlePosition::facing(&source, target.center());
+        let target_side = HandlePosition::facing(&target, source.center());
+        compute_step_path(
+            perimeter_point(&source, target.center()),
+            side_midpoint(&target, target_side),
+            source_side,
+            target_side,
+            EDGE_STEM,
+        )
+    }
+
+    fn render(&self, ctx: &EdgeRenderContext, buf: &mut Buffer) {
+        let style = self.style.unwrap_or_default();
+        let label = ctx.label.map(Text::raw);
+        ctx.render_path(&style, label.as_ref(), buf);
+    }
+}
+
+fn side_midpoint(bounds: &rataflow::Rect, side: HandlePosition) -> Position {
+    let center = bounds.center();
+    match side {
+        HandlePosition::Top => Position::new(center.x, bounds.y()),
+        HandlePosition::Bottom => Position::new(center.x, bounds.bottom()),
+        HandlePosition::Left => Position::new(bounds.x(), center.y),
+        HandlePosition::Right => Position::new(bounds.right(), center.y),
+    }
+}
+
+/// Where a ray from the center of `bounds` toward `toward` leaves it.
+fn perimeter_point(bounds: &rataflow::Rect, toward: Position) -> Position {
+    let center = bounds.center();
+    let (dx, dy) = (toward.x - center.x, toward.y - center.y);
+    let scale_x = (bounds.width() / 2.0) / dx.abs();
+    let scale_y = (bounds.height() / 2.0) / dy.abs();
+    let scale = scale_x.min(scale_y);
+    if scale.is_finite() {
+        Position::new(dx.mul_add(scale, center.x), dy.mul_add(scale, center.y))
+    } else {
+        center
     }
 }
 
@@ -449,10 +514,7 @@ fn table_node(
 
 /// One edge per table pair: parallel FKs share a label, and mutual references
 /// become a single double-headed edge since both directions would overlap.
-fn relation_edges(
-    relations: &[Relation],
-    is_known: impl Fn(&str) -> bool,
-) -> Vec<Edge<FloatingEdge>> {
+fn relation_edges(relations: &[Relation], is_known: impl Fn(&str) -> bool) -> Vec<Edge<FkEdge>> {
     let by_pair = relations_by_pair(relations);
 
     relations
@@ -467,9 +529,7 @@ fn relation_edges(
             Some(
                 Edge::new(format!("fk-{i}"), r.from.as_str(), r.to.as_str())
                     .with_label(edge_label(&by_pair, &r.from, &r.to))
-                    .with_content(
-                        FloatingEdge::stepped().with_attachment(FloatingAttachment::Midpoint),
-                    ),
+                    .with_content(FkEdge::default()),
             )
         })
         .collect()
@@ -1199,6 +1259,37 @@ mod tests {
         view.apply(ErViewerCommand::ClearSelection);
 
         assert!(view.selected_table().is_none());
+    }
+
+    fn fk_path(source: rataflow::Rect, target: rataflow::Rect) -> Path {
+        FkEdge::default().compute_path(&EdgePathContext {
+            from: source.center(),
+            to: target.center(),
+            source_position: HandlePosition::Right,
+            target_position: HandlePosition::Left,
+            source_bounds: source,
+            target_bounds: Some(target),
+        })
+    }
+
+    #[test]
+    fn fks_into_one_table_share_the_arrowhead() {
+        let target = rataflow::Rect::from_coords(50.0, 10.0, 10.0, 3.0);
+
+        let upper = fk_path(rataflow::Rect::from_coords(0.0, 0.0, 10.0, 3.0), target);
+        let lower = fk_path(rataflow::Rect::from_coords(0.0, 20.0, 10.0, 3.0), target);
+
+        assert_eq!(upper.end(), lower.end());
+    }
+
+    #[test]
+    fn fks_out_of_one_table_leave_from_separate_points() {
+        let source = rataflow::Rect::from_coords(0.0, 10.0, 10.0, 3.0);
+
+        let upper = fk_path(source, rataflow::Rect::from_coords(50.0, 0.0, 10.0, 3.0));
+        let lower = fk_path(source, rataflow::Rect::from_coords(50.0, 20.0, 10.0, 3.0));
+
+        assert_ne!(upper.start(), lower.start());
     }
 
     #[test]
