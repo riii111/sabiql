@@ -2,53 +2,54 @@
 source: src/tests/render_snapshots/er_diagram.rs
 expression: output
 ---
-test_project ▸ test_db ▸ -                                                                                                            connected | localhost:5432/test
-┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
-│> ╭ ER Diagram (3/6 tables) ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮──┐
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │              ╭──────────────────────╮                                    ╭───────╮                                                   ╭───────╮              │──┘
-│  │              │       comments       │──────────fk_comments_post─────────▶│ posts │─────────fk_posts_author, fk_posts_editor─────────▶│ users │              │──┐
-│  │              │ ↻ fk_comments_parent │                                    ╰───────╯                                                   ╰───────╯              │  │
-│  │              ╰──────────────────────╯                                                                                                                       │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │                                                                                                                                                             │  │
-│  │ public.posts  → public.users (fk_posts_author, fk_posts_editor)  ← public.comments (fk_comments_post)                                                       │  │
-└──╰ n: FK names │ hjkl/←↓↑→: Select │ HJKL: Pan │ +/-: Zoom │ f: Fit │ ?: Help │ Esc: Deselect ─────────────────────────────────────────────────────────────────╯──┘
-Tab/⇧Tab:Next/Prev  c:Center  0:100%
+╭ ER Diagram (3/6 tables) ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                 ╭──────────────────────╮                                    ╭───────╮                                                   ╭───────╮                 │
+│                 │       comments       │          fk_comments_post─────────▶│ posts │─────────fk_posts_author, fk_posts_editor─────────▶│ users │                 │
+│                 │ ↻ fk_comments_parent │──────────────────╯                 ╰───────╯                                                   ╰───────╯                 │
+│                 ╰──────────────────────╯                                                                                                                          │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│ public.posts  → public.users (fk_posts_author, fk_posts_editor)  ← public.comments (fk_comments_post)                                                             │
+╰ n: FK names │ hjkl/←↓↑→: Select │ HJKL: Pan │ +/-: Zoom │ f: Fit │ ?: Help │ Esc: Deselect ───────────────────────────────────────────────────────────────────────╯

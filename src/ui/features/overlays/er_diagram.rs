@@ -237,8 +237,8 @@ impl ErDiagramViewer {
         );
         let (_, inner) = render_modal(
             frame,
-            Constraint::Percentage(96),
-            Constraint::Percentage(92),
+            Constraint::Percentage(100),
+            Constraint::Percentage(100),
             &title,
             FooterHintBar::new([
                 er_diagram::FK_NAMES.as_hint(),
@@ -468,7 +468,7 @@ fn relation_edges(
                 Edge::new(format!("fk-{i}"), r.from.as_str(), r.to.as_str())
                     .with_label(edge_label(&by_pair, &r.from, &r.to))
                     .with_content(
-                        FloatingEdge::stepped().with_attachment(FloatingAttachment::Perimeter),
+                        FloatingEdge::stepped().with_attachment(FloatingAttachment::Midpoint),
                     ),
             )
         })
