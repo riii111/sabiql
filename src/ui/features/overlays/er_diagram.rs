@@ -37,6 +37,8 @@ const MAX_STATUS_LINES: u16 = 3;
 const SELF_REFERENCE_MARK: &str = "↻";
 // Straight run out of a table before an edge may turn, as in rataflow's step edges.
 const EDGE_STEM: f64 = 1.0;
+// How far before its target an edge turns in; FKs into one table merge only here.
+const EDGE_APPROACH: f64 = 2.0;
 
 /// A table box. When zoomed out too far for a box with text inside, the name
 /// moves onto the border so tables stay identifiable.
@@ -101,10 +103,12 @@ impl NodeContent for TableNode {
     }
 }
 
-/// A stepped FK edge. It arrives at the middle of the target's facing side, so
-/// FKs into one table share a single arrowhead, but leaves the source where a
-/// ray toward the target exits it, so where each edge comes from stays visible.
-/// rataflow's floating edge applies one attachment rule to both ends.
+/// A stepped FK edge. It leaves the source where a ray toward the target exits
+/// it and keeps to that lane until just before the target, then turns into the
+/// middle of the target's facing side. FKs into one table therefore merge only
+/// next to their shared arrowhead, so where each edge comes from stays visible.
+/// rataflow's step edges turn halfway and share one attachment rule for both
+/// ends, which bundles them into long trunks.
 #[derive(Debug, Default)]
 struct FkEdge {
     style: Option<EdgeStyle>,
@@ -124,19 +128,39 @@ impl EdgeContent for FkEdge {
         let source = ctx.source_bounds;
         let source_side = HandlePosition::facing(&source, target.center());
         let target_side = HandlePosition::facing(&target, source.center());
-        compute_step_path(
-            perimeter_point(&source, target.center()),
-            side_midpoint(&target, target_side),
-            source_side,
-            target_side,
-            EDGE_STEM,
-        )
+        let from = perimeter_point(&source, target.center());
+        let to = side_midpoint(&target, target_side);
+
+        let lane_start = step(from, source_side, EDGE_STEM);
+        let approach = step(to, target_side, EDGE_APPROACH);
+        let bend = if target_side.is_horizontal() {
+            Position::new(approach.x, lane_start.y)
+        } else {
+            Position::new(lane_start.x, approach.y)
+        };
+        let mut points = vec![from, lane_start, bend, approach, to];
+        points.dedup();
+        let label_position = Position::new(
+            f64::midpoint(lane_start.x, bend.x),
+            f64::midpoint(lane_start.y, bend.y),
+        );
+        Path::new(points, source_side, target_side).with_label_position(label_position)
     }
 
     fn render(&self, ctx: &EdgeRenderContext, buf: &mut Buffer) {
         let style = self.style.unwrap_or_default();
         let label = ctx.label.map(Text::raw);
         ctx.render_path(&style, label.as_ref(), buf);
+    }
+}
+
+/// `point` moved `distance` outward from the `side` it sits on.
+fn step(point: Position, side: HandlePosition, distance: f64) -> Position {
+    match side {
+        HandlePosition::Top => Position::new(point.x, point.y - distance),
+        HandlePosition::Bottom => Position::new(point.x, point.y + distance),
+        HandlePosition::Left => Position::new(point.x - distance, point.y),
+        HandlePosition::Right => Position::new(point.x + distance, point.y),
     }
 }
 

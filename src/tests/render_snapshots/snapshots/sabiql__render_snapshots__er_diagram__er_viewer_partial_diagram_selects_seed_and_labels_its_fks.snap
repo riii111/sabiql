@@ -27,7 +27,7 @@ expression: output
 │                                                                                                                                                                   │
 │                                                                                                                                                                   │
 │                 ╭──────────────────────╮                                    ╭───────╮                                                   ╭───────╮                 │
-│                 │       comments       │──────────fk_comments_post─────────▶│ posts │─────────fk_posts_author, fk_posts_editor─────────▶│ users │                 │
+│                 │       comments       │─────────fk_comments_post──────────▶│ posts │─────────fk_posts_author, fk_posts_editor─────────▶│ users │                 │
 │                 │ ↻ fk_comments_parent │                                    ╰───────╯                                                   ╰───────╯                 │
 │                 ╰──────────────────────╯                                                                                                                          │
 │                                                                                                                                                                   │
