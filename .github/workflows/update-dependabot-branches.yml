@@ -45,7 +45,6 @@ jobs:
             if [ "$merge_state" = "BEHIND" ]; then
               if response=$(gh api \
                 --method PUT \
-                --repo "$GH_REPO" \
                 -H 'Accept: application/vnd.github+json' \
                 "/repos/$GH_REPO/pulls/$number/update-branch" \
                 -f "expected_head_sha=$head_sha" 2>&1); then
@@ -54,7 +53,6 @@ jobs:
                 update_observed=false
                 for _ in $(seq 1 30); do
                   if ! updated_head=$(gh api \
-                    --repo "$GH_REPO" \
                     "/repos/$GH_REPO/pulls/$number" \
                     --jq '.head.sha'); then
                     echo "::error::Could not observe the updated head for Dependabot PR #$number"
@@ -84,7 +82,6 @@ jobs:
             fi
 
             if ! current_pr=$(gh api \
-                --repo "$GH_REPO" \
                 "/repos/$GH_REPO/pulls/$number" \
                 --jq '{head_sha: .head.sha, head_ref: .head.ref}' 2>&1); then
               echo "::error::Could not inspect Dependabot PR #$number: $current_pr"
@@ -97,7 +94,6 @@ jobs:
             if ! check_runs=$(gh api \
               --paginate \
               --slurp \
-              --repo "$GH_REPO" \
               "/repos/$GH_REPO/commits/$current_head/check-runs" \
               --jq 'map(.check_runs[]) | .[] | [.name, .status, (.conclusion // "")] | @tsv' 2>&1); then
               echo "::error::Could not inspect checks for Dependabot PR #$number: $check_runs"
