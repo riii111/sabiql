@@ -3,19 +3,9 @@ use std::path::{Path, PathBuf};
 use async_trait::async_trait;
 
 use crate::app::ports::outbound::{QueryHistoryError, QueryHistoryStore};
-use crate::config::{CacheDirError, get_cache_dir};
 use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
 
 const MAX_HISTORY_ENTRIES: usize = 1000;
-
-impl From<CacheDirError> for QueryHistoryError {
-    fn from(error: CacheDirError) -> Self {
-        match error {
-            CacheDirError::BaseDirUnavailable => Self::MissingCacheDir,
-            CacheDirError::Io(error) => error.into(),
-        }
-    }
-}
 
 fn append_entry(path: &Path, dir: &Path, line: &str) -> Result<(), QueryHistoryError> {
     use std::fs::OpenOptions;
@@ -42,8 +32,57 @@ fn trim_if_exceeded(path: &Path, max: usize) -> Result<(), QueryHistoryError> {
     Ok(())
 }
 
+/// Reads every `*.jsonl` file in `dir`. History is auxiliary data, so a
+/// missing directory, an unreadable file or a malformed line is skipped
+/// rather than hiding the rest.
+fn read_history_dir(dir: &Path, entries: &mut Vec<QueryHistoryEntry>) {
+    let Ok(files) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for file in files.flatten() {
+        let path = file.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("jsonl") {
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        entries.extend(
+            content
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .filter_map(|line| serde_json::from_str::<QueryHistoryEntry>(line).ok()),
+        );
+    }
+}
+
+#[derive(Debug, Clone)]
+struct HistoryDirs {
+    /// `<data dir>/sabiql/query_history`, one file per history key.
+    current: PathBuf,
+    /// `<cache dir>/sabiql`, whose `<project>/history/<connection id>.jsonl`
+    /// files hold history written by earlier versions. Read-only.
+    legacy_cache_root: Option<PathBuf>,
+}
+
+impl HistoryDirs {
+    fn load_all(&self) -> Vec<QueryHistoryEntry> {
+        let mut entries = Vec::new();
+        read_history_dir(&self.current, &mut entries);
+        if let Some(Ok(projects)) = self.legacy_cache_root.as_deref().map(std::fs::read_dir) {
+            for project in projects.flatten() {
+                read_history_dir(&project.path().join("history"), &mut entries);
+            }
+        }
+        // Timestamps are RFC 3339 UTC (`...Z`), so string order is time order.
+        // The sort is stable, so entries sharing a second keep their file order.
+        entries.sort_by(|a, b| a.executed_at.as_str().cmp(b.executed_at.as_str()));
+        entries
+    }
+}
+
 pub struct FileQueryHistoryStore {
-    base_dir: Option<PathBuf>,
+    dirs: Option<HistoryDirs>,
 }
 
 impl FileQueryHistoryStore {
@@ -52,16 +91,18 @@ impl FileQueryHistoryStore {
         reason = "new() is the only default construction API"
     )]
     pub fn new() -> Self {
-        Self { base_dir: None }
+        Self { dirs: None }
     }
 
-    fn resolve_history_dir(&self, project_name: &str) -> Result<PathBuf, QueryHistoryError> {
-        if let Some(base) = &self.base_dir {
-            Ok(base.join("history"))
-        } else {
-            let cache_dir = get_cache_dir(project_name)?;
-            Ok(cache_dir.join("history"))
+    fn resolve_dirs(&self) -> Result<HistoryDirs, QueryHistoryError> {
+        if let Some(dirs) = &self.dirs {
+            return Ok(dirs.clone());
         }
+        let data_dir = dirs::data_dir().ok_or(QueryHistoryError::MissingDataDir)?;
+        Ok(HistoryDirs {
+            current: data_dir.join("sabiql").join("query_history"),
+            legacy_cache_root: dirs::cache_dir().map(|cache| cache.join("sabiql")),
+        })
     }
 }
 
@@ -69,12 +110,11 @@ impl FileQueryHistoryStore {
 impl QueryHistoryStore for FileQueryHistoryStore {
     async fn append(
         &self,
-        project_name: &str,
         scope: &QueryHistoryScope,
         entry: &QueryHistoryEntry,
     ) -> Result<(), QueryHistoryError> {
-        let history_dir = self.resolve_history_dir(project_name)?;
-        let path = history_dir.join(format!("{}.jsonl", scope.connection_id));
+        let history_dir = self.resolve_dirs()?.current;
+        let path = history_dir.join(format!("{}.jsonl", scope.key));
         let line = serde_json::to_string(entry)?;
 
         tokio::task::spawn_blocking(move || {
@@ -86,31 +126,9 @@ impl QueryHistoryStore for FileQueryHistoryStore {
         .await?
     }
 
-    async fn load(
-        &self,
-        project_name: &str,
-        scope: &QueryHistoryScope,
-    ) -> Result<Vec<QueryHistoryEntry>, QueryHistoryError> {
-        let history_dir = self.resolve_history_dir(project_name)?;
-        let path = history_dir.join(format!("{}.jsonl", scope.connection_id));
-        let database = scope.database.clone();
-
-        tokio::task::spawn_blocking(move || {
-            if !path.exists() {
-                return Ok(Vec::new());
-            }
-
-            let content = std::fs::read_to_string(&path)?;
-            let entries: Vec<QueryHistoryEntry> = content
-                .lines()
-                .filter(|line| !line.trim().is_empty())
-                .filter_map(|line| serde_json::from_str(line).ok())
-                .filter(|entry: &QueryHistoryEntry| entry.database == database)
-                .collect();
-
-            Ok(entries)
-        })
-        .await?
+    async fn load(&self) -> Result<Vec<QueryHistoryEntry>, QueryHistoryError> {
+        let dirs = self.resolve_dirs()?;
+        Ok(tokio::task::spawn_blocking(move || dirs.load_all()).await?)
     }
 }
 
@@ -118,227 +136,213 @@ impl QueryHistoryStore for FileQueryHistoryStore {
 mod tests {
     use super::*;
     use crate::domain::connection::ConnectionId;
-    use crate::domain::query_history::QueryResultStatus;
+    use crate::domain::query_history::{QueryHistoryKey, QueryResultStatus};
     use tempfile::TempDir;
 
     impl FileQueryHistoryStore {
-        fn with_base_dir(base_dir: PathBuf) -> Self {
+        fn in_temp_dir(tmp: &TempDir) -> Self {
             Self {
-                base_dir: Some(base_dir),
+                dirs: Some(HistoryDirs {
+                    current: tmp.path().join("data"),
+                    legacy_cache_root: Some(tmp.path().join("cache")),
+                }),
             }
         }
     }
 
+    fn scope_for(connection_id: &str, target: &str, database: Option<&str>) -> QueryHistoryScope {
+        QueryHistoryScope::new(
+            ConnectionId::from_string(connection_id),
+            QueryHistoryKey::for_connection_id(&ConnectionId::from_string(target)),
+            database.map(str::to_owned),
+        )
+    }
+
+    fn scope() -> QueryHistoryScope {
+        scope_for("test-conn", "test-target", None)
+    }
+
+    fn history_path(tmp: &TempDir, scope: &QueryHistoryScope) -> PathBuf {
+        tmp.path().join("data").join(format!("{}.jsonl", scope.key))
+    }
+
     fn make_entry(query: &str) -> QueryHistoryEntry {
-        QueryHistoryEntry::new_with_database(
+        entry_at(&scope(), query, "2026-03-13T12:00:00Z")
+    }
+
+    fn entry_at(scope: &QueryHistoryScope, query: &str, at: &str) -> QueryHistoryEntry {
+        scope.entry(
             query.to_string(),
-            "2026-03-13T12:00:00Z".to_string(),
-            ConnectionId::from_string("test-conn"),
-            None,
+            at.to_string(),
             QueryResultStatus::Success,
             None,
         )
     }
 
-    fn scope(connection_id: &ConnectionId) -> QueryHistoryScope {
-        QueryHistoryScope::new(connection_id.clone(), None)
-    }
-
-    fn database_scope(connection_id: &ConnectionId, database: &str) -> QueryHistoryScope {
-        QueryHistoryScope::new(connection_id.clone(), Some(database.to_string()))
-    }
-
-    #[tokio::test]
-    async fn append_and_load_succeed_for_cli_sqlite_connection_id() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = ConnectionId::from_string("cli-sqlite-test");
-
-        assert!(!conn_id.as_str().contains('/'));
-
-        store
-            .append("test", &scope(&conn_id), &make_entry("SELECT 1"))
-            .await
-            .unwrap();
-
-        let history_dir = tmp.path().join("history");
-        let path = history_dir.join(format!("{conn_id}.jsonl"));
-        assert!(path.is_file());
-
-        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].query, "SELECT 1");
-    }
-
-    #[tokio::test]
-    async fn append_creates_file_and_writes_entry() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = ConnectionId::from_string("test-conn");
-
-        let entry = make_entry("SELECT 1");
-        store
-            .append("test", &scope(&conn_id), &entry)
-            .await
-            .unwrap();
-
-        let history_dir = tmp.path().join("history");
-        let path = history_dir.join(format!("{conn_id}.jsonl"));
-        assert!(path.exists());
-
-        let content = std::fs::read_to_string(&path).unwrap();
-        assert!(content.contains("SELECT 1"));
-    }
-
-    #[tokio::test]
-    async fn load_returns_entries_in_order() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = ConnectionId::from_string("test-conn");
-
-        store
-            .append("test", &scope(&conn_id), &make_entry("SELECT 1"))
-            .await
-            .unwrap();
-        store
-            .append("test", &scope(&conn_id), &make_entry("SELECT 2"))
-            .await
-            .unwrap();
-        store
-            .append("test", &scope(&conn_id), &make_entry("SELECT 3"))
-            .await
-            .unwrap();
-
-        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
-
-        assert_eq!(entries.len(), 3);
-        assert_eq!(entries[0].query, "SELECT 1");
-        assert_eq!(entries[1].query, "SELECT 2");
-        assert_eq!(entries[2].query, "SELECT 3");
-    }
-
-    #[tokio::test]
-    async fn load_filters_entries_by_database_scope() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = ConnectionId::from_string("test-conn");
-        let app_scope = database_scope(&conn_id, "app");
-        let analytics_scope = database_scope(&conn_id, "analytics");
-
-        store
-            .append(
-                "test",
-                &app_scope,
-                &QueryHistoryEntry::new_with_database(
-                    "SELECT app".to_string(),
-                    "2026-03-13T12:00:00Z".to_string(),
-                    conn_id.clone(),
-                    Some("app".to_string()),
-                    QueryResultStatus::Success,
-                    None,
-                ),
-            )
-            .await
-            .unwrap();
-        store
-            .append(
-                "test",
-                &analytics_scope,
-                &QueryHistoryEntry::new_with_database(
-                    "SELECT analytics".to_string(),
-                    "2026-03-13T12:01:00Z".to_string(),
-                    conn_id.clone(),
-                    Some("analytics".to_string()),
-                    QueryResultStatus::Success,
-                    None,
-                ),
-            )
-            .await
-            .unwrap();
-
-        let app_entries = store.load("test", &app_scope).await.unwrap();
-        let analytics_entries = store.load("test", &analytics_scope).await.unwrap();
-
-        assert_eq!(
-            app_entries
-                .iter()
-                .map(|entry| entry.query.as_str())
-                .collect::<Vec<_>>(),
-            ["SELECT app"]
-        );
-        assert_eq!(
-            analytics_entries
-                .iter()
-                .map(|entry| entry.query.as_str())
-                .collect::<Vec<_>>(),
-            ["SELECT analytics"]
-        );
-    }
-
-    #[tokio::test]
-    async fn append_trims_to_1000_when_exceeded() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = ConnectionId::from_string("test-conn");
-
-        // Write 1001 entries
-        for i in 0..1001 {
+    async fn append_n(store: &FileQueryHistoryStore, range: std::ops::Range<usize>) {
+        for i in range {
             store
-                .append(
-                    "test",
-                    &scope(&conn_id),
-                    &make_entry(&format!("SELECT {i}")),
-                )
+                .append(&scope(), &make_entry(&format!("SELECT {i}")))
                 .await
                 .unwrap();
         }
+    }
 
-        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
-
-        assert_eq!(entries.len(), MAX_HISTORY_ENTRIES);
-        // Oldest entry (SELECT 0) should be trimmed, newest (SELECT 1000) should remain
-        assert_eq!(entries[0].query, "SELECT 1");
-        assert_eq!(entries[MAX_HISTORY_ENTRIES - 1].query, "SELECT 1000");
+    fn write_legacy_file(tmp: &TempDir, project: &str, connection_id: &str, lines: &[&str]) {
+        let dir = tmp.path().join("cache").join(project).join("history");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join(format!("{connection_id}.jsonl")),
+            lines.join("\n") + "\n",
+        )
+        .unwrap();
     }
 
     #[tokio::test]
-    async fn load_nonexistent_file_returns_empty_vec() {
+    async fn append_writes_one_file_per_history_key() {
         let tmp = TempDir::new().unwrap();
-        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = ConnectionId::from_string("nonexistent");
+        let store = FileQueryHistoryStore::in_temp_dir(&tmp);
 
-        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
+        store
+            .append(&scope(), &make_entry("SELECT 1"))
+            .await
+            .unwrap();
 
-        assert!(entries.is_empty());
+        let content = std::fs::read_to_string(history_path(&tmp, &scope())).unwrap();
+        assert!(content.contains("SELECT 1"));
+        assert!(content.contains(scope().key.as_str()));
+    }
+
+    #[tokio::test]
+    async fn profiles_sharing_a_key_share_a_file() {
+        let tmp = TempDir::new().unwrap();
+        let store = FileQueryHistoryStore::in_temp_dir(&tmp);
+        let deleted = scope_for("deleted-profile", "same-target", None);
+        let readded = scope_for("readded-profile", "same-target", None);
+
+        store
+            .append(
+                &deleted,
+                &entry_at(&deleted, "SELECT old", "2026-03-13T12:00:00Z"),
+            )
+            .await
+            .unwrap();
+        store
+            .append(
+                &readded,
+                &entry_at(&readded, "SELECT new", "2026-03-13T12:01:00Z"),
+            )
+            .await
+            .unwrap();
+
+        let entries = store.load().await.unwrap();
+        assert!(entries.iter().all(|entry| readded.matches(entry)));
+        assert_eq!(
+            std::fs::read_to_string(history_path(&tmp, &readded))
+                .unwrap()
+                .lines()
+                .count(),
+            2
+        );
+    }
+
+    #[tokio::test]
+    async fn load_merges_current_and_legacy_history_oldest_first() {
+        let tmp = TempDir::new().unwrap();
+        let store = FileQueryHistoryStore::in_temp_dir(&tmp);
+        let other = scope_for("other-conn", "other-target", Some("app"));
+
+        store
+            .append(
+                &scope(),
+                &entry_at(&scope(), "SELECT current", "2026-03-13T12:02:00Z"),
+            )
+            .await
+            .unwrap();
+        store
+            .append(
+                &other,
+                &entry_at(&other, "SELECT other", "2026-03-13T12:00:00Z"),
+            )
+            .await
+            .unwrap();
+        write_legacy_file(
+            &tmp,
+            "some-project",
+            "legacy-conn",
+            &[
+                r#"{"query":"SELECT legacy","executed_at":"2026-03-13T12:01:00Z","connection_id":"legacy-conn","result_status":"Success","affected_rows":null}"#,
+            ],
+        );
+
+        let entries = store.load().await.unwrap();
+
+        assert_eq!(
+            entries.iter().map(|e| e.query.as_str()).collect::<Vec<_>>(),
+            ["SELECT other", "SELECT legacy", "SELECT current"]
+        );
+    }
+
+    #[tokio::test]
+    async fn load_reads_legacy_entries_with_affected_rows_and_skips_malformed_lines() {
+        let tmp = TempDir::new().unwrap();
+        let store = FileQueryHistoryStore::in_temp_dir(&tmp);
+        write_legacy_file(
+            &tmp,
+            "test",
+            "test-conn",
+            &[
+                r#"{"query":"SELECT 1","executed_at":"2026-03-13T12:00:00Z","connection_id":"test-conn","result_status":"Success","affected_rows":null}"#,
+                r#"{"query":"UPDATE t SET x=1","executed_at":"2026-03-13T12:01:00Z","connection_id":"test-conn","result_status":"Success","affected_rows":5}"#,
+                "not valid json",
+            ],
+        );
+
+        let entries = store.load().await.unwrap();
+
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].query, "SELECT 1");
+        assert_eq!(entries[0].connection_key, None);
+        assert_eq!(entries[0].affected_rows, None);
+        assert_eq!(entries[1].query, "UPDATE t SET x=1");
+        assert_eq!(entries[1].affected_rows, Some(5));
+        assert!(
+            scope().matches(&entries[0]),
+            "legacy entries match by profile id"
+        );
+    }
+
+    #[tokio::test]
+    async fn load_returns_empty_vec_when_nothing_exists() {
+        let tmp = TempDir::new().unwrap();
+        let store = FileQueryHistoryStore::in_temp_dir(&tmp);
+
+        assert!(store.load().await.unwrap().is_empty());
     }
 
     #[tokio::test]
     async fn malformed_lines_are_skipped() {
         let tmp = TempDir::new().unwrap();
-        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = ConnectionId::from_string("test-conn");
+        let store = FileQueryHistoryStore::in_temp_dir(&tmp);
 
-        // Write a valid entry
         store
-            .append("test", &scope(&conn_id), &make_entry("SELECT 1"))
+            .append(&scope(), &make_entry("SELECT 1"))
+            .await
+            .unwrap();
+        {
+            use std::io::Write;
+            let mut file = std::fs::OpenOptions::new()
+                .append(true)
+                .open(history_path(&tmp, &scope()))
+                .unwrap();
+            writeln!(file, "{{invalid json}}").unwrap();
+        }
+        store
+            .append(&scope(), &make_entry("SELECT 2"))
             .await
             .unwrap();
 
-        // Manually append a malformed line
-        let history_dir = tmp.path().join("history");
-        let path = history_dir.join(format!("{conn_id}.jsonl"));
-        use std::fs::OpenOptions;
-        use std::io::Write;
-        let mut file = OpenOptions::new().append(true).open(&path).unwrap();
-        writeln!(file, "{{invalid json}}").unwrap();
-
-        // Write another valid entry
-        store
-            .append("test", &scope(&conn_id), &make_entry("SELECT 2"))
-            .await
-            .unwrap();
-
-        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
+        let entries = store.load().await.unwrap();
 
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].query, "SELECT 1");
@@ -346,142 +350,68 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn below_limit_entries_are_preserved_without_trim() {
+    async fn append_trims_to_limit_when_exceeded() {
         let tmp = TempDir::new().unwrap();
-        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = ConnectionId::from_string("test-conn");
+        let store = FileQueryHistoryStore::in_temp_dir(&tmp);
 
-        for i in 0..5 {
-            store
-                .append(
-                    "test",
-                    &scope(&conn_id),
-                    &make_entry(&format!("SELECT {i}")),
-                )
-                .await
-                .unwrap();
-        }
+        append_n(&store, 0..MAX_HISTORY_ENTRIES + 1).await;
 
-        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
-        assert_eq!(entries.len(), 5);
-        assert_eq!(entries[0].query, "SELECT 0");
-        assert_eq!(entries[4].query, "SELECT 4");
+        let entries = store.load().await.unwrap();
+        assert_eq!(entries.len(), MAX_HISTORY_ENTRIES);
+        assert_eq!(entries[0].query, "SELECT 1");
+        assert_eq!(
+            entries[MAX_HISTORY_ENTRIES - 1].query,
+            format!("SELECT {MAX_HISTORY_ENTRIES}")
+        );
     }
 
     #[tokio::test]
     async fn trim_does_not_trigger_at_exact_limit() {
         let tmp = TempDir::new().unwrap();
-        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = ConnectionId::from_string("test-conn");
+        let store = FileQueryHistoryStore::in_temp_dir(&tmp);
 
-        for i in 0..MAX_HISTORY_ENTRIES {
-            store
-                .append(
-                    "test",
-                    &scope(&conn_id),
-                    &make_entry(&format!("SELECT {i}")),
-                )
-                .await
-                .unwrap();
-        }
+        append_n(&store, 0..MAX_HISTORY_ENTRIES).await;
 
-        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
+        let entries = store.load().await.unwrap();
         assert_eq!(entries.len(), MAX_HISTORY_ENTRIES);
         assert_eq!(entries[0].query, "SELECT 0");
-        assert_eq!(
-            entries[MAX_HISTORY_ENTRIES - 1].query,
-            format!("SELECT {}", MAX_HISTORY_ENTRIES - 1)
-        );
     }
 
     #[tokio::test]
-    async fn multiple_appends_beyond_limit_preserves_latest() {
+    async fn trim_is_per_history_key() {
         let tmp = TempDir::new().unwrap();
-        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = ConnectionId::from_string("test-conn");
+        let store = FileQueryHistoryStore::in_temp_dir(&tmp);
+        let other = scope_for("other-conn", "other-target", None);
 
-        let total = MAX_HISTORY_ENTRIES + 5;
-        for i in 0..total {
-            store
-                .append(
-                    "test",
-                    &scope(&conn_id),
-                    &make_entry(&format!("SELECT {i}")),
-                )
-                .await
-                .unwrap();
-        }
+        store
+            .append(
+                &other,
+                &entry_at(&other, "SELECT kept", "2026-03-13T11:00:00Z"),
+            )
+            .await
+            .unwrap();
+        append_n(&store, 0..MAX_HISTORY_ENTRIES + 1).await;
 
-        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
-        assert_eq!(entries.len(), MAX_HISTORY_ENTRIES);
-        // Oldest 5 entries (0..5) should be trimmed
-        assert_eq!(entries[0].query, "SELECT 5");
-        assert_eq!(
-            entries[MAX_HISTORY_ENTRIES - 1].query,
-            format!("SELECT {}", total - 1)
-        );
+        let entries = store.load().await.unwrap();
+        assert_eq!(entries.len(), MAX_HISTORY_ENTRIES + 1);
+        assert_eq!(entries[0].query, "SELECT kept");
     }
 
     #[tokio::test]
     async fn append_succeeds_even_when_trim_would_fail() {
         let tmp = TempDir::new().unwrap();
-        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = ConnectionId::from_string("test-conn");
+        let store = FileQueryHistoryStore::in_temp_dir(&tmp);
 
-        // Fill to just above the limit so trim fires on next append
-        for i in 0..MAX_HISTORY_ENTRIES {
-            store
-                .append(
-                    "test",
-                    &scope(&conn_id),
-                    &make_entry(&format!("SELECT {i}")),
-                )
-                .await
-                .unwrap();
-        }
+        append_n(&store, 0..MAX_HISTORY_ENTRIES).await;
 
         // Make the .tmp path a directory so fs::write in trim_if_exceeded fails
-        let history_dir = tmp.path().join("history");
-        let tmp_path = history_dir.join(format!("{conn_id}.jsonl.tmp"));
-        std::fs::create_dir_all(&tmp_path).unwrap();
+        std::fs::create_dir_all(history_path(&tmp, &scope()).with_extension("jsonl.tmp")).unwrap();
 
-        // append should still succeed (trim failure is best-effort)
-        let result = store
-            .append("test", &scope(&conn_id), &make_entry("SELECT final"))
-            .await;
+        let result = store.append(&scope(), &make_entry("SELECT final")).await;
         assert!(result.is_ok());
 
-        // The entry was written even though trim failed
-        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
+        let entries = store.load().await.unwrap();
         assert!(entries.len() > MAX_HISTORY_ENTRIES);
         assert_eq!(entries.last().unwrap().query, "SELECT final");
-    }
-
-    #[tokio::test]
-    async fn load_entries_with_affected_rows_and_malformed_lines() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = ConnectionId::from_string("test-conn");
-
-        let history_dir = tmp.path().join("history");
-        std::fs::create_dir_all(&history_dir).unwrap();
-        let path = history_dir.join(format!("{conn_id}.jsonl"));
-
-        use std::io::Write;
-        let mut file = std::fs::File::create(&path).unwrap();
-        writeln!(file, r#"{{"query":"SELECT 1","executed_at":"2026-03-13T12:00:00Z","connection_id":"test-conn","result_status":"Success","affected_rows":null}}"#).unwrap();
-        writeln!(file, r#"{{"query":"UPDATE t SET x=1","executed_at":"2026-03-13T12:01:00Z","connection_id":"test-conn","result_status":"Success","affected_rows":5}}"#).unwrap();
-        // Malformed line should be skipped
-        writeln!(file, "not valid json").unwrap();
-
-        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
-
-        assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].query, "SELECT 1");
-        assert_eq!(entries[0].result_status, QueryResultStatus::Success);
-        assert_eq!(entries[0].affected_rows, None);
-        assert_eq!(entries[1].query, "UPDATE t SET x=1");
-        assert_eq!(entries[1].result_status, QueryResultStatus::Success);
-        assert_eq!(entries[1].affected_rows, Some(5));
     }
 }

@@ -159,7 +159,6 @@ pub enum Effect {
     },
 
     LoadQueryHistory {
-        project_name: String,
         scope: QueryHistoryScope,
     },
 

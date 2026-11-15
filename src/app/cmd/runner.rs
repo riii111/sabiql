@@ -279,16 +279,8 @@ impl EffectRunner {
                 Ok(vec![])
             }
 
-            Effect::LoadQueryHistory {
-                project_name,
-                scope,
-            } => {
-                spawn_query_history_load(
-                    project_name,
-                    scope,
-                    &self.action_tx,
-                    &self.query.query_history_store,
-                );
+            Effect::LoadQueryHistory { scope } => {
+                spawn_query_history_load(scope, &self.action_tx, &self.query.query_history_store);
                 Ok(vec![])
             }
 

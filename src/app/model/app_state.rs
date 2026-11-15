@@ -4,6 +4,7 @@ use std::time::Instant;
 
 use super::explain_context::ExplainContext;
 use crate::domain::connection::{ConnectionId, ConnectionProfile, ServiceEntry};
+use crate::domain::query_history::{QueryHistoryKey, QueryHistoryScope};
 use crate::domain::{Column, DatabaseType, TableSummary, mysql_sql::mysql_export_plan};
 use crate::model::browse::inspector_view_model::InspectorViewModel;
 use crate::model::browse::json_detail::JsonDetailState;
@@ -115,6 +116,23 @@ impl AppState {
 
     pub fn project_name(&self) -> &str {
         &self.project_name
+    }
+
+    pub fn query_history_scope(&self) -> Option<QueryHistoryScope> {
+        let connection_id = self.session.active_connection_id()?;
+        let key = self
+            .connections
+            .iter()
+            .find(|profile| &profile.id == connection_id)
+            .map_or_else(
+                || QueryHistoryKey::for_connection_id(connection_id),
+                |profile| QueryHistoryKey::for_config(&profile.config),
+            );
+        Some(QueryHistoryScope::new(
+            connection_id.clone(),
+            key,
+            self.session.query_history_database(),
+        ))
     }
 
     pub fn service_file_path(&self) -> Option<&Path> {

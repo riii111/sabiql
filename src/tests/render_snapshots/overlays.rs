@@ -5,7 +5,9 @@ use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::help::HelpOrigin;
 use sabiql_app::model::shared::settings::KeymapPreset;
 use sabiql_app::policy::write::sql_risk::AcknowledgeReason;
-use sabiql_domain::query_history::{QueryHistoryEntry, QueryResultStatus};
+use sabiql_domain::query_history::{
+    QueryHistoryEntry, QueryHistoryKey, QueryHistoryScope, QueryResultStatus,
+};
 use sabiql_domain::{
     ConnectionId, DatabaseDiagnostic, DiagnosticField, DiagnosticLevel, QueryResult,
     SqliteDiagnosticsSnapshot,
@@ -665,38 +667,90 @@ fn command_line_input() {
     insta::assert_snapshot!(output);
 }
 
+fn test_conn_history_scope() -> QueryHistoryScope {
+    let id = ConnectionId::from_string("test-conn");
+    QueryHistoryScope::new(id.clone(), QueryHistoryKey::for_connection_id(&id), None)
+}
+
+fn history_entry(query: &str, at: &str, connection_id: &str) -> QueryHistoryEntry {
+    QueryHistoryEntry::new_with_database(
+        query.to_string(),
+        at.to_string(),
+        ConnectionId::from_string(connection_id),
+        None,
+        QueryResultStatus::Success,
+        None,
+    )
+}
+
+fn render_query_history_picker_scope(show_all: bool) -> String {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::QueryHistoryPicker);
+    state.query_history_picker.replace_entries(
+        test_conn_history_scope(),
+        &[
+            history_entry("SELECT * FROM users", "2026-03-13T10:00:00Z", "test-conn"),
+            history_entry(
+                "SELECT * FROM invoices",
+                "2026-03-13T11:00:00Z",
+                "other-conn",
+            ),
+        ],
+    );
+    if show_all {
+        state.query_history_picker.toggle_show_all();
+    }
+
+    render_to_string(&mut terminal, &mut state)
+}
+
+#[test]
+fn query_history_picker_this_connection() {
+    insta::assert_snapshot!(render_query_history_picker_scope(false));
+}
+
+#[test]
+fn query_history_picker_all_connections() {
+    insta::assert_snapshot!(render_query_history_picker_scope(true));
+}
+
 #[test]
 fn query_history_picker_with_entries() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::QueryHistoryPicker);
-    state.query_history_picker.replace_entries(&[
-        QueryHistoryEntry::new_with_database(
-            "SELECT * FROM users WHERE id = 1".to_string(),
-            "2026-03-13T10:00:00Z".to_string(),
-            ConnectionId::from_string("test-conn"),
-            None,
-            QueryResultStatus::Success,
-            None,
-        ),
-        QueryHistoryEntry::new_with_database(
-            "INSERT INTO orders (user_id, total) VALUES (1, 100)".to_string(),
-            "2026-03-13T11:00:00Z".to_string(),
-            ConnectionId::from_string("test-conn"),
-            None,
-            QueryResultStatus::Success,
-            Some(1),
-        ),
-        QueryHistoryEntry::new_with_database(
-            "SELECT count(*) FROM users".to_string(),
-            "2026-03-13T12:00:00Z".to_string(),
-            ConnectionId::from_string("test-conn"),
-            None,
-            QueryResultStatus::Failed,
-            None,
-        ),
-    ]);
+    state.query_history_picker.replace_entries(
+        test_conn_history_scope(),
+        &[
+            QueryHistoryEntry::new_with_database(
+                "SELECT * FROM users WHERE id = 1".to_string(),
+                "2026-03-13T10:00:00Z".to_string(),
+                ConnectionId::from_string("test-conn"),
+                None,
+                QueryResultStatus::Success,
+                None,
+            ),
+            QueryHistoryEntry::new_with_database(
+                "INSERT INTO orders (user_id, total) VALUES (1, 100)".to_string(),
+                "2026-03-13T11:00:00Z".to_string(),
+                ConnectionId::from_string("test-conn"),
+                None,
+                QueryResultStatus::Success,
+                Some(1),
+            ),
+            QueryHistoryEntry::new_with_database(
+                "SELECT count(*) FROM users".to_string(),
+                "2026-03-13T12:00:00Z".to_string(),
+                ConnectionId::from_string("test-conn"),
+                None,
+                QueryResultStatus::Failed,
+                None,
+            ),
+        ],
+    );
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -721,24 +775,27 @@ fn query_history_picker_filter_mode() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::QueryHistoryPicker);
-    state.query_history_picker.replace_entries(&[
-        QueryHistoryEntry::new_with_database(
-            "SELECT * FROM users".to_string(),
-            "2026-03-13T10:00:00Z".to_string(),
-            ConnectionId::from_string("test-conn"),
-            None,
-            QueryResultStatus::Success,
-            None,
-        ),
-        QueryHistoryEntry::new_with_database(
-            "SELECT * FROM orders".to_string(),
-            "2026-03-13T11:00:00Z".to_string(),
-            ConnectionId::from_string("test-conn"),
-            None,
-            QueryResultStatus::Success,
-            None,
-        ),
-    ]);
+    state.query_history_picker.replace_entries(
+        test_conn_history_scope(),
+        &[
+            QueryHistoryEntry::new_with_database(
+                "SELECT * FROM users".to_string(),
+                "2026-03-13T10:00:00Z".to_string(),
+                ConnectionId::from_string("test-conn"),
+                None,
+                QueryResultStatus::Success,
+                None,
+            ),
+            QueryHistoryEntry::new_with_database(
+                "SELECT * FROM orders".to_string(),
+                "2026-03-13T11:00:00Z".to_string(),
+                ConnectionId::from_string("test-conn"),
+                None,
+                QueryResultStatus::Success,
+                None,
+            ),
+        ],
+    );
     state.query_history_picker.insert_filter_str("user");
 
     let output = render_to_string(&mut terminal, &mut state);

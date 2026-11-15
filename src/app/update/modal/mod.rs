@@ -1122,7 +1122,7 @@ mod tests {
     mod query_history_picker {
         use super::*;
         use crate::domain::query_history::{
-            QueryHistoryEntry, QueryHistoryScope, QueryResultStatus,
+            QueryHistoryEntry, QueryHistoryKey, QueryHistoryScope, QueryResultStatus,
         };
 
         fn make_entry(query: &str, conn_id: &ConnectionId) -> QueryHistoryEntry {
@@ -1137,7 +1137,11 @@ mod tests {
         }
 
         fn scope(conn_id: &ConnectionId, database: Option<&str>) -> QueryHistoryScope {
-            QueryHistoryScope::new(conn_id.clone(), database.map(str::to_owned))
+            QueryHistoryScope::new(
+                conn_id.clone(),
+                QueryHistoryKey::for_connection_id(conn_id),
+                database.map(str::to_owned),
+            )
         }
 
         fn connected_state() -> AppState {
@@ -1458,7 +1462,9 @@ mod tests {
                     .iter()
                     .map(|query| make_entry(query, &test_conn))
                     .collect::<Vec<_>>();
-                state.query_history_picker.replace_entries(&entries);
+                state
+                    .query_history_picker
+                    .replace_entries(state.query_history_scope().unwrap(), &entries);
                 state
                     .query_history_picker
                     .set_selection_for_test(initial_selection);
@@ -1491,9 +1497,10 @@ mod tests {
                 let expected_chars = query.chars().count(); // 13
                 assert_ne!(query.len(), expected_chars); // sanity: bytes != chars
                 let test_conn = ConnectionId::from_string("test-conn");
-                state
-                    .query_history_picker
-                    .replace_entries(&[make_entry(&query, &test_conn)]);
+                state.query_history_picker.replace_entries(
+                    state.query_history_scope().unwrap(),
+                    &[make_entry(&query, &test_conn)],
+                );
 
                 super::dispatch_modal(
                     &mut state,
@@ -1510,9 +1517,10 @@ mod tests {
                 let mut state = connected_state();
                 enter_query_history(&mut state, InputMode::Normal);
                 let test_conn = ConnectionId::from_string("test-conn");
-                state
-                    .query_history_picker
-                    .replace_entries(&[make_entry("SELECT * FROM users", &test_conn)]);
+                state.query_history_picker.replace_entries(
+                    state.query_history_scope().unwrap(),
+                    &[make_entry("SELECT * FROM users", &test_conn)],
+                );
 
                 let effects = super::dispatch_modal(
                     &mut state,
@@ -1551,9 +1559,10 @@ mod tests {
                 );
                 state.sql_modal.completion_next();
                 let test_conn = ConnectionId::from_string("test-conn");
-                state
-                    .query_history_picker
-                    .replace_entries(&[make_entry("new query", &test_conn)]);
+                state.query_history_picker.replace_entries(
+                    state.query_history_scope().unwrap(),
+                    &[make_entry("new query", &test_conn)],
+                );
 
                 super::dispatch_modal(
                     &mut state,
@@ -1590,9 +1599,10 @@ mod tests {
                 let mut state = connected_state();
                 enter_query_history(&mut state, InputMode::Normal);
                 let test_conn = ConnectionId::from_string("test-conn");
-                state
-                    .query_history_picker
-                    .replace_entries(&[make_entry("SELECT * FROM users", &test_conn)]);
+                state.query_history_picker.replace_entries(
+                    state.query_history_scope().unwrap(),
+                    &[make_entry("SELECT * FROM users", &test_conn)],
+                );
                 let target_id = ConnectionId::from_string("mysql-conn");
                 let _ = state.session.begin_mysql_connection_probe(
                     &target_id,

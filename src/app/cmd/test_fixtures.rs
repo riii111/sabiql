@@ -226,18 +226,13 @@ pub struct NoopQueryHistoryStore;
 impl QueryHistoryStore for NoopQueryHistoryStore {
     async fn append(
         &self,
-        _project_name: &str,
         _scope: &QueryHistoryScope,
         _entry: &QueryHistoryEntry,
     ) -> Result<(), QueryHistoryError> {
         Ok(())
     }
 
-    async fn load(
-        &self,
-        _project_name: &str,
-        _scope: &QueryHistoryScope,
-    ) -> Result<Vec<QueryHistoryEntry>, QueryHistoryError> {
+    async fn load(&self) -> Result<Vec<QueryHistoryEntry>, QueryHistoryError> {
         Ok(Vec::new())
     }
 }

@@ -22,7 +22,7 @@ test_project ▸ - ▸ -                                                        
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
-│                        ╭ Query History ──────────────────────────────────────────────────────────────────────────────────────────────────╮                        │
+│                        ╭ Query History · this connection ────────────────────────────────────────────────────────────────────────────────╮                        │
 │                        │  > user                                                                                                         │                        │
 │                        │▸ ✓ SELECT * FROM users                                                                        Mar 13 10:00 UTC  │                        │
 │                        │                                                                                                                 │                        │
@@ -32,7 +32,7 @@ test_project ▸ - ▸ -                                                        
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │
-│                        ╰ 1 entries │ type to filter │ Enter: Select │ Esc: Close ────────────────────────────────────────────────────────╯                        │
+│                        ╰ 1 entries │ type to filter │ Enter: Select │ Tab: All/This conn │ Esc: Close ───────────────────────────────────╯                        │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

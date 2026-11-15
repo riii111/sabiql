@@ -676,6 +676,17 @@ pub mod query_history_picker {
         ],
     };
 
+    pub const TAB_TOGGLE_SHOW_ALL: ModeRow = ModeRow {
+        key_short: "Tab",
+        key: "Tab",
+        desc_short: "All/This conn",
+        description: "Toggle history from all connections",
+        bindings: &[ExecBinding {
+            action: Action::QueryHistoryToggleShowAll,
+            combos: &[KeyCombo::plain(Key::Tab)],
+        }],
+    };
+
     pub const ESC_CLOSE: ModeRow = ModeRow {
         key_short: "Esc",
         key: "Esc",
@@ -692,6 +703,7 @@ pub const QUERY_HISTORY_PICKER_ROWS: &[ModeRow] = &[
     query_history_picker::ENTER_SELECT,
     query_history_picker::NAVIGATE,
     query_history_picker::TYPE_FILTER,
+    query_history_picker::TAB_TOGGLE_SHOW_ALL,
     query_history_picker::ESC_CLOSE,
 ];
 

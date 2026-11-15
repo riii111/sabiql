@@ -105,15 +105,21 @@ impl QueryHistoryPicker {
         // border(2) + filter(1) + actual entries + preview — capped at 70%
         let desired_height = (2 + 1 + (grouped_count as u16).max(1) + preview_est).min(max_height);
 
+        let title = if state.query_history_picker.show_all() {
+            " Query History · all connections "
+        } else {
+            " Query History · this connection "
+        };
         let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(70),
             Constraint::Max(desired_height),
-            " Query History ",
+            title,
             FooterHintBar::with_prefix(
                 format!("{grouped_count} entries │ type to filter"),
                 [
                     query_history_picker::ENTER_SELECT.as_hint(),
+                    query_history_picker::TAB_TOGGLE_SHOW_ALL.as_hint(),
                     query_history_picker::ESC_CLOSE.as_hint(),
                 ],
             ),

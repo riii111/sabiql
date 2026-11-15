@@ -31,13 +31,9 @@ pub(super) fn reduce_query_history_picker(state: &mut AppState, action: &Action)
             state.modal.push_mode(InputMode::QueryHistoryPicker);
 
             let scope = state
-                .session
                 .query_history_scope()
                 .expect("active connection checked above");
-            DispatchResult::handled_with(vec![Effect::LoadQueryHistory {
-                project_name: state.project_name().to_string(),
-                scope,
-            }])
+            DispatchResult::handled_with(vec![Effect::LoadQueryHistory { scope }])
         }
         Action::CloseModal(ModalKind::QueryHistoryPicker) => {
             state.modal.pop_mode();
@@ -48,17 +44,19 @@ pub(super) fn reduce_query_history_picker(state: &mut AppState, action: &Action)
             if state.modal.active_mode() != InputMode::QueryHistoryPicker {
                 return DispatchResult::handled();
             }
-            if state.session.query_history_scope().as_ref() != Some(scope) {
+            if state.query_history_scope().as_ref() != Some(scope) {
                 return DispatchResult::handled();
             }
-            state.query_history_picker.replace_entries(entries);
+            state
+                .query_history_picker
+                .replace_entries(scope.clone(), entries);
             DispatchResult::handled()
         }
         Action::QueryHistoryLoadFailed(scope, error) => {
             if state.modal.active_mode() != InputMode::QueryHistoryPicker {
                 return DispatchResult::handled();
             }
-            if state.session.query_history_scope().as_ref() != Some(scope) {
+            if state.query_history_scope().as_ref() != Some(scope) {
                 return DispatchResult::handled();
             }
             state.messages.set_error(error.clone());
@@ -124,6 +122,10 @@ pub(super) fn reduce_query_history_picker(state: &mut AppState, action: &Action)
             motion: ListMotion::Previous,
         } => {
             state.query_history_picker.select_previous();
+            DispatchResult::handled()
+        }
+        Action::QueryHistoryToggleShowAll => {
+            state.query_history_picker.toggle_show_all();
             DispatchResult::handled()
         }
         Action::QueryHistoryConfirmSelection => {
