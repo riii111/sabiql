@@ -343,6 +343,7 @@ mod tests {
         #[case(Key::Down, Action::ListSelect { target: ListTarget::QueryHistory, motion: ListMotion::Next })]
         #[case(Key::Backspace, Action::TextBackspace { target: InputTarget::QueryHistoryFilter })]
         #[case(Key::Esc, Action::CloseModal(ModalKind::QueryHistoryPicker))]
+        #[case(Key::Tab, Action::QueryHistoryToggleShowAll)]
         fn picker_keys(#[case] key: Key, #[case] expected: Action) {
             let result = handle_query_history_picker_keys(combo(key));
 

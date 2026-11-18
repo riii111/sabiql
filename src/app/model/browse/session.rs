@@ -2,7 +2,6 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use crate::domain::query_history::QueryHistoryScope;
 use crate::domain::{
     ConnectionId, DatabaseMetadata, DatabaseType, MetadataState, QueryResult, Table, TableSummary,
 };
@@ -787,13 +786,13 @@ impl BrowseSession {
         self.mysql_lower_case_table_names = value;
     }
 
-    pub fn query_history_scope(&self) -> Option<QueryHistoryScope> {
-        let connection_id = self.active_connection_id()?.clone();
-        let database = match self.active_database_type() {
+    /// Only MySQL switches databases within one connection, so only MySQL
+    /// history is narrowed to the selected database.
+    pub fn query_history_database(&self) -> Option<String> {
+        match self.active_database_type() {
             Some(DatabaseType::MySQL) => self.active_database().map(str::to_owned),
             Some(DatabaseType::PostgreSQL | DatabaseType::SQLite) | None => None,
-        };
-        Some(QueryHistoryScope::new(connection_id, database))
+        }
     }
 
     pub fn active_engine_feature_profile(&self) -> EngineFeatureProfile {
@@ -1760,7 +1759,7 @@ mod tests {
         }
     }
 
-    mod query_history_scope_tests {
+    mod query_history_database_tests {
         use super::*;
 
         #[test]
@@ -1774,9 +1773,7 @@ mod tests {
                 Some("app"),
             );
 
-            let scope = session.query_history_scope().unwrap();
-
-            assert_eq!(scope.database.as_deref(), Some("app"));
+            assert_eq!(session.query_history_database().as_deref(), Some("app"));
         }
 
         #[test]
@@ -1791,7 +1788,7 @@ mod tests {
                     Some("database"),
                 );
 
-                assert_eq!(session.query_history_scope().unwrap().database, None);
+                assert_eq!(session.query_history_database(), None);
             }
         }
     }

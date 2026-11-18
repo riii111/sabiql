@@ -6,8 +6,8 @@ use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum QueryHistoryError {
-    #[error("cache directory is unavailable")]
-    MissingCacheDir,
+    #[error("data directory is unavailable")]
+    MissingDataDir,
     #[error("IO error: {0}")]
     Io(#[source] Arc<std::io::Error>),
     #[error("Serialization error: {0}")]
@@ -38,16 +38,12 @@ impl From<tokio::task::JoinError> for QueryHistoryError {
 pub trait QueryHistoryStore: Send + Sync {
     async fn append(
         &self,
-        project_name: &str,
         scope: &QueryHistoryScope,
         entry: &QueryHistoryEntry,
     ) -> Result<(), QueryHistoryError>;
 
-    async fn load(
-        &self,
-        project_name: &str,
-        scope: &QueryHistoryScope,
-    ) -> Result<Vec<QueryHistoryEntry>, QueryHistoryError>;
+    /// Returns history for every connection, oldest first.
+    async fn load(&self) -> Result<Vec<QueryHistoryEntry>, QueryHistoryError>;
 }
 
 #[cfg(test)]
@@ -56,10 +52,10 @@ mod tests {
     use std::error::Error;
 
     #[test]
-    fn missing_cache_dir_has_clear_display() {
+    fn missing_data_dir_has_clear_display() {
         assert_eq!(
-            QueryHistoryError::MissingCacheDir.to_string(),
-            "cache directory is unavailable"
+            QueryHistoryError::MissingDataDir.to_string(),
+            "data directory is unavailable"
         );
     }
 

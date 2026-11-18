@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 use crate::cmd::effect::Effect;
 use crate::cmd::single_task_owner::SingleTaskOwner;
 use crate::domain::command_tag::CommandTag;
-use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope, QueryResultStatus};
+use crate::domain::query_history::{QueryHistoryScope, QueryResultStatus};
 use crate::domain::{DatabaseDiagnostic, DatabaseType};
 use crate::domain::{
     mysql_explain_plan_text_from_result, postgres_explain_plan_text_from_result,
@@ -56,24 +56,14 @@ fn utc_now_iso8601() -> String {
 
 fn spawn_query_history_append(
     query_history_store: Arc<dyn QueryHistoryStore>,
-    project_name: String,
     scope: QueryHistoryScope,
     query: String,
     result_status: QueryResultStatus,
     affected_rows: Option<u64>,
 ) {
-    let entry = QueryHistoryEntry::new_with_database(
-        query,
-        utc_now_iso8601(),
-        scope.connection_id.clone(),
-        scope.database.clone(),
-        result_status,
-        affected_rows,
-    );
+    let entry = scope.entry(query, utc_now_iso8601(), result_status, affected_rows);
     tokio::spawn(async move {
-        let _ = query_history_store
-            .append(&project_name, &scope, &entry)
-            .await;
+        let _ = query_history_store.append(&scope, &entry).await;
     });
 }
 
@@ -211,8 +201,7 @@ pub(in crate::cmd) async fn run(
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
             let history_store = Arc::clone(query_history_store);
-            let project = state.project_name().to_string();
-            let history_scope = state.session.query_history_scope();
+            let history_scope = state.query_history_scope();
             query_tasks
                 .replace(async move {
                     let result = executor.execute_adhoc(&dsn, &query, access_mode).await;
@@ -227,7 +216,6 @@ pub(in crate::cmd) async fn run(
                                     .and_then(CommandTag::affected_rows);
                                 spawn_query_history_append(
                                     history_store,
-                                    project,
                                     scope,
                                     query,
                                     QueryResultStatus::Success,
@@ -246,7 +234,6 @@ pub(in crate::cmd) async fn run(
                             if let Some(scope) = history_scope {
                                 spawn_query_history_append(
                                     history_store,
-                                    project,
                                     scope,
                                     query,
                                     QueryResultStatus::Failed,
@@ -275,8 +262,7 @@ pub(in crate::cmd) async fn run(
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
             let history_store = Arc::clone(query_history_store);
-            let project = state.project_name().to_string();
-            let history_scope = state.session.query_history_scope();
+            let history_scope = state.query_history_scope();
 
             query_tasks
                 .replace(async move {
@@ -287,7 +273,6 @@ pub(in crate::cmd) async fn run(
                             if let Some(scope) = history_scope {
                                 spawn_query_history_append(
                                     history_store,
-                                    project,
                                     scope,
                                     query,
                                     QueryResultStatus::Success,
@@ -306,7 +291,6 @@ pub(in crate::cmd) async fn run(
                             if let Some(scope) = history_scope {
                                 spawn_query_history_append(
                                     history_store,
-                                    project,
                                     scope,
                                     query,
                                     QueryResultStatus::Failed,
@@ -456,7 +440,6 @@ mod tests {
 
         #[derive(Clone)]
         struct HistoryCall {
-            project_name: String,
             scope: QueryHistoryScope,
             entry: QueryHistoryEntry,
         }
@@ -473,7 +456,6 @@ mod tests {
         impl QueryHistoryStore for RecordingQueryHistoryStore {
             async fn append(
                 &self,
-                project_name: &str,
                 scope: &QueryHistoryScope,
                 entry: &QueryHistoryEntry,
             ) -> Result<(), QueryHistoryError> {
@@ -482,7 +464,6 @@ mod tests {
                     signal.send(()).ok();
                 }
                 self.calls.lock().await.push(HistoryCall {
-                    project_name: project_name.to_string(),
                     scope: scope.clone(),
                     entry: entry.clone(),
                 });
@@ -494,11 +475,7 @@ mod tests {
                 Ok(())
             }
 
-            async fn load(
-                &self,
-                _project_name: &str,
-                _scope: &QueryHistoryScope,
-            ) -> Result<Vec<QueryHistoryEntry>, QueryHistoryError> {
+            async fn load(&self) -> Result<Vec<QueryHistoryEntry>, QueryHistoryError> {
                 Ok(Vec::new())
             }
         }
@@ -594,8 +571,8 @@ mod tests {
         ) {
             assert_eq!(calls.len(), 1);
             let call = &calls[0];
-            assert_eq!(call.project_name, "test");
             assert_eq!(call.scope.connection_id.as_str(), "connection");
+            assert_eq!(call.entry.connection_key.as_ref(), Some(&call.scope.key));
             assert_eq!(call.scope.database.as_deref(), Some("analytics"));
             assert_eq!(call.entry.query, query);
             assert_eq!(call.entry.connection_id.as_str(), "connection");

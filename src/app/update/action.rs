@@ -595,6 +595,7 @@ pub enum Action {
     QueryHistoryLoaded(QueryHistoryScope, Vec<QueryHistoryEntry>),
     QueryHistoryLoadFailed(QueryHistoryScope, String),
     QueryHistoryConfirmSelection,
+    QueryHistoryToggleShowAll,
 
     // CSV export
     RequestCsvExport,

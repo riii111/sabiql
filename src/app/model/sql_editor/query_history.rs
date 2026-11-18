@@ -1,7 +1,7 @@
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher};
 
-use crate::domain::query_history::QueryHistoryEntry;
+use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
 use crate::model::shared::cursor::CursorMove;
 use crate::model::shared::picker::{clamp_scroll_offset, sanitize_filter_text};
 use crate::model::shared::text_input::TextInputState;
@@ -9,6 +9,10 @@ use crate::model::shared::text_input::TextInputState;
 #[derive(Debug, Clone, Default)]
 pub struct QueryHistoryPickerState {
     entries: Vec<QueryHistoryEntry>,
+    /// The connection the entries were loaded for; `None` shows everything.
+    scope: Option<QueryHistoryScope>,
+    /// Kept across opens so the picker remembers the last view.
+    show_all: bool,
     filter_input: TextInputState,
     selected: usize,
     scroll_offset: usize,
@@ -56,13 +60,24 @@ impl QueryHistoryPickerState {
         self.filter_input.update_viewport(width);
     }
 
-    pub fn replace_entries(&mut self, entries: &[QueryHistoryEntry]) {
+    pub fn show_all(&self) -> bool {
+        self.show_all
+    }
+
+    pub fn toggle_show_all(&mut self) {
+        self.show_all = !self.show_all;
+        self.reset_selection();
+    }
+
+    pub fn replace_entries(&mut self, scope: QueryHistoryScope, entries: &[QueryHistoryEntry]) {
+        self.scope = Some(scope);
         self.entries.clear();
         self.entries.extend_from_slice(entries);
         self.reset_selection();
     }
 
     pub fn reset(&mut self) {
+        self.scope = None;
         self.entries.clear();
         self.filter_input.clear();
         self.selected = 0;
@@ -128,7 +143,11 @@ impl QueryHistoryPickerState {
         let mut matcher = None;
         let mut groups: Vec<GroupedEntry<'_>> = Vec::new();
 
+        let scope = self.scope.as_ref().filter(|_| !self.show_all);
         for entry in self.entries.iter().rev() {
+            if scope.is_some_and(|scope| !scope.matches(entry)) {
+                continue;
+            }
             let match_indices = if let Some(pattern) = pattern.as_ref() {
                 let mut indices = Vec::new();
                 let mut buf = Vec::new();
@@ -558,6 +577,69 @@ mod tests {
             let query = grouped.get(selected).map(|g| g.entry.query.clone());
 
             assert_eq!(query, Some("SELECT 1".to_string()));
+        }
+    }
+
+    mod scope_filter {
+        use super::*;
+        use crate::domain::query_history::{QueryHistoryKey, QueryResultStatus};
+
+        fn entry_for(query: &str, connection_id: &str) -> QueryHistoryEntry {
+            QueryHistoryEntry::new_with_database(
+                query.to_string(),
+                "2026-03-13T12:00:00Z".to_string(),
+                ConnectionId::from_string(connection_id),
+                None,
+                QueryResultStatus::Success,
+                None,
+            )
+        }
+
+        fn loaded_state() -> QueryHistoryPickerState {
+            let id = ConnectionId::from_string("this-conn");
+            let mut state = QueryHistoryPickerState::default();
+            state.replace_entries(
+                QueryHistoryScope::new(id.clone(), QueryHistoryKey::for_connection_id(&id), None),
+                &[
+                    entry_for("SELECT mine", "this-conn"),
+                    entry_for("SELECT theirs", "other-conn"),
+                ],
+            );
+            state
+        }
+
+        fn queries(state: &QueryHistoryPickerState) -> Vec<&str> {
+            state
+                .grouped_filtered_entries()
+                .iter()
+                .map(|group| group.entry.query.as_str())
+                .collect()
+        }
+
+        #[test]
+        fn shows_only_this_connection_by_default() {
+            assert_eq!(queries(&loaded_state()), ["SELECT mine"]);
+        }
+
+        #[test]
+        fn toggle_shows_all_connections_and_resets_selection() {
+            let mut state = loaded_state();
+            state.selected = 1;
+
+            state.toggle_show_all();
+
+            assert_eq!(queries(&state), ["SELECT theirs", "SELECT mine"]);
+            assert_eq!(state.selected, 0);
+        }
+
+        #[test]
+        fn show_all_survives_reset() {
+            let mut state = loaded_state();
+            state.toggle_show_all();
+
+            state.reset();
+
+            assert!(state.show_all());
         }
     }
 }

@@ -7,7 +7,6 @@ use crate::ports::outbound::QueryHistoryStore;
 use crate::update::action::Action;
 
 pub(in crate::cmd) fn spawn_query_history_load(
-    project_name: String,
     scope: QueryHistoryScope,
     action_tx: &mpsc::Sender<Action>,
     query_history_store: &Arc<dyn QueryHistoryStore>,
@@ -16,7 +15,7 @@ pub(in crate::cmd) fn spawn_query_history_load(
     let tx = action_tx.clone();
 
     tokio::spawn(async move {
-        let action = match store.load(&project_name, &scope).await {
+        let action = match store.load().await {
             Ok(entries) => Action::QueryHistoryLoaded(scope, entries),
             Err(e) => Action::QueryHistoryLoadFailed(scope, e.to_string()),
         };
@@ -28,7 +27,7 @@ pub(in crate::cmd) fn spawn_query_history_load(
 mod tests {
     use super::*;
     use crate::domain::connection::ConnectionId;
-    use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
+    use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryKey, QueryResultStatus};
     use crate::ports::outbound::QueryHistoryError;
 
     struct TestQueryHistoryStore {
@@ -39,24 +38,20 @@ mod tests {
     impl QueryHistoryStore for TestQueryHistoryStore {
         async fn append(
             &self,
-            _project_name: &str,
             _scope: &QueryHistoryScope,
             _entry: &QueryHistoryEntry,
         ) -> Result<(), QueryHistoryError> {
             Ok(())
         }
 
-        async fn load(
-            &self,
-            _project_name: &str,
-            _scope: &QueryHistoryScope,
-        ) -> Result<Vec<QueryHistoryEntry>, QueryHistoryError> {
+        async fn load(&self) -> Result<Vec<QueryHistoryEntry>, QueryHistoryError> {
             self.result.clone()
         }
     }
 
     fn scope() -> QueryHistoryScope {
-        QueryHistoryScope::new(ConnectionId::from_string("test-conn"), None)
+        let id = ConnectionId::from_string("test-conn");
+        QueryHistoryScope::new(id.clone(), QueryHistoryKey::for_connection_id(&id), None)
     }
 
     fn entry() -> QueryHistoryEntry {
@@ -93,7 +88,7 @@ mod tests {
         });
         let (tx, rx) = mpsc::channel(2);
 
-        spawn_query_history_load("test".to_string(), scope.clone(), &tx, &store);
+        spawn_query_history_load(scope.clone(), &tx, &store);
         drop(tx);
 
         let action = receive_one(rx).await;
@@ -116,7 +111,7 @@ mod tests {
         });
         let (tx, rx) = mpsc::channel(2);
 
-        spawn_query_history_load("test".to_string(), scope.clone(), &tx, &store);
+        spawn_query_history_load(scope.clone(), &tx, &store);
         drop(tx);
 
         let action = receive_one(rx).await;
