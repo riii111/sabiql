@@ -2,10 +2,10 @@
 source: src/tests/render_snapshots/table_explorer.rs
 expression: output
 ---
-test_project ▸ app ▸ users                                                                                                                          connected | mysql
+⌂ test_project ▸ My app ▸ ▦ users                                                                                                                   connected | mysql
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]                                                                                       
-│> users                                │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│  audit_log                            ││Comment: (none)                                                                                                           │
+│> ▦ users                              │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  ▦ audit_log                          ││Comment: (none)                                                                                                           │
 │                                       ││Rows:    (none)                                                                                                           │
 │                                       ││Table:   users                                                                                                            │
 │                                       ││                                                                                                                          │

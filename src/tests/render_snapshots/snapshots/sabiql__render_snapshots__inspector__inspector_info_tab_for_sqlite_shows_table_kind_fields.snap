@@ -2,11 +2,11 @@
 source: src/tests/render_snapshots/inspector.rs
 expression: output
 ---
-test_project ▸ test_db ▸ -                                                                                                                         connected | app.db
+⌂ test_project ▸ Sq test_db ▸ -                                                                                                                    connected | app.db
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]
-│> users                                │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│  posts                                ││Rows:    ~42                                                                                                              │
-│  comments                             ││Schema:  main                                                                                                             │
+│> ▦ users                              │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  ▦ posts                              ││Rows:    ~42                                                                                                              │
+│  ▦ comments                           ││Schema:  main                                                                                                             │
 │                                       ││Table:   notes_fts                                                                                                        │
 │                                       ││Kind:    Virtual table (fts5)                                                                                             │
 │                                       ││Flags:   (none)                                                                                                           │

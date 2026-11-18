@@ -2,9 +2,9 @@
 source: src/tests/render_snapshots/table_explorer.rs
 expression: output
 ---
-test_project ▸ app.db ▸ users                                                                                                                      connected | app.db
+⌂ test_project ▸ Sq app.db ▸ ▦ users                                                                                                               connected | app.db
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]                                                                                       
-│> users                                │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│> ▦ users                              │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

@@ -2,11 +2,11 @@
 source: src/tests/render_snapshots/inspector.rs
 expression: output
 ---
-test_project ▸ test_db ▸ -                                                                                                                         connected | app.db
+⌂ test_project ▸ Sq test_db ▸ -                                                                                                                    connected | app.db
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]
-│> users                                │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│  posts                                ││Name                    Columns   Unique   Partial   Detail                                                               │
-│  comments                             ││idx_users_name_nocase   name                         CREATE INDEX idx_users_name_nocase ON users(name COLLATE NOCASE)     │
+│> ▦ users                              │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  ▦ posts                              ││Name                    Columns   Unique   Partial   Detail                                                               │
+│  ▦ comments                           ││idx_users_name_nocase   name                         CREATE INDEX idx_users_name_nocase ON users(name COLLATE NOCASE)     │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

@@ -128,6 +128,7 @@ mod tests {
 
         let settings = store.load().unwrap();
 
+        assert_eq!(settings.icon_mode, IconMode::Unicode);
         assert_eq!(settings.theme_id, ThemeId::Default);
         assert_eq!(settings.keymap_preset, KeymapPreset::Default);
     }
@@ -221,7 +222,7 @@ ssl_mode = "prefer"
     }
 
     #[test]
-    fn missing_theme_falls_back_to_default() {
+    fn missing_display_settings_use_defaults() {
         let temp_dir = TempDir::new().unwrap();
         fs::write(
             temp_dir.path().join(CONFIG_FILE_NAME),
@@ -232,8 +233,27 @@ ssl_mode = "prefer"
 
         let settings = store.load().unwrap();
 
+        assert_eq!(settings.icon_mode, IconMode::Unicode);
         assert_eq!(settings.theme_id, ThemeId::Default);
         assert_eq!(settings.keymap_preset, KeymapPreset::Default);
+    }
+
+    #[test]
+    fn configured_icon_modes_override_the_default() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join(CONFIG_FILE_NAME);
+        let store = TomlSettingsStore::with_config_dir(dir.path().to_owned());
+
+        for mode in IconMode::ALL {
+            let value = mode.config_value();
+            fs::write(
+                &path,
+                format!("version = 2\nconnections = []\nicon_mode = \"{value}\"\n"),
+            )
+            .unwrap();
+
+            assert_eq!(store.load().unwrap().icon_mode, mode);
+        }
     }
 
     #[test]
