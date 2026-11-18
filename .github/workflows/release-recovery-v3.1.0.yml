@@ -34,7 +34,7 @@ jobs:
         run: |
           cargo build --locked --release --features self-update --target aarch64-apple-darwin
           binary_dir=target/aarch64-apple-darwin/release
-          lipo -verify_arch arm64 "$binary_dir/sabiql"
+          lipo "$binary_dir/sabiql" -verify_arch arm64
           tar -czf sabiql-aarch64-apple-darwin.tar.gz -C "$binary_dir" sabiql
           shasum -a 256 sabiql-aarch64-apple-darwin.tar.gz > sabiql-aarch64-apple-darwin.tar.gz.sha256
 
