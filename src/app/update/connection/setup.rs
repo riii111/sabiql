@@ -123,12 +123,11 @@ pub(in crate::update) fn reduce_connection_setup(
             let killed = state
                 .connection_setup
                 .focused_input_mut()
-                .map(|input| {
+                .map_or_default(|input| {
                     let killed = input.kill(*direction);
                     input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
                     killed
-                })
-                .unwrap_or_default();
+                });
             if !is_password {
                 state.record_kill(killed);
             }

@@ -261,12 +261,8 @@ fn render_slot_columns(
 
     let dim_style = Style::default().fg(theme.semantic.text.dim);
 
-    let l_plan: Vec<&str> = left
-        .map(|s| s.plan.raw_text.lines().collect())
-        .unwrap_or_default();
-    let r_plan: Vec<&str> = right
-        .map(|s| s.plan.raw_text.lines().collect())
-        .unwrap_or_default();
+    let l_plan: Vec<&str> = left.map_or_default(|s| s.plan.raw_text.lines().collect());
+    let r_plan: Vec<&str> = right.map_or_default(|s| s.plan.raw_text.lines().collect());
     let max = l_plan.len().max(r_plan.len());
 
     for i in 0..max {

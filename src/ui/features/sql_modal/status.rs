@@ -84,11 +84,7 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState, the
             Style::default().fg(theme.semantic.text.dim),
         ),
         SqlModalStatus::Running => {
-            let elapsed = state
-                .query
-                .start_time()
-                .map(|t| t.elapsed())
-                .unwrap_or_default();
+            let elapsed = state.query.start_time().map_or_default(|t| t.elapsed());
             let spinner = spinner_char(elapsed.as_millis());
             let elapsed_secs = elapsed.as_secs_f32();
             let status = format!("{spinner} Running {elapsed_secs:.1}s");
