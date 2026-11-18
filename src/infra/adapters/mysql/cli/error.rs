@@ -52,6 +52,16 @@ pub(super) fn has_mysql_cli_error(output: &[u8]) -> bool {
         })
 }
 
+pub(super) fn has_complete_mysql_cli_error(output: &[u8]) -> bool {
+    output
+        .split_inclusive(|byte| *byte == b'\n' || *byte == b'\r')
+        .any(|line| {
+            line.last()
+                .is_some_and(|byte| *byte == b'\n' || *byte == b'\r')
+                && has_mysql_cli_error(line)
+        })
+}
+
 pub(super) fn is_mysql_batch_diagnostic(line: &[u8]) -> bool {
     line.starts_with(b"mysql: ") || line.starts_with(b"Warning: ")
 }

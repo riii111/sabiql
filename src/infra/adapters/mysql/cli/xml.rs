@@ -6,6 +6,8 @@ use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{DatabaseDiagnostic, QueryValue};
 
 use super::diagnostics::parse_mysql_cli_diagnostics;
+#[cfg(any(unix, test))]
+use super::error::has_complete_mysql_cli_error;
 use super::error::{
     classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error, trace_mysql_error,
     write_mysql_transcript_line,
@@ -129,10 +131,15 @@ pub(super) fn take_mysql_pty_resultset_frame_with_diagnostics_and_preview_budget
     preview_byte_budget: bool,
 ) -> Result<Option<MySqlResultsetFrameWithDiagnostics>, DbOperationError> {
     let resultset_start = scanner.frame_start(buffer).unwrap_or(buffer.len());
-    if has_mysql_cli_error(&buffer[..resultset_start]) {
-        trace_mysql_error(&buffer[..resultset_start]);
+    let error_output = &buffer[..resultset_start];
+    if has_mysql_cli_error(error_output) {
+        // MySQL writes the error header and message separately, so wait for the line ending.
+        if !has_complete_mysql_cli_error(error_output) {
+            return Ok(None);
+        }
+        trace_mysql_error(error_output);
         return Err(classify_mysql_query_failure_with_packet_limit(
-            &buffer[..resultset_start],
+            error_output,
             client_packet_limit_bytes,
         ));
     }
