@@ -1,48 +1,31 @@
-mod completion;
+pub(in crate::update) mod completion;
 pub(in crate::update) mod editing;
 mod helpers;
 pub(in crate::update) mod high_risk;
-mod mode;
-mod submit;
-mod yank;
-
-use std::time::Instant;
-
-use crate::model::app_state::AppState;
-use crate::update::action::Action;
-use crate::update::dispatch_result::DispatchResult;
-
-pub(in crate::update) fn dispatch_sql_modal(
-    state: &mut AppState,
-    action: &Action,
-    now: Instant,
-) -> DispatchResult {
-    completion::reduce_completion(state, action)
-        .or_else(|| editing::reduce_editing(state, action, now))
-        .or_else(|| mode::reduce_mode(state, action))
-        .or_else(|| submit::reduce_submit(state, action, now))
-        .or_else(|| high_risk::reduce_high_risk_confirmation(state, action, now))
-        .or_else(|| yank::reduce_yank(state, action))
-}
+pub(in crate::update) mod mode;
+pub(in crate::update) mod submit;
+pub(in crate::update) mod yank;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::cmd::effect::Effect;
     use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, TableSummary};
+    use crate::model::app_state::AppState;
     use crate::model::browse::query_execution::PostDeleteRowSelection;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::sql_editor::modal::{AdhocSuccessSnapshot, SqlModalStatus, SqlModalTab};
     use crate::policy::write::sql_risk::AcknowledgeReason;
     use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel};
-    use crate::update::action::{CursorMove, InputTarget, ModalKind};
+    use crate::services::AppServices;
+    use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
+    use crate::update::reducer::route;
     use crate::update::test_fixtures;
     use crate::update::test_fixtures::edit_text;
     use std::sync::Arc;
     use std::time::Instant;
 
-    fn reduce_sql_modal(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
-        super::dispatch_sql_modal(state, action, now)
+    fn reduce_sql_modal(state: &mut AppState, action: &Action, now: Instant) -> Vec<Effect> {
+        route(state, action.clone(), now, &AppServices::stub())
     }
 
     fn sql_modal_state() -> AppState {
@@ -297,9 +280,7 @@ mod tests {
                 );
             }
             let effects =
-                reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now())
-                    .into_effects()
-                    .expect("confirmation should execute");
+                reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now());
             assert!(matches!(
                 effects.as_slice(),
                 [Effect::ExecuteAdhoc { query, .. }]
@@ -414,7 +395,7 @@ mod tests {
                 state.sql_modal.status(),
                 SqlModalStatus::Error(error) if error == "No active connection"
             ));
-            assert!(effects.is_handled_and(Vec::is_empty));
+            assert!(effects.is_empty());
         }
 
         #[test]
@@ -492,9 +473,6 @@ mod tests {
 
             assert!(matches!(state.sql_modal.status(), SqlModalStatus::Running));
             assert!(state.query.is_running());
-            let effects = effects
-                .into_effects()
-                .expect("reducer should handle action");
             assert!(matches!(
                 effects.as_slice(),
                 [Effect::ExecuteAdhoc { run_id: 1, .. }]
@@ -522,7 +500,7 @@ mod tests {
                 state.sql_modal.status(),
                 SqlModalStatus::Error(error) if error == "No active connection"
             ));
-            assert!(effects.is_handled_and(Vec::is_empty));
+            assert!(effects.is_empty());
         }
 
         #[test]
@@ -699,9 +677,9 @@ mod tests {
 
             assert!(matches!(state.sql_modal.status(), SqlModalStatus::Running));
             assert!(
-                effects.is_handled_and(|e| e
+                effects
                     .iter()
-                    .any(|ef| matches!(ef, Effect::ExecuteAdhoc { .. })))
+                    .any(|ef| matches!(ef, Effect::ExecuteAdhoc { .. }))
             );
         }
     }
@@ -720,9 +698,7 @@ mod tests {
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             state.session.enable_read_only();
 
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
             assert!(effects.is_empty());
             assert!(matches!(
@@ -756,9 +732,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("DELETE FROM users WHERE id = 1".to_string());
-            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
             assert!(matches!(
                 state.sql_modal.status(),
@@ -775,9 +749,7 @@ mod tests {
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             state.session.enable_read_only();
 
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
             assert!(!effects.is_empty());
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
@@ -794,9 +766,7 @@ mod tests {
             test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/test.db");
             state.session.enable_read_only();
 
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
             assert!(!effects.is_empty());
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
@@ -813,9 +783,7 @@ mod tests {
             test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/test.db");
             state.session.enable_read_only();
 
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
             assert!(effects.is_empty());
             assert!(matches!(
@@ -844,9 +812,7 @@ mod tests {
             let mut state = confirming_risk_state("DO $$ BEGIN RAISE NOTICE 'hi'; END $$");
 
             let effects =
-                reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now())
-                    .into_effects()
-                    .expect("reducer should handle action");
+                reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now());
 
             assert!(matches!(state.sql_modal.status(), SqlModalStatus::Running));
             assert!(
@@ -884,9 +850,7 @@ mod tests {
                 .query
                 .set_post_delete_selection(PostDeleteRowSelection::Select(4));
 
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
             assert!(state.query.is_running());
@@ -905,9 +869,7 @@ mod tests {
             let mut state = modal_state_with_query("SELECT 1");
             test_fixtures::activate_mysql_connection(&mut state, "mysql://localhost/test");
 
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
             assert!(matches!(
                 effects.as_slice(),
@@ -919,9 +881,7 @@ mod tests {
         fn submit_insert_executes_immediately() {
             let mut state = modal_state_with_query("INSERT INTO t VALUES (1)");
 
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
             assert!(
@@ -1029,9 +989,7 @@ mod tests {
         fn yank_empty_content_is_noop() {
             let mut state = sql_modal_state();
 
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now());
 
             assert!(effects.is_empty());
         }
@@ -1041,9 +999,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
 
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now());
 
             assert_eq!(effects.len(), 1);
             assert!(
@@ -1093,8 +1049,7 @@ mod tests {
                 &mut state,
                 &Action::OpenModal(ModalKind::SqlModal),
                 Instant::now(),
-            )
-            .expect("SQL modal open should be handled");
+            );
 
             assert!(effects.is_empty());
             assert!(state.table_prefetch.active_prefetch_run_id().is_none());
@@ -1139,18 +1094,14 @@ mod tests {
                 &mut state,
                 &Action::OpenModal(ModalKind::SqlModal),
                 Instant::now(),
-            )
-            .into_effects()
-            .expect("SQL modal open should be handled");
+            );
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
 
             state.modal.set_mode(InputMode::SqlModal);
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
-                .into_effects()
-                .expect("SQL modal submit should be handled");
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
             assert!(effects.is_empty());
             assert!(!state.query.is_running());
@@ -1188,9 +1139,7 @@ mod tests {
             state.sql_modal.editor.set_content("SELECT 1".to_string());
             state.sql_modal.set_active_tab(SqlModalTab::Sql);
 
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now());
 
             assert_eq!(effects.len(), 1);
             assert!(
@@ -1204,9 +1153,7 @@ mod tests {
             state.sql_modal.editor.set_content(String::new());
             state.sql_modal.set_active_tab(SqlModalTab::Sql);
 
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now());
 
             assert!(effects.is_empty());
         }
@@ -1224,9 +1171,7 @@ mod tests {
                 "SELECT 1",
             );
 
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now());
 
             assert_eq!(effects.len(), 1);
             assert!(
@@ -1240,9 +1185,7 @@ mod tests {
             test_fixtures::activate_postgres_connection(&mut state, "postgres://test");
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
 
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now());
 
             assert!(effects.is_empty());
         }
@@ -1254,9 +1197,7 @@ mod tests {
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
             state.explain.set_error("syntax error".to_string());
 
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now());
 
             assert!(effects.is_empty());
         }
@@ -1269,9 +1210,7 @@ mod tests {
             state.explain.left = Some(make_slot("Seq Scan", false, 420, SlotSource::AutoPrevious));
             state.explain.right = Some(make_slot("Index Scan", true, 50, SlotSource::AutoLatest));
 
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now());
 
             assert_eq!(effects.len(), 1);
             if let Effect::CopyToClipboard { content, .. } = &effects[0] {
@@ -1295,9 +1234,7 @@ mod tests {
             state.explain.left = Some(make_slot("Seq Scan", false, 300, SlotSource::AutoPrevious));
             state.explain.right = Some(make_slot("Index Scan", false, 100, SlotSource::AutoLatest));
 
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now());
 
             assert_eq!(effects.len(), 1);
             if let Effect::CopyToClipboard { content, .. } = &effects[0] {
@@ -1316,9 +1253,7 @@ mod tests {
             state.explain.left = None;
             state.explain.right = Some(make_slot("Index Scan", false, 100, SlotSource::AutoLatest));
 
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now());
 
             assert!(effects.is_empty());
         }
@@ -1331,9 +1266,7 @@ mod tests {
             state.explain.left = Some(make_slot("Seq Scan", false, 200, SlotSource::AutoPrevious));
             state.explain.right = None;
 
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now());
 
             assert!(effects.is_empty());
         }
@@ -1346,9 +1279,7 @@ mod tests {
             state.explain.left = None;
             state.explain.right = None;
 
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now());
 
             assert!(effects.is_empty());
         }
@@ -1395,9 +1326,7 @@ mod tests {
                 source: SlotSource::AutoLatest,
             });
 
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now());
 
             assert_eq!(effects.len(), 1);
             if let Effect::CopyToClipboard { content, .. } = &effects[0] {

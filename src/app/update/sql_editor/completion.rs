@@ -3,37 +3,30 @@ use crate::model::app_state::AppState;
 use crate::model::sql_editor::modal::sql_modal_visible_rows;
 use crate::policy::sql::completion::{CompletionEngine, CompletionInput};
 use crate::update::action::Action;
-use crate::update::dispatch_result::DispatchResult;
 
-pub(super) fn reduce_completion(state: &mut AppState, action: &Action) -> DispatchResult {
-    match action {
-        // Completion navigation
-        Action::CompletionNext => {
-            state.sql_modal.completion_next();
-            DispatchResult::handled()
-        }
-        Action::CompletionPrev => {
-            state.sql_modal.completion_prev();
-            DispatchResult::handled()
-        }
-        Action::CompletionDismiss => {
-            state.sql_modal.dismiss_completion();
-            DispatchResult::handled()
-        }
-        // Completion accept
-        Action::CompletionAccept => {
-            state
-                .sql_modal
-                .accept_selected_completion(sql_modal_visible_rows(state.ui.terminal_height()));
-            DispatchResult::handled()
-        }
-
-        Action::CompletionRequest => DispatchResult::handled_with(request_completion(state)),
-        _ => DispatchResult::pass(),
-    }
+pub(in crate::update) fn completion_next(state: &mut AppState) -> Vec<Effect> {
+    state.sql_modal.completion_next();
+    vec![]
 }
 
-fn request_completion(state: &mut AppState) -> Vec<Effect> {
+pub(in crate::update) fn completion_prev(state: &mut AppState) -> Vec<Effect> {
+    state.sql_modal.completion_prev();
+    vec![]
+}
+
+pub(in crate::update) fn completion_dismiss(state: &mut AppState) -> Vec<Effect> {
+    state.sql_modal.dismiss_completion();
+    vec![]
+}
+
+pub(in crate::update) fn completion_accept(state: &mut AppState) -> Vec<Effect> {
+    state
+        .sql_modal
+        .accept_selected_completion(sql_modal_visible_rows(state.ui.terminal_height()));
+    vec![]
+}
+
+pub(in crate::update) fn completion_request(state: &mut AppState) -> Vec<Effect> {
     let outcome = CompletionEngine::new(&state.table_detail_cache).complete(CompletionInput {
         content: state.sql_modal.editor().content(),
         cursor: state.sql_modal.editor().cursor(),
@@ -84,6 +77,9 @@ mod tests {
     use super::*;
     use crate::domain::{DatabaseMetadata, TableSummary};
     use crate::model::shared::input_mode::InputMode;
+    use crate::services::AppServices;
+    use crate::update::reducer::route;
+    use std::time::Instant;
 
     #[test]
     fn request_prefetches_only_referenced_tables() {
@@ -101,7 +97,12 @@ mod tests {
             .collect();
         state.session.set_metadata(Some(Arc::new(metadata)));
 
-        let effects = reduce_completion(&mut state, &Action::CompletionRequest).unwrap();
+        let effects = route(
+            &mut state,
+            Action::CompletionRequest,
+            Instant::now(),
+            &AppServices::stub(),
+        );
 
         assert!(matches!(
             effects.as_slice(),

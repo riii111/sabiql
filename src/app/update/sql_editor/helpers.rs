@@ -3,26 +3,25 @@ use std::time::Instant;
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::ports::outbound::AccessMode;
-use crate::update::dispatch_result::DispatchResult;
 
 pub(super) fn start_adhoc_if_connected(
     state: &mut AppState,
     query: String,
     now: Instant,
-) -> DispatchResult {
+) -> Vec<Effect> {
     let Some(dsn) = state.session.dsn().map(String::from) else {
         state
             .sql_modal
             .finish_adhoc_error("No active connection".to_string());
-        return DispatchResult::handled();
+        return vec![];
     };
 
     let run_id = state.query.begin_non_preview_running(now);
     state.sql_modal.begin_adhoc_running();
-    DispatchResult::handled_with(vec![Effect::ExecuteAdhoc {
+    vec![Effect::ExecuteAdhoc {
         dsn,
         run_id,
         query,
         access_mode: AccessMode::from_read_only(state.session.is_read_only()),
-    }])
+    }]
 }

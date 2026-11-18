@@ -9,7 +9,7 @@ use crate::update::action::{
     ScrollTarget, ScrollToCursorTarget, SelectMotion,
 };
 use crate::update::reducer::legacy_dispatch;
-use crate::update::{connection, explain, modal};
+use crate::update::{connection, explain, modal, sql_editor};
 
 pub(in crate::update) fn scroll(
     state: &mut AppState,
@@ -97,6 +97,7 @@ pub(in crate::update) fn open_modal(
         ModalKind::TablePicker => modal::base::open_modal_table_picker(state),
         ModalKind::CommandPalette => modal::base::open_modal_command_palette(state),
         ModalKind::Settings => modal::settings::open_modal_settings(state),
+        ModalKind::SqlModal => sql_editor::mode::open_modal_sql_modal(state),
         ModalKind::ErTablePicker => modal::er_picker::open_modal_er_table_picker(state, now),
         ModalKind::QueryHistoryPicker => {
             modal::query_history::open_modal_query_history_picker(state)
@@ -144,6 +145,7 @@ pub(in crate::update) fn paste(
     services: &AppServices,
 ) -> Vec<Effect> {
     match state.input_mode() {
+        InputMode::SqlModal => sql_editor::editing::paste_sql_modal(state, text, now),
         InputMode::ConnectionSetup => connection::setup::paste_connection_setup(state, text),
         _ => legacy_dispatch(state, Action::Paste(text), now, services),
     }

@@ -1,40 +1,37 @@
+use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::sql_modal_visible_rows;
-use crate::update::action::{Action, CursorMove, ModalKind};
-use crate::update::dispatch_result::DispatchResult;
+use crate::update::action::CursorMove;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 
-pub(super) fn reduce_mode(state: &mut AppState, action: &Action) -> DispatchResult {
-    match action {
-        // Modal open/submit
-        Action::OpenModal(ModalKind::SqlModal) => {
-            if reject_pending_mysql_connection_probe(state) {
-                return DispatchResult::handled();
-            }
-            state.modal.set_mode(InputMode::SqlModal);
-            state.sql_modal.open_sql_tab();
-            state.flash_timers.clear(FlashId::SqlModal);
-            DispatchResult::handled()
-        }
-        Action::SqlModalAppendInsert => {
-            state.sql_modal.editor.move_cursor(CursorMove::LineEnd);
-            state
-                .sql_modal
-                .editor
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
-            state.sql_modal.enter_editing();
-            DispatchResult::handled()
-        }
-        Action::SqlModalEnterInsert => {
-            state.sql_modal.enter_editing();
-            DispatchResult::handled()
-        }
-        Action::SqlModalEnterNormal => {
-            state.sql_modal.enter_normal();
-            DispatchResult::handled()
-        }
-        _ => DispatchResult::pass(),
+pub(in crate::update) fn open_modal_sql_modal(state: &mut AppState) -> Vec<Effect> {
+    if reject_pending_mysql_connection_probe(state) {
+        return vec![];
     }
+    state.modal.set_mode(InputMode::SqlModal);
+    state.sql_modal.open_sql_tab();
+    state.flash_timers.clear(FlashId::SqlModal);
+    vec![]
+}
+
+pub(in crate::update) fn sql_modal_append_insert(state: &mut AppState) -> Vec<Effect> {
+    state.sql_modal.editor.move_cursor(CursorMove::LineEnd);
+    state
+        .sql_modal
+        .editor
+        .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
+    state.sql_modal.enter_editing();
+    vec![]
+}
+
+pub(in crate::update) fn sql_modal_enter_insert(state: &mut AppState) -> Vec<Effect> {
+    state.sql_modal.enter_editing();
+    vec![]
+}
+
+pub(in crate::update) fn sql_modal_enter_normal(state: &mut AppState) -> Vec<Effect> {
+    state.sql_modal.enter_normal();
+    vec![]
 }

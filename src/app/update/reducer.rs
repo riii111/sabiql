@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use super::{
     clipboard, connection, dispatch_metadata, dispatch_navigation, dispatch_query, dispatch_result,
-    dispatch_sql_modal, er, explain, modal, target_routing, text_edit,
+    er, explain, modal, sql_editor, target_routing, text_edit,
 };
 use crate::catalog::HelpDocument;
 use crate::cmd::effect::Effect;
@@ -215,8 +215,25 @@ pub(in crate::update) fn route(
         Action::SettingsCancel => modal::settings::settings_cancel(state),
         Action::SettingsSaved(settings) => modal::settings::settings_saved(state, settings, now),
         Action::SettingsSaveFailed(error) => modal::settings::settings_save_failed(state, error),
+        Action::SqlModalAppendInsert => sql_editor::mode::sql_modal_append_insert(state),
+        Action::SqlModalEnterInsert => sql_editor::mode::sql_modal_enter_insert(state),
+        Action::SqlModalEnterNormal => sql_editor::mode::sql_modal_enter_normal(state),
+        Action::SqlModalYank => sql_editor::yank::sql_modal_yank(state),
+        Action::SqlModalNewLine => sql_editor::editing::sql_modal_new_line(state, now),
+        Action::SqlModalInsertTab => sql_editor::editing::sql_modal_insert_tab(state, now),
+        Action::SqlModalSubmit => sql_editor::submit::sql_modal_submit(state, now),
+        Action::SqlModalClear => sql_editor::editing::sql_modal_clear(state),
+        Action::SqlModalCancelConfirm => sql_editor::high_risk::sql_modal_cancel_confirm(state),
+        Action::SqlModalConfirmExecute => {
+            sql_editor::high_risk::sql_modal_confirm_execute(state, now)
+        }
         Action::SqlModalNextTab => explain::tabs::sql_modal_next_tab(state),
         Action::SqlModalPrevTab => explain::tabs::sql_modal_prev_tab(state),
+        Action::CompletionRequest => sql_editor::completion::completion_request(state),
+        Action::CompletionAccept => sql_editor::completion::completion_accept(state),
+        Action::CompletionDismiss => sql_editor::completion::completion_dismiss(state),
+        Action::CompletionNext => sql_editor::completion::completion_next(state),
+        Action::CompletionPrev => sql_editor::completion::completion_prev(state),
         Action::ExplainRequest => explain::request::explain_request(state, now),
         Action::ExplainAnalyzeRequest => explain::analyze::explain_analyze_request(state, now),
         Action::ExplainAnalyzeConfirm => explain::analyze::explain_analyze_confirm(state, now),
@@ -285,7 +302,6 @@ pub(in crate::update) fn legacy_dispatch(
 ) -> Vec<Effect> {
     if let Some(effects) = dispatch_result(state, &action, services, now)
         .or_else(|| dispatch_navigation(state, &action, services, now))
-        .or_else(|| dispatch_sql_modal(state, &action, now))
         .or_else(|| dispatch_metadata(state, &action, now))
         .or_else(|| dispatch_query(state, &action, now))
         .into_effects()

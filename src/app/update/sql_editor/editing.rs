@@ -1,70 +1,64 @@
 use std::time::{Duration, Instant};
 
+use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
-use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::KeySequenceState;
 use crate::model::shared::text_input::TextEdit;
 use crate::model::sql_editor::modal::{SqlModalStatus, sql_modal_visible_rows};
-use crate::update::action::{Action, CursorMove};
-use crate::update::dispatch_result::DispatchResult;
+use crate::update::action::CursorMove;
 
-pub(super) fn reduce_editing(
+pub(in crate::update) fn paste_sql_modal(
     state: &mut AppState,
-    action: &Action,
+    text: String,
     now: Instant,
-) -> DispatchResult {
-    match action {
-        // Clipboard paste
-        Action::Paste(text) if state.modal.active_mode() == InputMode::SqlModal => {
-            if !matches!(state.sql_modal.status(), SqlModalStatus::Editing) {
-                return DispatchResult::handled();
-            }
-            let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
-            state.sql_modal.editor.insert_str(&normalized);
-            state
-                .sql_modal
-                .editor
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
-            state
-                .sql_modal
-                .schedule_completion_after_dismiss(now + Duration::from_millis(100));
-            state.sql_modal.enter_editing();
-            DispatchResult::handled()
-        }
-
-        // Text editing
-        Action::SqlModalNewLine => {
-            state.sql_modal.enter_editing();
-            state.sql_modal.editor.insert_newline();
-            state
-                .sql_modal
-                .editor
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
-            state
-                .sql_modal
-                .schedule_completion(now + Duration::from_millis(100));
-            DispatchResult::handled()
-        }
-        Action::SqlModalInsertTab => {
-            state.sql_modal.enter_editing();
-            state.sql_modal.editor.insert_tab();
-            state
-                .sql_modal
-                .editor
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
-            state
-                .sql_modal
-                .schedule_completion(now + Duration::from_millis(100));
-            DispatchResult::handled()
-        }
-        Action::SqlModalClear => {
-            state.sql_modal.editor.clear();
-            state.sql_modal.reset_completion();
-            state.ui.set_key_sequence(KeySequenceState::Idle);
-            DispatchResult::handled()
-        }
-        _ => DispatchResult::pass(),
+) -> Vec<Effect> {
+    if !matches!(state.sql_modal.status(), SqlModalStatus::Editing) {
+        return vec![];
     }
+    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+    state.sql_modal.editor.insert_str(&normalized);
+    state
+        .sql_modal
+        .editor
+        .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
+    state
+        .sql_modal
+        .schedule_completion_after_dismiss(now + Duration::from_millis(100));
+    state.sql_modal.enter_editing();
+    vec![]
+}
+
+pub(in crate::update) fn sql_modal_new_line(state: &mut AppState, now: Instant) -> Vec<Effect> {
+    state.sql_modal.enter_editing();
+    state.sql_modal.editor.insert_newline();
+    state
+        .sql_modal
+        .editor
+        .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
+    state
+        .sql_modal
+        .schedule_completion(now + Duration::from_millis(100));
+    vec![]
+}
+
+pub(in crate::update) fn sql_modal_insert_tab(state: &mut AppState, now: Instant) -> Vec<Effect> {
+    state.sql_modal.enter_editing();
+    state.sql_modal.editor.insert_tab();
+    state
+        .sql_modal
+        .editor
+        .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
+    state
+        .sql_modal
+        .schedule_completion(now + Duration::from_millis(100));
+    vec![]
+}
+
+pub(in crate::update) fn sql_modal_clear(state: &mut AppState) -> Vec<Effect> {
+    state.sql_modal.editor.clear();
+    state.sql_modal.reset_completion();
+    state.ui.set_key_sequence(KeySequenceState::Idle);
+    vec![]
 }
 
 pub(in crate::update) fn edit_text(
