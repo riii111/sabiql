@@ -7,9 +7,8 @@
 use std::time::Instant;
 
 use super::{
-    clipboard, dispatch_connection, dispatch_er, dispatch_metadata, dispatch_modal,
-    dispatch_navigation, dispatch_query, dispatch_result, dispatch_sql_modal, explain,
-    target_routing, text_edit,
+    clipboard, dispatch_connection, dispatch_metadata, dispatch_modal, dispatch_navigation,
+    dispatch_query, dispatch_result, dispatch_sql_modal, er, explain, target_routing, text_edit,
 };
 use crate::catalog::HelpDocument;
 use crate::cmd::effect::Effect;
@@ -140,6 +139,19 @@ pub(in crate::update) fn route(
         Action::CompareEditQuery => explain::tabs::compare_edit_query(state),
         Action::CopySucceeded(target) => clipboard::copy_succeeded(state, target, now),
         Action::CopyFailed(error) => clipboard::copy_failed(state, &error),
+        Action::ErOpenDiagram => er::diagram::er_open_diagram(state, now),
+        Action::ErGenerateFromCache => er::diagram::er_generate_from_cache(state),
+        Action::SmartErRefreshFetched(fetched) => {
+            er::smart_refresh_fetched::smart_er_refresh_fetched(state, fetched, now)
+        }
+        Action::SmartErRefreshFailed(failure) => {
+            er::smart_refresh_failed::smart_er_refresh_failed(state, failure)
+        }
+        Action::ErDiagramOpened(info) => er::diagram::er_diagram_opened(state, info, now),
+        Action::ErDiagramFailed { run_id, error } => {
+            er::diagram::er_diagram_failed(state, run_id, error)
+        }
+        Action::ErLogWriteFailed(error) => er::diagram::er_log_write_failed(state, error),
         other => legacy_dispatch(state, other, now, services),
     }
 }
@@ -156,7 +168,6 @@ pub(in crate::update) fn legacy_dispatch(
         .or_else(|| dispatch_navigation(state, &action, services, now))
         .or_else(|| dispatch_sql_modal(state, &action, now))
         .or_else(|| dispatch_metadata(state, &action, now))
-        .or_else(|| dispatch_er(state, &action, now))
         .or_else(|| dispatch_query(state, &action, now))
         .into_effects()
     {

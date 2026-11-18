@@ -7,7 +7,7 @@ use crate::domain::{DatabaseMetadata, TableSignature, TableSignatureSnapshot};
 use crate::model::app_state::AppState;
 use crate::model::table_detail_cache::TableDetailCache;
 use crate::update::action::{Action, SmartErRefreshFetched};
-use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 use super::diagram::generate_from_cache;
 
@@ -18,46 +18,40 @@ pub(super) struct RefreshDiff {
     pub(super) new_signatures: HashMap<String, String>,
 }
 
-pub(super) fn reduce_smart_refresh_fetched(
+pub(in crate::update) fn smart_er_refresh_fetched(
     state: &mut AppState,
-    action: &Action,
+    fetched: SmartErRefreshFetched,
     now: Instant,
-) -> DispatchResult {
-    match action {
-        Action::SmartErRefreshFetched(SmartErRefreshFetched {
-            dsn,
-            run_id,
-            new_metadata,
-            signature_snapshot,
-        }) => {
-            if !state.session.dsn_matches(dsn) || !state.er_preparation.is_current_run(*run_id) {
-                return DispatchResult::handled();
-            }
-
-            let TableSignatureSnapshot {
-                signatures,
-                prefetched_table_details,
-            } = Arc::unwrap_or_clone(Arc::clone(signature_snapshot));
-            for detail in prefetched_table_details {
-                state
-                    .table_detail_cache
-                    .insert(detail.qualified_name(), detail);
-            }
-            let diff = diff_signatures(
-                state.er_preparation.last_signatures(),
-                &signatures,
-                &state.table_detail_cache,
-            );
-
-            DispatchResult::handled_with(apply_refresh_diff(
-                state,
-                Arc::clone(new_metadata),
-                diff,
-                now,
-            ))
-        }
-        _ => DispatchResult::pass(),
+) -> Vec<Effect> {
+    if reject_pending_mysql_connection_probe(state) {
+        return vec![];
     }
+    let SmartErRefreshFetched {
+        dsn,
+        run_id,
+        new_metadata,
+        signature_snapshot,
+    } = fetched;
+    if !state.session.dsn_matches(&dsn) || !state.er_preparation.is_current_run(run_id) {
+        return vec![];
+    }
+
+    let TableSignatureSnapshot {
+        signatures,
+        prefetched_table_details,
+    } = Arc::unwrap_or_clone(signature_snapshot);
+    for detail in prefetched_table_details {
+        state
+            .table_detail_cache
+            .insert(detail.qualified_name(), detail);
+    }
+    let diff = diff_signatures(
+        state.er_preparation.last_signatures(),
+        &signatures,
+        &state.table_detail_cache,
+    );
+
+    apply_refresh_diff(state, new_metadata, diff, now)
 }
 
 pub(super) fn apply_refresh_diff(

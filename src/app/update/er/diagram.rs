@@ -4,78 +4,90 @@ use crate::cmd::effect::Effect;
 use crate::domain::ErTableInfo;
 use crate::domain::er::{er_output_filename, fk_reachable_tables_multi};
 use crate::model::app_state::AppState;
-use crate::update::action::{Action, ErDiagramInfo};
-use crate::update::dispatch_result::DispatchResult;
+use crate::update::action::ErDiagramInfo;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 
-pub(super) fn reduce_diagram_lifecycle(
+pub(in crate::update) fn er_diagram_opened(
     state: &mut AppState,
-    action: &Action,
+    info: ErDiagramInfo,
     now: Instant,
-) -> DispatchResult {
-    match action {
-        Action::ErDiagramOpened(ErDiagramInfo {
-            run_id,
-            path,
-            table_count,
-            total_tables,
-        }) => {
-            if !state.er_preparation.is_current_run(*run_id) {
-                return DispatchResult::handled();
-            }
-            state.er_preparation.mark_idle();
-            // Reset so next ErOpenDiagram re-evaluates target_tables from scratch.
-            state.table_prefetch.invalidate_prefetch();
-            state.messages.set_success_at(
-                format!(
-                    "✓ Opened {path} ({table_count}/{total_tables} tables) — Stale? Press r to reload"
-                ),
-                now,
-            );
-            DispatchResult::handled()
-        }
-        Action::ErDiagramFailed { run_id, error } => {
-            if !state.er_preparation.is_current_run(*run_id) {
-                return DispatchResult::handled();
-            }
-            state.er_preparation.mark_idle();
-            state.messages.set_error(error.clone());
-            DispatchResult::handled()
-        }
-        Action::ErLogWriteFailed(error) => {
-            state.messages.set_error(error.clone());
-            DispatchResult::handled()
-        }
-        Action::ErOpenDiagram => {
-            if reject_pending_mysql_connection_probe(state) {
-                return DispatchResult::handled();
-            }
-            if state.er_preparation.is_busy() {
-                return DispatchResult::handled();
-            }
-
-            let Some(dsn) = state.session.dsn().map(String::from) else {
-                state.messages.set_error("No active connection".to_string());
-                return DispatchResult::handled();
-            };
-            if state.session.metadata().is_none() {
-                state
-                    .messages
-                    .set_error("Metadata not loaded yet".to_string());
-                return DispatchResult::handled();
-            }
-
-            state.table_prefetch.invalidate_prefetch();
-            let run_id = state.er_preparation.start_waiting_run();
-            state
-                .messages
-                .set_success_at("Checking for schema changes...".to_string(), now);
-
-            DispatchResult::handled_with(vec![Effect::SmartErRefresh { dsn, run_id }])
-        }
-        Action::ErGenerateFromCache => DispatchResult::handled_with(generate_from_cache(state)),
-        _ => DispatchResult::pass(),
+) -> Vec<Effect> {
+    if reject_pending_mysql_connection_probe(state) {
+        return vec![];
     }
+    let ErDiagramInfo {
+        run_id,
+        path,
+        table_count,
+        total_tables,
+    } = info;
+    if !state.er_preparation.is_current_run(run_id) {
+        return vec![];
+    }
+    state.er_preparation.mark_idle();
+    // Reset so next ErOpenDiagram re-evaluates target_tables from scratch.
+    state.table_prefetch.invalidate_prefetch();
+    state.messages.set_success_at(
+        format!("✓ Opened {path} ({table_count}/{total_tables} tables) — Stale? Press r to reload"),
+        now,
+    );
+    vec![]
+}
+
+pub(in crate::update) fn er_diagram_failed(
+    state: &mut AppState,
+    run_id: u64,
+    error: String,
+) -> Vec<Effect> {
+    if reject_pending_mysql_connection_probe(state) {
+        return vec![];
+    }
+    if !state.er_preparation.is_current_run(run_id) {
+        return vec![];
+    }
+    state.er_preparation.mark_idle();
+    state.messages.set_error(error);
+    vec![]
+}
+
+pub(in crate::update) fn er_log_write_failed(state: &mut AppState, error: String) -> Vec<Effect> {
+    state.messages.set_error(error);
+    vec![]
+}
+
+pub(in crate::update) fn er_open_diagram(state: &mut AppState, now: Instant) -> Vec<Effect> {
+    if reject_pending_mysql_connection_probe(state) {
+        return vec![];
+    }
+    if state.er_preparation.is_busy() {
+        return vec![];
+    }
+
+    let Some(dsn) = state.session.dsn().map(String::from) else {
+        state.messages.set_error("No active connection".to_string());
+        return vec![];
+    };
+    if state.session.metadata().is_none() {
+        state
+            .messages
+            .set_error("Metadata not loaded yet".to_string());
+        return vec![];
+    }
+
+    state.table_prefetch.invalidate_prefetch();
+    let run_id = state.er_preparation.start_waiting_run();
+    state
+        .messages
+        .set_success_at("Checking for schema changes...".to_string(), now);
+
+    vec![Effect::SmartErRefresh { dsn, run_id }]
+}
+
+pub(in crate::update) fn er_generate_from_cache(state: &mut AppState) -> Vec<Effect> {
+    if reject_pending_mysql_connection_probe(state) {
+        return vec![];
+    }
+    generate_from_cache(state)
 }
 
 pub(super) fn generate_from_cache(state: &mut AppState) -> Vec<Effect> {

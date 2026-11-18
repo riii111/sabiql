@@ -376,8 +376,7 @@ mod tests {
     use crate::update::browse::metadata::dispatch_metadata;
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
-    use crate::update::er::dispatch_er;
-    use crate::update::reducer::reduce;
+    use crate::update::reducer::{reduce, route};
     use crate::update::test_fixtures as update_test_fixtures;
     use tokio::sync::mpsc;
 
@@ -1616,9 +1615,9 @@ mod tests {
             dispatch_query(&mut state, &action, Instant::now());
 
             let dsn = active_dsn(&state);
-            let effects = dispatch_er(
+            let effects = route(
                 &mut state,
-                &Action::SmartErRefreshFetched(SmartErRefreshFetched {
+                Action::SmartErRefreshFetched(SmartErRefreshFetched {
                     dsn,
                     run_id: old_er_run_id,
                     new_metadata: Arc::new(DatabaseMetadata::new("new".to_string())),
@@ -1628,8 +1627,8 @@ mod tests {
                     }),
                 }),
                 Instant::now(),
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
             assert_eq!(
