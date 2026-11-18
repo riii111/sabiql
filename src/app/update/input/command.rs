@@ -3,7 +3,7 @@ use crate::update::action::{Action, ModalKind};
 pub fn action_for_command(input: &str) -> Action {
     match input.trim() {
         "q" | "quit" => Action::Quit,
-        "?" | "help" => Action::ToggleModal(ModalKind::Help),
+        "?" | "help" => Action::ToggleHelp,
         "sql" => Action::OpenModal(ModalKind::SqlModal),
         "erd" => Action::OpenModal(ModalKind::ErTablePicker),
         "settings" | "theme" => Action::OpenModal(ModalKind::Settings),
@@ -32,10 +32,7 @@ mod tests {
         #[case("?")]
         #[case("help")]
         fn help_aliases(#[case] input: &str) {
-            assert!(matches!(
-                action_for_command(input),
-                Action::ToggleModal(ModalKind::Help)
-            ));
+            assert!(matches!(action_for_command(input), Action::ToggleHelp));
         }
 
         #[test]

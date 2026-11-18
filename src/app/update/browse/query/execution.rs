@@ -189,7 +189,7 @@ pub(in crate::update) fn reduce_execution(
                     state.should_quit = true;
                     vec![Effect::CancelTrackedTasks]
                 }
-                Action::ToggleModal(ModalKind::Help) => {
+                Action::ToggleHelp => {
                     state.ui.help_mut().open(HelpOrigin::CommandLine);
                     state.modal.push_mode(InputMode::Help);
                     vec![]

@@ -429,7 +429,7 @@ mod tests {
         fn question_mark_toggles_help() {
             let result = handle_sqlite_diagnostics_keys(combo(Key::Char('?')));
 
-            assert!(matches!(result, Action::ToggleModal(ModalKind::Help)));
+            assert!(matches!(result, Action::ToggleHelp));
         }
 
         #[test]

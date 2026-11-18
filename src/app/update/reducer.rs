@@ -910,22 +910,12 @@ mod tests {
             let now = Instant::now();
 
             // First open
-            let effects = reduce(
-                &mut state,
-                Action::ToggleModal(ModalKind::Help),
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::ToggleHelp, now, &AppServices::stub());
             assert_eq!(state.input_mode(), InputMode::Help);
             assert!(effects.is_empty());
 
             // Toggle back to normal
-            let effects = reduce(
-                &mut state,
-                Action::ToggleModal(ModalKind::Help),
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::ToggleHelp, now, &AppServices::stub());
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(effects.is_empty());
         }
@@ -955,12 +945,7 @@ mod tests {
             state.modal.set_mode(InputMode::SqlModal);
             let now = Instant::now();
 
-            reduce(
-                &mut state,
-                Action::ToggleModal(ModalKind::Help),
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::ToggleHelp, now, &AppServices::stub());
             let effects = reduce(
                 &mut state,
                 Action::CloseModal(ModalKind::Help),
@@ -3384,18 +3369,13 @@ mod tests {
         fn same_palette_action(left: &Action, right: &Action) -> bool {
             match (left, right) {
                 (Action::OpenModal(a), Action::OpenModal(b))
-                | (Action::CloseModal(a), Action::CloseModal(b))
-                | (Action::ToggleModal(a), Action::ToggleModal(b)) => a == b,
+                | (Action::CloseModal(a), Action::CloseModal(b)) => a == b,
                 _ => std::mem::discriminant(left) == std::mem::discriminant(right),
             }
         }
 
         #[rstest]
-        #[case(
-            KeymapPreset::Default,
-            Action::ToggleModal(ModalKind::Help),
-            InputMode::Help
-        )]
+        #[case(KeymapPreset::Default, Action::ToggleHelp, InputMode::Help)]
         #[case(
             KeymapPreset::Default,
             Action::OpenModal(ModalKind::TablePicker),
@@ -3406,11 +3386,7 @@ mod tests {
             Action::OpenModal(ModalKind::SqlModal),
             InputMode::SqlModal
         )]
-        #[case(
-            KeymapPreset::Ide,
-            Action::ToggleModal(ModalKind::Help),
-            InputMode::Help
-        )]
+        #[case(KeymapPreset::Ide, Action::ToggleHelp, InputMode::Help)]
         #[case(
             KeymapPreset::Ide,
             Action::OpenModal(ModalKind::TablePicker),

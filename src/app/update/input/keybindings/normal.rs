@@ -25,7 +25,7 @@ pub mod global {
         key: "?",
         desc_short: "Help",
         description: "Toggle help",
-        action: Action::ToggleModal(ModalKind::Help),
+        action: Action::ToggleHelp,
         combos: &[KeyCombo::plain(Key::Char('?'))],
     };
 

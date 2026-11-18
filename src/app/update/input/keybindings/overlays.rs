@@ -1705,7 +1705,7 @@ pub mod sqlite_diagnostics {
         desc_short: "Help",
         description: "Toggle help",
         bindings: &[ExecBinding {
-            action: Action::ToggleModal(ModalKind::Help),
+            action: Action::ToggleHelp,
             combos: &[KeyCombo::plain(Key::Char('?'))],
         }],
     };

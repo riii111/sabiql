@@ -436,7 +436,7 @@ mod tests {
 
                 let result = handle_normal_mode(combo(Key::Char('?')), &state);
 
-                assert!(matches!(result, Action::ToggleModal(ModalKind::Help)));
+                assert!(matches!(result, Action::ToggleHelp));
             }
 
             #[test]

@@ -229,7 +229,7 @@ fn state_for(target: InputTarget) -> AppState {
             type_text(&mut state, target, "ab cd");
         }
         InputTarget::HelpFilter => {
-            dispatch(&mut state, Action::ToggleModal(ModalKind::Help));
+            dispatch(&mut state, Action::ToggleHelp);
             dispatch(&mut state, Action::EnterHelpFilter);
             type_text(&mut state, target, "ab cd");
         }

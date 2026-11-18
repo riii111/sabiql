@@ -54,7 +54,7 @@ impl CommandPalette {
 fn command_icon(action: &Action) -> Option<Icon> {
     Some(match action {
         Action::Quit => Icon::Quit,
-        Action::ToggleModal(ModalKind::Help) => Icon::Help,
+        Action::ToggleHelp => Icon::Help,
         Action::OpenModal(ModalKind::TablePicker) => Icon::Table,
         Action::OpenModal(ModalKind::Settings) => Icon::Settings,
         Action::ToggleFocus => Icon::Focus,

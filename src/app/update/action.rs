@@ -357,7 +357,7 @@ pub enum Action {
     // Modal shell
     OpenModal(ModalKind),
     CloseModal(ModalKind),
-    ToggleModal(ModalKind),
+    ToggleHelp,
     Escape,
     ConfirmSelection,
     ConfirmDialogConfirm,
@@ -661,7 +661,6 @@ impl Action {
 
         match self {
             Self::OpenModal(ModalKind::ErTablePicker)
-            | Self::ToggleModal(ModalKind::ErTablePicker)
             | Self::ErToggleSelection
             | Self::ErSelectAll
             | Self::ErConfirmSelection
@@ -677,7 +676,6 @@ impl Action {
                 ..
             } => ErDiagram,
             Self::OpenModal(ModalKind::SqliteDiagnostics)
-            | Self::ToggleModal(ModalKind::SqliteDiagnostics)
             | Self::RunSqliteDiagnosticsQuickCheck
             | Self::SqliteDiagnosticsCoreLoaded { .. }
             | Self::SqliteDiagnosticsQuickCheckLoaded { .. }
@@ -686,7 +684,6 @@ impl Action {
                 ..
             } => SqliteDiagnostics,
             Self::OpenModal(ModalKind::JsonDetail)
-            | Self::ToggleModal(ModalKind::JsonDetail)
             | Self::DetailYankAll(DetailTarget::JsonDetail)
             | Self::CopySucceeded(CopyTarget::Panel(FlashId::JsonDetail))
             | Self::DetailSearch {
@@ -1094,7 +1091,7 @@ mod tests {
                         "yank all CellDetail",
                         Action::DetailYankAll(DetailTarget::CellDetail),
                     ),
-                    ("toggle Help", Action::ToggleModal(ModalKind::Help)),
+                    ("toggle Help", Action::ToggleHelp),
                 ]
                 .map(|(label, action)| (label.to_string(), action)),
             );

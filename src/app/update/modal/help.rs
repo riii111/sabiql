@@ -43,7 +43,7 @@ fn close_help(state: &mut AppState) {
 
 pub(super) fn reduce_help(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
-        Action::ToggleModal(ModalKind::Help) => {
+        Action::ToggleHelp => {
             if state.modal.active_mode() == InputMode::Help {
                 close_help(state);
             } else {

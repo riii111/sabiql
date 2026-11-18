@@ -86,7 +86,7 @@ mod tests {
                 &Action::OpenModal(ModalKind::CommandPalette),
                 Instant::now(),
             );
-            dispatch_modal(state, &Action::ToggleModal(ModalKind::Help), Instant::now());
+            dispatch_modal(state, &Action::ToggleHelp, Instant::now());
             assert_eq!(state.input_mode(), InputMode::Help);
         }
 
