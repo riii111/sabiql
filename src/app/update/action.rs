@@ -993,6 +993,267 @@ mod tests {
         );
     }
 
+    mod feature_requirement_by_action_shape {
+        use super::*;
+
+        const TEXT_TARGETS: [InputTarget; 14] = [
+            InputTarget::SqlModal,
+            InputTarget::SqlModalHighRisk,
+            InputTarget::SqlModalAnalyzeHighRisk,
+            InputTarget::ResultCellEdit,
+            InputTarget::ConnectionSetup,
+            InputTarget::CommandLine,
+            InputTarget::Filter,
+            InputTarget::ErFilter,
+            InputTarget::SettingsErBrowser,
+            InputTarget::QueryHistoryFilter,
+            InputTarget::JsonEdit,
+            InputTarget::JsonSearch,
+            InputTarget::CellDetailSearch,
+            InputTarget::HelpFilter,
+        ];
+
+        fn text_actions(target: InputTarget) -> [(&'static str, Action); 6] {
+            [
+                ("Insert", Action::TextInput { target, ch: 'x' }),
+                ("Backspace", Action::TextBackspace { target }),
+                ("Delete", Action::TextDelete { target }),
+                (
+                    "Kill",
+                    Action::TextKill {
+                        target,
+                        direction: TextKillDirection::ToLineEnd,
+                    },
+                ),
+                ("Yank", Action::TextYank { target }),
+                (
+                    "MoveCursor",
+                    Action::TextMoveCursor {
+                        target,
+                        direction: CursorMove::Left,
+                    },
+                ),
+            ]
+        }
+
+        fn stateless_actions() -> Vec<(String, Action)> {
+            let mut actions: Vec<(String, Action)> = TEXT_TARGETS
+                .into_iter()
+                .flat_map(|target| {
+                    text_actions(target)
+                        .into_iter()
+                        .map(move |(op, action)| (format!("text {target:?} {op}"), action))
+                })
+                .collect();
+            actions.extend(
+                [
+                    ("copied SqlModal", Action::SqlModalYankSuccess),
+                    ("copied Ddl", Action::DdlYankSuccess),
+                    ("copied JsonDetail", Action::JsonYankSuccess),
+                    ("copied CellDetail", Action::CellDetailYankSuccess),
+                    ("copied RowDetail", Action::RowDetailYankSuccess),
+                    (
+                        "copied ResultCell",
+                        Action::ResultCellYankSuccess { row: 0, col: 0 },
+                    ),
+                    ("copied ResultRow", Action::ResultRowYankSuccess { row: 0 }),
+                    ("copied ConnectionError", Action::ConnectionErrorCopied),
+                    ("search JsonDetail Enter", Action::JsonEnterSearch),
+                    ("search JsonDetail Exit", Action::JsonExitSearch),
+                    ("search JsonDetail Next", Action::JsonSearchNext),
+                    ("search JsonDetail Prev", Action::JsonSearchPrev),
+                    ("search JsonDetail Submit", Action::JsonSearchSubmit),
+                    ("search CellDetail Enter", Action::CellDetailEnterSearch),
+                    ("search CellDetail Exit", Action::CellDetailExitSearch),
+                    ("search CellDetail Next", Action::CellDetailSearchNext),
+                    ("search CellDetail Prev", Action::CellDetailSearchPrev),
+                    ("search CellDetail Submit", Action::CellDetailSearchSubmit),
+                    ("yank all JsonDetail", Action::JsonYankAll),
+                    ("yank all CellDetail", Action::CellDetailYankAll),
+                    ("toggle Help", Action::ToggleModal(ModalKind::Help)),
+                ]
+                .map(|(label, action)| (label.to_string(), action)),
+            );
+            actions
+        }
+
+        fn state_in(mode: InputMode) -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.modal.set_mode(mode);
+            state
+        }
+
+        fn stateful_actions() -> Vec<(&'static str, AppState, Action)> {
+            let mut searching = state_in(InputMode::JsonDetail);
+            searching.json_detail.enter_search();
+            vec![
+                (
+                    "search JsonDetail Exit while searching",
+                    searching,
+                    Action::JsonExitSearch,
+                ),
+                (
+                    "paste in JsonDetail",
+                    state_in(InputMode::JsonDetail),
+                    Action::Paste("x".to_string()),
+                ),
+                (
+                    "paste in JsonEdit",
+                    state_in(InputMode::JsonEdit),
+                    Action::Paste("x".to_string()),
+                ),
+                (
+                    "paste in ErTablePicker",
+                    state_in(InputMode::ErTablePicker),
+                    Action::Paste("x".to_string()),
+                ),
+                (
+                    "paste in CellDetail",
+                    state_in(InputMode::CellDetail),
+                    Action::Paste("x".to_string()),
+                ),
+            ]
+        }
+
+        fn report() -> String {
+            let normal_state = AppState::new("test".to_string());
+            let stateless = stateless_actions().into_iter().map(|(label, action)| {
+                format!(
+                    "{label} => {:?}",
+                    action.feature_requirement_for_state(&normal_state)
+                )
+            });
+            let stateful = stateful_actions()
+                .into_iter()
+                .map(|(label, state, action)| {
+                    format!(
+                        "{label} => {:?}",
+                        action.feature_requirement_for_state(&state)
+                    )
+                });
+            stateless.chain(stateful).collect::<Vec<_>>().join("\n")
+        }
+
+        #[test]
+        fn keeps_requirements_for_each_shape() {
+            let report = report();
+
+            assert_eq!(report, EXPECTED_REPORT, "\n{report}\n");
+        }
+
+        const EXPECTED_REPORT: &str = "\
+text SqlModal Insert => None\n\
+text SqlModal Backspace => None\n\
+text SqlModal Delete => None\n\
+text SqlModal Kill => None\n\
+text SqlModal Yank => None\n\
+text SqlModal MoveCursor => None\n\
+text SqlModalHighRisk Insert => None\n\
+text SqlModalHighRisk Backspace => None\n\
+text SqlModalHighRisk Delete => None\n\
+text SqlModalHighRisk Kill => None\n\
+text SqlModalHighRisk Yank => None\n\
+text SqlModalHighRisk MoveCursor => None\n\
+text SqlModalAnalyzeHighRisk Insert => ExplainAnalyze\n\
+text SqlModalAnalyzeHighRisk Backspace => ExplainAnalyze\n\
+text SqlModalAnalyzeHighRisk Delete => ExplainAnalyze\n\
+text SqlModalAnalyzeHighRisk Kill => ExplainAnalyze\n\
+text SqlModalAnalyzeHighRisk Yank => ExplainAnalyze\n\
+text SqlModalAnalyzeHighRisk MoveCursor => ExplainAnalyze\n\
+text ResultCellEdit Insert => None\n\
+text ResultCellEdit Backspace => None\n\
+text ResultCellEdit Delete => None\n\
+text ResultCellEdit Kill => None\n\
+text ResultCellEdit Yank => None\n\
+text ResultCellEdit MoveCursor => None\n\
+text ConnectionSetup Insert => None\n\
+text ConnectionSetup Backspace => None\n\
+text ConnectionSetup Delete => None\n\
+text ConnectionSetup Kill => None\n\
+text ConnectionSetup Yank => None\n\
+text ConnectionSetup MoveCursor => None\n\
+text CommandLine Insert => None\n\
+text CommandLine Backspace => None\n\
+text CommandLine Delete => None\n\
+text CommandLine Kill => None\n\
+text CommandLine Yank => None\n\
+text CommandLine MoveCursor => None\n\
+text Filter Insert => None\n\
+text Filter Backspace => None\n\
+text Filter Delete => None\n\
+text Filter Kill => None\n\
+text Filter Yank => None\n\
+text Filter MoveCursor => None\n\
+text ErFilter Insert => ErDiagram\n\
+text ErFilter Backspace => ErDiagram\n\
+text ErFilter Delete => ErDiagram\n\
+text ErFilter Kill => ErDiagram\n\
+text ErFilter Yank => ErDiagram\n\
+text ErFilter MoveCursor => ErDiagram\n\
+text SettingsErBrowser Insert => None\n\
+text SettingsErBrowser Backspace => None\n\
+text SettingsErBrowser Delete => None\n\
+text SettingsErBrowser Kill => None\n\
+text SettingsErBrowser Yank => None\n\
+text SettingsErBrowser MoveCursor => None\n\
+text QueryHistoryFilter Insert => None\n\
+text QueryHistoryFilter Backspace => None\n\
+text QueryHistoryFilter Delete => None\n\
+text QueryHistoryFilter Kill => None\n\
+text QueryHistoryFilter Yank => None\n\
+text QueryHistoryFilter MoveCursor => None\n\
+text JsonEdit Insert => JsonDocumentEdit\n\
+text JsonEdit Backspace => JsonDocumentEdit\n\
+text JsonEdit Delete => JsonDocumentEdit\n\
+text JsonEdit Kill => JsonDocumentEdit\n\
+text JsonEdit Yank => JsonDocumentEdit\n\
+text JsonEdit MoveCursor => JsonDocumentDetail\n\
+text JsonSearch Insert => JsonDocumentDetail\n\
+text JsonSearch Backspace => JsonDocumentDetail\n\
+text JsonSearch Delete => JsonDocumentDetail\n\
+text JsonSearch Kill => JsonDocumentDetail\n\
+text JsonSearch Yank => JsonDocumentDetail\n\
+text JsonSearch MoveCursor => JsonDocumentDetail\n\
+text CellDetailSearch Insert => None\n\
+text CellDetailSearch Backspace => None\n\
+text CellDetailSearch Delete => None\n\
+text CellDetailSearch Kill => None\n\
+text CellDetailSearch Yank => None\n\
+text CellDetailSearch MoveCursor => None\n\
+text HelpFilter Insert => None\n\
+text HelpFilter Backspace => None\n\
+text HelpFilter Delete => None\n\
+text HelpFilter Kill => None\n\
+text HelpFilter Yank => None\n\
+text HelpFilter MoveCursor => None\n\
+copied SqlModal => None\n\
+copied Ddl => None\n\
+copied JsonDetail => JsonDocumentDetail\n\
+copied CellDetail => None\n\
+copied RowDetail => None\n\
+copied ResultCell => None\n\
+copied ResultRow => None\n\
+copied ConnectionError => None\n\
+search JsonDetail Enter => JsonDocumentDetail\n\
+search JsonDetail Exit => JsonDocumentDetail\n\
+search JsonDetail Next => JsonDocumentDetail\n\
+search JsonDetail Prev => JsonDocumentDetail\n\
+search JsonDetail Submit => JsonDocumentDetail\n\
+search CellDetail Enter => None\n\
+search CellDetail Exit => None\n\
+search CellDetail Next => None\n\
+search CellDetail Prev => None\n\
+search CellDetail Submit => None\n\
+yank all JsonDetail => JsonDocumentDetail\n\
+yank all CellDetail => None\n\
+toggle Help => None\n\
+search JsonDetail Exit while searching => None\n\
+paste in JsonDetail => JsonDocumentDetail\n\
+paste in JsonEdit => JsonDocumentEdit\n\
+paste in ErTablePicker => ErDiagram\n\
+paste in CellDetail => None";
+    }
+
     mod shared_scroll_helpers {
         use super::*;
 

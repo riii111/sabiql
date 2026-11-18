@@ -1,4 +1,6 @@
 pub(in crate::cmd) mod browse;
+#[cfg(test)]
+pub(crate) mod cache_flow_driver;
 pub mod cli_sqlite;
 pub mod completion_engine;
 pub(in crate::cmd) mod connection;

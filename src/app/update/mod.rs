@@ -1,5 +1,7 @@
 pub mod action;
 pub(in crate::update) mod browse;
+#[cfg(test)]
+mod cache_flow_tests;
 pub(in crate::update) mod connection;
 pub(crate) mod dispatch_result;
 pub(in crate::update) mod er;
@@ -12,6 +14,8 @@ pub mod reducer;
 pub(in crate::update) mod sql_editor;
 #[cfg(test)]
 pub(crate) mod test_fixtures;
+#[cfg(test)]
+mod text_edit_tests;
 // Facade: re-export sub-reducer entry points for update/reducer.rs dispatch
 pub(crate) use browse::metadata::dispatch_metadata;
 pub(in crate::update) use browse::navigation::dispatch_navigation;
