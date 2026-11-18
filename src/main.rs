@@ -185,6 +185,7 @@ fn initialize_state(
 
 fn apply_app_settings(state: &mut AppState, app_settings: AppSettings) {
     state.ui.set_theme(app_settings.theme_id);
+    state.settings.load_icon_mode(app_settings.icon_mode);
     state
         .settings
         .load_keymap_preset(app_settings.keymap_preset);

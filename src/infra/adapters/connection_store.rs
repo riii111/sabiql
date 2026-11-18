@@ -50,6 +50,7 @@ impl TomlConnectionStore {
     fn write_all(&self, profiles: &[ConnectionProfile]) -> Result<(), ConnectionStoreError> {
         let mut config = ConnectionConfigFile::from(profiles);
         if let Some(existing_config) = self.load_config_file()? {
+            config.icon_mode = existing_config.icon_mode;
             config.theme = existing_config.theme;
             config.keymap_preset = existing_config.keymap_preset;
             config.er_browser = existing_config.er_browser;
@@ -320,7 +321,7 @@ ssl_mode = "prefer"
             let config_path = temp_dir.path().join(CONFIG_FILE_NAME);
             fs::write(
                 &config_path,
-                "version = 2\ntheme = \"light\"\nkeymap_preset = \"ide\"\ner_browser = \"Firefox\"\nconnections = []\n",
+                "version = 2\ntheme = \"light\"\nicon_mode = \"unicode\"\nkeymap_preset = \"ide\"\ner_browser = \"Firefox\"\nconnections = []\n",
             )
             .unwrap();
             let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
@@ -330,6 +331,7 @@ ssl_mode = "prefer"
 
             let content = fs::read_to_string(config_path).unwrap();
             assert!(content.contains("theme = \"light\""));
+            assert!(content.contains("icon_mode = \"unicode\""));
             assert!(content.contains("keymap_preset = \"ide\""));
             assert!(content.contains("er_browser = \"Firefox\""));
             assert!(content.contains("[[connections]]"));

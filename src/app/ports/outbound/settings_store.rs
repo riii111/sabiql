@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
-use crate::model::shared::settings::KeymapPreset;
+use crate::model::shared::settings::{IconMode, KeymapPreset};
 use crate::model::shared::theme_id::ThemeId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppSettings {
     pub theme_id: ThemeId,
+    pub icon_mode: IconMode,
     pub keymap_preset: KeymapPreset,
     pub er_browser: Option<String>,
 }
@@ -14,6 +15,7 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             theme_id: ThemeId::Default,
+            icon_mode: IconMode::default(),
             keymap_preset: KeymapPreset::Default,
             er_browser: None,
         }

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use super::app_config_file::{
     self, config_file_path, get_config_dir as app_config_dir, render_config_file, write_config_file,
 };
-use crate::app::model::shared::settings::KeymapPreset;
+use crate::app::model::shared::settings::{IconMode, KeymapPreset};
 use crate::app::model::shared::theme_id::ThemeId;
 use crate::app::ports::outbound::{AppSettings, SettingsStore, SettingsStoreError};
 use crate::config::{
@@ -88,6 +88,11 @@ impl SettingsStore for TomlSettingsStore {
 
 fn app_settings(config: ConnectionConfigFile) -> AppSettings {
     AppSettings {
+        icon_mode: config
+            .icon_mode
+            .as_deref()
+            .and_then(IconMode::from_config_value)
+            .unwrap_or_default(),
         theme_id: config
             .theme
             .as_deref()
@@ -103,6 +108,7 @@ fn app_settings(config: ConnectionConfigFile) -> AppSettings {
 }
 
 fn set_app_settings(config: &mut ConnectionConfigFile, settings: AppSettings) {
+    config.icon_mode = Some(settings.icon_mode.config_value().to_owned());
     config.theme = Some(settings.theme_id.config_value().to_string());
     config.keymap_preset = Some(settings.keymap_preset.config_value().to_string());
     config.er_browser = settings.er_browser;
@@ -134,12 +140,14 @@ mod tests {
         store
             .save(AppSettings {
                 theme_id: ThemeId::Light,
+                icon_mode: IconMode::NerdFont,
                 keymap_preset: KeymapPreset::Ide,
                 er_browser: Some("Google Chrome".to_string()),
             })
             .unwrap();
 
         let settings = store.load().unwrap();
+        assert_eq!(settings.icon_mode, IconMode::NerdFont);
         assert_eq!(settings.theme_id, ThemeId::Light);
         assert_eq!(settings.keymap_preset, KeymapPreset::Ide);
         assert_eq!(settings.er_browser.as_deref(), Some("Google Chrome"));
@@ -169,6 +177,7 @@ ssl_mode = "prefer"
         store
             .save(AppSettings {
                 theme_id: ThemeId::Light,
+                icon_mode: IconMode::NerdFont,
                 keymap_preset: KeymapPreset::Ide,
                 er_browser: Some("Firefox".to_string()),
             })
@@ -251,6 +260,7 @@ ssl_mode = "prefer"
 
         let result = store.save(AppSettings {
             theme_id: ThemeId::Light,
+            icon_mode: IconMode::NerdFont,
             keymap_preset: KeymapPreset::Default,
             er_browser: None,
         });
