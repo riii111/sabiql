@@ -39,10 +39,11 @@ label_log="${FAKE_DOCKER_LABEL_LOG:?}"
 compose_log="${FAKE_DOCKER_COMPOSE_LOG:?}"
 rm_log="${FAKE_DOCKER_RM_LOG:?}"
 state_lock="${state_file}.lock"
-while ! mkdir "$state_lock" 2>/dev/null; do
+# Concurrent mkdir calls can both report success with Ubuntu 26.04 coreutils.
+while ! ln -s "$state_file" "$state_lock" 2>/dev/null; do
     sleep 0.01
 done
-trap 'rmdir "$state_lock"' EXIT
+trap 'rm -- "$state_lock"' EXIT
 
 case "${1:-}" in
     compose)
@@ -72,8 +73,9 @@ case "${1:-}" in
         fi
         printf '%s|%s|%s\n' "$project" "$command" "$*" >>"$compose_log"
         if [[ "$command" == port ]]; then
-            port="$(printf '%s' "$project" | cksum | awk '{ print 30000 + ($1 % 20000) }')"
-            printf '127.0.0.1:%s\n' "$port"
+            awk -F'|' -v project="$project" '$1 == project && $2 == "up" {
+                print "127.0.0.1:" (30000 + NR); exit
+            }' "$compose_log"
         fi
         if [[ "$command" == exec ]]; then
             printf '%s\n' '/var/lib/mysql/public_key.pem'
