@@ -1,7 +1,7 @@
 mod completion;
-mod editing;
+pub(in crate::update) mod editing;
 mod helpers;
-mod high_risk;
+pub(in crate::update) mod high_risk;
 mod mode;
 mod submit;
 mod yank;
@@ -37,6 +37,7 @@ mod tests {
     use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel};
     use crate::update::action::{CursorMove, InputTarget, ModalKind};
     use crate::update::test_fixtures;
+    use crate::update::test_fixtures::edit_text;
     use std::sync::Arc;
     use std::time::Instant;
 
@@ -185,7 +186,7 @@ mod tests {
                 .set_content_with_cursor("0\n1\n2\n3\n4\n5\n6\n7".to_string(), 0);
 
             for _ in 0..7 {
-                reduce_sql_modal(
+                edit_text(
                     &mut state,
                     &Action::TextMoveCursor {
                         target: InputTarget::SqlModal,
@@ -210,7 +211,7 @@ mod tests {
                 .set_content_with_cursor("0\n1\n2\n3\n4\n5\n6\n7\n8".to_string(), 0);
 
             for _ in 0..8 {
-                reduce_sql_modal(
+                edit_text(
                     &mut state,
                     &Action::TextMoveCursor {
                         target: InputTarget::SqlModal,
@@ -286,7 +287,7 @@ mod tests {
             ));
 
             for c in "users".chars() {
-                reduce_sql_modal(
+                edit_text(
                     &mut state,
                     &Action::TextInput {
                         target: InputTarget::SqlModalHighRisk,
@@ -420,7 +421,7 @@ mod tests {
         fn high_risk_input_appends_char() {
             let mut state = confirming_high_state("DROP TABLE users", "users");
 
-            reduce_sql_modal(
+            edit_text(
                 &mut state,
                 &Action::TextInput {
                     target: InputTarget::SqlModalHighRisk,
@@ -439,7 +440,7 @@ mod tests {
         #[test]
         fn high_risk_backspace_removes_char() {
             let mut state = confirming_high_state("DROP TABLE users", "users");
-            reduce_sql_modal(
+            edit_text(
                 &mut state,
                 &Action::TextInput {
                     target: InputTarget::SqlModalHighRisk,
@@ -447,7 +448,7 @@ mod tests {
                 },
                 Instant::now(),
             );
-            reduce_sql_modal(
+            edit_text(
                 &mut state,
                 &Action::TextInput {
                     target: InputTarget::SqlModalHighRisk,
@@ -456,7 +457,7 @@ mod tests {
                 Instant::now(),
             );
 
-            reduce_sql_modal(
+            edit_text(
                 &mut state,
                 &Action::TextBackspace {
                     target: InputTarget::SqlModalHighRisk,
@@ -476,7 +477,7 @@ mod tests {
             let mut state = confirming_high_state("DROP TABLE users", "users");
             test_fixtures::activate_postgres_connection(&mut state, "postgres://test");
             for c in "users".chars() {
-                reduce_sql_modal(
+                edit_text(
                     &mut state,
                     &Action::TextInput {
                         target: InputTarget::SqlModalHighRisk,
@@ -504,7 +505,7 @@ mod tests {
         fn high_risk_confirm_without_dsn_sets_error() {
             let mut state = confirming_high_state("DROP TABLE users", "users");
             for c in "users".chars() {
-                reduce_sql_modal(
+                edit_text(
                     &mut state,
                     &Action::TextInput {
                         target: InputTarget::SqlModalHighRisk,
@@ -527,7 +528,7 @@ mod tests {
         #[test]
         fn high_risk_confirm_blocked_on_mismatch() {
             let mut state = confirming_high_state("DROP TABLE users", "users");
-            reduce_sql_modal(
+            edit_text(
                 &mut state,
                 &Action::TextInput {
                     target: InputTarget::SqlModalHighRisk,
@@ -557,7 +558,7 @@ mod tests {
         fn high_risk_move_cursor_works() {
             let mut state = confirming_high_state("DROP TABLE users", "users");
             for c in "ab".chars() {
-                reduce_sql_modal(
+                edit_text(
                     &mut state,
                     &Action::TextInput {
                         target: InputTarget::SqlModalHighRisk,
@@ -567,7 +568,7 @@ mod tests {
                 );
             }
 
-            reduce_sql_modal(
+            edit_text(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::SqlModalHighRisk,
@@ -683,7 +684,7 @@ mod tests {
             let mut state = confirming_high_state(&format!("DROP TABLE {full_name}"), full_name);
             test_fixtures::activate_postgres_connection(&mut state, "postgres://test");
             for c in full_name.chars() {
-                reduce_sql_modal(
+                edit_text(
                     &mut state,
                     &Action::TextInput {
                         target: InputTarget::SqlModalHighRisk,
@@ -992,7 +993,7 @@ mod tests {
                 .editor
                 .set_content_with_cursor("abcdefghij\nxy\nabcdefghij".to_string(), 8);
 
-            reduce_sql_modal(
+            edit_text(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::SqlModal,
@@ -1003,7 +1004,7 @@ mod tests {
             assert_eq!(state.sql_modal.editor.cursor_to_position(), (1, 2));
 
             reduce_sql_modal(&mut state, &Action::SqlModalEnterInsert, Instant::now());
-            reduce_sql_modal(
+            edit_text(
                 &mut state,
                 &Action::TextInput {
                     target: InputTarget::SqlModal,
@@ -1012,7 +1013,7 @@ mod tests {
                 Instant::now(),
             );
             reduce_sql_modal(&mut state, &Action::SqlModalEnterNormal, Instant::now());
-            reduce_sql_modal(
+            edit_text(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::SqlModal,

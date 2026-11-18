@@ -11,6 +11,7 @@ use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 use super::helpers::start_adhoc_if_connected;
+use crate::model::shared::text_input::TextEdit;
 
 fn high_risk_input_mut(
     sql_modal: &mut SqlModalContext,
@@ -42,69 +43,6 @@ pub(super) fn reduce_high_risk_confirmation(
             }
         }
 
-        Action::TextInput {
-            target: target @ (InputTarget::SqlModalHighRisk | InputTarget::SqlModalAnalyzeHighRisk),
-            ch: c,
-        } => {
-            if let Some(input) = high_risk_input_mut(&mut state.sql_modal, *target) {
-                input.insert_char(*c);
-                input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
-            }
-            DispatchResult::handled()
-        }
-        Action::TextBackspace {
-            target: target @ (InputTarget::SqlModalHighRisk | InputTarget::SqlModalAnalyzeHighRisk),
-        } => {
-            if let Some(input) = high_risk_input_mut(&mut state.sql_modal, *target) {
-                input.backspace();
-                input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
-            }
-            DispatchResult::handled()
-        }
-        Action::TextDelete {
-            target: target @ (InputTarget::SqlModalHighRisk | InputTarget::SqlModalAnalyzeHighRisk),
-        } => {
-            if let Some(input) = high_risk_input_mut(&mut state.sql_modal, *target) {
-                input.delete();
-                input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
-            }
-            DispatchResult::handled()
-        }
-        Action::TextKill {
-            target: target @ (InputTarget::SqlModalHighRisk | InputTarget::SqlModalAnalyzeHighRisk),
-            direction,
-        } => {
-            let killed =
-                high_risk_input_mut(&mut state.sql_modal, *target).map_or_default(|input| {
-                    let killed = input.kill(*direction);
-                    input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
-                    killed
-                });
-            state.record_kill(killed);
-            DispatchResult::handled()
-        }
-        Action::TextYank {
-            target: target @ (InputTarget::SqlModalHighRisk | InputTarget::SqlModalAnalyzeHighRisk),
-        } => {
-            if let Some(killed) = state.kill_buffer().map(str::to_owned)
-                && let Some(input) = high_risk_input_mut(&mut state.sql_modal, *target)
-            {
-                input.yank(&killed);
-                input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
-            }
-            DispatchResult::handled()
-        }
-        Action::TextMoveCursor {
-            target: target @ (InputTarget::SqlModalHighRisk | InputTarget::SqlModalAnalyzeHighRisk),
-            direction: movement,
-        } => {
-            if let Some(input) = high_risk_input_mut(&mut state.sql_modal, *target) {
-                input.move_cursor(*movement);
-                input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
-            }
-            DispatchResult::handled()
-        }
-
         Action::SqlModalConfirmExecute => {
             if reject_pending_mysql_connection_probe(state) {
                 state.sql_modal.cancel_confirmation();
@@ -131,4 +69,17 @@ pub(super) fn reduce_high_risk_confirmation(
         }
         _ => DispatchResult::pass(),
     }
+}
+
+pub(in crate::update) fn edit_text(
+    state: &mut AppState,
+    target: InputTarget,
+    edit: TextEdit,
+    yank_text: Option<&str>,
+) -> String {
+    high_risk_input_mut(&mut state.sql_modal, target).map_or_default(|input| {
+        let killed = input.apply_edit(edit, yank_text);
+        input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
+        killed
+    })
 }

@@ -11,9 +11,8 @@ use crate::model::connection::setup::{
 use crate::model::connection::state::ConnectionState;
 use crate::model::shared::confirm_dialog::ConfirmIntent;
 use crate::model::shared::input_mode::InputMode;
-use crate::update::action::{
-    Action, ConnectionSaveError, ConnectionTarget, InputTarget, ModalKind,
-};
+use crate::model::shared::text_input::TextEdit;
+use crate::update::action::{Action, ConnectionSaveError, ConnectionTarget, ModalKind};
 use crate::update::connection::helpers::{
     cancel_connection_task_effects, connection_save_fetch_effects,
     mysql_connection_completion_effects, reset_for_new_connection, save_current_connection_cache,
@@ -64,94 +63,6 @@ pub(in crate::update) fn reduce_connection_setup(
         }
 
         // ===== Connection Setup Form =====
-        Action::TextInput {
-            target: InputTarget::ConnectionSetup,
-            ch: c,
-        } => {
-            let setup = &mut state.connection_setup;
-            match setup.focused_field() {
-                ConnectionField::Port => {
-                    let port = setup.port_mut();
-                    if c.is_ascii_digit()
-                        && remaining_input_capacity(ConnectionField::Port, port.char_count()) > 0
-                    {
-                        port.insert_char(*c);
-                        port.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
-                    }
-                }
-                ConnectionField::DatabaseType
-                | ConnectionField::Transport
-                | ConnectionField::SslMode
-                | ConnectionField::CleartextAuth => {}
-                _ => {
-                    let field = setup.focused_field();
-                    if let Some(input) = setup.focused_input_mut()
-                        && remaining_input_capacity(field, input.char_count()) > 0
-                    {
-                        input.insert_char(*c);
-                        input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
-                    }
-                }
-            }
-            DispatchResult::handled()
-        }
-        Action::TextBackspace {
-            target: InputTarget::ConnectionSetup,
-        } => {
-            let setup = &mut state.connection_setup;
-            if let Some(input) = setup.focused_input_mut() {
-                input.backspace();
-                input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
-            }
-            DispatchResult::handled()
-        }
-        Action::TextDelete {
-            target: InputTarget::ConnectionSetup,
-        } => {
-            let setup = &mut state.connection_setup;
-            if let Some(input) = setup.focused_input_mut() {
-                input.delete();
-                input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
-            }
-            DispatchResult::handled()
-        }
-        Action::TextKill {
-            target: InputTarget::ConnectionSetup,
-            direction,
-        } => {
-            let is_password = state.connection_setup.focused_field == ConnectionField::Password;
-            let killed = state
-                .connection_setup
-                .focused_input_mut()
-                .map_or_default(|input| {
-                    let killed = input.kill(*direction);
-                    input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
-                    killed
-                });
-            if !is_password {
-                state.record_kill(killed);
-            }
-            DispatchResult::handled()
-        }
-        Action::TextYank {
-            target: InputTarget::ConnectionSetup,
-        } => {
-            if let Some(killed) = state.kill_buffer().map(str::to_owned) {
-                insert_form_text(&mut state.connection_setup, &killed);
-            }
-            DispatchResult::handled()
-        }
-        Action::TextMoveCursor {
-            target: InputTarget::ConnectionSetup,
-            direction: movement,
-        } => {
-            let setup = &mut state.connection_setup;
-            if let Some(input) = setup.focused_input_mut() {
-                input.move_cursor(*movement);
-                input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
-            }
-            DispatchResult::handled()
-        }
         Action::ConnectionSetupNextField => {
             let setup = &mut state.connection_setup;
             validate_field(setup, setup.focused_field());
@@ -364,6 +275,69 @@ fn insert_form_text(setup: &mut ConnectionSetupState, text: &str) {
 fn take_chars(text: &str, max_chars: usize) -> String {
     text.chars().take(max_chars).collect()
 }
+
+pub(in crate::update) fn edit_text(
+    state: &mut AppState,
+    edit: TextEdit,
+    yank_text: Option<&str>,
+) -> String {
+    let setup = &mut state.connection_setup;
+    match edit {
+        TextEdit::Insert(ch) => {
+            insert_form_char(setup, ch);
+            String::new()
+        }
+        TextEdit::Yank => {
+            if let Some(text) = yank_text {
+                insert_form_text(setup, text);
+            }
+            String::new()
+        }
+        TextEdit::Kill(direction) => {
+            let is_password = setup.focused_field == ConnectionField::Password;
+            let killed = setup.focused_input_mut().map_or_default(|input| {
+                let killed = input.kill(direction);
+                input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
+                killed
+            });
+            if is_password { String::new() } else { killed }
+        }
+        TextEdit::Backspace | TextEdit::Delete | TextEdit::MoveCursor(_) => {
+            if let Some(input) = setup.focused_input_mut() {
+                input.apply_edit(edit, None);
+                input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
+            }
+            String::new()
+        }
+    }
+}
+
+fn insert_form_char(setup: &mut ConnectionSetupState, ch: char) {
+    match setup.focused_field() {
+        ConnectionField::Port => {
+            let port = setup.port_mut();
+            if ch.is_ascii_digit()
+                && remaining_input_capacity(ConnectionField::Port, port.char_count()) > 0
+            {
+                port.insert_char(ch);
+                port.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
+            }
+        }
+        ConnectionField::DatabaseType
+        | ConnectionField::Transport
+        | ConnectionField::SslMode
+        | ConnectionField::CleartextAuth => {}
+        field => {
+            if let Some(input) = setup.focused_input_mut()
+                && remaining_input_capacity(field, input.char_count()) > 0
+            {
+                input.insert_char(ch);
+                input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -371,10 +345,12 @@ mod tests {
     use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::er_state::ErStatus;
     use crate::services::AppServices;
+    use crate::update::action::InputTarget;
     use crate::update::action::TextKillDirection;
     use crate::update::connection::error::reduce_connection_error;
     use crate::update::connection::lifecycle::reduce_connection_lifecycle;
     use crate::update::test_fixtures;
+    use crate::update::test_fixtures::edit_text;
     fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
         reduce_connection_setup(state, action, now).into_effects()
     }
@@ -573,7 +549,7 @@ mod tests {
             let mut state = setup_state_with_field(ConnectionField::Port);
             state.record_kill("12x345678".to_string());
 
-            reduce_connection_setup(
+            edit_text(
                 &mut state,
                 &Action::TextYank {
                     target: InputTarget::ConnectionSetup,
@@ -593,7 +569,7 @@ mod tests {
                 .password
                 .set_content("secret".to_string());
 
-            reduce_connection_setup(
+            edit_text(
                 &mut state,
                 &Action::TextKill {
                     target: InputTarget::ConnectionSetup,
@@ -612,7 +588,7 @@ mod tests {
             state.connection_setup.host.set_content("abc".to_string());
             state.connection_setup.host.set_cursor(1);
 
-            reduce_connection_setup(
+            edit_text(
                 &mut state,
                 &Action::TextDelete {
                     target: InputTarget::ConnectionSetup,

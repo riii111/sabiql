@@ -9,6 +9,7 @@ use std::time::Instant;
 use super::{
     clipboard, dispatch_connection, dispatch_er, dispatch_explain, dispatch_metadata,
     dispatch_modal, dispatch_navigation, dispatch_query, dispatch_result, dispatch_sql_modal,
+    text_edit,
 };
 use crate::catalog::HelpDocument;
 use crate::cmd::effect::Effect;
@@ -54,7 +55,8 @@ fn dispatch_enabled_action(
 ) -> Vec<Effect> {
     state.result_interaction.clear_operator_pending();
 
-    if let Some(effects) = dispatch_connection(state, &action, now, services)
+    if let Some(effects) = text_edit::reduce_text_edit(state, &action, now)
+        .or_else(|| dispatch_connection(state, &action, now, services))
         .or_else(|| dispatch_modal(state, &action, now))
         // Result page actions pass through the result dispatcher; pagination owns their
         // view reset and preview effect.
@@ -141,12 +143,6 @@ fn dispatch_enabled_action(
         // Invalid target/direction/amount combo — catch call-site bugs in debug builds
         Action::Scroll { .. }
         | Action::ScrollToCursor { .. }
-        | Action::TextInput { .. }
-        | Action::TextBackspace { .. }
-        | Action::TextDelete { .. }
-        | Action::TextKill { .. }
-        | Action::TextYank { .. }
-        | Action::TextMoveCursor { .. }
         | Action::Select(_)
         | Action::ListSelect { .. } => {
             debug_assert!(false, "unhandled parametric action: {action:?}");

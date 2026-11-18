@@ -4,8 +4,7 @@ use crate::cmd::effect::Effect;
 use crate::domain::TableSummary;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
-use crate::model::shared::text_input::TextInputState;
-use crate::update::action::{Action, InputTarget, ModalKind};
+use crate::update::action::{Action, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 
 pub(super) fn reduce_er_picker(
@@ -31,54 +30,6 @@ pub(super) fn reduce_er_picker(
             state.modal.set_mode(InputMode::Normal);
             state.ui.er_picker_mut().clear_filter();
             state.ui.reset_er_picker_request();
-            DispatchResult::handled()
-        }
-        Action::TextInput {
-            target: InputTarget::ErFilter,
-            ch: c,
-        } => {
-            state.ui.er_picker_mut().insert_filter_char(*c);
-            DispatchResult::handled()
-        }
-        Action::TextBackspace {
-            target: InputTarget::ErFilter,
-        } => {
-            state.ui.er_picker_mut().backspace_filter();
-            DispatchResult::handled()
-        }
-        Action::TextDelete {
-            target: InputTarget::ErFilter,
-        } => {
-            state.ui.er_picker_mut().edit_filter(TextInputState::delete);
-            DispatchResult::handled()
-        }
-        Action::TextKill {
-            target: InputTarget::ErFilter,
-            direction,
-        } => {
-            let killed = state
-                .ui
-                .er_picker_mut()
-                .edit_filter(|input| input.kill(*direction));
-            state.record_kill(killed);
-            DispatchResult::handled()
-        }
-        Action::TextYank {
-            target: InputTarget::ErFilter,
-        } => {
-            if let Some(killed) = state.kill_buffer().map(str::to_owned) {
-                state
-                    .ui
-                    .er_picker_mut()
-                    .edit_filter(|input| input.yank(&killed));
-            }
-            DispatchResult::handled()
-        }
-        Action::TextMoveCursor {
-            target: InputTarget::ErFilter,
-            direction: movement,
-        } => {
-            state.ui.er_picker_mut().move_filter_cursor(*movement);
             DispatchResult::handled()
         }
         Action::ErToggleSelection => {

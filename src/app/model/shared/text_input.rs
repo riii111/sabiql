@@ -16,6 +16,16 @@ pub enum TextKillDirection {
     ReadlinePreviousWhitespace,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextEdit {
+    Insert(char),
+    Backspace,
+    Delete,
+    Kill(TextKillDirection),
+    Yank,
+    MoveCursor(CursorMove),
+}
+
 impl TextInputState {
     pub fn new(content: impl Into<String>, cursor: usize) -> Self {
         let content = content.into();
@@ -126,6 +136,23 @@ impl TextInputState {
             TextKillDirection::ReadlineWordEnd => self.kill_next_word(),
             TextKillDirection::ReadlinePreviousWhitespace => self.kill_previous_word(),
         }
+    }
+
+    /// Returns the killed text for `TextEdit::Kill`, and an empty string otherwise.
+    pub fn apply_edit(&mut self, edit: TextEdit, yank_text: Option<&str>) -> String {
+        match edit {
+            TextEdit::Insert(ch) => self.insert_char(ch),
+            TextEdit::Backspace => self.backspace(),
+            TextEdit::Delete => self.delete(),
+            TextEdit::Kill(direction) => return self.kill(direction),
+            TextEdit::Yank => {
+                if let Some(text) = yank_text {
+                    self.yank(text);
+                }
+            }
+            TextEdit::MoveCursor(direction) => self.move_cursor(direction),
+        }
+        String::new()
     }
 
     pub fn yank(&mut self, text: &str) {

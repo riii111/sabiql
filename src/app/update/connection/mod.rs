@@ -2,7 +2,7 @@ mod error;
 mod helpers;
 mod lifecycle;
 mod selector;
-mod setup;
+pub(in crate::update) mod setup;
 
 use std::time::Instant;
 

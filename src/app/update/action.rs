@@ -153,7 +153,7 @@ pub enum InputTarget {
     HelpFilter,
 }
 
-pub use crate::model::shared::text_input::TextKillDirection;
+pub use crate::model::shared::text_input::{TextEdit, TextKillDirection};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectMotion {
@@ -628,6 +628,19 @@ pub enum Action {
 }
 
 impl Action {
+    pub fn text_edit(&self) -> Option<(InputTarget, TextEdit)> {
+        let (target, edit) = match *self {
+            Self::TextInput { target, ch } => (target, TextEdit::Insert(ch)),
+            Self::TextBackspace { target } => (target, TextEdit::Backspace),
+            Self::TextDelete { target } => (target, TextEdit::Delete),
+            Self::TextKill { target, direction } => (target, TextEdit::Kill(direction)),
+            Self::TextYank { target } => (target, TextEdit::Yank),
+            Self::TextMoveCursor { target, direction } => (target, TextEdit::MoveCursor(direction)),
+            _ => return None,
+        };
+        Some((target, edit))
+    }
+
     pub fn is_none(&self) -> bool {
         matches!(self, Self::None)
     }
@@ -642,6 +655,10 @@ impl Action {
             PlanComparison, SqliteDiagnostics,
         };
 
+        if let Some((target, edit)) = self.text_edit() {
+            return text_feature_requirement(target, edit);
+        }
+
         match self {
             Self::OpenModal(ModalKind::ErTablePicker)
             | Self::ToggleModal(ModalKind::ErTablePicker)
@@ -655,27 +672,6 @@ impl Action {
             | Self::ErDiagramOpened(_)
             | Self::ErDiagramFailed { .. }
             | Self::ErLogWriteFailed(_)
-            | Self::TextInput {
-                target: InputTarget::ErFilter,
-                ..
-            }
-            | Self::TextBackspace {
-                target: InputTarget::ErFilter,
-            }
-            | Self::TextDelete {
-                target: InputTarget::ErFilter,
-            }
-            | Self::TextKill {
-                target: InputTarget::ErFilter,
-                ..
-            }
-            | Self::TextYank {
-                target: InputTarget::ErFilter,
-            }
-            | Self::TextMoveCursor {
-                target: InputTarget::ErFilter,
-                ..
-            }
             | Self::ListSelect {
                 target: ListTarget::ErTablePicker,
                 ..
@@ -696,48 +692,8 @@ impl Action {
             | Self::DetailSearch {
                 target: DetailTarget::JsonDetail,
                 ..
-            }
-            | Self::TextInput {
-                target: InputTarget::JsonSearch,
-                ..
-            }
-            | Self::TextBackspace {
-                target: InputTarget::JsonSearch,
-            }
-            | Self::TextDelete {
-                target: InputTarget::JsonSearch,
-            }
-            | Self::TextKill {
-                target: InputTarget::JsonSearch,
-                ..
-            }
-            | Self::TextYank {
-                target: InputTarget::JsonSearch,
-            }
-            | Self::TextMoveCursor {
-                target: InputTarget::JsonEdit | InputTarget::JsonSearch,
-                ..
             } => JsonDocumentDetail,
-            Self::JsonEnterEdit
-            | Self::JsonAppendInsert
-            | Self::JsonExitEdit
-            | Self::TextInput {
-                target: InputTarget::JsonEdit,
-                ..
-            }
-            | Self::TextBackspace {
-                target: InputTarget::JsonEdit,
-            }
-            | Self::TextDelete {
-                target: InputTarget::JsonEdit,
-            }
-            | Self::TextKill {
-                target: InputTarget::JsonEdit,
-                ..
-            }
-            | Self::TextYank {
-                target: InputTarget::JsonEdit,
-            } => JsonDocumentEdit,
+            Self::JsonEnterEdit | Self::JsonAppendInsert | Self::JsonExitEdit => JsonDocumentEdit,
             Self::ExplainRequest
             | Self::Scroll {
                 target: ScrollTarget::ExplainPlan,
@@ -752,27 +708,6 @@ impl Action {
             Self::ExplainAnalyzeRequest
             | Self::ExplainAnalyzeConfirm
             | Self::ExplainAnalyzeCancel
-            | Self::TextInput {
-                target: InputTarget::SqlModalAnalyzeHighRisk,
-                ..
-            }
-            | Self::TextBackspace {
-                target: InputTarget::SqlModalAnalyzeHighRisk,
-            }
-            | Self::TextDelete {
-                target: InputTarget::SqlModalAnalyzeHighRisk,
-            }
-            | Self::TextKill {
-                target: InputTarget::SqlModalAnalyzeHighRisk,
-                ..
-            }
-            | Self::TextYank {
-                target: InputTarget::SqlModalAnalyzeHighRisk,
-            }
-            | Self::TextMoveCursor {
-                target: InputTarget::SqlModalAnalyzeHighRisk,
-                ..
-            }
             | Self::Scroll {
                 target: ScrollTarget::ExplainConfirm,
                 ..
@@ -821,6 +756,28 @@ impl Action {
             }
             _ => self.feature_requirement(),
         }
+    }
+}
+
+fn text_feature_requirement(target: InputTarget, edit: TextEdit) -> FeatureRequirement {
+    match target {
+        InputTarget::ErFilter => FeatureRequirement::ErDiagram,
+        InputTarget::JsonSearch => FeatureRequirement::JsonDocumentDetail,
+        InputTarget::JsonEdit if matches!(edit, TextEdit::MoveCursor(_)) => {
+            FeatureRequirement::JsonDocumentDetail
+        }
+        InputTarget::JsonEdit => FeatureRequirement::JsonDocumentEdit,
+        InputTarget::SqlModalAnalyzeHighRisk => FeatureRequirement::ExplainAnalyze,
+        InputTarget::SqlModal
+        | InputTarget::SqlModalHighRisk
+        | InputTarget::ResultCellEdit
+        | InputTarget::ConnectionSetup
+        | InputTarget::CommandLine
+        | InputTarget::Filter
+        | InputTarget::SettingsErBrowser
+        | InputTarget::QueryHistoryFilter
+        | InputTarget::CellDetailSearch
+        | InputTarget::HelpFilter => FeatureRequirement::None,
     }
 }
 

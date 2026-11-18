@@ -4,7 +4,7 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::ports::outbound::AppSettings;
-use crate::update::action::{Action, InputTarget, ModalKind};
+use crate::update::action::{Action, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 
 pub(super) fn reduce_settings(
@@ -40,54 +40,6 @@ pub(super) fn reduce_settings(
         }
         Action::SettingsStopCustomBrowserEdit => {
             state.settings.stop_custom_browser_edit();
-            DispatchResult::handled()
-        }
-        Action::TextInput {
-            target: InputTarget::SettingsErBrowser,
-            ch,
-        } => {
-            state.settings.input_custom_browser(*ch);
-            DispatchResult::handled()
-        }
-        Action::TextBackspace {
-            target: InputTarget::SettingsErBrowser,
-        } => {
-            state.settings.backspace_custom_browser();
-            DispatchResult::handled()
-        }
-        Action::TextDelete {
-            target: InputTarget::SettingsErBrowser,
-        } => {
-            state.settings.delete_custom_browser();
-            DispatchResult::handled()
-        }
-        Action::TextKill {
-            target: InputTarget::SettingsErBrowser,
-            direction,
-        } => {
-            if let Some(killed) = state
-                .settings
-                .edit_custom_browser(|input| input.kill(*direction))
-            {
-                state.record_kill(killed);
-            }
-            DispatchResult::handled()
-        }
-        Action::TextYank {
-            target: InputTarget::SettingsErBrowser,
-        } => {
-            if let Some(killed) = state.kill_buffer().map(str::to_owned) {
-                state
-                    .settings
-                    .edit_custom_browser(|input| input.yank(&killed));
-            }
-            DispatchResult::handled()
-        }
-        Action::TextMoveCursor {
-            target: InputTarget::SettingsErBrowser,
-            direction,
-        } => {
-            state.settings.move_custom_browser_cursor(*direction);
             DispatchResult::handled()
         }
         Action::SettingsApply => {

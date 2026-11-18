@@ -5,7 +5,7 @@ use crate::model::shared::detail_view::{DetailDisplayMode, ReadOnlyDetailState};
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::preview_cell_text::{CellPresentationPolicy, format_for_cell_detail};
 use crate::update::action::DetailTarget;
-use crate::update::action::{Action, InputTarget, ModalKind, ScrollDirection, ScrollTarget};
+use crate::update::action::{Action, ModalKind, ScrollDirection, ScrollTarget};
 use crate::update::dispatch_result::DispatchResult;
 
 use super::detail_search::refresh_search_matches;
@@ -51,39 +51,6 @@ pub(in crate::update) fn reduce_cell_detail(
         Action::CloseModal(ModalKind::CellDetail) => {
             state.cell_detail.close();
             state.modal.pop_mode();
-            DispatchResult::handled()
-        }
-        Action::TextInput {
-            target: InputTarget::CellDetailSearch,
-            ch,
-        } => {
-            state.cell_detail.search_mut().input_mut().insert_char(*ch);
-            refresh_search_matches(state, DetailTarget::CellDetail);
-            DispatchResult::handled()
-        }
-        Action::TextBackspace {
-            target: InputTarget::CellDetailSearch,
-        } => {
-            state.cell_detail.search_mut().input_mut().backspace();
-            refresh_search_matches(state, DetailTarget::CellDetail);
-            DispatchResult::handled()
-        }
-        Action::TextDelete {
-            target: InputTarget::CellDetailSearch,
-        } => {
-            state.cell_detail.search_mut().input_mut().delete();
-            refresh_search_matches(state, DetailTarget::CellDetail);
-            DispatchResult::handled()
-        }
-        Action::TextMoveCursor {
-            target: InputTarget::CellDetailSearch,
-            direction,
-        } => {
-            state
-                .cell_detail
-                .search_mut()
-                .input_mut()
-                .move_cursor(*direction);
             DispatchResult::handled()
         }
         Action::Paste(text)
@@ -167,9 +134,12 @@ mod tests {
     use crate::domain::Column;
     use crate::domain::connection::ConnectionId;
     use crate::domain::{ColumnAttributes, DatabaseType, QueryResult, QuerySource, Table};
+    use crate::update::action::InputTarget;
     use crate::update::action::SearchStep;
     use crate::update::browse::result::detail_search::reduce_detail_search;
+    use crate::update::test_fixtures::edit_text;
     use std::sync::Arc;
+    use std::time::Instant;
 
     fn state_with_cell(data_type: &str, cell_value: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
@@ -499,12 +469,13 @@ mod tests {
             },
         );
 
-        reduce_cell_detail(
+        edit_text(
             &mut state,
             &Action::TextInput {
                 target: InputTarget::CellDetailSearch,
                 ch: 'p',
             },
+            Instant::now(),
         );
 
         assert_eq!(state.cell_detail.search().matches(), &[2, 8]);

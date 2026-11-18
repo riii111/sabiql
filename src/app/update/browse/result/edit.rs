@@ -4,7 +4,7 @@ use crate::cmd::effect::Effect;
 use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
-use crate::update::action::{Action, InputTarget, ModalKind};
+use crate::update::action::{Action, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 
 use crate::policy::preview_cell_text::CellPresentationPolicy;
@@ -122,48 +122,6 @@ pub(in crate::update) fn reduce_edit(
             state.modal.set_mode(InputMode::Normal);
             DispatchResult::handled()
         }
-        Action::TextInput {
-            target: InputTarget::ResultCellEdit,
-            ch: c,
-        } => {
-            state.result_interaction.cell_edit_insert_char(*c);
-            DispatchResult::handled()
-        }
-        Action::TextBackspace {
-            target: InputTarget::ResultCellEdit,
-        } => {
-            state.result_interaction.cell_edit_backspace();
-            DispatchResult::handled()
-        }
-        Action::TextDelete {
-            target: InputTarget::ResultCellEdit,
-        } => {
-            state.result_interaction.cell_edit_delete();
-            DispatchResult::handled()
-        }
-        Action::TextKill {
-            target: InputTarget::ResultCellEdit,
-            direction,
-        } => {
-            let killed = state.result_interaction.cell_edit_kill(*direction);
-            state.record_kill(killed);
-            DispatchResult::handled()
-        }
-        Action::TextYank {
-            target: InputTarget::ResultCellEdit,
-        } => {
-            if let Some(killed) = state.kill_buffer().map(str::to_owned) {
-                state.result_interaction.cell_edit_yank(&killed);
-            }
-            DispatchResult::handled()
-        }
-        Action::TextMoveCursor {
-            target: InputTarget::ResultCellEdit,
-            direction: m,
-        } => {
-            state.result_interaction.cell_edit_move_cursor(*m);
-            DispatchResult::handled()
-        }
         _ => DispatchResult::pass(),
     }
 }
@@ -176,7 +134,9 @@ mod tests {
     use super::*;
     use crate::domain::connection::ConnectionId;
     use crate::domain::{DatabaseType, QueryResult, QuerySource, QueryValue, Table};
+    use crate::update::action::InputTarget;
     use crate::update::action::{CursorMove, TextKillDirection};
+    use crate::update::test_fixtures::edit_text;
     use rstest::rstest;
     use std::sync::Arc;
 
@@ -687,7 +647,7 @@ mod tests {
         fn delete_removes_char_at_cursor() {
             let mut state = state_in_cell_edit("abcd", 1);
 
-            reduce_edit(
+            edit_text(
                 &mut state,
                 &Action::TextDelete {
                     target: InputTarget::ResultCellEdit,
@@ -703,7 +663,7 @@ mod tests {
         fn delete_at_end_is_noop() {
             let mut state = state_in_cell_edit("abc", 3);
 
-            reduce_edit(
+            edit_text(
                 &mut state,
                 &Action::TextDelete {
                     target: InputTarget::ResultCellEdit,
@@ -718,7 +678,7 @@ mod tests {
         fn move_cursor_left_decrements() {
             let mut state = state_in_cell_edit("abc", 2);
 
-            reduce_edit(
+            edit_text(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::ResultCellEdit,
@@ -734,7 +694,7 @@ mod tests {
         fn move_cursor_right_increments() {
             let mut state = state_in_cell_edit("abc", 1);
 
-            reduce_edit(
+            edit_text(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::ResultCellEdit,
@@ -750,7 +710,7 @@ mod tests {
         fn move_cursor_home_jumps_to_start() {
             let mut state = state_in_cell_edit("abc", 3);
 
-            reduce_edit(
+            edit_text(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::ResultCellEdit,
@@ -766,7 +726,7 @@ mod tests {
         fn move_cursor_end_jumps_to_end() {
             let mut state = state_in_cell_edit("abc", 0);
 
-            reduce_edit(
+            edit_text(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::ResultCellEdit,
@@ -782,7 +742,7 @@ mod tests {
         fn input_inserts_at_cursor_not_at_end() {
             let mut state = state_in_cell_edit("ac", 1);
 
-            reduce_edit(
+            edit_text(
                 &mut state,
                 &Action::TextInput {
                     target: InputTarget::ResultCellEdit,
@@ -799,7 +759,7 @@ mod tests {
         fn backspace_removes_char_before_cursor() {
             let mut state = state_in_cell_edit("abc", 2);
 
-            reduce_edit(
+            edit_text(
                 &mut state,
                 &Action::TextBackspace {
                     target: InputTarget::ResultCellEdit,
@@ -815,7 +775,7 @@ mod tests {
         fn kill_then_yank_restores_cell_edit_text() {
             let mut state = state_in_cell_edit("before after", 7);
 
-            reduce_edit(
+            edit_text(
                 &mut state,
                 &Action::TextKill {
                     target: InputTarget::ResultCellEdit,
@@ -823,7 +783,7 @@ mod tests {
                 },
                 Instant::now(),
             );
-            reduce_edit(
+            edit_text(
                 &mut state,
                 &Action::TextYank {
                     target: InputTarget::ResultCellEdit,

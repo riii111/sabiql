@@ -1,7 +1,7 @@
 mod cell_detail;
-mod detail_search;
+pub(in crate::update) mod detail_search;
 mod edit;
-mod json;
+pub(in crate::update) mod json;
 mod row_detail;
 mod scroll;
 mod selection;

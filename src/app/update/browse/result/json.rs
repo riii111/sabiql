@@ -6,10 +6,11 @@ use crate::model::shared::key_sequence::KeySequenceState;
 use crate::model::shared::ui_state::DEFAULT_JSON_DETAIL_EDITOR_VISIBLE_ROWS;
 use crate::policy::preview_cell_text::CellPresentationPolicy;
 use crate::update::action::DetailTarget;
-use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
+use crate::update::action::{Action, CursorMove, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 
 use super::detail_search::refresh_search_matches;
+use crate::model::shared::text_input::TextEdit;
 use crate::update::helpers::{EditGuardrailError, editable_preview_base, ensure_column_writable};
 
 pub(in crate::update) fn reduce_json(state: &mut AppState, action: &Action) -> DispatchResult {
@@ -130,128 +131,10 @@ pub(in crate::update) fn reduce_json(state: &mut AppState, action: &Action) -> D
             DispatchResult::handled()
         }
 
-        Action::TextInput {
-            target: InputTarget::JsonEdit,
-            ch,
-        } => {
-            if *ch == '\n' {
-                state.json_detail.editor_mut().insert_newline();
-            } else if *ch == '\t' {
-                state.json_detail.editor_mut().insert_tab();
-            } else {
-                state.json_detail.editor_mut().insert_char(*ch);
-            }
-            update_editor_scroll(state);
-            state.json_detail.validate_editor_content();
-            DispatchResult::handled()
-        }
-
-        Action::TextBackspace {
-            target: InputTarget::JsonEdit,
-        } => {
-            state.json_detail.editor_mut().backspace();
-            update_editor_scroll(state);
-            state.json_detail.validate_editor_content();
-            DispatchResult::handled()
-        }
-
-        Action::TextDelete {
-            target: InputTarget::JsonEdit,
-        } => {
-            state.json_detail.editor_mut().delete();
-            update_editor_scroll(state);
-            state.json_detail.validate_editor_content();
-            DispatchResult::handled()
-        }
-        Action::TextKill {
-            target: InputTarget::JsonEdit,
-            direction,
-        } => {
-            let killed = state.json_detail.editor_mut().kill(*direction);
-            state.record_kill(killed);
-            update_editor_scroll(state);
-            state.json_detail.validate_editor_content();
-            DispatchResult::handled()
-        }
-        Action::TextYank {
-            target: InputTarget::JsonEdit,
-        } => {
-            if let Some(killed) = state.kill_buffer().map(str::to_owned) {
-                state.json_detail.editor_mut().yank(&killed);
-                update_editor_scroll(state);
-                state.json_detail.validate_editor_content();
-            }
-            DispatchResult::handled()
-        }
-
-        Action::TextMoveCursor {
-            target: InputTarget::JsonEdit,
-            direction,
-        } => {
-            match direction {
-                CursorMove::ViewportTop
-                | CursorMove::ViewportMiddle
-                | CursorMove::ViewportBottom => {
-                    let visible_rows = effective_visible_rows(state);
-                    state
-                        .json_detail
-                        .editor_mut()
-                        .move_cursor_to_viewport_position(*direction, visible_rows);
-                }
-                _ => state.json_detail.editor_mut().move_cursor(*direction),
-            }
-            update_editor_scroll(state);
-            state.ui.set_key_sequence(KeySequenceState::Idle);
-            DispatchResult::handled()
-        }
-
         Action::Paste(text) if state.input_mode() == InputMode::JsonEdit => {
             state.json_detail.editor_mut().insert_str(text);
             update_editor_scroll(state);
             state.json_detail.validate_editor_content();
-            DispatchResult::handled()
-        }
-
-        Action::TextInput {
-            target: InputTarget::JsonSearch,
-            ch,
-        } => {
-            state.json_detail.search_mut().input_mut().insert_char(*ch);
-            refresh_search_matches(state, DetailTarget::JsonDetail);
-            DispatchResult::handled()
-        }
-
-        Action::TextBackspace {
-            target: InputTarget::JsonSearch,
-        } => {
-            state.json_detail.search_mut().input_mut().backspace();
-            refresh_search_matches(state, DetailTarget::JsonDetail);
-            DispatchResult::handled()
-        }
-
-        Action::TextDelete {
-            target: InputTarget::JsonSearch,
-        } => {
-            state.json_detail.search_mut().input_mut().delete();
-            refresh_search_matches(state, DetailTarget::JsonDetail);
-            DispatchResult::handled()
-        }
-        Action::TextKill {
-            target: InputTarget::JsonSearch,
-            direction,
-        } => {
-            let killed = state.json_detail.search_mut().input_mut().kill(*direction);
-            state.record_kill(killed);
-            refresh_search_matches(state, DetailTarget::JsonDetail);
-            DispatchResult::handled()
-        }
-        Action::TextYank {
-            target: InputTarget::JsonSearch,
-        } => {
-            if let Some(killed) = state.kill_buffer().map(str::to_owned) {
-                state.json_detail.search_mut().input_mut().yank(&killed);
-                refresh_search_matches(state, DetailTarget::JsonDetail);
-            }
             DispatchResult::handled()
         }
 
@@ -266,18 +149,6 @@ pub(in crate::update) fn reduce_json(state: &mut AppState, action: &Action) -> D
                 .input_mut()
                 .insert_str(&clean);
             refresh_search_matches(state, DetailTarget::JsonDetail);
-            DispatchResult::handled()
-        }
-
-        Action::TextMoveCursor {
-            target: InputTarget::JsonSearch,
-            direction,
-        } => {
-            state
-                .json_detail
-                .search_mut()
-                .input_mut()
-                .move_cursor(*direction);
             DispatchResult::handled()
         }
 
@@ -335,6 +206,43 @@ fn apply_pending_edit_as_draft(state: &mut AppState) {
     state.result_interaction.replace_cell_edit_draft(compact);
 }
 
+pub(in crate::update) fn edit_json_text(
+    state: &mut AppState,
+    edit: TextEdit,
+    yank_text: Option<&str>,
+) -> String {
+    if let TextEdit::MoveCursor(direction) = edit {
+        match direction {
+            CursorMove::ViewportTop | CursorMove::ViewportMiddle | CursorMove::ViewportBottom => {
+                let visible_rows = effective_visible_rows(state);
+                state
+                    .json_detail
+                    .editor_mut()
+                    .move_cursor_to_viewport_position(direction, visible_rows);
+            }
+            _ => state.json_detail.editor_mut().move_cursor(direction),
+        }
+        update_editor_scroll(state);
+        state.ui.set_key_sequence(KeySequenceState::Idle);
+        return String::new();
+    }
+
+    let killed = match edit {
+        TextEdit::Insert('\n') => {
+            state.json_detail.editor_mut().insert_newline();
+            String::new()
+        }
+        TextEdit::Insert('\t') => {
+            state.json_detail.editor_mut().insert_tab();
+            String::new()
+        }
+        _ => state.json_detail.editor_mut().apply_edit(edit, yank_text),
+    };
+    update_editor_scroll(state);
+    state.json_detail.validate_editor_content();
+    killed
+}
+
 #[cfg(test)]
 mod tests {
     use crate::domain::Column;
@@ -349,9 +257,11 @@ mod tests {
     use crate::model::shared::flash_timer::FlashId;
     use crate::services::AppServices;
     use crate::update::action::CopyTarget;
+    use crate::update::action::InputTarget;
     use crate::update::action::SearchStep;
     use crate::update::action::TextKillDirection;
     use crate::update::browse::result::detail_search::reduce_detail_search;
+    use crate::update::test_fixtures::edit_text;
     use std::sync::Arc;
     use std::time::Instant;
 
@@ -665,19 +575,21 @@ mod tests {
         fn enter_edit_preserves_cursor_from_normal_mode() {
             let mut state = state_with_json_value(r#"{"items":["admin","writer"]}"#);
             open_detail(&mut state);
-            reduce_json(
+            edit_text(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::JsonEdit,
                     direction: CursorMove::Down,
                 },
+                Instant::now(),
             );
-            reduce_json(
+            edit_text(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::JsonEdit,
                     direction: CursorMove::Right,
                 },
+                Instant::now(),
             );
             let expected = state.json_detail.editor().cursor();
 
@@ -764,19 +676,21 @@ mod tests {
             state.ui.set_json_detail_editor_visible_rows(2);
             open_detail(&mut state);
 
-            reduce_json(
+            edit_text(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::JsonEdit,
                     direction: CursorMove::Down,
                 },
+                Instant::now(),
             );
-            reduce_json(
+            edit_text(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::JsonEdit,
                     direction: CursorMove::Down,
                 },
+                Instant::now(),
             );
 
             assert_eq!(state.json_detail.editor().scroll_row(), 1);
@@ -801,12 +715,13 @@ mod tests {
                 .editor_mut()
                 .set_content_with_cursor("line1\nline2\nline3\nline4".to_string(), 0);
 
-            reduce_json(
+            edit_text(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::JsonEdit,
                     direction: movement,
                 },
+                Instant::now(),
             );
 
             assert_eq!(
@@ -825,12 +740,13 @@ mod tests {
                 .ui
                 .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::G));
 
-            reduce_json(
+            edit_text(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::JsonEdit,
                     direction: CursorMove::Right,
                 },
+                Instant::now(),
             );
 
             assert_eq!(state.ui.key_sequence().pending_prefix(), None);
@@ -885,18 +801,20 @@ mod tests {
                 .editor_mut()
                 .set_content_with_cursor("before after".to_string(), 7);
 
-            reduce_json(
+            edit_text(
                 &mut state,
                 &Action::TextKill {
                     target: InputTarget::JsonEdit,
                     direction: TextKillDirection::ToLineEnd,
                 },
+                Instant::now(),
             );
-            reduce_json(
+            edit_text(
                 &mut state,
                 &Action::TextYank {
                     target: InputTarget::JsonEdit,
                 },
+                Instant::now(),
             );
 
             assert_eq!(state.json_detail.editor().content(), "before after");
@@ -1040,12 +958,13 @@ mod tests {
             );
 
             for ch in "theme".chars() {
-                reduce_json(
+                edit_text(
                     &mut state,
                     &Action::TextInput {
                         target: InputTarget::JsonSearch,
                         ch,
                     },
+                    Instant::now(),
                 );
             }
             let match_count = state.json_detail.search().matches().len();
@@ -1084,12 +1003,13 @@ mod tests {
             assert!(state.json_detail.search().matches().is_empty());
 
             for ch in "THEME".chars() {
-                reduce_json(
+                edit_text(
                     &mut state,
                     &Action::TextInput {
                         target: InputTarget::JsonSearch,
                         ch,
                     },
+                    Instant::now(),
                 );
             }
 
@@ -1112,26 +1032,29 @@ mod tests {
             );
 
             for ch in "theme".chars() {
-                reduce_json(
+                edit_text(
                     &mut state,
                     &Action::TextInput {
                         target: InputTarget::JsonSearch,
                         ch,
                     },
+                    Instant::now(),
                 );
             }
-            reduce_json(
+            edit_text(
                 &mut state,
                 &Action::TextKill {
                     target: InputTarget::JsonSearch,
                     direction: TextKillDirection::ToLineStart,
                 },
+                Instant::now(),
             );
-            reduce_json(
+            edit_text(
                 &mut state,
                 &Action::TextYank {
                     target: InputTarget::JsonSearch,
                 },
+                Instant::now(),
             );
 
             assert_eq!(state.json_detail.search().input().content(), "theme");
@@ -1151,12 +1074,13 @@ mod tests {
             );
 
             for ch in "t".chars() {
-                reduce_json(
+                edit_text(
                     &mut state,
                     &Action::TextInput {
                         target: InputTarget::JsonSearch,
                         ch,
                     },
+                    Instant::now(),
                 );
             }
             let match_count = state.json_detail.search().matches().len();
@@ -1196,12 +1120,13 @@ mod tests {
             );
 
             for ch in "t".chars() {
-                reduce_json(
+                edit_text(
                     &mut state,
                     &Action::TextInput {
                         target: InputTarget::JsonSearch,
                         ch,
                     },
+                    Instant::now(),
                 );
             }
             let match_count = state.json_detail.search().matches().len();

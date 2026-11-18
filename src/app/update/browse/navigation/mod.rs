@@ -1,7 +1,7 @@
 mod connection_list;
 mod explorer;
 mod focus;
-mod input;
+pub(in crate::update) mod input;
 mod inspector;
 
 use std::time::Instant;

@@ -10,7 +10,9 @@ use crate::policy::write::write_guardrails::{
 use crate::services::AppServices;
 use crate::test_support::table::minimal as minimal_table;
 use crate::update::action::{Action, QueryCompletionContext, TableTarget};
+use crate::update::dispatch_result::DispatchResult;
 use crate::update::reducer::reduce;
+use crate::update::text_edit;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -170,4 +172,8 @@ pub fn seed_table_detail_cache(state: &mut AppState, qualified_name: &str) {
     state
         .table_detail_cache
         .insert(qualified_name.to_string(), minimal_table(schema, name));
+}
+
+pub fn edit_text(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+    text_edit::reduce_text_edit(state, action, now)
 }

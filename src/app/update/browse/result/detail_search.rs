@@ -7,6 +7,7 @@ use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{clipboard_unavailable, find_text_matches};
 
 use super::json::jump_to_current_match;
+use crate::model::shared::text_input::TextEdit;
 
 pub(in crate::update) fn reduce_detail_search(
     state: &mut AppState,
@@ -98,4 +99,19 @@ fn flash_id(target: DetailTarget) -> FlashId {
         DetailTarget::JsonDetail => FlashId::JsonDetail,
         DetailTarget::CellDetail => FlashId::CellDetail,
     }
+}
+
+pub(in crate::update) fn edit_search_query(
+    state: &mut AppState,
+    target: DetailTarget,
+    edit: TextEdit,
+    yank_text: Option<&str>,
+) -> String {
+    let killed = search_mut(state, target)
+        .input_mut()
+        .apply_edit(edit, yank_text);
+    if !matches!(edit, TextEdit::MoveCursor(_)) {
+        refresh_search_matches(state, target);
+    }
+    killed
 }

@@ -4,6 +4,7 @@ use nucleo_matcher::{Config, Matcher};
 use crate::domain::query_history::QueryHistoryEntry;
 use crate::model::shared::cursor::CursorMove;
 use crate::model::shared::picker::{clamp_scroll_offset, sanitize_filter_text};
+use crate::model::shared::text_input::TextEdit;
 use crate::model::shared::text_input::TextInputState;
 
 #[derive(Debug, Clone, Default)]
@@ -92,6 +93,14 @@ impl QueryHistoryPickerState {
         self.filter_input.update_viewport(self.filter_visible_width);
         self.reset_selection();
         result
+    }
+
+    pub fn apply_filter_edit(&mut self, edit: TextEdit, yank_text: Option<&str>) -> String {
+        if let TextEdit::MoveCursor(direction) = edit {
+            self.move_filter_cursor(direction);
+            return String::new();
+        }
+        self.edit_filter(|input| input.apply_edit(edit, yank_text))
     }
 
     pub fn move_filter_cursor(&mut self, direction: CursorMove) {
