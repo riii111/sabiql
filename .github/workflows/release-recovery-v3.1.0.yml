@@ -1,0 +1,145 @@
+name: Release v3.1.0 recovery
+
+on:
+  push:
+    branches: [release-recovery/v3.1.0]
+    paths: [.github/workflows/release-recovery-v3.1.0.yml]
+
+permissions: {}
+
+concurrency: release-recovery-v3.1.0
+
+env:
+  RELEASE_TAG: v3.1.0
+  RELEASE_SHA: c44970946bf9a315866105b31c298fe1c5f9c803
+
+jobs:
+  build:
+    name: Cross-compile Apple Silicon binary
+    runs-on: macos-15-intel
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          toolchain: 1.100.0
+          targets: aarch64-apple-darwin
+
+      - name: Build and package
+        run: |
+          cargo build --locked --release --features self-update --target aarch64-apple-darwin
+          binary_dir=target/aarch64-apple-darwin/release
+          lipo -verify_arch arm64 "$binary_dir/sabiql"
+          tar -czf sabiql-aarch64-apple-darwin.tar.gz -C "$binary_dir" sabiql
+          shasum -a 256 sabiql-aarch64-apple-darwin.tar.gz > sabiql-aarch64-apple-darwin.tar.gz.sha256
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sabiql-aarch64-apple-darwin
+          path: |
+            sabiql-aarch64-apple-darwin.tar.gz
+            sabiql-aarch64-apple-darwin.tar.gz.sha256
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Download the four artifacts built from the release tag
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          github-token: ${{ github.token }}
+          run-id: '44348826643'
+          artifact-ids: '14449515136,14447582502,14447367544,14447148398'
+          merge-multiple: true
+          path: artifacts
+
+      - name: Download the Apple Silicon artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sabiql-aarch64-apple-darwin
+          path: artifacts
+
+      - name: Verify tag, draft, and all five checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        working-directory: artifacts
+        shell: bash
+        run: |
+          remote_ref=$(git ls-remote --exit-code "https://github.com/$GH_REPO.git" "refs/tags/$RELEASE_TAG")
+          test "${remote_ref%%[[:space:]]*}" = "$RELEASE_SHA"
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+
+          archives=(
+            sabiql-aarch64-apple-darwin.tar.gz
+            sabiql-x86_64-apple-darwin.tar.gz
+            sabiql-aarch64-unknown-linux-gnu.tar.gz
+            sabiql-x86_64-unknown-linux-gnu.tar.gz
+            sabiql-x86_64-pc-windows-msvc.zip
+          )
+          for archive in "${archives[@]}"; do
+            read -r expected _ < "$archive.sha256"
+            actual=$(sha256sum "$archive")
+            test "${actual%% *}" = "$expected"
+          done
+
+      - name: Upload assets and publish release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: |
+            artifacts/*.tar.gz
+            artifacts/*.zip
+            artifacts/*.sha256
+          fail_on_unmatched_files: true
+          draft: false
+
+  publish-crate:
+    name: Publish to crates.io
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - name: Check publishable crate order
+        run: bash ./scripts/check-publish-order.sh > /dev/null
+
+      - name: Publish workspace crates to crates.io
+        run: |
+          while IFS= read -r crate; do
+            cargo publish --manifest-path "$crate/Cargo.toml"
+            if [ "$crate" != "." ]; then
+              sleep 30
+            fi
+          done < <(bash ./scripts/check-publish-order.sh)
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Verify published crates independently
+        run: |
+          sleep 30
+          while IFS= read -r crate; do
+            target_dir="$RUNNER_TEMP/package-${crate//\//-}"
+            CARGO_TARGET_DIR="$target_dir" cargo package \
+              --manifest-path "$crate/Cargo.toml" \
+              --all-features \
+              --locked
+          done < <(bash ./scripts/check-publish-order.sh)
