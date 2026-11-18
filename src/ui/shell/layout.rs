@@ -9,7 +9,6 @@ use crate::app::model::shared::render_output::{
     BrowseLayout, ConfirmPreviewLayout, DetailLayout, ExplorerLayout, InputLayout, InspectorLayout,
     OverlayLayout, PickerLayouts, ResultLayout,
 };
-use crate::app::model::shared::ui_state::explorer_content_width_from_pane_width;
 use crate::app::ports::outbound::{CellDetailViewport, RenderOutput};
 use crate::app::services::AppServices;
 use crate::features::browse::cell_detail::{CellDetail, CellDetailRenderMetrics};
@@ -205,7 +204,7 @@ impl MainLayout {
                 Layout::horizontal([Constraint::Percentage(25), Constraint::Percentage(75)])
                     .areas(main_area);
 
-            Explorer::render(frame, left_area, state, theme);
+            let content_width = Explorer::render(frame, left_area, state, theme);
 
             let [inspector_area, result_area] =
                 Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)])
@@ -219,7 +218,7 @@ impl MainLayout {
             BrowseLayout {
                 explorer: ExplorerLayout {
                     pane_height: left_area.height,
-                    content_width: explorer_content_width_from_pane_width(left_area.width),
+                    content_width,
                 },
                 inspector: InspectorLayout {
                     viewport_plan: inspector_plan,

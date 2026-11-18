@@ -15,6 +15,7 @@ use crate::app::model::shared::engine_feature_profile::InspectorInfoField;
 use crate::app::model::shared::flash_timer::{FlashId, FlashTimerStore};
 use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::inspector_tab::InspectorTab;
+use crate::app::model::shared::settings::IconMode;
 use crate::app::model::shared::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
     widths_fingerprint,
@@ -22,6 +23,7 @@ use crate::app::model::shared::viewport::{
 use crate::app::policy::column::column_generation_kind_label;
 use crate::app::services::AppServices;
 use crate::domain::DatabaseType;
+use crate::primitives::atoms::Icon;
 use crate::primitives::atoms::{apply_yank_flash, panel_block};
 use crate::primitives::utils::text_utils::{
     MIN_COL_WIDTH, PADDING, calculate_header_min_widths, truncate_to_width,
@@ -36,6 +38,7 @@ pub struct Inspector;
     reason = "Inspector column display options are independent UI columns"
 )]
 struct ColumnDisplayOptions {
+    icon_mode: IconMode,
     read_only: bool,
     character_set: bool,
     collation: bool,
@@ -178,6 +181,7 @@ impl Inspector {
                 show_generation,
             }) => {
                 let options = ColumnDisplayOptions {
+                    icon_mode: state.settings.saved_icon_mode(),
                     read_only: *show_read_only,
                     character_set: *show_character_set,
                     collation: *show_collation,
@@ -822,8 +826,15 @@ fn index_headers(show_type: bool, show_partial: bool, has_details: bool) -> Vec<
 }
 
 fn column_row_cells(row: &InspectorColumnRow, options: ColumnDisplayOptions) -> Vec<String> {
+    let icon = if row.foreign_key {
+        Icon::ForeignKey
+    } else if row.primary_key {
+        Icon::PrimaryKey
+    } else {
+        Icon::Column
+    };
     let mut cells = vec![
-        row.name.clone(),
+        format!("{}{}", icon.prefix(options.icon_mode), row.name),
         row.data_type.clone(),
         checkmark(row.nullable),
         checkmark(row.primary_key),
@@ -1085,6 +1096,7 @@ mod tests {
             data_type: "integer".to_string(),
             nullable: false,
             primary_key: true,
+            foreign_key: false,
             read_only_reason: Some("read-only".to_string()),
             default: Some("default".to_string()),
             comment: Some("comment".to_string()),
@@ -1099,6 +1111,7 @@ mod tests {
                 for collation in [false, true] {
                     for generation in [false, true] {
                         let options = ColumnDisplayOptions {
+                            icon_mode: IconMode::Off,
                             read_only,
                             character_set,
                             collation,
@@ -1144,6 +1157,7 @@ mod tests {
                 data_type: "integer".to_string(),
                 nullable: true,
                 primary_key: false,
+                foreign_key: false,
                 read_only_reason: None,
                 default: None,
                 comment: None,
@@ -1154,6 +1168,7 @@ mod tests {
             })
             .collect();
         let options = ColumnDisplayOptions {
+            icon_mode: IconMode::Off,
             read_only: false,
             character_set: false,
             collation: false,

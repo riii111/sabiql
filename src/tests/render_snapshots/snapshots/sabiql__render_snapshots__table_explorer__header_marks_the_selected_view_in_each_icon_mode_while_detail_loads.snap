@@ -1,0 +1,8 @@
+---
+source: src/tests/render_snapshots/table_explorer.rs
+expression: "headers.join(\"\\n\")"
+---
+test_project ▸ test_db ▸ public.active_users                                   connected | localhost:5432/test
+ test_project ▸  test_db ▸  public.active_users                             connected | localhost:5432/test
+⌂ test_project ▸ Pg test_db ▸ ◇ public.active_users                            connected | localhost:5432/test
+./ test_project ▸ Pg test_db ▸ V public.active_users                           connected | localhost:5432/test

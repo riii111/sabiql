@@ -9,6 +9,7 @@ use crate::app::model::shared::render_output::PickerLayout;
 use crate::app::policy::table_kind::{table_display_name, table_key_display_name};
 use crate::app::update::input::keybindings;
 use crate::domain::er::er_output_filename;
+use crate::primitives::atoms::Icon;
 use crate::primitives::molecules::{FooterHintBar, render_filter_input_line, render_modal};
 use crate::theme::ThemePalette;
 
@@ -136,7 +137,8 @@ impl ErTablePicker {
                 } else {
                     Style::default().fg(theme.semantic.text.secondary)
                 };
-                ListItem::new(format!("  {mark}{display_name}")).style(style)
+                let icon = Icon::from(t.kind_info.kind).prefix(state.settings.saved_icon_mode());
+                ListItem::new(format!("  {mark}{icon}{display_name}")).style(style)
             })
             .collect();
 

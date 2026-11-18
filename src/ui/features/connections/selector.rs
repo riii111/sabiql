@@ -7,12 +7,15 @@ use ratatui::widgets::{List, ListItem, ListState};
 use crate::app::model::app_state::AppState;
 use crate::app::model::connection::list::{self, ConnectionListItem};
 use crate::app::update::input::keybindings::connection_selector;
-use crate::domain::connection::ConnectionId;
+use crate::domain::connection::{ConnectionId, DatabaseType};
+use crate::primitives::atoms::Icon;
 use crate::primitives::atoms::scroll_indicator::{
     VerticalScrollParams, render_vertical_scroll_indicator_bar,
 };
 use crate::primitives::molecules::{FooterHintBar, render_modal};
+use crate::primitives::utils::text_utils::truncate_to_width_with;
 use crate::theme::ThemePalette;
+use unicode_width::UnicodeWidthStr;
 
 const PREFIX_DISPLAY_WIDTH: usize = 2;
 
@@ -88,18 +91,10 @@ fn render_service_item(
     let max_name_len =
         content_width.saturating_sub(PREFIX_DISPLAY_WIDTH + min_gap + source_label.len());
 
-    let name = if display_name.chars().count() > max_name_len {
-        let truncated: String = display_name
-            .chars()
-            .take(max_name_len.saturating_sub(1))
-            .collect();
-        format!("{truncated}…")
-    } else {
-        display_name.to_owned()
-    };
+    let name = truncate_to_width_with(display_name, max_name_len, "…");
 
     let label_col = content_width * SERVICE_LABEL_COL_PERCENT / 100;
-    let name_display_width = PREFIX_DISPLAY_WIDTH + name.chars().count();
+    let name_display_width = PREFIX_DISPLAY_WIDTH + name.width();
     let gap = label_col.saturating_sub(name_display_width).max(min_gap);
     let name_part = format!("{prefix}{name}");
 
@@ -140,12 +135,21 @@ pub fn render_connection_list(
             .map(|item| match item {
                 ConnectionListItem::Profile(i) => {
                     let conn = &state.connections()[*i];
-                    render_profile_item(&conn.id, conn.display_name(), active_id, theme)
+                    let icon =
+                        Icon::from(conn.database_type()).prefix(state.settings.saved_icon_mode());
+                    render_profile_item(
+                        &conn.id,
+                        &format!("{icon}{}", conn.display_name()),
+                        active_id,
+                        theme,
+                    )
                 }
                 ConnectionListItem::Service(i) => {
                     let entry = &state.service_entries()[*i];
+                    let icon = Icon::from(DatabaseType::PostgreSQL)
+                        .prefix(state.settings.saved_icon_mode());
                     render_service_item(
-                        entry.display_name(),
+                        &format!("{icon}{}", entry.display_name()),
                         entry.connection_id(),
                         active_id,
                         content_width,

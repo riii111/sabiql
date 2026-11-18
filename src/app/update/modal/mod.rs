@@ -35,7 +35,7 @@ mod tests {
     use crate::model::shared::confirm_dialog::{ConfirmIntent, CsvExportCacheSnapshot};
     use crate::model::shared::help::HelpMode;
     use crate::model::shared::input_mode::InputMode;
-    use crate::model::shared::settings::KeymapPreset;
+    use crate::model::shared::settings::{IconMode, KeymapPreset};
     use crate::ports::outbound::AppSettings;
     use crate::services::AppServices;
     use crate::update::action::{
@@ -338,6 +338,9 @@ mod tests {
                 );
                 super::dispatch_modal(&mut state, &Action::SettingsSelectNext, Instant::now());
 
+                super::dispatch_modal(&mut state, &Action::SettingsPreviousSection, Instant::now());
+                super::dispatch_modal(&mut state, &Action::SettingsSelectNext, Instant::now());
+
                 let effects =
                     super::dispatch_modal(&mut state, &Action::SettingsApply, Instant::now())
                         .into_effects()
@@ -345,10 +348,11 @@ mod tests {
 
                 assert_eq!(state.input_mode(), InputMode::Settings);
                 assert_eq!(state.ui.theme_id(), ThemeId::Default);
+                assert_eq!(state.settings.saved_icon_mode(), IconMode::Off);
                 assert!(matches!(
                     effects.as_slice(),
                     [Effect::SaveSettings { settings }]
-                        if settings.theme_id == ThemeId::Light && settings.er_browser.is_none()
+                        if settings.theme_id == ThemeId::Light && settings.icon_mode == IconMode::NerdFont && settings.er_browser.is_none()
                 ));
             }
 
@@ -431,6 +435,7 @@ mod tests {
                     &mut state,
                     &Action::SettingsSaved(AppSettings {
                         theme_id: ThemeId::Light,
+                        icon_mode: IconMode::Unicode,
                         keymap_preset: KeymapPreset::Ide,
                         er_browser: Some("Google Chrome".to_string()),
                     }),
@@ -440,6 +445,7 @@ mod tests {
 
                 assert_eq!(state.ui.theme_id(), ThemeId::Light);
                 assert_eq!(state.settings.previous_theme(), ThemeId::Light);
+                assert_eq!(state.settings.saved_icon_mode(), IconMode::Unicode);
                 assert_eq!(state.settings.saved_keymap_preset(), KeymapPreset::Ide);
                 assert_eq!(state.settings.saved_er_browser(), Some("Google Chrome"));
                 assert!(

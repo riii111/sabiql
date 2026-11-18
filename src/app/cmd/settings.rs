@@ -17,7 +17,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use super::*;
-    use crate::model::shared::settings::KeymapPreset;
+    use crate::model::shared::settings::{IconMode, KeymapPreset};
     use crate::model::shared::theme_id::ThemeId;
     use crate::ports::outbound::SettingsStoreError;
 
@@ -51,6 +51,7 @@ mod tests {
         let action = run(
             AppSettings {
                 theme_id: ThemeId::Light,
+                icon_mode: IconMode::default(),
                 keymap_preset: KeymapPreset::Ide,
                 er_browser: Some("Firefox".to_string()),
             },
@@ -82,6 +83,7 @@ mod tests {
         let action = run(
             AppSettings {
                 theme_id: ThemeId::Light,
+                icon_mode: IconMode::default(),
                 keymap_preset: KeymapPreset::default(),
                 er_browser: None,
             },

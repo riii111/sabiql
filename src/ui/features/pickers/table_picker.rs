@@ -7,6 +7,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::shared::render_output::PickerLayout;
 use crate::app::policy::table_kind::table_display_name;
 use crate::app::update::input::keybindings::table_picker;
+use crate::primitives::atoms::Icon;
 use crate::primitives::molecules::{FooterHintBar, render_filter_input_line, render_modal};
 use crate::theme::ThemePalette;
 
@@ -46,7 +47,8 @@ impl TablePicker {
             .iter()
             .map(|t| {
                 let content = format!(
-                    "  {}",
+                    "  {}{}",
+                    Icon::from(t.kind_info.kind).prefix(state.settings.saved_icon_mode()),
                     table_display_name(
                         state.session.active_database_type_or_default(),
                         &t.schema,

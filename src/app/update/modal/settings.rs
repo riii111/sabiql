@@ -94,6 +94,7 @@ pub(super) fn reduce_settings(
             let theme_id = state.settings.selected_theme();
             let settings = AppSettings {
                 theme_id,
+                icon_mode: state.settings.selected_icon_mode(),
                 keymap_preset: state.settings.selected_keymap_preset(),
                 er_browser: state.settings.selected_er_browser(),
             };
@@ -108,6 +109,7 @@ pub(super) fn reduce_settings(
             state.ui.set_theme(settings.theme_id);
             state.settings.commit_saved(
                 settings.theme_id,
+                settings.icon_mode,
                 settings.keymap_preset,
                 settings.er_browser.clone(),
             );

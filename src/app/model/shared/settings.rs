@@ -7,16 +7,18 @@ pub enum SettingsSection {
     Appearance,
     Keymap,
     ErDiagram,
+    Icons,
 }
 
 impl SettingsSection {
-    pub const ALL: [Self; 3] = [Self::Appearance, Self::Keymap, Self::ErDiagram];
+    pub const ALL: [Self; 4] = [Self::Appearance, Self::Keymap, Self::ErDiagram, Self::Icons];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Appearance => "Appearance",
             Self::Keymap => "Keymap",
             Self::ErDiagram => "ER Diagram",
+            Self::Icons => "Icons",
         }
     }
 
@@ -34,6 +36,51 @@ impl SettingsSection {
             .position(|section| *section == self)
             .unwrap_or(0);
         Self::ALL[(index + Self::ALL.len() - 1) % Self::ALL.len()]
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum IconMode {
+    #[default]
+    Off,
+    NerdFont,
+    Unicode,
+    Ascii,
+}
+
+impl IconMode {
+    pub const ALL: [Self; 4] = [Self::Off, Self::NerdFont, Self::Unicode, Self::Ascii];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Off => "Off",
+            Self::NerdFont => "Nerd Font",
+            Self::Unicode => "Unicode",
+            Self::Ascii => "ASCII",
+        }
+    }
+
+    pub fn config_value(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::NerdFont => "nerd-font",
+            Self::Unicode => "unicode",
+            Self::Ascii => "ascii",
+        }
+    }
+
+    pub fn from_config_value(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|mode| mode.config_value() == value)
+    }
+
+    fn step(self, delta: isize) -> Self {
+        let index = Self::ALL
+            .iter()
+            .position(|mode| *mode == self)
+            .unwrap_or_default();
+        Self::ALL[index.saturating_add_signed(delta).min(Self::ALL.len() - 1)]
     }
 }
 
@@ -177,6 +224,8 @@ impl ErBrowserChoice {
 pub struct SettingsState {
     previous_theme: ThemeId,
     selected_theme: ThemeId,
+    saved_icon_mode: IconMode,
+    selected_icon_mode: IconMode,
     saved_keymap_preset: KeymapPreset,
     selected_keymap_preset: KeymapPreset,
     saved_er_browser: Option<String>,
@@ -191,6 +240,8 @@ impl Default for SettingsState {
         Self {
             previous_theme: ThemeId::Default,
             selected_theme: ThemeId::Default,
+            saved_icon_mode: IconMode::default(),
+            selected_icon_mode: IconMode::default(),
             saved_keymap_preset: KeymapPreset::Default,
             selected_keymap_preset: KeymapPreset::Default,
             saved_er_browser: None,
@@ -210,6 +261,19 @@ impl SettingsState {
         self.custom_er_browser = custom_input_for(self.saved_er_browser.as_deref());
     }
 
+    pub fn load_icon_mode(&mut self, mode: IconMode) {
+        self.saved_icon_mode = mode;
+        self.selected_icon_mode = mode;
+    }
+
+    pub fn saved_icon_mode(&self) -> IconMode {
+        self.saved_icon_mode
+    }
+
+    pub fn selected_icon_mode(&self) -> IconMode {
+        self.selected_icon_mode
+    }
+
     pub fn load_keymap_preset(&mut self, keymap_preset: KeymapPreset) {
         self.saved_keymap_preset = keymap_preset;
         self.selected_keymap_preset = keymap_preset;
@@ -218,6 +282,7 @@ impl SettingsState {
     pub fn open(&mut self, current_theme: ThemeId) {
         self.previous_theme = current_theme;
         self.selected_theme = current_theme;
+        self.selected_icon_mode = self.saved_icon_mode;
         self.selected_keymap_preset = self.saved_keymap_preset;
         self.selected_er_browser_choice =
             ErBrowserChoice::from_browser_name(self.saved_er_browser.as_deref());
@@ -289,6 +354,7 @@ impl SettingsState {
             SettingsSection::Appearance => {
                 self.selected_theme = self.selected_theme.next();
             }
+            SettingsSection::Icons => self.selected_icon_mode = self.selected_icon_mode.step(1),
             SettingsSection::Keymap => {
                 self.selected_keymap_preset = self.selected_keymap_preset.next();
             }
@@ -304,6 +370,7 @@ impl SettingsState {
             SettingsSection::Appearance => {
                 self.selected_theme = self.selected_theme.previous();
             }
+            SettingsSection::Icons => self.selected_icon_mode = self.selected_icon_mode.step(-1),
             SettingsSection::Keymap => {
                 self.selected_keymap_preset = self.selected_keymap_preset.previous();
             }
@@ -360,9 +427,11 @@ impl SettingsState {
     pub fn commit_saved(
         &mut self,
         theme: ThemeId,
+        icon_mode: IconMode,
         keymap_preset: KeymapPreset,
         er_browser: Option<String>,
     ) {
+        self.load_icon_mode(icon_mode);
         self.previous_theme = theme;
         self.selected_theme = theme;
         self.saved_keymap_preset = keymap_preset;
@@ -376,6 +445,7 @@ impl SettingsState {
 
     pub fn discard_selection(&mut self) {
         self.selected_theme = self.previous_theme;
+        self.selected_icon_mode = self.saved_icon_mode;
         self.selected_keymap_preset = self.saved_keymap_preset;
         self.selected_er_browser_choice =
             ErBrowserChoice::from_browser_name(self.saved_er_browser.as_deref());

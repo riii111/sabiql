@@ -566,3 +566,28 @@ fn inspector_info_tab_for_sqlite_shows_view_kind() {
 
     insta::assert_snapshot!(output);
 }
+
+#[test]
+fn nerd_font_marks_columns_and_keys_in_the_schema_browser() {
+    use sabiql_app::model::shared::settings::IconMode;
+
+    let mut state = harness::explorer_selected_state();
+    state.settings.load_icon_mode(IconMode::NerdFont);
+    let mut table = fixtures::sample_postgres_table_detail();
+    let mut department = table.columns[2].clone();
+    department.name = "department_id".into();
+    department.data_type = "integer".into();
+    department.ordinal_position = 4;
+    table.columns.push(department);
+    let generation = state
+        .session
+        .select_table("public", "users", &mut state.query);
+    assert!(state.session.set_table_detail(table, generation));
+    state.ui.set_inspector_tab(InspectorTab::Columns);
+    harness::with_current_result(&mut state);
+    let mut terminal = create_test_terminal_sized(120, 25);
+
+    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
+
+    insta::assert_snapshot!(output);
+}

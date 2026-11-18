@@ -2,7 +2,7 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{List, ListItem, ListState};
-use unicode_width::UnicodeWidthChar;
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::focused_pane::FocusedPane;
@@ -12,6 +12,7 @@ use crate::app::model::shared::ui_state::{
 use crate::app::policy::table_kind::{explorer_table_label, max_explorer_table_label_width};
 use crate::app::update::input::keybindings::global;
 use crate::domain::MetadataState;
+use crate::primitives::atoms::Icon;
 use crate::theme::ThemePalette;
 
 use crate::primitives::atoms::panel_block;
@@ -19,7 +20,7 @@ use crate::primitives::atoms::panel_block;
 pub struct Explorer;
 
 impl Explorer {
-    pub fn render(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
+    pub fn render(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) -> usize {
         let is_focused = state.ui.focused_pane() == FocusedPane::Explorer;
         let block = panel_block(" [1] Explorer ", is_focused, theme);
         let inner = block.inner(area);
@@ -28,7 +29,7 @@ impl Explorer {
         let is_error = matches!(state.session.metadata_state(), MetadataState::Error);
         let has_cached_data =
             !is_error && state.session.metadata().is_some() && !state.tables().is_empty();
-        Self::render_tables_section(frame, inner, state, has_cached_data, theme);
+        Self::render_tables_section(frame, inner, state, has_cached_data, theme)
     }
 
     fn render_tables_section(
@@ -37,20 +38,17 @@ impl Explorer {
         state: &AppState,
         has_cached_data: bool,
         theme: &ThemePalette,
-    ) {
-        let content_width = explorer_content_width_from_inner_width(area.width);
-
-        let table_names: Vec<String> = if has_cached_data {
-            state
-                .tables()
-                .iter()
-                .map(|summary| {
-                    explorer_table_label(summary, state.session.active_database_type_or_default())
-                })
-                .collect()
+    ) -> usize {
+        let mode = state.settings.saved_icon_mode();
+        let available_width = explorer_content_width_from_inner_width(area.width);
+        let icon_width = text_display_width(Icon::Table.prefix(mode));
+        let show_icons = available_width >= icon_width + 2;
+        let content_width = if show_icons {
+            available_width - icon_width
         } else {
-            Vec::new()
+            available_width
         };
+
         let max_name_width = max_explorer_table_label_width(
             state.tables(),
             state.session.active_database_type_or_default(),
@@ -59,11 +57,21 @@ impl Explorer {
         let h_offset = state.ui.explorer_horizontal_offset().min(max_offset);
 
         let items: Vec<ListItem> = if has_cached_data {
-            table_names
+            state
+                .tables()
                 .iter()
-                .map(|name| {
-                    let displayed = truncate_with_offset(name, h_offset, content_width);
-                    ListItem::new(displayed)
+                .map(|summary| {
+                    let name = explorer_table_label(
+                        summary,
+                        state.session.active_database_type_or_default(),
+                    );
+                    let displayed = truncate_with_offset(&name, h_offset, content_width);
+                    let icon = if show_icons {
+                        Icon::from(summary.kind_info.kind).prefix(mode)
+                    } else {
+                        ""
+                    };
+                    ListItem::new(format!("{icon}{displayed}"))
                 })
                 .collect()
         } else {
@@ -160,37 +168,26 @@ impl Explorer {
                 );
             }
         }
+        content_width
     }
 }
 
 fn truncate_with_offset(s: &str, offset: usize, max_width: usize) -> String {
-    if max_width == 0 || offset >= text_display_width(s) {
-        return String::new();
-    }
-
-    let mut skipped_width = 0;
+    let mut position = 0;
     let mut visible_width = 0;
     let mut truncated = String::new();
 
-    for ch in s.chars() {
-        let char_width = UnicodeWidthChar::width(ch).unwrap_or(0);
-
-        if skipped_width + char_width <= offset {
-            skipped_width += char_width;
+    for grapheme in s.graphemes(true) {
+        let width = text_display_width(grapheme);
+        if position < offset {
+            position += width;
             continue;
         }
-
-        if skipped_width < offset {
-            skipped_width = offset;
-            continue;
-        }
-
-        if visible_width + char_width > max_width {
+        if visible_width + width > max_width {
             break;
         }
-
-        truncated.push(ch);
-        visible_width += char_width;
+        truncated.push_str(grapheme);
+        visible_width += width;
     }
 
     truncated
@@ -227,6 +224,8 @@ mod tests {
         #[case("日本語テスト", 0, 1, "")]
         #[case("public.日本語_table", 0, 10, "public.日")]
         #[case("🎉table🎊", 0, 6, "🎉tabl")]
+        #[case("👩‍💻table", 0, 3, "👩‍💻t")]
+        #[case("👩‍💻table", 1, 3, "tab")]
         fn unicode_input_truncates_visible_columns(
             #[case] input: &str,
             #[case] offset: usize,

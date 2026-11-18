@@ -5,9 +5,12 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
-use crate::app::model::shared::settings::{ErBrowserChoice, KeymapPreset, SettingsSection};
+use crate::app::model::shared::settings::{
+    ErBrowserChoice, IconMode, KeymapPreset, SettingsSection,
+};
 use crate::app::model::shared::theme_id::ThemeId;
 use crate::features::settings::hints::settings_modal_hint_bar;
+use crate::primitives::atoms::Icon;
 use crate::primitives::atoms::{CursorKind, text_cursor_spans_with_kind};
 use crate::primitives::molecules::render_modal;
 use crate::theme::{ThemePalette, palette_for};
@@ -45,6 +48,7 @@ impl SettingsOverlay {
         match state.settings.section() {
             SettingsSection::Appearance => Self::render_appearance(frame, content, state, theme),
             SettingsSection::Keymap => Self::render_keymap(frame, content, state, theme),
+            SettingsSection::Icons => Self::render_icons(frame, content, state, theme),
             SettingsSection::ErDiagram => Self::render_er_diagram(frame, content, state, theme),
         }
     }
@@ -109,6 +113,41 @@ impl SettingsOverlay {
         );
 
         Self::render_theme_preview(frame, preview, palette_for(state.settings.selected_theme()));
+    }
+
+    fn render_icons(frame: &mut Frame, content: Rect, state: &AppState, theme: &ThemePalette) {
+        let mut lines = vec![
+            Line::raw(""),
+            Line::styled(
+                "Icons",
+                Style::default()
+                    .fg(theme.semantic.text.primary)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ];
+        for mode in IconMode::ALL {
+            let selected = mode == state.settings.selected_icon_mode();
+            let marker = if selected { ">" } else { " " };
+            let saved = if mode == state.settings.saved_icon_mode() {
+                " saved"
+            } else {
+                ""
+            };
+            let style = if selected {
+                theme.picker_selected_style()
+            } else {
+                Style::default().fg(theme.semantic.text.secondary)
+            };
+            lines.push(Line::styled(
+                format!(
+                    "  {marker} {:<10}{}{saved}",
+                    mode.label(),
+                    Icon::Table.prefix(mode).trim_end()
+                ),
+                style,
+            ));
+        }
+        frame.render_widget(Paragraph::new(lines), content);
     }
 
     fn render_keymap(frame: &mut Frame, content: Rect, state: &AppState, theme: &ThemePalette) {

@@ -190,3 +190,56 @@ fn mysql_header_and_explorer_show_table_names() {
 
     insta::assert_snapshot!(output);
 }
+
+#[test]
+fn view_icon_stays_visible_when_scrolling_a_wide_name_to_its_end() {
+    use sabiql_app::model::shared::settings::IconMode;
+
+    let mut state = create_test_state();
+    state.settings.load_icon_mode(IconMode::Unicode);
+    let mut metadata = DatabaseMetadata::new("catalog".into());
+    metadata.table_summaries = vec![
+        TableSummary::new("public".into(), "売上一覧_by_region".into(), None, false)
+            .with_kind_info(TableKindInfo {
+                kind: TableKind::View,
+                ..TableKindInfo::default()
+            }),
+    ];
+    state.session.mark_connected(Arc::new(metadata));
+    state.ui.set_explorer_horizontal_offset(usize::MAX);
+    let mut terminal = create_test_terminal_sized(80, 24);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    assert!(
+        output
+            .lines()
+            .any(|line| line.contains("◇ ") && line.contains("region [view]"))
+    );
+    assert_eq!(state.ui.explorer_content_width(), 13);
+}
+
+#[test]
+fn header_marks_the_selected_view_in_each_icon_mode_while_detail_loads() {
+    use sabiql_app::model::shared::settings::IconMode;
+
+    let mut state = create_test_state();
+    let mut metadata = DatabaseMetadata::new("test_db".into());
+    metadata.table_summaries = vec![
+        TableSummary::new("public".into(), "active_users".into(), None, false)
+            .with_kind_info(fixtures::view_kind_info()),
+    ];
+    state.session.mark_connected(Arc::new(metadata));
+    let _ = state
+        .session
+        .select_table("public", "active_users", &mut state.query);
+    let mut terminal = create_test_terminal_sized(110, 24);
+
+    let headers = IconMode::ALL.map(|mode| {
+        state.settings.load_icon_mode(mode);
+        let screen = render_to_string(&mut terminal, &mut state);
+        screen.lines().next().unwrap().trim_end().to_owned()
+    });
+
+    insta::assert_snapshot!(headers.join("\n"));
+}

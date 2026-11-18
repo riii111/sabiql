@@ -73,6 +73,7 @@ pub struct InspectorColumnRow {
     pub data_type: String,
     pub nullable: bool,
     pub primary_key: bool,
+    pub foreign_key: bool,
     pub read_only_reason: Option<String>,
     pub default: Option<String>,
     pub comment: Option<String>,
@@ -185,6 +186,11 @@ impl InspectorViewModel {
                 None,
             ),
             InspectorTab::Columns => {
+                let foreign_key_columns: std::collections::HashSet<&str> = table
+                    .foreign_keys
+                    .iter()
+                    .flat_map(|fk| fk.from_columns.iter().map(String::as_str))
+                    .collect();
                 let rows: Vec<InspectorColumnRow> = table
                     .columns
                     .iter()
@@ -193,6 +199,7 @@ impl InspectorViewModel {
                         data_type: column.data_type.clone(),
                         nullable: column.is_nullable(),
                         primary_key: column.is_primary_key(),
+                        foreign_key: foreign_key_columns.contains(column.name.as_str()),
                         read_only_reason: column_read_only_reason(column).map(ToString::to_string),
                         default: column.default.clone(),
                         comment: column.comment.clone(),
