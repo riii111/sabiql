@@ -120,7 +120,9 @@ mod tests {
     use crate::model::shared::settings::{KeymapPreset, SettingsSection};
     use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel};
     use crate::ports::inbound::Key;
+    use crate::update::action::DetailTarget;
     use crate::update::action::ModalKind;
+    use crate::update::action::SearchStep;
     use crate::update::action::{
         CursorMove, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget, TextKillDirection,
     };
@@ -193,7 +195,13 @@ mod tests {
 
             let result = handle_key_event(combo(Key::Char('/')), &state);
 
-            assert!(matches!(result, Action::CellDetailEnterSearch));
+            assert!(matches!(
+                result,
+                Action::DetailSearch {
+                    target: DetailTarget::CellDetail,
+                    step: SearchStep::Enter,
+                }
+            ));
         }
 
         #[test]

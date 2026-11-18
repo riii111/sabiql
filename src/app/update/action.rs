@@ -56,6 +56,21 @@ pub enum ScrollTarget {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DetailTarget {
+    JsonDetail,
+    CellDetail,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchStep {
+    Enter,
+    Exit,
+    Next,
+    Prev,
+    Submit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CopyTarget {
     Panel(FlashId),
     ResultCell { row: usize, col: usize },
@@ -582,24 +597,15 @@ pub enum Action {
         error: DbOperationError,
     },
 
-    // JSON detail
-    JsonYankAll,
+    // JSON and cell detail
+    DetailSearch {
+        target: DetailTarget,
+        step: SearchStep,
+    },
+    DetailYankAll(DetailTarget),
     JsonEnterEdit,
     JsonAppendInsert,
     JsonExitEdit,
-    JsonEnterSearch,
-    JsonExitSearch,
-    JsonSearchNext,
-    JsonSearchPrev,
-    JsonSearchSubmit,
-
-    // Cell detail
-    CellDetailYankAll,
-    CellDetailEnterSearch,
-    CellDetailExitSearch,
-    CellDetailSearchNext,
-    CellDetailSearchPrev,
-    CellDetailSearchSubmit,
 
     // Row Detail
     RowDetailYank,
@@ -685,13 +691,12 @@ impl Action {
             } => SqliteDiagnostics,
             Self::OpenModal(ModalKind::JsonDetail)
             | Self::ToggleModal(ModalKind::JsonDetail)
-            | Self::JsonYankAll
+            | Self::DetailYankAll(DetailTarget::JsonDetail)
             | Self::CopySucceeded(CopyTarget::Panel(FlashId::JsonDetail))
-            | Self::JsonEnterSearch
-            | Self::JsonExitSearch
-            | Self::JsonSearchNext
-            | Self::JsonSearchPrev
-            | Self::JsonSearchSubmit
+            | Self::DetailSearch {
+                target: DetailTarget::JsonDetail,
+                ..
+            }
             | Self::TextInput {
                 target: InputTarget::JsonSearch,
                 ..
@@ -792,9 +797,11 @@ impl Action {
             Self::JsonExitEdit if state.input_mode() == InputMode::JsonEdit => {
                 FeatureRequirement::None
             }
-            Self::JsonExitSearch
-                if state.input_mode() == InputMode::JsonDetail
-                    && state.json_detail.mode() == JsonDetailMode::Searching =>
+            Self::DetailSearch {
+                target: DetailTarget::JsonDetail,
+                step: SearchStep::Exit,
+            } if state.input_mode() == InputMode::JsonDetail
+                && state.json_detail.mode() == JsonDetailMode::Searching =>
             {
                 FeatureRequirement::None
             }
@@ -951,7 +958,11 @@ mod tests {
         search_state.modal.set_mode(InputMode::JsonDetail);
         search_state.json_detail.enter_search();
         assert_eq!(
-            Action::JsonExitSearch.feature_requirement_for_state(&search_state),
+            Action::DetailSearch {
+                target: DetailTarget::JsonDetail,
+                step: SearchStep::Exit,
+            }
+            .feature_requirement_for_state(&search_state),
             FeatureRequirement::None
         );
 
@@ -1048,18 +1059,84 @@ mod tests {
                         "copied ConnectionError",
                         Action::CopySucceeded(CopyTarget::ConnectionError),
                     ),
-                    ("search JsonDetail Enter", Action::JsonEnterSearch),
-                    ("search JsonDetail Exit", Action::JsonExitSearch),
-                    ("search JsonDetail Next", Action::JsonSearchNext),
-                    ("search JsonDetail Prev", Action::JsonSearchPrev),
-                    ("search JsonDetail Submit", Action::JsonSearchSubmit),
-                    ("search CellDetail Enter", Action::CellDetailEnterSearch),
-                    ("search CellDetail Exit", Action::CellDetailExitSearch),
-                    ("search CellDetail Next", Action::CellDetailSearchNext),
-                    ("search CellDetail Prev", Action::CellDetailSearchPrev),
-                    ("search CellDetail Submit", Action::CellDetailSearchSubmit),
-                    ("yank all JsonDetail", Action::JsonYankAll),
-                    ("yank all CellDetail", Action::CellDetailYankAll),
+                    (
+                        "search JsonDetail Enter",
+                        Action::DetailSearch {
+                            target: DetailTarget::JsonDetail,
+                            step: SearchStep::Enter,
+                        },
+                    ),
+                    (
+                        "search JsonDetail Exit",
+                        Action::DetailSearch {
+                            target: DetailTarget::JsonDetail,
+                            step: SearchStep::Exit,
+                        },
+                    ),
+                    (
+                        "search JsonDetail Next",
+                        Action::DetailSearch {
+                            target: DetailTarget::JsonDetail,
+                            step: SearchStep::Next,
+                        },
+                    ),
+                    (
+                        "search JsonDetail Prev",
+                        Action::DetailSearch {
+                            target: DetailTarget::JsonDetail,
+                            step: SearchStep::Prev,
+                        },
+                    ),
+                    (
+                        "search JsonDetail Submit",
+                        Action::DetailSearch {
+                            target: DetailTarget::JsonDetail,
+                            step: SearchStep::Submit,
+                        },
+                    ),
+                    (
+                        "search CellDetail Enter",
+                        Action::DetailSearch {
+                            target: DetailTarget::CellDetail,
+                            step: SearchStep::Enter,
+                        },
+                    ),
+                    (
+                        "search CellDetail Exit",
+                        Action::DetailSearch {
+                            target: DetailTarget::CellDetail,
+                            step: SearchStep::Exit,
+                        },
+                    ),
+                    (
+                        "search CellDetail Next",
+                        Action::DetailSearch {
+                            target: DetailTarget::CellDetail,
+                            step: SearchStep::Next,
+                        },
+                    ),
+                    (
+                        "search CellDetail Prev",
+                        Action::DetailSearch {
+                            target: DetailTarget::CellDetail,
+                            step: SearchStep::Prev,
+                        },
+                    ),
+                    (
+                        "search CellDetail Submit",
+                        Action::DetailSearch {
+                            target: DetailTarget::CellDetail,
+                            step: SearchStep::Submit,
+                        },
+                    ),
+                    (
+                        "yank all JsonDetail",
+                        Action::DetailYankAll(DetailTarget::JsonDetail),
+                    ),
+                    (
+                        "yank all CellDetail",
+                        Action::DetailYankAll(DetailTarget::CellDetail),
+                    ),
                     ("toggle Help", Action::ToggleModal(ModalKind::Help)),
                 ]
                 .map(|(label, action)| (label.to_string(), action)),
@@ -1080,7 +1157,10 @@ mod tests {
                 (
                     "search JsonDetail Exit while searching",
                     searching,
-                    Action::JsonExitSearch,
+                    Action::DetailSearch {
+                        target: DetailTarget::JsonDetail,
+                        step: SearchStep::Exit,
+                    },
                 ),
                 (
                     "paste in JsonDetail",

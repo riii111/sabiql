@@ -1,5 +1,7 @@
 use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
 
+use crate::update::action::DetailTarget;
+use crate::update::action::SearchStep;
 use crate::update::input::vim::types::{
     JsonDetailVimContext, SearchContinuation, VimCommand, VimModeTransition, VimNavigation,
     VimOperator,
@@ -18,12 +20,20 @@ pub(in crate::update::input::vim) fn command(
             VimCommand::ModeTransition(VimModeTransition::Insert) => Some(Action::JsonEnterEdit),
             VimCommand::ModeTransition(VimModeTransition::Append) => Some(Action::JsonAppendInsert),
             VimCommand::SearchContinuation(SearchContinuation::Next) => {
-                Some(Action::JsonSearchNext)
+                Some(Action::DetailSearch {
+                    target: DetailTarget::JsonDetail,
+                    step: SearchStep::Next,
+                })
             }
             VimCommand::SearchContinuation(SearchContinuation::Prev) => {
-                Some(Action::JsonSearchPrev)
+                Some(Action::DetailSearch {
+                    target: DetailTarget::JsonDetail,
+                    step: SearchStep::Prev,
+                })
             }
-            VimCommand::Operator(VimOperator::Yank) => Some(Action::JsonYankAll),
+            VimCommand::Operator(VimOperator::Yank) => {
+                Some(Action::DetailYankAll(DetailTarget::JsonDetail))
+            }
             VimCommand::ModeTransition(VimModeTransition::ConfirmOrEnter)
             | VimCommand::Operator(VimOperator::Delete) => None,
         },
@@ -135,7 +145,13 @@ mod tests {
 
         let action = action_for_key(&combo(Key::Char('n')), ctx);
 
-        assert!(matches!(action, Some(Action::JsonSearchNext)));
+        assert!(matches!(
+            action,
+            Some(Action::DetailSearch {
+                target: DetailTarget::JsonDetail,
+                step: SearchStep::Next,
+            })
+        ));
     }
 
     #[test]
@@ -144,7 +160,10 @@ mod tests {
 
         let action = action_for_key(&combo(Key::Char('y')), ctx);
 
-        assert!(matches!(action, Some(Action::JsonYankAll)));
+        assert!(matches!(
+            action,
+            Some(Action::DetailYankAll(DetailTarget::JsonDetail))
+        ));
     }
 
     #[test]

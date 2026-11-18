@@ -11,6 +11,8 @@ use crate::model::shared::text_input::TextInputState;
 use crate::model::sql_editor::modal::SqlModalStatus;
 use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel};
 use crate::services::AppServices;
+use crate::update::action::DetailTarget;
+use crate::update::action::SearchStep;
 use crate::update::action::{Action, CursorMove, InputTarget, ModalKind, TextKillDirection};
 use crate::update::reducer::reduce;
 
@@ -344,7 +346,13 @@ mod paste_outside_search {
     #[test]
     fn json_detail_viewing_ignores_paste() {
         let mut state = state_for(InputTarget::JsonSearch);
-        dispatch(&mut state, Action::JsonExitSearch);
+        dispatch(
+            &mut state,
+            Action::DetailSearch {
+                target: DetailTarget::JsonDetail,
+                step: SearchStep::Exit,
+            },
+        );
         let before = observe(&state, InputTarget::JsonSearch);
 
         dispatch(&mut state, Action::Paste("pasted".to_string()));
@@ -356,7 +364,13 @@ mod paste_outside_search {
     #[test]
     fn cell_detail_viewing_ignores_paste() {
         let mut state = state_for(InputTarget::CellDetailSearch);
-        dispatch(&mut state, Action::CellDetailExitSearch);
+        dispatch(
+            &mut state,
+            Action::DetailSearch {
+                target: DetailTarget::CellDetail,
+                step: SearchStep::Exit,
+            },
+        );
         let before = observe(&state, InputTarget::CellDetailSearch);
 
         dispatch(&mut state, Action::Paste("pasted".to_string()));

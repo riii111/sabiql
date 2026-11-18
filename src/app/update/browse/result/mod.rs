@@ -1,4 +1,5 @@
 mod cell_detail;
+mod detail_search;
 mod edit;
 mod json;
 mod row_detail;
@@ -23,6 +24,7 @@ pub fn dispatch_result(
         .or_else(|| selection::reduce_selection(state, action, now))
         .or_else(|| edit::reduce_edit(state, action, now))
         .or_else(|| yank::reduce_yank(state, action, services))
+        .or_else(|| detail_search::reduce_detail_search(state, action))
         .or_else(|| cell_detail::reduce_cell_detail(state, action))
         .or_else(|| json::reduce_json(state, action))
         .or_else(|| row_detail::reduce_row_detail(state, action))

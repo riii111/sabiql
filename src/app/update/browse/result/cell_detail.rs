@@ -2,13 +2,13 @@ use crate::cmd::effect::Effect;
 use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
 use crate::model::shared::detail_view::{DetailDisplayMode, ReadOnlyDetailState};
-use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::preview_cell_text::{CellPresentationPolicy, format_for_cell_detail};
-use crate::update::action::CopyTarget;
+use crate::update::action::DetailTarget;
 use crate::update::action::{Action, InputTarget, ModalKind, ScrollDirection, ScrollTarget};
 use crate::update::dispatch_result::DispatchResult;
-use crate::update::helpers::{clipboard_unavailable, find_text_matches};
+
+use super::detail_search::refresh_search_matches;
 
 pub(in crate::update) fn reduce_cell_detail(
     state: &mut AppState,
@@ -53,56 +53,26 @@ pub(in crate::update) fn reduce_cell_detail(
             state.modal.pop_mode();
             DispatchResult::handled()
         }
-        Action::CellDetailYankAll => DispatchResult::handled_with(vec![Effect::CopyToClipboard {
-            content: state.cell_detail.content().to_string(),
-            on_success: Box::new(Action::CopySucceeded(CopyTarget::Panel(
-                FlashId::CellDetail,
-            ))),
-            on_failure: Some(Box::new(clipboard_unavailable())),
-        }]),
-        Action::CellDetailEnterSearch => {
-            state.cell_detail.enter_search();
-            DispatchResult::handled()
-        }
-        Action::CellDetailExitSearch => {
-            state.cell_detail.exit_search();
-            DispatchResult::handled()
-        }
-        Action::CellDetailSearchSubmit => {
-            state.cell_detail.exit_search();
-            state.cell_detail.scroll_to_match();
-            DispatchResult::handled()
-        }
-        Action::CellDetailSearchNext => {
-            state.cell_detail.search_mut().advance_to_next_match();
-            state.cell_detail.scroll_to_match();
-            DispatchResult::handled()
-        }
-        Action::CellDetailSearchPrev => {
-            state.cell_detail.search_mut().advance_to_prev_match();
-            state.cell_detail.scroll_to_match();
-            DispatchResult::handled()
-        }
         Action::TextInput {
             target: InputTarget::CellDetailSearch,
             ch,
         } => {
             state.cell_detail.search_mut().input_mut().insert_char(*ch);
-            update_search_matches(state);
+            refresh_search_matches(state, DetailTarget::CellDetail);
             DispatchResult::handled()
         }
         Action::TextBackspace {
             target: InputTarget::CellDetailSearch,
         } => {
             state.cell_detail.search_mut().input_mut().backspace();
-            update_search_matches(state);
+            refresh_search_matches(state, DetailTarget::CellDetail);
             DispatchResult::handled()
         }
         Action::TextDelete {
             target: InputTarget::CellDetailSearch,
         } => {
             state.cell_detail.search_mut().input_mut().delete();
-            update_search_matches(state);
+            refresh_search_matches(state, DetailTarget::CellDetail);
             DispatchResult::handled()
         }
         Action::TextMoveCursor {
@@ -126,7 +96,7 @@ pub(in crate::update) fn reduce_cell_detail(
                 .search_mut()
                 .input_mut()
                 .insert_str(&clean);
-            update_search_matches(state);
+            refresh_search_matches(state, DetailTarget::CellDetail);
             DispatchResult::handled()
         }
         Action::Scroll {
@@ -189,12 +159,6 @@ fn selected_column_data_type(state: &AppState, col_idx: usize) -> Option<&str> {
         .map(|column| column.data_type.as_str())
 }
 
-fn update_search_matches(state: &mut AppState) {
-    let query = state.cell_detail.search().input().content().to_string();
-    let matches = find_text_matches(state.cell_detail.content(), &query);
-    state.cell_detail.search_mut().set_matches(matches);
-}
-
 #[cfg(test)]
 mod tests {
     use crate::test_support;
@@ -203,6 +167,8 @@ mod tests {
     use crate::domain::Column;
     use crate::domain::connection::ConnectionId;
     use crate::domain::{ColumnAttributes, DatabaseType, QueryResult, QuerySource, Table};
+    use crate::update::action::SearchStep;
+    use crate::update::browse::result::detail_search::reduce_detail_search;
     use std::sync::Arc;
 
     fn state_with_cell(data_type: &str, cell_value: &str) -> AppState {
@@ -405,7 +371,8 @@ mod tests {
         let mut state = state_with_cell("json", r#"{"b":2,"a":1}"#);
         reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail);
 
-        let result = reduce_cell_detail(&mut state, &Action::CellDetailYankAll);
+        let result =
+            reduce_detail_search(&mut state, &Action::DetailYankAll(DetailTarget::CellDetail));
 
         assert!(matches!(
             result.expect("yank should copy").as_slice(),
@@ -524,7 +491,13 @@ mod tests {
     fn search_input_tracks_matches_case_insensitively() {
         let mut state = state_with_cell("text", "Alpha\nalpha");
         reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail);
-        reduce_cell_detail(&mut state, &Action::CellDetailEnterSearch);
+        reduce_detail_search(
+            &mut state,
+            &Action::DetailSearch {
+                target: DetailTarget::CellDetail,
+                step: SearchStep::Enter,
+            },
+        );
 
         reduce_cell_detail(
             &mut state,

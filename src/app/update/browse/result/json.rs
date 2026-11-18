@@ -1,19 +1,16 @@
-use crate::cmd::effect::Effect;
 use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
 use crate::model::browse::json_detail::{JsonDetailMode, JsonDetailState};
-use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::KeySequenceState;
 use crate::model::shared::ui_state::DEFAULT_JSON_DETAIL_EDITOR_VISIBLE_ROWS;
 use crate::policy::preview_cell_text::CellPresentationPolicy;
-use crate::update::action::CopyTarget;
+use crate::update::action::DetailTarget;
 use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
-use crate::update::helpers::{
-    EditGuardrailError, clipboard_unavailable, editable_preview_base, ensure_column_writable,
-    find_text_matches,
-};
+
+use super::detail_search::refresh_search_matches;
+use crate::update::helpers::{EditGuardrailError, editable_preview_base, ensure_column_writable};
 
 pub(in crate::update) fn reduce_json(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
@@ -88,17 +85,6 @@ pub(in crate::update) fn reduce_json(state: &mut AppState, action: &Action) -> D
             state.json_detail.close();
             state.modal.pop_mode();
             DispatchResult::handled()
-        }
-
-        Action::JsonYankAll => {
-            let json = state.json_detail.current_json_for_yank();
-            DispatchResult::handled_with(vec![Effect::CopyToClipboard {
-                content: json,
-                on_success: Box::new(Action::CopySucceeded(CopyTarget::Panel(
-                    FlashId::JsonDetail,
-                ))),
-                on_failure: Some(Box::new(clipboard_unavailable())),
-            }])
         }
 
         Action::JsonEnterEdit => {
@@ -226,40 +212,12 @@ pub(in crate::update) fn reduce_json(state: &mut AppState, action: &Action) -> D
             DispatchResult::handled()
         }
 
-        Action::JsonEnterSearch => {
-            state.json_detail.enter_search();
-            DispatchResult::handled()
-        }
-
-        Action::JsonExitSearch => {
-            state.json_detail.exit_search();
-            DispatchResult::handled()
-        }
-
-        Action::JsonSearchSubmit => {
-            state.json_detail.exit_search();
-            jump_to_current_match(state);
-            DispatchResult::handled()
-        }
-
-        Action::JsonSearchNext => {
-            state.json_detail.search_mut().advance_to_next_match();
-            jump_to_current_match(state);
-            DispatchResult::handled()
-        }
-
-        Action::JsonSearchPrev => {
-            state.json_detail.search_mut().advance_to_prev_match();
-            jump_to_current_match(state);
-            DispatchResult::handled()
-        }
-
         Action::TextInput {
             target: InputTarget::JsonSearch,
             ch,
         } => {
             state.json_detail.search_mut().input_mut().insert_char(*ch);
-            update_search_matches(state);
+            refresh_search_matches(state, DetailTarget::JsonDetail);
             DispatchResult::handled()
         }
 
@@ -267,7 +225,7 @@ pub(in crate::update) fn reduce_json(state: &mut AppState, action: &Action) -> D
             target: InputTarget::JsonSearch,
         } => {
             state.json_detail.search_mut().input_mut().backspace();
-            update_search_matches(state);
+            refresh_search_matches(state, DetailTarget::JsonDetail);
             DispatchResult::handled()
         }
 
@@ -275,7 +233,7 @@ pub(in crate::update) fn reduce_json(state: &mut AppState, action: &Action) -> D
             target: InputTarget::JsonSearch,
         } => {
             state.json_detail.search_mut().input_mut().delete();
-            update_search_matches(state);
+            refresh_search_matches(state, DetailTarget::JsonDetail);
             DispatchResult::handled()
         }
         Action::TextKill {
@@ -284,7 +242,7 @@ pub(in crate::update) fn reduce_json(state: &mut AppState, action: &Action) -> D
         } => {
             let killed = state.json_detail.search_mut().input_mut().kill(*direction);
             state.record_kill(killed);
-            update_search_matches(state);
+            refresh_search_matches(state, DetailTarget::JsonDetail);
             DispatchResult::handled()
         }
         Action::TextYank {
@@ -292,7 +250,7 @@ pub(in crate::update) fn reduce_json(state: &mut AppState, action: &Action) -> D
         } => {
             if let Some(killed) = state.kill_buffer().map(str::to_owned) {
                 state.json_detail.search_mut().input_mut().yank(&killed);
-                update_search_matches(state);
+                refresh_search_matches(state, DetailTarget::JsonDetail);
             }
             DispatchResult::handled()
         }
@@ -307,7 +265,7 @@ pub(in crate::update) fn reduce_json(state: &mut AppState, action: &Action) -> D
                 .search_mut()
                 .input_mut()
                 .insert_str(&clean);
-            update_search_matches(state);
+            refresh_search_matches(state, DetailTarget::JsonDetail);
             DispatchResult::handled()
         }
 
@@ -332,13 +290,7 @@ fn ensure_json_column_writable(state: &AppState) -> Result<(), EditGuardrailErro
     ensure_column_writable(state, state.json_detail.column_name(), &identity)
 }
 
-fn update_search_matches(state: &mut AppState) {
-    let query = state.json_detail.search().input().content().to_string();
-    let matches = find_text_matches(state.json_detail.editor().content(), &query);
-    state.json_detail.search_mut().set_matches(matches);
-}
-
-fn jump_to_current_match(state: &mut AppState) {
+pub(super) fn jump_to_current_match(state: &mut AppState) {
     let search = state.json_detail.search();
     if let Some(&match_pos) = search.matches().get(search.current_match()) {
         state.json_detail.editor_mut().set_cursor(match_pos);
@@ -391,10 +343,15 @@ mod tests {
     use crate::update::test_fixtures;
 
     use super::*;
+    use crate::cmd::effect::Effect;
     use crate::domain::connection::ConnectionId;
     use crate::domain::{DatabaseType, QueryResult, QuerySource, Table};
+    use crate::model::shared::flash_timer::FlashId;
     use crate::services::AppServices;
+    use crate::update::action::CopyTarget;
+    use crate::update::action::SearchStep;
     use crate::update::action::TextKillDirection;
+    use crate::update::browse::result::detail_search::reduce_detail_search;
     use std::sync::Arc;
     use std::time::Instant;
 
@@ -1003,7 +960,8 @@ mod tests {
             reduce_json(&mut state, &Action::OpenModal(ModalKind::JsonDetail));
 
             let now = Instant::now();
-            let effects = reduce_json(&mut state, &Action::JsonYankAll);
+            let effects =
+                reduce_detail_search(&mut state, &Action::DetailYankAll(DetailTarget::JsonDetail));
 
             let effects = effects.into_effects().expect("should return effects");
             assert_eq!(effects.len(), 1);
@@ -1033,7 +991,13 @@ mod tests {
             let mut state = state_with_json_cell();
             open_detail(&mut state);
 
-            reduce_json(&mut state, &Action::JsonEnterSearch);
+            reduce_detail_search(
+                &mut state,
+                &Action::DetailSearch {
+                    target: DetailTarget::JsonDetail,
+                    step: SearchStep::Enter,
+                },
+            );
 
             assert!(state.json_detail.search().is_active());
             assert_eq!(state.json_detail.mode(), JsonDetailMode::Searching);
@@ -1043,9 +1007,21 @@ mod tests {
         fn exit_search_deactivates_search_mode() {
             let mut state = state_with_json_cell();
             open_detail(&mut state);
-            reduce_json(&mut state, &Action::JsonEnterSearch);
+            reduce_detail_search(
+                &mut state,
+                &Action::DetailSearch {
+                    target: DetailTarget::JsonDetail,
+                    step: SearchStep::Enter,
+                },
+            );
 
-            reduce_json(&mut state, &Action::JsonExitSearch);
+            reduce_detail_search(
+                &mut state,
+                &Action::DetailSearch {
+                    target: DetailTarget::JsonDetail,
+                    step: SearchStep::Exit,
+                },
+            );
 
             assert!(!state.json_detail.search().is_active());
             assert_eq!(state.json_detail.mode(), JsonDetailMode::Viewing);
@@ -1055,7 +1031,13 @@ mod tests {
         fn submit_deactivates_and_preserves_matches() {
             let mut state = state_with_json_cell();
             open_detail(&mut state);
-            reduce_json(&mut state, &Action::JsonEnterSearch);
+            reduce_detail_search(
+                &mut state,
+                &Action::DetailSearch {
+                    target: DetailTarget::JsonDetail,
+                    step: SearchStep::Enter,
+                },
+            );
 
             for ch in "theme".chars() {
                 reduce_json(
@@ -1069,7 +1051,13 @@ mod tests {
             let match_count = state.json_detail.search().matches().len();
             assert!(match_count > 0, "should find at least one match");
 
-            reduce_json(&mut state, &Action::JsonSearchSubmit);
+            reduce_detail_search(
+                &mut state,
+                &Action::DetailSearch {
+                    target: DetailTarget::JsonDetail,
+                    step: SearchStep::Submit,
+                },
+            );
 
             assert!(!state.json_detail.search().is_active());
             let expected_cursor = state.json_detail.search().matches()[0];
@@ -1085,7 +1073,13 @@ mod tests {
         fn text_input_updates_search_matches_case_insensitively() {
             let mut state = state_with_json_cell();
             open_detail(&mut state);
-            reduce_json(&mut state, &Action::JsonEnterSearch);
+            reduce_detail_search(
+                &mut state,
+                &Action::DetailSearch {
+                    target: DetailTarget::JsonDetail,
+                    step: SearchStep::Enter,
+                },
+            );
 
             assert!(state.json_detail.search().matches().is_empty());
 
@@ -1109,7 +1103,13 @@ mod tests {
         fn kill_then_yank_restores_search_query_and_matches() {
             let mut state = state_with_json_cell();
             open_detail(&mut state);
-            reduce_json(&mut state, &Action::JsonEnterSearch);
+            reduce_detail_search(
+                &mut state,
+                &Action::DetailSearch {
+                    target: DetailTarget::JsonDetail,
+                    step: SearchStep::Enter,
+                },
+            );
 
             for ch in "theme".chars() {
                 reduce_json(
@@ -1142,7 +1142,13 @@ mod tests {
         fn next_cycles_through_matches_and_moves_cursor() {
             let mut state = state_with_json_cell();
             open_detail(&mut state);
-            reduce_json(&mut state, &Action::JsonEnterSearch);
+            reduce_detail_search(
+                &mut state,
+                &Action::DetailSearch {
+                    target: DetailTarget::JsonDetail,
+                    step: SearchStep::Enter,
+                },
+            );
 
             for ch in "t".chars() {
                 reduce_json(
@@ -1160,7 +1166,13 @@ mod tests {
             );
             assert_eq!(state.json_detail.search().current_match(), 0);
 
-            reduce_json(&mut state, &Action::JsonSearchNext);
+            reduce_detail_search(
+                &mut state,
+                &Action::DetailSearch {
+                    target: DetailTarget::JsonDetail,
+                    step: SearchStep::Next,
+                },
+            );
 
             assert_eq!(state.json_detail.search().current_match(), 1);
             let expected_cursor = state.json_detail.search().matches()[1];
@@ -1175,7 +1187,13 @@ mod tests {
         fn prev_wraps_to_last_match_and_moves_cursor() {
             let mut state = state_with_json_cell();
             open_detail(&mut state);
-            reduce_json(&mut state, &Action::JsonEnterSearch);
+            reduce_detail_search(
+                &mut state,
+                &Action::DetailSearch {
+                    target: DetailTarget::JsonDetail,
+                    step: SearchStep::Enter,
+                },
+            );
 
             for ch in "t".chars() {
                 reduce_json(
@@ -1191,7 +1209,13 @@ mod tests {
                 match_count > 1,
                 "test precondition: need 2+ matches for wrap test, got {match_count}"
             );
-            reduce_json(&mut state, &Action::JsonSearchPrev);
+            reduce_detail_search(
+                &mut state,
+                &Action::DetailSearch {
+                    target: DetailTarget::JsonDetail,
+                    step: SearchStep::Prev,
+                },
+            );
 
             assert_eq!(state.json_detail.search().current_match(), match_count - 1);
             let expected_cursor = state.json_detail.search().matches()[match_count - 1];
@@ -1222,7 +1246,15 @@ mod tests {
             );
             assert_eq!(state.input_mode(), InputMode::JsonDetail);
 
-            reduce_app(&mut state, Action::JsonEnterSearch, now, &services);
+            reduce_app(
+                &mut state,
+                Action::DetailSearch {
+                    target: DetailTarget::JsonDetail,
+                    step: SearchStep::Enter,
+                },
+                now,
+                &services,
+            );
             reduce_app(
                 &mut state,
                 Action::TextInput {
@@ -1234,12 +1266,33 @@ mod tests {
             );
             assert!(!state.json_detail.search().matches().is_empty());
 
-            reduce_app(&mut state, Action::JsonSearchNext, now, &services);
-            reduce_app(&mut state, Action::JsonSearchSubmit, now, &services);
+            reduce_app(
+                &mut state,
+                Action::DetailSearch {
+                    target: DetailTarget::JsonDetail,
+                    step: SearchStep::Next,
+                },
+                now,
+                &services,
+            );
+            reduce_app(
+                &mut state,
+                Action::DetailSearch {
+                    target: DetailTarget::JsonDetail,
+                    step: SearchStep::Submit,
+                },
+                now,
+                &services,
+            );
             assert!(!state.json_detail.search().is_active());
             assert_eq!(state.json_detail.mode(), JsonDetailMode::Viewing);
 
-            let effects = reduce_app(&mut state, Action::JsonYankAll, now, &services);
+            let effects = reduce_app(
+                &mut state,
+                Action::DetailYankAll(DetailTarget::JsonDetail),
+                now,
+                &services,
+            );
             assert!(matches!(
                 effects.first(),
                 Some(Effect::CopyToClipboard { content, .. }) if content.contains("theme")

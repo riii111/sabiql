@@ -1,5 +1,7 @@
 use super::*;
 use crate::tests::harness::{focus_connection_field, set_connection_input};
+use sabiql_app::update::action::DetailTarget;
+use sabiql_app::update::action::SearchStep;
 
 fn json_detail_state() -> (AppState, Instant) {
     let now = test_instant();
@@ -355,7 +357,10 @@ fn json_search_cursor_uses_display_width_for_wide_chars() {
     dispatch_result(&mut state, &Action::JsonExitEdit, &AppServices::stub(), now);
     dispatch_result(
         &mut state,
-        &Action::JsonEnterSearch,
+        &Action::DetailSearch {
+            target: DetailTarget::JsonDetail,
+            step: SearchStep::Enter,
+        },
         &AppServices::stub(),
         now,
     );

@@ -55,6 +55,8 @@ fn handle_search_input(combo: KeyCombo) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::update::action::DetailTarget;
+    use crate::update::action::SearchStep;
     use crate::update::action::{ScrollAmount, ScrollDirection, ScrollTarget};
 
     fn combo(k: Key) -> KeyCombo {
@@ -69,7 +71,13 @@ mod tests {
     fn enter_confirms_active_search() {
         let result = handle_cell_detail_keys(combo(Key::Enter), true);
 
-        assert!(matches!(result, Action::CellDetailSearchSubmit));
+        assert!(matches!(
+            result,
+            Action::DetailSearch {
+                target: DetailTarget::CellDetail,
+                step: SearchStep::Submit,
+            }
+        ));
     }
 
     #[test]
@@ -104,6 +112,12 @@ mod tests {
     fn slash_enters_search_when_not_searching() {
         let result = handle_cell_detail_keys(combo(Key::Char('/')), false);
 
-        assert!(matches!(result, Action::CellDetailEnterSearch));
+        assert!(matches!(
+            result,
+            Action::DetailSearch {
+                target: DetailTarget::CellDetail,
+                step: SearchStep::Enter,
+            }
+        ));
     }
 }
