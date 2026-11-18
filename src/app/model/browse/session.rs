@@ -156,7 +156,6 @@ pub struct BrowseSession {
     mysql_connection_probe_run: AsyncRun,
     pending_mysql_connection_probe: Option<PendingMySqlConnectionProbe>,
     mysql_lower_case_table_names: u8,
-    connection_generation: u64,
     database_generation: u64,
     read_only: bool,
     is_reloading: bool,
@@ -183,7 +182,6 @@ impl Default for BrowseSession {
             mysql_connection_probe_run: AsyncRun::default(),
             pending_mysql_connection_probe: None,
             mysql_lower_case_table_names: 0,
-            connection_generation: 0,
             database_generation: 0,
             read_only: false,
             is_reloading: false,
@@ -358,7 +356,6 @@ impl BrowseSession {
                     generation: self.selection_generation,
                 });
         self.invalidate_inflight_state_for_mysql_probe();
-        self.connection_generation = self.connection_generation.wrapping_add(1);
         let run_id = self.mysql_connection_probe_run.begin();
         self.pending_mysql_connection_probe = Some(PendingMySqlConnectionProbe {
             id: id.clone(),
@@ -369,10 +366,6 @@ impl BrowseSession {
             table_detail,
         });
         run_id
-    }
-
-    pub fn invalidate_connection_generation(&mut self) {
-        self.connection_generation = self.connection_generation.wrapping_add(1);
     }
 
     fn invalidate_inflight_state_for_mysql_probe(&mut self) {
@@ -571,19 +564,6 @@ impl BrowseSession {
         self.metadata_run.last_id()
     }
 
-    pub fn is_current_completion_scope(
-        &self,
-        dsn: Option<&str>,
-        connection_generation: u64,
-        database_generation: u64,
-        metadata_generation: u64,
-    ) -> bool {
-        self.dsn() == dsn
-            && self.connection_generation == connection_generation
-            && self.database_generation == database_generation
-            && self.metadata_generation() == metadata_generation
-    }
-
     #[must_use]
     pub fn begin_effective_user_fetch(&mut self) -> u64 {
         self.effective_user_run.begin()
@@ -741,10 +721,6 @@ impl BrowseSession {
     // effects from a previous connection.
     pub fn dsn_matches(&self, expected: &str) -> bool {
         self.dsn() == Some(expected)
-    }
-
-    pub fn connection_generation(&self) -> u64 {
-        self.connection_generation
     }
 
     pub fn database_generation(&self) -> u64 {

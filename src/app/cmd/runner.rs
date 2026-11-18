@@ -11,7 +11,6 @@ use crate::cmd::er::handler as cmd_er;
 use crate::cmd::metadata_task::MetadataTaskRegistry;
 use crate::cmd::settings as cmd_settings;
 use crate::cmd::single_task_owner::SingleTaskOwner;
-use crate::cmd::sql_editor::completion as cmd_completion;
 use crate::cmd::sql_editor::query_history::spawn_query_history_load;
 use crate::cmd::sqlite_diagnostics;
 use crate::cmd::utility as cmd_utility;
@@ -299,8 +298,6 @@ impl EffectRunner {
                 .await;
                 Ok(vec![])
             }
-
-            e @ Effect::TriggerCompletion => Ok(cmd_completion::run(e, state)),
         }
     }
 

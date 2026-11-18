@@ -10,7 +10,6 @@ use crate::model::browse::json_detail::JsonDetailMode;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::Prefix;
-use crate::model::sql_editor::completion::CompletionCandidate;
 use crate::policy::{FeatureRequirement, mask_password};
 use crate::ports::outbound::clipboard::ClipboardError;
 use crate::ports::outbound::{AppSettings, DbOperationError};
@@ -499,15 +498,6 @@ pub enum Action {
     SqlModalNextTab,
     SqlModalPrevTab,
     CompletionRequest,
-    CompletionUpdated {
-        candidates: Vec<CompletionCandidate>,
-        trigger_position: usize,
-        visible: bool,
-        dsn: Option<String>,
-        connection_generation: u64,
-        database_generation: u64,
-        metadata_generation: u64,
-    },
     CompletionAccept,
     CompletionDismiss,
     CompletionNext,

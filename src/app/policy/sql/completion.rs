@@ -11,13 +11,13 @@ use crate::policy::sql::lexer::{
 const COMPLETION_MAX_CANDIDATES: usize = 30;
 
 #[derive(Clone, Copy)]
-pub(crate) struct CompletionDatabaseScope<'a> {
-    pub(crate) database_type: DatabaseType,
-    pub(crate) active_database: Option<&'a str>,
+struct CompletionDatabaseScope<'a> {
+    database_type: DatabaseType,
+    active_database: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum CompletionContext {
+enum CompletionContext {
     Keyword,
     Table,
     Column,
@@ -26,15 +26,31 @@ pub(crate) enum CompletionContext {
     CteOrTable,
 }
 
-pub(crate) struct PreparedCompletion {
-    pub(crate) tokens: Vec<Token>,
-    pub(crate) context: SqlContext,
-    pub(crate) candidate_context: SqlContext,
+struct PreparedCompletion {
+    tokens: Vec<Token>,
+    context: SqlContext,
+    candidate_context: SqlContext,
+    database_type: DatabaseType,
+    before_cursor: String,
+    current_token: String,
+    in_string_or_comment: bool,
+    cte_names: HashSet<String>,
+}
+
+pub(crate) struct CompletionInput<'a> {
+    pub(crate) content: &'a str,
+    pub(crate) cursor: usize,
     pub(crate) database_type: DatabaseType,
-    pub(crate) before_cursor: String,
-    pub(crate) current_token: String,
-    pub(crate) in_string_or_comment: bool,
-    pub(crate) cte_names: HashSet<String>,
+    pub(crate) active_database: Option<&'a str>,
+    pub(crate) metadata: Option<&'a DatabaseMetadata>,
+    pub(crate) table_detail: Option<&'a Table>,
+}
+
+pub(crate) struct CompletionOutcome {
+    pub(crate) candidates: Vec<CompletionCandidate>,
+    pub(crate) trigger_position: usize,
+    pub(crate) visible: bool,
+    pub(crate) missing_tables: Vec<String>,
 }
 
 pub struct CompletionEngine<'cache> {
@@ -46,7 +62,39 @@ impl<'cache> CompletionEngine<'cache> {
         Self { table_detail_cache }
     }
 
-    pub(crate) fn prepare_for_database(
+    pub(crate) fn complete(&self, input: CompletionInput<'_>) -> CompletionOutcome {
+        let CompletionInput {
+            content,
+            cursor,
+            database_type,
+            active_database,
+            metadata,
+            table_detail,
+        } = input;
+        let prep = self.prepare_for_database(content, cursor, database_type);
+        let missing_tables = self.missing_tables_prepared(&prep, metadata);
+        let token_len = Self::current_token_len_prepared(&prep);
+        let candidates = self.get_candidates_prepared_for_database(
+            content,
+            cursor,
+            &prep,
+            metadata,
+            table_detail,
+            CompletionDatabaseScope {
+                database_type,
+                active_database,
+            },
+        );
+        let visible = !candidates.is_empty() && !content.trim().is_empty();
+        CompletionOutcome {
+            candidates,
+            trigger_position: cursor.saturating_sub(token_len),
+            visible,
+            missing_tables,
+        }
+    }
+
+    fn prepare_for_database(
         &self,
         content: &str,
         cursor_pos: usize,
@@ -90,7 +138,7 @@ impl<'cache> CompletionEngine<'cache> {
         }
     }
 
-    pub(crate) fn missing_tables_prepared(
+    fn missing_tables_prepared(
         &self,
         prep: &PreparedCompletion,
         metadata: Option<&DatabaseMetadata>,
@@ -121,11 +169,11 @@ impl<'cache> CompletionEngine<'cache> {
         missing
     }
 
-    pub(crate) fn current_token_len_prepared(prep: &PreparedCompletion) -> usize {
+    fn current_token_len_prepared(prep: &PreparedCompletion) -> usize {
         prep.current_token.chars().count()
     }
 
-    pub(crate) fn get_candidates_prepared_for_database(
+    fn get_candidates_prepared_for_database(
         &self,
         content: &str,
         cursor_pos: usize,

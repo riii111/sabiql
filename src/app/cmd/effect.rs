@@ -112,8 +112,6 @@ pub enum Effect {
         row_count: Option<usize>,
     },
 
-    TriggerCompletion,
-
     GenerateErDiagramFromCache {
         run_id: u64,
         total_tables: usize,

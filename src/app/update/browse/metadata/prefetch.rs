@@ -240,7 +240,7 @@ pub(super) fn reduce_prefetch(
             if state.table_prefetch.prefetch_tracks_er() {
                 effects.extend(check_er_completion(state));
             } else if state.modal.active_mode() == InputMode::SqlModal {
-                effects.push(Effect::TriggerCompletion);
+                effects.push(Effect::DispatchActions(vec![Action::CompletionRequest]));
             }
 
             DispatchResult::handled_with(effects)

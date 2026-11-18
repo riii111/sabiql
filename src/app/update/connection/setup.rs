@@ -207,7 +207,6 @@ pub(in crate::update) fn reduce_connection_setup(
             let run_guard = state.session.connection_save_guard();
             state.query.reset_for_context_change();
             state.session.clear_mysql_connection_probe();
-            state.session.invalidate_connection_generation();
             state.session.mark_connecting();
             DispatchResult::handled_with(termination_effects(
                 &state.query,

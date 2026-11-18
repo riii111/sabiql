@@ -1374,11 +1374,11 @@ mod tests {
             .expect("cached detail should be handled");
 
             assert!(state.table_detail_cache.contains("public.users"));
-            assert!(
-                effects
-                    .iter()
-                    .any(|effect| matches!(effect, Effect::TriggerCompletion))
-            );
+            assert!(effects.iter().any(|effect| matches!(
+                effect,
+                Effect::DispatchActions(actions)
+                    if matches!(actions.as_slice(), [Action::CompletionRequest])
+            )));
         }
 
         #[test]

@@ -6,7 +6,6 @@ use tokio::sync::mpsc;
 
 use crate::cmd::effect::Effect;
 use crate::cmd::er::handler as cmd_er;
-use crate::cmd::sql_editor::completion as cmd_completion;
 use crate::cmd::test_fixtures::{NoopConfigWriter, NoopErExporter, NoopErLogWriter};
 use crate::domain::Table;
 use crate::model::app_state::AppState;
@@ -154,10 +153,6 @@ impl CacheFlowDriver {
             Effect::SchedulePrefetchQueueProcessing { run_id } => {
                 self.channel
                     .push_back(Action::ProcessPrefetchQueue { run_id });
-            }
-            effect @ Effect::TriggerCompletion => {
-                let actions = cmd_completion::run(effect, &self.state);
-                self.queue.extend(actions);
             }
             effect @ (Effect::ExtractFkNeighbors { .. }
             | Effect::SmartErRefreshCacheAndDiff { .. }) => {
