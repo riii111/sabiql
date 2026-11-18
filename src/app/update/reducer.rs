@@ -1880,7 +1880,7 @@ mod tests {
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    detail: Some(make_test_table()),
+                    detail: make_test_table(),
                 },
                 now,
                 &AppServices::stub(),
@@ -1907,7 +1907,7 @@ mod tests {
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    detail: Some(make_test_table()),
+                    detail: make_test_table(),
                 },
                 now,
                 &AppServices::stub(),
@@ -2861,6 +2861,7 @@ mod tests {
         use crate::domain::DatabaseMetadata;
         use crate::model::er_state::ErStatus;
         use crate::model::table_prefetch::FailedPrefetchEntry;
+        use crate::test_support::table as crate_table_fixture;
 
         fn state_with_metadata() -> AppState {
             let mut state = create_test_state();
@@ -3128,14 +3129,14 @@ mod tests {
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    detail: None,
+                    detail: Box::new(crate_table_fixture::minimal("public", "users")),
                 },
                 now,
                 &AppServices::stub(),
             );
 
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
-            assert!(!state.table_detail_cache.contains("public.users"));
+            assert!(state.table_detail_cache.contains("public.users"));
             assert!(effects.iter().any(|e| {
                 matches!(e, Effect::DispatchActions(actions)
                     if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache)))
@@ -3168,7 +3169,7 @@ mod tests {
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    detail: None,
+                    detail: Box::new(crate_table_fixture::minimal("public", "users")),
                 },
                 now,
                 &AppServices::stub(),

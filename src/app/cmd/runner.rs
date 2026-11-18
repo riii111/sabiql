@@ -202,7 +202,6 @@ impl EffectRunner {
                     &self.connection.sqlite_path_validator,
                     &self.table_detail_tasks,
                     &self.metadata_tasks,
-                    &state.table_detail_cache,
                 )
                 .await;
                 Ok(vec![])

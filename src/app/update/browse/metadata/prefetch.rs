@@ -14,10 +14,72 @@ use super::check_er_completion;
 
 const BASE_BACKOFF_SECS: u64 = 1;
 const MAX_BACKOFF_SECS: u64 = 4;
+const MAX_CONCURRENT_PREFETCH: usize = 4;
 pub(super) use crate::model::table_prefetch::MAX_PREFETCH_RETRIES;
+
+struct PrefetchStep {
+    effects: Vec<Effect>,
+    cache_hit: bool,
+}
+
+impl PrefetchStep {
+    fn effects(effects: Vec<Effect>) -> Self {
+        Self {
+            effects,
+            cache_hit: false,
+        }
+    }
+}
 
 pub(super) fn backoff_secs_for(retry_count: u32) -> u64 {
     (BASE_BACKOFF_SECS * 2u64.pow(retry_count)).min(MAX_BACKOFF_SECS)
+}
+
+#[derive(Default)]
+struct PrefetchBatch {
+    effects: Vec<Effect>,
+    cache_hits: usize,
+}
+
+impl PrefetchBatch {
+    fn push(&mut self, step: PrefetchStep) {
+        self.cache_hits += usize::from(step.cache_hit);
+        self.effects.extend(step.effects);
+    }
+}
+
+fn finish_prefetch_batch(state: &mut AppState, run_id: u64, batch: PrefetchBatch) -> Vec<Effect> {
+    let PrefetchBatch {
+        mut effects,
+        cache_hits,
+    } = batch;
+    if cache_hits == 0 {
+        return effects;
+    }
+
+    // Cached tables finish without a fetch, so no fetch completion schedules the rest of the queue.
+    // One schedule per batch keeps the queue moving without multiplying ProcessPrefetchQueue messages.
+    let already_scheduled = effects.iter().any(|effect| {
+        matches!(effect, Effect::SchedulePrefetchQueueProcessing { run_id: id } if *id == run_id)
+    });
+    if !already_scheduled
+        && state.table_prefetch.has_pending_prefetch()
+        && state.table_prefetch.prefetch_in_flight_count() < MAX_CONCURRENT_PREFETCH
+    {
+        effects.push(Effect::SchedulePrefetchQueueProcessing { run_id });
+    }
+    effects.extend(after_table_detail_cached(state));
+    effects
+}
+
+fn after_table_detail_cached(state: &mut AppState) -> Vec<Effect> {
+    if state.table_prefetch.prefetch_tracks_er() {
+        check_er_completion(state)
+    } else if state.modal.active_mode() == InputMode::SqlModal {
+        vec![Effect::DispatchActions(vec![Action::CompletionRequest])]
+    } else {
+        vec![]
+    }
 }
 
 fn prefetch_table_detail(
@@ -26,14 +88,14 @@ fn prefetch_table_detail(
     schema: &str,
     table: &str,
     now: Instant,
-) -> Vec<Effect> {
+) -> PrefetchStep {
     if !state.table_prefetch.is_current_prefetch_run(run_id) {
-        return vec![];
+        return PrefetchStep::effects(vec![]);
     }
     let qualified_name = format!("{schema}.{table}");
 
     if state.table_prefetch.is_table_prefetching(&qualified_name) {
-        return vec![];
+        return PrefetchStep::effects(vec![]);
     }
 
     if let Some(entry) = state.table_prefetch.failed_prefetch(&qualified_name) {
@@ -49,7 +111,7 @@ fn prefetch_table_detail(
             {
                 effects.push(Effect::SchedulePrefetchQueueProcessing { run_id });
             }
-            return effects;
+            return PrefetchStep::effects(effects);
         }
 
         let backoff_secs = backoff_secs_for(entry.retry_count);
@@ -57,26 +119,36 @@ fn prefetch_table_detail(
         if elapsed < backoff_secs {
             let remaining = backoff_secs - elapsed;
             state.table_prefetch.queue_table_prefetch(qualified_name);
-            return vec![Effect::DelayedProcessPrefetchQueue {
+            return PrefetchStep::effects(vec![Effect::DelayedProcessPrefetchQueue {
                 run_id,
                 delay_secs: remaining,
-            }];
+            }]);
         }
     }
 
     let Some(dsn) = state.session.dsn().map(String::from) else {
         state.table_prefetch.defer_table_prefetch(qualified_name);
-        return vec![];
+        return PrefetchStep::effects(vec![]);
     };
+
+    if state.table_detail_cache.contains(&qualified_name) {
+        state
+            .table_prefetch
+            .complete_table_prefetch(&qualified_name);
+        return PrefetchStep {
+            effects: vec![],
+            cache_hit: true,
+        };
+    }
 
     state.table_prefetch.start_table_prefetch(qualified_name);
 
-    vec![Effect::PrefetchTableColumnsAndFks {
+    PrefetchStep::effects(vec![Effect::PrefetchTableColumnsAndFks {
         dsn,
         run_id,
         schema: schema.to_string(),
         table: table.to_string(),
-    }]
+    }])
 }
 
 pub(super) fn reduce_prefetch(
@@ -176,13 +248,12 @@ pub(super) fn reduce_prefetch(
             if !state.table_prefetch.is_current_prefetch_run(*run_id) {
                 return DispatchResult::handled();
             }
-            const MAX_CONCURRENT_PREFETCH: usize = 4;
             let current_in_flight = state.table_prefetch.prefetch_in_flight_count();
             let available_slots = MAX_CONCURRENT_PREFETCH.saturating_sub(current_in_flight);
             let batch_size = available_slots.min(state.table_prefetch.pending_prefetch_count());
             let mut processed_tables = HashSet::with_capacity(batch_size);
 
-            let mut effects = Vec::new();
+            let mut batch = PrefetchBatch::default();
             for _ in 0..batch_size {
                 let Some(qualified_name) = state.table_prefetch.take_next_prefetch() else {
                     break;
@@ -194,10 +265,10 @@ pub(super) fn reduce_prefetch(
                 let Some((schema, table)) = qualified_name.split_once('.') else {
                     continue;
                 };
-                effects.extend(prefetch_table_detail(state, *run_id, schema, table, now));
+                batch.push(prefetch_table_detail(state, *run_id, schema, table, now));
             }
 
-            DispatchResult::handled_with(effects)
+            DispatchResult::handled_with(finish_prefetch_batch(state, *run_id, batch))
         }
 
         Action::PrefetchTableDetail {
@@ -205,7 +276,9 @@ pub(super) fn reduce_prefetch(
             schema,
             table,
         } => {
-            DispatchResult::handled_with(prefetch_table_detail(state, *run_id, schema, table, now))
+            let mut batch = PrefetchBatch::default();
+            batch.push(prefetch_table_detail(state, *run_id, schema, table, now));
+            DispatchResult::handled_with(finish_prefetch_batch(state, *run_id, batch))
         }
 
         Action::TableDetailCached {
@@ -225,23 +298,16 @@ pub(super) fn reduce_prefetch(
                 .table_prefetch
                 .complete_table_prefetch(&qualified_name);
 
-            if let Some(detail) = detail {
-                state
-                    .table_detail_cache
-                    .insert(qualified_name, detail.as_ref().clone());
-            }
+            state
+                .table_detail_cache
+                .insert(qualified_name, detail.as_ref().clone());
 
             let mut effects = Vec::new();
 
             if state.table_prefetch.has_pending_prefetch() {
                 effects.push(Effect::SchedulePrefetchQueueProcessing { run_id: *run_id });
             }
-
-            if state.table_prefetch.prefetch_tracks_er() {
-                effects.extend(check_er_completion(state));
-            } else if state.modal.active_mode() == InputMode::SqlModal {
-                effects.push(Effect::DispatchActions(vec![Action::CompletionRequest]));
-            }
+            effects.extend(after_table_detail_cached(state));
 
             DispatchResult::handled_with(effects)
         }

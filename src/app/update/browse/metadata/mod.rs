@@ -582,7 +582,7 @@ mod tests {
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    detail: Some(empty_table("public", "users")),
+                    detail: empty_table("public", "users"),
                 },
                 Instant::now(),
             )
@@ -774,6 +774,210 @@ mod tests {
         }
     }
 
+    mod cached_prefetch {
+        use super::*;
+
+        fn schedule_count(effects: &[Effect]) -> usize {
+            effects
+                .iter()
+                .filter(|effect| matches!(effect, Effect::SchedulePrefetchQueueProcessing { .. }))
+                .count()
+        }
+
+        fn fetch_count(effects: &[Effect]) -> usize {
+            effects
+                .iter()
+                .filter(|effect| matches!(effect, Effect::PrefetchTableColumnsAndFks { .. }))
+                .count()
+        }
+
+        fn er_state_with_queue(cached: &[&str], uncached: &[&str]) -> (AppState, u64) {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let run_id = state.table_prefetch.begin_er_prefetch();
+            for name in cached {
+                state
+                    .table_detail_cache
+                    .insert(format!("public.{name}"), *empty_table("public", name));
+            }
+            for name in cached.iter().chain(uncached) {
+                state
+                    .table_prefetch
+                    .queue_table_prefetch(format!("public.{name}"));
+            }
+            (state, run_id)
+        }
+
+        #[test]
+        fn all_cached_batch_schedules_once() {
+            let (mut state, run_id) =
+                er_state_with_queue(&["t0", "t1", "t2", "t3", "t4", "t5"], &[]);
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::ProcessPrefetchQueue { run_id },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(fetch_count(&effects), 0);
+            assert_eq!(schedule_count(&effects), 1);
+            assert_eq!(state.table_prefetch.pending_prefetch_count(), 2);
+        }
+
+        #[test]
+        fn mixed_batch_schedules_once_when_slots_remain() {
+            let (mut state, run_id) = er_state_with_queue(&["t0", "t1"], &["t2", "t3", "t4"]);
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::ProcessPrefetchQueue { run_id },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(fetch_count(&effects), 2);
+            assert_eq!(schedule_count(&effects), 1);
+        }
+
+        #[test]
+        fn batch_without_cache_hits_keeps_existing_effects() {
+            let (mut state, run_id) = er_state_with_queue(&[], &["t0", "t1", "t2", "t3", "t4"]);
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::ProcessPrefetchQueue { run_id },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(fetch_count(&effects), 4);
+            assert_eq!(schedule_count(&effects), 0);
+        }
+
+        #[test]
+        fn full_slots_do_not_schedule() {
+            let (mut state, run_id) = er_state_with_queue(&["t0"], &[]);
+            for name in ["a", "b", "c", "d"] {
+                state
+                    .table_prefetch
+                    .start_table_prefetch(format!("public.{name}"));
+            }
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::ProcessPrefetchQueue { run_id },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert!(state.table_prefetch.is_prefetch_queued("public.t0"));
+        }
+
+        #[test]
+        fn missing_connection_defers_without_scheduling() {
+            let mut state = AppState::new("test".to_string());
+            let run_id = state.table_prefetch.begin_er_prefetch();
+            state
+                .table_detail_cache
+                .insert("public.t0".to_string(), *empty_table("public", "t0"));
+            state
+                .table_prefetch
+                .queue_table_prefetch("public.t0".to_string());
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::ProcessPrefetchQueue { run_id },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert!(state.table_prefetch.is_prefetch_queued("public.t0"));
+        }
+
+        #[test]
+        fn backoff_retry_keeps_delayed_schedule_only() {
+            let (mut state, run_id) = er_state_with_queue(&[], &["t0"]);
+            state.table_prefetch.fail_table_prefetch(
+                "public.t0".to_string(),
+                FailedPrefetchEntry {
+                    failed_at: Instant::now(),
+                    error: "timeout".to_string(),
+                    retry_count: 1,
+                },
+            );
+            state
+                .table_prefetch
+                .queue_table_prefetch("public.t0".to_string());
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::ProcessPrefetchQueue { run_id },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(schedule_count(&effects), 0);
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::DelayedProcessPrefetchQueue { .. }]
+            ));
+        }
+
+        #[test]
+        fn direct_request_fetches_uncached_table_beyond_slot_limit() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let run_id = state.table_prefetch.begin_completion_prefetch();
+            for name in ["a", "b", "c", "d"] {
+                state
+                    .table_prefetch
+                    .start_table_prefetch(format!("public.{name}"));
+            }
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::PrefetchTableDetail {
+                    run_id,
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(fetch_count(&effects), 1);
+        }
+
+        #[test]
+        fn direct_request_completes_cached_table_without_fetching() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.modal.set_mode(InputMode::SqlModal);
+            let run_id = state.table_prefetch.begin_completion_prefetch();
+            state
+                .table_detail_cache
+                .insert("public.users".to_string(), *empty_table("public", "users"));
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::PrefetchTableDetail {
+                    run_id,
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(fetch_count(&effects), 0);
+            assert!(effects.iter().any(|effect| matches!(
+                effect,
+                Effect::DispatchActions(actions)
+                    if matches!(actions.as_slice(), [Action::CompletionRequest])
+            )));
+        }
+    }
+
     mod table_detail_cache_failed {
         use super::*;
 
@@ -939,7 +1143,7 @@ mod tests {
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    detail: Some(empty_table("public", "users")),
+                    detail: empty_table("public", "users"),
                 },
                 Instant::now(),
             )
@@ -1367,7 +1571,7 @@ mod tests {
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    detail: Some(empty_table("public", "users")),
+                    detail: empty_table("public", "users"),
                 },
                 Instant::now(),
             )

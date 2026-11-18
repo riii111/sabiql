@@ -7,7 +7,6 @@ use crate::cmd::metadata_task::MetadataTaskRegistry;
 use crate::cmd::single_task_owner::SingleTaskOwner;
 use crate::cmd::sqlite_path_validate::validate_sqlite_database_path;
 use crate::domain::sqlite_path_from_dsn;
-use crate::model::table_detail_cache::TableDetailCache;
 use crate::policy::sqlite_path::to_db_operation_error;
 use crate::ports::outbound::{DbOperationError, MetadataProvider, SqlitePathValidator};
 use crate::update::action::Action;
@@ -19,7 +18,6 @@ pub(in crate::cmd) async fn run(
     sqlite_path_validator: &Arc<dyn SqlitePathValidator>,
     table_detail_tasks: &SingleTaskOwner,
     metadata_tasks: &Arc<MetadataTaskRegistry>,
-    table_detail_cache: &TableDetailCache,
 ) {
     match effect {
         Effect::CancelMetadataTasks => {
@@ -67,14 +65,12 @@ pub(in crate::cmd) async fn run(
             prefetch_table_detail(
                 action_tx,
                 metadata_provider,
-                table_detail_cache,
                 metadata_tasks,
                 dsn,
                 run_id,
                 schema,
                 table,
-            )
-            .await;
+            );
         }
         Effect::SchedulePrefetchQueueProcessing { run_id } => {
             action_tx
@@ -187,33 +183,15 @@ async fn fetch_table_detail(
         .await;
 }
 
-async fn prefetch_table_detail(
+fn prefetch_table_detail(
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
-    table_detail_cache: &TableDetailCache,
     metadata_tasks: &Arc<MetadataTaskRegistry>,
     dsn: String,
     run_id: u64,
     schema: String,
     table: String,
 ) {
-    let qualified_name = format!("{schema}.{table}");
-    let already_cached = table_detail_cache.contains(&qualified_name);
-
-    if already_cached {
-        action_tx
-            .send(Action::TableDetailCached {
-                dsn,
-                run_id,
-                schema,
-                table,
-                detail: None,
-            })
-            .await
-            .ok();
-        return;
-    }
-
     let provider = Arc::clone(metadata_provider);
     let tx = action_tx.clone();
 
@@ -230,7 +208,7 @@ async fn prefetch_table_detail(
                     run_id,
                     schema,
                     table,
-                    detail: Some(Box::new(detail)),
+                    detail: Box::new(detail),
                 })
                 .await
                 .ok();
@@ -585,62 +563,8 @@ mod tests {
 
             let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
-                matches!(
-                    action,
-                    Action::TableDetailCached {
-                        detail: Some(_),
-                        ..
-                    }
-                ),
+                matches!(action, Action::TableDetailCached { .. }),
                 "expected TableDetailCached, got {action:?}"
-            );
-        }
-
-        #[tokio::test]
-        async fn cached_table_detail_returns_empty_outcome() {
-            let mut mock_provider = MockMetadataProvider::new();
-            mock_provider.expect_fetch_table_detail().never();
-            mock_provider.expect_fetch_table_columns_and_fks().never();
-
-            let (tx, mut rx) = mpsc::channel(8);
-            let runner = test_fixtures::make_runner(
-                Arc::new(mock_provider),
-                Arc::new(MockQueryExecutor::new()),
-                Arc::new(MockConnectionStore::new()),
-                tx,
-            );
-            let mut state = AppState::new("test".to_string());
-            state
-                .table_detail_cache
-                .insert("public.users".to_string(), sample_table());
-
-            let run = test_fixtures::run_one_effect(
-                &runner,
-                Effect::PrefetchTableColumnsAndFks {
-                    dsn: "dsn://test".to_string(),
-                    run_id: 3,
-                    schema: "public".to_string(),
-                    table: "users".to_string(),
-                },
-                state,
-                &mut rx,
-                Some(std::time::Duration::from_millis(500)),
-            )
-            .await
-            .unwrap();
-
-            let action = run.actions.into_iter().next().expect("action dispatched");
-            assert!(
-                matches!(
-                    action,
-                    Action::TableDetailCached {
-                        ref dsn,
-                        run_id: 3,
-                        detail: None,
-                        ..
-                    } if dsn == "dsn://test"
-                ),
-                "expected cache-hit TableDetailCached, got {action:?}"
             );
         }
     }

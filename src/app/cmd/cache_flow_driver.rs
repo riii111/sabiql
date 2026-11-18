@@ -67,7 +67,7 @@ impl CacheFlowDriver {
             run_id: fetch.run_id,
             schema: fetch.schema,
             table: fetch.table,
-            detail: Some(Box::new(table)),
+            detail: Box::new(table),
         });
         self.run_until_idle().await;
     }
@@ -180,26 +180,15 @@ impl CacheFlowDriver {
                 schema,
                 table,
             } => {
-                let qualified_name = format!("{schema}.{table}");
-                if self.state.table_detail_cache.contains(&qualified_name) {
-                    self.channel.push_back(Action::TableDetailCached {
-                        dsn,
-                        run_id,
-                        schema,
-                        table,
-                        detail: None,
-                    });
-                } else {
-                    self.fetched_tables.push(qualified_name);
-                    self.pending_fetches.push(PendingFetch {
-                        dsn,
-                        run_id,
-                        schema,
-                        table,
-                    });
-                    self.max_outstanding_fetches =
-                        self.max_outstanding_fetches.max(self.pending_fetches.len());
-                }
+                self.fetched_tables.push(format!("{schema}.{table}"));
+                self.pending_fetches.push(PendingFetch {
+                    dsn,
+                    run_id,
+                    schema,
+                    table,
+                });
+                self.max_outstanding_fetches =
+                    self.max_outstanding_fetches.max(self.pending_fetches.len());
             }
             other => self.io_effects.push(other),
         }

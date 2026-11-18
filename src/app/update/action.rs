@@ -457,7 +457,7 @@ pub enum Action {
         run_id: u64,
         schema: String,
         table: String,
-        detail: Option<Box<Table>>,
+        detail: Box<Table>,
     },
     TableDetailCacheFailed {
         dsn: String,

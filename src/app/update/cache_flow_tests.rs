@@ -258,7 +258,7 @@ mod cache_lifetime {
                     run_id: stale_run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    detail: Some(Box::new(table("users", &["legacy_column"], &[]))),
+                    detail: Box::new(table("users", &["legacy_column"], &[])),
                 })
                 .await;
         }
@@ -304,7 +304,7 @@ mod cache_lifetime {
                 run_id,
                 schema: "public".to_string(),
                 table: "users".to_string(),
-                detail: Some(Box::new(table("users", &["id"], &[]))),
+                detail: Box::new(table("users", &["id"], &[])),
             })
             .await;
 
