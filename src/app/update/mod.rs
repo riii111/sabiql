@@ -13,6 +13,7 @@ pub(in crate::update) mod modal;
 mod query_context;
 pub mod reducer;
 pub(in crate::update) mod sql_editor;
+pub(in crate::update) mod target_routing;
 #[cfg(test)]
 pub(crate) mod test_fixtures;
 pub(in crate::update) mod text_edit;

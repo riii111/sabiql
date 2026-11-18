@@ -9,7 +9,7 @@ use std::time::Instant;
 use super::{
     clipboard, dispatch_connection, dispatch_er, dispatch_explain, dispatch_metadata,
     dispatch_modal, dispatch_navigation, dispatch_query, dispatch_result, dispatch_sql_modal,
-    text_edit,
+    target_routing, text_edit,
 };
 use crate::catalog::HelpDocument;
 use crate::cmd::effect::Effect;
@@ -89,7 +89,22 @@ pub(in crate::update) fn route(
         Action::TextMoveCursor { target, direction } => {
             text_edit::apply_text_edit(state, target, TextEdit::MoveCursor(direction), now)
         }
+        Action::Scroll {
+            target,
+            direction,
+            amount,
+        } => target_routing::scroll(state, target, direction, amount, now, services),
+        Action::ScrollToCursor { target, position } => {
+            target_routing::scroll_to_cursor(state, target, position, now, services)
+        }
+        Action::Select(motion) => target_routing::select(state, motion, now, services),
+        Action::ListSelect { target, motion } => {
+            target_routing::list_select(state, target, motion, now, services)
+        }
+        Action::Paste(text) => target_routing::paste(state, text, now, services),
         Action::BeginKeySequence(prefix) => begin_key_sequence(state, prefix),
+        Action::OpenModal(kind) => target_routing::open_modal(state, kind, now, services),
+        Action::CloseModal(kind) => target_routing::close_modal(state, kind, now, services),
         Action::CancelKeySequence => cancel_key_sequence(state),
         Action::ConfirmSelection => confirm_selection(state, now, services),
         Action::CopySucceeded(target) => clipboard::copy_succeeded(state, target, now),
@@ -98,7 +113,7 @@ pub(in crate::update) fn route(
     }
 }
 
-fn legacy_dispatch(
+pub(in crate::update) fn legacy_dispatch(
     state: &mut AppState,
     action: Action,
     now: Instant,
