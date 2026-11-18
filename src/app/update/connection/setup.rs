@@ -965,14 +965,13 @@ mod tests {
 
             assert!(state.connection_error.is_save_and_connect_failure());
             assert!(state.connection_error.has_destination());
-            let effects =
-                reduce_connection_error(&mut state, &Action::RetryConnection, Instant::now())
-                    .into_effects()
-                    .expect("retry action handled");
+            let effects = reduce_connection_error(&mut state, &Action::RetryConnection)
+                .into_effects()
+                .expect("retry action handled");
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConnectionError);
 
-            reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());
+            reduce_connection_error(&mut state, &Action::ReenterConnectionSetup);
             assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
         }
 

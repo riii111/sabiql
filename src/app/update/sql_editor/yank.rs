@@ -1,5 +1,4 @@
 use std::fmt::Write as _;
-use std::time::Instant;
 
 use crate::cmd::effect::Effect;
 use crate::domain::explain_plan::{ComparisonVerdict, compare_plans};
@@ -7,10 +6,11 @@ use crate::model::app_state::AppState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::sql_editor::modal::SqlModalTab;
 use crate::update::action::Action;
+use crate::update::action::CopyTarget;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::clipboard_unavailable;
 
-pub(super) fn reduce_yank(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub(super) fn reduce_yank(state: &AppState, action: &Action) -> DispatchResult {
     match action {
         Action::SqlModalYank => {
             let active_tab = state
@@ -65,16 +65,14 @@ pub(super) fn reduce_yank(state: &mut AppState, action: &Action, now: Instant) -
                 Some(c) if !c.is_empty() => {
                     DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                         content: c,
-                        on_success: Box::new(Action::SqlModalYankSuccess),
+                        on_success: Box::new(Action::CopySucceeded(CopyTarget::Panel(
+                            FlashId::SqlModal,
+                        ))),
                         on_failure: Some(Box::new(clipboard_unavailable())),
                     }])
                 }
                 _ => DispatchResult::handled(),
             }
-        }
-        Action::SqlModalYankSuccess => {
-            state.flash_timers.set(FlashId::SqlModal, now);
-            DispatchResult::handled()
         }
         _ => DispatchResult::pass(),
     }

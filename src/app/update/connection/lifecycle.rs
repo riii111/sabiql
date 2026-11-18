@@ -374,13 +374,9 @@ mod tests {
                 "connection refused",
             ));
 
-            let retry_effects = reduce_connection_error(
-                &mut state,
-                &Action::RetryConnection,
-                std::time::Instant::now(),
-            )
-            .into_effects()
-            .unwrap();
+            let retry_effects = reduce_connection_error(&mut state, &Action::RetryConnection)
+                .into_effects()
+                .unwrap();
             let retry_run_id = retry_effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -482,13 +478,9 @@ mod tests {
             assert_eq!(state.modal.active_mode(), InputMode::ConnectionError);
             assert!(state.connection_error.can_retry());
 
-            let retry_effects = reduce_connection_error(
-                &mut state,
-                &Action::RetryConnection,
-                std::time::Instant::now(),
-            )
-            .into_effects()
-            .unwrap();
+            let retry_effects = reduce_connection_error(&mut state, &Action::RetryConnection)
+                .into_effects()
+                .unwrap();
             assert!(retry_effects.iter().any(|effect| matches!(
                 effect,
                 Effect::ProbeMySqlConnection { target: retry_target, .. }
@@ -2055,13 +2047,9 @@ mod tests {
                     error: DbOperationError::ConnectionFailed("refused".to_string()),
                 },
             );
-            let retry_effects = reduce_connection_error(
-                &mut state,
-                &Action::RetryConnection,
-                std::time::Instant::now(),
-            )
-            .into_effects()
-            .unwrap();
+            let retry_effects = reduce_connection_error(&mut state, &Action::RetryConnection)
+                .into_effects()
+                .unwrap();
 
             let (retry_target, retry_run_id) = retry_effects
                 .iter()
@@ -2141,13 +2129,9 @@ mod tests {
                     error: DbOperationError::ConnectionFailed("refused again".to_string()),
                 },
             );
-            let retry_effects = reduce_connection_error(
-                &mut state,
-                &Action::RetryConnection,
-                std::time::Instant::now(),
-            )
-            .into_effects()
-            .unwrap();
+            let retry_effects = reduce_connection_error(&mut state, &Action::RetryConnection)
+                .into_effects()
+                .unwrap();
             let actual_target = retry_effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -2202,13 +2186,9 @@ mod tests {
                 },
             );
 
-            let retry_effects = reduce_connection_error(
-                &mut state,
-                &Action::RetryConnection,
-                std::time::Instant::now(),
-            )
-            .into_effects()
-            .unwrap();
+            let retry_effects = reduce_connection_error(&mut state, &Action::RetryConnection)
+                .into_effects()
+                .unwrap();
             assert!(state.session.connection_state().is_connected());
             assert_eq!(state.session.metadata_state(), &MetadataState::Loaded);
             let retry_run_id = retry_effects

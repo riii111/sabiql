@@ -22,10 +22,10 @@ pub fn dispatch_result(
     scroll::reduce_scroll(state, action)
         .or_else(|| selection::reduce_selection(state, action, now))
         .or_else(|| edit::reduce_edit(state, action, now))
-        .or_else(|| yank::reduce_yank(state, action, services, now))
-        .or_else(|| cell_detail::reduce_cell_detail(state, action, now))
-        .or_else(|| json::reduce_json(state, action, now))
-        .or_else(|| row_detail::reduce_row_detail(state, action, now))
+        .or_else(|| yank::reduce_yank(state, action, services))
+        .or_else(|| cell_detail::reduce_cell_detail(state, action))
+        .or_else(|| json::reduce_json(state, action))
+        .or_else(|| row_detail::reduce_row_detail(state, action))
 }
 
 #[cfg(test)]

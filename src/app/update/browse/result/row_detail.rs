@@ -1,10 +1,9 @@
-use std::time::Instant;
-
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::browse::row_detail::RowDetailState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
+use crate::update::action::CopyTarget;
 use crate::update::action::{Action, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget};
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::clipboard_unavailable;
@@ -12,7 +11,6 @@ use crate::update::helpers::clipboard_unavailable;
 pub(in crate::update) fn reduce_row_detail(
     state: &mut AppState,
     action: &Action,
-    now: Instant,
 ) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::RowDetail) => {
@@ -50,7 +48,7 @@ pub(in crate::update) fn reduce_row_detail(
             let content = state.row_detail.content_for_yank();
             DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                 content,
-                on_success: Box::new(Action::RowDetailYankSuccess),
+                on_success: Box::new(Action::CopySucceeded(CopyTarget::Panel(FlashId::RowDetail))),
                 on_failure: Some(Box::new(clipboard_unavailable())),
             }])
         }
@@ -59,14 +57,9 @@ pub(in crate::update) fn reduce_row_detail(
             let content = state.row_detail.json_for_yank();
             DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                 content,
-                on_success: Box::new(Action::RowDetailYankSuccess),
+                on_success: Box::new(Action::CopySucceeded(CopyTarget::Panel(FlashId::RowDetail))),
                 on_failure: Some(Box::new(clipboard_unavailable())),
             }])
-        }
-
-        Action::RowDetailYankSuccess => {
-            state.flash_timers.set(FlashId::RowDetail, now);
-            DispatchResult::handled()
         }
 
         Action::Scroll {
@@ -173,11 +166,7 @@ mod tests {
 
     fn state_with_row_detail() -> AppState {
         let mut state = state_with_result();
-        reduce_row_detail(
-            &mut state,
-            &Action::OpenModal(ModalKind::RowDetail),
-            Instant::now(),
-        );
+        reduce_row_detail(&mut state, &Action::OpenModal(ModalKind::RowDetail));
         state
     }
 
@@ -185,11 +174,7 @@ mod tests {
     fn open_builds_row_detail() {
         let mut state = state_with_result();
 
-        reduce_row_detail(
-            &mut state,
-            &Action::OpenModal(ModalKind::RowDetail),
-            Instant::now(),
-        );
+        reduce_row_detail(&mut state, &Action::OpenModal(ModalKind::RowDetail));
 
         assert!(state.row_detail.is_active());
         assert_eq!(state.input_mode(), InputMode::RowDetail);
@@ -218,11 +203,7 @@ mod tests {
             )));
         state.result_interaction.activate_cell(0, 0);
 
-        reduce_row_detail(
-            &mut state,
-            &Action::OpenModal(ModalKind::RowDetail),
-            Instant::now(),
-        );
+        reduce_row_detail(&mut state, &Action::OpenModal(ModalKind::RowDetail));
 
         assert!(state.row_detail.content().contains("BLOB (2 bytes) AB CD"));
         assert!(state.row_detail.json_for_yank().contains("X'ABCD'"));
@@ -241,11 +222,7 @@ mod tests {
                 QuerySource::Preview,
             )));
 
-        reduce_row_detail(
-            &mut state,
-            &Action::OpenModal(ModalKind::RowDetail),
-            Instant::now(),
-        );
+        reduce_row_detail(&mut state, &Action::OpenModal(ModalKind::RowDetail));
 
         assert!(!state.row_detail.is_active());
         assert_eq!(state.input_mode(), InputMode::Normal);
@@ -254,18 +231,10 @@ mod tests {
     #[test]
     fn close_clears_state() {
         let mut state = state_with_result();
-        reduce_row_detail(
-            &mut state,
-            &Action::OpenModal(ModalKind::RowDetail),
-            Instant::now(),
-        );
+        reduce_row_detail(&mut state, &Action::OpenModal(ModalKind::RowDetail));
         assert!(state.row_detail.is_active());
 
-        reduce_row_detail(
-            &mut state,
-            &Action::CloseModal(ModalKind::RowDetail),
-            Instant::now(),
-        );
+        reduce_row_detail(&mut state, &Action::CloseModal(ModalKind::RowDetail));
 
         assert!(!state.row_detail.is_active());
         assert_eq!(state.input_mode(), InputMode::Normal);
@@ -275,7 +244,7 @@ mod tests {
     fn yank_display_text_returns_clipboard_effect() {
         let mut state = state_with_row_detail();
 
-        let effects = reduce_row_detail(&mut state, &Action::RowDetailYank, Instant::now())
+        let effects = reduce_row_detail(&mut state, &Action::RowDetailYank)
             .into_effects()
             .expect("should return effects");
 
@@ -283,7 +252,7 @@ mod tests {
         assert!(matches!(
             &effects[0],
             Effect::CopyToClipboard { content, on_success, .. }
-            if content.contains("id\n  1") && matches!(on_success.as_ref(), Action::RowDetailYankSuccess)
+            if content.contains("id\n  1") && matches!(on_success.as_ref(), Action::CopySucceeded(CopyTarget::Panel(FlashId::RowDetail)))
         ));
     }
 
@@ -291,7 +260,7 @@ mod tests {
     fn yank_json_returns_clipboard_effect() {
         let mut state = state_with_row_detail();
 
-        let effects = reduce_row_detail(&mut state, &Action::RowDetailYankJson, Instant::now())
+        let effects = reduce_row_detail(&mut state, &Action::RowDetailYankJson)
             .into_effects()
             .expect("should return effects");
 
@@ -299,7 +268,7 @@ mod tests {
         assert!(matches!(
             &effects[0],
             Effect::CopyToClipboard { content, on_success, .. }
-            if content.contains("\"name\": \"alice\"") && matches!(on_success.as_ref(), Action::RowDetailYankSuccess)
+            if content.contains("\"name\": \"alice\"") && matches!(on_success.as_ref(), Action::CopySucceeded(CopyTarget::Panel(FlashId::RowDetail)))
         ));
     }
 
@@ -318,7 +287,6 @@ mod tests {
                 direction: ScrollDirection::Down,
                 amount: ScrollAmount::Line,
             },
-            Instant::now(),
         );
 
         assert_eq!(
@@ -341,7 +309,6 @@ mod tests {
                 direction: ScrollDirection::Down,
                 amount: ScrollAmount::ToEnd,
             },
-            Instant::now(),
         );
 
         assert_eq!(
@@ -363,11 +330,7 @@ mod tests {
                 QuerySource::Preview,
             )));
         state.result_interaction.activate_cell(0, 0);
-        reduce_row_detail(
-            &mut state,
-            &Action::OpenModal(ModalKind::RowDetail),
-            Instant::now(),
-        );
+        reduce_row_detail(&mut state, &Action::OpenModal(ModalKind::RowDetail));
         state.ui.row_detail_content_visible_columns = 10;
 
         for _ in 0..100 {
@@ -378,7 +341,6 @@ mod tests {
                     direction: ScrollDirection::Right,
                     amount: ScrollAmount::Line,
                 },
-                Instant::now(),
             );
         }
 
@@ -398,11 +360,7 @@ mod tests {
             QuerySource::Preview,
         )));
 
-        reduce_row_detail(
-            &mut state,
-            &Action::OpenModal(ModalKind::RowDetail),
-            Instant::now(),
-        );
+        reduce_row_detail(&mut state, &Action::OpenModal(ModalKind::RowDetail));
 
         assert!(!state.row_detail.is_active());
         assert_eq!(state.input_mode(), InputMode::Normal);
@@ -421,11 +379,7 @@ mod tests {
                 QuerySource::Preview,
             )));
 
-        reduce_row_detail(
-            &mut state,
-            &Action::OpenModal(ModalKind::RowDetail),
-            Instant::now(),
-        );
+        reduce_row_detail(&mut state, &Action::OpenModal(ModalKind::RowDetail));
 
         assert!(!state.row_detail.is_active());
         assert_eq!(state.input_mode(), InputMode::Normal);
@@ -445,7 +399,6 @@ mod tests {
                 direction: ScrollDirection::Down,
                 amount: ScrollAmount::FullPage,
             },
-            Instant::now(),
         );
 
         assert_eq!(
@@ -470,7 +423,6 @@ mod tests {
                 direction: ScrollDirection::Up,
                 amount: ScrollAmount::FullPage,
             },
-            Instant::now(),
         );
 
         assert_eq!(state.row_detail.scroll_offset(), 0);
@@ -491,7 +443,6 @@ mod tests {
                 direction: ScrollDirection::Down,
                 amount: ScrollAmount::HalfPage,
             },
-            Instant::now(),
         );
 
         assert_eq!(state.row_detail.scroll_offset(), max_scroll);
@@ -509,7 +460,6 @@ mod tests {
                 direction: ScrollDirection::Down,
                 amount: ScrollAmount::HalfPage,
             },
-            Instant::now(),
         );
 
         assert_eq!(state.row_detail.scroll_offset(), 1);
@@ -530,7 +480,6 @@ mod tests {
                 direction: ScrollDirection::Up,
                 amount: ScrollAmount::HalfPage,
             },
-            Instant::now(),
         );
 
         assert_eq!(state.row_detail.scroll_offset(), 0);

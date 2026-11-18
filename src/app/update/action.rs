@@ -7,6 +7,7 @@ use crate::domain::connection::{
 use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
 use crate::model::app_state::AppState;
 use crate::model::browse::json_detail::JsonDetailMode;
+use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::Prefix;
@@ -52,6 +53,14 @@ pub enum ScrollTarget {
     CellDetail,
     SqliteDiagnostics,
     RowDetail,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CopyTarget {
+    Panel(FlashId),
+    ResultCell { row: usize, col: usize },
+    ResultRow { row: usize },
+    ConnectionError,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -383,7 +392,6 @@ pub enum Action {
     CloseConnectionError,
     ToggleConnectionErrorDetails,
     CopyConnectionError,
-    ConnectionErrorCopied,
     ReenterConnectionSetup,
     RetryConnection,
     RequestDeleteSelectedConnection,
@@ -472,7 +480,6 @@ pub enum Action {
     SqlModalEnterInsert,
     SqlModalEnterNormal,
     SqlModalYank,
-    SqlModalYankSuccess,
     SqlModalNewLine,
     SqlModalInsertTab,
     SqlModalSubmit,
@@ -540,17 +547,9 @@ pub enum Action {
     ResultCellLeft,
     ResultCellRight,
     ResultCellYank,
-    ResultCellYankSuccess {
-        row: usize,
-        col: usize,
-    },
     ResultRowYankOperatorPending,
     ResultRowYank,
-    ResultRowYankSuccess {
-        row: usize,
-    },
     DdlYank,
-    DdlYankSuccess,
     ResultDeleteOperatorPending,
     StageRowForDelete,
     UnstageLastStagedRow,
@@ -560,6 +559,7 @@ pub enum Action {
     ResultCancelCellEdit,
     ResultDiscardCellEdit,
     SubmitCellEditWrite,
+    CopySucceeded(CopyTarget),
     CopyFailed(ClipboardError),
     OpenFolderFailed(Arc<std::io::Error>),
     ToggleFocus,
@@ -584,7 +584,6 @@ pub enum Action {
 
     // JSON detail
     JsonYankAll,
-    JsonYankSuccess,
     JsonEnterEdit,
     JsonAppendInsert,
     JsonExitEdit,
@@ -596,7 +595,6 @@ pub enum Action {
 
     // Cell detail
     CellDetailYankAll,
-    CellDetailYankSuccess,
     CellDetailEnterSearch,
     CellDetailExitSearch,
     CellDetailSearchNext,
@@ -606,7 +604,6 @@ pub enum Action {
     // Row Detail
     RowDetailYank,
     RowDetailYankJson,
-    RowDetailYankSuccess,
 
     // ER diagrams
     ErToggleSelection,
@@ -689,7 +686,7 @@ impl Action {
             Self::OpenModal(ModalKind::JsonDetail)
             | Self::ToggleModal(ModalKind::JsonDetail)
             | Self::JsonYankAll
-            | Self::JsonYankSuccess
+            | Self::CopySucceeded(CopyTarget::Panel(FlashId::JsonDetail))
             | Self::JsonEnterSearch
             | Self::JsonExitSearch
             | Self::JsonSearchNext
@@ -1019,17 +1016,38 @@ mod tests {
                 .collect();
             actions.extend(
                 [
-                    ("copied SqlModal", Action::SqlModalYankSuccess),
-                    ("copied Ddl", Action::DdlYankSuccess),
-                    ("copied JsonDetail", Action::JsonYankSuccess),
-                    ("copied CellDetail", Action::CellDetailYankSuccess),
-                    ("copied RowDetail", Action::RowDetailYankSuccess),
+                    (
+                        "copied SqlModal",
+                        Action::CopySucceeded(CopyTarget::Panel(FlashId::SqlModal)),
+                    ),
+                    (
+                        "copied Ddl",
+                        Action::CopySucceeded(CopyTarget::Panel(FlashId::Ddl)),
+                    ),
+                    (
+                        "copied JsonDetail",
+                        Action::CopySucceeded(CopyTarget::Panel(FlashId::JsonDetail)),
+                    ),
+                    (
+                        "copied CellDetail",
+                        Action::CopySucceeded(CopyTarget::Panel(FlashId::CellDetail)),
+                    ),
+                    (
+                        "copied RowDetail",
+                        Action::CopySucceeded(CopyTarget::Panel(FlashId::RowDetail)),
+                    ),
                     (
                         "copied ResultCell",
-                        Action::ResultCellYankSuccess { row: 0, col: 0 },
+                        Action::CopySucceeded(CopyTarget::ResultCell { row: 0, col: 0 }),
                     ),
-                    ("copied ResultRow", Action::ResultRowYankSuccess { row: 0 }),
-                    ("copied ConnectionError", Action::ConnectionErrorCopied),
+                    (
+                        "copied ResultRow",
+                        Action::CopySucceeded(CopyTarget::ResultRow { row: 0 }),
+                    ),
+                    (
+                        "copied ConnectionError",
+                        Action::CopySucceeded(CopyTarget::ConnectionError),
+                    ),
                     ("search JsonDetail Enter", Action::JsonEnterSearch),
                     ("search JsonDetail Exit", Action::JsonExitSearch),
                     ("search JsonDetail Next", Action::JsonSearchNext),

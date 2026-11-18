@@ -1,19 +1,14 @@
-use std::time::Instant;
-
 use crate::cmd::effect::Effect;
 use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::ConnectionTarget;
+use crate::update::action::CopyTarget;
 use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
 use crate::update::connection::helpers::cancel_connection_task_effects;
 use crate::update::dispatch_result::DispatchResult;
 
-pub(super) fn reduce_connection_error(
-    state: &mut AppState,
-    action: &Action,
-    now: Instant,
-) -> DispatchResult {
+pub(super) fn reduce_connection_error(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
         Action::CloseConnectionError => {
             if state.session.pending_mysql_connection_probe().is_some() {
@@ -54,16 +49,12 @@ pub(super) fn reduce_connection_error(
             if let Some(content) = state.connection_error.masked_details() {
                 DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                     content: content.to_string(),
-                    on_success: Box::new(Action::ConnectionErrorCopied),
+                    on_success: Box::new(Action::CopySucceeded(CopyTarget::ConnectionError)),
                     on_failure: None,
                 }])
             } else {
                 DispatchResult::handled()
             }
-        }
-        Action::ConnectionErrorCopied => {
-            state.connection_error.mark_copied_at(now);
-            DispatchResult::handled()
         }
         Action::ReenterConnectionSetup => {
             if !state.connection_error.is_save_and_connect_failure()
@@ -192,13 +183,12 @@ mod tests {
             ));
 
             let action = scroll_down_action();
-            let now = Instant::now();
 
-            reduce_connection_error(&mut state, &action, now);
-            reduce_connection_error(&mut state, &action, now);
+            reduce_connection_error(&mut state, &action);
+            reduce_connection_error(&mut state, &action);
             assert_eq!(state.connection_error.scroll_offset(), 2);
 
-            reduce_connection_error(&mut state, &action, now);
+            reduce_connection_error(&mut state, &action);
             assert_eq!(state.connection_error.scroll_offset(), 2);
         }
     }
@@ -217,7 +207,7 @@ mod tests {
             );
             state.modal.set_mode(InputMode::ConnectionError);
 
-            reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());
+            reduce_connection_error(&mut state, &Action::ReenterConnectionSetup);
 
             assert_eq!(state.input_mode(), InputMode::ConnectionError);
         }
@@ -234,7 +224,7 @@ mod tests {
             );
             state.modal.set_mode(InputMode::ConnectionError);
 
-            reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());
+            reduce_connection_error(&mut state, &Action::ReenterConnectionSetup);
 
             assert_eq!(state.input_mode(), InputMode::ConnectionError);
         }
@@ -245,7 +235,7 @@ mod tests {
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/db");
             state.modal.set_mode(InputMode::ConnectionError);
 
-            reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());
+            reduce_connection_error(&mut state, &Action::ReenterConnectionSetup);
 
             assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
         }
@@ -266,7 +256,7 @@ mod tests {
         state.session.set_connection_state(ConnectionState::Failed);
         state.modal.set_mode(InputMode::ConnectionError);
 
-        let effects = reduce_connection_error(&mut state, &Action::RetryConnection, Instant::now())
+        let effects = reduce_connection_error(&mut state, &Action::RetryConnection)
             .into_effects()
             .unwrap();
 
@@ -304,7 +294,7 @@ mod tests {
         state.session.set_connection_state(ConnectionState::Failed);
         state.modal.set_mode(InputMode::ConnectionError);
 
-        let effects = reduce_connection_error(&mut state, &Action::RetryConnection, Instant::now())
+        let effects = reduce_connection_error(&mut state, &Action::RetryConnection)
             .into_effects()
             .expect("retry action handled");
 
@@ -342,7 +332,7 @@ mod tests {
         ));
         state.modal.set_mode(InputMode::ConnectionError);
 
-        reduce_connection_error(&mut state, &Action::CloseConnectionError, Instant::now());
+        reduce_connection_error(&mut state, &Action::CloseConnectionError);
 
         assert!(state.session.pending_mysql_connection_probe().is_none());
         assert!(state.connection_error.error_info().is_none());
@@ -378,7 +368,7 @@ mod tests {
         state.modal.set_mode(InputMode::ConnectionError);
 
         assert!(!state.session.has_pending_connection_switch());
-        reduce_connection_error(&mut state, &Action::CloseConnectionError, Instant::now());
+        reduce_connection_error(&mut state, &Action::CloseConnectionError);
 
         assert!(state.session.pending_mysql_connection_probe().is_none());
         assert!(state.connection_error.error_info().is_none());
@@ -415,7 +405,7 @@ mod tests {
         ));
         state.modal.set_mode(InputMode::ConnectionError);
 
-        reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());
+        reduce_connection_error(&mut state, &Action::ReenterConnectionSetup);
 
         assert_eq!(state.input_mode(), InputMode::ConnectionError);
         assert_eq!(

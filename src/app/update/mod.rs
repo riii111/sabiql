@@ -2,6 +2,7 @@ pub mod action;
 pub(in crate::update) mod browse;
 #[cfg(test)]
 mod cache_flow_tests;
+pub(in crate::update) mod clipboard;
 pub(in crate::update) mod connection;
 pub(crate) mod dispatch_result;
 pub(in crate::update) mod er;

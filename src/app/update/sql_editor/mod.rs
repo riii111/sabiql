@@ -22,7 +22,7 @@ pub(in crate::update) fn dispatch_sql_modal(
         .or_else(|| mode::reduce_mode(state, action))
         .or_else(|| submit::reduce_submit(state, action, now))
         .or_else(|| high_risk::reduce_high_risk_confirmation(state, action, now))
-        .or_else(|| yank::reduce_yank(state, action, now))
+        .or_else(|| yank::reduce_yank(state, action))
 }
 
 #[cfg(test)]
@@ -31,7 +31,6 @@ mod tests {
     use crate::cmd::effect::Effect;
     use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, TableSummary};
     use crate::model::browse::query_execution::PostDeleteRowSelection;
-    use crate::model::shared::flash_timer::FlashId;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::sql_editor::modal::{AdhocSuccessSnapshot, SqlModalStatus, SqlModalTab};
     use crate::policy::write::sql_risk::AcknowledgeReason;
@@ -1049,16 +1048,6 @@ mod tests {
             assert!(
                 matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content == "SELECT 1")
             );
-        }
-
-        #[test]
-        fn yank_success_sets_flash() {
-            let mut state = sql_modal_state();
-            let now = Instant::now();
-
-            reduce_sql_modal(&mut state, &Action::SqlModalYankSuccess, now);
-
-            assert!(state.flash_timers.is_active(FlashId::SqlModal, now));
         }
 
         #[test]

@@ -7,8 +7,8 @@
 use std::time::Instant;
 
 use super::{
-    dispatch_connection, dispatch_er, dispatch_explain, dispatch_metadata, dispatch_modal,
-    dispatch_navigation, dispatch_query, dispatch_result, dispatch_sql_modal,
+    clipboard, dispatch_connection, dispatch_er, dispatch_explain, dispatch_metadata,
+    dispatch_modal, dispatch_navigation, dispatch_query, dispatch_result, dispatch_sql_modal,
 };
 use crate::catalog::HelpDocument;
 use crate::cmd::effect::Effect;
@@ -65,6 +65,7 @@ fn dispatch_enabled_action(
         .or_else(|| dispatch_metadata(state, &action, now))
         .or_else(|| dispatch_er(state, &action, now))
         .or_else(|| dispatch_query(state, &action, now))
+        .or_else(|| clipboard::reduce_clipboard(state, &action, now))
         .into_effects()
     {
         return effects;
@@ -206,6 +207,7 @@ mod tests {
     use crate::model::browse::session::TableDetailState;
     use crate::model::shared::ui_state::UiState;
     use crate::ports::outbound::DbOperationError;
+    use crate::update::action::CopyTarget;
     use crate::update::action::ModalKind;
     use crate::update::action::QueryCompletionContext;
     use crate::update::action::{ConnectionSaveError, ConnectionTarget, SmartErRefreshError};
@@ -431,7 +433,10 @@ mod tests {
         #[test]
         fn unsupported_json_and_analyze_actions_are_total_noops() {
             let mut json_state = sqlite_state();
-            assert_unsupported_action_is_a_noop(&mut json_state, Action::JsonYankSuccess);
+            assert_unsupported_action_is_a_noop(
+                &mut json_state,
+                Action::CopySucceeded(CopyTarget::Panel(FlashId::JsonDetail)),
+            );
             assert_unsupported_action_is_a_noop(&mut json_state, Action::JsonEnterEdit);
 
             let mut er_state = sqlite_state();
@@ -1571,7 +1576,7 @@ mod tests {
 
             reduce(
                 &mut state,
-                Action::ConnectionErrorCopied,
+                Action::CopySucceeded(CopyTarget::ConnectionError),
                 now,
                 &AppServices::stub(),
             );

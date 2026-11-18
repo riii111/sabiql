@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use crate::cmd::effect::Effect;
 use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
@@ -7,6 +5,7 @@ use crate::model::shared::detail_view::{DetailDisplayMode, ReadOnlyDetailState};
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::preview_cell_text::{CellPresentationPolicy, format_for_cell_detail};
+use crate::update::action::CopyTarget;
 use crate::update::action::{Action, InputTarget, ModalKind, ScrollDirection, ScrollTarget};
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{clipboard_unavailable, find_text_matches};
@@ -14,7 +13,6 @@ use crate::update::helpers::{clipboard_unavailable, find_text_matches};
 pub(in crate::update) fn reduce_cell_detail(
     state: &mut AppState,
     action: &Action,
-    now: Instant,
 ) -> DispatchResult {
     match action {
         Action::ResultOpenCellDetail => {
@@ -57,13 +55,11 @@ pub(in crate::update) fn reduce_cell_detail(
         }
         Action::CellDetailYankAll => DispatchResult::handled_with(vec![Effect::CopyToClipboard {
             content: state.cell_detail.content().to_string(),
-            on_success: Box::new(Action::CellDetailYankSuccess),
+            on_success: Box::new(Action::CopySucceeded(CopyTarget::Panel(
+                FlashId::CellDetail,
+            ))),
             on_failure: Some(Box::new(clipboard_unavailable())),
         }]),
-        Action::CellDetailYankSuccess => {
-            state.flash_timers.set(FlashId::CellDetail, now);
-            DispatchResult::handled()
-        }
         Action::CellDetailEnterSearch => {
             state.cell_detail.enter_search();
             DispatchResult::handled()
@@ -248,7 +244,7 @@ mod tests {
     fn long_text_cell_opens_read_only_detail() {
         let mut state = state_with_cell("text", &"a".repeat(60));
 
-        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail);
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert!(state.cell_detail.is_active());
@@ -259,7 +255,7 @@ mod tests {
     fn short_text_cell_opens_detail() {
         let mut state = state_with_cell("text", "short");
 
-        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail);
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert_eq!(state.cell_detail.content(), "short");
@@ -269,7 +265,7 @@ mod tests {
     fn json_column_opens_read_only_pretty_detail() {
         let mut state = state_with_cell("json", r#"{"b":2,"a":1}"#);
 
-        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail);
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert_eq!(state.cell_detail.content(), "{\n  \"a\": 1,\n  \"b\": 2\n}");
@@ -290,7 +286,7 @@ mod tests {
             "sqlite:///tmp/app.db",
         );
 
-        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail);
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert_eq!(state.cell_detail.content(), r#"{"b":2,"a":1}"#);
@@ -307,7 +303,7 @@ mod tests {
             "sqlite:///tmp/app.db",
         );
 
-        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail);
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert_eq!(
@@ -334,7 +330,7 @@ mod tests {
             "sqlite:///tmp/app.db",
         );
 
-        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail);
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert_eq!(state.cell_detail.content(), "hello");
@@ -351,7 +347,7 @@ mod tests {
             "sqlite:///tmp/app.db",
         );
 
-        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail);
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert_eq!(state.cell_detail.content(), "42");
@@ -372,7 +368,7 @@ mod tests {
             "sqlite:///tmp/app.db",
         );
 
-        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail);
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert_eq!(state.cell_detail.content(), "{\n  \"a\": 1\n}");
@@ -387,7 +383,7 @@ mod tests {
     fn text_json_container_opens_read_only_pretty_detail() {
         let mut state = state_with_cell("text", r#"{"items":["admin","writer"]}"#);
 
-        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail);
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert_eq!(
@@ -407,9 +403,9 @@ mod tests {
     #[test]
     fn yank_all_copies_displayed_cell_value() {
         let mut state = state_with_cell("json", r#"{"b":2,"a":1}"#);
-        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail);
 
-        let result = reduce_cell_detail(&mut state, &Action::CellDetailYankAll, Instant::now());
+        let result = reduce_cell_detail(&mut state, &Action::CellDetailYankAll);
 
         assert!(matches!(
             result.expect("yank should copy").as_slice(),
@@ -427,7 +423,7 @@ mod tests {
             "sqlite:///tmp/app.db",
         );
 
-        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail);
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert!(state.cell_detail.is_active());
@@ -440,7 +436,7 @@ mod tests {
     fn json_cell_dispatches_to_existing_json_modal() {
         let mut state = state_with_cell("jsonb", r#"{"a":1}"#);
 
-        let result = reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+        let result = reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail);
 
         assert!(matches!(
             result.expect("jsonb dispatch should be handled").as_slice(),
@@ -454,7 +450,7 @@ mod tests {
     fn json_document_null_dispatches_to_existing_json_modal() {
         let mut state = state_with_cell("jsonb", "null");
 
-        let result = reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+        let result = reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail);
 
         assert!(matches!(
             result.expect("json null dispatch should be handled").as_slice(),
@@ -483,7 +479,7 @@ mod tests {
                 QuerySource::Preview,
             )));
 
-        let result = reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+        let result = reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail);
 
         assert!(result.is_handled_and(Vec::is_empty));
         assert_eq!(state.input_mode(), InputMode::CellDetail);
@@ -514,7 +510,7 @@ mod tests {
                 QuerySource::Adhoc,
             )));
 
-        let effects = reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+        let effects = reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail);
 
         assert!(effects.is_handled_and(Vec::is_empty));
         assert_eq!(state.input_mode(), InputMode::CellDetail);
@@ -527,8 +523,8 @@ mod tests {
     #[test]
     fn search_input_tracks_matches_case_insensitively() {
         let mut state = state_with_cell("text", "Alpha\nalpha");
-        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
-        reduce_cell_detail(&mut state, &Action::CellDetailEnterSearch, Instant::now());
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail);
+        reduce_cell_detail(&mut state, &Action::CellDetailEnterSearch);
 
         reduce_cell_detail(
             &mut state,
@@ -536,7 +532,6 @@ mod tests {
                 target: InputTarget::CellDetailSearch,
                 ch: 'p',
             },
-            Instant::now(),
         );
 
         assert_eq!(state.cell_detail.search().matches(), &[2, 8]);

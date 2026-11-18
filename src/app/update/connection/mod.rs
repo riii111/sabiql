@@ -19,7 +19,7 @@ pub(in crate::update) fn dispatch_connection(
 ) -> DispatchResult {
     lifecycle::reduce_connection_lifecycle(state, action, now, services)
         .or_else(|| setup::reduce_connection_setup(state, action, now))
-        .or_else(|| error::reduce_connection_error(state, action, now))
+        .or_else(|| error::reduce_connection_error(state, action))
         .or_else(|| selector::reduce_connection_selector(state, action, now))
 }
 

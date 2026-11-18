@@ -7,19 +7,15 @@ use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::KeySequenceState;
 use crate::model::shared::ui_state::DEFAULT_JSON_DETAIL_EDITOR_VISIBLE_ROWS;
 use crate::policy::preview_cell_text::CellPresentationPolicy;
+use crate::update::action::CopyTarget;
 use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{
     EditGuardrailError, clipboard_unavailable, editable_preview_base, ensure_column_writable,
     find_text_matches,
 };
-use std::time::Instant;
 
-pub(in crate::update) fn reduce_json(
-    state: &mut AppState,
-    action: &Action,
-    now: Instant,
-) -> DispatchResult {
+pub(in crate::update) fn reduce_json(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::JsonDetail) => {
             let Some(result) = state.query.visible_result().filter(|r| !r.is_error()) else {
@@ -98,14 +94,11 @@ pub(in crate::update) fn reduce_json(
             let json = state.json_detail.current_json_for_yank();
             DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                 content: json,
-                on_success: Box::new(Action::JsonYankSuccess),
+                on_success: Box::new(Action::CopySucceeded(CopyTarget::Panel(
+                    FlashId::JsonDetail,
+                ))),
                 on_failure: Some(Box::new(clipboard_unavailable())),
             }])
-        }
-
-        Action::JsonYankSuccess => {
-            state.flash_timers.set(FlashId::JsonDetail, now);
-            DispatchResult::handled()
         }
 
         Action::JsonEnterEdit => {
@@ -403,6 +396,7 @@ mod tests {
     use crate::services::AppServices;
     use crate::update::action::TextKillDirection;
     use std::sync::Arc;
+    use std::time::Instant;
 
     fn json_table() -> Table {
         Table {
@@ -484,11 +478,7 @@ mod tests {
     }
 
     fn open_detail(state: &mut AppState) {
-        reduce_json(
-            state,
-            &Action::OpenModal(ModalKind::JsonDetail),
-            Instant::now(),
-        );
+        reduce_json(state, &Action::OpenModal(ModalKind::JsonDetail));
     }
 
     fn cursor_position(content: &str, cursor: usize) -> (usize, usize) {
@@ -518,11 +508,7 @@ mod tests {
         fn opens_on_valid_json_cell() {
             let mut state = state_with_json_cell();
 
-            reduce_json(
-                &mut state,
-                &Action::OpenModal(ModalKind::JsonDetail),
-                Instant::now(),
-            );
+            reduce_json(&mut state, &Action::OpenModal(ModalKind::JsonDetail));
 
             assert!(state.json_detail.is_active());
             assert_eq!(state.input_mode(), InputMode::JsonDetail);
@@ -537,11 +523,7 @@ mod tests {
         fn opens_on_mysql_json_documents(#[case] cell_value: &str) {
             let mut state = state_with_mysql_json_value(cell_value);
 
-            reduce_json(
-                &mut state,
-                &Action::OpenModal(ModalKind::JsonDetail),
-                Instant::now(),
-            );
+            reduce_json(&mut state, &Action::OpenModal(ModalKind::JsonDetail));
 
             assert!(state.json_detail.is_active());
             assert_eq!(state.input_mode(), InputMode::JsonDetail);
@@ -561,11 +543,7 @@ mod tests {
                     QuerySource::Preview,
                 )));
 
-            reduce_json(
-                &mut state,
-                &Action::OpenModal(ModalKind::JsonDetail),
-                Instant::now(),
-            );
+            reduce_json(&mut state, &Action::OpenModal(ModalKind::JsonDetail));
 
             assert!(!state.json_detail.is_active());
             assert_eq!(state.messages.last_error(), None);
@@ -576,11 +554,7 @@ mod tests {
             let mut state = state_with_json_cell();
             state.result_interaction.move_cell(0);
 
-            reduce_json(
-                &mut state,
-                &Action::OpenModal(ModalKind::JsonDetail),
-                Instant::now(),
-            );
+            reduce_json(&mut state, &Action::OpenModal(ModalKind::JsonDetail));
 
             assert!(!state.json_detail.is_active());
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -596,11 +570,7 @@ mod tests {
                 "sqlite:///tmp/app.db",
             );
 
-            reduce_json(
-                &mut state,
-                &Action::OpenModal(ModalKind::JsonDetail),
-                Instant::now(),
-            );
+            reduce_json(&mut state, &Action::OpenModal(ModalKind::JsonDetail));
 
             assert!(!state.json_detail.is_active());
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -619,11 +589,7 @@ mod tests {
                     QuerySource::Preview,
                 )));
 
-            reduce_json(
-                &mut state,
-                &Action::OpenModal(ModalKind::JsonDetail),
-                Instant::now(),
-            );
+            reduce_json(&mut state, &Action::OpenModal(ModalKind::JsonDetail));
 
             assert!(!state.json_detail.is_active());
         }
@@ -641,11 +607,7 @@ mod tests {
                     QuerySource::Preview,
                 )));
 
-            reduce_json(
-                &mut state,
-                &Action::OpenModal(ModalKind::JsonDetail),
-                Instant::now(),
-            );
+            reduce_json(&mut state, &Action::OpenModal(ModalKind::JsonDetail));
 
             assert!(!state.json_detail.is_active());
             assert_eq!(state.messages.last_error, None);
@@ -664,11 +626,7 @@ mod tests {
                     QuerySource::Adhoc,
                 )));
 
-            reduce_json(
-                &mut state,
-                &Action::OpenModal(ModalKind::JsonDetail),
-                Instant::now(),
-            );
+            reduce_json(&mut state, &Action::OpenModal(ModalKind::JsonDetail));
 
             assert!(!state.json_detail.is_active());
         }
@@ -678,11 +636,7 @@ mod tests {
             let mut state = state_with_json_cell();
             state.session.set_table_detail_raw(None);
 
-            reduce_json(
-                &mut state,
-                &Action::OpenModal(ModalKind::JsonDetail),
-                Instant::now(),
-            );
+            reduce_json(&mut state, &Action::OpenModal(ModalKind::JsonDetail));
 
             assert!(!state.json_detail.is_active());
         }
@@ -694,18 +648,10 @@ mod tests {
         #[test]
         fn close_clears_state() {
             let mut state = state_with_json_cell();
-            reduce_json(
-                &mut state,
-                &Action::OpenModal(ModalKind::JsonDetail),
-                Instant::now(),
-            );
+            reduce_json(&mut state, &Action::OpenModal(ModalKind::JsonDetail));
             assert!(state.json_detail.is_active());
 
-            reduce_json(
-                &mut state,
-                &Action::CloseModal(ModalKind::JsonDetail),
-                Instant::now(),
-            );
+            reduce_json(&mut state, &Action::CloseModal(ModalKind::JsonDetail));
 
             assert!(!state.json_detail.is_active());
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -724,7 +670,7 @@ mod tests {
             let mut state = state_with_json_cell();
             open_detail(&mut state);
 
-            reduce_json(&mut state, &Action::JsonEnterEdit, Instant::now());
+            reduce_json(&mut state, &Action::JsonEnterEdit);
 
             assert_eq!(state.input_mode(), InputMode::JsonEdit);
             assert_eq!(state.json_detail.mode(), JsonDetailMode::Editing);
@@ -768,7 +714,6 @@ mod tests {
                     target: InputTarget::JsonEdit,
                     direction: CursorMove::Down,
                 },
-                Instant::now(),
             );
             reduce_json(
                 &mut state,
@@ -776,11 +721,10 @@ mod tests {
                     target: InputTarget::JsonEdit,
                     direction: CursorMove::Right,
                 },
-                Instant::now(),
             );
             let expected = state.json_detail.editor().cursor();
 
-            reduce_json(&mut state, &Action::JsonEnterEdit, Instant::now());
+            reduce_json(&mut state, &Action::JsonEnterEdit);
 
             assert_eq!(state.json_detail.editor().cursor(), expected);
         }
@@ -794,7 +738,7 @@ mod tests {
                 .editor_mut()
                 .set_content_with_cursor("abc\ndef".to_string(), 1);
 
-            reduce_json(&mut state, &Action::JsonAppendInsert, Instant::now());
+            reduce_json(&mut state, &Action::JsonAppendInsert);
 
             assert_eq!(state.input_mode(), InputMode::JsonEdit);
             assert_eq!(state.json_detail.editor().cursor_to_position(), (0, 3));
@@ -819,7 +763,7 @@ mod tests {
             }));
             open_detail(&mut state);
 
-            reduce_json(&mut state, &Action::JsonEnterEdit, Instant::now());
+            reduce_json(&mut state, &Action::JsonEnterEdit);
 
             assert_eq!(state.input_mode(), InputMode::JsonDetail);
             assert_eq!(state.json_detail.mode(), JsonDetailMode::Viewing);
@@ -847,7 +791,7 @@ mod tests {
             }));
             open_detail(&mut state);
 
-            reduce_json(&mut state, &Action::JsonAppendInsert, Instant::now());
+            reduce_json(&mut state, &Action::JsonAppendInsert);
 
             assert_eq!(state.input_mode(), InputMode::JsonDetail);
             assert_eq!(state.json_detail.mode(), JsonDetailMode::Viewing);
@@ -869,7 +813,6 @@ mod tests {
                     target: InputTarget::JsonEdit,
                     direction: CursorMove::Down,
                 },
-                Instant::now(),
             );
             reduce_json(
                 &mut state,
@@ -877,7 +820,6 @@ mod tests {
                     target: InputTarget::JsonEdit,
                     direction: CursorMove::Down,
                 },
-                Instant::now(),
             );
 
             assert_eq!(state.json_detail.editor().scroll_row(), 1);
@@ -908,7 +850,6 @@ mod tests {
                     target: InputTarget::JsonEdit,
                     direction: movement,
                 },
-                Instant::now(),
             );
 
             assert_eq!(
@@ -933,7 +874,6 @@ mod tests {
                     target: InputTarget::JsonEdit,
                     direction: CursorMove::Right,
                 },
-                Instant::now(),
             );
 
             assert_eq!(state.ui.key_sequence().pending_prefix(), None);
@@ -945,7 +885,7 @@ mod tests {
             open_detail(&mut state);
             state.session.enable_read_only();
 
-            reduce_json(&mut state, &Action::JsonEnterEdit, Instant::now());
+            reduce_json(&mut state, &Action::JsonEnterEdit);
 
             assert_eq!(state.input_mode(), InputMode::JsonDetail);
             assert!(state.messages.last_error.is_some());
@@ -958,7 +898,7 @@ mod tests {
             state.session.enable_read_only();
             let cursor_before = state.json_detail.editor().cursor();
 
-            reduce_json(&mut state, &Action::JsonAppendInsert, Instant::now());
+            reduce_json(&mut state, &Action::JsonAppendInsert);
 
             assert_eq!(state.input_mode(), InputMode::JsonDetail);
             assert_eq!(state.json_detail.editor().cursor(), cursor_before);
@@ -969,9 +909,9 @@ mod tests {
         fn exit_edit_returns_to_viewing_mode() {
             let mut state = state_with_json_cell();
             open_detail(&mut state);
-            reduce_json(&mut state, &Action::JsonEnterEdit, Instant::now());
+            reduce_json(&mut state, &Action::JsonEnterEdit);
 
-            reduce_json(&mut state, &Action::JsonExitEdit, Instant::now());
+            reduce_json(&mut state, &Action::JsonExitEdit);
 
             assert_eq!(state.input_mode(), InputMode::JsonDetail);
             assert_eq!(state.json_detail.mode(), JsonDetailMode::Viewing);
@@ -982,7 +922,7 @@ mod tests {
         fn kill_then_yank_restores_json_editor_text() {
             let mut state = state_with_json_cell();
             open_detail(&mut state);
-            reduce_json(&mut state, &Action::JsonEnterEdit, Instant::now());
+            reduce_json(&mut state, &Action::JsonEnterEdit);
             state
                 .json_detail
                 .editor_mut()
@@ -994,14 +934,12 @@ mod tests {
                     target: InputTarget::JsonEdit,
                     direction: TextKillDirection::ToLineEnd,
                 },
-                Instant::now(),
             );
             reduce_json(
                 &mut state,
                 &Action::TextYank {
                     target: InputTarget::JsonEdit,
                 },
-                Instant::now(),
             );
 
             assert_eq!(state.json_detail.editor().content(), "before after");
@@ -1012,14 +950,14 @@ mod tests {
         fn reenter_edit_with_pending_changes_preserves_existing_cursor() {
             let mut state = state_with_json_cell();
             open_detail(&mut state);
-            reduce_json(&mut state, &Action::JsonEnterEdit, Instant::now());
+            reduce_json(&mut state, &Action::JsonEnterEdit);
             state
                 .json_detail
                 .editor_mut()
                 .set_content_with_cursor(r#"{"theme":"light","count":5}"#.to_string(), 7);
-            reduce_json(&mut state, &Action::JsonExitEdit, Instant::now());
+            reduce_json(&mut state, &Action::JsonExitEdit);
 
-            reduce_json(&mut state, &Action::JsonEnterEdit, Instant::now());
+            reduce_json(&mut state, &Action::JsonEnterEdit);
 
             assert_eq!(state.json_detail.editor().cursor(), 7);
         }
@@ -1028,18 +966,14 @@ mod tests {
         fn close_after_edit_with_valid_changes_stores_draft() {
             let mut state = state_with_json_cell();
             open_detail(&mut state);
-            reduce_json(&mut state, &Action::JsonEnterEdit, Instant::now());
+            reduce_json(&mut state, &Action::JsonEnterEdit);
             state
                 .json_detail
                 .editor_mut()
                 .set_content(r#"{"theme":"light","count":5}"#.to_string());
-            reduce_json(&mut state, &Action::JsonExitEdit, Instant::now());
+            reduce_json(&mut state, &Action::JsonExitEdit);
 
-            reduce_json(
-                &mut state,
-                &Action::CloseModal(ModalKind::JsonDetail),
-                Instant::now(),
-            );
+            reduce_json(&mut state, &Action::CloseModal(ModalKind::JsonDetail));
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(!state.json_detail.is_active());
@@ -1050,14 +984,10 @@ mod tests {
         fn close_after_edit_without_changes_no_draft() {
             let mut state = state_with_json_cell();
             open_detail(&mut state);
-            reduce_json(&mut state, &Action::JsonEnterEdit, Instant::now());
-            reduce_json(&mut state, &Action::JsonExitEdit, Instant::now());
+            reduce_json(&mut state, &Action::JsonEnterEdit);
+            reduce_json(&mut state, &Action::JsonExitEdit);
 
-            reduce_json(
-                &mut state,
-                &Action::CloseModal(ModalKind::JsonDetail),
-                Instant::now(),
-            );
+            reduce_json(&mut state, &Action::CloseModal(ModalKind::JsonDetail));
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(!state.result_interaction.cell_edit().has_pending_draft());
@@ -1070,14 +1000,10 @@ mod tests {
         #[test]
         fn copies_all_text_to_clipboard() {
             let mut state = state_with_json_cell();
-            reduce_json(
-                &mut state,
-                &Action::OpenModal(ModalKind::JsonDetail),
-                Instant::now(),
-            );
+            reduce_json(&mut state, &Action::OpenModal(ModalKind::JsonDetail));
 
             let now = Instant::now();
-            let effects = reduce_json(&mut state, &Action::JsonYankAll, now);
+            let effects = reduce_json(&mut state, &Action::JsonYankAll);
 
             let effects = effects.into_effects().expect("should return effects");
             assert_eq!(effects.len(), 1);
@@ -1088,21 +1014,14 @@ mod tests {
                     ..
                 } => {
                     assert!(content.contains("theme"));
-                    assert!(matches!(on_success.as_ref(), Action::JsonYankSuccess));
+                    assert!(matches!(
+                        on_success.as_ref(),
+                        Action::CopySucceeded(CopyTarget::Panel(FlashId::JsonDetail))
+                    ));
                 }
                 other => panic!("expected CopyToClipboard, got {other:?}"),
             }
             assert!(!state.flash_timers.is_active(FlashId::JsonDetail, now));
-        }
-
-        #[test]
-        fn success_sets_flash() {
-            let mut state = state_with_json_cell();
-            let now = Instant::now();
-
-            reduce_json(&mut state, &Action::JsonYankSuccess, now);
-
-            assert!(state.flash_timers.is_active(FlashId::JsonDetail, now));
         }
     }
 
@@ -1114,7 +1033,7 @@ mod tests {
             let mut state = state_with_json_cell();
             open_detail(&mut state);
 
-            reduce_json(&mut state, &Action::JsonEnterSearch, Instant::now());
+            reduce_json(&mut state, &Action::JsonEnterSearch);
 
             assert!(state.json_detail.search().is_active());
             assert_eq!(state.json_detail.mode(), JsonDetailMode::Searching);
@@ -1124,9 +1043,9 @@ mod tests {
         fn exit_search_deactivates_search_mode() {
             let mut state = state_with_json_cell();
             open_detail(&mut state);
-            reduce_json(&mut state, &Action::JsonEnterSearch, Instant::now());
+            reduce_json(&mut state, &Action::JsonEnterSearch);
 
-            reduce_json(&mut state, &Action::JsonExitSearch, Instant::now());
+            reduce_json(&mut state, &Action::JsonExitSearch);
 
             assert!(!state.json_detail.search().is_active());
             assert_eq!(state.json_detail.mode(), JsonDetailMode::Viewing);
@@ -1136,7 +1055,7 @@ mod tests {
         fn submit_deactivates_and_preserves_matches() {
             let mut state = state_with_json_cell();
             open_detail(&mut state);
-            reduce_json(&mut state, &Action::JsonEnterSearch, Instant::now());
+            reduce_json(&mut state, &Action::JsonEnterSearch);
 
             for ch in "theme".chars() {
                 reduce_json(
@@ -1145,13 +1064,12 @@ mod tests {
                         target: InputTarget::JsonSearch,
                         ch,
                     },
-                    Instant::now(),
                 );
             }
             let match_count = state.json_detail.search().matches().len();
             assert!(match_count > 0, "should find at least one match");
 
-            reduce_json(&mut state, &Action::JsonSearchSubmit, Instant::now());
+            reduce_json(&mut state, &Action::JsonSearchSubmit);
 
             assert!(!state.json_detail.search().is_active());
             let expected_cursor = state.json_detail.search().matches()[0];
@@ -1167,7 +1085,7 @@ mod tests {
         fn text_input_updates_search_matches_case_insensitively() {
             let mut state = state_with_json_cell();
             open_detail(&mut state);
-            reduce_json(&mut state, &Action::JsonEnterSearch, Instant::now());
+            reduce_json(&mut state, &Action::JsonEnterSearch);
 
             assert!(state.json_detail.search().matches().is_empty());
 
@@ -1178,7 +1096,6 @@ mod tests {
                         target: InputTarget::JsonSearch,
                         ch,
                     },
-                    Instant::now(),
                 );
             }
 
@@ -1192,7 +1109,7 @@ mod tests {
         fn kill_then_yank_restores_search_query_and_matches() {
             let mut state = state_with_json_cell();
             open_detail(&mut state);
-            reduce_json(&mut state, &Action::JsonEnterSearch, Instant::now());
+            reduce_json(&mut state, &Action::JsonEnterSearch);
 
             for ch in "theme".chars() {
                 reduce_json(
@@ -1201,7 +1118,6 @@ mod tests {
                         target: InputTarget::JsonSearch,
                         ch,
                     },
-                    Instant::now(),
                 );
             }
             reduce_json(
@@ -1210,14 +1126,12 @@ mod tests {
                     target: InputTarget::JsonSearch,
                     direction: TextKillDirection::ToLineStart,
                 },
-                Instant::now(),
             );
             reduce_json(
                 &mut state,
                 &Action::TextYank {
                     target: InputTarget::JsonSearch,
                 },
-                Instant::now(),
             );
 
             assert_eq!(state.json_detail.search().input().content(), "theme");
@@ -1228,7 +1142,7 @@ mod tests {
         fn next_cycles_through_matches_and_moves_cursor() {
             let mut state = state_with_json_cell();
             open_detail(&mut state);
-            reduce_json(&mut state, &Action::JsonEnterSearch, Instant::now());
+            reduce_json(&mut state, &Action::JsonEnterSearch);
 
             for ch in "t".chars() {
                 reduce_json(
@@ -1237,7 +1151,6 @@ mod tests {
                         target: InputTarget::JsonSearch,
                         ch,
                     },
-                    Instant::now(),
                 );
             }
             let match_count = state.json_detail.search().matches().len();
@@ -1247,7 +1160,7 @@ mod tests {
             );
             assert_eq!(state.json_detail.search().current_match(), 0);
 
-            reduce_json(&mut state, &Action::JsonSearchNext, Instant::now());
+            reduce_json(&mut state, &Action::JsonSearchNext);
 
             assert_eq!(state.json_detail.search().current_match(), 1);
             let expected_cursor = state.json_detail.search().matches()[1];
@@ -1262,7 +1175,7 @@ mod tests {
         fn prev_wraps_to_last_match_and_moves_cursor() {
             let mut state = state_with_json_cell();
             open_detail(&mut state);
-            reduce_json(&mut state, &Action::JsonEnterSearch, Instant::now());
+            reduce_json(&mut state, &Action::JsonEnterSearch);
 
             for ch in "t".chars() {
                 reduce_json(
@@ -1271,7 +1184,6 @@ mod tests {
                         target: InputTarget::JsonSearch,
                         ch,
                     },
-                    Instant::now(),
                 );
             }
             let match_count = state.json_detail.search().matches().len();
@@ -1279,7 +1191,7 @@ mod tests {
                 match_count > 1,
                 "test precondition: need 2+ matches for wrap test, got {match_count}"
             );
-            reduce_json(&mut state, &Action::JsonSearchPrev, Instant::now());
+            reduce_json(&mut state, &Action::JsonSearchPrev);
 
             assert_eq!(state.json_detail.search().current_match(), match_count - 1);
             let expected_cursor = state.json_detail.search().matches()[match_count - 1];
