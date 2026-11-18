@@ -9,7 +9,6 @@ use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
 use crate::cmd::browse as cmd_browse;
-use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::connection as cmd_connection;
 use crate::cmd::effect::Effect;
 use crate::cmd::er::handler as cmd_er;
@@ -21,6 +20,7 @@ use crate::cmd::sql_editor::query_history::spawn_query_history_load;
 use crate::cmd::sqlite_diagnostics;
 use crate::cmd::utility as cmd_utility;
 use crate::model::app_state::AppState;
+use crate::policy::sql::completion::CompletionEngine;
 use crate::ports::outbound::{
     CachedResultExporter, ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder,
     ErDiagramExporter, ErLogWriter, FolderOpener, MetadataProvider, MySqlConnectionProbe,

@@ -378,7 +378,6 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::mpsc;
 
-    use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::effect::Effect;
     use crate::cmd::test_fixtures::{self, NoopRenderer};
     use crate::domain::DatabaseMetadata;
@@ -388,6 +387,7 @@ mod tests {
         SqliteConnectionConfig, SqlitePathError, SslMode,
     };
     use crate::model::app_state::AppState;
+    use crate::policy::sql::completion::CompletionEngine;
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::mysql_connection_probe::MockMySqlConnectionProbe;

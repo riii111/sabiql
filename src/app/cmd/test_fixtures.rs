@@ -7,7 +7,6 @@ use std::time::{Duration, Instant};
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
-use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::effect::Effect;
 use crate::cmd::runner::{ConnectionDeps, EffectRunner, ErDeps, QueryDeps, UtilityDeps};
 use crate::domain::SqliteDiagnosticsSnapshot;
@@ -19,6 +18,7 @@ use crate::domain::{
 };
 use crate::model::app_state::AppState;
 use crate::model::browse::session::ConnectionSaveGuard;
+use crate::policy::sql::completion::CompletionEngine;
 use crate::ports::outbound::DbOperationError;
 use crate::ports::outbound::{
     AppSettings, CachedResultExporter, ClipboardError, ClipboardWriter, ConfigWriter,

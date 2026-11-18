@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 
-use crate::cmd::completion_engine::{CompletionDatabaseScope, CompletionEngine};
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
+use crate::policy::sql::completion::{CompletionDatabaseScope, CompletionEngine};
 use crate::update::action::Action;
 
 pub(in crate::cmd) fn run(

@@ -3,12 +3,12 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
-use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::effect::Effect;
 use crate::cmd::metadata_task::MetadataTaskRegistry;
 use crate::cmd::single_task_owner::SingleTaskOwner;
 use crate::cmd::sqlite_path_validate::validate_sqlite_database_path;
 use crate::domain::sqlite_path_from_dsn;
+use crate::policy::sql::completion::CompletionEngine;
 use crate::policy::sqlite_path::to_db_operation_error;
 use crate::ports::outbound::{DbOperationError, MetadataProvider, SqlitePathValidator};
 use crate::update::action::Action;
@@ -269,9 +269,9 @@ mod tests {
 
     use tokio::sync::mpsc;
 
-    use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::effect::Effect;
     use crate::cmd::test_fixtures;
+    use crate::policy::sql::completion::CompletionEngine;
 
     use crate::domain::SqlitePathError;
     use crate::model::app_state::AppState;

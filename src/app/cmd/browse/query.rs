@@ -406,11 +406,11 @@ mod tests {
 
     use tokio::sync::mpsc;
 
-    use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::effect::Effect;
     use crate::cmd::test_fixtures;
     use crate::domain::{DatabaseDiagnostic, DiagnosticLevel, WriteExecutionResult};
     use crate::model::app_state::AppState;
+    use crate::policy::sql::completion::CompletionEngine;
     use crate::ports::outbound::AccessMode;
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
@@ -1048,11 +1048,11 @@ mod tests {
 
         use tokio::sync::mpsc;
 
-        use crate::cmd::completion_engine::CompletionEngine;
         use crate::cmd::effect::Effect;
         use crate::cmd::test_fixtures;
         use crate::domain::QueryValue;
         use crate::model::app_state::AppState;
+        use crate::policy::sql::completion::CompletionEngine;
         use crate::ports::outbound::connection_store::MockConnectionStore;
         use crate::ports::outbound::metadata::MockMetadataProvider;
         use crate::ports::outbound::query_executor::MockQueryExecutor;
@@ -1159,9 +1159,9 @@ mod tests {
 
         use tokio::sync::mpsc;
 
-        use crate::cmd::completion_engine::CompletionEngine;
         use crate::cmd::effect::Effect;
         use crate::cmd::test_fixtures;
+        use crate::policy::sql::completion::CompletionEngine;
 
         use crate::model::app_state::AppState;
         use crate::ports::outbound::DbOperationError;

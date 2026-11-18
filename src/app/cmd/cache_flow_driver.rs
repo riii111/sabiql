@@ -5,13 +5,13 @@ use std::time::Instant;
 
 use tokio::sync::mpsc;
 
-use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::effect::Effect;
 use crate::cmd::er::handler as cmd_er;
 use crate::cmd::sql_editor::completion as cmd_completion;
 use crate::cmd::test_fixtures::{NoopConfigWriter, NoopErExporter, NoopErLogWriter};
 use crate::domain::Table;
 use crate::model::app_state::AppState;
+use crate::policy::sql::completion::CompletionEngine;
 use crate::ports::outbound::{ConfigWriter, ErDiagramExporter, ErLogWriter};
 use crate::services::AppServices;
 use crate::update::action::Action;

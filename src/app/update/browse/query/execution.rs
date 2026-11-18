@@ -361,11 +361,11 @@ fn apply_preview_result(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::runner::EffectRunner;
     use crate::cmd::test_fixtures;
     use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType};
     use crate::model::er_state::ErStatus;
+    use crate::policy::sql::completion::CompletionEngine;
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::query_executor::MockQueryExecutor;

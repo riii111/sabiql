@@ -6,11 +6,11 @@ use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
 use super::task::spawn_er_diagram_task;
-use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::effect::Effect;
 use crate::domain::er::{er_output_filename, fk_neighbors_of_seeds, fk_reachable_tables_multi};
 use crate::domain::{DatabaseMetadata, ErTableInfo, TableSignatureSnapshot};
 use crate::model::app_state::AppState;
+use crate::policy::sql::completion::CompletionEngine;
 use crate::ports::outbound::{ConfigWriter, ErDiagramExporter, ErLogWriter, MetadataProvider};
 use crate::update::action::{
     Action, SmartErRefreshError, SmartErRefreshFetched, SmartErRefreshResult,
