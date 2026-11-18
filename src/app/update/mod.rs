@@ -24,6 +24,5 @@ pub(crate) use browse::metadata::dispatch_metadata;
 pub(in crate::update) use browse::navigation::dispatch_navigation;
 pub(in crate::update) use browse::query::dispatch_query;
 pub use browse::result::dispatch_result;
-pub(in crate::update) use connection::dispatch_connection;
 pub(in crate::update) use modal::dispatch_modal;
 pub(in crate::update) use sql_editor::dispatch_sql_modal;

@@ -7,8 +7,8 @@
 use std::time::Instant;
 
 use super::{
-    clipboard, dispatch_connection, dispatch_metadata, dispatch_modal, dispatch_navigation,
-    dispatch_query, dispatch_result, dispatch_sql_modal, er, explain, target_routing, text_edit,
+    clipboard, connection, dispatch_metadata, dispatch_modal, dispatch_navigation, dispatch_query,
+    dispatch_result, dispatch_sql_modal, er, explain, target_routing, text_edit,
 };
 use crate::catalog::HelpDocument;
 use crate::cmd::effect::Effect;
@@ -106,6 +106,81 @@ pub(in crate::update) fn route(
         Action::CloseModal(kind) => target_routing::close_modal(state, kind, now, services),
         Action::CancelKeySequence => cancel_key_sequence(state),
         Action::ConfirmSelection => confirm_selection(state, now, services),
+        Action::TryConnect => connection::lifecycle::try_connect(state),
+        Action::SwitchConnection(target) => connection::lifecycle::switch_connection(state, target),
+        Action::ConnectionSetupNextField => connection::setup::connection_setup_next_field(state),
+        Action::ConnectionSetupPrevField => connection::setup::connection_setup_prev_field(state),
+        Action::ConnectionSetupToggleDropdown => {
+            connection::setup::connection_setup_toggle_dropdown(state)
+        }
+        Action::ConnectionSetupDropdownNext => {
+            connection::setup::connection_setup_dropdown_next(state)
+        }
+        Action::ConnectionSetupDropdownPrev => {
+            connection::setup::connection_setup_dropdown_prev(state)
+        }
+        Action::ConnectionSetupDropdownConfirm => {
+            connection::setup::connection_setup_dropdown_confirm(state)
+        }
+        Action::ConnectionSetupDropdownCancel => {
+            connection::setup::connection_setup_dropdown_cancel(state)
+        }
+        Action::ConnectionSetupSave => connection::setup::connection_setup_save(state),
+        Action::ConnectionSetupCancel => connection::setup::connection_setup_cancel(state),
+        Action::ConnectionSaveCompleted {
+            target,
+            run_id,
+            mysql_lower_case_table_names,
+            metadata,
+        } => connection::setup::connection_save_completed(
+            state,
+            target,
+            run_id,
+            mysql_lower_case_table_names,
+            metadata,
+        ),
+        Action::ConnectionSaveFailed { error, run_id } => {
+            connection::setup::connection_save_failed(state, error, run_id)
+        }
+        Action::MySqlConnectionProbeCompleted {
+            target,
+            run_id,
+            lower_case_table_names,
+        } => connection::lifecycle::mysql_connection_probe_completed(
+            state,
+            target,
+            run_id,
+            lower_case_table_names,
+        ),
+        Action::MySqlConnectionProbeFailed {
+            target,
+            run_id,
+            error,
+        } => connection::lifecycle::mysql_connection_probe_failed(state, target, run_id, error),
+        Action::ConnectionEditLoaded(profile) => {
+            connection::setup::connection_edit_loaded(state, profile)
+        }
+        Action::ConnectionEditLoadFailed(error) => {
+            connection::setup::connection_edit_load_failed(state, error)
+        }
+        Action::CloseConnectionError => connection::error::close_connection_error(state),
+        Action::ToggleConnectionErrorDetails => {
+            connection::error::toggle_connection_error_details(state)
+        }
+        Action::CopyConnectionError => connection::error::copy_connection_error(state),
+        Action::ReenterConnectionSetup => connection::error::reenter_connection_setup(state),
+        Action::RetryConnection => connection::error::retry_connection(state),
+        Action::RequestDeleteSelectedConnection => {
+            connection::selector::request_delete_selected_connection(state)
+        }
+        Action::DeleteConnection(id) => connection::selector::delete_connection(state, id),
+        Action::ConnectionDeleted(id) => connection::selector::connection_deleted(state, id, now),
+        Action::ConnectionDeleteFailed(error) => {
+            connection::selector::connection_delete_failed(state, error)
+        }
+        Action::RequestEditSelectedConnection => {
+            connection::selector::request_edit_selected_connection(state)
+        }
         Action::SqlModalNextTab => explain::tabs::sql_modal_next_tab(state),
         Action::SqlModalPrevTab => explain::tabs::sql_modal_prev_tab(state),
         Action::ExplainRequest => explain::request::explain_request(state, now),
@@ -162,8 +237,7 @@ pub(in crate::update) fn legacy_dispatch(
     now: Instant,
     services: &AppServices,
 ) -> Vec<Effect> {
-    if let Some(effects) = dispatch_connection(state, &action, now, services)
-        .or_else(|| dispatch_modal(state, &action, now))
+    if let Some(effects) = dispatch_modal(state, &action, now)
         .or_else(|| dispatch_result(state, &action, services, now))
         .or_else(|| dispatch_navigation(state, &action, services, now))
         .or_else(|| dispatch_sql_modal(state, &action, now))

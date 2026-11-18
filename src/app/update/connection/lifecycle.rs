@@ -3,12 +3,10 @@ use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::connection::error::ConnectionErrorInfo;
 use crate::model::shared::input_mode::InputMode;
-use crate::services::AppServices;
-use crate::update::action::{Action, ConnectionTarget};
+use crate::ports::outbound::DbOperationError;
+use crate::update::action::ConnectionTarget;
 use crate::update::helpers::metadata_reload_effects;
 use crate::update::query_context::termination_effects;
-
-use crate::update::dispatch_result::DispatchResult;
 
 use super::helpers::{
     mysql_connection_completion_effects, reset_for_new_connection, restore_cache,
@@ -20,159 +18,148 @@ fn clear_query_confirmation(state: &mut AppState) {
     state.sql_modal.enter_normal();
 }
 
-pub(in crate::update) fn reduce_connection_lifecycle(
+pub(in crate::update) fn switch_connection(
     state: &mut AppState,
-    action: &Action,
-    _now: std::time::Instant,
-    _services: &AppServices,
-) -> DispatchResult {
-    match action {
-        Action::TryConnect => DispatchResult::handled_with(try_connect(state)),
+    target: ConnectionTarget,
+) -> Vec<Effect> {
+    state.session.cancel_connection_save_and_disconnect();
+    state.connection_error.clear();
+    let ConnectionTarget {
+        id,
+        dsn,
+        name,
+        database_type,
+        database,
+    } = &target;
 
-        Action::SwitchConnection(target) => {
-            state.session.cancel_connection_save_and_disconnect();
-            state.connection_error.clear();
-            let ConnectionTarget {
-                id,
-                dsn,
-                name,
-                database_type,
-                database,
-            } = target;
+    if *database_type == DatabaseType::MySQL && database.is_none() {
+        state
+            .messages
+            .set_error("MySQL connection field `database` is required".to_string());
+        return vec![];
+    }
 
-            if *database_type == DatabaseType::MySQL && database.is_none() {
-                state
-                    .messages
-                    .set_error("MySQL connection field `database` is required".to_string());
-                return DispatchResult::handled();
-            }
+    save_current_connection_cache(state);
+    clear_query_confirmation(state);
 
-            save_current_connection_cache(state);
-            clear_query_confirmation(state);
+    if *database_type == DatabaseType::MySQL {
+        let run_id = state
+            .session
+            .begin_mysql_connection_probe(id, name, dsn, database.as_deref());
+        state.query.reset_for_context_change();
+        return termination_effects(
+            &state.query,
+            vec![Effect::ProbeMySqlConnection {
+                target: target.clone(),
+                run_id,
+            }],
+        );
+    }
 
-            if *database_type == DatabaseType::MySQL {
-                let run_id =
-                    state
-                        .session
-                        .begin_mysql_connection_probe(id, name, dsn, database.as_deref());
-                state.query.reset_for_context_change();
-                return DispatchResult::handled_with(termination_effects(
-                    &state.query,
-                    vec![Effect::ProbeMySqlConnection {
-                        target: target.clone(),
-                        run_id,
-                    }],
-                ));
-            }
+    state.session.clear_mysql_connection_probe();
 
-            state.session.clear_mysql_connection_probe();
-
-            if let Some(cached) = state.connection_caches.get(id).cloned() {
-                restore_cache(state, &cached, target);
-                state.table_detail_cache.clear();
-                let mut effects = vec![];
-                if state.session.effective_user().is_none() {
-                    let run_id = state.session.begin_effective_user_fetch();
-                    effects.push(Effect::FetchEffectiveUser {
-                        dsn: dsn.clone(),
-                        run_id,
-                    });
-                }
-                DispatchResult::handled_with(termination_effects(&state.query, effects))
-            } else {
-                // No cache: reset and fetch metadata
-                reset_for_new_connection(state, target);
-                let run_id = state.session.begin_connecting(dsn);
-                state.table_detail_cache.clear();
-                DispatchResult::handled_with(termination_effects(
-                    &state.query,
-                    vec![Effect::FetchMetadata {
-                        dsn: dsn.clone(),
-                        run_id,
-                    }],
-                ))
-            }
+    if let Some(cached) = state.connection_caches.get(id).cloned() {
+        restore_cache(state, &cached, &target);
+        state.table_detail_cache.clear();
+        let mut effects = vec![];
+        if state.session.effective_user().is_none() {
+            let run_id = state.session.begin_effective_user_fetch();
+            effects.push(Effect::FetchEffectiveUser {
+                dsn: dsn.clone(),
+                run_id,
+            });
         }
-
-        Action::MySqlConnectionProbeCompleted {
-            target,
-            run_id,
-            lower_case_table_names,
-        } => {
-            let ConnectionTarget {
-                id,
-                dsn,
-                database_type,
-                ..
-            } = target;
-            if *database_type != DatabaseType::MySQL
-                || !state.session.is_current_mysql_connection_probe(*run_id)
-            {
-                return DispatchResult::handled();
-            }
-            let cached = state.connection_caches.get(id).cloned();
-            if let Some(cached) = cached.filter(|cache| cache.is_valid_mysql_snapshot(dsn)) {
-                restore_cache(state, &cached, target);
-                state
-                    .session
-                    .set_mysql_lower_case_table_names(*lower_case_table_names);
-                let reload_effects = metadata_reload_effects(state, dsn);
-                return DispatchResult::handled_with(termination_effects(
-                    &state.query,
-                    reload_effects,
-                ));
-            }
-
-            state.connection_caches.remove(id);
-            reset_for_new_connection(state, target);
-            state
-                .session
-                .set_mysql_lower_case_table_names(*lower_case_table_names);
-            DispatchResult::handled_with(mysql_connection_completion_effects(state, dsn))
-        }
-
-        Action::MySqlConnectionProbeFailed {
-            target,
-            run_id,
-            error,
-        } => {
-            if target.database_type != DatabaseType::MySQL
-                || !state.session.is_current_mysql_connection_probe(*run_id)
-            {
-                return DispatchResult::handled();
-            }
-            let message = error.user_message();
-            let table_detail_retry = if state.session.dsn_matches(&target.dsn) {
-                None
-            } else {
-                state.session.retry_table_detail_after_probe_failure().map(
-                    |(dsn, generation, run_id)| Effect::FetchTableDetail {
-                        dsn,
-                        schema: state.query.pagination.schema().to_string(),
-                        table: state.query.pagination.table().to_string(),
-                        generation,
-                        run_id,
-                    },
-                )
-            };
-            if state.session.dsn_matches(&target.dsn) {
-                state
-                    .session
-                    .mark_table_detail_probe_failed(&target.dsn, message);
-                state.session.mark_connection_failed();
-            }
-            state
-                .connection_error
-                .set_connection_switch_error(ConnectionErrorInfo::from_db_operation_error(error));
-            state.modal.replace_mode(InputMode::ConnectionError);
-            DispatchResult::handled_with(table_detail_retry.into_iter().collect())
-        }
-
-        _ => DispatchResult::pass(),
+        termination_effects(&state.query, effects)
+    } else {
+        // No cache: reset and fetch metadata
+        reset_for_new_connection(state, &target);
+        let run_id = state.session.begin_connecting(dsn);
+        state.table_detail_cache.clear();
+        termination_effects(
+            &state.query,
+            vec![Effect::FetchMetadata {
+                dsn: dsn.clone(),
+                run_id,
+            }],
+        )
     }
 }
 
-pub(super) fn try_connect(state: &mut AppState) -> Vec<Effect> {
+pub(in crate::update) fn mysql_connection_probe_completed(
+    state: &mut AppState,
+    target: ConnectionTarget,
+    run_id: u64,
+    lower_case_table_names: u8,
+) -> Vec<Effect> {
+    let ConnectionTarget {
+        id,
+        dsn,
+        database_type,
+        ..
+    } = &target;
+    if *database_type != DatabaseType::MySQL
+        || !state.session.is_current_mysql_connection_probe(run_id)
+    {
+        return vec![];
+    }
+    let cached = state.connection_caches.get(id).cloned();
+    if let Some(cached) = cached.filter(|cache| cache.is_valid_mysql_snapshot(dsn)) {
+        restore_cache(state, &cached, &target);
+        state
+            .session
+            .set_mysql_lower_case_table_names(lower_case_table_names);
+        let reload_effects = metadata_reload_effects(state, dsn);
+        return termination_effects(&state.query, reload_effects);
+    }
+
+    state.connection_caches.remove(id);
+    reset_for_new_connection(state, &target);
+    state
+        .session
+        .set_mysql_lower_case_table_names(lower_case_table_names);
+    mysql_connection_completion_effects(state, dsn)
+}
+
+pub(in crate::update) fn mysql_connection_probe_failed(
+    state: &mut AppState,
+    target: ConnectionTarget,
+    run_id: u64,
+    error: DbOperationError,
+) -> Vec<Effect> {
+    if target.database_type != DatabaseType::MySQL
+        || !state.session.is_current_mysql_connection_probe(run_id)
+    {
+        return vec![];
+    }
+    let message = error.user_message();
+    let table_detail_retry = if state.session.dsn_matches(&target.dsn) {
+        None
+    } else {
+        state
+            .session
+            .retry_table_detail_after_probe_failure()
+            .map(|(dsn, generation, run_id)| Effect::FetchTableDetail {
+                dsn,
+                schema: state.query.pagination.schema().to_string(),
+                table: state.query.pagination.table().to_string(),
+                generation,
+                run_id,
+            })
+    };
+    if state.session.dsn_matches(&target.dsn) {
+        state
+            .session
+            .mark_table_detail_probe_failed(&target.dsn, message);
+        state.session.mark_connection_failed();
+    }
+    state
+        .connection_error
+        .set_connection_switch_error(ConnectionErrorInfo::from_db_operation_error(&error));
+    state.modal.replace_mode(InputMode::ConnectionError);
+    table_detail_retry.into_iter().collect()
+}
+
+pub(in crate::update) fn try_connect(state: &mut AppState) -> Vec<Effect> {
     state.session.cancel_connection_save_and_disconnect();
     if !state.session.connection_state().is_not_connected()
         || state.modal.active_mode() != InputMode::Normal
@@ -242,21 +229,22 @@ mod tests {
     use crate::model::shared::ui_state::ResultNavMode;
     use crate::model::sql_editor::modal::SqlModalStatus;
     use crate::ports::outbound::{ConnectionFailureKind, DbOperationError};
+    use crate::services::AppServices;
     use crate::test_support::connection::{
         assert_explain_state_cleared, assert_sqlite_diagnostics_cleared,
     };
-    use crate::update::connection::error::reduce_connection_error;
+    use crate::update::action::Action;
     use crate::update::reducer::reduce as reduce_app;
+    use crate::update::reducer::route;
     use crate::update::test_fixtures;
 
-    fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
-        reduce_connection_lifecycle(
+    fn reduce(state: &mut AppState, action: &Action) -> Vec<Effect> {
+        route(
             state,
-            action,
+            action.clone(),
             std::time::Instant::now(),
             &AppServices::stub(),
         )
-        .into_effects()
     }
 
     fn create_postgres_switch_action(id: &ConnectionId, name: &str) -> Action {
@@ -302,8 +290,7 @@ mod tests {
         fn reload_during_switch_preserves_probe_until_success() {
             let mut state = active_mysql_state();
             let target = mysql_target("mysql-b", "b");
-            let probe_effects = reduce(&mut state, &Action::SwitchConnection(target.clone()))
-                .expect("switch should start a probe");
+            let probe_effects = reduce(&mut state, &Action::SwitchConnection(target.clone()));
             let probe_run_id = probe_effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -374,9 +361,7 @@ mod tests {
                 "connection refused",
             ));
 
-            let retry_effects = reduce_connection_error(&mut state, &Action::RetryConnection)
-                .into_effects()
-                .unwrap();
+            let retry_effects = reduce(&mut state, &Action::RetryConnection);
             let retry_run_id = retry_effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -434,8 +419,7 @@ mod tests {
         fn reload_during_switch_preserves_probe_until_failure() {
             let mut state = active_mysql_state();
             let target = mysql_target("mysql-b", "b");
-            let probe_effects = reduce(&mut state, &Action::SwitchConnection(target.clone()))
-                .expect("switch should start a probe");
+            let probe_effects = reduce(&mut state, &Action::SwitchConnection(target.clone()));
             let probe_run_id = probe_effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -478,9 +462,7 @@ mod tests {
             assert_eq!(state.modal.active_mode(), InputMode::ConnectionError);
             assert!(state.connection_error.can_retry());
 
-            let retry_effects = reduce_connection_error(&mut state, &Action::RetryConnection)
-                .into_effects()
-                .unwrap();
+            let retry_effects = reduce(&mut state, &Action::RetryConnection);
             assert!(retry_effects.iter().any(|effect| matches!(
                 effect,
                 Effect::ProbeMySqlConnection { target: retry_target, .. }
@@ -583,7 +565,7 @@ mod tests {
                 database_type: DatabaseType::MySQL,
                 database: Some("app".to_string()),
             };
-            let effects = reduce(&mut state, &Action::SwitchConnection(mysql.clone())).unwrap();
+            let effects = reduce(&mut state, &Action::SwitchConnection(mysql.clone()));
             let run_id = effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -962,7 +944,7 @@ mod tests {
             let new_id = ConnectionId::new();
 
             let action = create_postgres_switch_action(&new_id, "fresh_db");
-            let effects = reduce(&mut state, &action).unwrap();
+            let effects = reduce(&mut state, &action);
 
             assert!(
                 effects
@@ -994,7 +976,7 @@ mod tests {
                 database_type: DatabaseType::SQLite,
                 database: None,
             });
-            let effects = reduce(&mut state, &action).unwrap();
+            let effects = reduce(&mut state, &action);
 
             assert!(
                 effects
@@ -1058,8 +1040,7 @@ mod tests {
                 valid_mysql_cache(&target.dsn, target.database.as_deref().unwrap()),
             );
 
-            let probe_effects = reduce(&mut state, &Action::SwitchConnection(target.clone()))
-                .expect("switch should start a probe");
+            let probe_effects = reduce(&mut state, &Action::SwitchConnection(target.clone()));
             let probe_run_id = probe_effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -1075,8 +1056,7 @@ mod tests {
                     run_id: probe_run_id,
                     lower_case_table_names: 0,
                 },
-            )
-            .expect("probe completion should be handled");
+            );
 
             assert!(
                 effects
@@ -1151,8 +1131,7 @@ mod tests {
                 .connection_caches
                 .insert(target_id.clone(), valid_mysql_cache(cached_dsn, "app"));
 
-            let probe_effects =
-                reduce(&mut state, &Action::SwitchConnection(target.clone())).unwrap();
+            let probe_effects = reduce(&mut state, &Action::SwitchConnection(target.clone()));
             let probe_run_id = probe_effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -1167,8 +1146,7 @@ mod tests {
                     run_id: probe_run_id,
                     lower_case_table_names: 0,
                 },
-            )
-            .unwrap();
+            );
 
             assert!(
                 effects
@@ -1190,7 +1168,6 @@ mod tests {
             );
 
             let probe_run_id = reduce(&mut state, &Action::SwitchConnection(target.clone()))
-                .unwrap()
                 .iter()
                 .find_map(|effect| match effect {
                     Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
@@ -1210,7 +1187,6 @@ mod tests {
             let other_id = ConnectionId::from_string("mysql-other");
             let other = mysql_target(&other_id, "mysql://user@localhost:3306/other", "other");
             let other_probe_run_id = reduce(&mut state, &Action::SwitchConnection(other.clone()))
-                .unwrap()
                 .iter()
                 .find_map(|effect| match effect {
                     Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
@@ -1227,7 +1203,6 @@ mod tests {
             );
 
             let probe_run_id = reduce(&mut state, &Action::SwitchConnection(target.clone()))
-                .unwrap()
                 .iter()
                 .find_map(|effect| match effect {
                     Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
@@ -1266,8 +1241,7 @@ mod tests {
                 valid_mysql_cache(&target.dsn, target.database.as_deref().unwrap()),
             );
 
-            let probe_effects = reduce(&mut state, &Action::SwitchConnection(target.clone()))
-                .expect("switch should start a probe");
+            let probe_effects = reduce(&mut state, &Action::SwitchConnection(target.clone()));
             let probe_run_id = probe_effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -1315,7 +1289,7 @@ mod tests {
                 database_type: DatabaseType::SQLite,
                 database: None,
             });
-            let effects = reduce(&mut state, &action).unwrap();
+            let effects = reduce(&mut state, &action);
 
             assert!(
                 !effects
@@ -1505,7 +1479,7 @@ mod tests {
                 .session
                 .set_connection_state(ConnectionState::NotConnected);
 
-            let effects = reduce(&mut state, &Action::TryConnect).unwrap();
+            let effects = reduce(&mut state, &Action::TryConnect);
 
             assert!(
                 effects
@@ -1529,7 +1503,7 @@ mod tests {
                 database: Some("app".to_string()),
             };
 
-            let effects = reduce(&mut state, &Action::SwitchConnection(target.clone())).unwrap();
+            let effects = reduce(&mut state, &Action::SwitchConnection(target.clone()));
 
             assert!(effects.iter().any(|effect| matches!(
                 effect,
@@ -1552,8 +1526,7 @@ mod tests {
                 database_type: DatabaseType::MySQL,
                 database: Some("app".to_string()),
             };
-            let probe_effects = reduce(&mut state, &Action::SwitchConnection(target.clone()))
-                .expect("switch should start a probe");
+            let probe_effects = reduce(&mut state, &Action::SwitchConnection(target.clone()));
             let probe_run_id = probe_effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -1569,8 +1542,7 @@ mod tests {
                     run_id: probe_run_id,
                     lower_case_table_names: 0,
                 },
-            )
-            .expect("probe completion should be handled");
+            );
 
             assert!(effects.iter().any(|effect| matches!(
                 effect,
@@ -1618,7 +1590,7 @@ mod tests {
                 database_type: DatabaseType::PostgreSQL,
                 database: None,
             };
-            let postgres_effects = reduce(&mut state, &Action::SwitchConnection(postgres)).unwrap();
+            let postgres_effects = reduce(&mut state, &Action::SwitchConnection(postgres));
             let postgres_run_id = postgres_effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -1634,8 +1606,7 @@ mod tests {
                 database_type: DatabaseType::MySQL,
                 database: Some("c".to_string()),
             };
-            let mysql_effects =
-                reduce(&mut state, &Action::SwitchConnection(mysql.clone())).unwrap();
+            let mysql_effects = reduce(&mut state, &Action::SwitchConnection(mysql.clone()));
             let mysql_run_id = mysql_effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -1679,7 +1650,7 @@ mod tests {
                 database_type: DatabaseType::PostgreSQL,
                 database: None,
             };
-            let _ = reduce(&mut state, &Action::SwitchConnection(postgres)).unwrap();
+            let _ = reduce(&mut state, &Action::SwitchConnection(postgres));
 
             let mysql = ConnectionTarget {
                 id: ConnectionId::from_string("mysql-c"),
@@ -1688,8 +1659,7 @@ mod tests {
                 database_type: DatabaseType::MySQL,
                 database: Some("c".to_string()),
             };
-            let mysql_effects =
-                reduce(&mut state, &Action::SwitchConnection(mysql.clone())).unwrap();
+            let mysql_effects = reduce(&mut state, &Action::SwitchConnection(mysql.clone()));
             let mysql_run_id = mysql_effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -1738,8 +1708,7 @@ mod tests {
                 database_type: DatabaseType::MySQL,
                 database: Some("c".to_string()),
             };
-            let mysql_effects =
-                reduce(&mut state, &Action::SwitchConnection(mysql.clone())).unwrap();
+            let mysql_effects = reduce(&mut state, &Action::SwitchConnection(mysql.clone()));
             let mysql_run_id = mysql_effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -1793,7 +1762,7 @@ mod tests {
                 database_type: DatabaseType::MySQL,
                 database: Some("b".to_string()),
             };
-            let effects = reduce(&mut state, &Action::SwitchConnection(second.clone())).unwrap();
+            let effects = reduce(&mut state, &Action::SwitchConnection(second.clone()));
             let probe_run_id = effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -1809,8 +1778,7 @@ mod tests {
                     run_id: probe_run_id,
                     error: DbOperationError::ConnectionFailed("refused".to_string()),
                 },
-            )
-            .unwrap();
+            );
 
             assert!(state.session.connection_state().is_connected());
             assert_eq!(state.session.selected_table_key(), Some("public.users"));
@@ -1903,7 +1871,7 @@ mod tests {
                 database_type: DatabaseType::MySQL,
                 database: Some("b".to_string()),
             };
-            let effects = reduce(&mut state, &Action::SwitchConnection(second.clone())).unwrap();
+            let effects = reduce(&mut state, &Action::SwitchConnection(second.clone()));
             let probe_run_id = effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -1954,8 +1922,7 @@ mod tests {
                 database: Some("b".to_string()),
             };
 
-            let first_effects =
-                reduce(&mut state, &Action::SwitchConnection(first.clone())).unwrap();
+            let first_effects = reduce(&mut state, &Action::SwitchConnection(first.clone()));
             let first_run_id = first_effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -1996,8 +1963,7 @@ mod tests {
                 database: Some("b".to_string()),
             };
 
-            let first_effects =
-                reduce(&mut state, &Action::SwitchConnection(first.clone())).unwrap();
+            let first_effects = reduce(&mut state, &Action::SwitchConnection(first.clone()));
             let first_run_id = first_effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -2030,7 +1996,7 @@ mod tests {
                 database_type: DatabaseType::MySQL,
                 database: Some("b".to_string()),
             };
-            let effects = reduce(&mut state, &Action::SwitchConnection(target.clone())).unwrap();
+            let effects = reduce(&mut state, &Action::SwitchConnection(target.clone()));
             let first_run_id = effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -2047,9 +2013,7 @@ mod tests {
                     error: DbOperationError::ConnectionFailed("refused".to_string()),
                 },
             );
-            let retry_effects = reduce_connection_error(&mut state, &Action::RetryConnection)
-                .into_effects()
-                .unwrap();
+            let retry_effects = reduce(&mut state, &Action::RetryConnection);
 
             let (retry_target, retry_run_id) = retry_effects
                 .iter()
@@ -2086,7 +2050,7 @@ mod tests {
                 database: Some("b".to_string()),
             };
             let failed_effects =
-                reduce(&mut state, &Action::SwitchConnection(failed_target.clone())).unwrap();
+                reduce(&mut state, &Action::SwitchConnection(failed_target.clone()));
             let failed_run_id = failed_effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -2110,8 +2074,7 @@ mod tests {
                 database_type: DatabaseType::MySQL,
                 database: Some("c".to_string()),
             };
-            let retry_effects =
-                reduce(&mut state, &Action::SwitchConnection(retry_target.clone())).unwrap();
+            let retry_effects = reduce(&mut state, &Action::SwitchConnection(retry_target.clone()));
             let retry_run_id = retry_effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -2129,9 +2092,7 @@ mod tests {
                     error: DbOperationError::ConnectionFailed("refused again".to_string()),
                 },
             );
-            let retry_effects = reduce_connection_error(&mut state, &Action::RetryConnection)
-                .into_effects()
-                .unwrap();
+            let retry_effects = reduce(&mut state, &Action::RetryConnection);
             let actual_target = retry_effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -2169,7 +2130,7 @@ mod tests {
                 database_type: DatabaseType::MySQL,
                 database: Some("b".to_string()),
             };
-            let effects = reduce(&mut state, &Action::SwitchConnection(mysql.clone())).unwrap();
+            let effects = reduce(&mut state, &Action::SwitchConnection(mysql.clone()));
             let first_run_id = effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -2186,9 +2147,7 @@ mod tests {
                 },
             );
 
-            let retry_effects = reduce_connection_error(&mut state, &Action::RetryConnection)
-                .into_effects()
-                .unwrap();
+            let retry_effects = reduce(&mut state, &Action::RetryConnection);
             assert!(state.session.connection_state().is_connected());
             assert_eq!(state.session.metadata_state(), &MetadataState::Loaded);
             let retry_run_id = retry_effects
@@ -2236,7 +2195,7 @@ mod tests {
                 database_type: DatabaseType::MySQL,
                 database: Some("b".to_string()),
             };
-            let effects = reduce(&mut state, &Action::SwitchConnection(mysql.clone())).unwrap();
+            let effects = reduce(&mut state, &Action::SwitchConnection(mysql.clone()));
             let mysql_run_id = effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -2284,7 +2243,7 @@ mod tests {
                 database_type: DatabaseType::PostgreSQL,
                 database: None,
             };
-            reduce(&mut state, &Action::SwitchConnection(current.clone())).unwrap();
+            reduce(&mut state, &Action::SwitchConnection(current.clone()));
             state.connection_caches.insert(
                 current.id.clone(),
                 ConnectionCache {
@@ -2300,7 +2259,7 @@ mod tests {
                 database: None,
             };
 
-            let effects = reduce(&mut state, &Action::SwitchConnection(target)).unwrap();
+            let effects = reduce(&mut state, &Action::SwitchConnection(target));
 
             assert!(effects.is_empty());
             assert_eq!(state.session.active_connection_id(), Some(&current.id));
@@ -2459,7 +2418,7 @@ mod tests {
             let action = create_postgres_switch_action(&new_id, "any_db");
             test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
 
-            reduce(&mut state, &action).unwrap();
+            reduce(&mut state, &action);
 
             assert!(!state.table_detail_cache.contains("public.cached"));
         }
