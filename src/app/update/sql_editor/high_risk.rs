@@ -74,13 +74,12 @@ pub(super) fn reduce_high_risk_confirmation(
             target: target @ (InputTarget::SqlModalHighRisk | InputTarget::SqlModalAnalyzeHighRisk),
             direction,
         } => {
-            let killed = high_risk_input_mut(&mut state.sql_modal, *target)
-                .map(|input| {
+            let killed =
+                high_risk_input_mut(&mut state.sql_modal, *target).map_or_default(|input| {
                     let killed = input.kill(*direction);
                     input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
                     killed
-                })
-                .unwrap_or_default();
+                });
             state.record_kill(killed);
             DispatchResult::handled()
         }

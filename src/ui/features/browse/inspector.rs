@@ -905,9 +905,7 @@ fn mysql_trigger_detail_lines(row: &InspectorTriggerRow) -> Vec<String> {
     vec![
         format!(
             "Order: {}",
-            row.action_order
-                .map(|order| order.to_string())
-                .unwrap_or_default()
+            row.action_order.map_or_default(|order| order.to_string())
         ),
         format!("Name: {}", row.name),
         format!("Timing: {}", row.timing),

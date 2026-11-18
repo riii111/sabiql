@@ -110,8 +110,7 @@ pub(super) fn table_from_metadata(
     let kind_info = metadata
         .table
         .as_ref()
-        .map(table_kind_info_from_raw)
-        .unwrap_or_default();
+        .map_or_default(table_kind_info_from_raw);
     let foreign_keys =
         foreign_keys_from_batch(table, metadata.foreign_keys, &metadata.referenced_columns)?;
     let mut triggers = Vec::new();

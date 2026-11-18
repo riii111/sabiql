@@ -296,28 +296,22 @@ impl AppState {
             .filter_input()
             .content()
             .to_lowercase();
-        self.session
-            .metadata()
-            .map(|m| {
-                m.table_summaries
-                    .iter()
-                    .filter(|t| t.qualified_name_lower().contains(&filter_lower))
-                    .collect()
-            })
-            .unwrap_or_default()
+        self.session.metadata().map_or_default(|m| {
+            m.table_summaries
+                .iter()
+                .filter(|t| t.qualified_name_lower().contains(&filter_lower))
+                .collect()
+        })
     }
 
     pub fn er_filtered_tables(&self) -> Vec<&TableSummary> {
         let filter_lower = self.ui.er_picker().filter_input().content().to_lowercase();
-        self.session
-            .metadata()
-            .map(|m| {
-                m.table_summaries
-                    .iter()
-                    .filter(|t| t.qualified_name_lower().contains(&filter_lower))
-                    .collect()
-            })
-            .unwrap_or_default()
+        self.session.metadata().map_or_default(|m| {
+            m.table_summaries
+                .iter()
+                .filter(|t| t.qualified_name_lower().contains(&filter_lower))
+                .collect()
+        })
     }
 
     // --- Connection state getters ---

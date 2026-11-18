@@ -21,8 +21,7 @@ impl DdlGenerator for PostgresAdapter {
             let default = col
                 .default
                 .as_ref()
-                .map(|d| format!(" DEFAULT {d}"))
-                .unwrap_or_default();
+                .map_or_default(|d| format!(" DEFAULT {d}"));
 
             elements.push(format!(
                 "  {} {}{}{}",

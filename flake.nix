@@ -22,7 +22,7 @@
 
       forAllSystems = nixpkgs.lib.genAttrs systems;
 
-      rustVersion = "1.98.1";
+      rustVersion = "1.100.0";
       mkRustToolchain =
         pkgs:
         pkgs.rust-bin.stable.${rustVersion}.default.override {

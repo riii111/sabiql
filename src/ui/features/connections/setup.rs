@@ -64,8 +64,7 @@ impl ConnectionSetup {
             .max(MIN_PREVIEW_LINES as u16) as usize;
         let preview_lines = preview
             .as_deref()
-            .map(|preview| preview_lines(preview, preview_width, max_preview_lines))
-            .unwrap_or_default();
+            .map_or_default(|preview| preview_lines(preview, preview_width, max_preview_lines));
         let modal_height = visible_fields.len() as u16
             + preview_lines.len() as u16
             + MODAL_VERTICAL_CHROME
