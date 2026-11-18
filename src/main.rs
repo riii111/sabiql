@@ -338,7 +338,7 @@ impl Runtime {
                 er_log_writer: Arc::new(FsErLogWriter),
             },
             UtilityDeps {
-                clipboard: Arc::new(ArboardClipboard),
+                clipboard: Arc::new(ArboardClipboard::new()),
                 folder_opener: Arc::new(NativeFolderOpener),
             },
             Arc::clone(&infrastructure.settings_store) as _,

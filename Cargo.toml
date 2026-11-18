@@ -20,7 +20,7 @@ sabiql-domain = { path = "src/domain", version = "3.0.3" }
 sabiql-app = { path = "src/app", version = "3.0.3" }
 sabiql-infra = { path = "src/infra", version = "3.0.3" }
 sabiql-ui = { path = "src/ui", version = "3.0.3" }
-arboard = "3"
+arboard = { version = "3", features = ["wayland-data-control"] }
 async-trait = "0.1"
 clap = { version = "4", features = ["derive"] }
 color-eyre = "0.6"
