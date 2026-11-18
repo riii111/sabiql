@@ -155,12 +155,8 @@ impl CacheFlowDriver {
                 self.channel
                     .push_back(Action::ProcessPrefetchQueue { run_id });
             }
-            effect @ (Effect::CacheTableInCompletionEngine { .. }
-            | Effect::EvictTablesFromCompletionCache { .. }
-            | Effect::ClearCompletionEngineCache
-            | Effect::ResizeCompletionCache { .. }
-            | Effect::TriggerCompletion) => {
-                let actions = cmd_completion::run(effect, &mut self.state);
+            effect @ Effect::TriggerCompletion => {
+                let actions = cmd_completion::run(effect, &self.state);
                 self.queue.extend(actions);
             }
             effect @ (Effect::ExtractFkNeighbors { .. }

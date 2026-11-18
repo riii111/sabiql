@@ -115,6 +115,15 @@ mod tests {
         Box::new(test_support::table::minimal(schema, name))
     }
 
+    fn cache_keeps_every_table(state: &mut AppState, table_count: usize) -> bool {
+        for index in 0..table_count {
+            state
+                .table_detail_cache
+                .insert(format!("public.t{index}"), *empty_table("public", "t"));
+        }
+        state.table_detail_cache.contains("public.t0")
+    }
+
     mod freshness_guards {
         use super::*;
         use crate::domain::{DatabaseMetadata, TableSummary};
@@ -1126,54 +1135,15 @@ mod tests {
         }
 
         #[test]
-        fn large_db_emits_resize_effect() {
+        fn large_db_grows_cache_to_table_count() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.session.set_metadata(Some(make_metadata(530)));
 
-            let effects =
-                dispatch_metadata(&mut state, &Action::StartErPrefetchAll, Instant::now())
-                    .into_effects()
-                    .expect("reducer should handle action");
+            dispatch_metadata(&mut state, &Action::StartErPrefetchAll, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::ResizeCompletionCache { capacity: 530 }))
-            );
-        }
-
-        #[test]
-        fn small_db_uses_floor_capacity() {
-            let mut state = state_with_dsn("postgres://localhost/test");
-            state.session.set_metadata(Some(make_metadata(50)));
-
-            let effects =
-                dispatch_metadata(&mut state, &Action::StartErPrefetchAll, Instant::now())
-                    .into_effects()
-                    .expect("reducer should handle action");
-
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::ResizeCompletionCache { capacity: 500 }))
-            );
-        }
-
-        #[test]
-        fn very_large_db_uses_ceiling_capacity() {
-            let mut state = state_with_dsn("postgres://localhost/test");
-            state.session.set_metadata(Some(make_metadata(10_001)));
-
-            let effects =
-                dispatch_metadata(&mut state, &Action::StartErPrefetchAll, Instant::now())
-                    .into_effects()
-                    .expect("reducer should handle action");
-
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::ResizeCompletionCache { capacity: 10_000 }))
-            );
+            assert!(cache_keeps_every_table(&mut state, 530));
         }
 
         #[test]
@@ -1350,11 +1320,9 @@ mod tests {
 
             assert!(matches!(
                 effects.as_slice(),
-                [
-                    Effect::ResizeCompletionCache { capacity: 560 },
-                    Effect::SchedulePrefetchQueueProcessing { .. }
-                ]
+                [Effect::SchedulePrefetchQueueProcessing { .. }]
             ));
+            assert!(cache_keeps_every_table(&mut state, 560));
         }
     }
 
@@ -1380,11 +1348,7 @@ mod tests {
             assert!(effects.iter().any(|effect| {
                 matches!(effect, Effect::SchedulePrefetchQueueProcessing { .. })
             }));
-            assert!(
-                effects
-                    .iter()
-                    .all(|effect| !matches!(effect, Effect::ResizeCompletionCache { .. }))
-            );
+            assert!(!cache_keeps_every_table(&mut state, 501));
         }
 
         #[test]
@@ -1409,11 +1373,7 @@ mod tests {
             )
             .expect("cached detail should be handled");
 
-            assert!(
-                effects
-                    .iter()
-                    .any(|effect| matches!(effect, Effect::CacheTableInCompletionEngine { .. }))
-            );
+            assert!(state.table_detail_cache.contains("public.users"));
             assert!(
                 effects
                     .iter()

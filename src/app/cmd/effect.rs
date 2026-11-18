@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::domain::connection::{ConnectionConfig, ConnectionId, DatabaseType};
 use crate::domain::query_history::QueryHistoryScope;
-use crate::domain::{DatabaseMetadata, QueryValue, Table, TableSignatureSnapshot};
+use crate::domain::{DatabaseMetadata, QueryValue, TableSignatureSnapshot};
 use crate::model::browse::session::ConnectionSaveGuard;
 use crate::ports::outbound::{AccessMode, AppSettings};
 use crate::update::action::{Action, ConnectionTarget};
@@ -112,17 +112,6 @@ pub enum Effect {
         row_count: Option<usize>,
     },
 
-    CacheTableInCompletionEngine {
-        qualified_name: String,
-        table: Box<Table>,
-    },
-    EvictTablesFromCompletionCache {
-        tables: Vec<String>,
-    },
-    ClearCompletionEngineCache,
-    ResizeCompletionCache {
-        capacity: usize,
-    },
     TriggerCompletion,
 
     GenerateErDiagramFromCache {

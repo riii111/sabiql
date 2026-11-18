@@ -258,8 +258,9 @@ pub(super) fn refresh_effects_for_scope(
         state.session.set_table_detail_raw(None);
         let run_id = state.session.begin_metadata_refresh();
 
+        state.table_detail_cache.clear();
+
         effects.push(Effect::CancelMetadataTasks);
-        effects.push(Effect::ClearCompletionEngineCache);
         effects.push(Effect::FetchMetadata { dsn, run_id });
     } else if !state.query.pagination.table().is_empty() {
         let page = state.query.pagination.current_page();
@@ -1523,14 +1524,12 @@ mod tests {
                 None,
             );
 
+            update_test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
+
             let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
 
             assert!(matches!(effects[0], Effect::CancelMetadataTasks));
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::ClearCompletionEngineCache))
-            );
+            assert!(!state.table_detail_cache.contains("public.cached"));
             assert!(
                 effects
                     .iter()

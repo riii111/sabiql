@@ -3,31 +3,8 @@ use crate::model::app_state::AppState;
 use crate::policy::sql::completion::{CompletionDatabaseScope, CompletionEngine};
 use crate::update::action::Action;
 
-pub(in crate::cmd) fn run(effect: Effect, state: &mut AppState) -> Vec<Action> {
+pub(in crate::cmd) fn run(effect: Effect, state: &AppState) -> Vec<Action> {
     match effect {
-        Effect::CacheTableInCompletionEngine {
-            qualified_name,
-            table,
-        } => {
-            state.table_detail_cache.insert(qualified_name, *table);
-            vec![]
-        }
-
-        Effect::EvictTablesFromCompletionCache { tables } => {
-            state.table_detail_cache.evict(&tables);
-            vec![]
-        }
-
-        Effect::ClearCompletionEngineCache => {
-            state.table_detail_cache.clear();
-            vec![]
-        }
-
-        Effect::ResizeCompletionCache { capacity } => {
-            state.table_detail_cache.resize_for_table_count(capacity);
-            vec![]
-        }
-
         Effect::TriggerCompletion => {
             let cursor = state.sql_modal.editor().cursor();
             let content = state.sql_modal.editor().content();
@@ -111,7 +88,7 @@ mod tests {
             .collect();
         state.session.set_metadata(Some(Arc::new(metadata)));
 
-        let actions = run(Effect::TriggerCompletion, &mut state);
+        let actions = run(Effect::TriggerCompletion, &state);
 
         assert!(matches!(
             actions.as_slice(),

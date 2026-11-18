@@ -69,7 +69,8 @@ pub(in crate::update) fn reduce_connection_lifecycle(
 
             if let Some(cached) = state.connection_caches.get(id).cloned() {
                 restore_cache(state, &cached, target);
-                let mut effects = vec![Effect::ClearCompletionEngineCache];
+                state.table_detail_cache.clear();
+                let mut effects = vec![];
                 if state.session.effective_user().is_none() {
                     let run_id = state.session.begin_effective_user_fetch();
                     effects.push(Effect::FetchEffectiveUser {
@@ -82,15 +83,13 @@ pub(in crate::update) fn reduce_connection_lifecycle(
                 // No cache: reset and fetch metadata
                 reset_for_new_connection(state, target);
                 let run_id = state.session.begin_connecting(dsn);
+                state.table_detail_cache.clear();
                 DispatchResult::handled_with(termination_effects(
                     &state.query,
-                    vec![
-                        Effect::ClearCompletionEngineCache,
-                        Effect::FetchMetadata {
-                            dsn: dsn.clone(),
-                            run_id,
-                        },
-                    ],
+                    vec![Effect::FetchMetadata {
+                        dsn: dsn.clone(),
+                        run_id,
+                    }],
                 ))
             }
         }
@@ -248,6 +247,7 @@ mod tests {
     };
     use crate::update::connection::error::reduce_connection_error;
     use crate::update::reducer::reduce as reduce_app;
+    use crate::update::test_fixtures;
 
     fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
         reduce_connection_lifecycle(
@@ -2477,13 +2477,11 @@ mod tests {
             let new_id = ConnectionId::new();
 
             let action = create_postgres_switch_action(&new_id, "any_db");
-            let effects = reduce(&mut state, &action).unwrap();
+            test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
 
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::ClearCompletionEngineCache))
-            );
+            reduce(&mut state, &action).unwrap();
+
+            assert!(!state.table_detail_cache.contains("public.cached"));
         }
     }
 }

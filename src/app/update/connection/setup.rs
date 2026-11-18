@@ -1303,10 +1303,12 @@ mod tests {
                 mysql_lower_case_table_names: None,
                 metadata: None,
             };
+            test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
+
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();
 
-            assert_eq!(effects.len(), 3);
             test_fixtures::assert_connection_save_fetch_effects(&effects, DatabaseType::SQLite);
+            assert!(!state.table_detail_cache.contains("public.cached"));
             assert_eq!(state.session.dsn(), Some("sqlite:///tmp/app.db"));
             assert_eq!(
                 state.session.active_database_type(),

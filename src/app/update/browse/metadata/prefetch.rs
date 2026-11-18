@@ -14,16 +14,10 @@ use super::check_er_completion;
 
 const BASE_BACKOFF_SECS: u64 = 1;
 const MAX_BACKOFF_SECS: u64 = 4;
-const MIN_COMPLETION_CACHE_CAPACITY: usize = 500;
-const MAX_COMPLETION_CACHE_CAPACITY: usize = 10_000;
 pub(super) use crate::model::table_prefetch::MAX_PREFETCH_RETRIES;
 
 pub(super) fn backoff_secs_for(retry_count: u32) -> u64 {
     (BASE_BACKOFF_SECS * 2u64.pow(retry_count)).min(MAX_BACKOFF_SECS)
-}
-
-fn completion_cache_capacity(table_count: usize) -> usize {
-    table_count.clamp(MIN_COMPLETION_CACHE_CAPACITY, MAX_COMPLETION_CACHE_CAPACITY)
 }
 
 fn prefetch_table_detail(
@@ -120,17 +114,16 @@ pub(super) fn reduce_prefetch(
                     .er_preparation
                     .begin_all_prefetch(qualified_names.iter().cloned());
 
-                let resize_capacity = completion_cache_capacity(metadata.table_summaries.len());
+                state
+                    .table_detail_cache
+                    .resize_for_table_count(metadata.table_summaries.len());
 
                 for qualified_name in qualified_names {
                     state.table_prefetch.queue_table_prefetch(qualified_name);
                 }
-                DispatchResult::handled_with(vec![
-                    Effect::ResizeCompletionCache {
-                        capacity: resize_capacity,
-                    },
-                    Effect::SchedulePrefetchQueueProcessing { run_id },
-                ])
+                DispatchResult::handled_with(vec![Effect::SchedulePrefetchQueueProcessing {
+                    run_id,
+                }])
             } else {
                 DispatchResult::handled()
             }
@@ -150,14 +143,14 @@ pub(super) fn reduce_prefetch(
                         .table_prefetch
                         .queue_table_prefetch(qualified_name.clone());
                 }
-                let mut effects = Vec::with_capacity(2);
                 if let Some(metadata) = state.session.metadata() {
-                    effects.push(Effect::ResizeCompletionCache {
-                        capacity: completion_cache_capacity(metadata.table_summaries.len()),
-                    });
+                    state
+                        .table_detail_cache
+                        .resize_for_table_count(metadata.table_summaries.len());
                 }
-                effects.push(Effect::SchedulePrefetchQueueProcessing { run_id });
-                DispatchResult::handled_with(effects)
+                DispatchResult::handled_with(vec![Effect::SchedulePrefetchQueueProcessing {
+                    run_id,
+                }])
             }
         }
 
@@ -232,13 +225,13 @@ pub(super) fn reduce_prefetch(
                 .table_prefetch
                 .complete_table_prefetch(&qualified_name);
 
-            let mut effects = Vec::new();
             if let Some(detail) = detail {
-                effects.push(Effect::CacheTableInCompletionEngine {
-                    qualified_name,
-                    table: detail.clone(),
-                });
+                state
+                    .table_detail_cache
+                    .insert(qualified_name, detail.as_ref().clone());
             }
+
+            let mut effects = Vec::new();
 
             if state.table_prefetch.has_pending_prefetch() {
                 effects.push(Effect::SchedulePrefetchQueueProcessing { run_id: *run_id });

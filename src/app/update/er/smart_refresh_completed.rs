@@ -34,11 +34,7 @@ pub(super) fn reduce_smart_refresh_completed(
 
             let mut effects = Vec::new();
 
-            if !removed_tables.is_empty() {
-                effects.push(Effect::EvictTablesFromCompletionCache {
-                    tables: removed_tables.clone(),
-                });
-            }
+            state.table_detail_cache.evict(removed_tables);
 
             let mut refetch: Vec<String> = stale_tables
                 .iter()
@@ -59,11 +55,7 @@ pub(super) fn reduce_smart_refresh_completed(
                         .unwrap_or_default(),
                 );
             } else {
-                if !stale_tables.is_empty() {
-                    effects.push(Effect::EvictTablesFromCompletionCache {
-                        tables: stale_tables.clone(),
-                    });
-                }
+                state.table_detail_cache.evict(stale_tables);
                 state.messages.set_success_at(
                     format!("Refreshing {} table(s) for ER diagram...", refetch.len()),
                     now,

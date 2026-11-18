@@ -49,6 +49,7 @@ mod tests {
     use crate::update::action::{
         ErDiagramInfo, SmartErRefreshError, SmartErRefreshFetched, SmartErRefreshResult,
     };
+    use crate::update::test_fixtures;
     use std::sync::Arc;
 
     fn reduce_er(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
@@ -492,6 +493,7 @@ mod tests {
             set_waiting_run_id(&mut state, 1);
             state.session.set_metadata(Some(make_metadata(0)));
 
+            test_fixtures::seed_table_detail_cache(&mut state, "public.users");
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
                 dsn: "postgres://localhost/test".to_string(),
                 run_id: 1,
@@ -506,11 +508,7 @@ mod tests {
                 .into_effects()
                 .expect("reducer should handle action");
 
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::EvictTablesFromCompletionCache { .. }))
-            );
+            assert!(!state.table_detail_cache.contains("public.users"));
             assert!(effects.iter().any(|e| matches!(
                 e,
                 Effect::DispatchActions(actions)
@@ -524,6 +522,7 @@ mod tests {
             set_waiting_run_id(&mut state, 1);
             state.session.set_metadata(Some(make_metadata(0)));
 
+            test_fixtures::seed_table_detail_cache(&mut state, "public.dropped");
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
                 dsn: "postgres://localhost/test".to_string(),
                 run_id: 1,
@@ -534,15 +533,11 @@ mod tests {
                 new_signatures: HashMap::new(),
             });
 
-            let effects = reduce_er(&mut state, &action, Instant::now())
+            reduce_er(&mut state, &action, Instant::now())
                 .into_effects()
                 .expect("reducer should handle action");
 
-            assert!(effects.iter().any(|e| matches!(
-                e,
-                Effect::EvictTablesFromCompletionCache { tables }
-                    if tables.contains(&"public.dropped".to_string())
-            )));
+            assert!(!state.table_detail_cache.contains("public.dropped"));
         }
 
         #[test]
@@ -745,6 +740,8 @@ mod tests {
                 5,
             );
 
+            test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
+
             let effects = reduce_er(
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
@@ -766,11 +763,7 @@ mod tests {
                     .as_deref()
                     .is_some_and(|message| message.contains("falling back to full refresh"))
             );
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::ClearCompletionEngineCache))
-            );
+            assert!(!state.table_detail_cache.contains("public.cached"));
             assert!(effects.iter().any(|e| matches!(
                 e,
                 Effect::DispatchActions(actions)
@@ -873,6 +866,8 @@ mod tests {
             set_waiting_run_id(&mut state, 1);
             state.session.set_metadata(Some(make_metadata(3)));
 
+            test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
+
             let effects = reduce_er(
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
@@ -895,11 +890,7 @@ mod tests {
                     .len(),
                 20
             );
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::ClearCompletionEngineCache))
-            );
+            assert!(!state.table_detail_cache.contains("public.cached"));
             assert!(effects.iter().any(|e| matches!(
                 e,
                 Effect::DispatchActions(actions)

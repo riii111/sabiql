@@ -37,10 +37,8 @@ pub(super) fn reduce_smart_refresh_failed(state: &mut AppState, action: &Action)
             state.messages.set_error(format!(
                 "Smart refresh failed ({error}), falling back to full refresh"
             ));
-            effects.extend([
-                Effect::ClearCompletionEngineCache,
-                Effect::DispatchActions(vec![Action::StartErPrefetchAll]),
-            ]);
+            state.table_detail_cache.clear();
+            effects.push(Effect::DispatchActions(vec![Action::StartErPrefetchAll]));
             DispatchResult::handled_with(effects)
         }
         _ => DispatchResult::pass(),

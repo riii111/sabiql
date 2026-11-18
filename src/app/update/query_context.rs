@@ -27,10 +27,10 @@ mod tests {
     fn cancellation_precedes_follow_up_effects() {
         let query = QueryExecution::default();
 
-        let effects = termination_effects(&query, vec![Effect::ClearCompletionEngineCache]);
+        let effects = termination_effects(&query, vec![Effect::CancelMetadataTasks]);
 
         assert!(matches!(effects[0], Effect::CancelTrackedTasks));
-        assert!(matches!(effects[1], Effect::ClearCompletionEngineCache));
+        assert!(matches!(effects[1], Effect::CancelMetadataTasks));
     }
 
     #[test]

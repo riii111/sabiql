@@ -1661,6 +1661,8 @@ mod tests {
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             let now = Instant::now();
 
+            test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
+
             let effects = reduce(
                 &mut state,
                 Action::ReloadMetadata,
@@ -1670,12 +1672,9 @@ mod tests {
 
             assert!(matches!(
                 effects.as_slice(),
-                [
-                    Effect::CancelMetadataTasks,
-                    Effect::ClearCompletionEngineCache,
-                    Effect::FetchMetadata { .. },
-                ]
+                [Effect::CancelMetadataTasks, Effect::FetchMetadata { .. },]
             ));
+            assert!(!state.table_detail_cache.contains("public.cached"));
         }
 
         #[test]
@@ -1874,7 +1873,7 @@ mod tests {
                 .start_table_prefetch("public.users".to_string());
             let now = Instant::now();
 
-            let effects = reduce(
+            reduce(
                 &mut state,
                 Action::TableDetailCached {
                     dsn: "postgres://localhost/test".to_string(),
@@ -1887,11 +1886,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(!effects.is_empty());
-            assert!(matches!(
-                effects[0],
-                Effect::CacheTableInCompletionEngine { .. }
-            ));
+            assert!(state.table_detail_cache.contains("public.users"));
             assert!(!state.table_prefetch.is_table_prefetching("public.users"));
         }
 
@@ -2642,6 +2637,8 @@ mod tests {
             state.ui.set_explorer_selected_raw(5);
             let now = Instant::now();
 
+            test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
+
             let effects = reduce(
                 &mut state,
                 Action::SwitchConnection(ConnectionTarget {
@@ -2661,17 +2658,14 @@ mod tests {
             assert_eq!(state.connection_caches[&conn_a].explorer_selected, 5);
             assert!(matches!(
                 effects.as_slice(),
-                [
-                    Effect::CancelTrackedTasks,
-                    Effect::ClearCompletionEngineCache,
-                    Effect::FetchMetadata { .. }
-                ]
+                [Effect::CancelTrackedTasks, Effect::FetchMetadata { .. }]
             ));
             assert!(
                 !effects
                     .iter()
                     .any(|effect| matches!(effect, Effect::CancelSqliteDiagnostics))
             );
+            assert!(!state.table_detail_cache.contains("public.cached"));
         }
 
         #[test]
@@ -2700,6 +2694,8 @@ mod tests {
             state.connection_caches.insert(conn_b.clone(), cached);
             let now = Instant::now();
 
+            test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
+
             let effects = reduce(
                 &mut state,
                 Action::SwitchConnection(ConnectionTarget {
@@ -2725,7 +2721,6 @@ mod tests {
                 effects.as_slice(),
                 [
                     Effect::CancelTrackedTasks,
-                    Effect::ClearCompletionEngineCache,
                     Effect::FetchEffectiveUser { .. }
                 ]
             ));
@@ -2734,6 +2729,7 @@ mod tests {
                     .iter()
                     .any(|effect| matches!(effect, Effect::CancelSqliteDiagnostics))
             );
+            assert!(!state.table_detail_cache.contains("public.cached"));
         }
 
         #[test]
@@ -3139,11 +3135,7 @@ mod tests {
             );
 
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
-            assert!(
-                !effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::CacheTableInCompletionEngine { .. }))
-            );
+            assert!(!state.table_detail_cache.contains("public.users"));
             assert!(effects.iter().any(|e| {
                 matches!(e, Effect::DispatchActions(actions)
                     if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache)))
@@ -3455,6 +3447,8 @@ mod tests {
             state.ui.table_picker_mut().set_selection(entry_index);
             let now = Instant::now();
 
+            test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
+
             let effects = reduce(
                 &mut state,
                 Action::ConfirmSelection,
@@ -3464,12 +3458,9 @@ mod tests {
 
             assert!(matches!(
                 effects.as_slice(),
-                [
-                    Effect::CancelMetadataTasks,
-                    Effect::ClearCompletionEngineCache,
-                    Effect::FetchMetadata { .. },
-                ]
+                [Effect::CancelMetadataTasks, Effect::FetchMetadata { .. },]
             ));
+            assert!(!state.table_detail_cache.contains("public.cached"));
         }
 
         #[test]
