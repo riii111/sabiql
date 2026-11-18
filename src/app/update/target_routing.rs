@@ -7,6 +7,7 @@ use crate::update::action::{
     Action, CursorPosition, ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection,
     ScrollTarget, ScrollToCursorTarget, SelectMotion,
 };
+use crate::update::explain;
 use crate::update::reducer::legacy_dispatch;
 
 pub(in crate::update) fn scroll(
@@ -17,16 +18,25 @@ pub(in crate::update) fn scroll(
     now: Instant,
     services: &AppServices,
 ) -> Vec<Effect> {
-    legacy_dispatch(
-        state,
-        Action::Scroll {
-            target,
-            direction,
-            amount,
-        },
-        now,
-        services,
-    )
+    match target {
+        ScrollTarget::ExplainPlan => explain::scroll::scroll_explain_plan(state, direction, amount),
+        ScrollTarget::ExplainCompare => {
+            explain::scroll::scroll_explain_compare(state, direction, amount)
+        }
+        ScrollTarget::ExplainConfirm => {
+            explain::scroll::scroll_explain_confirm(state, direction, amount)
+        }
+        _ => legacy_dispatch(
+            state,
+            Action::Scroll {
+                target,
+                direction,
+                amount,
+            },
+            now,
+            services,
+        ),
+    }
 }
 
 pub(in crate::update) fn scroll_to_cursor(

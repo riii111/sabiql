@@ -7,8 +7,8 @@
 use std::time::Instant;
 
 use super::{
-    clipboard, dispatch_connection, dispatch_er, dispatch_explain, dispatch_metadata,
-    dispatch_modal, dispatch_navigation, dispatch_query, dispatch_result, dispatch_sql_modal,
+    clipboard, dispatch_connection, dispatch_er, dispatch_metadata, dispatch_modal,
+    dispatch_navigation, dispatch_query, dispatch_result, dispatch_sql_modal, explain,
     target_routing, text_edit,
 };
 use crate::catalog::HelpDocument;
@@ -107,6 +107,37 @@ pub(in crate::update) fn route(
         Action::CloseModal(kind) => target_routing::close_modal(state, kind, now, services),
         Action::CancelKeySequence => cancel_key_sequence(state),
         Action::ConfirmSelection => confirm_selection(state, now, services),
+        Action::SqlModalNextTab => explain::tabs::sql_modal_next_tab(state),
+        Action::SqlModalPrevTab => explain::tabs::sql_modal_prev_tab(state),
+        Action::ExplainRequest => explain::request::explain_request(state, now),
+        Action::ExplainAnalyzeRequest => explain::analyze::explain_analyze_request(state, now),
+        Action::ExplainAnalyzeConfirm => explain::analyze::explain_analyze_confirm(state, now),
+        Action::ExplainAnalyzeCancel => explain::analyze::explain_analyze_cancel(state),
+        Action::ExplainCompleted {
+            database_type,
+            database_generation,
+            run_id,
+            query,
+            plan_text,
+            is_analyze,
+            execution_time_ms,
+        } => explain::output::explain_completed(
+            state,
+            database_type,
+            database_generation,
+            run_id,
+            query,
+            plan_text,
+            is_analyze,
+            execution_time_ms,
+        ),
+        Action::ExplainFailed {
+            database_generation,
+            run_id,
+            error,
+            ..
+        } => explain::output::explain_failed(state, database_generation, run_id, error),
+        Action::CompareEditQuery => explain::tabs::compare_edit_query(state),
         Action::CopySucceeded(target) => clipboard::copy_succeeded(state, target, now),
         Action::CopyFailed(error) => clipboard::copy_failed(state, &error),
         other => legacy_dispatch(state, other, now, services),
@@ -124,7 +155,6 @@ pub(in crate::update) fn legacy_dispatch(
         .or_else(|| dispatch_result(state, &action, services, now))
         .or_else(|| dispatch_navigation(state, &action, services, now))
         .or_else(|| dispatch_sql_modal(state, &action, now))
-        .or_else(|| dispatch_explain(state, &action, now))
         .or_else(|| dispatch_metadata(state, &action, now))
         .or_else(|| dispatch_er(state, &action, now))
         .or_else(|| dispatch_query(state, &action, now))
