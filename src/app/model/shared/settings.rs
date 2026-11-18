@@ -41,9 +41,9 @@ impl SettingsSection {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum IconMode {
-    #[default]
     Off,
     NerdFont,
+    #[default]
     Unicode,
     Ascii,
 }

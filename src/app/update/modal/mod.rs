@@ -348,11 +348,11 @@ mod tests {
 
                 assert_eq!(state.input_mode(), InputMode::Settings);
                 assert_eq!(state.ui.theme_id(), ThemeId::Default);
-                assert_eq!(state.settings.saved_icon_mode(), IconMode::Off);
+                assert_eq!(state.settings.saved_icon_mode(), IconMode::Unicode);
                 assert!(matches!(
                     effects.as_slice(),
                     [Effect::SaveSettings { settings }]
-                        if settings.theme_id == ThemeId::Light && settings.icon_mode == IconMode::NerdFont && settings.er_browser.is_none()
+                        if settings.theme_id == ThemeId::Light && settings.icon_mode == IconMode::Ascii && settings.er_browser.is_none()
                 ));
             }
 

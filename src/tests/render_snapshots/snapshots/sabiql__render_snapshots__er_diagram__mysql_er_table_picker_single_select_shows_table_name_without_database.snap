@@ -2,11 +2,11 @@
 source: src/tests/render_snapshots/er_diagram.rs
 expression: output
 ---
-test_project ▸ app ▸ -                                                                                                                              connected | mysql
+⌂ test_project ▸ My app ▸ -                                                                                                                         connected | mysql
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]                                                                                       
-│> users                                │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│  posts                                ││(select a table)                                                                                                          │
-│  comments                             ││                                                                                                                          │
+│> ▦ users                              │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  ▦ posts                              ││(select a table)                                                                                                          │
+│  ▦ comments                           ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -15,9 +15,9 @@ test_project ▸ app ▸ -                                                      
 │                                │  Mode:    Partial ER                                                                            │                                │
 │                                │  Targets: users                                                                                 │                                │
 │                                │  Output:  er_partial_app_users.dot                                                              │                                │
-│                                │▸   ✔ users                                                                                      │                                │
-│                                │      posts                                                                                      │                                │
-│                                │      comments                                                                                   │                                │
+│                                │▸   ✔ ▦ users                                                                                    │                                │
+│                                │      ▦ posts                                                                                    │                                │
+│                                │      ▦ comments                                                                                 │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │

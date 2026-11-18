@@ -4,9 +4,9 @@ expression: output
 ---
 connected | user: app_user | very-long-connection-name-that…
 ┌ [1] Explorer┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]  
-│> public.use │┌ [2] Inspector ────────────────────────────┐
-│  public.pos ││(select a table)                           │
-│  public.com ││                                           │
+│> ▦ public.u │┌ [2] Inspector ────────────────────────────┐
+│  ▦ public.p ││(select a table)                           │
+│  ▦ public.c ││                                           │
 │             ││                                           │
 │             ││                                           │
 │             ││                                           │

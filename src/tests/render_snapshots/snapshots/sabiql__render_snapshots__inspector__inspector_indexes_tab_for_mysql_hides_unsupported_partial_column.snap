@@ -2,11 +2,11 @@
 source: src/tests/render_snapshots/inspector.rs
 expression: output
 ---
-test_project ▸ test_db ▸ -                                                                                                                            connected | app
+⌂ test_project ▸ My test_db ▸ -                                                                                                                       connected | app
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]
-│> users                                │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│  posts                                ││Name                    Columns        Type    Unique   Detail                                                            │
-│  comments                             ││idx_users_email_lower   lower(email)   btree            CREATE INDEX idx_users_email_lower ON users ((lower(`email`)))    │
+│> ▦ users                              │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  ▦ posts                              ││Name                    Columns        Type    Unique   Detail                                                            │
+│  ▦ comments                           ││idx_users_email_lower   lower(email)   btree            CREATE INDEX idx_users_email_lower ON users ((lower(`email`)))    │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

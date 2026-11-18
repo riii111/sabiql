@@ -93,7 +93,7 @@ sabiql /path/to/app.db
 
 Use `Ctrl+R` before browsing data when you want to block writes. Press `?` for help, or open Settings with `,` to change the theme and keymap.
 
-To show icons, open Settings with `,`, use `Tab` to reach **Icons**, select a mode with `j` or `k`, and press `Enter` to save. Choose **Nerd Font** with a [Nerd Font Mono](https://www.nerdfonts.com/) configured in your terminal, **Unicode** for standard symbols, or **ASCII** for letter and punctuation markers. Icons are off by default.
+To change icons, open Settings with `,`, use `Tab` to reach **Icons**, select a mode with `j` or `k`, and press `Enter` to save. Choose **Nerd Font** with a [Nerd Font Mono](https://www.nerdfonts.com/) configured in your terminal, **Unicode** (the default) for standard symbols, **ASCII** for letter and punctuation markers, or **Off** for text-only labels.
 
 ## Roadmap
 

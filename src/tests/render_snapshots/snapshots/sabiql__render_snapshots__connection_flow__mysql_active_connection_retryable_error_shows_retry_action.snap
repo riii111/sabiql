@@ -2,7 +2,7 @@
 source: src/tests/render_snapshots/connection_flow.rs
 expression: output
 ---
-test_project ▸ app ▸ -                                                                                                                             not loaded | mysql
+⌂ test_project ▸ My app ▸ -                                                                                                                        not loaded | mysql
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]                                                                                       
 │ Press 'r' to load metadata            │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                       ││(select a table)                                                                                                          │

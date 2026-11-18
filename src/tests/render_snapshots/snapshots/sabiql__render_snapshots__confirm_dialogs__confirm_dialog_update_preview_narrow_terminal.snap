@@ -2,7 +2,7 @@
 source: src/tests/render_snapshots/confirm_dialogs.rs
 expression: output
 ---
-tes… ▸ … connected | localhost:5432/test
+⌂ t… ▸ … connected | localhost:5432/test
 ┌╭ Confirm UPDATE: users ─────────────╮]
 ││                                    │┐
 ││ ✓ LOW RISK                         ││

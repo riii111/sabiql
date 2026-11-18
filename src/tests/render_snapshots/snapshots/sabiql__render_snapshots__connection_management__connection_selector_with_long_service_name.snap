@@ -2,7 +2,7 @@
 source: src/tests/render_snapshots/connection_management.rs
 expression: output
 ---
-test_project ▸ - ▸ -                                                                                                                 not loaded | localhost:5432/test
+⌂ test_project ▸ - ▸ -                                                                                                               not loaded | localhost:5432/test
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
 │ Press 'r' to load metadata            │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                       ││(select a table)                                                                                                          │
@@ -13,8 +13,8 @@ test_project ▸ - ▸ -                                                        
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                ╭ Select Connection ──────────────────────────────────────────────────────────────────────────────╮                                │
-│                                │>   my-very-long-service-name-that-exceeds-normal-length  from pg_service.conf                   │                                │
-│                                │    short                               from pg_service.conf                                     │                                │
+│                                │>   Pg my-very-long-service-name-that-exceeds-normal-length  from pg_service.conf                │                                │
+│                                │    Pg short                            from pg_service.conf                                     │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │

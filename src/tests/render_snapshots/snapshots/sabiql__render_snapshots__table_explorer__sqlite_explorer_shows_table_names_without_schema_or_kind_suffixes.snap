@@ -2,12 +2,12 @@
 source: src/tests/render_snapshots/table_explorer.rs
 expression: output
 ---
-test_project ▸ app.db ▸ -                                                                                                                          connected | app.db
+⌂ test_project ▸ Sq app.db ▸ -                                                                                                                     connected | app.db
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]                                                                                       
-│> users                                │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│  settings                             ││(select a table)                                                                                                          │
-│  notes_fts                            ││                                                                                                                          │
-│  typed_users                          ││                                                                                                                          │
+│> ▦ users                              │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  ▦ settings                           ││(select a table)                                                                                                          │
+│  ▦ notes_fts                          ││                                                                                                                          │
+│  ▦ typed_users                        ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

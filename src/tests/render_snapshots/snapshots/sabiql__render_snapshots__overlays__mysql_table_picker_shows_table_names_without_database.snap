@@ -2,17 +2,17 @@
 source: src/tests/render_snapshots/overlays.rs
 expression: output
 ---
-test_project ▸ app ▸ -                                                                                                                              connected | mysql
+⌂ test_project ▸ My app ▸ -                                                                                                                         connected | mysql
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]                                                                                       
-│> users                                │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│  posts                                ││(select a table)                                                                                                          │
-│  comments                             ││                                                                                                                          │
+│> ▦ users                              │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  ▦ posts                              ││(select a table)                                                                                                          │
+│  ▦ comments                           ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                ╭ Table Picker ───────────────────────────────────────────────────────────────────────────────────╮                                │
 │                                │  > user                                                                                         │                                │
-│                                │▸   users                                                                                        │                                │
+│                                │▸   ▦ users                                                                                      │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
