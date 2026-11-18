@@ -20,7 +20,6 @@ pub(in crate::update) mod text_edit;
 #[cfg(test)]
 mod text_edit_tests;
 // Facade: re-export sub-reducer entry points for update/reducer.rs dispatch
-pub(crate) use browse::metadata::dispatch_metadata;
 pub(in crate::update) use browse::navigation::dispatch_navigation;
 pub(in crate::update) use browse::query::dispatch_query;
 pub use browse::result::dispatch_result;

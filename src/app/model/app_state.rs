@@ -503,7 +503,7 @@ mod tests {
     use crate::model::table_prefetch::FailedPrefetchEntry;
     use crate::services::AppServices;
     use crate::update::action::Action;
-    use crate::update::dispatch_metadata;
+    use crate::update::reducer::reduce;
     use rstest::rstest;
     fn make_state() -> AppState {
         AppState::new("test".to_string())
@@ -1305,7 +1305,12 @@ mod tests {
         fn resets_prefetch_state() {
             let mut state = prepare_state_for_reload();
 
-            dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
+            reduce(
+                &mut state,
+                Action::ReloadMetadata,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(state.table_prefetch.active_prefetch_run_id().is_none());
             assert!(!state.table_prefetch.has_pending_prefetch());
@@ -1323,7 +1328,12 @@ mod tests {
             let mut state = prepare_state_for_reload();
             let _ = state.er_preparation.start_waiting_run();
 
-            dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
+            reduce(
+                &mut state,
+                Action::ReloadMetadata,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
         }
@@ -1336,7 +1346,12 @@ mod tests {
             assert!(state.messages.last_error().is_some());
             assert!(state.messages.expires_at().is_none());
 
-            dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
+            reduce(
+                &mut state,
+                Action::ReloadMetadata,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(state.messages.last_error().is_none());
             assert!(state.messages.expires_at().is_none());
@@ -1547,15 +1562,16 @@ mod tests {
                 let run_id = state.session.begin_table_detail_run();
                 state.ui.set_inspector_scroll_offset(42);
 
-                dispatch_metadata(
+                reduce(
                     &mut state,
-                    &Action::TableDetailLoaded {
+                    Action::TableDetailLoaded {
                         dsn: "dsn://test".to_string(),
                         run_id,
                         outcome: Ok(Box::new(make_table_detail())),
                         generation,
                     },
                     Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.ui.inspector_scroll_offset(), 0);

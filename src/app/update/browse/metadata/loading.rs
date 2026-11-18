@@ -2,168 +2,169 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::DatabaseMetadata;
 use crate::model::app_state::AppState;
 use crate::model::connection::error::ConnectionErrorInfo;
 use crate::model::er_state::ErStatus;
 use crate::model::shared::input_mode::InputMode;
+use crate::ports::outbound::DbOperationError;
 use crate::update::action::{Action, ModalKind};
 use crate::update::browse::query::preview_effect_for_current_table;
-use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{metadata_reload_effects, reject_pending_mysql_connection_probe};
 use crate::update::query_context::termination_effects;
 
-pub(super) fn reduce_loading(
+pub(in crate::update) fn metadata_loaded(
     state: &mut AppState,
-    action: &Action,
+    run_id: u64,
+    metadata: Arc<DatabaseMetadata>,
     now: Instant,
-) -> DispatchResult {
-    match action {
-        Action::MetadataLoaded { run_id, metadata } => {
-            if !state.session.is_current_metadata_run(*run_id) {
-                return DispatchResult::handled();
-            }
-            let Some(dsn) = state.session.dsn().map(String::from) else {
-                return DispatchResult::handled();
-            };
+) -> Vec<Effect> {
+    if !state.session.is_current_metadata_run(run_id) {
+        return vec![];
+    }
+    let Some(dsn) = state.session.dsn().map(String::from) else {
+        return vec![];
+    };
 
-            let has_tables = !metadata.table_summaries.is_empty();
-            state.session.mark_connected(Arc::clone(metadata));
-            let effective_user_run_id = state.session.begin_effective_user_fetch();
+    let has_tables = !metadata.table_summaries.is_empty();
+    state.session.mark_connected(Arc::clone(&metadata));
+    let effective_user_run_id = state.session.begin_effective_user_fetch();
 
-            let mut effects = vec![Effect::FetchEffectiveUser {
-                dsn: dsn.clone(),
-                run_id: effective_user_run_id,
-            }];
+    let mut effects = vec![Effect::FetchEffectiveUser {
+        dsn: dsn.clone(),
+        run_id: effective_user_run_id,
+    }];
 
-            if state.query.pagination.table().is_empty() {
-                state
-                    .ui
-                    .set_explorer_selection(if has_tables { Some(0) } else { None });
-            } else {
-                let prev_schema = state.query.pagination.schema();
-                let prev_table = state.query.pagination.table();
-                let found_index = metadata
-                    .table_summaries
-                    .iter()
-                    .position(|t| t.schema == prev_schema && t.name == prev_table);
-                if let Some(idx) = found_index {
-                    state.ui.set_explorer_selection(Some(idx));
-                    // Refresh preview and detail: DDL or reload may have changed
-                    // data/schema even though the table still exists.
-                    let page = state.query.pagination.current_page();
-                    let generation = state.session.selection_generation();
-                    effects.extend(preview_effect_for_current_table(
-                        state, now, page, generation,
-                    ));
-                    let detail_run_id = state.session.begin_table_detail_run();
-                    effects.push(Effect::FetchTableDetail {
-                        dsn,
-                        schema: state.query.pagination.schema().to_string(),
-                        table: state.query.pagination.table().to_string(),
-                        generation,
-                        run_id: detail_run_id,
-                    });
-                } else {
-                    // The previously selected table was removed (e.g. via DROP TABLE).
-                    // Clear all selection state to avoid stale references.
-                    state
-                        .ui
-                        .set_explorer_selection(if has_tables { Some(0) } else { None });
-                    state.session.clear_table_selection(&mut state.query);
-                    effects = termination_effects(&state.query, effects);
-                }
-            }
-
-            state.connection_error.clear();
-
-            if state.session.is_reloading() {
-                state.messages.set_success_at("Reloaded!".to_string(), now);
-                state.session.finish_reload();
-            }
-
-            if state.ui.take_pending_er_picker() && state.modal.active_mode() == InputMode::Normal {
-                effects.push(Effect::DispatchActions(vec![Action::OpenModal(
-                    ModalKind::ErTablePicker,
-                )]));
-            }
-
-            DispatchResult::handled_with(effects)
-        }
-        Action::EffectiveUserLoaded {
-            run_id,
-            effective_user,
-        } => {
-            if !state.session.is_current_effective_user_run(*run_id) {
-                return DispatchResult::handled();
-            }
-
+    if state.query.pagination.table().is_empty() {
+        state
+            .ui
+            .set_explorer_selection(if has_tables { Some(0) } else { None });
+    } else {
+        let prev_schema = state.query.pagination.schema();
+        let prev_table = state.query.pagination.table();
+        let found_index = metadata
+            .table_summaries
+            .iter()
+            .position(|t| t.schema == prev_schema && t.name == prev_table);
+        if let Some(idx) = found_index {
+            state.ui.set_explorer_selection(Some(idx));
+            // Refresh preview and detail: DDL or reload may have changed
+            // data/schema even though the table still exists.
+            let page = state.query.pagination.current_page();
+            let generation = state.session.selection_generation();
+            effects.extend(preview_effect_for_current_table(
+                state, now, page, generation,
+            ));
+            let detail_run_id = state.session.begin_table_detail_run();
+            effects.push(Effect::FetchTableDetail {
+                dsn,
+                schema: state.query.pagination.schema().to_string(),
+                table: state.query.pagination.table().to_string(),
+                generation,
+                run_id: detail_run_id,
+            });
+        } else {
+            // The previously selected table was removed (e.g. via DROP TABLE).
+            // Clear all selection state to avoid stale references.
             state
-                .session
-                .mark_effective_user_loaded(effective_user.clone());
-            DispatchResult::handled()
+                .ui
+                .set_explorer_selection(if has_tables { Some(0) } else { None });
+            state.session.clear_table_selection(&mut state.query);
+            effects = termination_effects(&state.query, effects);
         }
-        Action::MetadataFailed { run_id, error } => {
-            if !state.session.is_current_metadata_run(*run_id) {
-                return DispatchResult::handled();
-            }
+    }
 
-            let error_info = ConnectionErrorInfo::from_db_operation_error(error);
-            state.connection_error.set_error(error_info);
-            let was_connected = state.session.connection_state().is_connected();
-            state.session.mark_connection_failed();
-            if !was_connected {
-                state.session.set_metadata(None);
-                state.session.clear_table_selection(&mut state.query);
-                state.ui.set_explorer_selection(None);
-                state.result_interaction.reset_view();
-                state.modal.replace_mode(InputMode::ConnectionError);
-            }
-            if state.er_preparation.status() == ErStatus::Waiting {
-                state.er_preparation.mark_idle();
-            }
-            DispatchResult::handled_with(if was_connected {
-                if state
-                    .session
-                    .mark_metadata_detail_failed(error.user_message())
-                {
-                    super::table_detail::reveal_pending_preview(
-                        state,
-                        state.session.selection_generation(),
-                    )
-                } else {
-                    vec![]
-                }
-            } else {
-                termination_effects(&state.query, vec![])
-            })
-        }
-        Action::ReloadMetadata => {
-            if reject_pending_mysql_connection_probe(state) {
-                return DispatchResult::handled();
-            }
-            if let Some(dsn) = state.session.dsn().map(String::from) {
-                state.table_prefetch.reset_prefetch();
-                state.er_preparation.reset();
-                state.ui.reset_er_picker_request();
-                state.messages.clear();
+    state.connection_error.clear();
 
-                DispatchResult::handled_with(metadata_reload_effects(state, &dsn))
-            } else {
-                DispatchResult::handled()
-            }
+    if state.session.is_reloading() {
+        state.messages.set_success_at("Reloaded!".to_string(), now);
+        state.session.finish_reload();
+    }
+
+    if state.ui.take_pending_er_picker() && state.modal.active_mode() == InputMode::Normal {
+        effects.push(Effect::DispatchActions(vec![Action::OpenModal(
+            ModalKind::ErTablePicker,
+        )]));
+    }
+
+    effects
+}
+
+pub(in crate::update) fn effective_user_loaded(
+    state: &mut AppState,
+    run_id: u64,
+    effective_user: Option<String>,
+) -> Vec<Effect> {
+    if !state.session.is_current_effective_user_run(run_id) {
+        return vec![];
+    }
+
+    state.session.mark_effective_user_loaded(effective_user);
+    vec![]
+}
+
+pub(in crate::update) fn metadata_failed(
+    state: &mut AppState,
+    run_id: u64,
+    error: DbOperationError,
+) -> Vec<Effect> {
+    if !state.session.is_current_metadata_run(run_id) {
+        return vec![];
+    }
+
+    let error_info = ConnectionErrorInfo::from_db_operation_error(&error);
+    state.connection_error.set_error(error_info);
+    let was_connected = state.session.connection_state().is_connected();
+    state.session.mark_connection_failed();
+    if !was_connected {
+        state.session.set_metadata(None);
+        state.session.clear_table_selection(&mut state.query);
+        state.ui.set_explorer_selection(None);
+        state.result_interaction.reset_view();
+        state.modal.replace_mode(InputMode::ConnectionError);
+    }
+    if state.er_preparation.status() == ErStatus::Waiting {
+        state.er_preparation.mark_idle();
+    }
+    if was_connected {
+        if state
+            .session
+            .mark_metadata_detail_failed(error.user_message())
+        {
+            super::table_detail::reveal_pending_preview(state, state.session.selection_generation())
+        } else {
+            vec![]
         }
-        _ => DispatchResult::pass(),
+    } else {
+        termination_effects(&state.query, vec![])
+    }
+}
+
+pub(in crate::update) fn reload_metadata(state: &mut AppState) -> Vec<Effect> {
+    if reject_pending_mysql_connection_probe(state) {
+        return vec![];
+    }
+    if let Some(dsn) = state.session.dsn().map(String::from) {
+        state.table_prefetch.reset_prefetch();
+        state.er_preparation.reset();
+        state.ui.reset_er_picker_request();
+        state.messages.clear();
+
+        metadata_reload_effects(state, &dsn)
+    } else {
+        vec![]
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, QueryResult, QuerySource};
+    use crate::domain::{ConnectionId, DatabaseType, QueryResult, QuerySource};
     use crate::model::browse::session::TableDetailState;
-    use crate::ports::outbound::DbOperationError;
+    use crate::services::AppServices;
     use crate::test_support::table;
     use crate::update::browse::query::dispatch_query;
+    use crate::update::reducer::route;
 
     fn connected_state(database_type: DatabaseType) -> AppState {
         let (name, dsn) = match database_type {
@@ -201,9 +202,12 @@ mod tests {
         let mut state = connected_state(DatabaseType::PostgreSQL);
         let (generation, run_id) = loading_detail_and_metadata_run(&mut state);
 
-        let effects = reduce_loading(&mut state, &metadata_failed(run_id), Instant::now())
-            .into_effects()
-            .expect("metadata failure should be handled");
+        let effects = route(
+            &mut state,
+            metadata_failed(run_id),
+            Instant::now(),
+            &AppServices::stub(),
+        );
 
         assert!(matches!(
             state.session.table_detail_state(),
@@ -229,7 +233,12 @@ mod tests {
         )));
         let result_generation = state.query.result_generation();
 
-        reduce_loading(&mut state, &metadata_failed(run_id), Instant::now());
+        route(
+            &mut state,
+            metadata_failed(run_id),
+            Instant::now(),
+            &AppServices::stub(),
+        );
 
         assert!(state.query.current_result().is_none());
         assert_eq!(state.query.result_generation(), result_generation + 1);
@@ -257,9 +266,12 @@ mod tests {
             TableDetailState::Loading
         ));
         let run_id = state.session.begin_metadata_refresh();
-        let effects = reduce_loading(&mut state, &metadata_failed(run_id), Instant::now())
-            .into_effects()
-            .expect("metadata failure should be handled");
+        let effects = route(
+            &mut state,
+            metadata_failed(run_id),
+            Instant::now(),
+            &AppServices::stub(),
+        );
 
         assert!(matches!(
             state.session.table_detail_state(),
@@ -285,9 +297,12 @@ mod tests {
             false,
         );
 
-        let effects = reduce_loading(&mut state, &metadata_failed(run_id), Instant::now())
-            .into_effects()
-            .expect("metadata failure should be handled");
+        let effects = route(
+            &mut state,
+            metadata_failed(run_id),
+            Instant::now(),
+            &AppServices::stub(),
+        );
 
         assert!(matches!(
             effects.as_slice(),
@@ -324,14 +339,20 @@ mod tests {
             false,
         );
 
-        reduce_loading(&mut state, &Action::ReloadMetadata, Instant::now())
-            .into_effects()
-            .expect("metadata reload should be handled");
+        route(
+            &mut state,
+            Action::ReloadMetadata,
+            Instant::now(),
+            &AppServices::stub(),
+        );
         let run_id = state.session.metadata_generation();
 
-        let effects = reduce_loading(&mut state, &metadata_failed(run_id), Instant::now())
-            .into_effects()
-            .expect("metadata failure should be handled");
+        let effects = route(
+            &mut state,
+            metadata_failed(run_id),
+            Instant::now(),
+            &AppServices::stub(),
+        );
 
         assert!(matches!(
             state.session.table_detail_state(),
@@ -357,13 +378,19 @@ mod tests {
         let detail = table::minimal("public", "users");
         assert!(state.session.set_table_detail(detail, generation));
 
-        reduce_loading(&mut state, &Action::ReloadMetadata, Instant::now())
-            .into_effects()
-            .expect("metadata reload should be handled");
+        route(
+            &mut state,
+            Action::ReloadMetadata,
+            Instant::now(),
+            &AppServices::stub(),
+        );
         let run_id = state.session.metadata_generation();
-        let effects = reduce_loading(&mut state, &metadata_failed(run_id), Instant::now())
-            .into_effects()
-            .expect("metadata failure should be handled");
+        let effects = route(
+            &mut state,
+            metadata_failed(run_id),
+            Instant::now(),
+            &AppServices::stub(),
+        );
 
         assert!(effects.is_empty());
         assert!(matches!(
@@ -388,9 +415,12 @@ mod tests {
             .session
             .select_table("public", "orders", &mut state.query);
 
-        let effects = reduce_loading(&mut state, &metadata_failed(stale_run_id), Instant::now())
-            .into_effects()
-            .expect("stale metadata failure should be handled");
+        let effects = route(
+            &mut state,
+            metadata_failed(stale_run_id),
+            Instant::now(),
+            &AppServices::stub(),
+        );
 
         assert!(effects.is_empty());
         assert!(matches!(
@@ -413,9 +443,12 @@ mod tests {
         let detail = table::minimal("main", "orders");
         assert!(state.session.set_table_detail(detail, generation));
 
-        let effects = reduce_loading(&mut state, &metadata_failed(stale_run_id), Instant::now())
-            .into_effects()
-            .expect("stale metadata failure should be handled");
+        let effects = route(
+            &mut state,
+            metadata_failed(stale_run_id),
+            Instant::now(),
+            &AppServices::stub(),
+        );
 
         assert!(effects.is_empty());
         assert!(matches!(
@@ -442,18 +475,20 @@ mod tests {
             false,
         );
 
-        reduce_loading(&mut state, &Action::ReloadMetadata, Instant::now())
-            .into_effects()
-            .expect("metadata reload should be handled");
+        route(
+            &mut state,
+            Action::ReloadMetadata,
+            Instant::now(),
+            &AppServices::stub(),
+        );
         let metadata_run_id = state.session.metadata_generation();
 
-        let effects = reduce_loading(
+        let effects = route(
             &mut state,
-            &metadata_failed(metadata_run_id),
+            metadata_failed(metadata_run_id),
             Instant::now(),
-        )
-        .into_effects()
-        .expect("metadata failure should be handled");
+            &AppServices::stub(),
+        );
 
         assert!(effects.is_empty());
         assert!(matches!(
@@ -470,9 +505,12 @@ mod tests {
         let (generation, stale_run_id) = loading_detail_and_metadata_run(&mut state);
         let current_run_id = state.session.begin_metadata_refresh();
 
-        let effects = reduce_loading(&mut state, &metadata_failed(stale_run_id), Instant::now())
-            .into_effects()
-            .expect("stale metadata failure should be handled");
+        let effects = route(
+            &mut state,
+            metadata_failed(stale_run_id),
+            Instant::now(),
+            &AppServices::stub(),
+        );
 
         assert!(effects.is_empty());
         assert!(matches!(

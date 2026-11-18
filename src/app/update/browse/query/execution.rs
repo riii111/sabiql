@@ -373,7 +373,6 @@ mod tests {
     use crate::ports::outbound::{DbOperationError, RenderOutput, RenderResult, Renderer};
     use crate::services::AppServices;
     use crate::update::action::SmartErRefreshFetched;
-    use crate::update::browse::metadata::dispatch_metadata;
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
     use crate::update::reducer::{reduce, route};
@@ -907,17 +906,17 @@ mod tests {
             let now = Instant::now();
             let dsn = active_dsn(&state);
 
-            let inspector_effects = dispatch_metadata(
+            let inspector_effects = route(
                 &mut state,
-                &Action::TableDetailLoaded {
+                Action::TableDetailLoaded {
                     dsn,
                     run_id: detail_run_id,
                     outcome: Ok(Box::new(users_table_detail())),
                     generation,
                 },
                 now,
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
 
             assert!(inspector_effects.is_empty());
             assert!(state.session.is_table_detail_terminal(generation));
@@ -969,17 +968,17 @@ mod tests {
             );
             assert!(!state.query.has_pending_preview(generation));
 
-            let effects = dispatch_metadata(
+            let effects = route(
                 &mut state,
-                &Action::TableDetailLoaded {
+                Action::TableDetailLoaded {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id: detail_run_id,
                     outcome: Ok(Box::new(users_table_detail())),
                     generation,
                 },
                 Instant::now(),
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -1009,17 +1008,17 @@ mod tests {
             dispatch_query(&mut state, &old_query_action, Instant::now());
             assert!(state.query.current_result().is_none());
 
-            let stale_inspector_effects = dispatch_metadata(
+            let stale_inspector_effects = route(
                 &mut state,
-                &Action::TableDetailLoaded {
+                Action::TableDetailLoaded {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id: old_detail_run_id,
                     outcome: Ok(Box::new(users_table_detail())),
                     generation: old_generation,
                 },
                 Instant::now(),
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
             assert!(stale_inspector_effects.is_empty());
             assert!(!state.session.is_table_detail_terminal(new_generation));
 
@@ -1039,17 +1038,17 @@ mod tests {
             assert!(state.query.current_result().is_none());
             assert!(state.query.has_pending_preview(new_generation));
 
-            let effects = dispatch_metadata(
+            let effects = route(
                 &mut state,
-                &Action::TableDetailLoaded {
+                Action::TableDetailLoaded {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id: new_detail_run_id,
                     outcome: Ok(Box::new(users_table_detail())),
                     generation: new_generation,
                 },
                 Instant::now(),
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
             assert!(matches!(effects.as_slice(), [Effect::DispatchActions(_)]));
 
             dispatch_query(
@@ -1331,9 +1330,9 @@ mod tests {
             assert!(state.query.current_result().is_none());
             assert!(state.query.has_pending_preview(generation));
 
-            let effects = dispatch_metadata(
+            let effects = route(
                 &mut state,
-                &Action::TableDetailLoaded {
+                Action::TableDetailLoaded {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id: detail_run_id,
                     outcome: Err(DbOperationError::QueryFailed(
@@ -1342,8 +1341,8 @@ mod tests {
                     generation,
                 },
                 Instant::now(),
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
 
             assert!(state.session.is_table_detail_terminal(generation));
             assert!(state.messages.last_error().is_some());
@@ -1761,7 +1760,7 @@ mod tests {
             let metadata = make_metadata(vec![("public", "orders"), ("public", "users")]);
             let run_id = state.session.begin_metadata_refresh();
             let action = Action::MetadataLoaded { run_id, metadata };
-            let meta_effects = dispatch_metadata(&mut state, &action, Instant::now()).unwrap();
+            let meta_effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert_eq!(state.ui.explorer_selected(), 1);
             assert_eq!(state.query.pagination.table(), "users");
@@ -1794,7 +1793,7 @@ mod tests {
             let metadata = make_metadata(vec![("public", "orders")]);
             let run_id = state.session.begin_metadata_refresh();
             let action = Action::MetadataLoaded { run_id, metadata };
-            dispatch_metadata(&mut state, &action, Instant::now());
+            route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert!(state.query.pagination.table().is_empty());
             assert!(state.query.current_result().is_none());

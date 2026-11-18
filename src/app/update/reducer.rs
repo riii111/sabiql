@@ -7,8 +7,8 @@
 use std::time::Instant;
 
 use super::{
-    clipboard, connection, dispatch_metadata, dispatch_navigation, dispatch_query, dispatch_result,
-    er, explain, modal, sql_editor, target_routing, text_edit,
+    browse, clipboard, connection, dispatch_navigation, dispatch_query, dispatch_result, er,
+    explain, modal, sql_editor, target_routing, text_edit,
 };
 use crate::catalog::HelpDocument;
 use crate::cmd::effect::Effect;
@@ -215,6 +215,58 @@ pub(in crate::update) fn route(
         Action::SettingsCancel => modal::settings::settings_cancel(state),
         Action::SettingsSaved(settings) => modal::settings::settings_saved(state, settings, now),
         Action::SettingsSaveFailed(error) => modal::settings::settings_save_failed(state, error),
+        Action::ReloadMetadata => browse::metadata::loading::reload_metadata(state),
+        Action::MetadataLoaded { run_id, metadata } => {
+            browse::metadata::loading::metadata_loaded(state, run_id, metadata, now)
+        }
+        Action::MetadataFailed { run_id, error } => {
+            browse::metadata::loading::metadata_failed(state, run_id, error)
+        }
+        Action::EffectiveUserLoaded {
+            run_id,
+            effective_user,
+        } => browse::metadata::loading::effective_user_loaded(state, run_id, effective_user),
+        Action::TableDetailLoaded {
+            dsn,
+            run_id,
+            outcome,
+            generation,
+        } => browse::metadata::table_detail::table_detail_loaded(
+            state, dsn, run_id, outcome, generation,
+        ),
+        Action::PrefetchTableDetail {
+            run_id,
+            schema,
+            table,
+        } => browse::metadata::prefetch::prefetch_table_detail(state, run_id, schema, table, now),
+        Action::TableDetailCached {
+            dsn,
+            run_id,
+            schema,
+            table,
+            detail,
+        } => browse::metadata::prefetch::table_detail_cached(
+            state, dsn, run_id, schema, table, detail,
+        ),
+        Action::TableDetailCacheFailed {
+            dsn,
+            run_id,
+            schema,
+            table,
+            error,
+        } => browse::metadata::prefetch::table_detail_cache_failed(
+            state, dsn, run_id, schema, table, error, now,
+        ),
+        Action::StartErPrefetchAll => browse::metadata::prefetch::start_er_prefetch_all(state),
+        Action::StartErPrefetchScoped { tables } => {
+            browse::metadata::prefetch::start_er_prefetch_scoped(state, tables)
+        }
+        Action::StartCompletionPrefetch { tables } => {
+            browse::metadata::prefetch::start_completion_prefetch(state, tables)
+        }
+        Action::ProcessPrefetchQueue { run_id } => {
+            browse::metadata::prefetch::process_prefetch_queue(state, run_id, now)
+        }
         Action::SqlModalAppendInsert => sql_editor::mode::sql_modal_append_insert(state),
         Action::SqlModalEnterInsert => sql_editor::mode::sql_modal_enter_insert(state),
         Action::SqlModalEnterNormal => sql_editor::mode::sql_modal_enter_normal(state),
@@ -302,7 +354,6 @@ pub(in crate::update) fn legacy_dispatch(
 ) -> Vec<Effect> {
     if let Some(effects) = dispatch_result(state, &action, services, now)
         .or_else(|| dispatch_navigation(state, &action, services, now))
-        .or_else(|| dispatch_metadata(state, &action, now))
         .or_else(|| dispatch_query(state, &action, now))
         .into_effects()
     {
