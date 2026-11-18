@@ -1,36 +1,16 @@
-mod base;
-mod confirm_dialog;
-mod er_picker;
-mod help;
-mod query_history;
-mod settings;
-mod sqlite_diagnostics;
-
-use std::time::Instant;
-
-use crate::model::app_state::AppState;
-use crate::update::action::Action;
-use crate::update::dispatch_result::DispatchResult;
-
-pub(in crate::update) fn dispatch_modal(
-    state: &mut AppState,
-    action: &Action,
-    now: Instant,
-) -> DispatchResult {
-    base::reduce_base_lifecycle(state, action)
-        .or_else(|| settings::reduce_settings(state, action, now))
-        .or_else(|| help::reduce_help(state, action))
-        .or_else(|| sqlite_diagnostics::reduce_sqlite_diagnostics(state, action))
-        .or_else(|| confirm_dialog::reduce_confirm_dialog(state, action, now))
-        .or_else(|| er_picker::reduce_er_picker(state, action, now))
-        .or_else(|| query_history::reduce_query_history_picker(state, action))
-}
+pub(in crate::update) mod base;
+pub(in crate::update) mod confirm_dialog;
+pub(in crate::update) mod er_picker;
+pub(in crate::update) mod help;
+pub(in crate::update) mod query_history;
+pub(in crate::update) mod settings;
+pub(in crate::update) mod sqlite_diagnostics;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::cmd::effect::Effect;
     use crate::domain::{ConnectionId, DatabaseType, QueryValue};
+    use crate::model::app_state::AppState;
     use crate::model::browse::query_execution::PostDeleteRowSelection;
     use crate::model::shared::confirm_dialog::{ConfirmIntent, CsvExportCacheSnapshot};
     use crate::model::shared::help::HelpMode;
@@ -39,10 +19,10 @@ mod tests {
     use crate::ports::outbound::AppSettings;
     use crate::services::AppServices;
     use crate::update::action::{
-        CursorMove, InputTarget, ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection,
-        ScrollTarget, TextKillDirection,
+        Action, CursorMove, InputTarget, ListMotion, ListTarget, ModalKind, ScrollAmount,
+        ScrollDirection, ScrollTarget, TextKillDirection,
     };
-    use crate::update::reducer::reduce;
+    use crate::update::reducer::{reduce, route};
     use crate::update::test_fixtures;
     use crate::update::test_fixtures::edit_text;
     use std::time::Instant;
@@ -59,7 +39,12 @@ mod tests {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConnectionSelector);
 
-            let effects = dispatch_modal(&mut state, &Action::Escape, Instant::now()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::Escape,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(effects.is_empty());
@@ -70,9 +55,13 @@ mod tests {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::SqlModal);
 
-            let result = dispatch_modal(&mut state, &Action::Escape, Instant::now());
+            route(
+                &mut state,
+                Action::Escape,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
-            assert!(result.is_pass());
             assert_eq!(state.input_mode(), InputMode::SqlModal);
         }
     }
@@ -81,12 +70,18 @@ mod tests {
         use super::*;
 
         fn open_help(state: &mut AppState) {
-            dispatch_modal(
+            route(
                 state,
-                &Action::OpenModal(ModalKind::CommandPalette),
+                Action::OpenModal(ModalKind::CommandPalette),
                 Instant::now(),
+                &AppServices::stub(),
             );
-            dispatch_modal(state, &Action::ToggleHelp, Instant::now());
+            route(
+                state,
+                Action::ToggleHelp,
+                Instant::now(),
+                &AppServices::stub(),
+            );
             assert_eq!(state.input_mode(), InputMode::Help);
         }
 
@@ -96,12 +91,12 @@ mod tests {
             open_help(&mut state);
             state.ui.help_mut().insert_filter_char('c');
 
-            let effects = dispatch_modal(
+            let effects = route(
                 &mut state,
-                &Action::CloseModal(ModalKind::Help),
+                Action::CloseModal(ModalKind::Help),
                 Instant::now(),
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
 
             assert_eq!(state.input_mode(), InputMode::CommandPalette);
             assert!(state.ui.help().filter().content().is_empty());
@@ -113,12 +108,12 @@ mod tests {
             let mut state = create_test_state();
             open_help(&mut state);
 
-            let effects = dispatch_modal(
+            let effects = route(
                 &mut state,
-                &Action::CloseModal(ModalKind::Help),
+                Action::CloseModal(ModalKind::Help),
                 Instant::now(),
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
 
             assert_eq!(state.input_mode(), InputMode::CommandPalette);
             assert!(effects.is_empty());
@@ -157,7 +152,12 @@ mod tests {
             let mut state = create_test_state();
             open_help(&mut state);
 
-            dispatch_modal(&mut state, &Action::EnterHelpFilter, Instant::now());
+            route(
+                &mut state,
+                Action::EnterHelpFilter,
+                Instant::now(),
+                &AppServices::stub(),
+            );
             edit_text(
                 &mut state,
                 &Action::TextInput {
@@ -199,9 +199,19 @@ mod tests {
         fn exiting_help_filter_keeps_the_help_modal_open() {
             let mut state = create_test_state();
             open_help(&mut state);
-            dispatch_modal(&mut state, &Action::EnterHelpFilter, Instant::now());
+            route(
+                &mut state,
+                Action::EnterHelpFilter,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
-            dispatch_modal(&mut state, &Action::ExitHelpFilter, Instant::now());
+            route(
+                &mut state,
+                Action::ExitHelpFilter,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert_eq!(state.input_mode(), InputMode::Help);
             assert_eq!(state.ui.help().mode(), HelpMode::Viewing);
@@ -278,12 +288,12 @@ mod tests {
                 let mut state = create_test_state();
                 state.ui.set_theme(ThemeId::Light);
 
-                let effects = dispatch_modal(
+                let effects = route(
                     &mut state,
-                    &Action::OpenModal(ModalKind::Settings),
+                    Action::OpenModal(ModalKind::Settings),
                     Instant::now(),
-                )
-                .unwrap();
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(state.input_mode(), InputMode::Settings);
                 assert_eq!(state.settings.previous_theme(), ThemeId::Light);
@@ -294,13 +304,19 @@ mod tests {
             #[test]
             fn navigates_without_applying() {
                 let mut state = create_test_state();
-                dispatch_modal(
+                route(
                     &mut state,
-                    &Action::OpenModal(ModalKind::Settings),
+                    Action::OpenModal(ModalKind::Settings),
                     Instant::now(),
+                    &AppServices::stub(),
                 );
 
-                dispatch_modal(&mut state, &Action::SettingsSelectNext, Instant::now());
+                route(
+                    &mut state,
+                    Action::SettingsSelectNext,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(state.settings.selected_theme(), ThemeId::Light);
                 assert_eq!(state.ui.theme_id(), ThemeId::Default);
@@ -311,16 +327,20 @@ mod tests {
             #[case(Action::CloseModal(ModalKind::Settings))]
             fn cancel_discards_selection(#[case] action: Action) {
                 let mut state = create_test_state();
-                dispatch_modal(
+                route(
                     &mut state,
-                    &Action::OpenModal(ModalKind::Settings),
+                    Action::OpenModal(ModalKind::Settings),
                     Instant::now(),
+                    &AppServices::stub(),
                 );
-                dispatch_modal(&mut state, &Action::SettingsSelectNext, Instant::now());
+                route(
+                    &mut state,
+                    Action::SettingsSelectNext,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
-                let effects = dispatch_modal(&mut state, &action, Instant::now())
-                    .into_effects()
-                    .expect("reducer should handle action");
+                let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
                 assert_eq!(state.input_mode(), InputMode::Normal);
                 assert_eq!(state.settings.selected_theme(), ThemeId::Default);
@@ -331,19 +351,38 @@ mod tests {
             #[test]
             fn apply_emits_settings_save_effect() {
                 let mut state = create_test_state();
-                dispatch_modal(
+                route(
                     &mut state,
-                    &Action::OpenModal(ModalKind::Settings),
+                    Action::OpenModal(ModalKind::Settings),
                     Instant::now(),
+                    &AppServices::stub(),
                 );
-                dispatch_modal(&mut state, &Action::SettingsSelectNext, Instant::now());
+                route(
+                    &mut state,
+                    Action::SettingsSelectNext,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
-                dispatch_modal(&mut state, &Action::SettingsPreviousSection, Instant::now());
-                dispatch_modal(&mut state, &Action::SettingsSelectNext, Instant::now());
+                route(
+                    &mut state,
+                    Action::SettingsPreviousSection,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
+                route(
+                    &mut state,
+                    Action::SettingsSelectNext,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
-                let effects = dispatch_modal(&mut state, &Action::SettingsApply, Instant::now())
-                    .into_effects()
-                    .expect("reducer should handle action");
+                let effects = route(
+                    &mut state,
+                    Action::SettingsApply,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(state.input_mode(), InputMode::Settings);
                 assert_eq!(state.ui.theme_id(), ThemeId::Default);
@@ -358,18 +397,37 @@ mod tests {
             #[test]
             fn apply_emits_er_browser_save_effect() {
                 let mut state = create_test_state();
-                dispatch_modal(
+                route(
                     &mut state,
-                    &Action::OpenModal(ModalKind::Settings),
+                    Action::OpenModal(ModalKind::Settings),
                     Instant::now(),
+                    &AppServices::stub(),
                 );
-                dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
-                dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
-                dispatch_modal(&mut state, &Action::SettingsSelectNext, Instant::now());
+                route(
+                    &mut state,
+                    Action::SettingsNextSection,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
+                route(
+                    &mut state,
+                    Action::SettingsNextSection,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
+                route(
+                    &mut state,
+                    Action::SettingsSelectNext,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
-                let effects = dispatch_modal(&mut state, &Action::SettingsApply, Instant::now())
-                    .into_effects()
-                    .expect("reducer should handle action");
+                let effects = route(
+                    &mut state,
+                    Action::SettingsApply,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(state.input_mode(), InputMode::Settings);
                 assert_eq!(state.settings.saved_er_browser(), None);
@@ -383,17 +441,29 @@ mod tests {
             #[test]
             fn custom_browser_input_is_saved() {
                 let mut state = create_test_state();
-                dispatch_modal(
+                route(
                     &mut state,
-                    &Action::OpenModal(ModalKind::Settings),
+                    Action::OpenModal(ModalKind::Settings),
                     Instant::now(),
+                    &AppServices::stub(),
                 );
-                dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
-                dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
-                dispatch_modal(
+                route(
                     &mut state,
-                    &Action::SettingsStartCustomBrowserEdit,
+                    Action::SettingsNextSection,
                     Instant::now(),
+                    &AppServices::stub(),
+                );
+                route(
+                    &mut state,
+                    Action::SettingsNextSection,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
+                route(
+                    &mut state,
+                    Action::SettingsStartCustomBrowserEdit,
+                    Instant::now(),
+                    &AppServices::stub(),
                 );
                 edit_text(
                     &mut state,
@@ -404,9 +474,12 @@ mod tests {
                     Instant::now(),
                 );
 
-                let effects = dispatch_modal(&mut state, &Action::SettingsApply, Instant::now())
-                    .into_effects()
-                    .expect("reducer should handle action");
+                let effects = route(
+                    &mut state,
+                    Action::SettingsApply,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(state.input_mode(), InputMode::Settings);
                 assert!(matches!(
@@ -419,26 +492,42 @@ mod tests {
             #[test]
             fn save_success_commits_pending_settings() {
                 let mut state = create_test_state();
-                dispatch_modal(
+                route(
                     &mut state,
-                    &Action::OpenModal(ModalKind::Settings),
+                    Action::OpenModal(ModalKind::Settings),
                     Instant::now(),
+                    &AppServices::stub(),
                 );
-                dispatch_modal(&mut state, &Action::SettingsSelectNext, Instant::now());
-                dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
-                dispatch_modal(&mut state, &Action::SettingsSelectNext, Instant::now());
-
-                let effects = dispatch_modal(
+                route(
                     &mut state,
-                    &Action::SettingsSaved(AppSettings {
+                    Action::SettingsSelectNext,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
+                route(
+                    &mut state,
+                    Action::SettingsNextSection,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
+                route(
+                    &mut state,
+                    Action::SettingsSelectNext,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
+
+                let effects = route(
+                    &mut state,
+                    Action::SettingsSaved(AppSettings {
                         theme_id: ThemeId::Light,
                         icon_mode: IconMode::Unicode,
                         keymap_preset: KeymapPreset::Ide,
                         er_browser: Some("Google Chrome".to_string()),
                     }),
                     Instant::now(),
-                )
-                .unwrap();
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(state.ui.theme_id(), ThemeId::Light);
                 assert_eq!(state.settings.previous_theme(), ThemeId::Light);
@@ -460,12 +549,12 @@ mod tests {
         fn save_failed_sets_error_message() {
             let mut state = create_test_state();
 
-            let effects = dispatch_modal(
+            let effects = route(
                 &mut state,
-                &Action::SettingsSaveFailed("I/O error: disk full".to_string()),
+                Action::SettingsSaveFailed("I/O error: disk full".to_string()),
                 Instant::now(),
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
 
             assert!(state.messages.last_error.as_deref().is_some_and(|message| {
                 message.contains("Failed to save settings") && message.contains("disk full")
@@ -526,15 +615,21 @@ mod tests {
         }
 
         fn confirm_effects(state: &mut AppState) -> Vec<Effect> {
-            dispatch_modal(state, &Action::ConfirmDialogConfirm, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action")
+            route(
+                state,
+                Action::ConfirmDialogConfirm,
+                Instant::now(),
+                &AppServices::stub(),
+            )
         }
 
         fn cancel_effects(state: &mut AppState) -> Vec<Effect> {
-            dispatch_modal(state, &Action::ConfirmDialogCancel, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action")
+            route(
+                state,
+                Action::ConfirmDialogCancel,
+                Instant::now(),
+                &AppServices::stub(),
+            )
         }
 
         fn assert_cached_export_effect(effect: &Effect, run_id: u64) {
@@ -572,9 +667,12 @@ mod tests {
                     .confirm_dialog
                     .open("", "", ConfirmIntent::QuitNoConnection);
 
-                let effects =
-                    dispatch_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now())
-                        .unwrap();
+                let effects = route(
+                    &mut state,
+                    Action::ConfirmDialogConfirm,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
                 assert!(state.should_quit);
                 assert!(state.confirm_dialog.intent().is_none());
@@ -596,9 +694,12 @@ mod tests {
                     .confirm_dialog
                     .open("", "", ConfirmIntent::DeleteConnection(id.clone()));
 
-                let effects =
-                    dispatch_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now())
-                        .unwrap();
+                let effects = route(
+                    &mut state,
+                    Action::ConfirmDialogConfirm,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(state.input_mode(), InputMode::ConnectionSelector);
                 let [Effect::DispatchActions(actions)] = effects.as_slice() else {
@@ -671,9 +772,12 @@ mod tests {
                     },
                 );
 
-                let effects =
-                    dispatch_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now())
-                        .unwrap();
+                let effects = route(
+                    &mut state,
+                    Action::ConfirmDialogConfirm,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
                 assert!(effects.is_empty());
                 assert_eq!(
@@ -695,9 +799,12 @@ mod tests {
                     },
                 );
 
-                let effects =
-                    dispatch_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now())
-                        .unwrap();
+                let effects = route(
+                    &mut state,
+                    Action::ConfirmDialogConfirm,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(state.input_mode(), InputMode::Normal);
                 assert!(effects.is_empty());
@@ -733,9 +840,12 @@ mod tests {
                     },
                 );
 
-                dispatch_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now())
-                    .into_effects()
-                    .expect("reducer should handle action");
+                route(
+                    &mut state,
+                    Action::ConfirmDialogConfirm,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
                 assert!(state.result_interaction.pending_write_preview().is_none());
                 assert!(state.query.pending_delete_refresh_target().is_none());
@@ -793,9 +903,12 @@ mod tests {
                     },
                 );
 
-                let effects =
-                    dispatch_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now())
-                        .unwrap();
+                let effects = route(
+                    &mut state,
+                    Action::ConfirmDialogConfirm,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
                 assert!(effects.is_empty());
             }
@@ -827,9 +940,12 @@ mod tests {
                     .confirm_dialog
                     .open("", "", ConfirmIntent::DisableReadOnly);
 
-                let effects =
-                    dispatch_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now())
-                        .unwrap();
+                let effects = route(
+                    &mut state,
+                    Action::ConfirmDialogConfirm,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
                 assert!(!state.session.is_read_only());
                 assert_eq!(state.input_mode(), InputMode::Normal);
@@ -841,9 +957,12 @@ mod tests {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
 
-                let effects =
-                    dispatch_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now())
-                        .unwrap();
+                let effects = route(
+                    &mut state,
+                    Action::ConfirmDialogConfirm,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
                 assert!(effects.is_empty());
             }
@@ -872,14 +991,15 @@ mod tests {
             fn down_increments_offset() {
                 let mut state = state_with_scrollable_preview();
 
-                dispatch_modal(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::ConfirmDialog,
                         direction: ScrollDirection::Down,
                         amount: ScrollAmount::Line,
                     },
                     Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.confirm_dialog.preview_scroll, 1);
@@ -890,14 +1010,15 @@ mod tests {
                 let mut state = state_with_scrollable_preview();
                 state.confirm_dialog.preview_scroll = 5;
 
-                dispatch_modal(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::ConfirmDialog,
                         direction: ScrollDirection::Up,
                         amount: ScrollAmount::Line,
                     },
                     Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.confirm_dialog.preview_scroll, 4);
@@ -908,14 +1029,15 @@ mod tests {
                 let mut state = state_with_scrollable_preview();
                 state.confirm_dialog.preview_scroll = 0;
 
-                dispatch_modal(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::ConfirmDialog,
                         direction: ScrollDirection::Up,
                         amount: ScrollAmount::Line,
                     },
                     Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.confirm_dialog.preview_scroll, 0);
@@ -926,14 +1048,15 @@ mod tests {
                 let mut state = state_with_scrollable_preview();
                 state.confirm_dialog.preview_scroll = 15;
 
-                dispatch_modal(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::ConfirmDialog,
                         direction: ScrollDirection::Down,
                         amount: ScrollAmount::Line,
                     },
                     Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.confirm_dialog.preview_scroll, 15);
@@ -973,10 +1096,12 @@ mod tests {
                     .confirm_dialog
                     .open("", "", ConfirmIntent::QuitNoConnection);
 
-                let effects =
-                    dispatch_modal(&mut state, &Action::ConfirmDialogCancel, Instant::now())
-                        .into_effects()
-                        .expect("reducer should handle action");
+                let effects = route(
+                    &mut state,
+                    Action::ConfirmDialogCancel,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
                 assert!(effects.is_empty());
@@ -995,10 +1120,12 @@ mod tests {
                     },
                 );
 
-                let effects =
-                    dispatch_modal(&mut state, &Action::ConfirmDialogCancel, Instant::now())
-                        .into_effects()
-                        .expect("reducer should handle action");
+                let effects = route(
+                    &mut state,
+                    Action::ConfirmDialogCancel,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(state.input_mode(), InputMode::CellEdit);
                 assert!(effects.is_empty());
@@ -1091,10 +1218,12 @@ mod tests {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
 
-                let effects =
-                    dispatch_modal(&mut state, &Action::ConfirmDialogCancel, Instant::now())
-                        .into_effects()
-                        .expect("reducer should handle action");
+                let effects = route(
+                    &mut state,
+                    Action::ConfirmDialogCancel,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
                 assert!(effects.is_empty());
             }
@@ -1159,12 +1288,12 @@ mod tests {
                 let mut state = create_test_state();
                 state.session.clear_connection();
 
-                let effects = dispatch_modal(
+                let effects = route(
                     &mut state,
-                    &Action::OpenModal(ModalKind::QueryHistoryPicker),
+                    Action::OpenModal(ModalKind::QueryHistoryPicker),
                     Instant::now(),
-                )
-                .unwrap();
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(state.input_mode(), InputMode::Normal);
                 assert!(effects.is_empty());
@@ -1175,12 +1304,12 @@ mod tests {
                 let mut state = connected_state();
                 let _ = state.query.begin_running(Instant::now());
 
-                let effects = dispatch_modal(
+                let effects = route(
                     &mut state,
-                    &Action::OpenModal(ModalKind::QueryHistoryPicker),
+                    Action::OpenModal(ModalKind::QueryHistoryPicker),
                     Instant::now(),
-                )
-                .unwrap();
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(state.input_mode(), InputMode::Normal);
                 assert!(effects.is_empty());
@@ -1194,12 +1323,12 @@ mod tests {
             fn open_from_normal_sets_mode_and_emits_load_effect() {
                 let mut state = connected_state();
 
-                let effects = dispatch_modal(
+                let effects = route(
                     &mut state,
-                    &Action::OpenModal(ModalKind::QueryHistoryPicker),
+                    Action::OpenModal(ModalKind::QueryHistoryPicker),
                     Instant::now(),
-                )
-                .unwrap();
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(state.input_mode(), InputMode::QueryHistoryPicker);
                 assert_eq!(state.modal.return_destination(), InputMode::Normal);
@@ -1212,12 +1341,12 @@ mod tests {
                 let mut state = connected_state();
                 state.modal.push_mode(InputMode::QueryHistoryPicker);
 
-                let effects = dispatch_modal(
+                let effects = route(
                     &mut state,
-                    &Action::OpenModal(ModalKind::QueryHistoryPicker),
+                    Action::OpenModal(ModalKind::QueryHistoryPicker),
                     Instant::now(),
-                )
-                .unwrap();
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(state.input_mode(), InputMode::QueryHistoryPicker);
                 assert_eq!(state.modal.return_destination(), InputMode::Normal);
@@ -1228,12 +1357,12 @@ mod tests {
             fn open_for_mysql_captures_selected_database_in_scope() {
                 let mut state = mysql_connected_state("analytics");
 
-                let effects = dispatch_modal(
+                let effects = route(
                     &mut state,
-                    &Action::OpenModal(ModalKind::QueryHistoryPicker),
+                    Action::OpenModal(ModalKind::QueryHistoryPicker),
                     Instant::now(),
-                )
-                .unwrap();
+                    &AppServices::stub(),
+                );
 
                 assert!(matches!(
                     &effects[0],
@@ -1248,12 +1377,12 @@ mod tests {
                 state.modal.set_mode(InputMode::SqlModal);
                 state.modal.push_mode(InputMode::QueryHistoryPicker);
 
-                let effects = dispatch_modal(
+                let effects = route(
                     &mut state,
-                    &Action::CloseModal(ModalKind::QueryHistoryPicker),
+                    Action::CloseModal(ModalKind::QueryHistoryPicker),
                     Instant::now(),
-                )
-                .unwrap();
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(state.input_mode(), InputMode::SqlModal);
                 assert!(effects.is_empty());
@@ -1270,12 +1399,12 @@ mod tests {
                 let conn_id = ConnectionId::from_string("test-conn");
                 let entries = vec![make_entry("SELECT 1", &conn_id)];
 
-                let effects = dispatch_modal(
+                let effects = route(
                     &mut state,
-                    &Action::QueryHistoryLoaded(scope(&conn_id, None), entries),
+                    Action::QueryHistoryLoaded(scope(&conn_id, None), entries),
                     Instant::now(),
-                )
-                .unwrap();
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(state.query_history_picker.entries().len(), 1);
                 assert!(effects.is_empty());
@@ -1288,12 +1417,12 @@ mod tests {
                 let stale_conn = ConnectionId::from_string("old-conn");
                 let entries = vec![make_entry("SELECT 1", &stale_conn)];
 
-                dispatch_modal(
+                route(
                     &mut state,
-                    &Action::QueryHistoryLoaded(scope(&stale_conn, None), entries),
+                    Action::QueryHistoryLoaded(scope(&stale_conn, None), entries),
                     Instant::now(),
-                )
-                .unwrap();
+                    &AppServices::stub(),
+                );
 
                 assert!(state.query_history_picker.entries().is_empty());
             }
@@ -1313,12 +1442,12 @@ mod tests {
                     None,
                 )];
 
-                dispatch_modal(
+                route(
                     &mut state,
-                    &Action::QueryHistoryLoaded(stale_scope, entries),
+                    Action::QueryHistoryLoaded(stale_scope, entries),
                     Instant::now(),
-                )
-                .unwrap();
+                    &AppServices::stub(),
+                );
 
                 assert!(state.query_history_picker.entries().is_empty());
             }
@@ -1329,12 +1458,12 @@ mod tests {
                 let conn_id = ConnectionId::from_string("test-conn");
                 let entries = vec![make_entry("SELECT 1", &conn_id)];
 
-                dispatch_modal(
+                route(
                     &mut state,
-                    &Action::QueryHistoryLoaded(scope(&conn_id, None), entries),
+                    Action::QueryHistoryLoaded(scope(&conn_id, None), entries),
                     Instant::now(),
-                )
-                .unwrap();
+                    &AppServices::stub(),
+                );
 
                 assert!(state.query_history_picker.entries().is_empty());
             }
@@ -1345,15 +1474,15 @@ mod tests {
                 state.modal.set_mode(InputMode::QueryHistoryPicker);
                 let now = Instant::now();
 
-                dispatch_modal(
+                route(
                     &mut state,
-                    &Action::QueryHistoryLoadFailed(
+                    Action::QueryHistoryLoadFailed(
                         scope(&ConnectionId::from_string("test-conn"), None),
                         "IO error: disk error".to_string(),
                     ),
                     now,
-                )
-                .unwrap();
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(
                     state.messages.last_error.as_deref(),
@@ -1367,15 +1496,15 @@ mod tests {
                 let mut state = connected_state();
                 let now = Instant::now();
 
-                dispatch_modal(
+                route(
                     &mut state,
-                    &Action::QueryHistoryLoadFailed(
+                    Action::QueryHistoryLoadFailed(
                         scope(&ConnectionId::from_string("test-conn"), None),
                         "IO error: stale error".to_string(),
                     ),
                     now,
-                )
-                .unwrap();
+                    &AppServices::stub(),
+                );
 
                 assert!(state.messages.last_error.is_none());
             }
@@ -1386,15 +1515,15 @@ mod tests {
                 state.modal.set_mode(InputMode::QueryHistoryPicker);
                 let now = Instant::now();
 
-                dispatch_modal(
+                route(
                     &mut state,
-                    &Action::QueryHistoryLoadFailed(
+                    Action::QueryHistoryLoadFailed(
                         scope(&ConnectionId::from_string("old-conn"), None),
                         "IO error: stale error".to_string(),
                     ),
                     now,
-                )
-                .unwrap();
+                    &AppServices::stub(),
+                );
 
                 assert!(state.messages.last_error.is_none());
             }
@@ -1445,15 +1574,15 @@ mod tests {
                     .query_history_picker
                     .set_selection_for_test(initial_selection);
 
-                dispatch_modal(
+                route(
                     &mut state,
-                    &Action::ListSelect {
+                    Action::ListSelect {
                         target: ListTarget::QueryHistory,
                         motion,
                     },
                     Instant::now(),
-                )
-                .unwrap();
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(state.query_history_picker.selected(), expected_selection);
             }
@@ -1477,12 +1606,12 @@ mod tests {
                     .query_history_picker
                     .replace_entries(&[make_entry(&query, &test_conn)]);
 
-                dispatch_modal(
+                route(
                     &mut state,
-                    &Action::QueryHistoryConfirmSelection,
+                    Action::QueryHistoryConfirmSelection,
                     Instant::now(),
-                )
-                .unwrap();
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(state.sql_modal.editor.cursor(), expected_chars);
             }
@@ -1496,12 +1625,12 @@ mod tests {
                     .query_history_picker
                     .replace_entries(&[make_entry("SELECT * FROM users", &test_conn)]);
 
-                let effects = dispatch_modal(
+                let effects = route(
                     &mut state,
-                    &Action::QueryHistoryConfirmSelection,
+                    Action::QueryHistoryConfirmSelection,
                     Instant::now(),
-                )
-                .unwrap();
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(state.input_mode(), InputMode::SqlModal);
                 assert_eq!(state.sql_modal.editor.content(), "SELECT * FROM users");
@@ -1537,12 +1666,12 @@ mod tests {
                     .query_history_picker
                     .replace_entries(&[make_entry("new query", &test_conn)]);
 
-                dispatch_modal(
+                route(
                     &mut state,
-                    &Action::QueryHistoryConfirmSelection,
+                    Action::QueryHistoryConfirmSelection,
                     Instant::now(),
-                )
-                .unwrap();
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(state.input_mode(), InputMode::SqlModal);
                 assert_eq!(state.sql_modal.editor.content(), "new query");
@@ -1557,12 +1686,12 @@ mod tests {
                 let mut state = connected_state();
                 enter_query_history(&mut state, InputMode::Normal);
 
-                dispatch_modal(
+                route(
                     &mut state,
-                    &Action::QueryHistoryConfirmSelection,
+                    Action::QueryHistoryConfirmSelection,
                     Instant::now(),
-                )
-                .unwrap();
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(state.input_mode(), InputMode::Normal);
             }
@@ -1583,12 +1712,12 @@ mod tests {
                     Some("app"),
                 );
 
-                let effects = dispatch_modal(
+                let effects = route(
                     &mut state,
-                    &Action::QueryHistoryConfirmSelection,
+                    Action::QueryHistoryConfirmSelection,
                     Instant::now(),
-                )
-                .unwrap();
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(state.input_mode(), InputMode::QueryHistoryPicker);
                 assert_eq!(state.query_history_picker.entries().len(), 1);

@@ -1,75 +1,80 @@
 use crate::cmd::effect::Effect;
+use crate::domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
-use crate::update::action::{Action, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget};
-use crate::update::dispatch_result::DispatchResult;
+use crate::update::action::{ScrollAmount, ScrollDirection};
 
-pub(super) fn reduce_sqlite_diagnostics(state: &mut AppState, action: &Action) -> DispatchResult {
-    match action {
-        Action::OpenModal(ModalKind::SqliteDiagnostics) => {
-            let Some(dsn) = state.session.dsn().map(String::from) else {
-                return DispatchResult::handled();
-            };
-            let run_id = state.sqlite_diagnostics.begin_core_fetch();
-            state.modal.set_mode(InputMode::SqliteDiagnostics);
-            DispatchResult::handled_with(vec![Effect::FetchSqliteDiagnosticsCore { dsn, run_id }])
-        }
-        Action::RunSqliteDiagnosticsQuickCheck => {
-            let Some(dsn) = state.session.dsn().map(String::from) else {
-                return DispatchResult::handled();
-            };
-            let Some(run_id) = state.sqlite_diagnostics.begin_quick_check() else {
-                return DispatchResult::handled();
-            };
-            DispatchResult::handled_with(vec![Effect::FetchSqliteDiagnosticsQuickCheck {
-                dsn,
-                run_id,
-            }])
-        }
-        Action::CloseModal(ModalKind::SqliteDiagnostics) => {
-            state.sqlite_diagnostics.clear();
-            state.modal.set_mode(InputMode::Normal);
-            DispatchResult::handled_with(vec![Effect::CancelSqliteDiagnostics])
-        }
-        Action::SqliteDiagnosticsCoreLoaded { run_id, snapshot } => {
-            if !state.sqlite_diagnostics.is_current_run(*run_id) {
-                return DispatchResult::handled();
-            }
-            state
-                .sqlite_diagnostics
-                .set_core_loaded(*run_id, snapshot.as_ref().clone());
-            DispatchResult::handled()
-        }
-        Action::SqliteDiagnosticsQuickCheckLoaded {
-            run_id,
-            quick_check,
-        } => {
-            if !state.sqlite_diagnostics.is_current_run(*run_id) {
-                return DispatchResult::handled();
-            }
-            state
-                .sqlite_diagnostics
-                .set_quick_check_loaded(*run_id, quick_check.clone());
-            DispatchResult::handled()
-        }
-        Action::Scroll {
-            target: ScrollTarget::SqliteDiagnostics,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::Line,
-        } => {
-            state.sqlite_diagnostics.scroll_up();
-            DispatchResult::handled()
-        }
-        Action::Scroll {
-            target: ScrollTarget::SqliteDiagnostics,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::Line,
-        } => {
-            state.sqlite_diagnostics.scroll_down();
-            DispatchResult::handled()
-        }
-        _ => DispatchResult::pass(),
+pub(in crate::update) fn open_modal_sqlite_diagnostics(state: &mut AppState) -> Vec<Effect> {
+    let Some(dsn) = state.session.dsn().map(String::from) else {
+        return vec![];
+    };
+    let run_id = state.sqlite_diagnostics.begin_core_fetch();
+    state.modal.set_mode(InputMode::SqliteDiagnostics);
+    vec![Effect::FetchSqliteDiagnosticsCore { dsn, run_id }]
+}
+
+pub(in crate::update) fn run_sqlite_diagnostics_quick_check(state: &mut AppState) -> Vec<Effect> {
+    let Some(dsn) = state.session.dsn().map(String::from) else {
+        return vec![];
+    };
+    let Some(run_id) = state.sqlite_diagnostics.begin_quick_check() else {
+        return vec![];
+    };
+    vec![Effect::FetchSqliteDiagnosticsQuickCheck { dsn, run_id }]
+}
+
+pub(in crate::update) fn close_modal_sqlite_diagnostics(state: &mut AppState) -> Vec<Effect> {
+    state.sqlite_diagnostics.clear();
+    state.modal.set_mode(InputMode::Normal);
+    vec![Effect::CancelSqliteDiagnostics]
+}
+
+pub(in crate::update) fn sqlite_diagnostics_core_loaded(
+    state: &mut AppState,
+    run_id: u64,
+    snapshot: Box<SqliteDiagnosticsSnapshot>,
+) -> Vec<Effect> {
+    if !state.sqlite_diagnostics.is_current_run(run_id) {
+        return vec![];
     }
+    state
+        .sqlite_diagnostics
+        .set_core_loaded(run_id, snapshot.as_ref().clone());
+    vec![]
+}
+
+pub(in crate::update) fn sqlite_diagnostics_quick_check_loaded(
+    state: &mut AppState,
+    run_id: u64,
+    quick_check: DiagnosticField,
+) -> Vec<Effect> {
+    if !state.sqlite_diagnostics.is_current_run(run_id) {
+        return vec![];
+    }
+    state
+        .sqlite_diagnostics
+        .set_quick_check_loaded(run_id, quick_check);
+    vec![]
+}
+
+pub(in crate::update) fn scroll_sqlite_diagnostics(
+    state: &mut AppState,
+    direction: ScrollDirection,
+    amount: ScrollAmount,
+) -> Vec<Effect> {
+    match (direction, amount) {
+        (ScrollDirection::Up, ScrollAmount::Line) => {
+            state.sqlite_diagnostics.scroll_up();
+        }
+        (ScrollDirection::Down, ScrollAmount::Line) => {
+            state.sqlite_diagnostics.scroll_down();
+        }
+        _ => debug_assert!(
+            false,
+            "unsupported SqliteDiagnostics scroll: {direction:?} {amount:?}"
+        ),
+    }
+    vec![]
 }
 
 #[cfg(test)]
@@ -77,10 +82,11 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
+    use crate::domain::ConnectionId;
     use crate::domain::connection::DatabaseType;
-    use crate::domain::{ConnectionId, DiagnosticField, SqliteDiagnosticsSnapshot};
     use crate::services::AppServices;
-    use crate::update::reducer::reduce;
+    use crate::update::action::{Action, ModalKind, ScrollTarget};
+    use crate::update::reducer::{reduce, route};
     use crate::update::test_fixtures;
 
     fn reduce_at_boundary(state: &mut AppState, action: Action) -> Vec<Effect> {
@@ -178,8 +184,12 @@ mod tests {
             "postgres://localhost/db",
         );
 
-        let effects =
-            reduce_sqlite_diagnostics(&mut state, &Action::RunSqliteDiagnosticsQuickCheck).unwrap();
+        let effects = route(
+            &mut state,
+            Action::RunSqliteDiagnosticsQuickCheck,
+            Instant::now(),
+            &AppServices::stub(),
+        );
 
         assert!(effects.is_empty());
         assert!(!state.sqlite_diagnostics.is_quick_check_running());
@@ -231,14 +241,15 @@ mod tests {
             .set_core_loaded(current_run_id, current_snapshot.clone());
         let quick_check_running_before = state.sqlite_diagnostics.is_quick_check_running();
 
-        reduce_sqlite_diagnostics(
+        route(
             &mut state,
-            &Action::SqliteDiagnosticsQuickCheckLoaded {
+            Action::SqliteDiagnosticsQuickCheckLoaded {
                 run_id: stale_quick_check_run_id,
                 quick_check: DiagnosticField::ok("ok"),
             },
-        )
-        .unwrap();
+            Instant::now(),
+            &AppServices::stub(),
+        );
 
         assert!(stale_run_id < current_run_id);
         assert!(stale_quick_check_run_id < current_run_id);
@@ -262,14 +273,15 @@ mod tests {
         state.sqlite_diagnostics.clear();
         let current_run_id = state.sqlite_diagnostics.begin_core_fetch();
 
-        reduce_sqlite_diagnostics(
+        route(
             &mut state,
-            &Action::SqliteDiagnosticsCoreLoaded {
+            Action::SqliteDiagnosticsCoreLoaded {
                 run_id: stale_run_id,
                 snapshot: Box::new(SqliteDiagnosticsSnapshot::default()),
             },
-        )
-        .unwrap();
+            Instant::now(),
+            &AppServices::stub(),
+        );
 
         assert!(stale_run_id < current_run_id);
         assert!(state.sqlite_diagnostics.snapshot().is_none());
@@ -284,15 +296,16 @@ mod tests {
         test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
         state.sqlite_diagnostics.apply_viewport_metrics(5, 10);
 
-        reduce_sqlite_diagnostics(
+        route(
             &mut state,
-            &Action::Scroll {
+            Action::Scroll {
                 target: ScrollTarget::SqliteDiagnostics,
                 direction: ScrollDirection::Down,
                 amount: ScrollAmount::Line,
             },
-        )
-        .unwrap();
+            Instant::now(),
+            &AppServices::stub(),
+        );
 
         assert_eq!(state.sqlite_diagnostics.scroll_offset(), 0);
     }

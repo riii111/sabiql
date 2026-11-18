@@ -7,8 +7,8 @@
 use std::time::Instant;
 
 use super::{
-    clipboard, connection, dispatch_metadata, dispatch_modal, dispatch_navigation, dispatch_query,
-    dispatch_result, dispatch_sql_modal, er, explain, target_routing, text_edit,
+    clipboard, connection, dispatch_metadata, dispatch_navigation, dispatch_query, dispatch_result,
+    dispatch_sql_modal, er, explain, modal, target_routing, text_edit,
 };
 use crate::catalog::HelpDocument;
 use crate::cmd::effect::Effect;
@@ -96,6 +96,8 @@ pub(in crate::update) fn route(
         Action::ScrollToCursor { target, position } => {
             target_routing::scroll_to_cursor(state, target, position, now, services)
         }
+        Action::EnterHelpFilter => modal::help::enter_help_filter(state),
+        Action::ExitHelpFilter => modal::help::exit_help_filter(state),
         Action::Select(motion) => target_routing::select(state, motion, now, services),
         Action::ListSelect { target, motion } => {
             target_routing::list_select(state, target, motion, now, services)
@@ -105,7 +107,11 @@ pub(in crate::update) fn route(
         Action::OpenModal(kind) => target_routing::open_modal(state, kind, now, services),
         Action::CloseModal(kind) => target_routing::close_modal(state, kind, now, services),
         Action::CancelKeySequence => cancel_key_sequence(state),
+        Action::ToggleHelp => modal::help::toggle_help(state),
+        Action::Escape => modal::base::escape(state),
         Action::ConfirmSelection => confirm_selection(state, now, services),
+        Action::ConfirmDialogConfirm => modal::confirm_dialog::confirm_dialog_confirm(state, now),
+        Action::ConfirmDialogCancel => modal::confirm_dialog::confirm_dialog_cancel(state),
         Action::TryConnect => connection::lifecycle::try_connect(state),
         Action::SwitchConnection(target) => connection::lifecycle::switch_connection(state, target),
         Action::ConnectionSetupNextField => connection::setup::connection_setup_next_field(state),
@@ -181,6 +187,34 @@ pub(in crate::update) fn route(
         Action::RequestEditSelectedConnection => {
             connection::selector::request_edit_selected_connection(state)
         }
+        Action::RunSqliteDiagnosticsQuickCheck => {
+            modal::sqlite_diagnostics::run_sqlite_diagnostics_quick_check(state)
+        }
+        Action::SqliteDiagnosticsCoreLoaded { run_id, snapshot } => {
+            modal::sqlite_diagnostics::sqlite_diagnostics_core_loaded(state, run_id, snapshot)
+        }
+        Action::SqliteDiagnosticsQuickCheckLoaded {
+            run_id,
+            quick_check,
+        } => modal::sqlite_diagnostics::sqlite_diagnostics_quick_check_loaded(
+            state,
+            run_id,
+            quick_check,
+        ),
+        Action::SettingsSelectNext => modal::settings::settings_select_next(state),
+        Action::SettingsSelectPrevious => modal::settings::settings_select_previous(state),
+        Action::SettingsNextSection => modal::settings::settings_next_section(state),
+        Action::SettingsPreviousSection => modal::settings::settings_previous_section(state),
+        Action::SettingsStartCustomBrowserEdit => {
+            modal::settings::settings_start_custom_browser_edit(state)
+        }
+        Action::SettingsStopCustomBrowserEdit => {
+            modal::settings::settings_stop_custom_browser_edit(state)
+        }
+        Action::SettingsApply => modal::settings::settings_apply(state),
+        Action::SettingsCancel => modal::settings::settings_cancel(state),
+        Action::SettingsSaved(settings) => modal::settings::settings_saved(state, settings, now),
+        Action::SettingsSaveFailed(error) => modal::settings::settings_save_failed(state, error),
         Action::SqlModalNextTab => explain::tabs::sql_modal_next_tab(state),
         Action::SqlModalPrevTab => explain::tabs::sql_modal_prev_tab(state),
         Action::ExplainRequest => explain::request::explain_request(state, now),
@@ -214,6 +248,18 @@ pub(in crate::update) fn route(
         Action::CompareEditQuery => explain::tabs::compare_edit_query(state),
         Action::CopySucceeded(target) => clipboard::copy_succeeded(state, target, now),
         Action::CopyFailed(error) => clipboard::copy_failed(state, &error),
+        Action::QueryHistoryLoaded(scope, entries) => {
+            modal::query_history::query_history_loaded(state, scope, entries)
+        }
+        Action::QueryHistoryLoadFailed(scope, error) => {
+            modal::query_history::query_history_load_failed(state, scope, error)
+        }
+        Action::QueryHistoryConfirmSelection => {
+            modal::query_history::query_history_confirm_selection(state)
+        }
+        Action::ErToggleSelection => modal::er_picker::er_toggle_selection(state),
+        Action::ErSelectAll => modal::er_picker::er_select_all(state),
+        Action::ErConfirmSelection => modal::er_picker::er_confirm_selection(state),
         Action::ErOpenDiagram => er::diagram::er_open_diagram(state, now),
         Action::ErGenerateFromCache => er::diagram::er_generate_from_cache(state),
         Action::SmartErRefreshFetched(fetched) => {
@@ -237,8 +283,7 @@ pub(in crate::update) fn legacy_dispatch(
     now: Instant,
     services: &AppServices,
 ) -> Vec<Effect> {
-    if let Some(effects) = dispatch_modal(state, &action, now)
-        .or_else(|| dispatch_result(state, &action, services, now))
+    if let Some(effects) = dispatch_result(state, &action, services, now)
         .or_else(|| dispatch_navigation(state, &action, services, now))
         .or_else(|| dispatch_sql_modal(state, &action, now))
         .or_else(|| dispatch_metadata(state, &action, now))
