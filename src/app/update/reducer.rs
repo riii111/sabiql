@@ -18,10 +18,13 @@ use crate::model::app_state::AppState;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::KeySequenceState;
+use crate::model::shared::key_sequence::Prefix;
+use crate::model::shared::text_input::TextEdit;
 use crate::policy::FeaturePolicy;
 use crate::services::AppServices;
 use crate::update::action::{Action, TableTarget};
 use crate::update::helpers::reject_pending_mysql_connection_probe;
+use crate::update::input::palette::palette_action_for_index;
 use crate::update::query_context::termination_effects;
 
 pub fn reduce(
@@ -54,12 +57,55 @@ fn dispatch_enabled_action(
     services: &AppServices,
 ) -> Vec<Effect> {
     state.result_interaction.clear_operator_pending();
+    route(state, action, now, services)
+}
 
-    if let Some(effects) = text_edit::reduce_text_edit(state, &action, now)
-        .or_else(|| dispatch_connection(state, &action, now, services))
+pub(in crate::update) fn route(
+    state: &mut AppState,
+    action: Action,
+    now: Instant,
+    services: &AppServices,
+) -> Vec<Effect> {
+    match action {
+        Action::None => vec![],
+        Action::Quit => quit(state),
+        Action::Render => vec![Effect::Render],
+        Action::Resize(width, height) => resize(state, width, height),
+        Action::TextInput { target, ch } => {
+            text_edit::apply_text_edit(state, target, TextEdit::Insert(ch), now)
+        }
+        Action::TextBackspace { target } => {
+            text_edit::apply_text_edit(state, target, TextEdit::Backspace, now)
+        }
+        Action::TextDelete { target } => {
+            text_edit::apply_text_edit(state, target, TextEdit::Delete, now)
+        }
+        Action::TextKill { target, direction } => {
+            text_edit::apply_text_edit(state, target, TextEdit::Kill(direction), now)
+        }
+        Action::TextYank { target } => {
+            text_edit::apply_text_edit(state, target, TextEdit::Yank, now)
+        }
+        Action::TextMoveCursor { target, direction } => {
+            text_edit::apply_text_edit(state, target, TextEdit::MoveCursor(direction), now)
+        }
+        Action::BeginKeySequence(prefix) => begin_key_sequence(state, prefix),
+        Action::CancelKeySequence => cancel_key_sequence(state),
+        Action::ConfirmSelection => confirm_selection(state, now, services),
+        Action::CopySucceeded(target) => clipboard::copy_succeeded(state, target, now),
+        Action::CopyFailed(error) => clipboard::copy_failed(state, &error),
+        other => legacy_dispatch(state, other, now, services),
+    }
+}
+
+fn legacy_dispatch(
+    state: &mut AppState,
+    action: Action,
+    now: Instant,
+    services: &AppServices,
+) -> Vec<Effect> {
+    if let Some(effects) = dispatch_connection(state, &action, now, services)
         .or_else(|| dispatch_modal(state, &action, now))
-        // Result page actions pass through the result dispatcher; pagination owns their
-        // view reset and preview effect.
         .or_else(|| dispatch_result(state, &action, services, now))
         .or_else(|| dispatch_navigation(state, &action, services, now))
         .or_else(|| dispatch_sql_modal(state, &action, now))
@@ -67,91 +113,85 @@ fn dispatch_enabled_action(
         .or_else(|| dispatch_metadata(state, &action, now))
         .or_else(|| dispatch_er(state, &action, now))
         .or_else(|| dispatch_query(state, &action, now))
-        .or_else(|| clipboard::reduce_clipboard(state, &action, now))
         .into_effects()
     {
         return effects;
     }
 
-    match action {
-        Action::BeginKeySequence(prefix) => {
-            state
-                .ui
-                .set_key_sequence(KeySequenceState::WaitingSecondKey(prefix));
-            vec![]
-        }
-        Action::CancelKeySequence => {
-            state.ui.set_key_sequence(KeySequenceState::Idle);
-            vec![]
-        }
-        Action::Quit => {
-            state.session.cancel_connection_save_and_disconnect();
-            state.session.clear_mysql_connection_probe();
-            state.should_quit = true;
-            vec![Effect::CancelTrackedTasks]
-        }
-        Action::Resize(w, h) => {
-            state.ui.set_terminal_width(w);
-            state.ui.set_terminal_height(h);
-            let document = HelpDocument::from_state(state);
-            state
-                .ui
-                .clamp_help_offsets(document.line_count(), document.content_width());
-            vec![]
-        }
-        Action::Render => {
-            vec![Effect::Render]
-        }
-
-        Action::ConfirmSelection => {
-            if state.modal.active_mode() == InputMode::TablePicker {
-                let table = state
-                    .filtered_tables()
-                    .get(state.ui.table_picker().selected())
-                    .copied()
-                    .cloned();
-                if let Some(table) = table {
-                    return select_table(state, &table);
-                }
-            } else if state.modal.active_mode() == InputMode::Normal {
-                if state.connection_error.has_error() {
-                    state.modal.replace_mode(InputMode::ConnectionError);
-                    return vec![];
-                }
-                if state.ui.focused_pane() != FocusedPane::Explorer {
-                    return vec![];
-                }
-                let table = state.tables().get(state.ui.explorer_selected()).cloned();
-                if let Some(table) = table {
-                    return select_table(state, &table);
-                }
-            } else if state.modal.active_mode() == InputMode::CommandPalette {
-                use crate::update::input::palette::palette_action_for_index;
-
-                let cmd_action = palette_action_for_index(
-                    state.ui.table_picker().selected(),
-                    state.settings.saved_keymap_preset(),
-                    &state.session.active_engine_feature_profile(),
-                );
-                state.modal.set_mode(InputMode::Normal);
-                return reduce(state, cmd_action, now, services);
-            }
-
-            vec![]
-        }
-
-        // Invalid target/direction/amount combo — catch call-site bugs in debug builds
+    if matches!(
+        action,
         Action::Scroll { .. }
-        | Action::ScrollToCursor { .. }
-        | Action::Select(_)
-        | Action::ListSelect { .. } => {
-            debug_assert!(false, "unhandled parametric action: {action:?}");
-            vec![]
-        }
-
-        // Handled by sub-reducers
-        _ => vec![],
+            | Action::ScrollToCursor { .. }
+            | Action::Select(_)
+            | Action::ListSelect { .. }
+    ) {
+        debug_assert!(false, "unhandled parametric action: {action:?}");
     }
+    vec![]
+}
+
+fn quit(state: &mut AppState) -> Vec<Effect> {
+    state.session.cancel_connection_save_and_disconnect();
+    state.session.clear_mysql_connection_probe();
+    state.should_quit = true;
+    vec![Effect::CancelTrackedTasks]
+}
+
+fn resize(state: &mut AppState, width: u16, height: u16) -> Vec<Effect> {
+    state.ui.set_terminal_width(width);
+    state.ui.set_terminal_height(height);
+    let document = HelpDocument::from_state(state);
+    state
+        .ui
+        .clamp_help_offsets(document.line_count(), document.content_width());
+    vec![]
+}
+
+fn begin_key_sequence(state: &mut AppState, prefix: Prefix) -> Vec<Effect> {
+    state
+        .ui
+        .set_key_sequence(KeySequenceState::WaitingSecondKey(prefix));
+    vec![]
+}
+
+fn cancel_key_sequence(state: &mut AppState) -> Vec<Effect> {
+    state.ui.set_key_sequence(KeySequenceState::Idle);
+    vec![]
+}
+
+fn confirm_selection(state: &mut AppState, now: Instant, services: &AppServices) -> Vec<Effect> {
+    if state.modal.active_mode() == InputMode::TablePicker {
+        let table = state
+            .filtered_tables()
+            .get(state.ui.table_picker().selected())
+            .copied()
+            .cloned();
+        if let Some(table) = table {
+            return select_table(state, &table);
+        }
+    } else if state.modal.active_mode() == InputMode::Normal {
+        if state.connection_error.has_error() {
+            state.modal.replace_mode(InputMode::ConnectionError);
+            return vec![];
+        }
+        if state.ui.focused_pane() != FocusedPane::Explorer {
+            return vec![];
+        }
+        let table = state.tables().get(state.ui.explorer_selected()).cloned();
+        if let Some(table) = table {
+            return select_table(state, &table);
+        }
+    } else if state.modal.active_mode() == InputMode::CommandPalette {
+        let cmd_action = palette_action_for_index(
+            state.ui.table_picker().selected(),
+            state.settings.saved_keymap_preset(),
+            &state.session.active_engine_feature_profile(),
+        );
+        state.modal.set_mode(InputMode::Normal);
+        return reduce(state, cmd_action, now, services);
+    }
+
+    vec![]
 }
 
 fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
@@ -370,7 +410,6 @@ mod tests {
         use crate::domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
         use crate::model::er_state::ErStatus;
         use crate::model::shared::flash_timer::FlashId;
-        use crate::model::shared::key_sequence::Prefix;
         use crate::update::action::{ErDiagramInfo, ScrollAmount, ScrollDirection, ScrollTarget};
 
         fn sqlite_state() -> AppState {

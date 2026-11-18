@@ -1,28 +1,25 @@
 use std::time::{Duration, Instant};
 
+use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::ui_state::YankFlash;
-use crate::update::action::{Action, CopyTarget};
-use crate::update::dispatch_result::DispatchResult;
+use crate::ports::outbound::clipboard::ClipboardError;
+use crate::update::action::CopyTarget;
 
 const RESULT_YANK_FLASH: Duration = Duration::from_millis(200);
 
-pub(in crate::update) fn reduce_clipboard(
+pub(in crate::update) fn copy_succeeded(
     state: &mut AppState,
-    action: &Action,
+    target: CopyTarget,
     now: Instant,
-) -> DispatchResult {
-    match action {
-        Action::CopySucceeded(target) => {
-            show_copy_feedback(state, *target, now);
-            DispatchResult::handled()
-        }
-        Action::CopyFailed(e) => {
-            state.messages.set_error(e.to_string());
-            DispatchResult::handled()
-        }
-        _ => DispatchResult::pass(),
-    }
+) -> Vec<Effect> {
+    show_copy_feedback(state, target, now);
+    vec![]
+}
+
+pub(in crate::update) fn copy_failed(state: &mut AppState, error: &ClipboardError) -> Vec<Effect> {
+    state.messages.set_error(error.to_string());
+    vec![]
 }
 
 fn show_copy_feedback(state: &mut AppState, target: CopyTarget, now: Instant) {
@@ -52,10 +49,9 @@ mod tests {
 
     use super::*;
     use crate::model::shared::flash_timer::FlashId;
-    use crate::ports::outbound::clipboard::ClipboardError;
 
     fn copied(state: &mut AppState, target: CopyTarget, now: Instant) {
-        reduce_clipboard(state, &Action::CopySucceeded(target), now);
+        copy_succeeded(state, target, now);
     }
 
     #[rstest]
@@ -103,10 +99,9 @@ mod tests {
     fn copy_failure_shows_error() {
         let mut state = AppState::new("test".to_string());
 
-        reduce_clipboard(
+        copy_failed(
             &mut state,
-            &Action::CopyFailed(ClipboardError::Unavailable("Clipboard unavailable".into())),
-            Instant::now(),
+            &ClipboardError::Unavailable("Clipboard unavailable".into()),
         );
 
         assert_eq!(

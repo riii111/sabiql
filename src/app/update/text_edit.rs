@@ -1,39 +1,27 @@
 use std::time::Instant;
 
+use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::text_input::TextEdit;
-use crate::update::action::{Action, DetailTarget, InputTarget};
+use crate::update::action::{DetailTarget, InputTarget};
 use crate::update::browse::navigation::input::edit_command_line;
 use crate::update::browse::result::detail_search::edit_search_query;
 use crate::update::browse::result::json::edit_json_text;
 use crate::update::connection::setup::edit_text as edit_connection_setup;
-use crate::update::dispatch_result::DispatchResult;
 use crate::update::sql_editor::editing::edit_text as edit_sql_modal;
 use crate::update::sql_editor::high_risk::edit_text as edit_high_risk_confirmation;
-
-pub(in crate::update) fn reduce_text_edit(
-    state: &mut AppState,
-    action: &Action,
-    now: Instant,
-) -> DispatchResult {
-    let Some((target, edit)) = action.text_edit() else {
-        return DispatchResult::pass();
-    };
-    apply_text_edit(state, target, edit, now);
-    DispatchResult::handled()
-}
 
 pub(in crate::update) fn apply_text_edit(
     state: &mut AppState,
     target: InputTarget,
     edit: TextEdit,
     now: Instant,
-) {
+) -> Vec<Effect> {
     let yank_text = state.kill_buffer().map(str::to_owned);
     // Every target ignores a yank from an empty kill buffer, including side effects such as
     // selection resets, so the router stops it before reaching the target.
     if edit == TextEdit::Yank && yank_text.is_none() {
-        return;
+        return vec![];
     }
     let yank_text = yank_text.as_deref();
 
@@ -71,4 +59,5 @@ pub(in crate::update) fn apply_text_edit(
         InputTarget::HelpFilter => state.ui.help_mut().apply_filter_edit(edit, yank_text),
     };
     state.record_kill(killed);
+    vec![]
 }
