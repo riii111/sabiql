@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -10,7 +9,7 @@ use crate::cmd::effect::Effect;
 use crate::domain::er::{er_output_filename, fk_neighbors_of_seeds, fk_reachable_tables_multi};
 use crate::domain::{DatabaseMetadata, ErTableInfo, TableSignatureSnapshot};
 use crate::model::app_state::AppState;
-use crate::policy::sql::completion::CompletionEngine;
+use crate::model::table_detail_cache::TableDetailCache;
 use crate::ports::outbound::{ConfigWriter, ErDiagramExporter, ErLogWriter, MetadataProvider};
 use crate::update::action::{
     Action, SmartErRefreshError, SmartErRefreshFetched, SmartErRefreshResult,
@@ -30,8 +29,7 @@ pub(in crate::cmd) async fn run(
     er_exporter: &Arc<dyn ErDiagramExporter>,
     config_writer: &Arc<dyn ConfigWriter>,
     er_log_writer: &Arc<dyn ErLogWriter>,
-    state: &AppState,
-    completion_engine: &RefCell<CompletionEngine>,
+    state: &mut AppState,
 ) -> Result<()> {
     match effect {
         Effect::GenerateErDiagramFromCache {
@@ -44,7 +42,7 @@ pub(in crate::cmd) async fn run(
                 action_tx,
                 er_exporter,
                 config_writer,
-                completion_engine,
+                &state.table_detail_cache,
                 GenerateErDiagramRequest {
                     run_id,
                     total_tables,
@@ -58,7 +56,10 @@ pub(in crate::cmd) async fn run(
         Effect::ExtractFkNeighbors {
             run_id,
             seed_tables,
-        } => handle_extract_fk_neighbors(action_tx, completion_engine, run_id, seed_tables).await,
+        } => {
+            handle_extract_fk_neighbors(action_tx, &state.table_detail_cache, run_id, seed_tables)
+                .await
+        }
         Effect::WriteErFailureLog { failed_tables } => {
             handle_write_failure_log(
                 action_tx,
@@ -78,7 +79,6 @@ pub(in crate::cmd) async fn run(
             handle_smart_refresh_cache_and_diff(
                 action_tx,
                 state,
-                completion_engine,
                 dsn,
                 run_id,
                 new_metadata,
@@ -146,7 +146,7 @@ async fn handle_generate_diagram(
     action_tx: &mpsc::Sender<Action>,
     er_exporter: &Arc<dyn ErDiagramExporter>,
     config_writer: &Arc<dyn ConfigWriter>,
-    completion_engine: &RefCell<CompletionEngine>,
+    table_detail_cache: &TableDetailCache,
     request: GenerateErDiagramRequest,
 ) -> Result<()> {
     let GenerateErDiagramRequest {
@@ -156,7 +156,7 @@ async fn handle_generate_diagram(
         target_tables,
         browser,
     } = request;
-    let all_tables = collect_cached_er_tables(completion_engine);
+    let all_tables = collect_cached_er_tables(table_detail_cache);
     if all_tables.is_empty() {
         action_tx
             .send(Action::ErDiagramFailed {
@@ -203,12 +203,12 @@ async fn handle_generate_diagram(
 
 async fn handle_extract_fk_neighbors(
     action_tx: &mpsc::Sender<Action>,
-    completion_engine: &RefCell<CompletionEngine>,
+    table_detail_cache: &TableDetailCache,
     run_id: u64,
     seed_tables: Vec<String>,
 ) -> Result<()> {
     let seed_set: HashSet<&str> = seed_tables.iter().map(String::as_str).collect();
-    let (cached_seeds, cached_names) = collect_seed_and_cached_names(completion_engine, &seed_set);
+    let (cached_seeds, cached_names) = collect_seed_and_cached_names(table_detail_cache, &seed_set);
     let neighbors = fk_neighbors_of_seeds(&cached_seeds, &seed_set, &cached_names);
 
     action_tx
@@ -251,8 +251,7 @@ async fn handle_write_failure_log(
 
 async fn handle_smart_refresh_cache_and_diff(
     action_tx: &mpsc::Sender<Action>,
-    state: &AppState,
-    completion_engine: &RefCell<CompletionEngine>,
+    state: &mut AppState,
     dsn: String,
     run_id: u64,
     new_metadata: Arc<DatabaseMetadata>,
@@ -269,15 +268,14 @@ async fn handle_smart_refresh_cache_and_diff(
         signatures,
         prefetched_table_details,
     } = Arc::unwrap_or_clone(signature_snapshot);
-    {
-        let mut engine = completion_engine.borrow_mut();
-        for detail in prefetched_table_details {
-            engine.cache_table_detail(detail.qualified_name(), detail);
-        }
+    for detail in prefetched_table_details {
+        state
+            .table_detail_cache
+            .insert(detail.qualified_name(), detail);
     }
 
     let old_signatures = state.er_preparation.last_signatures().clone();
-    let cached_tables = collect_cached_table_names(completion_engine);
+    let cached_tables = collect_cached_table_names(&state.table_detail_cache);
     let new_signatures: std::collections::HashMap<String, String> = signatures
         .iter()
         .map(|signature| (signature.qualified_name(), signature.signature.clone()))
@@ -322,35 +320,32 @@ async fn handle_smart_refresh_cache_and_diff(
     Ok(())
 }
 
-fn collect_cached_er_tables(completion_engine: &RefCell<CompletionEngine>) -> Vec<ErTableInfo> {
-    let engine = completion_engine.borrow();
-    engine
-        .table_details_iter()
+fn collect_cached_er_tables(table_detail_cache: &TableDetailCache) -> Vec<ErTableInfo> {
+    table_detail_cache
+        .iter()
         .map(|(name, table)| ErTableInfo::from_table(name, table))
         .collect()
 }
 
 fn collect_seed_and_cached_names(
-    completion_engine: &RefCell<CompletionEngine>,
+    table_detail_cache: &TableDetailCache,
     seed_set: &HashSet<&str>,
 ) -> (Vec<ErTableInfo>, HashSet<String>) {
-    let engine = completion_engine.borrow();
-    let seeds = engine
-        .table_details_iter()
+    let seeds = table_detail_cache
+        .iter()
         .filter(|(name, _)| seed_set.contains(name.as_str()))
         .map(|(name, table)| ErTableInfo::from_table(name, table))
         .collect();
-    let all_cached = engine
-        .table_details_iter()
+    let all_cached = table_detail_cache
+        .iter()
         .map(|(name, _)| name.clone())
         .collect();
     (seeds, all_cached)
 }
 
-fn collect_cached_table_names(completion_engine: &RefCell<CompletionEngine>) -> HashSet<String> {
-    let engine = completion_engine.borrow();
-    engine
-        .table_details_iter()
+fn collect_cached_table_names(table_detail_cache: &TableDetailCache) -> HashSet<String> {
+    table_detail_cache
+        .iter()
         .map(|(name, _)| name.clone())
         .collect()
 }
@@ -376,15 +371,13 @@ mod tests {
     #[tokio::test]
     async fn signature_details_seed_empty_completion_cache_before_diff() {
         let dsn = "mysql://user:password@localhost:3306/app";
-        let state = state_with_mysql_dsn(dsn);
-        let completion_engine = RefCell::new(CompletionEngine::new());
+        let mut state = state_with_mysql_dsn(dsn);
         let (action_tx, mut action_rx) = mpsc::channel(1);
         let table = table::minimal("app", "items");
 
         handle_smart_refresh_cache_and_diff(
             &action_tx,
-            &state,
-            &completion_engine,
+            &mut state,
             dsn.to_string(),
             1,
             Arc::new(DatabaseMetadata::new("app".to_string())),
@@ -400,7 +393,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert!(completion_engine.borrow().has_cached_table("app.items"));
+        assert!(state.table_detail_cache.contains("app.items"));
         let Action::SmartErRefreshCompleted(result) = action_rx.recv().await.unwrap() else {
             panic!("expected smart refresh completion");
         };
@@ -410,14 +403,12 @@ mod tests {
     #[tokio::test]
     async fn uncached_new_tables_are_reported_as_missing_in_cache() {
         let dsn = "mysql://user:password@localhost:3306/app";
-        let state = state_with_mysql_dsn(dsn);
-        let completion_engine = RefCell::new(CompletionEngine::new());
+        let mut state = state_with_mysql_dsn(dsn);
         let (action_tx, mut action_rx) = mpsc::channel(1);
 
         handle_smart_refresh_cache_and_diff(
             &action_tx,
-            &state,
-            &completion_engine,
+            &mut state,
             dsn.to_string(),
             1,
             Arc::new(DatabaseMetadata::new("app".to_string())),
@@ -449,13 +440,11 @@ mod tests {
             "mysql://localhost/target",
             Some("target"),
         );
-        let completion_engine = RefCell::new(CompletionEngine::new());
         let (action_tx, mut action_rx) = mpsc::channel(1);
 
         handle_smart_refresh_cache_and_diff(
             &action_tx,
-            &state,
-            &completion_engine,
+            &mut state,
             dsn.to_string(),
             1,
             Arc::new(DatabaseMetadata::new("app".to_string())),
@@ -467,7 +456,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert!(!completion_engine.borrow().has_cached_table("app.items"));
+        assert!(!state.table_detail_cache.contains("app.items"));
         assert!(action_rx.try_recv().is_err());
     }
 }

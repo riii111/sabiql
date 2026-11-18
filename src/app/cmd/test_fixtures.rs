@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -18,7 +17,6 @@ use crate::domain::{
 };
 use crate::model::app_state::AppState;
 use crate::model::browse::session::ConnectionSaveGuard;
-use crate::policy::sql::completion::CompletionEngine;
 use crate::ports::outbound::DbOperationError;
 use crate::ports::outbound::{
     AppSettings, CachedResultExporter, ClipboardError, ClipboardWriter, ConfigWriter,
@@ -187,7 +185,6 @@ pub fn run_one_effect<'a>(
     runner: &'a EffectRunner,
     effect: Effect,
     mut state: AppState,
-    completion_engine: RefCell<CompletionEngine>,
     action_rx: &'a mut mpsc::Receiver<Action>,
     action_timeout: Option<Duration>,
 ) -> Pin<Box<dyn Future<Output = Result<EffectRun>> + 'a>> {
@@ -198,7 +195,6 @@ pub fn run_one_effect<'a>(
                 vec![effect],
                 &mut renderer,
                 &mut state,
-                &completion_engine,
                 &AppServices::stub(),
             )
             .await?;

@@ -7,4 +7,5 @@ pub mod sql_editor;
 
 pub mod app_state;
 pub mod sqlite;
+pub mod table_detail_cache;
 pub mod table_prefetch;

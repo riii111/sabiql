@@ -400,7 +400,6 @@ pub(in crate::cmd) async fn run(
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -410,7 +409,6 @@ mod tests {
     use crate::cmd::test_fixtures;
     use crate::domain::{DatabaseDiagnostic, DiagnosticLevel, WriteExecutionResult};
     use crate::model::app_state::AppState;
-    use crate::policy::sql::completion::CompletionEngine;
     use crate::ports::outbound::AccessMode;
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
@@ -429,7 +427,6 @@ mod tests {
             &runner,
             effect,
             AppState::new("test".to_string()),
-            RefCell::new(CompletionEngine::new()),
             &mut rx,
             Some(Duration::from_millis(500)),
         )
@@ -1042,7 +1039,6 @@ mod tests {
         }
     }
     mod cached_csv_export_effect {
-        use std::cell::RefCell;
         use std::sync::Arc;
         use std::time::Duration;
 
@@ -1052,7 +1048,6 @@ mod tests {
         use crate::cmd::test_fixtures;
         use crate::domain::QueryValue;
         use crate::model::app_state::AppState;
-        use crate::policy::sql::completion::CompletionEngine;
         use crate::ports::outbound::connection_store::MockConnectionStore;
         use crate::ports::outbound::metadata::MockMetadataProvider;
         use crate::ports::outbound::query_executor::MockQueryExecutor;
@@ -1100,7 +1095,6 @@ mod tests {
                     row_count: Some(1),
                 },
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(Duration::from_millis(500)),
             )
@@ -1140,7 +1134,6 @@ mod tests {
                     row_count: Some(1),
                 },
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(Duration::from_millis(500)),
             )
@@ -1153,7 +1146,6 @@ mod tests {
     }
 
     mod execute_preview {
-        use std::cell::RefCell;
         use std::sync::Arc;
         use std::time::Duration;
 
@@ -1161,7 +1153,6 @@ mod tests {
 
         use crate::cmd::effect::Effect;
         use crate::cmd::test_fixtures;
-        use crate::policy::sql::completion::CompletionEngine;
 
         use crate::model::app_state::AppState;
         use crate::ports::outbound::DbOperationError;
@@ -1199,7 +1190,6 @@ mod tests {
                     target_page: 0,
                 },
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(Duration::from_millis(500)),
             )
@@ -1244,7 +1234,6 @@ mod tests {
                     target_page: 0,
                 },
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(Duration::from_millis(500)),
             )

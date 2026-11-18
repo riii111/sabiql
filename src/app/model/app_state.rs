@@ -30,6 +30,7 @@ use crate::model::shared::ui_state::{UiState, scroll_max_offset};
 use crate::model::sql_editor::modal::SqlModalContext;
 use crate::model::sql_editor::query_history::QueryHistoryPickerState;
 use crate::model::sqlite::diagnostics::SqliteDiagnosticsState;
+use crate::model::table_detail_cache::TableDetailCache;
 use crate::model::table_prefetch::TablePrefetchState;
 use crate::policy::preview_cell_text::CellPresentationPolicy;
 use crate::policy::sql::result_query::is_rerunnable_select;
@@ -55,6 +56,7 @@ pub struct AppState {
     pub query: QueryExecution,
     pub sql_modal: SqlModalContext,
     pub table_prefetch: TablePrefetchState,
+    pub table_detail_cache: TableDetailCache,
     pub messages: MessageState,
     pub er_preparation: super::er_state::ErPreparationState,
     pub connection_setup: ConnectionSetupState,
@@ -91,6 +93,7 @@ impl AppState {
             query: QueryExecution::default(),
             sql_modal: SqlModalContext::default(),
             table_prefetch: TablePrefetchState::default(),
+            table_detail_cache: TableDetailCache::default(),
             messages: MessageState::default(),
             er_preparation: super::er_state::ErPreparationState::default(),
             connection_setup: ConnectionSetupState::default(),

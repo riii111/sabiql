@@ -374,7 +374,6 @@ async fn normalize_sqlite_profile(
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
     use std::sync::Arc;
     use tokio::sync::mpsc;
 
@@ -387,7 +386,6 @@ mod tests {
         SqliteConnectionConfig, SqlitePathError, SslMode,
     };
     use crate::model::app_state::AppState;
-    use crate::policy::sql::completion::CompletionEngine;
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::mysql_connection_probe::MockMySqlConnectionProbe;
@@ -501,7 +499,6 @@ mod tests {
                     run_guard: test_fixtures::active_connection_save_guard(1),
                 },
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(std::time::Duration::from_millis(500)),
             )
@@ -558,7 +555,6 @@ mod tests {
                     run_guard: test_fixtures::active_connection_save_guard(1),
                 },
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(std::time::Duration::from_millis(500)),
             )
@@ -605,7 +601,6 @@ mod tests {
             );
             let mut renderer = NoopRenderer;
             let mut state = AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
 
             runner
                 .execute_effects(
@@ -618,7 +613,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &ce,
                     &AppServices::stub(),
                 )
                 .await
@@ -668,7 +662,6 @@ mod tests {
                     }],
                     &mut NoopRenderer,
                     &mut AppState::new("test".to_string()),
-                    &RefCell::new(CompletionEngine::new()),
                     &AppServices::stub(),
                 )
                 .await
@@ -712,7 +705,6 @@ mod tests {
                     run_guard: test_fixtures::active_connection_save_guard(1),
                 },
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(std::time::Duration::from_millis(500)),
             )
@@ -764,7 +756,6 @@ mod tests {
                     run_guard: test_fixtures::active_connection_save_guard(1),
                 },
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(std::time::Duration::from_millis(500)),
             )
@@ -872,7 +863,6 @@ mod tests {
                     run_guard: test_fixtures::active_connection_save_guard(1),
                 },
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(std::time::Duration::from_millis(500)),
             )
@@ -914,7 +904,6 @@ mod tests {
             );
             let mut renderer = NoopRenderer;
             let mut state = AppState::new("test".to_string());
-            let completion_engine = RefCell::new(CompletionEngine::new());
 
             runner
                 .execute_effects(
@@ -932,7 +921,6 @@ mod tests {
                     ],
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -975,7 +963,6 @@ mod tests {
                     run_guard: test_fixtures::active_connection_save_guard(1),
                 },
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(std::time::Duration::from_millis(500)),
             )
@@ -1019,7 +1006,6 @@ mod tests {
                 &runner,
                 Effect::DeleteConnection { id: id.clone() },
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(std::time::Duration::from_millis(500)),
             )
@@ -1054,7 +1040,6 @@ mod tests {
                 &runner,
                 Effect::DeleteConnection { id },
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(std::time::Duration::from_millis(500)),
             )
@@ -1098,7 +1083,6 @@ mod tests {
                     id: ConnectionId::from_string("id"),
                 },
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(std::time::Duration::from_millis(500)),
             )
@@ -1137,7 +1121,6 @@ mod tests {
                 &runner,
                 Effect::LoadConnections,
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(std::time::Duration::from_millis(500)),
             )
@@ -1194,7 +1177,6 @@ mod tests {
             state.set_connections(vec![profile]);
 
             let mut renderer = NoopRenderer;
-            let ce = RefCell::new(CompletionEngine::new());
             let actions = runner
                 .execute_effects(
                     vec![Effect::SwitchConnection {
@@ -1202,7 +1184,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &ce,
                     &AppServices::stub(),
                 )
                 .await
@@ -1234,7 +1215,6 @@ mod tests {
 
             let mut state = AppState::new("test".to_string());
             let mut renderer = NoopRenderer;
-            let ce = RefCell::new(CompletionEngine::new());
             let actions = runner
                 .execute_effects(
                     vec![Effect::SwitchConnection {
@@ -1242,7 +1222,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &ce,
                     &AppServices::stub(),
                 )
                 .await
@@ -1263,13 +1242,11 @@ mod tests {
             }]);
             let expected_id = state.service_entries()[0].connection_id();
             let mut renderer = NoopRenderer;
-            let ce = RefCell::new(CompletionEngine::new());
             let actions = runner
                 .execute_effects(
                     vec![Effect::SwitchToService { service_index: 0 }],
                     &mut renderer,
                     &mut state,
-                    &ce,
                     &AppServices::stub(),
                 )
                 .await

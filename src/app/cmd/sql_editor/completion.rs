@@ -1,38 +1,30 @@
-use std::cell::RefCell;
-
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::policy::sql::completion::{CompletionDatabaseScope, CompletionEngine};
 use crate::update::action::Action;
 
-pub(in crate::cmd) fn run(
-    effect: Effect,
-    state: &AppState,
-    completion_engine: &RefCell<CompletionEngine>,
-) -> Vec<Action> {
+pub(in crate::cmd) fn run(effect: Effect, state: &mut AppState) -> Vec<Action> {
     match effect {
         Effect::CacheTableInCompletionEngine {
             qualified_name,
             table,
         } => {
-            completion_engine
-                .borrow_mut()
-                .cache_table_detail(qualified_name, *table);
+            state.table_detail_cache.insert(qualified_name, *table);
             vec![]
         }
 
         Effect::EvictTablesFromCompletionCache { tables } => {
-            completion_engine.borrow_mut().evict_tables(&tables);
+            state.table_detail_cache.evict(&tables);
             vec![]
         }
 
         Effect::ClearCompletionEngineCache => {
-            completion_engine.borrow_mut().clear_table_cache();
+            state.table_detail_cache.clear();
             vec![]
         }
 
         Effect::ResizeCompletionCache { capacity } => {
-            completion_engine.borrow_mut().resize_cache(capacity);
+            state.table_detail_cache.resize_for_table_count(capacity);
             vec![]
         }
 
@@ -42,12 +34,9 @@ pub(in crate::cmd) fn run(
             let database_type = state.session.active_database_type_or_default();
             let active_database = state.session.active_database();
 
-            let (prep, missing) = {
-                let engine = completion_engine.borrow();
-                let prep = engine.prepare_for_database(content, cursor, database_type);
-                let missing = engine.missing_tables_prepared(&prep, state.session.metadata());
-                (prep, missing)
-            };
+            let engine = CompletionEngine::new(&state.table_detail_cache);
+            let prep = engine.prepare_for_database(content, cursor, database_type);
+            let missing = engine.missing_tables_prepared(&prep, state.session.metadata());
 
             let mut actions = Vec::new();
             if !missing.is_empty() {
@@ -68,23 +57,19 @@ pub(in crate::cmd) fn run(
                 }
             }
 
-            let (candidates, token_len, visible) = {
-                let engine = completion_engine.borrow();
-                let token_len = CompletionEngine::current_token_len_prepared(&prep);
-                let candidates = engine.get_candidates_prepared_for_database(
-                    content,
-                    cursor,
-                    &prep,
-                    state.session.metadata(),
-                    state.session.table_detail(),
-                    CompletionDatabaseScope {
-                        database_type,
-                        active_database,
-                    },
-                );
-                let visible = !candidates.is_empty() && !content.trim().is_empty();
-                (candidates, token_len, visible)
-            };
+            let token_len = CompletionEngine::current_token_len_prepared(&prep);
+            let candidates = engine.get_candidates_prepared_for_database(
+                content,
+                cursor,
+                &prep,
+                state.session.metadata(),
+                state.session.table_detail(),
+                CompletionDatabaseScope {
+                    database_type,
+                    active_database,
+                },
+            );
+            let visible = !candidates.is_empty() && !content.trim().is_empty();
 
             actions.push(Action::CompletionUpdated {
                 candidates,
@@ -126,11 +111,7 @@ mod tests {
             .collect();
         state.session.set_metadata(Some(Arc::new(metadata)));
 
-        let actions = run(
-            Effect::TriggerCompletion,
-            &state,
-            &RefCell::new(CompletionEngine::new()),
-        );
+        let actions = run(Effect::TriggerCompletion, &mut state);
 
         assert!(matches!(
             actions.as_slice(),

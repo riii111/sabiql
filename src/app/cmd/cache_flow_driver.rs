@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Instant;
@@ -11,7 +10,6 @@ use crate::cmd::sql_editor::completion as cmd_completion;
 use crate::cmd::test_fixtures::{NoopConfigWriter, NoopErExporter, NoopErLogWriter};
 use crate::domain::Table;
 use crate::model::app_state::AppState;
-use crate::policy::sql::completion::CompletionEngine;
 use crate::ports::outbound::{ConfigWriter, ErDiagramExporter, ErLogWriter};
 use crate::services::AppServices;
 use crate::update::action::Action;
@@ -28,7 +26,6 @@ pub struct PendingFetch {
 
 pub struct CacheFlowDriver {
     pub state: AppState,
-    engine: RefCell<CompletionEngine>,
     services: AppServices,
     now: Instant,
     queue: VecDeque<Action>,
@@ -43,7 +40,6 @@ impl CacheFlowDriver {
     pub fn new(state: AppState) -> Self {
         Self {
             state,
-            engine: RefCell::new(CompletionEngine::new()),
             services: AppServices::stub(),
             now: Instant::now(),
             queue: VecDeque::new(),
@@ -77,14 +73,14 @@ impl CacheFlowDriver {
         self.run_until_idle().await;
     }
 
-    pub fn seed_cache(&self, table: Table) {
-        self.engine
-            .borrow_mut()
-            .cache_table_detail(table.qualified_name(), table);
+    pub fn seed_cache(&mut self, table: Table) {
+        self.state
+            .table_detail_cache
+            .insert(table.qualified_name(), table);
     }
 
     pub fn is_cached(&self, qualified_name: &str) -> bool {
-        self.engine.borrow().has_cached_table(qualified_name)
+        self.state.table_detail_cache.contains(qualified_name)
     }
 
     pub fn pending_fetch_names(&self) -> Vec<String> {
@@ -164,7 +160,7 @@ impl CacheFlowDriver {
             | Effect::ClearCompletionEngineCache
             | Effect::ResizeCompletionCache { .. }
             | Effect::TriggerCompletion) => {
-                let actions = cmd_completion::run(effect, &self.state, &self.engine);
+                let actions = cmd_completion::run(effect, &mut self.state);
                 self.queue.extend(actions);
             }
             effect @ (Effect::ExtractFkNeighbors { .. }
@@ -179,8 +175,7 @@ impl CacheFlowDriver {
                     &er_exporter,
                     &config_writer,
                     &er_log_writer,
-                    &self.state,
-                    &self.engine,
+                    &mut self.state,
                 )
                 .await
                 .expect("ER effect should run");
@@ -195,7 +190,7 @@ impl CacheFlowDriver {
                 table,
             } => {
                 let qualified_name = format!("{schema}.{table}");
-                if self.engine.borrow().has_cached_table(&qualified_name) {
+                if self.state.table_detail_cache.contains(&qualified_name) {
                     self.channel.push_back(Action::TableDetailCached {
                         dsn,
                         run_id,

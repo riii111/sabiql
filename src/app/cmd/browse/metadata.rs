@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
@@ -8,7 +7,7 @@ use crate::cmd::metadata_task::MetadataTaskRegistry;
 use crate::cmd::single_task_owner::SingleTaskOwner;
 use crate::cmd::sqlite_path_validate::validate_sqlite_database_path;
 use crate::domain::sqlite_path_from_dsn;
-use crate::policy::sql::completion::CompletionEngine;
+use crate::model::table_detail_cache::TableDetailCache;
 use crate::policy::sqlite_path::to_db_operation_error;
 use crate::ports::outbound::{DbOperationError, MetadataProvider, SqlitePathValidator};
 use crate::update::action::Action;
@@ -20,7 +19,7 @@ pub(in crate::cmd) async fn run(
     sqlite_path_validator: &Arc<dyn SqlitePathValidator>,
     table_detail_tasks: &SingleTaskOwner,
     metadata_tasks: &Arc<MetadataTaskRegistry>,
-    completion_engine: &RefCell<CompletionEngine>,
+    table_detail_cache: &TableDetailCache,
 ) {
     match effect {
         Effect::CancelMetadataTasks => {
@@ -68,7 +67,7 @@ pub(in crate::cmd) async fn run(
             prefetch_table_detail(
                 action_tx,
                 metadata_provider,
-                completion_engine,
+                table_detail_cache,
                 metadata_tasks,
                 dsn,
                 run_id,
@@ -191,7 +190,7 @@ async fn fetch_table_detail(
 async fn prefetch_table_detail(
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
-    completion_engine: &RefCell<CompletionEngine>,
+    table_detail_cache: &TableDetailCache,
     metadata_tasks: &Arc<MetadataTaskRegistry>,
     dsn: String,
     run_id: u64,
@@ -199,7 +198,7 @@ async fn prefetch_table_detail(
     table: String,
 ) {
     let qualified_name = format!("{schema}.{table}");
-    let already_cached = completion_engine.borrow().has_cached_table(&qualified_name);
+    let already_cached = table_detail_cache.contains(&qualified_name);
 
     if already_cached {
         action_tx
@@ -264,14 +263,12 @@ async fn prefetch_table_detail(
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
     use std::sync::Arc;
 
     use tokio::sync::mpsc;
 
     use crate::cmd::effect::Effect;
     use crate::cmd::test_fixtures;
-    use crate::policy::sql::completion::CompletionEngine;
 
     use crate::domain::SqlitePathError;
     use crate::model::app_state::AppState;
@@ -309,7 +306,6 @@ mod tests {
                     run_id: 7,
                 },
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(std::time::Duration::from_millis(200)),
             )
@@ -362,7 +358,6 @@ mod tests {
                     run_id: 7,
                 },
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(std::time::Duration::from_millis(500)),
             )
@@ -399,7 +394,6 @@ mod tests {
                     run_id: 7,
                 },
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(std::time::Duration::from_millis(500)),
             )
@@ -437,7 +431,6 @@ mod tests {
                     run_id: 7,
                 },
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(std::time::Duration::from_millis(500)),
             )
@@ -478,7 +471,6 @@ mod tests {
                     run_id: 7,
                 },
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(std::time::Duration::from_millis(500)),
             )
@@ -537,7 +529,6 @@ mod tests {
                     run_id: 9,
                 },
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(std::time::Duration::from_millis(500)),
             )
@@ -586,7 +577,6 @@ mod tests {
                     table: "users".to_string(),
                 },
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(std::time::Duration::from_millis(500)),
             )
@@ -619,8 +609,10 @@ mod tests {
                 Arc::new(MockConnectionStore::new()),
                 tx,
             );
-            let mut completion_engine = CompletionEngine::new();
-            completion_engine.cache_table_detail("public.users".to_string(), sample_table());
+            let mut state = AppState::new("test".to_string());
+            state
+                .table_detail_cache
+                .insert("public.users".to_string(), sample_table());
 
             let run = test_fixtures::run_one_effect(
                 &runner,
@@ -630,8 +622,7 @@ mod tests {
                     schema: "public".to_string(),
                     table: "users".to_string(),
                 },
-                AppState::new("test".to_string()),
-                RefCell::new(completion_engine),
+                state,
                 &mut rx,
                 Some(std::time::Duration::from_millis(500)),
             )

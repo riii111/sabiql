@@ -1,16 +1,14 @@
 use std::collections::HashSet;
-use std::num::NonZeroUsize;
 
 use crate::domain::{DatabaseMetadata, DatabaseType, Table, TableSummary};
 use crate::model::shared::text_input::char_to_byte_index;
 use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
+use crate::model::table_detail_cache::TableDetailCache;
 use crate::policy::sql::lexer::{
     MYSQL_KEYWORDS, POSTGRESQL_KEYWORDS, SqlContext, SqlLexer, TableReference, Token, TokenKind,
 };
-use lru::LruCache;
 
 const COMPLETION_MAX_CANDIDATES: usize = 30;
-const TABLE_CACHE_CAPACITY: usize = 500;
 
 #[derive(Clone, Copy)]
 pub(crate) struct CompletionDatabaseScope<'a> {
@@ -39,48 +37,13 @@ pub(crate) struct PreparedCompletion {
     pub(crate) cte_names: HashSet<String>,
 }
 
-pub struct CompletionEngine {
-    table_detail_cache: LruCache<String, Table>,
+pub struct CompletionEngine<'cache> {
+    table_detail_cache: &'cache TableDetailCache,
 }
 
-impl CompletionEngine {
-    #[allow(
-        clippy::new_without_default,
-        reason = "new() is the only default construction API"
-    )]
-    pub fn new() -> Self {
-        Self {
-            table_detail_cache: LruCache::new(
-                NonZeroUsize::new(TABLE_CACHE_CAPACITY).expect("capacity must be > 0"),
-            ),
-        }
-    }
-
-    pub(crate) fn cache_table_detail(&mut self, qualified_name: String, table: Table) {
-        let _ = self.table_detail_cache.put(qualified_name, table);
-    }
-
-    pub(crate) fn has_cached_table(&self, qualified_name: &str) -> bool {
-        self.table_detail_cache.contains(qualified_name)
-    }
-
-    pub(crate) fn evict_tables(&mut self, tables: &[String]) {
-        for table in tables {
-            let _ = self.table_detail_cache.pop(table);
-        }
-    }
-
-    pub(crate) fn clear_table_cache(&mut self) {
-        self.table_detail_cache.clear();
-    }
-
-    pub(crate) fn resize_cache(&mut self, new_capacity: usize) {
-        self.table_detail_cache
-            .resize(NonZeroUsize::new(new_capacity).expect("capacity must be > 0"));
-    }
-
-    pub(crate) fn table_details_iter(&self) -> impl Iterator<Item = (&String, &Table)> {
-        self.table_detail_cache.iter()
+impl<'cache> CompletionEngine<'cache> {
+    pub fn new(table_detail_cache: &'cache TableDetailCache) -> Self {
+        Self { table_detail_cache }
     }
 
     pub(crate) fn prepare_for_database(
@@ -245,7 +208,7 @@ impl CompletionEngine {
 
                 let selected_qualified = table_detail.map(Table::qualified_name);
                 let use_all_cache = referenced_tables.is_empty() && !has_unresolved_reference;
-                for (qualified_name, cached_table) in &self.table_detail_cache {
+                for (qualified_name, cached_table) in self.table_detail_cache.iter() {
                     if selected_qualified.as_ref() == Some(qualified_name) {
                         continue;
                     }
@@ -1247,18 +1210,12 @@ fn sort_candidates(candidates: &mut [CompletionCandidate]) {
 mod tests {
     use crate::domain::Column;
     use crate::domain::ColumnAttributes;
+    use crate::model::table_detail_cache::TableDetailCache;
     use crate::test_support;
 
     use super::*;
 
-    impl CompletionEngine {
-        fn new_with_capacity(capacity: usize) -> Self {
-            let mut engine = Self::new();
-            engine.table_detail_cache =
-                LruCache::new(NonZeroUsize::new(capacity).expect("capacity must be > 0"));
-            engine
-        }
-
+    impl CompletionEngine<'_> {
         fn get_candidates_for_database(
             &self,
             content: &str,
@@ -1378,8 +1335,8 @@ mod tests {
         }
     }
 
-    fn engine() -> CompletionEngine {
-        CompletionEngine::new()
+    fn engine() -> CompletionEngine<'static> {
+        CompletionEngine::new(Box::leak(Box::default()))
     }
 
     fn create_table(schema: &str, name: &str, columns: &[&str]) -> Table {
@@ -1877,15 +1834,16 @@ mod tests {
 
         #[test]
         fn mysql_table_reference_prefers_exact_case_for_columns() {
-            let mut e = engine();
-            e.cache_table_detail(
+            let mut cache = TableDetailCache::default();
+            cache.insert(
                 "app.Foo".to_string(),
                 create_table("app", "Foo", &["exact_column"]),
             );
-            e.cache_table_detail(
+            cache.insert(
                 "app.foo".to_string(),
                 create_table("app", "foo", &["wrong_column"]),
             );
+            let e = CompletionEngine::new(&cache);
             let mut metadata = DatabaseMetadata::new("app".to_string());
             metadata.table_summaries = vec![
                 TableSummary::new("app".to_string(), "Foo".to_string(), None, false),
@@ -1914,15 +1872,16 @@ mod tests {
 
         #[test]
         fn mysql_qualifier_prefers_exact_table_reference_when_references_overlap() {
-            let mut e = engine();
-            e.cache_table_detail(
+            let mut cache = TableDetailCache::default();
+            cache.insert(
                 "app.foo".to_string(),
                 create_table("app", "foo", &["wrong_column"]),
             );
-            e.cache_table_detail(
+            cache.insert(
                 "app.Foo".to_string(),
                 create_table("app", "Foo", &["exact_column"]),
             );
+            let e = CompletionEngine::new(&cache);
             let mut metadata = DatabaseMetadata::new("app".to_string());
             metadata.table_summaries = vec![
                 TableSummary::new("app".to_string(), "foo".to_string(), None, false),
@@ -1951,11 +1910,12 @@ mod tests {
 
         #[test]
         fn mysql_table_reference_falls_back_to_unique_case_insensitive_match() {
-            let mut e = engine();
-            e.cache_table_detail(
+            let mut cache = TableDetailCache::default();
+            cache.insert(
                 "app.Foo".to_string(),
                 create_table("app", "Foo", &["fallback_column"]),
             );
+            let e = CompletionEngine::new(&cache);
             let mut metadata = DatabaseMetadata::new("app".to_string());
             metadata.table_summaries = vec![TableSummary::new(
                 "app".to_string(),
@@ -1983,11 +1943,12 @@ mod tests {
 
         #[test]
         fn mysql_qualified_table_reference_falls_back_to_unique_case_insensitive_match() {
-            let mut e = engine();
-            e.cache_table_detail(
+            let mut cache = TableDetailCache::default();
+            cache.insert(
                 "app.Foo".to_string(),
                 create_table("app", "Foo", &["qualified_fallback_column"]),
             );
+            let e = CompletionEngine::new(&cache);
             let mut metadata = DatabaseMetadata::new("app".to_string());
             metadata.table_summaries = vec![TableSummary::new(
                 "app".to_string(),
@@ -2016,11 +1977,12 @@ mod tests {
 
         #[test]
         fn mysql_straight_join_alias_completes_joined_table_columns() {
-            let mut e = engine();
-            e.cache_table_detail(
+            let mut cache = TableDetailCache::default();
+            cache.insert(
                 "app.orders".to_string(),
                 create_table("app", "orders", &["order_id"]),
             );
+            let e = CompletionEngine::new(&cache);
             let mut metadata = metadata();
             metadata.table_summaries.push(TableSummary::new(
                 "app".to_string(),
@@ -2048,11 +2010,12 @@ mod tests {
 
         #[test]
         fn mysql_index_hint_for_join_preserves_straight_join_completion() {
-            let mut e = engine();
-            e.cache_table_detail(
+            let mut cache = TableDetailCache::default();
+            cache.insert(
                 "app.orders".to_string(),
                 create_table("app", "orders", &["order_id"]),
             );
+            let e = CompletionEngine::new(&cache);
             let mut metadata = metadata();
             metadata.table_summaries.push(TableSummary::new(
                 "app".to_string(),
@@ -2080,11 +2043,12 @@ mod tests {
 
         #[test]
         fn mysql_partition_alias_completes_table_columns() {
-            let mut e = engine();
-            e.cache_table_detail(
+            let mut cache = TableDetailCache::default();
+            cache.insert(
                 "app.events".to_string(),
                 create_table("app", "events", &["event_id"]),
             );
+            let e = CompletionEngine::new(&cache);
             let mut metadata = metadata();
             metadata.table_summaries.push(TableSummary::new(
                 "app".to_string(),
@@ -2112,11 +2076,12 @@ mod tests {
 
         #[test]
         fn mysql_straight_join_after_condition_completes_final_alias_columns() {
-            let mut e = engine();
-            e.cache_table_detail(
+            let mut cache = TableDetailCache::default();
+            cache.insert(
                 "app.items".to_string(),
                 create_table("app", "items", &["item_id"]),
             );
+            let e = CompletionEngine::new(&cache);
             let mut metadata = metadata();
             metadata.table_summaries.extend([
                 TableSummary::new("app".to_string(), "orders".to_string(), None, false),
@@ -2142,11 +2107,12 @@ mod tests {
 
         #[test]
         fn mysql_unique_case_insensitive_fallback_supports_non_ascii_names() {
-            let mut e = engine();
-            e.cache_table_detail(
+            let mut cache = TableDetailCache::default();
+            cache.insert(
                 "app.ÄFoo".to_string(),
                 create_table("app", "ÄFoo", &["unicode_column"]),
             );
+            let e = CompletionEngine::new(&cache);
             let mut metadata = DatabaseMetadata::new("app".to_string());
             metadata.table_summaries = vec![TableSummary::new(
                 "app".to_string(),
@@ -2206,15 +2172,16 @@ mod tests {
 
         #[test]
         fn mysql_ambiguous_case_insensitive_table_reference_has_no_columns() {
-            let mut e = engine();
-            e.cache_table_detail(
+            let mut cache = TableDetailCache::default();
+            cache.insert(
                 "app.Foo".to_string(),
                 create_table("app", "Foo", &["upper_column"]),
             );
-            e.cache_table_detail(
+            cache.insert(
                 "app.foo".to_string(),
                 create_table("app", "foo", &["lower_column"]),
             );
+            let e = CompletionEngine::new(&cache);
             let mut metadata = DatabaseMetadata::new("app".to_string());
             metadata.table_summaries = vec![
                 TableSummary::new("app".to_string(), "Foo".to_string(), None, false),
@@ -2398,11 +2365,12 @@ mod tests {
 
         #[test]
         fn mysql_backtick_table_alias_returns_cached_columns() {
-            let mut e = engine();
-            e.cache_table_detail(
+            let mut cache = TableDetailCache::default();
+            cache.insert(
                 "app.users".to_string(),
                 create_table("app", "users", &["id", "name"]),
             );
+            let e = CompletionEngine::new(&cache);
             let metadata = metadata();
             let sql = "SELECT u.na FROM `app`.`users` AS `u`";
             let cursor = "SELECT u.na".chars().count();
@@ -2424,15 +2392,16 @@ mod tests {
 
         #[test]
         fn mysql_escaped_backtick_alias_returns_cached_columns() {
-            let mut e = engine();
-            e.cache_table_detail(
+            let mut cache = TableDetailCache::default();
+            cache.insert(
                 "app.users".to_string(),
                 create_table("app", "users", &["id", "name"]),
             );
-            e.cache_table_detail(
+            cache.insert(
                 "app.audit".to_string(),
                 create_table("app", "audit", &["id", "secret"]),
             );
+            let e = CompletionEngine::new(&cache);
             let metadata = metadata();
             let sql = "SELECT `x``y`.na FROM `app`.`users` AS `x``y`";
             let cursor = "SELECT `x``y`.na".chars().count();
@@ -2931,7 +2900,7 @@ mod tests {
 
         #[test]
         fn cached_table_returns_columns() {
-            let mut e = engine();
+            let mut cache = TableDetailCache::default();
 
             let table = Table {
                 schema: "public".to_string(),
@@ -2947,7 +2916,8 @@ mod tests {
                 ..test_support::table::minimal("", "")
             };
 
-            e.cache_table_detail("public.users".to_string(), table);
+            cache.insert("public.users".to_string(), table);
+            let e = CompletionEngine::new(&cache);
 
             let sql_context = SqlContext {
                 tables: vec![TableReference {
@@ -3002,7 +2972,7 @@ mod tests {
 
         #[test]
         fn alias_prefix_filters_columns() {
-            let mut e = engine();
+            let mut cache = TableDetailCache::default();
 
             let table = Table {
                 schema: "public".to_string(),
@@ -3019,7 +2989,8 @@ mod tests {
                 ..test_support::table::minimal("", "")
             };
 
-            e.cache_table_detail("public.users".to_string(), table);
+            cache.insert("public.users".to_string(), table);
+            let e = CompletionEngine::new(&cache);
 
             let sql_context = SqlContext {
                 tables: vec![TableReference {
@@ -3347,7 +3318,7 @@ mod tests {
 
         #[test]
         fn cached_tables_are_excluded() {
-            let mut e = engine();
+            let mut cache = TableDetailCache::default();
             let table = Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
@@ -3357,7 +3328,8 @@ mod tests {
                 }],
                 ..test_support::table::minimal("", "")
             };
-            e.cache_table_detail("public.users".to_string(), table);
+            cache.insert("public.users".to_string(), table);
+            let e = CompletionEngine::new(&cache);
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
             metadata.table_summaries = vec![
@@ -3433,52 +3405,6 @@ mod tests {
             // MAX_MISSING_TABLES = 10, so even with 15 tables, only 10 should be returned
             assert_eq!(missing.len(), 10);
         }
-
-        #[test]
-        fn has_cached_table_returns_true_for_cached() {
-            let mut e = engine();
-            let table = Table {
-                schema: "public".to_string(),
-                name: "users".to_string(),
-                ..test_support::table::minimal("", "")
-            };
-            e.cache_table_detail("public.users".to_string(), table);
-
-            assert!(e.has_cached_table("public.users"));
-            assert!(!e.has_cached_table("public.orders"));
-        }
-
-        fn make_table(schema: &str, name: &str) -> Table {
-            Table {
-                schema: schema.to_string(),
-                name: name.to_string(),
-                ..test_support::table::minimal("", "")
-            }
-        }
-
-        #[test]
-        fn evict_tables_removes_specified_entries() {
-            let mut e = engine();
-            e.cache_table_detail("public.users".to_string(), make_table("public", "users"));
-            e.cache_table_detail("public.orders".to_string(), make_table("public", "orders"));
-            e.cache_table_detail("public.items".to_string(), make_table("public", "items"));
-
-            e.evict_tables(&["public.users".to_string(), "public.orders".to_string()]);
-
-            assert!(!e.has_cached_table("public.users"));
-            assert!(!e.has_cached_table("public.orders"));
-            assert!(e.has_cached_table("public.items"));
-        }
-
-        #[test]
-        fn evict_tables_ignores_missing_keys() {
-            let mut e = engine();
-            e.cache_table_detail("public.users".to_string(), make_table("public", "users"));
-
-            e.evict_tables(&["public.nonexistent".to_string()]);
-
-            assert!(e.has_cached_table("public.users"));
-        }
     }
 
     mod integration_tests {
@@ -3532,11 +3458,12 @@ mod tests {
 
         #[test]
         fn get_candidates_with_cached_table_returns_alias_columns() {
-            let mut e = engine();
+            let mut cache = TableDetailCache::default();
             let table = create_users_table();
 
             // Cache the table
-            e.cache_table_detail("public.users".to_string(), table);
+            cache.insert("public.users".to_string(), table);
+            let e = CompletionEngine::new(&cache);
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
             metadata.table_summaries = vec![TableSummary::new(
@@ -3763,13 +3690,14 @@ mod tests {
 
         #[test]
         fn update_target_columns_get_boost() {
-            let mut e = engine();
+            let mut cache = TableDetailCache::default();
             let users = create_table("public", "users", &["id", "name", "email"]);
             let orders = create_table("public", "orders", &["id", "user_id", "total"]);
 
             // Cache both tables
-            e.cache_table_detail("public.users".to_string(), users.clone());
-            e.cache_table_detail("public.orders".to_string(), orders);
+            cache.insert("public.users".to_string(), users.clone());
+            cache.insert("public.orders".to_string(), orders);
+            let e = CompletionEngine::new(&cache);
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
             metadata.table_summaries = vec![
@@ -3805,10 +3733,11 @@ mod tests {
 
         #[test]
         fn select_has_no_target_boost() {
-            let mut e = engine();
+            let mut cache = TableDetailCache::default();
             let users = create_table("public", "users", &["id", "name"]);
 
-            e.cache_table_detail("public.users".to_string(), users.clone());
+            cache.insert("public.users".to_string(), users.clone());
+            let e = CompletionEngine::new(&cache);
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
             metadata.table_summaries = vec![TableSummary::new(
@@ -3833,11 +3762,12 @@ mod tests {
 
         #[test]
         fn no_from_with_2char_prefix_returns_all_cached_columns() {
-            let mut e = engine();
+            let mut cache = TableDetailCache::default();
             let users = create_table("public", "users", &["id", "name", "email"]);
             let orders = create_table("public", "orders", &["id", "user_id", "total"]);
-            e.cache_table_detail("public.users".to_string(), users);
-            e.cache_table_detail("public.orders".to_string(), orders);
+            cache.insert("public.users".to_string(), users);
+            cache.insert("public.orders".to_string(), orders);
+            let e = CompletionEngine::new(&cache);
             let metadata = DatabaseMetadata::new("test".to_string());
 
             let candidates = e.get_candidates("SELECT na", 9, Some(&metadata), None);
@@ -3848,11 +3778,12 @@ mod tests {
 
         #[test]
         fn no_from_with_empty_prefix_returns_all_cached_columns() {
-            let mut e = engine();
+            let mut cache = TableDetailCache::default();
             let users = create_table("public", "users", &["id", "name"]);
             let orders = create_table("public", "orders", &["order_id", "user_id"]);
-            e.cache_table_detail("public.users".to_string(), users);
-            e.cache_table_detail("public.orders".to_string(), orders);
+            cache.insert("public.users".to_string(), users);
+            cache.insert("public.orders".to_string(), orders);
+            let e = CompletionEngine::new(&cache);
             let metadata = DatabaseMetadata::new("test".to_string());
 
             let candidates = e.get_candidates("SELECT ", 7, Some(&metadata), None);
@@ -3866,11 +3797,12 @@ mod tests {
 
         #[test]
         fn from_clause_present_returns_only_referenced_table_columns() {
-            let mut e = engine();
+            let mut cache = TableDetailCache::default();
             let users = create_table("public", "users", &["id", "name"]);
             let orders = create_table("public", "orders", &["order_id", "user_id"]);
-            e.cache_table_detail("public.users".to_string(), users);
-            e.cache_table_detail("public.orders".to_string(), orders);
+            cache.insert("public.users".to_string(), users);
+            cache.insert("public.orders".to_string(), orders);
+            let e = CompletionEngine::new(&cache);
             let mut metadata = DatabaseMetadata::new("test".to_string());
             metadata.table_summaries = vec![
                 TableSummary::new("public".to_string(), "users".to_string(), None, false),
@@ -3886,199 +3818,48 @@ mod tests {
         }
     }
 
-    mod lru_cache_behavior {
+    mod cache_lookup {
         use super::*;
 
-        #[test]
-        fn evicted_table_appears_in_missing_tables() {
-            let mut e = CompletionEngine::new_with_capacity(2);
-
-            // Cache 3 tables with capacity 2 - t1 will be evicted
-            let t1 = create_table("public", "t1", &["id"]);
-            let t2 = create_table("public", "t2", &["id"]);
-            let t3 = create_table("public", "t3", &["id"]);
-
-            e.cache_table_detail("public.t1".to_string(), t1);
-            e.cache_table_detail("public.t2".to_string(), t2);
-            e.cache_table_detail("public.t3".to_string(), t3);
-
-            // t1 should be evicted
-            assert!(!e.has_cached_table("public.t1"));
-            assert!(e.has_cached_table("public.t2"));
-            assert!(e.has_cached_table("public.t3"));
-
-            // Create metadata with all tables
+        fn metadata_with(names: &[&str]) -> DatabaseMetadata {
             let mut metadata = DatabaseMetadata::new("test".to_string());
-            metadata.table_summaries = vec![
-                TableSummary::new("public".to_string(), "t1".to_string(), None, false),
-                TableSummary::new("public".to_string(), "t2".to_string(), None, false),
-                TableSummary::new("public".to_string(), "t3".to_string(), None, false),
-            ];
+            metadata.table_summaries = names
+                .iter()
+                .map(|name| {
+                    TableSummary::new("public".to_string(), (*name).to_string(), None, false)
+                })
+                .collect();
+            metadata
+        }
 
-            // SQL referencing evicted table should trigger re-fetch
+        #[test]
+        fn uncached_table_appears_in_missing_tables() {
+            let mut cache = TableDetailCache::default();
+            cache.insert(
+                "public.t2".to_string(),
+                create_table("public", "t2", &["id"]),
+            );
+            let e = CompletionEngine::new(&cache);
+            let metadata = metadata_with(&["t1", "t2"]);
+
             let missing = e.missing_tables("SELECT * FROM t1", Some(&metadata));
+
             assert_eq!(missing, vec!["public.t1".to_string()]);
         }
 
         #[test]
         fn cached_table_not_in_missing_tables() {
-            let mut e = CompletionEngine::new_with_capacity(2);
-
-            let t1 = create_table("public", "t1", &["id"]);
-            e.cache_table_detail("public.t1".to_string(), t1);
-
-            let mut metadata = DatabaseMetadata::new("test".to_string());
-            metadata.table_summaries = vec![TableSummary::new(
-                "public".to_string(),
-                "t1".to_string(),
-                None,
-                false,
-            )];
+            let mut cache = TableDetailCache::default();
+            cache.insert(
+                "public.t1".to_string(),
+                create_table("public", "t1", &["id"]),
+            );
+            let e = CompletionEngine::new(&cache);
+            let metadata = metadata_with(&["t1"]);
 
             let missing = e.missing_tables("SELECT * FROM t1", Some(&metadata));
+
             assert!(missing.is_empty());
-        }
-
-        #[test]
-        fn table_details_iter_returns_all_cached() {
-            let mut e = CompletionEngine::new_with_capacity(3);
-
-            let t1 = create_table("public", "t1", &["id"]);
-            let t2 = create_table("public", "t2", &["id"]);
-            e.cache_table_detail("public.t1".to_string(), t1);
-            e.cache_table_detail("public.t2".to_string(), t2);
-
-            let names: Vec<_> = e.table_details_iter().map(|(k, _)| k.clone()).collect();
-            assert_eq!(names.len(), 2);
-            assert!(names.contains(&"public.t1".to_string()));
-            assert!(names.contains(&"public.t2".to_string()));
-        }
-
-        #[test]
-        fn clear_removes_all_cached_tables() {
-            let mut e = CompletionEngine::new_with_capacity(3);
-
-            let t1 = create_table("public", "t1", &["id"]);
-            let t2 = create_table("public", "t2", &["id"]);
-            e.cache_table_detail("public.t1".to_string(), t1);
-            e.cache_table_detail("public.t2".to_string(), t2);
-
-            assert!(e.has_cached_table("public.t1"));
-            assert!(e.has_cached_table("public.t2"));
-
-            e.clear_table_cache();
-
-            assert!(!e.has_cached_table("public.t1"));
-            assert!(!e.has_cached_table("public.t2"));
-            assert_eq!(e.table_details_iter().count(), 0);
-        }
-
-        #[test]
-        fn lru_eviction_order_is_fifo_without_access() {
-            let mut e = CompletionEngine::new_with_capacity(2);
-
-            // Insert t1, t2, t3 in order - t1 should be evicted first
-            e.cache_table_detail(
-                "public.t1".to_string(),
-                create_table("public", "t1", &["id"]),
-            );
-            e.cache_table_detail(
-                "public.t2".to_string(),
-                create_table("public", "t2", &["id"]),
-            );
-            // t1 is now LRU, will be evicted when t3 is added
-            e.cache_table_detail(
-                "public.t3".to_string(),
-                create_table("public", "t3", &["id"]),
-            );
-
-            assert!(!e.has_cached_table("public.t1")); // evicted
-            assert!(e.has_cached_table("public.t2"));
-            assert!(e.has_cached_table("public.t3"));
-        }
-
-        #[test]
-        fn peeking_table_does_not_promote_it_before_eviction() {
-            let mut e = CompletionEngine::new_with_capacity(2);
-
-            e.cache_table_detail(
-                "public.t1".to_string(),
-                create_table("public", "t1", &["id"]),
-            );
-            e.cache_table_detail(
-                "public.t2".to_string(),
-                create_table("public", "t2", &["id"]),
-            );
-
-            assert!(e.table_detail_cache.peek("public.t1").is_some());
-            assert!(e.has_cached_table("public.t1"));
-
-            e.cache_table_detail(
-                "public.t3".to_string(),
-                create_table("public", "t3", &["id"]),
-            );
-
-            assert!(!e.has_cached_table("public.t1"));
-            assert!(e.has_cached_table("public.t2"));
-            assert!(e.has_cached_table("public.t3"));
-        }
-
-        #[test]
-        fn expanding_cache_preserves_entries_and_uses_new_capacity() {
-            let mut e = CompletionEngine::new_with_capacity(2);
-
-            e.cache_table_detail(
-                "public.t1".to_string(),
-                create_table("public", "t1", &["id"]),
-            );
-            e.cache_table_detail(
-                "public.t2".to_string(),
-                create_table("public", "t2", &["id"]),
-            );
-
-            e.resize_cache(5);
-
-            for name in ["t3", "t4", "t5", "t6"] {
-                e.cache_table_detail(
-                    format!("public.{name}"),
-                    create_table("public", name, &["id"]),
-                );
-            }
-
-            assert_eq!(e.table_details_iter().count(), 5);
-            assert!(!e.has_cached_table("public.t1"));
-            for name in ["t2", "t3", "t4", "t5", "t6"] {
-                assert!(e.has_cached_table(&format!("public.{name}")));
-            }
-        }
-
-        #[test]
-        fn shrinking_cache_evicts_least_recently_used_entries() {
-            let mut e = CompletionEngine::new_with_capacity(3);
-
-            for name in ["t1", "t2", "t3"] {
-                e.cache_table_detail(
-                    format!("public.{name}"),
-                    create_table("public", name, &["id"]),
-                );
-            }
-
-            e.resize_cache(2);
-
-            assert_eq!(e.table_details_iter().count(), 2);
-            assert!(!e.has_cached_table("public.t1"));
-            assert!(e.has_cached_table("public.t2"));
-            assert!(e.has_cached_table("public.t3"));
-
-            e.cache_table_detail(
-                "public.t4".to_string(),
-                create_table("public", "t4", &["id"]),
-            );
-
-            assert_eq!(e.table_details_iter().count(), 2);
-            assert!(!e.has_cached_table("public.t2"));
-            assert!(e.has_cached_table("public.t3"));
-            assert!(e.has_cached_table("public.t4"));
         }
     }
 
@@ -4087,17 +3868,18 @@ mod tests {
 
         #[test]
         fn column_candidates_use_only_current_statement_context() {
-            let mut engine = engine();
+            let mut cache = TableDetailCache::default();
             for (name, column) in [
                 ("first_table", "first_only"),
                 ("current_table", "current_only"),
                 ("later_table", "later_only"),
             ] {
-                engine.cache_table_detail(
+                cache.insert(
                     format!("public.{name}"),
                     create_table("public", name, &[column]),
                 );
             }
+            let engine = CompletionEngine::new(&cache);
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
             metadata.table_summaries = ["first_table", "current_table", "later_table"]
