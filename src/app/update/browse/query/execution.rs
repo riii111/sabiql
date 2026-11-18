@@ -364,6 +364,7 @@ mod tests {
     use super::*;
     use crate::cmd::runner::EffectRunner;
     use crate::cmd::test_fixtures;
+    use crate::domain::TableSignatureSnapshot;
     use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType};
     use crate::model::er_state::ErStatus;
     use crate::ports::outbound::connection_store::MockConnectionStore;
@@ -371,7 +372,7 @@ mod tests {
     use crate::ports::outbound::query_executor::MockQueryExecutor;
     use crate::ports::outbound::{DbOperationError, RenderOutput, RenderResult, Renderer};
     use crate::services::AppServices;
-    use crate::update::action::SmartErRefreshResult;
+    use crate::update::action::SmartErRefreshFetched;
     use crate::update::browse::metadata::dispatch_metadata;
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
@@ -1617,14 +1618,14 @@ mod tests {
             let dsn = active_dsn(&state);
             let effects = dispatch_er(
                 &mut state,
-                &Action::SmartErRefreshCompleted(SmartErRefreshResult {
+                &Action::SmartErRefreshFetched(SmartErRefreshFetched {
                     dsn,
                     run_id: old_er_run_id,
                     new_metadata: Arc::new(DatabaseMetadata::new("new".to_string())),
-                    stale_tables: vec![],
-                    removed_tables: vec![],
-                    missing_in_cache: vec![],
-                    new_signatures: std::collections::HashMap::new(),
+                    signature_snapshot: Arc::new(TableSignatureSnapshot {
+                        signatures: vec![],
+                        prefetched_table_details: vec![],
+                    }),
                 }),
                 Instant::now(),
             )

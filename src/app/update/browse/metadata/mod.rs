@@ -52,7 +52,6 @@ pub(crate) fn dispatch_metadata(
     loading::reduce_loading(state, action, now)
         .or_else(|| table_detail::reduce_table_detail(state, action))
         .or_else(|| prefetch::reduce_prefetch(state, action, now))
-        .or_else(|| er_neighbors::reduce_er_neighbors(state, action))
 }
 
 #[cfg(test)]
@@ -1622,17 +1621,56 @@ mod tests {
         use super::*;
 
         #[test]
-        fn complete_not_fk_expanded_dispatches_expand() {
+        fn complete_without_fk_neighbors_expands_and_dispatches_generate() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let _ = state.table_prefetch.begin_er_prefetch();
+            let _ = state.er_preparation.start_waiting_run();
+            state.er_preparation.mark_fk_unexpanded();
+
+            let effects = check_er_completion(&mut state);
+
+            assert!(state.er_preparation.fk_expanded());
+            assert!(effects.iter().any(|e| matches!(
+                e,
+                Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache))
+            )));
+        }
+
+        #[test]
+        fn complete_with_uncached_fk_neighbor_queues_it() {
+            use crate::domain::{FkAction, ForeignKey};
+
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.table_prefetch.begin_er_prefetch();
             let _ = state.er_preparation.start_waiting_run();
-            state.er_preparation.mark_fk_unexpanded();
+            state
+                .er_preparation
+                .begin_scoped_prefetch(["public.orders".to_string()]);
+            let mut orders = test_support::table::minimal("public", "orders");
+            orders.foreign_keys = vec![ForeignKey {
+                name: "orders_user_fk".to_string(),
+                from_schema: "public".to_string(),
+                from_table: "orders".to_string(),
+                from_columns: vec!["user_id".to_string()],
+                to_schema: "public".to_string(),
+                to_table: "users".to_string(),
+                to_columns: vec!["id".to_string()],
+                on_delete: FkAction::NoAction,
+                on_update: FkAction::NoAction,
+                reference_resolved: true,
+            }];
+            state
+                .table_detail_cache
+                .insert("public.orders".to_string(), orders);
+
             let effects = check_er_completion(&mut state);
 
+            assert!(state.er_preparation.fk_expanded());
+            assert!(state.table_prefetch.is_prefetch_queued("public.users"));
             assert!(effects.iter().any(|e| matches!(
                 e,
-                Effect::ExtractFkNeighbors { run_id: action_run_id, .. }
-                    if *action_run_id == run_id
+                Effect::SchedulePrefetchQueueProcessing { run_id: scheduled } if *scheduled == run_id
             )));
         }
 
@@ -1662,15 +1700,7 @@ mod tests {
             let run_id = state.table_prefetch.begin_er_prefetch();
             let _ = state.er_preparation.start_waiting_run();
 
-            let effects = dispatch_metadata(
-                &mut state,
-                &Action::FkNeighborsDiscovered {
-                    run_id,
-                    tables: vec![],
-                },
-                Instant::now(),
-            )
-            .unwrap();
+            let effects = er_neighbors::queue_fk_neighbors(&mut state, run_id, &[]);
 
             assert!(state.er_preparation.fk_expanded());
             assert!(effects.iter().any(|e| matches!(
@@ -1686,15 +1716,11 @@ mod tests {
             let run_id = state.table_prefetch.begin_er_prefetch();
             let _ = state.er_preparation.start_waiting_run();
 
-            let effects = dispatch_metadata(
+            let effects = er_neighbors::queue_fk_neighbors(
                 &mut state,
-                &Action::FkNeighborsDiscovered {
-                    run_id,
-                    tables: vec!["public.posts".to_string(), "public.tags".to_string()],
-                },
-                Instant::now(),
-            )
-            .unwrap();
+                run_id,
+                &["public.posts".to_string(), "public.tags".to_string()],
+            );
 
             assert!(state.er_preparation.fk_expanded());
             assert!(state.table_prefetch.is_prefetch_queued("public.posts"));
@@ -1711,42 +1737,12 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             let _ = state.er_preparation.start_waiting_run();
 
-            let effects = dispatch_metadata(
-                &mut state,
-                &Action::FkNeighborsDiscovered {
-                    run_id: 1,
-                    tables: vec!["public.posts".to_string()],
-                },
-                Instant::now(),
-            )
-            .unwrap();
+            let effects =
+                er_neighbors::queue_fk_neighbors(&mut state, 1, &["public.posts".to_string()]);
 
             assert!(!state.er_preparation.fk_expanded());
             assert!(!state.table_prefetch.has_pending_prefetch());
             assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn pending_mysql_probe_rejects_discovered_neighbors_without_queueing() {
-            let mut state = state_with_pending_mysql_probe();
-            let run_id = state.table_prefetch.begin_er_prefetch();
-            let _ = state.er_preparation.start_waiting_run();
-            state.er_preparation.mark_fk_unexpanded();
-
-            let effects = dispatch_metadata(
-                &mut state,
-                &Action::FkNeighborsDiscovered {
-                    run_id,
-                    tables: vec!["public.posts".to_string()],
-                },
-                Instant::now(),
-            )
-            .into_effects()
-            .expect("discovered neighbors action should be handled");
-
-            assert!(effects.is_empty());
-            assert!(!state.er_preparation.fk_expanded());
-            assert!(!state.table_prefetch.is_prefetch_queued("public.posts"));
         }
 
         #[test]
@@ -1756,15 +1752,11 @@ mod tests {
             let current_run_id = state.table_prefetch.begin_er_prefetch();
             let _ = state.er_preparation.start_waiting_run();
 
-            let effects = dispatch_metadata(
+            let effects = er_neighbors::queue_fk_neighbors(
                 &mut state,
-                &Action::FkNeighborsDiscovered {
-                    run_id: stale_run_id,
-                    tables: vec!["public.posts".to_string()],
-                },
-                Instant::now(),
-            )
-            .unwrap();
+                stale_run_id,
+                &["public.posts".to_string()],
+            );
 
             assert_eq!(
                 state.table_prefetch.active_prefetch_run_id(),
@@ -1789,17 +1781,14 @@ mod tests {
                 .table_prefetch
                 .start_table_prefetch("public.tags".to_string());
 
-            dispatch_metadata(
+            er_neighbors::queue_fk_neighbors(
                 &mut state,
-                &Action::FkNeighborsDiscovered {
-                    run_id,
-                    tables: vec![
-                        "public.posts".to_string(),
-                        "public.tags".to_string(),
-                        "public.comments".to_string(),
-                    ],
-                },
-                Instant::now(),
+                run_id,
+                &[
+                    "public.posts".to_string(),
+                    "public.tags".to_string(),
+                    "public.comments".to_string(),
+                ],
             );
 
             assert!(state.table_prefetch.is_prefetch_queued("public.posts"));

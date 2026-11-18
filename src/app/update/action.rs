@@ -13,7 +13,6 @@ use crate::model::shared::key_sequence::Prefix;
 use crate::policy::{FeatureRequirement, mask_password};
 use crate::ports::outbound::clipboard::ClipboardError;
 use crate::ports::outbound::{AppSettings, DbOperationError};
-use std::collections::HashMap;
 
 use crate::domain::SqliteDiagnosticsSnapshot;
 use crate::domain::{
@@ -182,17 +181,6 @@ pub enum ModalKind {
     ConnectionSetup,
     ConnectionSelector,
     SqliteDiagnostics,
-}
-
-#[derive(Debug, Clone)]
-pub struct SmartErRefreshResult {
-    pub dsn: String,
-    pub run_id: u64,
-    pub new_metadata: Arc<DatabaseMetadata>,
-    pub stale_tables: Vec<String>,
-    pub removed_tables: Vec<String>,
-    pub missing_in_cache: Vec<String>,
-    pub new_signatures: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone)]
@@ -473,10 +461,6 @@ pub enum Action {
     StartCompletionPrefetch {
         tables: Vec<String>,
     },
-    FkNeighborsDiscovered {
-        run_id: u64,
-        tables: Vec<String>,
-    },
     ProcessPrefetchQueue {
         run_id: u64,
     },
@@ -631,7 +615,6 @@ pub enum Action {
     ErOpenDiagram,
     ErGenerateFromCache,
     SmartErRefreshFetched(SmartErRefreshFetched),
-    SmartErRefreshCompleted(SmartErRefreshResult),
     SmartErRefreshFailed(SmartErRefreshError),
     ErDiagramOpened(ErDiagramInfo),
     ErDiagramFailed {
@@ -665,7 +648,6 @@ impl Action {
             | Self::ErOpenDiagram
             | Self::ErGenerateFromCache
             | Self::SmartErRefreshFetched(_)
-            | Self::SmartErRefreshCompleted(_)
             | Self::SmartErRefreshFailed(_)
             | Self::ErDiagramOpened(_)
             | Self::ErDiagramFailed { .. }

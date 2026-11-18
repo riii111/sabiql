@@ -241,10 +241,7 @@ impl EffectRunner {
                 Ok(vec![])
             }
 
-            e @ (Effect::GenerateErDiagramFromCache { .. }
-            | Effect::ExtractFkNeighbors { .. }
-            | Effect::WriteErFailureLog { .. }
-            | Effect::SmartErRefreshCacheAndDiff { .. }) => {
+            e @ (Effect::GenerateErDiagram { .. } | Effect::WriteErFailureLog { .. }) => {
                 cmd_er::run(
                     e,
                     &self.action_tx,

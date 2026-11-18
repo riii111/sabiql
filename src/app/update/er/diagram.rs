@@ -1,6 +1,8 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::ErTableInfo;
+use crate::domain::er::{er_output_filename, fk_reachable_tables_multi};
 use crate::model::app_state::AppState;
 use crate::update::action::{Action, ErDiagramInfo};
 use crate::update::dispatch_result::DispatchResult;
@@ -71,25 +73,54 @@ pub(super) fn reduce_diagram_lifecycle(
 
             DispatchResult::handled_with(vec![Effect::SmartErRefresh { dsn, run_id }])
         }
-        Action::ErGenerateFromCache => {
-            if !state.er_preparation.can_generate_from_cache() {
-                return DispatchResult::handled();
-            }
-
-            state.er_preparation.mark_rendering();
-            let run_id = state.er_preparation.run_id();
-            let total_tables = state
-                .session
-                .metadata()
-                .map_or(0, |m| m.table_summaries.len());
-
-            DispatchResult::handled_with(vec![Effect::GenerateErDiagramFromCache {
-                run_id,
-                total_tables,
-                project_name: state.project_name().to_string(),
-                target_tables: state.er_preparation.target_tables().to_vec(),
-            }])
-        }
+        Action::ErGenerateFromCache => DispatchResult::handled_with(generate_from_cache(state)),
         _ => DispatchResult::pass(),
     }
+}
+
+pub(super) fn generate_from_cache(state: &mut AppState) -> Vec<Effect> {
+    if !state.er_preparation.can_generate_from_cache() {
+        return vec![];
+    }
+
+    state.er_preparation.mark_rendering();
+    let run_id = state.er_preparation.run_id();
+    let total_tables = state
+        .session
+        .metadata()
+        .map_or(0, |m| m.table_summaries.len());
+
+    let cached_tables: Vec<ErTableInfo> = state
+        .table_detail_cache
+        .iter()
+        .map(|(name, table)| ErTableInfo::from_table(name, table))
+        .collect();
+    if cached_tables.is_empty() {
+        return fail_generation(state, "No table data loaded yet");
+    }
+
+    let target_tables = state.er_preparation.target_tables();
+    let filename = er_output_filename(target_tables, cached_tables.len());
+    let tables = if target_tables.is_empty() || target_tables.len() == cached_tables.len() {
+        cached_tables
+    } else {
+        fk_reachable_tables_multi(&cached_tables, target_tables, 1)
+    };
+    if tables.is_empty() {
+        return fail_generation(state, "Selected tables not found in cached data");
+    }
+
+    vec![Effect::GenerateErDiagram {
+        run_id,
+        total_tables,
+        project_name: state.project_name().to_string(),
+        tables,
+        filename,
+    }]
+}
+
+fn fail_generation(state: &mut AppState, error: &str) -> Vec<Effect> {
+    state.er_preparation.mark_idle();
+    state.messages.set_error(error.to_string());
+    vec![]
 }

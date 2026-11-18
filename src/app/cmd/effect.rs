@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::domain::connection::{ConnectionConfig, ConnectionId, DatabaseType};
 use crate::domain::query_history::QueryHistoryScope;
-use crate::domain::{DatabaseMetadata, QueryValue, TableSignatureSnapshot};
+use crate::domain::{ErTableInfo, QueryValue};
 use crate::model::browse::session::ConnectionSaveGuard;
 use crate::ports::outbound::{AccessMode, AppSettings};
 use crate::update::action::{Action, ConnectionTarget};
@@ -112,28 +112,19 @@ pub enum Effect {
         row_count: Option<usize>,
     },
 
-    GenerateErDiagramFromCache {
+    GenerateErDiagram {
         run_id: u64,
         total_tables: usize,
         project_name: String,
-        target_tables: Vec<String>,
+        tables: Vec<ErTableInfo>,
+        filename: String,
     },
     WriteErFailureLog {
         failed_tables: Vec<(String, String)>,
     },
-    ExtractFkNeighbors {
-        run_id: u64,
-        seed_tables: Vec<String>,
-    },
     SmartErRefresh {
         dsn: String,
         run_id: u64,
-    },
-    SmartErRefreshCacheAndDiff {
-        dsn: String,
-        run_id: u64,
-        new_metadata: Arc<DatabaseMetadata>,
-        signature_snapshot: Arc<TableSignatureSnapshot>,
     },
 
     CopyToClipboard {

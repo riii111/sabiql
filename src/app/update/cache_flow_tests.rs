@@ -1,6 +1,8 @@
+use std::collections::VecDeque;
 use std::sync::Arc;
+use std::time::Instant;
 
-use crate::cmd::cache_flow_driver::CacheFlowDriver;
+use crate::cmd::effect::Effect;
 use crate::domain::{
     Column, ColumnAttributes, ConnectionId, DatabaseMetadata, DatabaseType, FkAction, ForeignKey,
     Table, TableSignature, TableSignatureSnapshot, TableSummary,
@@ -8,8 +10,171 @@ use crate::domain::{
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
+use crate::services::AppServices;
 use crate::test_support::table::minimal as minimal_table;
 use crate::update::action::{Action, ConnectionTarget, SmartErRefreshFetched};
+use crate::update::reducer::reduce;
+
+const MAX_STEPS: usize = 10_000;
+
+struct PendingFetch {
+    dsn: String,
+    run_id: u64,
+    schema: String,
+    table: String,
+}
+
+struct CacheFlowDriver {
+    state: AppState,
+    services: AppServices,
+    now: Instant,
+    queue: VecDeque<Action>,
+    channel: VecDeque<Action>,
+    pending_fetches: Vec<PendingFetch>,
+    fetched_tables: Vec<String>,
+    max_outstanding_fetches: usize,
+    io_effects: Vec<Effect>,
+}
+
+impl CacheFlowDriver {
+    fn new(state: AppState) -> Self {
+        Self {
+            state,
+            services: AppServices::stub(),
+            now: Instant::now(),
+            queue: VecDeque::new(),
+            channel: VecDeque::new(),
+            pending_fetches: Vec::new(),
+            fetched_tables: Vec::new(),
+            max_outstanding_fetches: 0,
+            io_effects: Vec::new(),
+        }
+    }
+
+    fn dispatch(&mut self, action: Action) {
+        self.queue.push_back(action);
+        self.run_until_idle();
+    }
+
+    fn complete_fetch(&mut self, qualified_name: &str, table: Table) {
+        let index = self
+            .pending_fetches
+            .iter()
+            .position(|fetch| format!("{}.{}", fetch.schema, fetch.table) == qualified_name)
+            .unwrap_or_else(|| panic!("no pending fetch for {qualified_name}"));
+        let fetch = self.pending_fetches.remove(index);
+        self.channel.push_back(Action::TableDetailCached {
+            dsn: fetch.dsn,
+            run_id: fetch.run_id,
+            schema: fetch.schema,
+            table: fetch.table,
+            detail: Box::new(table),
+        });
+        self.run_until_idle();
+    }
+
+    fn seed_cache(&mut self, table: Table) {
+        self.state
+            .table_detail_cache
+            .insert(table.qualified_name(), table);
+    }
+
+    fn is_cached(&self, qualified_name: &str) -> bool {
+        self.state.table_detail_cache.contains(qualified_name)
+    }
+
+    fn pending_fetch_names(&self) -> Vec<String> {
+        self.pending_fetches
+            .iter()
+            .map(|fetch| format!("{}.{}", fetch.schema, fetch.table))
+            .collect()
+    }
+
+    fn fetched_tables(&self) -> &[String] {
+        &self.fetched_tables
+    }
+
+    fn max_outstanding_fetches(&self) -> usize {
+        self.max_outstanding_fetches
+    }
+
+    fn er_generation_count(&self) -> usize {
+        self.io_effects
+            .iter()
+            .filter(|effect| matches!(effect, Effect::GenerateErDiagram { .. }))
+            .count()
+    }
+
+    fn smart_refresh_run(&self) -> Option<(String, u64)> {
+        self.io_effects
+            .iter()
+            .rev()
+            .find_map(|effect| match effect {
+                Effect::SmartErRefresh { dsn, run_id } => Some((dsn.clone(), *run_id)),
+                _ => None,
+            })
+    }
+
+    fn metadata_fetch_run(&self) -> Option<u64> {
+        self.io_effects
+            .iter()
+            .rev()
+            .find_map(|effect| match effect {
+                Effect::FetchMetadata { run_id, .. } => Some(*run_id),
+                _ => None,
+            })
+    }
+
+    fn run_until_idle(&mut self) {
+        let mut steps = 0;
+        loop {
+            while let Some(action) = self.queue.pop_front() {
+                steps += 1;
+                assert!(steps < MAX_STEPS, "action processing did not settle");
+                let effects = reduce(&mut self.state, action, self.now, &self.services);
+                for effect in effects {
+                    self.handle(effect);
+                }
+            }
+            match self.channel.pop_front() {
+                Some(action) => self.queue.push_back(action),
+                None => break,
+            }
+        }
+    }
+
+    fn handle(&mut self, effect: Effect) {
+        match effect {
+            Effect::Render
+            | Effect::CancelTrackedTasks
+            | Effect::CancelMetadataTasks
+            | Effect::CancelConnectionTask
+            | Effect::CancelSqliteDiagnostics => {}
+            Effect::DispatchActions(actions) => self.queue.extend(actions),
+            Effect::SchedulePrefetchQueueProcessing { run_id } => {
+                self.channel
+                    .push_back(Action::ProcessPrefetchQueue { run_id });
+            }
+            Effect::PrefetchTableColumnsAndFks {
+                dsn,
+                run_id,
+                schema,
+                table,
+            } => {
+                self.fetched_tables.push(format!("{schema}.{table}"));
+                self.pending_fetches.push(PendingFetch {
+                    dsn,
+                    run_id,
+                    schema,
+                    table,
+                });
+                self.max_outstanding_fetches =
+                    self.max_outstanding_fetches.max(self.pending_fetches.len());
+            }
+            other => self.io_effects.push(other),
+        }
+    }
+}
 
 const POSTGRES_DSN: &str = "postgres://localhost/app";
 
@@ -102,43 +267,39 @@ fn signatures(names: &[&str]) -> Arc<TableSignatureSnapshot> {
     })
 }
 
-async fn open_er_diagram(driver: &mut CacheFlowDriver, tables: &[&str]) {
-    driver.dispatch(Action::ErOpenDiagram).await;
+fn open_er_diagram(driver: &mut CacheFlowDriver, tables: &[&str]) {
+    driver.dispatch(Action::ErOpenDiagram);
     let (dsn, run_id) = driver
         .smart_refresh_run()
         .expect("opening the ER diagram should start a smart refresh");
-    driver
-        .dispatch(Action::SmartErRefreshFetched(SmartErRefreshFetched {
-            dsn,
-            run_id,
-            new_metadata: metadata(tables),
-            signature_snapshot: signatures(tables),
-        }))
-        .await;
+    driver.dispatch(Action::SmartErRefreshFetched(SmartErRefreshFetched {
+        dsn,
+        run_id,
+        new_metadata: metadata(tables),
+        signature_snapshot: signatures(tables),
+    }));
 }
 
 mod completion {
     use super::*;
 
-    #[tokio::test]
-    async fn prefetches_referenced_table_then_offers_its_columns() {
+    #[test]
+    fn prefetches_referenced_table_then_offers_its_columns() {
         let mut state = postgres_state(&["users", "orders"]);
         open_sql_modal(&mut state, "SELECT * FROM public.users WHERE ");
         let mut driver = CacheFlowDriver::new(state);
 
-        driver.dispatch(Action::CompletionRequest).await;
+        driver.dispatch(Action::CompletionRequest);
         let fetched_before_completion = driver.fetched_tables().to_vec();
-        driver
-            .complete_fetch("public.users", table("users", &["id", "email"], &[]))
-            .await;
+        driver.complete_fetch("public.users", table("users", &["id", "email"], &[]));
 
         assert_eq!(fetched_before_completion, ["public.users"]);
         assert!(driver.is_cached("public.users"));
         assert!(candidate_texts(&driver.state).contains(&"email".to_string()));
     }
 
-    #[tokio::test]
-    async fn mysql_offers_active_database() {
+    #[test]
+    fn mysql_offers_active_database() {
         let mut state = AppState::new("test".to_string());
         state.session.activate_connection_with_target(
             &ConnectionId::new(),
@@ -151,7 +312,7 @@ mod completion {
         open_sql_modal(&mut state, "SELECT * FROM ");
         let mut driver = CacheFlowDriver::new(state);
 
-        driver.dispatch(Action::CompletionRequest).await;
+        driver.dispatch(Action::CompletionRequest);
 
         assert!(
             driver
@@ -167,19 +328,17 @@ mod completion {
         );
     }
 
-    #[tokio::test]
-    async fn er_prefetch_completion_keeps_candidate_selection() {
+    #[test]
+    fn er_prefetch_completion_keeps_candidate_selection() {
         let mut state = postgres_state(&["users", "orders"]);
         open_sql_modal(&mut state, "SELECT * FROM ");
         let mut driver = CacheFlowDriver::new(state);
-        driver.dispatch(Action::CompletionRequest).await;
+        driver.dispatch(Action::CompletionRequest);
         driver.state.sql_modal.completion_next();
         let candidates_before = candidate_texts(&driver.state);
 
-        driver.dispatch(Action::StartErPrefetchAll).await;
-        driver
-            .complete_fetch("public.users", table("users", &["id"], &[]))
-            .await;
+        driver.dispatch(Action::StartErPrefetchAll);
+        driver.complete_fetch("public.users", table("users", &["id"], &[]));
 
         assert_eq!(driver.state.sql_modal.completion().selected_index, 1);
         assert_eq!(candidate_texts(&driver.state), candidates_before);
@@ -189,59 +348,53 @@ mod completion {
 mod cache_lifetime {
     use super::*;
 
-    async fn driver_with_cached_users() -> CacheFlowDriver {
+    fn driver_with_cached_users() -> CacheFlowDriver {
         let mut state = postgres_state(&["users"]);
         open_sql_modal(&mut state, "SELECT * FROM public.users WHERE ");
         let mut driver = CacheFlowDriver::new(state);
-        driver.dispatch(Action::CompletionRequest).await;
-        driver
-            .complete_fetch("public.users", table("users", &["id", "email"], &[]))
-            .await;
+        driver.dispatch(Action::CompletionRequest);
+        driver.complete_fetch("public.users", table("users", &["id", "email"], &[]));
         assert!(driver.is_cached("public.users"));
         driver
     }
 
-    #[tokio::test]
-    async fn metadata_reload_forgets_cached_tables() {
-        let mut driver = driver_with_cached_users().await;
+    #[test]
+    fn metadata_reload_forgets_cached_tables() {
+        let mut driver = driver_with_cached_users();
 
-        driver.dispatch(Action::ReloadMetadata).await;
+        driver.dispatch(Action::ReloadMetadata);
         let run_id = driver
             .metadata_fetch_run()
             .expect("reload should fetch metadata");
-        driver
-            .dispatch(Action::MetadataLoaded {
-                run_id,
-                metadata: metadata(&["users"]),
-            })
-            .await;
+        driver.dispatch(Action::MetadataLoaded {
+            run_id,
+            metadata: metadata(&["users"]),
+        });
         driver.state.modal.set_mode(InputMode::SqlModal);
-        driver.dispatch(Action::CompletionRequest).await;
+        driver.dispatch(Action::CompletionRequest);
 
         assert!(!driver.is_cached("public.users"));
         assert_eq!(driver.fetched_tables(), ["public.users", "public.users"]);
     }
 
-    #[tokio::test]
-    async fn connection_switch_forgets_cached_tables() {
-        let mut driver = driver_with_cached_users().await;
+    #[test]
+    fn connection_switch_forgets_cached_tables() {
+        let mut driver = driver_with_cached_users();
 
-        driver
-            .dispatch(Action::SwitchConnection(ConnectionTarget {
-                id: ConnectionId::new(),
-                dsn: "postgres://localhost/other".to_string(),
-                name: "other".to_string(),
-                database_type: DatabaseType::PostgreSQL,
-                database: None,
-            }))
-            .await;
+        driver.dispatch(Action::SwitchConnection(ConnectionTarget {
+            id: ConnectionId::new(),
+            dsn: "postgres://localhost/other".to_string(),
+            name: "other".to_string(),
+            database_type: DatabaseType::PostgreSQL,
+            database: None,
+        }));
 
         assert!(!driver.is_cached("public.users"));
     }
 
-    #[tokio::test]
-    async fn stale_prefetch_results_do_not_replace_cached_columns() {
-        let mut driver = driver_with_cached_users().await;
+    #[test]
+    fn stale_prefetch_results_do_not_replace_cached_columns() {
+        let mut driver = driver_with_cached_users();
         let run_id = driver
             .state
             .table_prefetch
@@ -252,25 +405,23 @@ mod cache_lifetime {
             (POSTGRES_DSN, run_id + 100),
             ("postgres://localhost/other", run_id),
         ] {
-            driver
-                .dispatch(Action::TableDetailCached {
-                    dsn: dsn.to_string(),
-                    run_id: stale_run_id,
-                    schema: "public".to_string(),
-                    table: "users".to_string(),
-                    detail: Box::new(table("users", &["legacy_column"], &[])),
-                })
-                .await;
+            driver.dispatch(Action::TableDetailCached {
+                dsn: dsn.to_string(),
+                run_id: stale_run_id,
+                schema: "public".to_string(),
+                table: "users".to_string(),
+                detail: Box::new(table("users", &["legacy_column"], &[])),
+            });
         }
-        driver.dispatch(Action::CompletionRequest).await;
+        driver.dispatch(Action::CompletionRequest);
 
         let candidates = candidate_texts(&driver.state);
         assert!(candidates.contains(&"email".to_string()));
         assert!(!candidates.contains(&"legacy_column".to_string()));
     }
 
-    #[tokio::test]
-    async fn pending_mysql_probe_rejects_prefetch_results() {
+    #[test]
+    fn pending_mysql_probe_rejects_prefetch_results() {
         let mut state = AppState::new("test".to_string());
         state.session.activate_connection_with_target(
             &ConnectionId::from_string("mysql-current"),
@@ -281,11 +432,9 @@ mod cache_lifetime {
         );
         state.session.mark_connected(metadata(&["users"]));
         let mut driver = CacheFlowDriver::new(state);
-        driver
-            .dispatch(Action::StartCompletionPrefetch {
-                tables: vec!["public.users".to_string()],
-            })
-            .await;
+        driver.dispatch(Action::StartCompletionPrefetch {
+            tables: vec!["public.users".to_string()],
+        });
         let run_id = driver
             .state
             .table_prefetch
@@ -298,15 +447,13 @@ mod cache_lifetime {
             Some("target"),
         );
 
-        driver
-            .dispatch(Action::TableDetailCached {
-                dsn: "mysql://localhost/current".to_string(),
-                run_id,
-                schema: "public".to_string(),
-                table: "users".to_string(),
-                detail: Box::new(table("users", &["id"], &[])),
-            })
-            .await;
+        driver.dispatch(Action::TableDetailCached {
+            dsn: "mysql://localhost/current".to_string(),
+            run_id,
+            schema: "public".to_string(),
+            table: "users".to_string(),
+            detail: Box::new(table("users", &["id"], &[])),
+        });
 
         assert!(!driver.is_cached("public.users"));
     }
@@ -317,25 +464,19 @@ mod er_prefetch {
 
     const TABLES: [&str; 5] = ["a", "b", "c", "d", "e"];
 
-    #[tokio::test]
-    async fn smart_refresh_fetches_uncached_tables_and_fk_neighbors_once() {
+    #[test]
+    fn smart_refresh_fetches_uncached_tables_and_fk_neighbors_once() {
         let mut driver = CacheFlowDriver::new(postgres_state(&TABLES));
         for name in ["b", "c", "e"] {
             driver.seed_cache(table(name, &["id"], &[]));
         }
 
-        open_er_diagram(&mut driver, &TABLES).await;
+        open_er_diagram(&mut driver, &TABLES);
         let first_wave = driver.pending_fetch_names();
-        driver
-            .complete_fetch("public.a", table("a", &["id"], &["e"]))
-            .await;
-        driver
-            .complete_fetch("public.d", table("d", &["id"], &["f"]))
-            .await;
+        driver.complete_fetch("public.a", table("a", &["id"], &["e"]));
+        driver.complete_fetch("public.d", table("d", &["id"], &["f"]));
         let second_wave = driver.pending_fetch_names();
-        driver
-            .complete_fetch("public.f", table("f", &["id"], &[]))
-            .await;
+        driver.complete_fetch("public.f", table("f", &["id"], &[]));
 
         assert_eq!(first_wave, ["public.a", "public.d"]);
         assert_eq!(second_wave, ["public.f"]);
@@ -347,21 +488,19 @@ mod er_prefetch {
         assert_eq!(driver.er_generation_count(), 1);
     }
 
-    #[tokio::test]
-    async fn queued_cached_tables_complete_without_fetching() {
+    #[test]
+    fn queued_cached_tables_complete_without_fetching() {
         let names: Vec<String> = (0..10).map(|index| format!("t{index}")).collect();
         let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
         let mut driver = CacheFlowDriver::new(postgres_state(&name_refs));
-        driver.dispatch(Action::ErOpenDiagram).await;
+        driver.dispatch(Action::ErOpenDiagram);
         for name in &name_refs[..9] {
             driver.seed_cache(table(name, &["id"], &[]));
         }
 
-        driver.dispatch(Action::StartErPrefetchAll).await;
+        driver.dispatch(Action::StartErPrefetchAll);
         let fetched = driver.fetched_tables().to_vec();
-        driver
-            .complete_fetch("public.t9", table("t9", &["id"], &[]))
-            .await;
+        driver.complete_fetch("public.t9", table("t9", &["id"], &[]));
 
         assert_eq!(fetched, ["public.t9"]);
         assert!(driver.max_outstanding_fetches() <= 4);
