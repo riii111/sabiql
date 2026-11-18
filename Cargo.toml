@@ -68,6 +68,7 @@ description = "Fast, safe-by-design, Vim-first DB TUI with ER diagrams"
 license.workspace = true
 repository.workspace = true
 readme = "README.md"
+exclude = ["/assets/demo/"]
 keywords = ["postgresql", "mysql", "sqlite", "tui", "database"]
 categories = ["command-line-utilities", "database"]
 

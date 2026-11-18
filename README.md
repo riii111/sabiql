@@ -1,10 +1,10 @@
 # sabiql
-![hero](https://github.com/user-attachments/assets/745ab18f-915c-4017-81a6-465c5c5ee11c)
 
 Fast, safe-by-design, Vim-first DB TUI with ER diagrams.
 
-[![CI](https://github.com/riii111/sabiql/actions/workflows/ci.yml/badge.svg)](https://github.com/riii111/sabiql/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+![Inspecting a PostgreSQL table, previewing an edit, querying stock, and opening an ER diagram in sabiql](assets/demo/tour/shop-rhythm.gif)
+
+For the demo icons, use a Nerd Font Mono in your terminal and select **Nerd Font** in sabiql’s icon settings (`,` → **Icons**).
 
 ## Concept
 
@@ -17,8 +17,6 @@ Like [oil.nvim](https://github.com/stevearc/oil.nvim), sabiql keeps its interfac
 Safety follows a plan-before-apply flow familiar from Terraform: inline edits and row deletions show the SQL and its risk level before you confirm the change. Read-only mode (`Ctrl+R`) also blocks writes at the database client level.
 
 ## Features
-
-![hero_1000_20fps](https://github.com/user-attachments/assets/06e1900d-b044-4f29-a2a8-7d7bab5bd3a1)
 
 - **Browse and inspect** — Find tables with fuzzy search, inspect columns, constraints, indexes, foreign keys, triggers, and DDL
 - **Run SQL** — Write ad-hoc queries with completion for tables, columns, and keywords, then recall them from query history
