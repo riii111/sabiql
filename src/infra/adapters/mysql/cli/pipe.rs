@@ -6,7 +6,10 @@ use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 
 use crate::app::ports::outbound::DbOperationError;
 
-use super::error::{classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error};
+use super::error::{
+    classify_mysql_query_failure_with_packet_limit, has_complete_mysql_cli_error,
+    has_mysql_cli_error,
+};
 use super::process::read_all_bytes;
 use super::xml::{
     MySqlResultSetFrameScanner,
@@ -77,16 +80,6 @@ where
             Poll::Pending => Poll::Pending,
         }
     }
-}
-
-fn has_complete_mysql_cli_error(output: &[u8]) -> bool {
-    output
-        .split_inclusive(|byte| *byte == b'\n' || *byte == b'\r')
-        .any(|line| {
-            line.last()
-                .is_some_and(|byte| *byte == b'\n' || *byte == b'\r')
-                && has_mysql_cli_error(line)
-        })
 }
 
 impl<O, E> AsyncRead for MySqlExportPipeSource<'_, O, E>

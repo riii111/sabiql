@@ -339,6 +339,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn reads_the_message_after_a_split_mysql_error_header() {
+        let header = "ERROR 1792 (25006) at line 7";
+        let message = ": Cannot execute statement in a READ ONLY transaction.";
+        let (_output_file, mut pty) = source_with_output(format!("{message}\n").as_bytes());
+        pty.pending.extend_from_slice(header.as_bytes());
+
+        let result = read_one_pty_resultset(&mut pty, None, false).await;
+
+        assert!(matches!(
+            result,
+            Err(DbOperationError::QueryFailed(details)) if details == format!("{header}{message}")
+        ));
+    }
+
+    #[tokio::test]
     async fn export_source_ignores_cli_error_text_inside_resultset() {
         let xml = br#"<resultset><row><field name="message">line 1
 ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
