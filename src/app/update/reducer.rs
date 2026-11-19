@@ -7,8 +7,8 @@
 use std::time::Instant;
 
 use super::{
-    browse, clipboard, connection, dispatch_navigation, dispatch_query, dispatch_result, er,
-    explain, modal, sql_editor, target_routing, text_edit,
+    browse, clipboard, connection, dispatch_query, dispatch_result, er, explain, modal, sql_editor,
+    target_routing, text_edit,
 };
 use crate::catalog::HelpDocument;
 use crate::cmd::effect::Effect;
@@ -70,6 +70,7 @@ pub(in crate::update) fn route(
         Action::Quit => quit(state),
         Action::Render => vec![Effect::Render],
         Action::Resize(width, height) => resize(state, width, height),
+        Action::SetFocusedPane(pane) => browse::navigation::focus::set_focused_pane(state, pane),
         Action::TextInput { target, ch } => {
             text_edit::apply_text_edit(state, target, TextEdit::Insert(ch), now)
         }
@@ -98,10 +99,8 @@ pub(in crate::update) fn route(
         }
         Action::EnterHelpFilter => modal::help::enter_help_filter(state),
         Action::ExitHelpFilter => modal::help::exit_help_filter(state),
-        Action::Select(motion) => target_routing::select(state, motion, now, services),
-        Action::ListSelect { target, motion } => {
-            target_routing::list_select(state, target, motion, now, services)
-        }
+        Action::Select(motion) => target_routing::select(state, motion),
+        Action::ListSelect { target, motion } => target_routing::list_select(state, target, motion),
         Action::Paste(text) => target_routing::paste(state, text, now, services),
         Action::BeginKeySequence(prefix) => begin_key_sequence(state, prefix),
         Action::OpenModal(kind) => target_routing::open_modal(state, kind, now, services),
@@ -112,8 +111,16 @@ pub(in crate::update) fn route(
         Action::ConfirmSelection => confirm_selection(state, now, services),
         Action::ConfirmDialogConfirm => modal::confirm_dialog::confirm_dialog_confirm(state, now),
         Action::ConfirmDialogCancel => modal::confirm_dialog::confirm_dialog_cancel(state),
+        Action::EnterCommandLine => browse::navigation::input::enter_command_line(state),
+        Action::ExitCommandLine => browse::navigation::input::exit_command_line(state),
         Action::TryConnect => connection::lifecycle::try_connect(state),
         Action::SwitchConnection(target) => connection::lifecycle::switch_connection(state, target),
+        Action::ConnectionsLoaded(payload) => {
+            browse::navigation::connection_list::connections_loaded(state, payload)
+        }
+        Action::ConfirmConnectionSelection => {
+            browse::navigation::connection_list::confirm_connection_selection(state)
+        }
         Action::ConnectionSetupNextField => connection::setup::connection_setup_next_field(state),
         Action::ConnectionSetupPrevField => connection::setup::connection_setup_prev_field(state),
         Action::ConnectionSetupToggleDropdown => {
@@ -267,6 +274,8 @@ pub(in crate::update) fn route(
         Action::ProcessPrefetchQueue { run_id } => {
             browse::metadata::prefetch::process_prefetch_queue(state, run_id, now)
         }
+        Action::InspectorNextTab => browse::navigation::focus::inspector_next_tab(state),
+        Action::InspectorPrevTab => browse::navigation::focus::inspector_prev_tab(state),
         Action::SqlModalAppendInsert => sql_editor::mode::sql_modal_append_insert(state),
         Action::SqlModalEnterInsert => sql_editor::mode::sql_modal_enter_insert(state),
         Action::SqlModalEnterNormal => sql_editor::mode::sql_modal_enter_normal(state),
@@ -317,6 +326,8 @@ pub(in crate::update) fn route(
         Action::CompareEditQuery => explain::tabs::compare_edit_query(state),
         Action::CopySucceeded(target) => clipboard::copy_succeeded(state, target, now),
         Action::CopyFailed(error) => clipboard::copy_failed(state, &error),
+        Action::ToggleFocus => browse::navigation::focus::toggle_focus(state),
+        Action::ToggleReadOnly => browse::navigation::focus::toggle_read_only(state),
         Action::QueryHistoryLoaded(scope, entries) => {
             modal::query_history::query_history_loaded(state, scope, entries)
         }
@@ -353,7 +364,6 @@ pub(in crate::update) fn legacy_dispatch(
     services: &AppServices,
 ) -> Vec<Effect> {
     if let Some(effects) = dispatch_result(state, &action, services, now)
-        .or_else(|| dispatch_navigation(state, &action, services, now))
         .or_else(|| dispatch_query(state, &action, now))
         .into_effects()
     {
@@ -362,10 +372,7 @@ pub(in crate::update) fn legacy_dispatch(
 
     if matches!(
         action,
-        Action::Scroll { .. }
-            | Action::ScrollToCursor { .. }
-            | Action::Select(_)
-            | Action::ListSelect { .. }
+        Action::Scroll { .. } | Action::ScrollToCursor { .. }
     ) {
         debug_assert!(false, "unhandled parametric action: {action:?}");
     }

@@ -1,102 +1,108 @@
+use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::text_input::TextEdit;
-use crate::update::action::{Action, ListMotion, ListTarget};
-use crate::update::dispatch_result::DispatchResult;
+use crate::update::action::ListMotion;
 use crate::update::input::palette::palette_command_count;
 
-pub(in crate::update) fn reduce_input(state: &mut AppState, action: &Action) -> DispatchResult {
-    match action {
-        Action::Paste(text) => match state.modal.active_mode() {
-            InputMode::TablePicker => {
-                state.ui.table_picker_mut().insert_filter_str(text);
-                DispatchResult::handled()
-            }
-            InputMode::ErTablePicker => {
-                state.ui.er_picker_mut().insert_filter_str(text);
-                DispatchResult::handled()
-            }
-            InputMode::CommandLine => {
-                let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
-                state.command_line_input.insert_str(&clean);
-                state
-                    .command_line_input
-                    .update_viewport(state.command_line_visible_width);
-                DispatchResult::handled()
-            }
-            InputMode::CellEdit => {
-                let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
-                state.result_interaction.cell_edit_insert_str(&clean);
-                DispatchResult::handled()
-            }
-            InputMode::QueryHistoryPicker => {
-                state.query_history_picker.insert_filter_str(text);
-                DispatchResult::handled()
-            }
-            _ => DispatchResult::pass(),
-        },
+pub(in crate::update) fn paste_table_picker(state: &mut AppState, text: String) -> Vec<Effect> {
+    state.ui.table_picker_mut().insert_filter_str(&text);
+    vec![]
+}
 
-        Action::EnterCommandLine => {
-            state.modal.push_mode(InputMode::CommandLine);
-            state.command_line_input.clear();
-            DispatchResult::handled()
-        }
-        Action::ExitCommandLine => {
-            state.modal.pop_mode();
-            DispatchResult::handled()
-        }
+pub(in crate::update) fn paste_er_table_picker(state: &mut AppState, text: String) -> Vec<Effect> {
+    state.ui.er_picker_mut().insert_filter_str(&text);
+    vec![]
+}
 
-        // -----------------------------------------------------------------
-        // Picker navigation (TablePicker, ErTablePicker, CommandPalette)
-        // -----------------------------------------------------------------
-        Action::ListSelect {
-            target: ListTarget::TablePicker,
-            motion: ListMotion::Next,
-        } => {
+pub(in crate::update) fn paste_command_line(state: &mut AppState, text: String) -> Vec<Effect> {
+    let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
+    state.command_line_input.insert_str(&clean);
+    state
+        .command_line_input
+        .update_viewport(state.command_line_visible_width);
+    vec![]
+}
+
+pub(in crate::update) fn paste_cell_edit(state: &mut AppState, text: String) -> Vec<Effect> {
+    let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
+    state.result_interaction.cell_edit_insert_str(&clean);
+    vec![]
+}
+
+pub(in crate::update) fn paste_query_history_picker(
+    state: &mut AppState,
+    text: String,
+) -> Vec<Effect> {
+    state.query_history_picker.insert_filter_str(&text);
+    vec![]
+}
+
+pub(in crate::update) fn enter_command_line(state: &mut AppState) -> Vec<Effect> {
+    state.modal.push_mode(InputMode::CommandLine);
+    state.command_line_input.clear();
+    vec![]
+}
+
+pub(in crate::update) fn exit_command_line(state: &mut AppState) -> Vec<Effect> {
+    state.modal.pop_mode();
+    vec![]
+}
+
+fn select_previous_table_picker_entry(state: &mut AppState) {
+    let selected = state.ui.table_picker().selected();
+    state
+        .ui
+        .table_picker_mut()
+        .set_selection(selected.saturating_sub(1));
+}
+
+pub(in crate::update) fn list_select_table_picker(
+    state: &mut AppState,
+    motion: ListMotion,
+) -> Vec<Effect> {
+    match motion {
+        ListMotion::Next => {
             let max = state.filtered_tables().len().saturating_sub(1);
             let selected = state.ui.table_picker().selected();
             if selected < max {
                 state.ui.table_picker_mut().set_selection(selected + 1);
             }
-            DispatchResult::handled()
         }
-        Action::ListSelect {
-            target: ListTarget::TablePicker | ListTarget::CommandPalette,
-            motion: ListMotion::Previous,
-        } => {
-            let selected = state.ui.table_picker().selected();
-            state
-                .ui
-                .table_picker_mut()
-                .set_selection(selected.saturating_sub(1));
-            DispatchResult::handled()
-        }
-        Action::ListSelect {
-            target: ListTarget::ErTablePicker,
-            motion: ListMotion::Next,
-        } => {
+        ListMotion::Previous => select_previous_table_picker_entry(state),
+    }
+    vec![]
+}
+
+pub(in crate::update) fn list_select_er_table_picker(
+    state: &mut AppState,
+    motion: ListMotion,
+) -> Vec<Effect> {
+    match motion {
+        ListMotion::Next => {
             let max = state.er_filtered_tables().len().saturating_sub(1);
             let selected = state.ui.er_picker().selected();
             if selected < max {
                 state.ui.er_picker_mut().set_selection(selected + 1);
             }
-            DispatchResult::handled()
         }
-        Action::ListSelect {
-            target: ListTarget::ErTablePicker,
-            motion: ListMotion::Previous,
-        } => {
+        ListMotion::Previous => {
             let selected = state.ui.er_picker().selected();
             state
                 .ui
                 .er_picker_mut()
                 .set_selection(selected.saturating_sub(1));
-            DispatchResult::handled()
         }
-        Action::ListSelect {
-            target: ListTarget::CommandPalette,
-            motion: ListMotion::Next,
-        } => {
+    }
+    vec![]
+}
+
+pub(in crate::update) fn list_select_command_palette(
+    state: &mut AppState,
+    motion: ListMotion,
+) -> Vec<Effect> {
+    match motion {
+        ListMotion::Next => {
             let max = palette_command_count(
                 state.settings.saved_keymap_preset(),
                 &state.session.active_engine_feature_profile(),
@@ -106,11 +112,10 @@ pub(in crate::update) fn reduce_input(state: &mut AppState, action: &Action) -> 
             if selected < max {
                 state.ui.table_picker_mut().set_selection(selected + 1);
             }
-            DispatchResult::handled()
         }
-
-        _ => DispatchResult::pass(),
+        ListMotion::Previous => select_previous_table_picker_entry(state),
     }
+    vec![]
 }
 
 pub(in crate::update) fn edit_command_line(
@@ -130,8 +135,8 @@ mod tests {
     use super::*;
     use crate::model::shared::text_input::TextInputState;
     use crate::services::AppServices;
-    use crate::update::action::InputTarget;
-    use crate::update::browse::navigation::dispatch_navigation;
+    use crate::update::action::{Action, InputTarget, ListTarget};
+    use crate::update::reducer::route;
     use crate::update::test_fixtures::edit_text;
     use std::time::Instant;
 
@@ -143,14 +148,13 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::TablePicker);
 
-            let effects = dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Paste("hello".to_string()),
-                &AppServices::stub(),
+                Action::Paste("hello".to_string()),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
-            assert!(effects.is_handled());
             assert_eq!(state.ui.table_picker().filter_input().content(), "hello");
         }
 
@@ -159,11 +163,11 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::TablePicker);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Paste("hel\nlo\r\n".to_string()),
-                &AppServices::stub(),
+                Action::Paste("hel\nlo\r\n".to_string()),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.table_picker().filter_input().content(), "hello");
@@ -175,11 +179,11 @@ mod tests {
             state.modal.set_mode(InputMode::TablePicker);
             state.ui.table_picker_mut().set_selection(5);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Paste("x".to_string()),
-                &AppServices::stub(),
+                Action::Paste("x".to_string()),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.table_picker().selected(), 0);
@@ -190,11 +194,11 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::CommandLine);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Paste("quit".to_string()),
-                &AppServices::stub(),
+                Action::Paste("quit".to_string()),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.command_line_input.content(), "quit");
@@ -205,29 +209,14 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::CommandLine);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Paste("qu\nit".to_string()),
-                &AppServices::stub(),
+                Action::Paste("qu\nit".to_string()),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.command_line_input.content(), "quit");
-        }
-
-        #[test]
-        fn normal_mode_returns_none() {
-            let mut state = AppState::new("test".to_string());
-            state.modal.set_mode(InputMode::Normal);
-
-            let effects = dispatch_navigation(
-                &mut state,
-                &Action::Paste("text".to_string()),
-                &AppServices::stub(),
-                Instant::now(),
-            );
-
-            assert!(effects.is_pass());
         }
 
         #[test]
@@ -235,14 +224,13 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::ErTablePicker);
 
-            let effects = dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Paste("public.users".to_string()),
-                &AppServices::stub(),
+                Action::Paste("public.users".to_string()),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
-            assert!(effects.is_handled());
             assert_eq!(
                 state.ui.er_picker().filter_input().content(),
                 "public.users"
@@ -255,11 +243,11 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::ErTablePicker);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Paste("public\n.users\r\n".to_string()),
-                &AppServices::stub(),
+                Action::Paste("public\n.users\r\n".to_string()),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(
@@ -274,14 +262,13 @@ mod tests {
             state.modal.set_mode(InputMode::QueryHistoryPicker);
             state.query_history_picker.set_selection_for_test(3);
 
-            let effects = dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Paste("users".to_string()),
-                &AppServices::stub(),
+                Action::Paste("users".to_string()),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
-            assert!(effects.is_handled());
             assert_eq!(state.query_history_picker.filter_input().content(), "users");
             assert_eq!(state.query_history_picker.selected(), 0);
         }
@@ -291,11 +278,11 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::QueryHistoryPicker);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Paste("us\ners\r\n".to_string()),
-                &AppServices::stub(),
+                Action::Paste("us\ners\r\n".to_string()),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.query_history_picker.filter_input().content(), "users");
@@ -309,19 +296,19 @@ mod tests {
         fn enter_from_normal_and_exit_returns_to_normal() {
             let mut state = AppState::new("test".to_string());
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::EnterCommandLine,
-                &AppServices::stub(),
+                Action::EnterCommandLine,
                 Instant::now(),
+                &AppServices::stub(),
             );
             assert_eq!(state.input_mode(), InputMode::CommandLine);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::ExitCommandLine,
-                &AppServices::stub(),
+                Action::ExitCommandLine,
                 Instant::now(),
+                &AppServices::stub(),
             );
             assert_eq!(state.input_mode(), InputMode::Normal);
         }
@@ -331,19 +318,19 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::CellEdit);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::EnterCommandLine,
-                &AppServices::stub(),
+                Action::EnterCommandLine,
                 Instant::now(),
+                &AppServices::stub(),
             );
             assert_eq!(state.input_mode(), InputMode::CommandLine);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::ExitCommandLine,
-                &AppServices::stub(),
+                Action::ExitCommandLine,
                 Instant::now(),
+                &AppServices::stub(),
             );
             assert_eq!(state.input_mode(), InputMode::CellEdit);
         }
@@ -372,14 +359,14 @@ mod tests {
             let mut state = state_with_tables(5);
             state.modal.set_mode(InputMode::TablePicker);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::ListSelect {
+                Action::ListSelect {
                     target: ListTarget::TablePicker,
                     motion: ListMotion::Next,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.table_picker().selected(), 1);
@@ -391,14 +378,14 @@ mod tests {
             state.modal.set_mode(InputMode::TablePicker);
             state.ui.table_picker_mut().set_selection(2);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::ListSelect {
+                Action::ListSelect {
                     target: ListTarget::TablePicker,
                     motion: ListMotion::Next,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.table_picker().selected(), 2);
@@ -410,14 +397,14 @@ mod tests {
             state.modal.set_mode(InputMode::TablePicker);
             state.ui.table_picker_mut().set_selection(3);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::ListSelect {
+                Action::ListSelect {
                     target: ListTarget::TablePicker,
                     motion: ListMotion::Previous,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.table_picker().selected(), 2);
@@ -428,14 +415,14 @@ mod tests {
             let mut state = state_with_tables(5);
             state.modal.set_mode(InputMode::TablePicker);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::ListSelect {
+                Action::ListSelect {
                     target: ListTarget::TablePicker,
                     motion: ListMotion::Previous,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.table_picker().selected(), 0);
@@ -446,14 +433,14 @@ mod tests {
             let mut state = state_with_tables(5);
             state.modal.set_mode(InputMode::ErTablePicker);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::ListSelect {
+                Action::ListSelect {
                     target: ListTarget::ErTablePicker,
                     motion: ListMotion::Next,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.er_picker().selected(), 1);
@@ -464,14 +451,14 @@ mod tests {
             let mut state = state_with_tables(5);
             state.modal.set_mode(InputMode::ErTablePicker);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::ListSelect {
+                Action::ListSelect {
                     target: ListTarget::ErTablePicker,
                     motion: ListMotion::Previous,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.er_picker().selected(), 0);
@@ -482,14 +469,14 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::CommandPalette);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::ListSelect {
+                Action::ListSelect {
                     target: ListTarget::CommandPalette,
                     motion: ListMotion::Next,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.table_picker().selected(), 1);
@@ -500,14 +487,14 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::CommandPalette);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::ListSelect {
+                Action::ListSelect {
                     target: ListTarget::CommandPalette,
                     motion: ListMotion::Previous,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.table_picker().selected(), 0);

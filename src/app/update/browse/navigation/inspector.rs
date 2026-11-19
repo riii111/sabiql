@@ -1,9 +1,9 @@
+use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::browse::inspector_view_model::InspectorViewModel;
 use crate::model::shared::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
 use crate::services::AppServices;
-use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
-use crate::update::dispatch_result::DispatchResult;
+use crate::update::action::{ScrollAmount, ScrollDirection};
 
 use super::inspector_max_scroll;
 
@@ -15,17 +15,14 @@ fn inspector_page_scroll_delta(
     amount.page_delta(view_model.visible_rows(pane_height))
 }
 
-pub(in crate::update) fn reduce_inspector(
+pub(in crate::update) fn scroll_inspector(
     state: &mut AppState,
-    action: &Action,
+    direction: ScrollDirection,
+    amount: ScrollAmount,
     services: &AppServices,
-) -> DispatchResult {
-    match action {
-        Action::Scroll {
-            target: ScrollTarget::Inspector,
-            direction: direction @ (ScrollDirection::Up | ScrollDirection::Down),
-            amount: ScrollAmount::Line,
-        } => {
+) -> Vec<Effect> {
+    match (direction, amount) {
+        (ScrollDirection::Up | ScrollDirection::Down, ScrollAmount::Line) => {
             let max = inspector_max_scroll(state, services);
             state
                 .ui
@@ -34,34 +31,19 @@ pub(in crate::update) fn reduce_inspector(
                     max,
                     1,
                 ));
-            DispatchResult::handled()
         }
-        Action::Scroll {
-            target: ScrollTarget::Inspector,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::ToStart,
-        } => {
+        (ScrollDirection::Up, ScrollAmount::ToStart) => {
             state.ui.set_inspector_scroll_offset(0);
-            DispatchResult::handled()
         }
-        Action::Scroll {
-            target: ScrollTarget::Inspector,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::ToEnd,
-        } => {
+        (ScrollDirection::Down, ScrollAmount::ToEnd) => {
             state
                 .ui
                 .set_inspector_scroll_offset(inspector_max_scroll(state, services));
-            DispatchResult::handled()
         }
-        Action::Scroll {
-            target: ScrollTarget::Inspector,
-            direction,
-            amount: amount @ (ScrollAmount::HalfPage | ScrollAmount::FullPage),
-        } => {
+        (_, ScrollAmount::HalfPage | ScrollAmount::FullPage) => {
             let view_model = state.inspector_view_model(services.ddl_generator.as_ref());
             if let Some(delta) =
-                inspector_page_scroll_delta(&view_model, state.ui.inspector_pane_height(), *amount)
+                inspector_page_scroll_delta(&view_model, state.ui.inspector_pane_height(), amount)
             {
                 let max = view_model.max_scroll(state.ui.inspector_pane_height());
                 state
@@ -72,36 +54,28 @@ pub(in crate::update) fn reduce_inspector(
                         delta,
                     ));
             }
-            DispatchResult::handled()
         }
-        Action::Scroll {
-            target: ScrollTarget::Inspector,
-            direction: ScrollDirection::Left,
-            amount: ScrollAmount::Line,
-        } => {
+        (ScrollDirection::Left, ScrollAmount::Line) => {
             state
                 .ui
                 .set_inspector_horizontal_offset(calculate_prev_column_offset(
                     state.ui.inspector_horizontal_offset(),
                 ));
-            DispatchResult::handled()
         }
-        Action::Scroll {
-            target: ScrollTarget::Inspector,
-            direction: ScrollDirection::Right,
-            amount: ScrollAmount::Line,
-        } => {
+        (ScrollDirection::Right, ScrollAmount::Line) => {
             state
                 .ui
                 .set_inspector_horizontal_offset(calculate_next_column_offset(
                     state.ui.inspector_horizontal_offset(),
                     state.ui.inspector_viewport_plan().max_offset,
                 ));
-            DispatchResult::handled()
         }
-
-        _ => DispatchResult::pass(),
+        _ => debug_assert!(
+            false,
+            "unsupported Inspector scroll: {direction:?} {amount:?}"
+        ),
     }
+    vec![]
 }
 
 #[cfg(test)]
@@ -109,7 +83,8 @@ mod tests {
     use super::*;
     use crate::domain::{Column, ColumnAttributes, ConnectionId, DatabaseType, Table};
     use crate::model::shared::inspector_tab::InspectorTab;
-    use crate::update::browse::navigation::dispatch_navigation;
+    use crate::update::action::{Action, ScrollTarget};
+    use crate::update::reducer::route;
     use std::time::Instant;
 
     mod inspector_scroll_top_bottom {
@@ -152,18 +127,17 @@ mod tests {
             let mut state = state_with_table_detail(20);
             state.ui.set_inspector_scroll_offset(10);
 
-            let effects = dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Scroll {
+                Action::Scroll {
                     target: ScrollTarget::Inspector,
                     direction: ScrollDirection::Up,
                     amount: ScrollAmount::ToStart,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
-            assert!(effects.is_handled());
             assert_eq!(state.ui.inspector_scroll_offset(), 0);
         }
 
@@ -176,18 +150,17 @@ mod tests {
                 .inspector_view_model(services.ddl_generator.as_ref())
                 .max_scroll(state.ui.inspector_pane_height());
 
-            let effects = dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Scroll {
+                Action::Scroll {
                     target: ScrollTarget::Inspector,
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::ToEnd,
                 },
-                &services,
                 Instant::now(),
+                &services,
             );
 
-            assert!(effects.is_handled());
             assert_eq!(state.ui.inspector_scroll_offset(), expected_max);
         }
 
@@ -196,18 +169,17 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.ui.set_inspector_pane_height(10);
 
-            let effects = dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Scroll {
+                Action::Scroll {
                     target: ScrollTarget::Inspector,
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::ToEnd,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
-            assert!(effects.is_handled());
             assert_eq!(state.ui.inspector_scroll_offset(), 0);
         }
 
@@ -216,18 +188,17 @@ mod tests {
             let mut state = state_with_table_detail(20);
             state.ui.set_inspector_scroll_offset(1);
 
-            let effects = dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Scroll {
+                Action::Scroll {
                     target: ScrollTarget::Inspector,
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::HalfPage,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
-            assert!(effects.is_handled());
             assert_eq!(state.ui.inspector_scroll_offset(), 3);
         }
 
@@ -236,18 +207,17 @@ mod tests {
             let mut state = state_with_table_detail(20);
             state.ui.set_inspector_scroll_offset(12);
 
-            let effects = dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Scroll {
+                Action::Scroll {
                     target: ScrollTarget::Inspector,
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::FullPage,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
-            assert!(effects.is_handled());
             assert_eq!(state.ui.inspector_scroll_offset(), 15);
         }
 
@@ -255,18 +225,17 @@ mod tests {
         fn inspector_page_scroll_stays_zero_when_content_fits_viewport() {
             let mut state = state_with_table_detail(4);
 
-            let effects = dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Scroll {
+                Action::Scroll {
                     target: ScrollTarget::Inspector,
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::FullPage,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
-            assert!(effects.is_handled());
             assert_eq!(state.ui.inspector_scroll_offset(), 0);
         }
 
@@ -292,18 +261,17 @@ mod tests {
                     .inspector_view_model(services.ddl_generator.as_ref())
                     .max_scroll(state.ui.inspector_pane_height());
 
-                let effects = dispatch_navigation(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Inspector,
                         direction: ScrollDirection::Down,
                         amount: ScrollAmount::ToEnd,
                     },
-                    &services,
                     Instant::now(),
+                    &services,
                 );
 
-                assert!(effects.is_handled());
                 assert_eq!(state.ui.inspector_scroll_offset(), expected_max);
             }
 
@@ -318,18 +286,17 @@ mod tests {
                     .inspector_view_model(services.ddl_generator.as_ref())
                     .max_scroll(state.ui.inspector_pane_height());
 
-                let effects = dispatch_navigation(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Inspector,
                         direction: ScrollDirection::Down,
                         amount: ScrollAmount::ToEnd,
                     },
-                    &services,
                     Instant::now(),
+                    &services,
                 );
 
-                assert!(effects.is_handled());
                 assert_eq!(state.ui.inspector_scroll_offset(), expected_max);
             }
         }
@@ -342,18 +309,17 @@ mod tests {
             state.ui.set_inspector_tab(InspectorTab::Ddl);
             state.ui.set_inspector_scroll_offset(1);
 
-            let effects = dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Scroll {
+                Action::Scroll {
                     target: ScrollTarget::Inspector,
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::HalfPage,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
-            assert!(effects.is_handled());
             assert_eq!(state.ui.inspector_scroll_offset(), 0);
         }
 
@@ -365,18 +331,17 @@ mod tests {
             state.ui.set_inspector_tab(InspectorTab::Ddl);
             state.ui.set_inspector_scroll_offset(1);
 
-            let effects = dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Scroll {
+                Action::Scroll {
                     target: ScrollTarget::Inspector,
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::FullPage,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
-            assert!(effects.is_handled());
             assert_eq!(state.ui.inspector_scroll_offset(), 0);
         }
 
@@ -390,18 +355,17 @@ mod tests {
             state.ui.set_inspector_tab(InspectorTab::Ddl);
             state.ui.set_inspector_scroll_offset(1);
 
-            let effects = dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Scroll {
+                Action::Scroll {
                     target: ScrollTarget::Inspector,
                     direction: ScrollDirection::Down,
                     amount,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
-            assert!(effects.is_handled());
             assert_eq!(state.ui.inspector_scroll_offset(), 0);
         }
     }

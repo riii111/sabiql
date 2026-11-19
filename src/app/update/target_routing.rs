@@ -9,7 +9,7 @@ use crate::update::action::{
     ScrollTarget, ScrollToCursorTarget, SelectMotion,
 };
 use crate::update::reducer::legacy_dispatch;
-use crate::update::{connection, explain, modal, sql_editor};
+use crate::update::{browse, connection, explain, modal, sql_editor};
 
 pub(in crate::update) fn scroll(
     state: &mut AppState,
@@ -20,6 +20,9 @@ pub(in crate::update) fn scroll(
     services: &AppServices,
 ) -> Vec<Effect> {
     match target {
+        ScrollTarget::Inspector => {
+            browse::navigation::inspector::scroll_inspector(state, direction, amount, services)
+        }
         ScrollTarget::Help => modal::help::scroll_help(state, direction, amount),
         ScrollTarget::ConnectionError => {
             connection::error::scroll_connection_error(state, direction, amount)
@@ -33,6 +36,9 @@ pub(in crate::update) fn scroll(
         }
         ScrollTarget::ExplainConfirm => {
             explain::scroll::scroll_explain_confirm(state, direction, amount)
+        }
+        ScrollTarget::Explorer => {
+            browse::navigation::explorer::scroll_explorer(state, direction, amount)
         }
         ScrollTarget::SqliteDiagnostics => {
             modal::sqlite_diagnostics::scroll_sqlite_diagnostics(state, direction, amount)
@@ -57,33 +63,42 @@ pub(in crate::update) fn scroll_to_cursor(
     now: Instant,
     services: &AppServices,
 ) -> Vec<Effect> {
-    legacy_dispatch(
-        state,
-        Action::ScrollToCursor { target, position },
-        now,
-        services,
-    )
+    match target {
+        ScrollToCursorTarget::Explorer => {
+            browse::navigation::explorer::scroll_to_cursor_explorer(state, position)
+        }
+        _ => legacy_dispatch(
+            state,
+            Action::ScrollToCursor { target, position },
+            now,
+            services,
+        ),
+    }
 }
 
-pub(in crate::update) fn select(
-    state: &mut AppState,
-    motion: SelectMotion,
-    now: Instant,
-    services: &AppServices,
-) -> Vec<Effect> {
-    legacy_dispatch(state, Action::Select(motion), now, services)
+pub(in crate::update) fn select(state: &mut AppState, motion: SelectMotion) -> Vec<Effect> {
+    browse::navigation::explorer::select_explorer(state, motion)
 }
 
 pub(in crate::update) fn list_select(
     state: &mut AppState,
     target: ListTarget,
     motion: ListMotion,
-    now: Instant,
-    services: &AppServices,
 ) -> Vec<Effect> {
     match target {
+        ListTarget::ConnectionList => {
+            browse::navigation::connection_list::list_select_connection_list(state, motion)
+        }
         ListTarget::QueryHistory => modal::query_history::list_select_query_history(state, motion),
-        _ => legacy_dispatch(state, Action::ListSelect { target, motion }, now, services),
+        ListTarget::TablePicker => {
+            browse::navigation::input::list_select_table_picker(state, motion)
+        }
+        ListTarget::ErTablePicker => {
+            browse::navigation::input::list_select_er_table_picker(state, motion)
+        }
+        ListTarget::CommandPalette => {
+            browse::navigation::input::list_select_command_palette(state, motion)
+        }
     }
 }
 
@@ -145,8 +160,15 @@ pub(in crate::update) fn paste(
     services: &AppServices,
 ) -> Vec<Effect> {
     match state.input_mode() {
+        InputMode::CommandLine => browse::navigation::input::paste_command_line(state, text),
+        InputMode::CellEdit => browse::navigation::input::paste_cell_edit(state, text),
+        InputMode::TablePicker => browse::navigation::input::paste_table_picker(state, text),
         InputMode::SqlModal => sql_editor::editing::paste_sql_modal(state, text, now),
         InputMode::ConnectionSetup => connection::setup::paste_connection_setup(state, text),
+        InputMode::ErTablePicker => browse::navigation::input::paste_er_table_picker(state, text),
+        InputMode::QueryHistoryPicker => {
+            browse::navigation::input::paste_query_history_picker(state, text)
+        }
         _ => legacy_dispatch(state, Action::Paste(text), now, services),
     }
 }
