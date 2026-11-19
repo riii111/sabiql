@@ -11,12 +11,11 @@ use crate::model::shared::help::HelpOrigin;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::AdhocSuccessSnapshot;
 use crate::ports::outbound::DbOperationError;
-use crate::update::action::{
-    Action, ModalKind, QueryCompletionContext, QueryFailureContext, TableTarget,
-};
+use crate::update::action::{Action, QueryCompletionContext, QueryFailureContext, TableTarget};
 use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
-use crate::update::input::command::action_for_command;
+use crate::update::input::command::{LineCommand, parse_line_command};
+use crate::update::reducer::quit;
 
 use super::write;
 
@@ -176,32 +175,22 @@ pub(in crate::update) fn reveal_pending_preview(
 }
 
 pub(in crate::update) fn command_line_submit(state: &mut AppState) -> Vec<Effect> {
-    let follow_up = action_for_command(state.command_line_input.content());
+    let command = parse_line_command(state.command_line_input.content());
     state.modal.pop_mode();
     state.command_line_input.clear();
 
-    match follow_up {
-        Action::Quit => {
-            state.session.cancel_connection_save_and_disconnect();
-            state.session.clear_mysql_connection_probe();
-            state.should_quit = true;
-            vec![Effect::CancelTrackedTasks]
-        }
-        Action::ToggleHelp => {
+    match command {
+        Some(LineCommand::Quit) => quit(state),
+        Some(LineCommand::Help) => {
             state.ui.help_mut().open(HelpOrigin::CommandLine);
             state.modal.push_mode(InputMode::Help);
             vec![]
         }
-        Action::OpenModal(
-            modal @ (ModalKind::SqlModal
-            | ModalKind::ErTablePicker
-            | ModalKind::Settings
-            | ModalKind::CommandPalette),
-        ) => {
-            vec![Effect::DispatchActions(vec![Action::OpenModal(modal)])]
+        Some(LineCommand::Open(kind)) => {
+            vec![Effect::DispatchActions(vec![Action::OpenModal(kind)])]
         }
-        Action::SubmitCellEditWrite => write::submit_cell_edit_write(state),
-        _ => vec![],
+        Some(LineCommand::Write) => write::submit_cell_edit_write(state),
+        None => vec![],
     }
 }
 
@@ -366,7 +355,7 @@ mod tests {
     use crate::ports::outbound::query_executor::MockQueryExecutor;
     use crate::ports::outbound::{DbOperationError, RenderOutput, RenderResult, Renderer};
     use crate::services::AppServices;
-    use crate::update::action::SmartErRefreshFetched;
+    use crate::update::action::{ModalKind, SmartErRefreshFetched};
     use crate::update::browse::query::tests::*;
     use crate::update::reducer::{reduce, route};
     use crate::update::test_fixtures as update_test_fixtures;

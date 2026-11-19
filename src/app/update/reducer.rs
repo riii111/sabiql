@@ -437,7 +437,7 @@ pub(in crate::update) fn route(
     }
 }
 
-fn quit(state: &mut AppState) -> Vec<Effect> {
+pub(in crate::update) fn quit(state: &mut AppState) -> Vec<Effect> {
     state.session.cancel_connection_save_and_disconnect();
     state.session.clear_mysql_connection_probe();
     state.should_quit = true;
