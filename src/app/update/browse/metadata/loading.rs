@@ -163,7 +163,6 @@ mod tests {
     use crate::model::browse::session::TableDetailState;
     use crate::services::AppServices;
     use crate::test_support::table;
-    use crate::update::browse::query::dispatch_query;
     use crate::update::reducer::route;
 
     fn connected_state(database_type: DatabaseType) -> AppState {
@@ -314,10 +313,11 @@ mod tests {
                 )
         ));
         assert!(state.session.is_table_detail_terminal(generation));
-        dispatch_query(
+        route(
             &mut state,
-            &Action::RevealPendingPreview { generation },
+            Action::RevealPendingPreview { generation },
             Instant::now(),
+            &AppServices::stub(),
         );
         assert!(state.query.current_result().is_some());
         assert!(!state.query.has_pending_preview(generation));

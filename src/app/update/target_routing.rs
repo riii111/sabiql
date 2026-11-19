@@ -5,10 +5,9 @@ use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::services::AppServices;
 use crate::update::action::{
-    Action, CursorPosition, ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection,
-    ScrollTarget, ScrollToCursorTarget, SelectMotion,
+    CursorPosition, ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
+    ScrollToCursorTarget, SelectMotion,
 };
-use crate::update::reducer::legacy_dispatch;
 use crate::update::{browse, connection, explain, modal, sql_editor};
 
 pub(in crate::update) fn scroll(
@@ -116,15 +115,11 @@ pub(in crate::update) fn open_modal(
         ModalKind::SqliteDiagnostics => {
             modal::sqlite_diagnostics::open_modal_sqlite_diagnostics(state)
         }
-        _ => legacy_dispatch(state, Action::OpenModal(kind), now),
+        _ => vec![],
     }
 }
 
-pub(in crate::update) fn close_modal(
-    state: &mut AppState,
-    kind: ModalKind,
-    now: Instant,
-) -> Vec<Effect> {
+pub(in crate::update) fn close_modal(state: &mut AppState, kind: ModalKind) -> Vec<Effect> {
     match kind {
         ModalKind::TablePicker | ModalKind::CommandPalette => {
             modal::base::close_modal_table_picker_or_command_palette(state)
@@ -143,7 +138,7 @@ pub(in crate::update) fn close_modal(
         ModalKind::SqliteDiagnostics => {
             modal::sqlite_diagnostics::close_modal_sqlite_diagnostics(state)
         }
-        _ => legacy_dispatch(state, Action::CloseModal(kind), now),
+        _ => vec![],
     }
 }
 
@@ -161,6 +156,6 @@ pub(in crate::update) fn paste(state: &mut AppState, text: String, now: Instant)
         InputMode::JsonDetail => browse::result::json::paste_json_detail(state, text),
         InputMode::JsonEdit => browse::result::json::paste_json_edit(state, text),
         InputMode::CellDetail => browse::result::cell_detail::paste_cell_detail(state, text),
-        _ => legacy_dispatch(state, Action::Paste(text), now),
+        _ => vec![],
     }
 }

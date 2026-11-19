@@ -4,6 +4,7 @@ pub(in crate::update) mod browse;
 mod cache_flow_tests;
 pub(in crate::update) mod clipboard;
 pub(in crate::update) mod connection;
+#[cfg(test)]
 pub(crate) mod dispatch_result;
 pub(in crate::update) mod er;
 pub(in crate::update) mod explain;
@@ -19,5 +20,3 @@ pub(in crate::update) mod test_fixtures;
 pub(in crate::update) mod text_edit;
 #[cfg(test)]
 mod text_edit_tests;
-// Facade: re-export sub-reducer entry points for update/reducer.rs dispatch
-pub(in crate::update) use browse::query::dispatch_query;

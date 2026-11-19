@@ -7,8 +7,7 @@
 use std::time::Instant;
 
 use super::{
-    browse, clipboard, connection, dispatch_query, er, explain, modal, sql_editor, target_routing,
-    text_edit,
+    browse, clipboard, connection, er, explain, modal, sql_editor, target_routing, text_edit,
 };
 use crate::catalog::HelpDocument;
 use crate::cmd::effect::Effect;
@@ -104,7 +103,7 @@ pub(in crate::update) fn route(
         Action::Paste(text) => target_routing::paste(state, text, now),
         Action::BeginKeySequence(prefix) => begin_key_sequence(state, prefix),
         Action::OpenModal(kind) => target_routing::open_modal(state, kind, now),
-        Action::CloseModal(kind) => target_routing::close_modal(state, kind, now),
+        Action::CloseModal(kind) => target_routing::close_modal(state, kind),
         Action::CancelKeySequence => cancel_key_sequence(state),
         Action::ToggleHelp => modal::help::toggle_help(state),
         Action::Escape => modal::base::escape(state),
@@ -113,6 +112,7 @@ pub(in crate::update) fn route(
         Action::ConfirmDialogCancel => modal::confirm_dialog::confirm_dialog_cancel(state),
         Action::EnterCommandLine => browse::navigation::input::enter_command_line(state),
         Action::ExitCommandLine => browse::navigation::input::exit_command_line(state),
+        Action::CommandLineSubmit => browse::query::execution::command_line_submit(state),
         Action::TryConnect => connection::lifecycle::try_connect(state),
         Action::SwitchConnection(target) => connection::lifecycle::switch_connection(state, target),
         Action::ConnectionsLoaded(payload) => {
@@ -324,6 +324,38 @@ pub(in crate::update) fn route(
             ..
         } => explain::output::explain_failed(state, database_generation, run_id, error),
         Action::CompareEditQuery => explain::tabs::compare_edit_query(state),
+        Action::ExecutePreview(target) => {
+            browse::query::execution::execute_preview(state, target, now)
+        }
+        Action::QueryCompleted {
+            run_id,
+            result,
+            context,
+        } => browse::query::execution::query_completed(state, run_id, result, context, now),
+        Action::QueryFailed {
+            run_id,
+            error,
+            context,
+        } => browse::query::execution::query_failed(state, run_id, error, context, now),
+        Action::RevealPendingPreview { generation } => {
+            browse::query::execution::reveal_pending_preview(state, generation, now)
+        }
+        Action::ExecuteWriteSucceeded {
+            run_id,
+            affected_rows,
+            diagnostics,
+        } => browse::query::write::execute_write_succeeded(
+            state,
+            run_id,
+            affected_rows,
+            diagnostics,
+            now,
+        ),
+        Action::ExecuteWriteFailed { run_id, error } => {
+            browse::query::write::execute_write_failed(state, run_id, error, now)
+        }
+        Action::ResultNextPage => browse::query::pagination::result_next_page(state, now),
+        Action::ResultPrevPage => browse::query::pagination::result_prev_page(state, now),
         Action::ResultActivateCell => browse::result::selection::result_activate_cell(state),
         Action::ResultExitToScroll => browse::result::selection::result_exit_to_scroll(state),
         Action::ResultCellLeft => browse::result::selection::result_cell_left(state),
@@ -344,8 +376,12 @@ pub(in crate::update) fn route(
         Action::ResultOpenCellDetail => browse::result::cell_detail::result_open_cell_detail(state),
         Action::ResultCancelCellEdit => browse::result::edit::result_cancel_cell_edit(state),
         Action::ResultDiscardCellEdit => browse::result::edit::result_discard_cell_edit(state),
+        Action::SubmitCellEditWrite => browse::query::write::submit_cell_edit_write(state),
         Action::CopySucceeded(target) => clipboard::copy_succeeded(state, target, now),
         Action::CopyFailed(error) => clipboard::copy_failed(state, &error),
+        Action::OpenFolderFailed(error) => {
+            browse::query::pagination::open_folder_failed(state, error)
+        }
         Action::ToggleFocus => browse::navigation::focus::toggle_focus(state),
         Action::ToggleReadOnly => browse::navigation::focus::toggle_read_only(state),
         Action::QueryHistoryLoaded(scope, entries) => {
@@ -356,6 +392,15 @@ pub(in crate::update) fn route(
         }
         Action::QueryHistoryConfirmSelection => {
             modal::query_history::query_history_confirm_selection(state)
+        }
+        Action::RequestCsvExport => browse::query::pagination::request_csv_export(state, now),
+        Action::CsvExportSucceeded {
+            run_id,
+            path,
+            row_count,
+        } => browse::query::pagination::csv_export_succeeded(state, run_id, path, row_count, now),
+        Action::CsvExportFailed { run_id, error } => {
+            browse::query::pagination::csv_export_failed(state, run_id, error)
         }
         Action::DetailSearch { target, step } => {
             browse::result::detail_search::detail_search(state, target, step)
@@ -384,18 +429,7 @@ pub(in crate::update) fn route(
             er::diagram::er_diagram_failed(state, run_id, error)
         }
         Action::ErLogWriteFailed(error) => er::diagram::er_log_write_failed(state, error),
-        other => legacy_dispatch(state, other, now),
     }
-}
-
-pub(in crate::update) fn legacy_dispatch(
-    state: &mut AppState,
-    action: Action,
-    now: Instant,
-) -> Vec<Effect> {
-    dispatch_query(state, &action, now)
-        .into_effects()
-        .unwrap_or_default()
 }
 
 fn quit(state: &mut AppState) -> Vec<Effect> {

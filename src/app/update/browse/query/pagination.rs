@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
@@ -7,9 +8,8 @@ use crate::model::app_state::AppState;
 use crate::model::shared::confirm_dialog::{ConfirmIntent, CsvExportCacheSnapshot};
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::sql::sqlite_export::{SqliteExportPlan, sqlite_export_plan};
-use crate::update::action::Action;
+use crate::ports::outbound::DbOperationError;
 use crate::update::browse::query::preview_effect_for_current_table;
-use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 const LARGE_EXPORT_THRESHOLD: usize = 100_000;
@@ -41,7 +41,7 @@ fn dispatch_cached_csv_export(
     columns: Vec<String>,
     values: Vec<Vec<QueryValue>>,
     row_count: usize,
-) -> DispatchResult {
+) -> Vec<Effect> {
     let needs_confirm = row_count > LARGE_EXPORT_THRESHOLD;
     if needs_confirm {
         let msg = format!("Export {row_count} rows to CSV? This may take a while.");
@@ -57,16 +57,16 @@ fn dispatch_cached_csv_export(
             },
         );
         state.modal.push_mode(InputMode::ConfirmDialog);
-        DispatchResult::handled()
+        vec![]
     } else {
-        DispatchResult::handled_with(vec![Effect::ExportCsvFromCache {
+        vec![Effect::ExportCsvFromCache {
             dsn,
             run_id,
             file_name,
             columns,
             values,
             row_count: Some(row_count),
-        }])
+        }]
     }
 }
 
@@ -76,7 +76,7 @@ fn dispatch_rerunnable_csv_export(
     run_id: u64,
     export_query: String,
     file_name: String,
-) -> DispatchResult {
+) -> Vec<Effect> {
     state.confirm_dialog.open(
         "Confirm CSV Export",
         "Row count unknown. Export to CSV?",
@@ -88,161 +88,158 @@ fn dispatch_rerunnable_csv_export(
         },
     );
     state.modal.push_mode(InputMode::ConfirmDialog);
-    DispatchResult::handled()
+    vec![]
 }
 
-pub(in crate::update) fn reduce_pagination(
-    state: &mut AppState,
-    action: &Action,
-    now: Instant,
-) -> DispatchResult {
-    match action {
-        Action::RequestCsvExport => {
-            if reject_pending_mysql_connection_probe(state) {
-                return DispatchResult::handled();
+pub(in crate::update) fn request_csv_export(state: &mut AppState, now: Instant) -> Vec<Effect> {
+    if reject_pending_mysql_connection_probe(state) {
+        return vec![];
+    }
+    if !state.can_request_csv_export() {
+        return vec![];
+    }
+    let Some(result) = state.query.visible_result() else {
+        return vec![];
+    };
+    let Some(dsn) = state.session.dsn().map(String::from) else {
+        return vec![];
+    };
+
+    let file_name = csv_export_file_name(state, result.source);
+    let row_count = result.row_count();
+
+    if state.session.active_database_type() == Some(DatabaseType::SQLite) {
+        match sqlite_export_plan(result.source, &result.query, &result.columns, row_count) {
+            SqliteExportPlan::NotExportable { reason } => {
+                state.messages.set_error(reason);
+                return vec![];
             }
-            if !state.can_request_csv_export() {
-                return DispatchResult::handled();
-            }
-            let Some(result) = state.query.visible_result() else {
-                return DispatchResult::handled();
-            };
-            let Some(dsn) = state.session.dsn().map(String::from) else {
-                return DispatchResult::handled();
-            };
-
-            let file_name = csv_export_file_name(state, result.source);
-            let row_count = result.row_count();
-
-            if state.session.active_database_type() == Some(DatabaseType::SQLite) {
-                match sqlite_export_plan(result.source, &result.query, &result.columns, row_count) {
-                    SqliteExportPlan::NotExportable { reason } => {
-                        state.messages.set_error(reason);
-                        return DispatchResult::handled();
-                    }
-                    SqliteExportPlan::RerunnableQuery { query } => {
-                        let run_id = state.query.begin_non_preview_running(now);
-                        return dispatch_rerunnable_csv_export(
-                            state, dsn, run_id, query, file_name,
-                        );
-                    }
-                    SqliteExportPlan::CachedResult { row_count } => {
-                        let columns = result.columns.clone();
-                        let values = result.values().to_vec();
-                        let run_id = state.query.begin_non_preview_running(now);
-                        return dispatch_cached_csv_export(
-                            state, dsn, run_id, file_name, columns, values, row_count,
-                        );
-                    }
-                }
-            }
-
-            if state.session.active_database_type() == Some(DatabaseType::MySQL) {
-                if result.source == QuerySource::Preview {
-                    let columns = result.columns.clone();
-                    let values = result.values().to_vec();
-                    let run_id = state.query.begin_non_preview_running(now);
-                    return dispatch_cached_csv_export(
-                        state, dsn, run_id, file_name, columns, values, row_count,
-                    );
-                }
-
-                if mysql_export_plan(&result.query).is_none() {
-                    return DispatchResult::handled();
-                }
-                let export_query = result.query.clone();
+            SqliteExportPlan::RerunnableQuery { query } => {
                 let run_id = state.query.begin_non_preview_running(now);
-                return dispatch_rerunnable_csv_export(state, dsn, run_id, export_query, file_name);
+                return dispatch_rerunnable_csv_export(state, dsn, run_id, query, file_name);
             }
+            SqliteExportPlan::CachedResult { row_count } => {
+                let columns = result.columns.clone();
+                let values = result.values().to_vec();
+                let run_id = state.query.begin_non_preview_running(now);
+                return dispatch_cached_csv_export(
+                    state, dsn, run_id, file_name, columns, values, row_count,
+                );
+            }
+        }
+    }
 
-            let export_query = result.query.clone();
+    if state.session.active_database_type() == Some(DatabaseType::MySQL) {
+        if result.source == QuerySource::Preview {
+            let columns = result.columns.clone();
+            let values = result.values().to_vec();
             let run_id = state.query.begin_non_preview_running(now);
-            dispatch_rerunnable_csv_export(state, dsn, run_id, export_query, file_name)
+            return dispatch_cached_csv_export(
+                state, dsn, run_id, file_name, columns, values, row_count,
+            );
         }
 
-        Action::CsvExportSucceeded {
-            run_id,
-            path,
-            row_count,
-        } => {
-            if !state.query.is_current_run(*run_id) {
-                return DispatchResult::handled();
-            }
-
-            state.query.mark_idle();
-            let msg = match row_count {
-                Some(n) => format!("Exported {n} rows → {path}"),
-                None => format!("Exported → {path}"),
-            };
-            state.messages.set_success_at(msg, now);
-            let folder = Path::new(path)
-                .parent()
-                .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
-            DispatchResult::handled_with(vec![Effect::OpenFolder { path: folder }])
+        if mysql_export_plan(&result.query).is_none() {
+            return vec![];
         }
+        let export_query = result.query.clone();
+        let run_id = state.query.begin_non_preview_running(now);
+        return dispatch_rerunnable_csv_export(state, dsn, run_id, export_query, file_name);
+    }
 
-        Action::CsvExportFailed { run_id, error } => {
-            if !state.query.is_current_run(*run_id) {
-                return DispatchResult::handled();
-            }
+    let export_query = result.query.clone();
+    let run_id = state.query.begin_non_preview_running(now);
+    dispatch_rerunnable_csv_export(state, dsn, run_id, export_query, file_name)
+}
 
-            state.query.mark_idle();
-            state.messages.set_error(error.user_message());
-            DispatchResult::handled()
+pub(in crate::update) fn csv_export_succeeded(
+    state: &mut AppState,
+    run_id: u64,
+    path: String,
+    row_count: Option<usize>,
+    now: Instant,
+) -> Vec<Effect> {
+    if !state.query.is_current_run(run_id) {
+        return vec![];
+    }
+
+    state.query.mark_idle();
+    let msg = match row_count {
+        Some(n) => format!("Exported {n} rows → {path}"),
+        None => format!("Exported → {path}"),
+    };
+    state.messages.set_success_at(msg, now);
+    let folder = Path::new(&path)
+        .parent()
+        .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
+    vec![Effect::OpenFolder { path: folder }]
+}
+
+pub(in crate::update) fn csv_export_failed(
+    state: &mut AppState,
+    run_id: u64,
+    error: DbOperationError,
+) -> Vec<Effect> {
+    if !state.query.is_current_run(run_id) {
+        return vec![];
+    }
+
+    state.query.mark_idle();
+    state.messages.set_error(error.user_message());
+    vec![]
+}
+
+pub(in crate::update) fn open_folder_failed(
+    state: &mut AppState,
+    error: Arc<std::io::Error>,
+) -> Vec<Effect> {
+    state
+        .messages
+        .set_error(format!("Failed to open folder: {error}"));
+
+    vec![]
+}
+
+pub(in crate::update) fn result_next_page(state: &mut AppState, now: Instant) -> Vec<Effect> {
+    if reject_pending_mysql_connection_probe(state) {
+        return vec![];
+    }
+    if state.query.is_running() || !state.query.can_paginate_visible_result() {
+        return vec![];
+    }
+    if !state.query.pagination.can_next() {
+        return vec![];
+    }
+    let next_page = state.query.pagination.next_page();
+    let generation = state.session.selection_generation();
+    match preview_effect_for_current_table(state, now, next_page, generation) {
+        Some(effect) => {
+            state.result_interaction.reset_view();
+            vec![effect]
         }
+        None => vec![],
+    }
+}
 
-        Action::OpenFolderFailed(error) => {
-            state
-                .messages
-                .set_error(format!("Failed to open folder: {error}"));
-
-            DispatchResult::handled()
+pub(in crate::update) fn result_prev_page(state: &mut AppState, now: Instant) -> Vec<Effect> {
+    if reject_pending_mysql_connection_probe(state) {
+        return vec![];
+    }
+    if state.query.is_running() || !state.query.can_paginate_visible_result() {
+        return vec![];
+    }
+    if !state.query.pagination.can_prev() {
+        return vec![];
+    }
+    let prev_page = state.query.pagination.prev_page();
+    let generation = state.session.selection_generation();
+    match preview_effect_for_current_table(state, now, prev_page, generation) {
+        Some(effect) => {
+            state.result_interaction.reset_view();
+            state.query.pagination.clear_reached_end();
+            vec![effect]
         }
-
-        Action::ResultNextPage => {
-            if reject_pending_mysql_connection_probe(state) {
-                return DispatchResult::handled();
-            }
-            if state.query.is_running() || !state.query.can_paginate_visible_result() {
-                return DispatchResult::handled();
-            }
-            if !state.query.pagination.can_next() {
-                return DispatchResult::handled();
-            }
-            let next_page = state.query.pagination.next_page();
-            let generation = state.session.selection_generation();
-            match preview_effect_for_current_table(state, now, next_page, generation) {
-                Some(effect) => {
-                    state.result_interaction.reset_view();
-                    DispatchResult::handled_with(vec![effect])
-                }
-                None => DispatchResult::handled(),
-            }
-        }
-
-        Action::ResultPrevPage => {
-            if reject_pending_mysql_connection_probe(state) {
-                return DispatchResult::handled();
-            }
-            if state.query.is_running() || !state.query.can_paginate_visible_result() {
-                return DispatchResult::handled();
-            }
-            if !state.query.pagination.can_prev() {
-                return DispatchResult::handled();
-            }
-            let prev_page = state.query.pagination.prev_page();
-            let generation = state.session.selection_generation();
-            match preview_effect_for_current_table(state, now, prev_page, generation) {
-                Some(effect) => {
-                    state.result_interaction.reset_view();
-                    state.query.pagination.clear_reached_end();
-                    DispatchResult::handled_with(vec![effect])
-                }
-                None => DispatchResult::handled(),
-            }
-        }
-
-        _ => DispatchResult::pass(),
+        None => vec![],
     }
 }
 
@@ -252,13 +249,13 @@ mod tests {
     use crate::domain::{QueryResult, QuerySource};
     use crate::ports::outbound::DbOperationError;
     use crate::services::AppServices;
+    use crate::update::action::Action;
     use crate::update::test_fixtures;
     use std::sync::Arc;
 
     use crate::model::browse::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
-    use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
-    use crate::update::reducer::reduce;
+    use crate::update::reducer::{reduce, route};
 
     fn csv_succeeded_action(state: &mut AppState, path: &str, row_count: Option<usize>) -> Action {
         let run_id = begin_query_run(state);
@@ -299,7 +296,12 @@ mod tests {
             state.query.pagination.reset_for_table("public", "users");
             let now = Instant::now();
 
-            let effects = dispatch_query(&mut state, &Action::ResultNextPage, now).unwrap();
+            let effects = route(
+                &mut state,
+                Action::ResultNextPage,
+                now,
+                &AppServices::stub(),
+            );
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -322,7 +324,12 @@ mod tests {
             state.query.pagination.set_page_result(0, true);
             let now = Instant::now();
 
-            let effects = dispatch_query(&mut state, &Action::ResultNextPage, now).unwrap();
+            let effects = route(
+                &mut state,
+                Action::ResultNextPage,
+                now,
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
         }
@@ -333,7 +340,12 @@ mod tests {
             state.query.set_current_result(adhoc_result());
             let now = Instant::now();
 
-            let effects = dispatch_query(&mut state, &Action::ResultNextPage, now).unwrap();
+            let effects = route(
+                &mut state,
+                Action::ResultNextPage,
+                now,
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
         }
@@ -347,7 +359,12 @@ mod tests {
             let _ = state.query.begin_running(Instant::now());
             let now = Instant::now();
 
-            let effects = dispatch_query(&mut state, &Action::ResultNextPage, now).unwrap();
+            let effects = route(
+                &mut state,
+                Action::ResultNextPage,
+                now,
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
         }
@@ -362,7 +379,12 @@ mod tests {
             state.result_interaction.activate_cell(2, 1);
             state.result_interaction.stage_row(2);
 
-            dispatch_query(&mut state, &Action::ResultNextPage, Instant::now());
+            route(
+                &mut state,
+                Action::ResultNextPage,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert_eq!(state.result_interaction.selection().row(), Some(2));
             assert_eq!(state.result_interaction.selection().cell(), Some(1));
@@ -379,7 +401,12 @@ mod tests {
             state.result_interaction.activate_cell(3, 1);
             state.result_interaction.stage_row(3);
 
-            dispatch_query(&mut state, &Action::ResultNextPage, Instant::now());
+            route(
+                &mut state,
+                Action::ResultNextPage,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(state.result_interaction.selection().row().is_none());
             assert!(state.result_interaction.selection().cell().is_none());
@@ -394,8 +421,12 @@ mod tests {
                 .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
             state.query.pagination.reset_for_table("public", "users");
 
-            let next_effects =
-                dispatch_query(&mut state, &Action::ResultNextPage, Instant::now()).unwrap();
+            let next_effects = route(
+                &mut state,
+                Action::ResultNextPage,
+                Instant::now(),
+                &AppServices::stub(),
+            );
             assert!(matches!(
                 next_effects.first(),
                 Some(Effect::ExecutePreview { target_page: 1, .. })
@@ -403,16 +434,30 @@ mod tests {
 
             let next_result =
                 query_completed_action(&mut state, preview_result(PREVIEW_PAGE_SIZE), 0, Some(1));
-            dispatch_query(&mut state, &next_result, Instant::now());
+            route(
+                &mut state,
+                next_result,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             let empty_next_result =
                 query_completed_action(&mut state, preview_result(0), 0, Some(2));
-            dispatch_query(&mut state, &empty_next_result, Instant::now());
+            route(
+                &mut state,
+                empty_next_result,
+                Instant::now(),
+                &AppServices::stub(),
+            );
             assert_eq!(state.query.pagination.current_page(), 1);
             assert!(state.query.pagination.reached_end());
 
-            let prev_effects =
-                dispatch_query(&mut state, &Action::ResultPrevPage, Instant::now()).unwrap();
+            let prev_effects = route(
+                &mut state,
+                Action::ResultPrevPage,
+                Instant::now(),
+                &AppServices::stub(),
+            );
             assert!(matches!(
                 prev_effects.first(),
                 Some(Effect::ExecutePreview { target_page: 0, .. })
@@ -421,10 +466,19 @@ mod tests {
 
             let prev_result =
                 query_completed_action(&mut state, preview_result(PREVIEW_PAGE_SIZE), 0, Some(0));
-            dispatch_query(&mut state, &prev_result, Instant::now());
+            route(
+                &mut state,
+                prev_result,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
-            let next_effects =
-                dispatch_query(&mut state, &Action::ResultNextPage, Instant::now()).unwrap();
+            let next_effects = route(
+                &mut state,
+                Action::ResultNextPage,
+                Instant::now(),
+                &AppServices::stub(),
+            );
             assert!(matches!(
                 next_effects.first(),
                 Some(Effect::ExecutePreview { target_page: 1, .. })
@@ -445,7 +499,12 @@ mod tests {
             state.query.pagination.set_page_result(2, false);
             let now = Instant::now();
 
-            let effects = dispatch_query(&mut state, &Action::ResultPrevPage, now).unwrap();
+            let effects = route(
+                &mut state,
+                Action::ResultPrevPage,
+                now,
+                &AppServices::stub(),
+            );
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -470,7 +529,12 @@ mod tests {
             state.query.pagination.set_current_page(0);
             let now = Instant::now();
 
-            let effects = dispatch_query(&mut state, &Action::ResultPrevPage, now).unwrap();
+            let effects = route(
+                &mut state,
+                Action::ResultPrevPage,
+                now,
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
         }
@@ -485,7 +549,12 @@ mod tests {
             state.result_interaction.activate_cell(1, 1);
             state.result_interaction.stage_row(1);
 
-            dispatch_query(&mut state, &Action::ResultPrevPage, Instant::now());
+            route(
+                &mut state,
+                Action::ResultPrevPage,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert_eq!(state.result_interaction.selection().row(), Some(1));
             assert_eq!(state.result_interaction.selection().cell(), Some(1));
@@ -529,8 +598,12 @@ mod tests {
             let mut state = create_test_state();
             state.query.set_current_result(adhoc_result());
 
-            let effects =
-                dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::RequestCsvExport,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
@@ -563,8 +636,12 @@ mod tests {
                     QuerySource::Adhoc,
                 )));
 
-            let effects =
-                dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::RequestCsvExport,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
             assert!(!state.query.is_running());
@@ -575,8 +652,12 @@ mod tests {
             let mut state = create_test_state();
             state.query.clear_current_result();
 
-            let effects =
-                dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::RequestCsvExport,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
         }
@@ -586,8 +667,12 @@ mod tests {
             let mut state = create_test_state();
             state.query.set_current_result(adhoc_result());
 
-            let effects =
-                dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::RequestCsvExport,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
@@ -607,8 +692,12 @@ mod tests {
             .with_row_count(200_000);
             state.query.set_current_result(Arc::new(result));
 
-            let effects =
-                dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::RequestCsvExport,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
@@ -620,7 +709,7 @@ mod tests {
             let mut state = create_test_state();
             let action = csv_succeeded_action(&mut state, "/tmp/export.csv", Some(42));
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::OpenFolder { .. }));
@@ -651,16 +740,16 @@ mod tests {
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/other");
             let current_run_id = begin_query_run(&mut state);
 
-            let effects = dispatch_query(
+            let effects = route(
                 &mut state,
-                &Action::CsvExportSucceeded {
+                Action::CsvExportSucceeded {
                     run_id: stale_run_id,
                     path: "/tmp/stale-export.csv".to_string(),
                     row_count: Some(1),
                 },
                 Instant::now(),
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
 
             assert!(stale_run_id < current_run_id);
             assert!(effects.is_empty());
@@ -676,7 +765,7 @@ mod tests {
                 DbOperationError::QueryFailed("psql error".to_string()),
             );
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -694,15 +783,15 @@ mod tests {
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/other");
             let current_run_id = begin_query_run(&mut state);
 
-            let effects = dispatch_query(
+            let effects = route(
                 &mut state,
-                &Action::CsvExportFailed {
+                Action::CsvExportFailed {
                     run_id: stale_run_id,
                     error: DbOperationError::QueryFailed("stale export".to_string()),
                 },
                 Instant::now(),
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
 
             assert!(stale_run_id < current_run_id);
             assert!(effects.is_empty());
@@ -720,8 +809,12 @@ mod tests {
                 QuerySource::Adhoc,
             )));
 
-            let effects =
-                dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::RequestCsvExport,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
         }
@@ -748,8 +841,12 @@ mod tests {
                         QuerySource::Adhoc,
                     )));
 
-                let effects =
-                    dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
+                let effects = route(
+                    &mut state,
+                    Action::RequestCsvExport,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
                 assert!(effects.is_empty());
                 assert!(
@@ -775,8 +872,12 @@ mod tests {
                         QuerySource::Adhoc,
                     )));
 
-                let effects =
-                    dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
+                let effects = route(
+                    &mut state,
+                    Action::RequestCsvExport,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(effects.len(), 1);
                 assert!(matches!(&effects[0], Effect::ExportCsvFromCache { .. }));
@@ -795,8 +896,12 @@ mod tests {
                         QuerySource::Adhoc,
                     )));
 
-                let effects =
-                    dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
+                let effects = route(
+                    &mut state,
+                    Action::RequestCsvExport,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
                 assert!(effects.is_empty());
                 assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
@@ -816,8 +921,12 @@ mod tests {
                     ),
                 ));
 
-                let effects =
-                    dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
+                let effects = route(
+                    &mut state,
+                    Action::RequestCsvExport,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
                 let Effect::ExportCsvFromCache {
                     columns, values, ..
@@ -856,8 +965,12 @@ mod tests {
             fn supported_rerunnable_queries_ask_for_unknown_row_count(#[case] query: &str) {
                 let mut state = mysql_state(query);
 
-                let effects =
-                    dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
+                let effects = route(
+                    &mut state,
+                    Action::RequestCsvExport,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
                 assert!(effects.is_empty());
                 assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
@@ -889,8 +1002,12 @@ mod tests {
                         QuerySource::Preview,
                     )));
 
-                let effects =
-                    dispatch_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
+                let effects = route(
+                    &mut state,
+                    Action::RequestCsvExport,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
                 let Effect::ExportCsvFromCache {
                     columns,
