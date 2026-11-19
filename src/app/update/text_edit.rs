@@ -5,12 +5,19 @@ use crate::model::app_state::AppState;
 use crate::model::shared::text_input::TextEdit;
 use crate::update::action::{DetailTarget, InputTarget};
 use crate::update::browse::navigation::input::edit_command_line;
-use crate::update::browse::result::detail_search::edit_search_query;
+use crate::update::browse::result::detail_search::{
+    edit_cell_detail_search_query, edit_search_query,
+};
 use crate::update::browse::result::json::edit_json_text;
 use crate::update::connection::setup::edit_text as edit_connection_setup;
 use crate::update::sql_editor::editing::edit_text as edit_sql_modal;
 use crate::update::sql_editor::high_risk::edit_text as edit_high_risk_confirmation;
 
+#[deny(
+    clippy::wildcard_enum_match_arm,
+    clippy::match_wildcard_for_single_variants,
+    reason = "Every variant must name its handler so a new variant fails to compile instead of being silently dropped."
+)]
 pub(in crate::update) fn apply_text_edit(
     state: &mut AppState,
     target: InputTarget,
@@ -49,13 +56,7 @@ pub(in crate::update) fn apply_text_edit(
         InputTarget::JsonSearch => {
             edit_search_query(state, DetailTarget::JsonDetail, edit, yank_text)
         }
-        InputTarget::CellDetailSearch => match edit {
-            TextEdit::Kill(_) | TextEdit::Yank => {
-                debug_assert!(false, "cell detail search does not support {edit:?}");
-                String::new()
-            }
-            _ => edit_search_query(state, DetailTarget::CellDetail, edit, yank_text),
-        },
+        InputTarget::CellDetailSearch => edit_cell_detail_search_query(state, edit, yank_text),
         InputTarget::HelpFilter => state.ui.help_mut().apply_filter_edit(edit, yank_text),
     };
     state.record_kill(killed);

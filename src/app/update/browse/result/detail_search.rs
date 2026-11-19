@@ -111,3 +111,17 @@ pub(in crate::update) fn edit_search_query(
     }
     killed
 }
+
+pub(in crate::update) fn edit_cell_detail_search_query(
+    state: &mut AppState,
+    edit: TextEdit,
+    yank_text: Option<&str>,
+) -> String {
+    match edit {
+        TextEdit::Kill(_) | TextEdit::Yank => {
+            debug_assert!(false, "cell detail search does not support {edit:?}");
+            String::new()
+        }
+        _ => edit_search_query(state, DetailTarget::CellDetail, edit, yank_text),
+    }
+}

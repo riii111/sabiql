@@ -10,6 +10,11 @@ use crate::update::action::{
 };
 use crate::update::{browse, connection, explain, modal, sql_editor};
 
+#[deny(
+    clippy::wildcard_enum_match_arm,
+    clippy::match_wildcard_for_single_variants,
+    reason = "Every variant must name its handler so a new variant fails to compile instead of being silently dropped."
+)]
 pub(in crate::update) fn scroll(
     state: &mut AppState,
     target: ScrollTarget,
@@ -51,6 +56,11 @@ pub(in crate::update) fn scroll(
     }
 }
 
+#[deny(
+    clippy::wildcard_enum_match_arm,
+    clippy::match_wildcard_for_single_variants,
+    reason = "Every variant must name its handler so a new variant fails to compile instead of being silently dropped."
+)]
 pub(in crate::update) fn scroll_to_cursor(
     state: &mut AppState,
     target: ScrollToCursorTarget,
@@ -70,6 +80,11 @@ pub(in crate::update) fn select(state: &mut AppState, motion: SelectMotion) -> V
     browse::navigation::explorer::select_explorer(state, motion)
 }
 
+#[deny(
+    clippy::wildcard_enum_match_arm,
+    clippy::match_wildcard_for_single_variants,
+    reason = "Every variant must name its handler so a new variant fails to compile instead of being silently dropped."
+)]
 pub(in crate::update) fn list_select(
     state: &mut AppState,
     target: ListTarget,
@@ -92,6 +107,11 @@ pub(in crate::update) fn list_select(
     }
 }
 
+#[deny(
+    clippy::wildcard_enum_match_arm,
+    clippy::match_wildcard_for_single_variants,
+    reason = "Every variant must name its handler so a new variant fails to compile instead of being silently dropped."
+)]
 pub(in crate::update) fn open_modal(
     state: &mut AppState,
     kind: ModalKind,
@@ -115,10 +135,15 @@ pub(in crate::update) fn open_modal(
         ModalKind::SqliteDiagnostics => {
             modal::sqlite_diagnostics::open_modal_sqlite_diagnostics(state)
         }
-        _ => vec![],
+        ModalKind::Help | ModalKind::CellDetail => vec![],
     }
 }
 
+#[deny(
+    clippy::wildcard_enum_match_arm,
+    clippy::match_wildcard_for_single_variants,
+    reason = "Every variant must name its handler so a new variant fails to compile instead of being silently dropped."
+)]
 pub(in crate::update) fn close_modal(state: &mut AppState, kind: ModalKind) -> Vec<Effect> {
     match kind {
         ModalKind::TablePicker | ModalKind::CommandPalette => {
@@ -138,10 +163,15 @@ pub(in crate::update) fn close_modal(state: &mut AppState, kind: ModalKind) -> V
         ModalKind::SqliteDiagnostics => {
             modal::sqlite_diagnostics::close_modal_sqlite_diagnostics(state)
         }
-        _ => vec![],
+        ModalKind::ConnectionSelector => vec![],
     }
 }
 
+#[deny(
+    clippy::wildcard_enum_match_arm,
+    clippy::match_wildcard_for_single_variants,
+    reason = "Every variant must name its handler so a new variant fails to compile instead of being silently dropped."
+)]
 pub(in crate::update) fn paste(state: &mut AppState, text: String, now: Instant) -> Vec<Effect> {
     match state.input_mode() {
         InputMode::CommandLine => browse::navigation::input::paste_command_line(state, text),
@@ -156,6 +186,14 @@ pub(in crate::update) fn paste(state: &mut AppState, text: String, now: Instant)
         InputMode::JsonDetail => browse::result::json::paste_json_detail(state, text),
         InputMode::JsonEdit => browse::result::json::paste_json_edit(state, text),
         InputMode::CellDetail => browse::result::cell_detail::paste_cell_detail(state, text),
-        _ => vec![],
+        InputMode::Normal
+        | InputMode::CommandPalette
+        | InputMode::Settings
+        | InputMode::Help
+        | InputMode::ConnectionError
+        | InputMode::ConfirmDialog
+        | InputMode::ConnectionSelector
+        | InputMode::SqliteDiagnostics
+        | InputMode::RowDetail => vec![],
     }
 }

@@ -58,6 +58,11 @@ fn dispatch_enabled_action(
     route(state, action, now, services)
 }
 
+#[deny(
+    clippy::wildcard_enum_match_arm,
+    clippy::match_wildcard_for_single_variants,
+    reason = "Every variant must name its handler so a new variant fails to compile instead of being silently dropped."
+)]
 pub(in crate::update) fn route(
     state: &mut AppState,
     action: Action,

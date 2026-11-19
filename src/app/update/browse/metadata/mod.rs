@@ -1403,7 +1403,7 @@ mod tests {
         }
 
         #[test]
-        fn process_empty_queue_returns_handled_without_effects() {
+        fn process_empty_queue_returns_no_effects() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.table_prefetch.begin_er_prefetch();
 

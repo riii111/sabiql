@@ -51,7 +51,7 @@ mod tests {
         }
 
         #[test]
-        fn escape_passes_for_modal_with_specific_close_action() {
+        fn escape_keeps_modal_with_specific_close_action_open() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::SqlModal);
 
@@ -131,16 +131,14 @@ mod tests {
                     ch: 'k',
                 },
                 Instant::now(),
-            )
-            .unwrap();
+            );
             let backspace_effects = edit_text(
                 &mut state,
                 &Action::TextBackspace {
                     target: InputTarget::HelpFilter,
                 },
                 Instant::now(),
-            )
-            .unwrap();
+            );
 
             assert!(state.ui.help().filter().content().is_empty());
             assert!(input_effects.is_empty());
@@ -1545,8 +1543,7 @@ mod tests {
                         ch: 'a',
                     },
                     Instant::now(),
-                )
-                .unwrap();
+                );
 
                 assert_eq!(state.query_history_picker.selected(), 0);
                 assert_eq!(state.query_history_picker.filter_input().content(), "a");
