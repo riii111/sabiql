@@ -6,106 +6,100 @@ use crate::model::shared::inspector_tab::InspectorTab;
 use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::action::CopyTarget;
-use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::clipboard_unavailable;
 
-pub(in crate::update) fn reduce_yank(
-    state: &mut AppState,
-    action: &Action,
-    services: &AppServices,
-) -> DispatchResult {
-    match action {
-        Action::ResultCellYank => {
-            if let (Some(row_idx), Some(col_idx)) = (
-                state.result_interaction.selection().row(),
-                state.result_interaction.selection().cell(),
-            ) {
-                let content = state.query.visible_result().and_then(|result| {
-                    if result.has_typed_values() {
-                        result
-                            .value_at(row_idx, col_idx)
-                            .map(QueryValue::copy_value)
-                    } else {
-                        result.display_value_at(row_idx, col_idx)
-                    }
-                });
-                if let Some(value) = content {
-                    DispatchResult::handled_with(vec![Effect::CopyToClipboard {
-                        content: value,
-                        on_success: Box::new(Action::CopySucceeded(CopyTarget::ResultCell {
-                            row: row_idx,
-                            col: col_idx,
-                        })),
-                        on_failure: Some(Box::new(clipboard_unavailable())),
-                    }])
-                } else {
-                    state.messages.set_error("Cell index out of bounds".into());
-                    DispatchResult::handled()
-                }
+pub(in crate::update) fn result_cell_yank(state: &mut AppState) -> Vec<Effect> {
+    if let (Some(row_idx), Some(col_idx)) = (
+        state.result_interaction.selection().row(),
+        state.result_interaction.selection().cell(),
+    ) {
+        let content = state.query.visible_result().and_then(|result| {
+            if result.has_typed_values() {
+                result
+                    .value_at(row_idx, col_idx)
+                    .map(QueryValue::copy_value)
             } else {
-                DispatchResult::handled()
+                result.display_value_at(row_idx, col_idx)
             }
+        });
+        if let Some(value) = content {
+            vec![Effect::CopyToClipboard {
+                content: value,
+                on_success: Box::new(Action::CopySucceeded(CopyTarget::ResultCell {
+                    row: row_idx,
+                    col: col_idx,
+                })),
+                on_failure: Some(Box::new(clipboard_unavailable())),
+            }]
+        } else {
+            state.messages.set_error("Cell index out of bounds".into());
+            vec![]
         }
-        Action::ResultRowYankOperatorPending => {
-            state.result_interaction.start_yank_operator();
-            DispatchResult::handled()
-        }
-        Action::DdlYank => {
-            if state.ui.inspector_tab() == InspectorTab::Ddl
-                && let Some(table) = state.session.table_detail().as_ref()
-            {
-                let ddl = services
-                    .ddl_generator
-                    .generate_ddl(state.session.active_database_type_or_default(), table);
-                return DispatchResult::handled_with(vec![Effect::CopyToClipboard {
-                    content: ddl,
-                    on_success: Box::new(Action::CopySucceeded(CopyTarget::Panel(FlashId::Ddl))),
-                    on_failure: Some(Box::new(clipboard_unavailable())),
-                }]);
-            }
-            DispatchResult::handled()
-        }
-        Action::ResultRowYank => {
-            if let Some(row_idx) = state.result_interaction.selection().row() {
-                let content = state
-                    .query
-                    .visible_result()
-                    .and_then(|result| {
-                        if result.has_typed_values() {
-                            result.values().get(row_idx).map(|row| {
-                                row.iter().map(QueryValue::copy_value).collect::<Vec<_>>()
-                            })
-                        } else {
-                            result.display_row_at(row_idx)
-                        }
+    } else {
+        vec![]
+    }
+}
+
+pub(in crate::update) fn result_row_yank_operator_pending(state: &mut AppState) -> Vec<Effect> {
+    state.result_interaction.start_yank_operator();
+    vec![]
+}
+
+pub(in crate::update) fn ddl_yank(state: &AppState, services: &AppServices) -> Vec<Effect> {
+    if state.ui.inspector_tab() == InspectorTab::Ddl
+        && let Some(table) = state.session.table_detail().as_ref()
+    {
+        let ddl = services
+            .ddl_generator
+            .generate_ddl(state.session.active_database_type_or_default(), table);
+        return vec![Effect::CopyToClipboard {
+            content: ddl,
+            on_success: Box::new(Action::CopySucceeded(CopyTarget::Panel(FlashId::Ddl))),
+            on_failure: Some(Box::new(clipboard_unavailable())),
+        }];
+    }
+    vec![]
+}
+
+pub(in crate::update) fn result_row_yank(state: &mut AppState) -> Vec<Effect> {
+    if let Some(row_idx) = state.result_interaction.selection().row() {
+        let content = state
+            .query
+            .visible_result()
+            .and_then(|result| {
+                if result.has_typed_values() {
+                    result
+                        .values()
+                        .get(row_idx)
+                        .map(|row| row.iter().map(QueryValue::copy_value).collect::<Vec<_>>())
+                } else {
+                    result.display_row_at(row_idx)
+                }
+            })
+            .map(|row| {
+                row.iter()
+                    .map(|v| {
+                        v.replace('\\', "\\\\")
+                            .replace('\t', "\\t")
+                            .replace('\n', "\\n")
                     })
-                    .map(|row| {
-                        row.iter()
-                            .map(|v| {
-                                v.replace('\\', "\\\\")
-                                    .replace('\t', "\\t")
-                                    .replace('\n', "\\n")
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\t")
-                    });
-                if let Some(tsv) = content {
-                    DispatchResult::handled_with(vec![Effect::CopyToClipboard {
-                        content: tsv,
-                        on_success: Box::new(Action::CopySucceeded(CopyTarget::ResultRow {
-                            row: row_idx,
-                        })),
-                        on_failure: Some(Box::new(clipboard_unavailable())),
-                    }])
-                } else {
-                    state.messages.set_error("Row index out of bounds".into());
-                    DispatchResult::handled()
-                }
-            } else {
-                DispatchResult::handled()
-            }
+                    .collect::<Vec<_>>()
+                    .join("\t")
+            });
+        if let Some(tsv) = content {
+            vec![Effect::CopyToClipboard {
+                content: tsv,
+                on_success: Box::new(Action::CopySucceeded(CopyTarget::ResultRow {
+                    row: row_idx,
+                })),
+                on_failure: Some(Box::new(clipboard_unavailable())),
+            }]
+        } else {
+            state.messages.set_error("Row index out of bounds".into());
+            vec![]
         }
-        _ => DispatchResult::pass(),
+    } else {
+        vec![]
     }
 }
 
@@ -116,7 +110,9 @@ mod tests {
         Column, ColumnAttributes, DatabaseType, QueryResult, QuerySource, QueryValue, Table,
     };
     use crate::ports::outbound::ddl_generator::DdlGenerator;
+    use crate::update::reducer::route;
     use std::sync::Arc;
+    use std::time::Instant;
 
     mod cell_yank {
         use super::*;
@@ -147,8 +143,12 @@ mod tests {
             let mut state = state_with_grid(3, 3);
             state.result_interaction.activate_cell(10, 0);
 
-            let effects =
-                reduce_yank(&mut state, &Action::ResultCellYank, &AppServices::stub()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::ResultCellYank,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
             assert!(state.messages.last_error.is_some());
@@ -159,8 +159,12 @@ mod tests {
             let mut state = state_with_grid(3, 3);
             state.result_interaction.activate_cell(0, 10);
 
-            let effects =
-                reduce_yank(&mut state, &Action::ResultCellYank, &AppServices::stub()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::ResultCellYank,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
             assert!(state.messages.last_error.is_some());
@@ -171,8 +175,12 @@ mod tests {
             let mut state = state_with_grid(3, 3);
             state.result_interaction.activate_cell(1, 2);
 
-            let effects =
-                reduce_yank(&mut state, &Action::ResultCellYank, &AppServices::stub()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::ResultCellYank,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -206,8 +214,12 @@ mod tests {
                 )));
             state.result_interaction.activate_cell(0, 0);
 
-            let effects =
-                reduce_yank(&mut state, &Action::ResultCellYank, &AppServices::stub()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::ResultCellYank,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(matches!(
                 &effects[0],
@@ -220,12 +232,12 @@ mod tests {
             let mut state = state_with_grid(3, 3);
             state.result_interaction.activate_cell(1, 2);
 
-            let effects = reduce_yank(
+            let effects = route(
                 &mut state,
-                &Action::ResultRowYankOperatorPending,
+                Action::ResultRowYankOperatorPending,
+                Instant::now(),
                 &AppServices::stub(),
-            )
-            .unwrap();
+            );
 
             assert!(effects.is_empty());
             assert!(state.result_interaction.is_yank_operator_pending());
@@ -235,8 +247,12 @@ mod tests {
         fn no_cell_selection_is_noop() {
             let mut state = state_with_grid(3, 3);
 
-            let effects =
-                reduce_yank(&mut state, &Action::ResultCellYank, &AppServices::stub()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::ResultCellYank,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
             assert!(state.messages.last_error.is_none());
@@ -267,8 +283,12 @@ mod tests {
             let mut state = state_with_row(vec!["v0", "v1", "v2"]);
             state.result_interaction.activate_cell(0, 0);
 
-            let effects =
-                reduce_yank(&mut state, &Action::ResultRowYank, &AppServices::stub()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::ResultRowYank,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -305,8 +325,12 @@ mod tests {
                 )));
             state.result_interaction.activate_cell(0, 0);
 
-            let effects =
-                reduce_yank(&mut state, &Action::ResultRowYank, &AppServices::stub()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::ResultRowYank,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(matches!(
                 &effects[0],
@@ -319,8 +343,12 @@ mod tests {
             let mut state = state_with_row(vec!["a\tb", "c\nd"]);
             state.result_interaction.activate_cell(0, 0);
 
-            let effects =
-                reduce_yank(&mut state, &Action::ResultRowYank, &AppServices::stub()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::ResultRowYank,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -336,8 +364,12 @@ mod tests {
             let mut state = state_with_row(vec!["a\\b"]);
             state.result_interaction.activate_cell(0, 0);
 
-            let effects =
-                reduce_yank(&mut state, &Action::ResultRowYank, &AppServices::stub()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::ResultRowYank,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -353,8 +385,12 @@ mod tests {
             let mut state = state_with_row(vec!["val"]);
             state.result_interaction.activate_cell(99, 0);
 
-            let effects =
-                reduce_yank(&mut state, &Action::ResultRowYank, &AppServices::stub()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::ResultRowYank,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
             assert!(state.messages.last_error.is_some());
@@ -364,8 +400,12 @@ mod tests {
         fn no_row_selection_is_noop() {
             let mut state = state_with_row(vec!["val"]);
 
-            let effects =
-                reduce_yank(&mut state, &Action::ResultRowYank, &AppServices::stub()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::ResultRowYank,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
         }
@@ -410,9 +450,13 @@ mod tests {
         fn with_table_detail_returns_copy_effect() {
             let mut state = state_with_ddl_tab();
 
-            let effects = reduce_yank(&mut state, &Action::DdlYank, &fake_services());
+            let effects = route(
+                &mut state,
+                Action::DdlYank,
+                Instant::now(),
+                &fake_services(),
+            );
 
-            let effects = effects.into_effects().expect("should return Some");
             assert_eq!(effects.len(), 1);
             match &effects[0] {
                 Effect::CopyToClipboard {
@@ -435,9 +479,13 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.ui.set_inspector_tab(InspectorTab::Ddl);
 
-            let effects = reduce_yank(&mut state, &Action::DdlYank, &fake_services());
+            let effects = route(
+                &mut state,
+                Action::DdlYank,
+                Instant::now(),
+                &fake_services(),
+            );
 
-            let effects = effects.into_effects().expect("should return Some");
             assert!(effects.is_empty());
         }
 
@@ -446,9 +494,13 @@ mod tests {
             let mut state = state_with_ddl_tab();
             state.ui.set_inspector_tab(InspectorTab::Info);
 
-            let effects = reduce_yank(&mut state, &Action::DdlYank, &fake_services());
+            let effects = route(
+                &mut state,
+                Action::DdlYank,
+                Instant::now(),
+                &fake_services(),
+            );
 
-            let effects = effects.into_effects().expect("should return Some");
             assert!(effects.is_empty());
         }
     }

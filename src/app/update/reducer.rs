@@ -7,8 +7,8 @@
 use std::time::Instant;
 
 use super::{
-    browse, clipboard, connection, dispatch_query, dispatch_result, er, explain, modal, sql_editor,
-    target_routing, text_edit,
+    browse, clipboard, connection, dispatch_query, er, explain, modal, sql_editor, target_routing,
+    text_edit,
 };
 use crate::catalog::HelpDocument;
 use crate::cmd::effect::Effect;
@@ -93,18 +93,18 @@ pub(in crate::update) fn route(
             target,
             direction,
             amount,
-        } => target_routing::scroll(state, target, direction, amount, now, services),
+        } => target_routing::scroll(state, target, direction, amount, services),
         Action::ScrollToCursor { target, position } => {
-            target_routing::scroll_to_cursor(state, target, position, now, services)
+            target_routing::scroll_to_cursor(state, target, position)
         }
         Action::EnterHelpFilter => modal::help::enter_help_filter(state),
         Action::ExitHelpFilter => modal::help::exit_help_filter(state),
         Action::Select(motion) => target_routing::select(state, motion),
         Action::ListSelect { target, motion } => target_routing::list_select(state, target, motion),
-        Action::Paste(text) => target_routing::paste(state, text, now, services),
+        Action::Paste(text) => target_routing::paste(state, text, now),
         Action::BeginKeySequence(prefix) => begin_key_sequence(state, prefix),
-        Action::OpenModal(kind) => target_routing::open_modal(state, kind, now, services),
-        Action::CloseModal(kind) => target_routing::close_modal(state, kind, now, services),
+        Action::OpenModal(kind) => target_routing::open_modal(state, kind, now),
+        Action::CloseModal(kind) => target_routing::close_modal(state, kind, now),
         Action::CancelKeySequence => cancel_key_sequence(state),
         Action::ToggleHelp => modal::help::toggle_help(state),
         Action::Escape => modal::base::escape(state),
@@ -324,6 +324,26 @@ pub(in crate::update) fn route(
             ..
         } => explain::output::explain_failed(state, database_generation, run_id, error),
         Action::CompareEditQuery => explain::tabs::compare_edit_query(state),
+        Action::ResultActivateCell => browse::result::selection::result_activate_cell(state),
+        Action::ResultExitToScroll => browse::result::selection::result_exit_to_scroll(state),
+        Action::ResultCellLeft => browse::result::selection::result_cell_left(state),
+        Action::ResultCellRight => browse::result::selection::result_cell_right(state),
+        Action::ResultCellYank => browse::result::yank::result_cell_yank(state),
+        Action::ResultRowYankOperatorPending => {
+            browse::result::yank::result_row_yank_operator_pending(state)
+        }
+        Action::ResultRowYank => browse::result::yank::result_row_yank(state),
+        Action::DdlYank => browse::result::yank::ddl_yank(state, services),
+        Action::ResultDeleteOperatorPending => {
+            browse::result::selection::result_delete_operator_pending(state)
+        }
+        Action::StageRowForDelete => browse::result::selection::stage_row_for_delete(state),
+        Action::UnstageLastStagedRow => browse::result::selection::unstage_last_staged_row(state),
+        Action::ClearStagedDeletes => browse::result::selection::clear_staged_deletes(state),
+        Action::ResultEnterCellEdit => browse::result::edit::result_enter_cell_edit(state),
+        Action::ResultOpenCellDetail => browse::result::cell_detail::result_open_cell_detail(state),
+        Action::ResultCancelCellEdit => browse::result::edit::result_cancel_cell_edit(state),
+        Action::ResultDiscardCellEdit => browse::result::edit::result_discard_cell_edit(state),
         Action::CopySucceeded(target) => clipboard::copy_succeeded(state, target, now),
         Action::CopyFailed(error) => clipboard::copy_failed(state, &error),
         Action::ToggleFocus => browse::navigation::focus::toggle_focus(state),
@@ -337,6 +357,17 @@ pub(in crate::update) fn route(
         Action::QueryHistoryConfirmSelection => {
             modal::query_history::query_history_confirm_selection(state)
         }
+        Action::DetailSearch { target, step } => {
+            browse::result::detail_search::detail_search(state, target, step)
+        }
+        Action::DetailYankAll(target) => {
+            browse::result::detail_search::detail_yank_all(state, target)
+        }
+        Action::JsonEnterEdit => browse::result::json::json_enter_edit(state),
+        Action::JsonAppendInsert => browse::result::json::json_append_insert(state),
+        Action::JsonExitEdit => browse::result::json::json_exit_edit(state),
+        Action::RowDetailYank => browse::result::row_detail::row_detail_yank(state),
+        Action::RowDetailYankJson => browse::result::row_detail::row_detail_yank_json(state),
         Action::ErToggleSelection => modal::er_picker::er_toggle_selection(state),
         Action::ErSelectAll => modal::er_picker::er_select_all(state),
         Action::ErConfirmSelection => modal::er_picker::er_confirm_selection(state),
@@ -353,7 +384,7 @@ pub(in crate::update) fn route(
             er::diagram::er_diagram_failed(state, run_id, error)
         }
         Action::ErLogWriteFailed(error) => er::diagram::er_log_write_failed(state, error),
-        other => legacy_dispatch(state, other, now, services),
+        other => legacy_dispatch(state, other, now),
     }
 }
 
@@ -361,22 +392,10 @@ pub(in crate::update) fn legacy_dispatch(
     state: &mut AppState,
     action: Action,
     now: Instant,
-    services: &AppServices,
 ) -> Vec<Effect> {
-    if let Some(effects) = dispatch_result(state, &action, services, now)
-        .or_else(|| dispatch_query(state, &action, now))
+    dispatch_query(state, &action, now)
         .into_effects()
-    {
-        return effects;
-    }
-
-    if matches!(
-        action,
-        Action::Scroll { .. } | Action::ScrollToCursor { .. }
-    ) {
-        debug_assert!(false, "unhandled parametric action: {action:?}");
-    }
-    vec![]
+        .unwrap_or_default()
 }
 
 fn quit(state: &mut AppState) -> Vec<Effect> {

@@ -5,7 +5,7 @@ use crate::cmd::effect::Effect;
 /// `Pass` keeps the dispatcher chain moving. `Handled` stops the chain and
 /// returns the effects produced by the reducer, if any.
 #[derive(Debug, Clone)]
-pub enum DispatchResult {
+pub(in crate::update) enum DispatchResult {
     /// The reducer did not handle the action.
     Pass,
     /// The reducer handled the action and produced zero or more effects.
@@ -13,19 +13,19 @@ pub enum DispatchResult {
 }
 
 impl DispatchResult {
-    pub fn pass() -> Self {
+    pub(in crate::update) fn pass() -> Self {
         Self::Pass
     }
 
-    pub fn handled() -> Self {
+    pub(in crate::update) fn handled() -> Self {
         Self::Handled(vec![])
     }
 
-    pub fn handled_with(effects: Vec<Effect>) -> Self {
+    pub(in crate::update) fn handled_with(effects: Vec<Effect>) -> Self {
         Self::Handled(effects)
     }
 
-    pub fn into_effects(self) -> Option<Vec<Effect>> {
+    pub(in crate::update) fn into_effects(self) -> Option<Vec<Effect>> {
         match self {
             Self::Pass => None,
             Self::Handled(effects) => Some(effects),
@@ -33,31 +33,13 @@ impl DispatchResult {
     }
 
     #[must_use]
-    pub fn or_else<F>(self, f: F) -> Self
+    pub(in crate::update) fn or_else<F>(self, f: F) -> Self
     where
         F: FnOnce() -> Self,
     {
         match self {
             Self::Pass => f(),
             Self::Handled(_) => self,
-        }
-    }
-
-    pub fn is_pass(&self) -> bool {
-        matches!(self, Self::Pass)
-    }
-
-    pub fn is_handled(&self) -> bool {
-        matches!(self, Self::Handled(_))
-    }
-
-    pub fn is_handled_and<F>(&self, f: F) -> bool
-    where
-        F: FnOnce(&Vec<Effect>) -> bool,
-    {
-        match self {
-            Self::Handled(effects) => f(effects),
-            Self::Pass => false,
         }
     }
 }
@@ -71,8 +53,14 @@ mod test_support {
             self.into_effects().unwrap()
         }
 
-        pub fn expect(self, msg: &str) -> Vec<Effect> {
-            self.into_effects().expect(msg)
+        pub fn is_handled_and<F>(&self, f: F) -> bool
+        where
+            F: FnOnce(&Vec<Effect>) -> bool,
+        {
+            match self {
+                Self::Handled(effects) => f(effects),
+                Self::Pass => false,
+            }
         }
     }
 }

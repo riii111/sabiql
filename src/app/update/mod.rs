@@ -15,10 +15,9 @@ pub mod reducer;
 pub(in crate::update) mod sql_editor;
 pub(in crate::update) mod target_routing;
 #[cfg(test)]
-pub(crate) mod test_fixtures;
+pub(in crate::update) mod test_fixtures;
 pub(in crate::update) mod text_edit;
 #[cfg(test)]
 mod text_edit_tests;
 // Facade: re-export sub-reducer entry points for update/reducer.rs dispatch
 pub(in crate::update) use browse::query::dispatch_query;
-pub use browse::result::dispatch_result;

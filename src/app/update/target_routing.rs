@@ -16,10 +16,10 @@ pub(in crate::update) fn scroll(
     target: ScrollTarget,
     direction: ScrollDirection,
     amount: ScrollAmount,
-    now: Instant,
     services: &AppServices,
 ) -> Vec<Effect> {
     match target {
+        ScrollTarget::Result => browse::result::scroll::scroll_result(state, direction, amount),
         ScrollTarget::Inspector => {
             browse::navigation::inspector::scroll_inspector(state, direction, amount, services)
         }
@@ -40,19 +40,15 @@ pub(in crate::update) fn scroll(
         ScrollTarget::Explorer => {
             browse::navigation::explorer::scroll_explorer(state, direction, amount)
         }
+        ScrollTarget::CellDetail => {
+            browse::result::cell_detail::scroll_cell_detail(state, direction, amount)
+        }
         ScrollTarget::SqliteDiagnostics => {
             modal::sqlite_diagnostics::scroll_sqlite_diagnostics(state, direction, amount)
         }
-        _ => legacy_dispatch(
-            state,
-            Action::Scroll {
-                target,
-                direction,
-                amount,
-            },
-            now,
-            services,
-        ),
+        ScrollTarget::RowDetail => {
+            browse::result::row_detail::scroll_row_detail(state, direction, amount)
+        }
     }
 }
 
@@ -60,19 +56,14 @@ pub(in crate::update) fn scroll_to_cursor(
     state: &mut AppState,
     target: ScrollToCursorTarget,
     position: CursorPosition,
-    now: Instant,
-    services: &AppServices,
 ) -> Vec<Effect> {
     match target {
         ScrollToCursorTarget::Explorer => {
             browse::navigation::explorer::scroll_to_cursor_explorer(state, position)
         }
-        _ => legacy_dispatch(
-            state,
-            Action::ScrollToCursor { target, position },
-            now,
-            services,
-        ),
+        ScrollToCursorTarget::Result => {
+            browse::result::scroll::scroll_to_cursor_result(state, position)
+        }
     }
 }
 
@@ -106,7 +97,6 @@ pub(in crate::update) fn open_modal(
     state: &mut AppState,
     kind: ModalKind,
     now: Instant,
-    services: &AppServices,
 ) -> Vec<Effect> {
     match kind {
         ModalKind::TablePicker => modal::base::open_modal_table_picker(state),
@@ -117,6 +107,8 @@ pub(in crate::update) fn open_modal(
         ModalKind::QueryHistoryPicker => {
             modal::query_history::open_modal_query_history_picker(state)
         }
+        ModalKind::JsonDetail => browse::result::json::open_modal_json_detail(state),
+        ModalKind::RowDetail => browse::result::row_detail::open_modal_row_detail(state),
         ModalKind::ConnectionSetup => connection::setup::open_modal_connection_setup(state),
         ModalKind::ConnectionSelector => {
             connection::selector::open_modal_connection_selector(state)
@@ -124,7 +116,7 @@ pub(in crate::update) fn open_modal(
         ModalKind::SqliteDiagnostics => {
             modal::sqlite_diagnostics::open_modal_sqlite_diagnostics(state)
         }
-        _ => legacy_dispatch(state, Action::OpenModal(kind), now, services),
+        _ => legacy_dispatch(state, Action::OpenModal(kind), now),
     }
 }
 
@@ -132,7 +124,6 @@ pub(in crate::update) fn close_modal(
     state: &mut AppState,
     kind: ModalKind,
     now: Instant,
-    services: &AppServices,
 ) -> Vec<Effect> {
     match kind {
         ModalKind::TablePicker | ModalKind::CommandPalette => {
@@ -145,20 +136,18 @@ pub(in crate::update) fn close_modal(
         ModalKind::QueryHistoryPicker => {
             modal::query_history::close_modal_query_history_picker(state)
         }
+        ModalKind::JsonDetail => browse::result::json::close_modal_json_detail(state),
+        ModalKind::CellDetail => browse::result::cell_detail::close_modal_cell_detail(state),
+        ModalKind::RowDetail => browse::result::row_detail::close_modal_row_detail(state),
         ModalKind::ConnectionSetup => connection::setup::close_modal_connection_setup(state),
         ModalKind::SqliteDiagnostics => {
             modal::sqlite_diagnostics::close_modal_sqlite_diagnostics(state)
         }
-        _ => legacy_dispatch(state, Action::CloseModal(kind), now, services),
+        _ => legacy_dispatch(state, Action::CloseModal(kind), now),
     }
 }
 
-pub(in crate::update) fn paste(
-    state: &mut AppState,
-    text: String,
-    now: Instant,
-    services: &AppServices,
-) -> Vec<Effect> {
+pub(in crate::update) fn paste(state: &mut AppState, text: String, now: Instant) -> Vec<Effect> {
     match state.input_mode() {
         InputMode::CommandLine => browse::navigation::input::paste_command_line(state, text),
         InputMode::CellEdit => browse::navigation::input::paste_cell_edit(state, text),
@@ -169,6 +158,9 @@ pub(in crate::update) fn paste(
         InputMode::QueryHistoryPicker => {
             browse::navigation::input::paste_query_history_picker(state, text)
         }
-        _ => legacy_dispatch(state, Action::Paste(text), now, services),
+        InputMode::JsonDetail => browse::result::json::paste_json_detail(state, text),
+        InputMode::JsonEdit => browse::result::json::paste_json_edit(state, text),
+        InputMode::CellDetail => browse::result::cell_detail::paste_cell_detail(state, text),
+        _ => legacy_dispatch(state, Action::Paste(text), now),
     }
 }
