@@ -1749,6 +1749,58 @@ mod tests {
         }
     }
 
+    mod sqlite_syntax {
+        use super::*;
+        use rstest::rstest;
+
+        type TokenSummary = Vec<(TokenKind, String, usize, usize)>;
+        type ContextSummary = (Vec<TableReference>, Vec<String>, Option<TableReference>);
+
+        fn token_summary(database_type: DatabaseType, sql: &str) -> TokenSummary {
+            SqlLexer::new(database_type)
+                .tokenize(sql, sql.chars().count())
+                .into_iter()
+                .map(|token| (token.kind, token.text, token.start, token.end))
+                .collect()
+        }
+
+        fn context_summary(database_type: DatabaseType, sql: &str) -> ContextSummary {
+            let lexer = SqlLexer::new(database_type);
+            let tokens = lexer.tokenize(sql, sql.chars().count());
+            let context = lexer.build_context(&tokens, sql.chars().count());
+            (context.tables, context.ctes, context.target_table)
+        }
+
+        #[rstest]
+        #[case::hash("SELECT 1 # FROM users")]
+        #[case::backtick("SELECT `select` FROM users")]
+        #[case::double_quote("SELECT \"users.\" FROM users")]
+        #[case::dash_dash_without_space("SELECT 1--1 FROM users")]
+        #[case::backslash_in_string("SELECT 'it\\'s' FROM users")]
+        #[case::mysql_only_keyword("DESCRIBE users")]
+        #[case::postgresql_only_keyword("SELECT name ILIKE 'a%' FROM users")]
+        fn tokens_follow_postgresql_rules_where_mysql_differs(#[case] sql: &str) {
+            let sqlite = token_summary(DatabaseType::SQLite, sql);
+
+            assert_eq!(sqlite, token_summary(DatabaseType::PostgreSQL, sql));
+            assert_ne!(sqlite, token_summary(DatabaseType::MySQL, sql));
+        }
+
+        #[rstest]
+        #[case::insert_modifier("INSERT LOW_PRIORITY INTO users (id) VALUES (1)")]
+        #[case::update_modifier("UPDATE LOW_PRIORITY users SET name = 'a'")]
+        #[case::delete_modifier("DELETE QUICK FROM users WHERE id = 1")]
+        #[case::index_hint_scope("SELECT * FROM users u IGNORE INDEX FOR JOIN accounts")]
+        #[case::upsert_update("INSERT INTO users (id) VALUES (1) ON DUPLICATE KEY UPDATE id = 2")]
+        #[case::partition("SELECT * FROM users PARTITION (p0) AS u WHERE u.id = 1")]
+        fn statement_context_follows_postgresql_rules_where_mysql_differs(#[case] sql: &str) {
+            let sqlite = context_summary(DatabaseType::SQLite, sql);
+
+            assert_eq!(sqlite, context_summary(DatabaseType::PostgreSQL, sql));
+            assert_ne!(sqlite, context_summary(DatabaseType::MySQL, sql));
+        }
+    }
+
     mod cursor_context {
         use super::*;
 

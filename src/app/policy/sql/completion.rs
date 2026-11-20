@@ -2702,6 +2702,250 @@ mod tests {
         }
     }
 
+    mod postgres_family_names {
+        use super::*;
+        use rstest::rstest;
+
+        fn metadata(schema: &str, tables: &[&str]) -> DatabaseMetadata {
+            let mut metadata = DatabaseMetadata::new(schema.to_string());
+            metadata.table_summaries = tables
+                .iter()
+                .map(|table| {
+                    TableSummary::new(schema.to_string(), (*table).to_string(), None, false)
+                })
+                .collect();
+            metadata
+        }
+
+        fn candidate_texts(
+            engine: &CompletionEngine<'_>,
+            database_type: DatabaseType,
+            sql: &str,
+            cursor: usize,
+            metadata: &DatabaseMetadata,
+            kind: CompletionKind,
+        ) -> Vec<String> {
+            engine
+                .get_candidates_for_database(
+                    sql,
+                    cursor,
+                    Some(metadata),
+                    None,
+                    CompletionDatabaseScope {
+                        database_type,
+                        active_database: Some("app"),
+                    },
+                )
+                .into_iter()
+                .filter(|candidate| candidate.kind == kind)
+                .map(|candidate| candidate.text)
+                .collect()
+        }
+
+        #[rstest]
+        #[case::postgres(DatabaseType::PostgreSQL, "public")]
+        #[case::sqlite(DatabaseType::SQLite, "main")]
+        fn table_candidates_are_schema_qualified_without_quotes_or_databases(
+            #[case] database_type: DatabaseType,
+            #[case] schema: &str,
+        ) {
+            let e = engine();
+            let metadata = metadata(schema, &["users", "My Table"]);
+            let sql = "SELECT * FROM ";
+
+            let tables = candidate_texts(
+                &e,
+                database_type,
+                sql,
+                sql.len(),
+                &metadata,
+                CompletionKind::Table,
+            );
+            let databases = candidate_texts(
+                &e,
+                database_type,
+                sql,
+                sql.len(),
+                &metadata,
+                CompletionKind::Database,
+            );
+
+            assert_eq!(
+                tables,
+                [format!("{schema}.My Table"), format!("{schema}.users")]
+            );
+            assert!(databases.is_empty());
+        }
+
+        #[rstest]
+        #[case::postgres(DatabaseType::PostgreSQL, "public")]
+        #[case::sqlite(DatabaseType::SQLite, "main")]
+        fn case_variant_table_candidates_collapse_to_the_first(
+            #[case] database_type: DatabaseType,
+            #[case] schema: &str,
+        ) {
+            let e = engine();
+            let metadata = metadata(schema, &["foo", "Foo"]);
+            let sql = "SELECT * FROM f";
+
+            let tables = candidate_texts(
+                &e,
+                database_type,
+                sql,
+                sql.len(),
+                &metadata,
+                CompletionKind::Table,
+            );
+
+            assert_eq!(tables, [format!("{schema}.Foo")]);
+        }
+
+        #[rstest]
+        #[case::postgres(DatabaseType::PostgreSQL, "public")]
+        #[case::sqlite(DatabaseType::SQLite, "main")]
+        fn qualifier_uses_the_first_case_insensitive_reference_and_unquoted_columns(
+            #[case] database_type: DatabaseType,
+            #[case] schema: &str,
+        ) {
+            let mut cache = TableDetailCache::default();
+            cache.insert(
+                format!("{schema}.foo"),
+                create_table(schema, "foo", &["foo id", "foo_name"]),
+            );
+            cache.insert(
+                format!("{schema}.bar"),
+                create_table(schema, "bar", &["bar_id"]),
+            );
+            let e = CompletionEngine::new(&cache);
+            let metadata = metadata(schema, &["foo", "bar"]);
+            let sql = "SELECT F. FROM foo f JOIN bar F";
+
+            let columns = candidate_texts(
+                &e,
+                database_type,
+                sql,
+                "SELECT F.".len(),
+                &metadata,
+                CompletionKind::Column,
+            );
+
+            assert_eq!(columns, ["foo id", "foo_name"]);
+        }
+
+        #[rstest]
+        #[case::postgres(DatabaseType::PostgreSQL, "public")]
+        #[case::sqlite(DatabaseType::SQLite, "main")]
+        fn unqualified_reference_resolves_to_the_first_case_insensitive_table(
+            #[case] database_type: DatabaseType,
+            #[case] schema: &str,
+        ) {
+            let mut cache = TableDetailCache::default();
+            cache.insert(
+                format!("{schema}.Foo"),
+                create_table(schema, "Foo", &["upper_column"]),
+            );
+            cache.insert(
+                format!("{schema}.foo"),
+                create_table(schema, "foo", &["lower_column"]),
+            );
+            let e = CompletionEngine::new(&cache);
+            let metadata = metadata(schema, &["Foo", "foo"]);
+            let sql = "SELECT t. FROM foo t";
+
+            let columns = candidate_texts(
+                &e,
+                database_type,
+                sql,
+                "SELECT t.".len(),
+                &metadata,
+                CompletionKind::Column,
+            );
+
+            assert_eq!(columns, ["upper_column"]);
+        }
+
+        #[rstest]
+        #[case::postgres(DatabaseType::PostgreSQL, "public")]
+        #[case::sqlite(DatabaseType::SQLite, "main")]
+        fn schema_qualified_reference_is_looked_up_verbatim(
+            #[case] database_type: DatabaseType,
+            #[case] schema: &str,
+        ) {
+            let mut cache = TableDetailCache::default();
+            cache.insert(
+                format!("{schema}.users"),
+                create_table(schema, "users", &["id"]),
+            );
+            let e = CompletionEngine::new(&cache);
+            let metadata = metadata(schema, &["users"]);
+            let exact = format!("SELECT t. FROM {schema}.users t");
+            let other_case = format!("SELECT t. FROM {}.users t", schema.to_uppercase());
+
+            let exact_columns = candidate_texts(
+                &e,
+                database_type,
+                &exact,
+                "SELECT t.".len(),
+                &metadata,
+                CompletionKind::Column,
+            );
+            let other_case_columns = candidate_texts(
+                &e,
+                database_type,
+                &other_case,
+                "SELECT t.".len(),
+                &metadata,
+                CompletionKind::Column,
+            );
+
+            assert_eq!(exact_columns, ["id"]);
+            assert!(other_case_columns.is_empty());
+        }
+    }
+
+    mod sqlite_lexing {
+        use super::*;
+        use rstest::rstest;
+
+        fn candidate_texts(database_type: DatabaseType, sql: &str) -> Vec<String> {
+            let mut metadata = DatabaseMetadata::new("main".to_string());
+            metadata.table_summaries = vec![TableSummary::new(
+                "main".to_string(),
+                "users".to_string(),
+                None,
+                false,
+            )];
+            engine()
+                .get_candidates_for_database(
+                    sql,
+                    sql.chars().count(),
+                    Some(&metadata),
+                    None,
+                    CompletionDatabaseScope {
+                        database_type,
+                        active_database: None,
+                    },
+                )
+                .into_iter()
+                .map(|candidate| candidate.text)
+                .collect()
+        }
+
+        #[rstest]
+        #[case::hash_is_not_a_comment("# SEL", &["SELECT"])]
+        #[case::backtick_is_not_a_quote("SELECT `SEL", &["SELECT"])]
+        #[case::double_quote_is_an_identifier("SELECT \"SEL", &["SELECT"])]
+        #[case::dash_dash_without_space_starts_a_comment("SELECT 1--1 FROM us", &[])]
+        #[case::backslash_does_not_escape_quotes("SELECT 'it\\'s' AS label FROM us", &[])]
+        fn candidates_follow_postgresql_comment_and_quote_rules(
+            #[case] sql: &str,
+            #[case] expected: &[&str],
+        ) {
+            assert_eq!(candidate_texts(DatabaseType::SQLite, sql), expected);
+            assert_eq!(candidate_texts(DatabaseType::PostgreSQL, sql), expected);
+        }
+    }
+
     mod semicolon_suppression {
         use super::*;
         use rstest::rstest;
