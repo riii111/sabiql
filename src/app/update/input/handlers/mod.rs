@@ -53,6 +53,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
         InputMode::ErTablePicker => return pickers::handle_er_table_picker_keys(combo, state),
         InputMode::CellDetail => return cell_detail::handle_cell_detail_keys(combo, state),
         InputMode::Settings => return pickers::handle_settings_keys(combo, state),
+        InputMode::CommandLine => return editors::handle_command_line_mode(combo, state),
         _ => {}
     }
     let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
@@ -70,9 +71,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
     }
     match state.input_mode() {
         InputMode::Normal => normal::handle_normal_mode(combo, state),
-        InputMode::CommandLine => {
-            editors::handle_command_line_mode_with_policy(combo, &feature_policy)
-        }
+        InputMode::CommandLine => editors::handle_command_line_mode(combo, state),
         InputMode::CellEdit => editors::handle_cell_edit_keys(combo),
         InputMode::TablePicker => pickers::handle_table_picker_keys(combo, state),
         InputMode::CommandPalette => pickers::handle_command_palette_keys(combo, state),

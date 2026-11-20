@@ -242,7 +242,6 @@ mod tests {
             fn all_non_none_bindings_have_combos() {
                 check_non_none_have_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
                 check_non_none_have_combos(IDE_GLOBAL_KEYS, "IDE_GLOBAL_KEYS");
-                check_non_none_have_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
                 check_non_none_have_combos(CELL_EDIT_KEYS, "CELL_EDIT_KEYS");
                 check_non_none_have_combos(JSON_SEARCH_KEYS, "JSON_SEARCH_KEYS");
             }
@@ -370,7 +369,6 @@ mod tests {
             // GLOBAL_KEYS excluded: FOCUS/EXIT_FOCUS share a combo for footer label switching.
             #[test]
             fn no_duplicate_combos_in_simple_modes() {
-                check_no_duplicate_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
                 check_no_duplicate_combos(JSON_SEARCH_KEYS, "JSON_SEARCH_KEYS");
                 check_no_conflicting_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
                 check_no_conflicting_combos(IDE_GLOBAL_KEYS, "IDE_GLOBAL_KEYS");
@@ -406,11 +404,6 @@ mod tests {
                         }
                     }
                 }
-            }
-
-            #[test]
-            fn command_line_has_no_problematic_plain_char_combos() {
-                check_no_plain_char_in_filter_mode(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS", &[]);
             }
 
             #[test]

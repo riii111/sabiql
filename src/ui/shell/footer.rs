@@ -17,8 +17,8 @@ use crate::app::update::input::keybindings::{
     result_active, settings, sql_modal, sqlite_diagnostics, table_picker as table_picker_key,
 };
 use crate::app::update::input::keymap::{
-    HintSurface, KeyContext, Picker, cell_detail_hints, connection_error_hints, picker_hints,
-    settings_hints, sqlite_diagnostics_hints,
+    HintSurface, KeyContext, Picker, cell_detail_hints, command_line_hints, connection_error_hints,
+    picker_hints, settings_hints, sqlite_diagnostics_hints,
 };
 use crate::primitives::atoms::key_text;
 use crate::primitives::atoms::spinner_char;
@@ -63,6 +63,7 @@ impl Footer {
                     Some(connection_error_hints(HintSurface::Footer, &context))
                 }
                 InputMode::Settings => Some(settings_hints(HintSurface::Footer, &context)),
+                InputMode::CommandLine => Some(command_line_hints(HintSurface::Footer, &context)),
                 _ => None,
             };
             let hints = if let Some(ref derived) = derived {
@@ -238,10 +239,6 @@ impl Footer {
                     list
                 }
             }
-            InputMode::CommandLine => vec![
-                overlay::ENTER_EXECUTE.as_hint(),
-                overlay::ESC_CANCEL.as_hint(),
-            ],
             InputMode::CellEdit => vec![
                 cell_edit::WRITE.as_hint(),
                 cell_edit::TYPE.as_hint(),
@@ -259,6 +256,7 @@ impl Footer {
             | InputMode::ConnectionSelector
             | InputMode::ConnectionError
             | InputMode::Settings
+            | InputMode::CommandLine
             | InputMode::QueryHistoryPicker
             | InputMode::ErTablePicker
             | InputMode::SqliteDiagnostics

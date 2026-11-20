@@ -14,9 +14,9 @@ use crate::policy::{FeaturePolicy, FeatureRequirement};
 )]
 use crate::update::input::keybindings::*;
 use crate::update::input::keymap::{
-    HintSurface, KeyContext, Picker, cell_detail_hints, confirm_hints, connection_error_hints,
-    connection_selector_hints, help_hints, picker_hints, row_detail_hints, settings_hints,
-    sqlite_diagnostics_hints,
+    HintSurface, KeyContext, Picker, cell_detail_hints, command_line_hints, confirm_hints,
+    connection_error_hints, connection_selector_hints, help_hints, picker_hints, row_detail_hints,
+    settings_hints, sqlite_diagnostics_hints,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -311,7 +311,10 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
             &global::CONNECTIONS,
             &global::SQL,
         ]),
-        HelpOrigin::CommandLine => command_line_rows(feature_policy),
+        HelpOrigin::CommandLine => command_line_hints(HintSurface::Current, &key_context)
+            .into_iter()
+            .map(|hint| HelpRow::new(hint.key, hint.description))
+            .collect(),
         HelpOrigin::CellEdit => rows_from_bindings(CELL_EDIT_KEYS),
         HelpOrigin::TablePicker => picker_hints(Picker::Table, HintSurface::Current, &key_context)
             .into_iter()
@@ -390,14 +393,6 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
         title: format!("Current: {}", origin.label()),
         rows,
     }
-}
-
-fn command_line_rows(feature_policy: &FeaturePolicy) -> Vec<HelpRow> {
-    rows_from_binding_iter(
-        COMMAND_LINE_KEYS
-            .iter()
-            .filter(|binding| feature_policy.is_enabled(binding.feature_requirement())),
-    )
 }
 
 fn reference_sections(

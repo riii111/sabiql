@@ -1,4 +1,5 @@
-use crate::update::action::ModalKind;
+use crate::update::action::{Action, ModalKind};
+use crate::update::input::keymap::parse_command;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LineCommand {
@@ -8,17 +9,19 @@ pub enum LineCommand {
     Write,
 }
 
-pub fn parse_line_command(input: &str) -> Option<LineCommand> {
-    match input.trim() {
-        "q" | "quit" => Some(LineCommand::Quit),
-        "?" | "help" => Some(LineCommand::Help),
-        "sql" => Some(LineCommand::Open(ModalKind::SqlModal)),
-        "erd" => Some(LineCommand::Open(ModalKind::ErTablePicker)),
-        "settings" | "theme" => Some(LineCommand::Open(ModalKind::Settings)),
-        "palette" => Some(LineCommand::Open(ModalKind::CommandPalette)),
-        "w" | "write" => Some(LineCommand::Write),
-        _ => None,
+impl LineCommand {
+    pub(crate) fn action(self) -> Action {
+        match self {
+            Self::Quit => Action::Quit,
+            Self::Help => Action::ToggleHelp,
+            Self::Open(kind) => Action::OpenModal(kind),
+            Self::Write => Action::SubmitCellEditWrite,
+        }
     }
+}
+
+pub fn parse_line_command(input: &str) -> Option<LineCommand> {
+    parse_command(input)
 }
 
 #[cfg(test)]

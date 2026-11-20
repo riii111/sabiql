@@ -1,4 +1,5 @@
 mod cell_detail;
+mod command;
 mod common;
 mod confirm;
 mod connection_error;
@@ -17,6 +18,7 @@ use crate::ports::inbound::KeyCombo;
 use crate::update::action::{Action, InputTarget};
 
 pub use cell_detail::{cell_detail_action, cell_detail_hints};
+pub use command::{command_line_action, command_line_hints, parse_command};
 pub use confirm::{confirm_action, confirm_hints};
 pub use connection_error::{connection_error_action, connection_error_hints};
 pub use connection_selector::{connection_selector_action, connection_selector_hints};

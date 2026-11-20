@@ -3,6 +3,7 @@ use std::fmt::Write;
 use crate::model::shared::settings::KeymapPreset;
 use crate::ports::inbound::{Key, KeyCombo, Modifiers};
 use crate::update::action::{Action, InputTarget};
+use crate::update::input::command::LineCommand;
 
 use super::{Hint, HintSurface, KeyContext};
 
@@ -10,6 +11,10 @@ use super::{Hint, HintSurface, KeyContext};
 pub(super) enum Trigger {
     Key(KeyCombo),
     AnyModifiers(Key),
+    Command {
+        name: &'static str,
+        aliases: &'static [&'static str],
+    },
     Text,
 }
 
@@ -17,6 +22,7 @@ pub(super) enum Trigger {
 pub(super) enum Output {
     Action(Action),
     Text(InputTarget),
+    Command(LineCommand),
 }
 
 #[derive(Clone)]
@@ -60,6 +66,18 @@ impl Binding {
         }
     }
 
+    pub(super) fn command(
+        command: LineCommand,
+        name: &'static str,
+        aliases: &'static [&'static str],
+    ) -> Self {
+        Self {
+            triggers: vec![Trigger::Command { name, aliases }],
+            ide_triggers: None,
+            output: Output::Command(command),
+        }
+    }
+
     fn triggers(&self, preset: KeymapPreset) -> &[Trigger] {
         match (preset, &self.ide_triggers) {
             (KeymapPreset::Ide, Some(triggers)) => triggers,
@@ -74,6 +92,7 @@ impl Binding {
                 target: *target,
                 ch: ' ',
             }),
+            Output::Command(command) => context.allows(&command.action()),
         }
     }
 }
@@ -93,7 +112,27 @@ pub(super) fn resolve(rows: &[Row], combo: KeyCombo, context: &KeyContext) -> Op
                     Key::Char(ch) => Action::TextInput { target, ch },
                     _ => unreachable!(),
                 },
+                Output::Command(_) => unreachable!(),
             })
+        })
+}
+
+pub(super) fn resolve_command(rows: &[Row], input: &str) -> Option<LineCommand> {
+    let input = input.trim();
+    rows.iter()
+        .flat_map(|row| &row.bindings)
+        .find_map(|binding| {
+            binding
+                .triggers
+                .iter()
+                .find_map(|trigger| match (trigger, &binding.output) {
+                    (Trigger::Command { name, aliases }, Output::Command(command))
+                        if *name == input || aliases.contains(&input) =>
+                    {
+                        Some(*command)
+                    }
+                    _ => None,
+                })
         })
 }
 
@@ -169,6 +208,7 @@ fn matches_combo(trigger: Trigger, combo: KeyCombo) -> bool {
             key == combo
         }
         Trigger::AnyModifiers(key) => key == combo.key,
+        Trigger::Command { .. } => false,
         Trigger::Text => {
             matches!(combo.key, Key::Char(_))
                 && (!combo.modifiers.contains(Modifiers::CTRL)
@@ -206,6 +246,7 @@ fn name(trigger: Trigger, long: bool) -> String {
     let combo = match trigger {
         Trigger::Key(combo) => combo,
         Trigger::AnyModifiers(key) => KeyCombo::plain(key),
+        Trigger::Command { name, .. } => return format!(":{name}"),
         Trigger::Text => return "type".to_string(),
     };
     let mut result = String::new();
@@ -256,6 +297,7 @@ mod tests {
     use crate::update::input::keymap::cell_detail::{
         SEARCHING as CELL_SEARCH_ROWS, VIEWING as CELL_VIEW_ROWS,
     };
+    use crate::update::input::keymap::command::EDITING as COMMAND_EDIT_ROWS;
     use crate::update::input::keymap::confirm::ROWS as CONFIRM_ROWS;
     use crate::update::input::keymap::connection_error::ROWS as CONNECTION_ERROR_ROWS;
     use crate::update::input::keymap::connection_selector::ROWS as CONNECTION_SELECTOR_ROWS;
@@ -277,6 +319,7 @@ mod tests {
             (&*ER_ROWS, Some(' ')),
             (&*CELL_SEARCH_ROWS, None),
             (&*SETTINGS_EDIT_ROWS, None),
+            (&*COMMAND_EDIT_ROWS, None),
             (&*HELP_EDIT_ROWS, None),
         ] {
             for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
@@ -316,6 +359,7 @@ mod tests {
             (&*CONFIRM_ROWS, EngineFeatureProfile::postgres_like()),
             (&*SETTINGS_ROWS, EngineFeatureProfile::postgres_like()),
             (&*SETTINGS_EDIT_ROWS, EngineFeatureProfile::postgres_like()),
+            (&*COMMAND_EDIT_ROWS, EngineFeatureProfile::postgres_like()),
             (
                 &*CONNECTION_ERROR_ROWS,
                 EngineFeatureProfile::postgres_like(),
@@ -345,6 +389,7 @@ mod tests {
                             let combo = match trigger {
                                 Trigger::Key(combo) => *combo,
                                 Trigger::AnyModifiers(key) => KeyCombo::plain(*key),
+                                Trigger::Command { .. } => continue,
                                 Trigger::Text => KeyCombo::plain(Key::Char('x')),
                             };
                             let actual = resolve(rows, combo, &context).unwrap();
@@ -355,6 +400,7 @@ mod tests {
                                 Output::Text(target) => assert!(
                                     matches!(actual, Action::TextInput { target: actual_target, ch: 'x' } if actual_target == *target)
                                 ),
+                                Output::Command(_) => unreachable!(),
                             }
                         }
                     }

@@ -1,8 +1,8 @@
-use crate::policy::FeaturePolicy;
+use crate::model::app_state::AppState;
 use crate::update::action::{Action, InputTarget};
 use crate::update::input::keybindings;
 use crate::update::input::keybindings::{Key, KeyCombo};
-use crate::update::input::keymap;
+use crate::update::input::keymap::{self, KeyContext, command_line_action};
 
 pub(super) fn handle_cell_edit_keys(combo: KeyCombo) -> Action {
     use crate::update::action::CursorMove;
@@ -40,48 +40,14 @@ pub(super) fn handle_cell_edit_keys(combo: KeyCombo) -> Action {
     }
 }
 
-pub(super) fn handle_command_line_mode_with_policy(
-    combo: KeyCombo,
-    feature_policy: &FeaturePolicy,
-) -> Action {
-    use crate::update::action::CursorMove;
-    if let Some(action) =
-        keymap::resolve_with_policy(&combo, keybindings::COMMAND_LINE_KEYS, feature_policy)
-    {
-        return action;
-    }
-    match combo.key {
-        Key::Backspace => Action::TextBackspace {
-            target: InputTarget::CommandLine,
-        },
-        Key::Left => Action::TextMoveCursor {
-            target: InputTarget::CommandLine,
-            direction: CursorMove::Left,
-        },
-        Key::Right => Action::TextMoveCursor {
-            target: InputTarget::CommandLine,
-            direction: CursorMove::Right,
-        },
-        Key::Home => Action::TextMoveCursor {
-            target: InputTarget::CommandLine,
-            direction: CursorMove::Home,
-        },
-        Key::End => Action::TextMoveCursor {
-            target: InputTarget::CommandLine,
-            direction: CursorMove::End,
-        },
-        Key::Char(c) => Action::TextInput {
-            target: InputTarget::CommandLine,
-            ch: c,
-        },
-        _ => Action::None,
-    }
+pub(super) fn handle_command_line_mode(combo: KeyCombo, state: &AppState) -> Action {
+    command_line_action(combo, &KeyContext::from_state(state))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
+    use crate::model::shared::input_mode::InputMode;
     use crate::update::input::keybindings::Key;
     use rstest::rstest;
 
@@ -90,8 +56,9 @@ mod tests {
     }
 
     fn handle_command_line_mode(combo: KeyCombo) -> Action {
-        let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::postgres_like());
-        handle_command_line_mode_with_policy(combo, &feature_policy)
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::CommandLine);
+        super::handle_command_line_mode(combo, &state)
     }
 
     mod cell_edit_mode {

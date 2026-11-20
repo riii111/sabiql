@@ -1,7 +1,5 @@
 use super::KeyBinding;
-use super::{Key, KeyCombo};
 use crate::model::shared::settings::KeymapPreset;
-use crate::update::action::{Action, ModalKind};
 
 // =============================================================================
 // SQL Modal (Normal mode — default when opened)
@@ -449,101 +447,6 @@ pub mod sql_modal_confirming {
 pub const SQL_MODAL_CONFIRMING_KEYS: &[KeyBinding] = &[
     sql_modal_confirming::ENTER_EXECUTE,
     sql_modal_confirming::CANCEL_CONFIRM,
-];
-
-// =============================================================================
-// Command Line
-// =============================================================================
-
-pub const COMMAND_LINE_KEYS: &[KeyBinding] = &[
-    KeyBinding {
-        key_short: ":quit",
-        key: ":quit",
-        desc_short: "Quit",
-        description: "Quit application",
-        action: Action::Quit,
-        combos: &[], // command-line commands, not key combos
-    },
-    KeyBinding {
-        key_short: ":help",
-        key: ":help",
-        desc_short: "Help",
-        description: "Show help",
-        action: Action::ToggleHelp,
-        combos: &[],
-    },
-    KeyBinding {
-        key_short: ":sql",
-        key: ":sql",
-        desc_short: "SQL",
-        description: "Open SQL Editor",
-        action: Action::OpenModal(ModalKind::SqlModal),
-        combos: &[],
-    },
-    KeyBinding {
-        key_short: ":erd",
-        key: ":erd",
-        desc_short: "ER Diagram",
-        description: "Open ER Diagram",
-        action: Action::OpenModal(ModalKind::ErTablePicker),
-        combos: &[],
-    },
-    KeyBinding {
-        key_short: ":settings",
-        key: ":settings",
-        desc_short: "Settings",
-        description: "Open Settings",
-        action: Action::OpenModal(ModalKind::Settings),
-        combos: &[],
-    },
-    KeyBinding {
-        key_short: ":theme",
-        key: ":theme",
-        desc_short: "Theme",
-        description: "Open Theme Settings",
-        action: Action::OpenModal(ModalKind::Settings),
-        combos: &[],
-    },
-    KeyBinding {
-        key_short: ":palette",
-        key: ":palette",
-        desc_short: "Palette",
-        description: "Open Command Palette",
-        action: Action::OpenModal(ModalKind::CommandPalette),
-        combos: &[],
-    },
-    KeyBinding {
-        key_short: "←→",
-        key: "←→",
-        desc_short: "Move",
-        description: "Move cursor",
-        action: Action::None,
-        combos: &[],
-    },
-    KeyBinding {
-        key_short: "Home/End",
-        key: "Home/End",
-        desc_short: "Jump",
-        description: "Jump to start/end",
-        action: Action::None,
-        combos: &[],
-    },
-    KeyBinding {
-        key_short: "Enter",
-        key: "Enter",
-        desc_short: "Submit",
-        description: "Submit command",
-        action: Action::CommandLineSubmit,
-        combos: &[KeyCombo::plain(Key::Enter)],
-    },
-    KeyBinding {
-        key_short: "Esc",
-        key: "Esc",
-        desc_short: "Exit",
-        description: "Exit command line",
-        action: Action::ExitCommandLine,
-        combos: &[KeyCombo::plain(Key::Esc)],
-    },
 ];
 
 // =============================================================================
