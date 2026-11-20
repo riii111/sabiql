@@ -1199,15 +1199,17 @@ mod tests {
             state.ui.help_mut().set_horizontal_offset(4);
             let now = Instant::now();
 
-            reduce(
+            let effects = reduce(
                 &mut state,
                 Action::CloseModal(ModalKind::Help),
                 now,
                 &AppServices::stub(),
             );
 
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(state.ui.help().scroll_offset(), 0);
             assert_eq!(state.ui.help().horizontal_offset(), 0);
+            assert!(effects.is_empty());
         }
     }
 
@@ -1263,25 +1265,6 @@ mod tests {
             // Toggle back to normal
             let effects = reduce(&mut state, Action::ToggleHelp, now, &AppServices::stub());
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn close_help_resets_scroll_offset() {
-            let mut state = create_test_state();
-            state.modal.set_mode(InputMode::Help);
-            state.ui.help_mut().set_scroll_offset(12);
-            let now = Instant::now();
-
-            let effects = reduce(
-                &mut state,
-                Action::CloseModal(ModalKind::Help),
-                now,
-                &AppServices::stub(),
-            );
-
-            assert_eq!(state.input_mode(), InputMode::Normal);
-            assert_eq!(state.ui.help().scroll_offset(), 0);
             assert!(effects.is_empty());
         }
 
@@ -1756,6 +1739,8 @@ mod tests {
             state.connection_error.toggle_details();
             state.connection_error.scroll_down(usize::MAX);
             let now = Instant::now();
+            state.connection_error.mark_copied_at(now);
+            assert!(state.connection_error.is_copied_visible_at(now));
 
             reduce(
                 &mut state,
@@ -1770,23 +1755,6 @@ mod tests {
             // UI state is reset
             assert!(!state.connection_error.details_expanded());
             assert_eq!(state.connection_error.scroll_offset(), 0);
-        }
-
-        #[test]
-        fn close_clears_copied_feedback() {
-            let mut state = state_with_error();
-            let now = Instant::now();
-            state.connection_error.mark_copied_at(now);
-            assert!(state.connection_error.is_copied_visible_at(now));
-
-            reduce(
-                &mut state,
-                Action::CloseConnectionError,
-                now,
-                &AppServices::stub(),
-            );
-
-            // Copied feedback is cleared on close
             assert!(!state.connection_error.is_copied_visible_at(now));
         }
 

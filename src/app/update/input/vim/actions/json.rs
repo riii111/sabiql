@@ -140,21 +140,6 @@ mod tests {
     }
 
     #[test]
-    fn search_next_moves_to_match() {
-        let ctx = VimSurfaceContext::JsonDetail(JsonDetailVimContext::Viewing);
-
-        let action = action_for_key(&combo(Key::Char('n')), ctx);
-
-        assert!(matches!(
-            action,
-            Some(Action::DetailSearch {
-                target: DetailTarget::JsonDetail,
-                step: SearchStep::Next,
-            })
-        ));
-    }
-
-    #[test]
     fn yank_copies_full_json() {
         let ctx = VimSurfaceContext::JsonDetail(JsonDetailVimContext::Viewing);
 

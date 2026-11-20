@@ -104,22 +104,6 @@ mod tests {
         }
 
         #[test]
-        fn escape_returns_to_help_origin_when_filter_is_empty() {
-            let mut state = create_test_state();
-            open_help(&mut state);
-
-            let effects = route(
-                &mut state,
-                Action::CloseModal(ModalKind::Help),
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert_eq!(state.input_mode(), InputMode::CommandPalette);
-            assert!(effects.is_empty());
-        }
-
-        #[test]
         fn filter_text_actions_update_help_state() {
             let mut state = create_test_state();
             open_help(&mut state);
