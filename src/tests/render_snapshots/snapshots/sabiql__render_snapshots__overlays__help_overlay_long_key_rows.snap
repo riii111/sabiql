@@ -8,9 +8,28 @@ expression: output
 │  ▦ public.posts                       ││(select a table)                                                                                                          │
 │  ▦ public.comments                    ││                                                                                                                          │
 │                        ╭ Help ───────────────────────────────────────────────────────────────────────────────────────────────────────────╮                        │
-│                        │  0 / $ / w / b / Home / End           Move by word or line boundary                                            ▲│                        │
-│                        │  gg / G / H / M / L                   Jump by buffer or viewport                                               ││                        │
+│                        │  Ctrl+F                               Move right                                                               ▲│                        │
+│                        │  Ctrl+H                               Delete previous character                                                ││                        │
+│                        │  Ctrl+D                               Delete next character                                                    ││                        │
+│                        │  Ctrl+K                               Cut to line end                                                          ││                        │
+│                        │  Ctrl+U                               Cut to line start                                                        ││                        │
+│                        │  Ctrl+W                               Cut previous word                                                        ││                        │
+│                        │  Ctrl+Y                               Paste cut text                                                           ││                        │
+│                        │  Alt+B                                Move to previous word                                                    ││                        │
+│                        │  Alt+F                                Move to next word                                                        ││                        │
+│                        │  Alt+D                                Cut next word                                                            ││                        │
+│                        │  i                                    Edit active cell                                                         ││                        │
+│                        │  Alt+Enter / F5                       Execute query                                                            ││                        │
+│                        │  y                                    Copy query to clipboard                                                  ┃│                        │
+│                        │  i / A                                Enter Insert mode / append at line end                                   ┃│                        │
+│                        │  Ctrl+L                               Clear editor                                                             ┃│                        │
+│                        │  Ctrl+O                               Open Query History                                                       ┃│                        │
+│                        │  h / l / ← / →                        Move cursor left / right                                                 ┃│                        │
+│                        │  j / k / ↓ / ↑ / Ctrl+N / Ctrl+P      Move cursor down / up                                                    ┃│                        │
+│                        │  0 / $ / w / b / Home / End           Move by word or line boundary                                            ┃│────────────────────────┘
+│                        │  gg / G / H / M / L                   Jump by buffer or viewport                                               ││────────────────────────┐
 │                        │  Esc                                  Close editor                                                             ││                        │
+│                        │  Alt+E                                Run EXPLAIN ANALYZE on current query                                     ││                        │
 │                        │  Esc                                  Return to Normal mode                                                    ││                        │
 │                        │  ← / → / ↑ / ↓                        Move cursor                                                              ││                        │
 │                        │  Home / End                           Line start/end                                                           ││                        │
@@ -22,29 +41,10 @@ expression: output
 │                        │  Home / End                           Jump to start/end                                                        ││                        │
 │                        │  Esc                                  Exit to Cell Active (draft preserved)                                    ││                        │
 │                        │  Enter                                Execute the confirmed statement                                          ││                        │
-│                        │  Esc                                  Cancel and return to editor                                              ┃│                        │
-│                        │                                                                                                                ┃│                        │
-│                        │▸ Search / Filter                                                                                               ┃│                        │
-│                        │  type                                 Type to filter                                                           ┃│                        │
-│                        │  Enter                                Confirm search                                                           ┃│────────────────────────┘
-│                        │  Esc                                  Cancel search                                                            ┃│────────────────────────┐
-│                        │  type                                 Type to search                                                           ┃│                        │
-│                        │  j / k / ↓ / ↑ / Ctrl+N / Ctrl+P      Scroll down / up                                                         ┃│                        │
-│                        │  h / l / ← / →                        Scroll left / right                                                      ││                        │
-│                        │  Ctrl+D / Ctrl+U                      Scroll half page down / up                                               ││                        │
-│                        │  PageDown / PageUp / Ctrl+F / Ctrl+B  Scroll full page down / up                                               ││                        │
-│                        │  Home / End                           Jump to top / bottom                                                     ││                        │
-│                        │  /                                    Edit filter                                                              ││                        │
-│                        │  Esc / ?                              Close help                                                               ││                        │
+│                        │  Esc                                  Cancel and return to editor                                              ││                        │
 │                        │                                                                                                                ││                        │
-│                        │▸ Connections                                                                                                   ││                        │
-│                        │  Tab / Shift+Tab                      Next/Previous field                                                      ││                        │
-│                        │  Enter                                Toggle dropdown                                                          ││                        │
-│                        │  Ctrl+S                               Save and connect                                                         ││                        │
-│                        │  Esc                                  Cancel                                                                   ││                        │
-│                        │  Enter                                Confirm dropdown selection                                               ││                        │
-│                        │  ↓ / Ctrl+N / ↑ / Ctrl+P              Dropdown navigation                                                      ││                        │
-│                        │  Esc                                  Cancel dropdown                                                          ▼│                        │
+│                        │▸ Search / Filter                                                                                               ││                        │
+│                        │  type                                 Type to filter                                                           ▼│                        │
 │                        │─────────────────────────────────────────────────────────────────────────────────────────────────────────────────│                        │
 │                        │ [BROWSE]                                                                                                        │                        │
 │                        ╰ /: Filter │ Esc/?: Close ───────────────────────────────────────────────────────────────────────────────────────╯                        │

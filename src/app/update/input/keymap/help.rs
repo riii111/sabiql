@@ -32,6 +32,7 @@ pub(super) static VIEWING: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Filter",
             description: "Edit filter",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: &[
@@ -48,6 +49,7 @@ pub(super) static VIEWING: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Close",
             description: "Close help",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: &[
@@ -69,6 +71,7 @@ pub(super) static EDITING: LazyLock<Vec<Row>> = LazyLock::new(|| {
         )],
         short: "Browse",
         description: "Return to help browsing",
+        references: &[],
         dynamic_label: None,
         visible: None,
         surfaces: &[HintSurface::Border, HintSurface::Current],
@@ -78,6 +81,7 @@ pub(super) static EDITING: LazyLock<Vec<Row>> = LazyLock::new(|| {
         bindings: vec![Binding::text(InputTarget::HelpFilter)],
         short: "Filter",
         description: "Filter help",
+        references: &[],
         dynamic_label: None,
         visible: None,
         surfaces: &[HintSurface::Current],

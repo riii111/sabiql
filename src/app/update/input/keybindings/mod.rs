@@ -32,9 +32,6 @@ impl KeyBinding {
     }
 }
 
-pub const HELP_KEY_INDENT_WIDTH: usize = 2;
-pub const HELP_KEY_DESC_GAP: usize = 2;
-
 pub fn global_action_for_with_policy(
     combo: &KeyCombo,
     preset: KeymapPreset,

@@ -2,9 +2,9 @@ use super::*;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use sabiql_app::model::app_state::AppState;
-use sabiql_app::model::shared::help::HelpOrigin;
 use sabiql_app::model::shared::settings::KeymapPreset;
 use sabiql_app::policy::write::sql_risk::AcknowledgeReason;
+use sabiql_app::update::input::keymap::KeyContext;
 use sabiql_domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 use sabiql_domain::{
     ConnectionId, DatabaseDiagnostic, DiagnosticField, DiagnosticLevel, QueryResult,
@@ -489,7 +489,7 @@ fn help_overlay_filtered_current_result() {
 
     state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 0);
-    let origin = HelpOrigin::from_state(&state);
+    let origin = KeyContext::from_state(&state);
     state.ui.help_mut().open(origin);
     for ch in "copy".chars() {
         state.ui.help_mut().insert_filter_char(ch);

@@ -75,12 +75,17 @@ fn rows(picker: Picker) -> Vec<Row> {
             HintSurface::Advanced,
         ]
     } else {
-        &[HintSurface::Border, HintSurface::Current]
+        &[
+            HintSurface::Border,
+            HintSurface::Current,
+            HintSurface::ModalBasics,
+        ]
     };
     let mut rows = vec![Row {
         bindings: vec![Binding::action(confirm, &[KeyCombo::plain(Key::Enter)])],
         short,
         description,
+        references: &[],
         dynamic_label: None,
         visible: None,
         surfaces: button_surfaces,
@@ -94,6 +99,7 @@ fn rows(picker: Picker) -> Vec<Row> {
                 )],
                 short: "Select",
                 description: "Toggle table selection",
+                references: &[],
                 dynamic_label: None,
                 visible: None,
                 surfaces: button_surfaces,
@@ -105,6 +111,7 @@ fn rows(picker: Picker) -> Vec<Row> {
                 )],
                 short: "All",
                 description: "Select/deselect all tables",
+                references: &[],
                 dynamic_label: None,
                 visible: None,
                 surfaces: button_surfaces,
@@ -122,6 +129,7 @@ fn rows(picker: Picker) -> Vec<Row> {
             bindings: vec![Binding::text(input)],
             short: "Filter",
             description: "Type to filter",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: filter_surfaces,
@@ -134,6 +142,7 @@ fn rows(picker: Picker) -> Vec<Row> {
         )],
         short: "Close",
         description: "Close",
+        references: &[],
         dynamic_label: None,
         visible: None,
         surfaces: button_surfaces,

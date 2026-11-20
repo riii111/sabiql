@@ -59,6 +59,7 @@ static COMMANDS: LazyLock<Vec<Row>> = LazyLock::new(|| {
         bindings: vec![Binding::command(command, name, aliases)],
         short,
         description,
+        references: &[],
         dynamic_label: None,
         visible: if command == LineCommand::Write {
             Some(|context, surface| {
@@ -91,6 +92,7 @@ pub(super) static EDITING: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Submit",
             description: "Submit command",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: &[HintSurface::Footer, HintSurface::Current],
@@ -102,6 +104,7 @@ pub(super) static EDITING: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Exit",
             description: "Exit command line",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: &[HintSurface::Footer, HintSurface::Current],
@@ -112,6 +115,7 @@ pub(super) static EDITING: LazyLock<Vec<Row>> = LazyLock::new(|| {
         bindings: vec![Binding::text(InputTarget::CommandLine)],
         short: "Type",
         description: "Enter command",
+        references: &[],
         dynamic_label: None,
         visible: None,
         surfaces: &[],

@@ -24,6 +24,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Retry",
             description: "Retry connection",
+            references: &[],
             dynamic_label: None,
             visible: Some(|context, surface| {
                 surface != HintSurface::Footer || context.can_retry_connection()
@@ -37,6 +38,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Edit",
             description: "Edit connection settings",
+            references: &[],
             dynamic_label: None,
             visible: Some(|context, surface| {
                 surface != HintSurface::Footer || !context.can_retry_connection()
@@ -50,6 +52,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Switch",
             description: "Switch to another connection",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: action_surfaces,
@@ -61,6 +64,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Details",
             description: "Toggle error details and requirements",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: &[
@@ -77,6 +81,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Copy",
             description: "Copy error to clipboard",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: action_surfaces,
@@ -89,6 +94,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Close",
             description: "Close",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: &[

@@ -7,7 +7,6 @@ use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::connection::error::ConnectionErrorInfo;
 use sabiql_app::model::connection::setup::ConnectionField;
 use sabiql_app::model::shared::focused_pane::FocusedPane;
-use sabiql_app::model::shared::help::HelpOrigin;
 use sabiql_app::model::shared::input_mode::InputMode;
 use sabiql_app::model::shared::key_sequence::{KeySequenceState, Prefix};
 use sabiql_app::model::shared::settings::KeymapPreset;
@@ -150,7 +149,7 @@ fn capture(name: &str, mut state: AppState, output: &mut String) {
         writeln!(output, "border: {}", &line[start..end]).unwrap();
     }
 
-    let origin = HelpOrigin::from_state(&state);
+    let origin = KeyContext::from_state(&state);
     state.ui.help_mut().open(origin);
     let help = HelpDocument::from_state(&state);
     if let Some(current) = help.sections().first() {

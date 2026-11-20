@@ -11,8 +11,8 @@ use crate::update::action::{
     TextKillDirection,
 };
 
-use super::model::{Binding, Row, resolve};
-use super::{HintSurface, KeyContext};
+use super::model::{Binding, Row, hints, resolve};
+use super::{Hint, HintSurface, KeyContext};
 
 static READLINE: LazyLock<Vec<(InputTarget, Vec<Row>)>> = LazyLock::new(|| {
     [
@@ -85,11 +85,21 @@ pub(super) fn consume_readline(target: InputTarget) -> Vec<Row> {
         .find(|(candidate, _)| *candidate == target)
         .map_or_default(|(_, rows)| rows.clone());
     for row in &mut rows {
+        row.references = &[];
         for binding in &mut row.bindings {
             *binding = binding.clone().consume();
         }
     }
     rows
+}
+
+pub(crate) fn readline_hints(context: &KeyContext) -> Vec<Hint> {
+    READLINE
+        .iter()
+        .find(|(target, _)| *target == InputTarget::CommandLine)
+        .map_or_else(Vec::new, |(_, rows)| {
+            hints(rows, context, HintSurface::Editing)
+        })
 }
 
 pub(super) fn detail_search(
@@ -108,6 +118,7 @@ pub(super) fn detail_search(
             )],
             short: "Confirm",
             description: "Confirm search",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: &[
@@ -126,6 +137,7 @@ pub(super) fn detail_search(
             )],
             short: "Cancel",
             description: "Cancel search",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: &[
@@ -144,6 +156,7 @@ pub(super) fn detail_search(
         bindings: vec![Binding::text(input)],
         short: "Search",
         description: "Type to search",
+        references: &[],
         dynamic_label: None,
         visible: None,
         surfaces: &[
@@ -200,6 +213,7 @@ pub(super) fn document_navigation(target: InputTarget, shifted_prefix: bool) -> 
             ],
             short: "Left/Right",
             description: "Move cursor left / right",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: &[
@@ -229,6 +243,7 @@ pub(super) fn document_navigation(target: InputTarget, shifted_prefix: bool) -> 
             ],
             short: "Down/Up",
             description: "Move cursor down / up",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: &[
@@ -241,6 +256,7 @@ pub(super) fn document_navigation(target: InputTarget, shifted_prefix: bool) -> 
             bindings: jumps,
             short: "Jump",
             description: "Move by word or line boundary",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: &[HintSurface::Current, HintSurface::Advanced],
@@ -269,6 +285,7 @@ pub(super) fn document_navigation(target: InputTarget, shifted_prefix: bool) -> 
             ],
             short: "View",
             description: "Jump by buffer or viewport",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: &[HintSurface::Current, HintSurface::Advanced],
@@ -398,6 +415,7 @@ pub(super) fn list_navigation(target: ListTarget, vim_keys: bool) -> Row {
         ],
         short: "Navigate",
         description: "Navigate",
+        references: &[],
         dynamic_label: None,
         visible: None,
         surfaces: &[HintSurface::Current],
@@ -415,6 +433,7 @@ fn hidden(action: Action, key: Key, modifiers: KeyModifiers) -> Row {
         bindings: vec![binding],
         short: "",
         description: "",
+        references: &[],
         dynamic_label: None,
         visible: None,
         surfaces: &[],
@@ -426,10 +445,57 @@ fn hidden_combo(action: Action, combo: KeyCombo) -> Row {
 }
 
 fn hidden_binding(action: Action, combos: &[KeyCombo]) -> Row {
+    let description = match &action {
+        Action::TextMoveCursor {
+            direction: CursorMove::LineStart,
+            ..
+        } => "Move to line start",
+        Action::TextMoveCursor {
+            direction: CursorMove::LineEnd,
+            ..
+        } => "Move to line end",
+        Action::TextMoveCursor {
+            direction: CursorMove::Left,
+            ..
+        } => "Move left",
+        Action::TextMoveCursor {
+            direction: CursorMove::Right,
+            ..
+        } => "Move right",
+        Action::TextMoveCursor {
+            direction: CursorMove::ReadlineWordStart,
+            ..
+        } => "Move to previous word",
+        Action::TextMoveCursor {
+            direction: CursorMove::ReadlineWordEnd,
+            ..
+        } => "Move to next word",
+        Action::TextBackspace { .. } => "Delete previous character",
+        Action::TextDelete { .. } => "Delete next character",
+        Action::TextKill {
+            direction: TextKillDirection::ToLineEnd,
+            ..
+        } => "Cut to line end",
+        Action::TextKill {
+            direction: TextKillDirection::ToLineStart,
+            ..
+        } => "Cut to line start",
+        Action::TextKill {
+            direction: TextKillDirection::ReadlinePreviousWhitespace,
+            ..
+        } => "Cut previous word",
+        Action::TextKill {
+            direction: TextKillDirection::ReadlineWordEnd,
+            ..
+        } => "Cut next word",
+        Action::TextYank { .. } => "Paste cut text",
+        _ => unreachable!(),
+    };
     Row {
         bindings: vec![Binding::action(action, combos)],
         short: "",
-        description: "",
+        description,
+        references: &[HintSurface::Editing],
         dynamic_label: None,
         visible: None,
         surfaces: &[],

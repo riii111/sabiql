@@ -20,6 +20,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
         ],
         short: "Normal",
         description: "Return to Normal mode",
+        references: &[],
         dynamic_label: None,
         visible: None,
         surfaces: &[
@@ -43,6 +44,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
         .collect(),
         short: "Move",
         description: "Move cursor",
+        references: &[],
         dynamic_label: None,
         visible: None,
         surfaces: &[
@@ -60,6 +62,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             .collect(),
         short: "Line",
         description: "Line start/end",
+        references: &[],
         dynamic_label: None,
         visible: None,
         surfaces: &[
@@ -78,6 +81,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             bindings: vec![Binding::any_modifiers(action, key)],
             short: "",
             description: "",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: &[],
@@ -87,6 +91,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
         bindings: vec![Binding::text_any_modifiers(target)],
         short: "",
         description: "",
+        references: &[],
         dynamic_label: None,
         visible: None,
         surfaces: &[],

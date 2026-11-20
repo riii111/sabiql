@@ -55,6 +55,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
                 ],
                 short: "Palette",
                 description: "Open Command Palette",
+                references: &[HintSurface::Common],
                 dynamic_label: None,
                 visible: None,
                 surfaces: &[],
@@ -63,6 +64,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             Some(regular_footer),
         ),
         Row {
+            references: &[HintSurface::Common],
             dynamic_label: Some(|context| {
                 if context.browse_focused() {
                     ("Exit Focus", "Exit Focus mode")
@@ -87,39 +89,51 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             ..row(Action::ToggleFocus, 'f', "Focus", "Toggle Focus mode")
         },
         footer(
-            row(Action::ReloadMetadata, 'r', "Reload", "Reload metadata"),
+            reference(
+                row(Action::ReloadMetadata, 'r', "Reload", "Reload metadata"),
+                &[HintSurface::Current, HintSurface::DataActions],
+            ),
             HintSurface::FooterAction,
             Some(|context, surface| {
-                surface == HintSurface::Palette
+                surface != HintSurface::FooterAction
                     || (regular_footer(context, surface) && context.browse_connected())
             }),
         ),
         footer(
-            row(
-                Action::OpenModal(ModalKind::SqlModal),
-                's',
-                "SQL",
-                "Open SQL Editor",
+            reference(
+                row(
+                    Action::OpenModal(ModalKind::SqlModal),
+                    's',
+                    "SQL",
+                    "Open SQL Editor",
+                ),
+                &[HintSurface::Current, HintSurface::OpenSwitch],
             ),
             HintSurface::FooterAction,
             Some(regular_footer),
         ),
         footer(
-            row(
-                Action::OpenModal(ModalKind::ErTablePicker),
-                'e',
-                "ER Diagram",
-                "Open ER Diagram",
+            reference(
+                row(
+                    Action::OpenModal(ModalKind::ErTablePicker),
+                    'e',
+                    "ER Diagram",
+                    "Open ER Diagram",
+                ),
+                &[HintSurface::Current, HintSurface::OpenSwitch],
             ),
             HintSurface::FooterAction,
             Some(regular_footer),
         ),
         footer(
-            row(
-                Action::OpenModal(ModalKind::ConnectionSelector),
-                'c',
-                "Connections",
-                "Open Connection Selector",
+            reference(
+                row(
+                    Action::OpenModal(ModalKind::ConnectionSelector),
+                    'c',
+                    "Connections",
+                    "Open Connection Selector",
+                ),
+                &[HintSurface::Current, HintSurface::OpenSwitch],
             ),
             HintSurface::FooterAction,
             None,
@@ -135,6 +149,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
                 ],
                 short: "Diagnostics",
                 description: "Open SQLite Diagnostics",
+                references: &[HintSurface::Current, HintSurface::OpenSwitch],
                 dynamic_label: None,
                 visible: None,
                 surfaces: &[HintSurface::Palette],
@@ -144,6 +159,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
         ),
         footer(
             Row {
+                references: &[HintSurface::Current, HintSurface::DataActions],
                 bindings: vec![
                     Binding::action(Action::RequestCsvExport, &[KeyCombo::ctrl(Key::Char('e'))])
                         .ide(&[KeyCombo::plain(Key::Char('E'))])
@@ -162,6 +178,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
         ),
         footer(
             Row {
+                references: &[HintSurface::Common],
                 dynamic_label: Some(|context| {
                     if context.browse_read_only() {
                         ("Read-Write", "Disable Read-Only mode")
@@ -195,12 +212,18 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
 });
 
 fn regular_footer(context: &KeyContext, surface: HintSurface) -> bool {
-    surface == HintSurface::Palette
+    !matches!(surface, HintSurface::FooterAction | HintSurface::FooterHelp)
         || (!context.browse_focused() && context.browse_pane() != BrowsePane::ResultCell)
 }
 
 fn non_cell_footer(context: &KeyContext, surface: HintSurface) -> bool {
-    surface == HintSurface::Palette || context.browse_pane() != BrowsePane::ResultCell
+    !matches!(surface, HintSurface::FooterAction | HintSurface::FooterHelp)
+        || context.browse_pane() != BrowsePane::ResultCell
+}
+
+fn reference(mut row: Row, references: &'static [HintSurface]) -> Row {
+    row.references = references;
+    row
 }
 
 fn footer(
@@ -224,6 +247,7 @@ fn row(action: Action, key: char, short: &'static str, description: &'static str
         bindings: vec![Binding::action(action, &[KeyCombo::plain(Key::Char(key))])],
         short,
         description,
+        references: &[HintSurface::Common],
         dynamic_label: None,
         visible: None,
         surfaces: &[HintSurface::Palette],
@@ -244,6 +268,7 @@ fn preset_row(
         ],
         short,
         description,
+        references: &[HintSurface::Current, HintSurface::OpenSwitch],
         dynamic_label: None,
         visible: None,
         surfaces: &[HintSurface::Palette],

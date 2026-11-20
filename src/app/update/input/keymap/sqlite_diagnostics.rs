@@ -23,6 +23,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Run check",
             description: "Run quick check",
+            references: &[],
             dynamic_label: None,
             visible: Some(|context, surface| {
                 surface != HintSurface::Border || context.can_run_diagnostics()
@@ -40,6 +41,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Help",
             description: "Toggle help",
+            references: &[],
             dynamic_label: None,
             visible: Some(|context, surface| {
                 surface != HintSurface::Footer || context.supports_diagnostics()
@@ -57,6 +59,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Close",
             description: "Close",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: &[

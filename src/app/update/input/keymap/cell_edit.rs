@@ -16,6 +16,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
         )],
         short: "Cmd",
         description: "Open command line",
+        references: &[],
         dynamic_label: None,
         visible: None,
         surfaces: &[HintSurface::Current, HintSurface::Editing],
@@ -26,6 +27,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
         bindings: vec![Binding::text(InputTarget::ResultCellEdit)],
         short: "Edit",
         description: "Edit cell value",
+        references: &[],
         dynamic_label: None,
         visible: None,
         surfaces: &[
@@ -42,6 +44,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
         )],
         short: "Normal",
         description: "Exit to Cell Active (draft preserved)",
+        references: &[],
         dynamic_label: None,
         visible: None,
         surfaces: &[

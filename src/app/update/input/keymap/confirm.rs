@@ -18,6 +18,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Confirm",
             description: "Confirm",
+            references: &[],
             dynamic_label: None,
             visible: Some(|context, surface| {
                 surface != HintSurface::Border || !context.is_confirm_blocked()
@@ -36,6 +37,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Cancel",
             description: "Cancel",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: &[

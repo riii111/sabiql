@@ -35,23 +35,30 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
             &[HintSurface::Current, HintSurface::FooterAction],
         )
     });
+    let mut pane_switch = Vec::new();
     for (key, target) in [
         ('1', FocusedPane::Explorer),
         ('2', FocusedPane::Inspector),
         ('3', FocusedPane::Result),
     ] {
-        rows.push(row(
-            vec![
-                Binding::any_modifiers(Action::ToggleFocus, Key::Char(key))
-                    .when(KeyContext::browse_focused),
-                Binding::any_modifiers(Action::SetFocusedPane(target), Key::Char(key))
-                    .when(|context| !context.browse_focused()),
-            ],
+        pane_switch.push(
+            Binding::any_modifiers(Action::ToggleFocus, Key::Char(key))
+                .when(KeyContext::browse_focused),
+        );
+        pane_switch.push(
+            Binding::any_modifiers(Action::SetFocusedPane(target), Key::Char(key))
+                .when(|context| !context.browse_focused()),
+        );
+    }
+    rows.push(Row {
+        references: &[HintSurface::OpenSwitch],
+        ..row(
+            pane_switch,
             "Pane",
             "Switch pane focus",
             &[HintSurface::Current],
-        ));
-    }
+        )
+    });
     for key in ['n', 'p'] {
         rows.push(row(
             vec![Binding::with_ctrl(Action::None, Key::Char(key)).consume()],
@@ -85,6 +92,7 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
                 &[HintSurface::Current],
             ));
             rows.push(Row {
+                references: &[HintSurface::DataActions],
                 visible: Some(|context, surface| {
                     surface != HintSurface::FooterAction
                         || (!context.browse_focused()
@@ -101,6 +109,7 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
                 )
             });
             rows.push(Row {
+                references: &[HintSurface::OpenSwitch],
                 visible: Some(|context, surface| {
                     surface != HintSurface::FooterNavigation
                         || context.browse_multiple_inspector_tabs()
@@ -125,6 +134,7 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
                     &[HintSurface::Current, HintSurface::FooterAction],
                 ));
                 rows.push(Row {
+                    references: &[HintSurface::DataActions],
                     visible: Some(|context, surface| {
                         surface != HintSurface::FooterClose || context.browse_staged_delete()
                     }),
@@ -155,6 +165,7 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
                 ));
             } else {
                 rows.push(Row {
+                    references: &[HintSurface::DataActions],
                     visible: Some(|context, surface| {
                         !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
                             || (!context.browse_staged_delete() && !context.browse_draft())
@@ -170,6 +181,7 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
                     )
                 });
                 rows.push(Row {
+                    references: &[],
                     dynamic_label: Some(|context| {
                         if context.browse_draft() {
                             ("Discard", "Discard pending draft")
@@ -190,6 +202,7 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
                     )
                 });
                 rows.push(Row {
+                    references: &[HintSurface::Editing],
                     visible: Some(|context, surface| {
                         !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
                             || (!context.browse_staged_delete()
@@ -206,6 +219,7 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
                     )
                 });
                 rows.push(Row {
+                    references: &[HintSurface::DataActions],
                     visible: Some(|context, surface| {
                         !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
                             || (!context.browse_staged_delete() && !context.browse_draft())
@@ -223,6 +237,7 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
                     )
                 });
                 rows.push(Row {
+                    references: &[HintSurface::DataActions],
                     visible: Some(|context, surface| {
                         !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
                             || (!context.browse_draft()
@@ -242,6 +257,7 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
                 });
             }
             rows.push(Row {
+                references: &[HintSurface::DataActions],
                 visible: Some(|context, surface| {
                     !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
                         || !context.browse_draft()
@@ -262,6 +278,7 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
                 )
             });
             rows.push(Row {
+                references: &[HintSurface::DataActions],
                 visible: Some(|context, surface| {
                     !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
                         || !context.browse_draft()
@@ -279,6 +296,7 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
                 )
             });
             rows.push(Row {
+                references: &[HintSurface::DataActions],
                 visible: Some(|context, surface| {
                     !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
                         || !context.browse_draft()
@@ -324,6 +342,7 @@ fn row(
         bindings,
         short,
         description,
+        references: &[],
         dynamic_label: None,
         visible: None,
         surfaces,
@@ -559,6 +578,17 @@ pub fn browse_action(combo: KeyCombo, context: &KeyContext) -> Action {
 
 pub fn browse_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
     let rows = active_rows(context);
+    if surface == HintSurface::Current {
+        let (global, pane): (Vec<_>, Vec<_>) = indexed_hints(rows, context, surface)
+            .into_iter()
+            .partition(|(index, _)| *index < global::ROWS.len());
+        let mut result: Vec<_> = pane.into_iter().map(|(_, hint)| hint).collect();
+        if context.pending_prefix().is_none() {
+            result.extend(super::command::browse_write_hints(context));
+        }
+        result.extend(global.into_iter().map(|(_, hint)| hint));
+        return result;
+    }
     if surface != HintSurface::Footer {
         return hints(rows, context, surface);
     }
@@ -574,10 +604,26 @@ pub fn browse_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
             .into_iter()
             .partition(|(index, _)| *index < global::ROWS.len());
         result.extend(pane.into_iter().map(|(_, hint)| hint));
-        if group == HintSurface::FooterAction {
+        if group == HintSurface::FooterAction && context.pending_prefix().is_none() {
             result.extend(super::command::browse_write_hints(context));
         }
         result.extend(global.into_iter().map(|(_, hint)| hint));
+    }
+    result
+}
+
+pub(crate) fn reference_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
+    let mut result = Vec::new();
+    for pane in [
+        BrowsePane::Explorer,
+        BrowsePane::Inspector,
+        BrowsePane::ResultScroll,
+        BrowsePane::ResultCell,
+    ] {
+        for staged in [false, true] {
+            let context = context.clone().with_browse_reference(pane, staged);
+            result.extend(hints(active_rows(&context), &context, surface));
+        }
     }
     result
 }

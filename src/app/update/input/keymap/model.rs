@@ -51,6 +51,7 @@ pub(super) struct Row {
     pub bindings: Vec<Binding>,
     pub short: &'static str,
     pub description: &'static str,
+    pub references: &'static [HintSurface],
     pub dynamic_label: Option<fn(&KeyContext) -> (&'static str, &'static str)>,
     pub visible: Option<fn(&KeyContext, HintSurface) -> bool>,
     pub surfaces: &'static [HintSurface],
@@ -324,7 +325,7 @@ pub(super) fn indexed_hints(
     rows.iter()
         .enumerate()
         .filter(|(_, row)| {
-            row.surfaces.contains(&surface)
+            (row.surfaces.contains(&surface) || row.references.contains(&surface))
                 && row.visible.is_none_or(|visible| visible(context, surface))
         })
         .filter_map(|(row_index, row)| {
@@ -388,6 +389,8 @@ fn display_hint(
             | HintSurface::DataActions
             | HintSurface::ExplainPlaceholder
             | HintSurface::Navigation
+            | HintSurface::Common
+            | HintSurface::OpenSwitch
             | HintSurface::Palette
     ) {
         long_name(triggers)
@@ -405,6 +408,13 @@ fn display_hint(
 }
 
 fn winner(rows: &[Row], context: &KeyContext, trigger: Trigger) -> Option<(usize, usize)> {
+    if let Some(pending) = context.pending_prefix()
+        && (context.cancel_unmatched_sql_prefix()
+            || sequence_bindings(rows, context).next().is_some())
+        && !matches!(trigger, Trigger::Sequence { prefix, .. } if prefix == pending)
+    {
+        return None;
+    }
     rows.iter().enumerate().find_map(|(row_index, row)| {
         row.bindings
             .iter()

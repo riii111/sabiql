@@ -36,9 +36,15 @@ ToggleFocus: 'f'
 ToggleHelp: '?'
 ToggleReadOnly: ^'r'
 footer: ^P:Tables  f:Focus  r:Reload  s:SQL  e:ER Diagram  c:Connections  ^R:Read-Only  ^O:History  ?:Help  ,:Settings  F1:Palette  q:Quit
+help: 1 / 2 / 3: Switch pane focus
+help: Enter: Select table
+help: Esc: Cancel
 help: Ctrl+P: Open Table Picker
-help: c: Open Connection Selector
+help: r: Reload metadata
 help: s: Open SQL Editor
+help: e: Open ER Diagram
+help: c: Open Connection Selector
+help: Ctrl+O: Open Query History
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
@@ -683,9 +689,15 @@ ToggleFocus: 'f'
 ToggleHelp: '?'
 ToggleReadOnly: ^'r'
 footer: ^P:Tables  f:Focus  r:Reload  s:SQL  e:ER Diagram  c:Connections  ^R:Read-Only  ^O:History  Tab/⇧Tab:InsTabs  ?:Help  ,:Settings  F1:Palette  q:Quit
+help: 1 / 2 / 3: Switch pane focus
+help: Esc: Cancel
+help: Tab / Shift+Tab: Inspector prev/next tab
+help: Ctrl+P: Open Table Picker
+help: r: Reload metadata
+help: s: Open SQL Editor
+help: e: Open ER Diagram
 help: c: Open Connection Selector
-help: Tab/⇧Tab: Inspector prev/next tab
-help: y: Copy DDL to clipboard
+help: Ctrl+O: Open Query History
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
@@ -733,10 +745,16 @@ ToggleFocus: 'f'
 ToggleHelp: '?'
 ToggleReadOnly: ^'r'
 footer: Enter:Select  ^P:Tables  f:Focus  r:Reload  s:SQL  e:ER Diagram  c:Connections  ^R:Read-Only  ^O:History  ?:Help  ,:Settings  F1:Palette  q:Quit
+help: 1 / 2 / 3: Switch pane focus
 help: Enter: Enter cell selection at the current viewport anchor
-help: c: Open Connection Selector
+help: Esc: Cancel
 help: ] / [: Next/Previous page
-help: Ctrl+E: Export result to CSV
+help: Ctrl+P: Open Table Picker
+help: r: Reload metadata
+help: s: Open SQL Editor
+help: e: Open ER Diagram
+help: c: Open Connection Selector
+help: Ctrl+O: Open Query History
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
@@ -781,10 +799,16 @@ ToggleFocus: '1', ^'1', ⌥'1', ^⌥'1', ⇧'1', ^⇧'1', '2', ^'2', ⌥'2', ^�
 ToggleHelp: '?'
 ToggleReadOnly: ^'r'
 footer: Enter:Select  c:Connections  ?:Help  ,:Settings  f:Exit Focus  q:Quit
+help: 1 / 2 / 3: Switch pane focus
 help: Enter: Enter cell selection at the current viewport anchor
-help: c: Open Connection Selector
+help: Esc: Cancel
 help: ] / [: Next/Previous page
-help: Ctrl+E: Export result to CSV
+help: Ctrl+P: Open Table Picker
+help: r: Reload metadata
+help: s: Open SQL Editor
+help: e: Open ER Diagram
+help: c: Open Connection Selector
+help: Ctrl+O: Open Query History
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
@@ -830,9 +854,15 @@ ToggleFocus: 'f'
 ToggleHelp: '?'
 ToggleReadOnly: ^'r'
 footer: ^P:Tables  f:Focus  r:Reload  s:SQL  e:ER Diagram  c:Connections  ^R:Read-Write  ^O:History  ?:Help  ,:Settings  F1:Palette  q:Quit
+help: 1 / 2 / 3: Switch pane focus
+help: Enter: Select table
+help: Esc: Cancel
 help: Ctrl+P: Open Table Picker
-help: c: Open Connection Selector
+help: r: Reload metadata
 help: s: Open SQL Editor
+help: e: Open ER Diagram
+help: c: Open Connection Selector
+help: Ctrl+O: Open Query History
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
@@ -881,10 +911,16 @@ ToggleFocus: 'f'
 ToggleHelp: '?'
 ToggleReadOnly: ^'r'
 footer: Enter:Error  ^P:Tables  f:Focus  r:Reload  s:SQL  e:ER Diagram  c:Connections  ^R:Read-Only  ^O:History  ?:Help  ,:Settings  F1:Palette  q:Quit
-help: Enter: Enter cell selection at the current viewport anchor
-help: c: Open Connection Selector
+help: Enter: Open connection error details
+help: 1 / 2 / 3: Switch pane focus
+help: Esc: Cancel
 help: ] / [: Next/Previous page
-help: Ctrl+E: Export result to CSV
+help: Ctrl+P: Open Table Picker
+help: r: Reload metadata
+help: s: Open SQL Editor
+help: e: Open ER Diagram
+help: c: Open Connection Selector
+help: Ctrl+O: Open Query History
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
@@ -938,12 +974,21 @@ ToggleFocus: 'f'
 ToggleHelp: '?'
 ToggleReadOnly: ^'r'
 footer: Enter:Detail  yy:Yank Row  dd:Stage Del  K:Row Detail  Y:Yank Cell  c:Connections  ?:Help  Esc:Back  q:Quit
-help: Y: Copy the active cell value to clipboard
-help: y, y: Copy the active row values to clipboard (TSV)
+help: 1 / 2 / 3: Switch pane focus
+help: Enter: Open active cell detail
+help: Esc: Exit cell selection
+help: yy: Copy the active row values to clipboard (TSV)
+help: dd: Stage the active row for deletion
 help: K: Open Row Detail
-help: d, d: Stage the active row for deletion (red highlight; :w to commit)
+help: Y: Copy the active cell value to clipboard
+help: ] / [: Next/Previous page
+help: Ctrl+P: Open Table Picker
+help: r: Reload metadata
+help: s: Open SQL Editor
+help: e: Open ER Diagram
 help: c: Open Connection Selector
-help: Esc: Exit cell selection and return to scroll mode without clearing staged deletes
+help: Ctrl+E: Export result to CSV
+help: Ctrl+O: Open Query History
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
@@ -998,12 +1043,18 @@ ToggleFocus: 'f'
 ToggleHelp: '?'
 ToggleReadOnly: ^'r'
 footer: i:Edit  :w:Write  c:Connections  ?:Help  Esc:Discard  q:Quit
-help: Y: Copy the active cell value to clipboard
-help: y, y: Copy the active row values to clipboard (TSV)
-help: K: Open Row Detail
-help: d, d: Stage the active row for deletion (red highlight; :w to commit)
+help: 1 / 2 / 3: Switch pane focus
+help: Esc: Discard pending draft
+help: i: Edit active cell
+help: ] / [: Next/Previous page
+help: :w: Preview and confirm UPDATE
+help: Ctrl+P: Open Table Picker
+help: r: Reload metadata
+help: s: Open SQL Editor
+help: e: Open ER Diagram
 help: c: Open Connection Selector
-help: Esc: Discard the pending draft and stay in cell selection
+help: Ctrl+E: Export result to CSV
+help: Ctrl+O: Open Query History
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
@@ -1057,11 +1108,19 @@ ToggleHelp: '?'
 ToggleReadOnly: ^'r'
 UnstageLastStagedRow: 'u', ⌥'u', ^⌥'u', ⇧'u', ^⇧'u'
 footer: dd:Stage Del  u:Unstage  :w:Write  c:Connections  ?:Help  Esc:Back  q:Quit
-help: d, d: Stage the active row for deletion (red highlight; :w to commit)
+help: 1 / 2 / 3: Switch pane focus
+help: Esc: Exit cell selection
+help: dd: Stage the active row for deletion
 help: u: Unstage the last staged row deletion
+help: ] / [: Next/Previous page
 help: :w: Preview and confirm UPDATE
+help: Ctrl+P: Open Table Picker
+help: r: Reload metadata
+help: s: Open SQL Editor
+help: e: Open ER Diagram
 help: c: Open Connection Selector
-help: Esc: Exit cell selection and return to scroll mode without clearing staged deletes
+help: Ctrl+E: Export result to CSV
+help: Ctrl+O: Open Query History
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
@@ -1116,12 +1175,21 @@ ToggleFocus: 'f'
 ToggleHelp: '?'
 ToggleReadOnly: ^'r'
 footer: Enter:Detail  yy:Yank Row  dd:Stage Del  K:Row Detail  Y:Yank Cell  c:Connections  ?:Help  Esc:Back  q:Quit
-help: Y: Copy the active cell value to clipboard
-help: y, y: Copy the active row values to clipboard (TSV)
+help: 1 / 2 / 3: Switch pane focus
+help: Enter: Open active cell detail
+help: Esc: Exit cell selection
+help: yy: Copy the active row values to clipboard (TSV)
+help: dd: Stage the active row for deletion
 help: K: Open Row Detail
-help: d, d: Stage the active row for deletion (red highlight; :w to commit)
+help: Y: Copy the active cell value to clipboard
+help: ] / [: Next/Previous page
+help: Ctrl+P: Open Table Picker
+help: r: Reload metadata
+help: s: Open SQL Editor
+help: e: Open ER Diagram
 help: c: Open Connection Selector
-help: Esc: Exit cell selection and return to scroll mode without clearing staged deletes
+help: Ctrl+E: Export result to CSV
+help: Ctrl+O: Open Query History
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
@@ -1176,12 +1244,21 @@ ToggleFocus: 'f'
 ToggleHelp: '?'
 ToggleReadOnly: ^'r'
 footer: Enter:Detail  yy:Yank Row  dd:Stage Del  K:Row Detail  Y:Yank Cell  c:Connections  ?:Help  Esc:Back  q:Quit
-help: Y: Copy the active cell value to clipboard
-help: y, y: Copy the active row values to clipboard (TSV)
+help: 1 / 2 / 3: Switch pane focus
+help: Enter: Open active cell detail
+help: Esc: Exit cell selection
+help: yy: Copy the active row values to clipboard (TSV)
+help: dd: Stage the active row for deletion
 help: K: Open Row Detail
-help: d, d: Stage the active row for deletion (red highlight; :w to commit)
+help: Y: Copy the active cell value to clipboard
+help: ] / [: Next/Previous page
+help: Ctrl+P: Open Table Picker
+help: r: Reload metadata
+help: s: Open SQL Editor
+help: e: Open ER Diagram
 help: c: Open Connection Selector
-help: Esc: Exit cell selection and return to scroll mode without clearing staged deletes
+help: Ctrl+E: Export result to CSV
+help: Ctrl+O: Open Query History
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
@@ -1199,13 +1276,7 @@ CancelKeySequence: ' ', ^' ', ⌥' ', ^⌥' ', ⇧' ', ^⇧' ', '!', ^'!', ⌥'!
 ScrollToCursor { target: Result, position: Bottom }: 'b'
 ScrollToCursor { target: Result, position: Center }: 'z'
 ScrollToCursor { target: Result, position: Top }: 't'
-footer: Enter:Detail  yy:Yank Row  dd:Stage Del  K:Row Detail  Y:Yank Cell  c:Connections  ?:Help  Esc:Back  q:Quit
-help: Y: Copy the active cell value to clipboard
-help: y, y: Copy the active row values to clipboard (TSV)
-help: K: Open Row Detail
-help: d, d: Stage the active row for deletion (red highlight; :w to commit)
-help: c: Open Connection Selector
-help: Esc: Exit cell selection and return to scroll mode without clearing staged deletes
+footer: 
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
@@ -1227,10 +1298,10 @@ ConnectionSetupSave: ^'s'
 footer: 
 border: ╭ New Connection ────────────────────────────────────────────╮
 border: ╰ Enter: Select │ ^S: Connect │ Esc: Cancel ─────────────────╯
-help: Tab / Shift+Tab: Next/Previous field
-help: Enter: Toggle dropdown
+help: Enter: Confirm dropdown selection
 help: Ctrl+S: Save and connect
-help: Esc: Cancel
+help: ↓ / Ctrl+N / ↑ / Ctrl+P: Dropdown navigation
+help: Esc: Cancel dropdown
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
@@ -1333,10 +1404,10 @@ help: Alt+Enter / F5: Execute query
 help: Ctrl+L: Clear editor
 help: Ctrl+O: Open Query History
 help: Alt+E: Run EXPLAIN ANALYZE on current query
-help: Esc: Return to Normal mode
-help: ← / → / ↑ / ↓: Move cursor
+help: ↑ / Ctrl+P / ↓ / Ctrl+N: Select completion
+help: Tab / Enter: Accept completion
+help: Esc: Dismiss completion
 help: Home / End: Line start/end
-help: Tab: Insert tab
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
@@ -1432,6 +1503,7 @@ border: ╭ SQL ── ⚠ HIGH ────────────────
 border: ╰ Esc: Back ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 help: Enter: Execute the confirmed statement
 help: Esc: Cancel and return to editor
+help: type: Type confirmation name
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
@@ -1469,6 +1541,8 @@ border: ╭ SQL Editor ── [SQL] [Plan] [Compare] ─────────
 border: ╰ Esc: Cancel ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 help: Enter: Execute the confirmed statement
 help: Esc: Cancel and return to editor
+help: ↓ / ↑: Scroll confirmation
+help: type: Type confirmation name
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
@@ -1509,6 +1583,7 @@ border: ╭ SQL Editor ── [SQL] [Plan] [Compare] ─────────
 border: ╰ Enter: Execute │ Esc: Cancel ────────────────────────────────────────────────────────────────────────────────────────────────────╯
 help: Enter: Execute the confirmed statement
 help: Esc: Cancel and return to editor
+help: ↓ / ↑: Scroll confirmation
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
@@ -1575,13 +1650,8 @@ TextYank { target: HelpFilter }: ^'y'
 footer: 
 border: ╭ Help ───────────────────────────────────────────────────────────────────────────────────────────────────────────╮
 border: ╰ Esc: Browse ────────────────────────────────────────────────────────────────────────────────────────────────────╯
-help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Scroll down / up
-help: h / l / ← / →: Scroll left / right
-help: Ctrl+D / Ctrl+U: Scroll half page down / up
-help: PageDown / PageUp / Ctrl+F / Ctrl+B: Scroll full page down / up
-help: Home / End: Jump to top / bottom
-help: /: Edit filter
-help: Esc / ?: Close help
+help: Esc: Return to help browsing
+help: type: Filter help
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
@@ -1616,10 +1686,8 @@ footer:
 border: ╭ Settings ───────────────────────────────────────────────────────────────────────────────────────╮
 border: ╰ Enter: Apply │ Esc: Done │ type: Browser ───────────────────────────────────────────────────────╯
 help: Enter: Apply setting
-help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Select setting
-help: i: Edit custom browser
-help: Tab / Shift+Tab: Switch settings section
-help: Esc: Cancel
+help: Esc: Finish editing
+help: type: Edit custom browser
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)

@@ -13,7 +13,7 @@ use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
 use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::update::action::Action;
 
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyContext {
     pub(super) preset: KeymapPreset,
     mode: InputMode,
@@ -23,7 +23,7 @@ pub struct KeyContext {
     pending_prefix: Option<Prefix>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Scope {
     Diagnostics {
         can_run: bool,
@@ -87,7 +87,7 @@ enum Scope {
     Other,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum BrowsePane {
     Explorer,
     Inspector,
@@ -95,7 +95,7 @@ pub(super) enum BrowsePane {
     ResultCell,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum SqlConfirmation {
     High,
     Risk,
@@ -104,6 +104,74 @@ pub(super) enum SqlConfirmation {
 }
 
 impl KeyContext {
+    pub fn mode(&self) -> InputMode {
+        self.mode
+    }
+
+    pub(crate) fn preset(&self) -> KeymapPreset {
+        self.preset
+    }
+
+    pub(crate) fn policy(&self) -> &FeaturePolicy {
+        &self.policy
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self.mode {
+            InputMode::Normal => match self.browse_pane() {
+                BrowsePane::Explorer => "Explorer Pane",
+                BrowsePane::Inspector => "Inspector Pane",
+                BrowsePane::ResultScroll | BrowsePane::ResultCell => "Result Pane",
+            },
+            InputMode::CommandLine => "Command Line",
+            InputMode::CellEdit => "Cell Edit",
+            InputMode::TablePicker => "Table Picker",
+            InputMode::CommandPalette => "Command Palette",
+            InputMode::Settings => "Settings",
+            InputMode::Help => "Help",
+            InputMode::SqlModal => match self.scope {
+                Scope::SqlEditing { .. } => "SQL Editor Insert",
+                Scope::SqlConfirmation { .. } => "SQL Editor Confirm",
+                Scope::SqlNormal {
+                    tab: SqlModalTab::Sql,
+                    ..
+                } => "SQL Editor",
+                Scope::SqlNormal {
+                    tab: SqlModalTab::Plan,
+                    ..
+                } => "SQL Editor Plan",
+                Scope::SqlNormal {
+                    tab: SqlModalTab::Compare,
+                    ..
+                } => "SQL Editor Compare",
+                _ => "SQL Editor Running",
+            },
+            InputMode::ConnectionSetup => "Connection Setup",
+            InputMode::ConnectionError => "Connection Error",
+            InputMode::SqliteDiagnostics => "SQLite Diagnostics",
+            InputMode::ConfirmDialog => "Confirm Dialog",
+            InputMode::ConnectionSelector => "Connection Selector",
+            InputMode::ErTablePicker => "ER Table Picker",
+            InputMode::QueryHistoryPicker => "Query History Picker",
+            InputMode::JsonDetail => match self.json_mode {
+                JsonDetailMode::Viewing => "JSON Detail",
+                JsonDetailMode::Searching => "JSON Search",
+                JsonDetailMode::Editing => "JSON Edit",
+            },
+            InputMode::JsonEdit => "JSON Edit",
+            InputMode::CellDetail if self.is_cell_detail_searching() => "Cell Detail Search",
+            InputMode::CellDetail => "Cell Detail",
+            InputMode::RowDetail => "Row Detail",
+        }
+    }
+
+    pub(super) fn is_sql_editing(&self) -> bool {
+        matches!(self.scope, Scope::SqlEditing { .. })
+    }
+
+    pub(super) fn json_mode(&self) -> JsonDetailMode {
+        self.json_mode
+    }
     pub fn from_state(state: &AppState) -> Self {
         Self {
             preset: state.settings.saved_keymap_preset(),
@@ -208,6 +276,30 @@ impl KeyContext {
                 _ => Scope::Other,
             },
         }
+    }
+
+    pub(super) fn with_browse_reference(mut self, pane: BrowsePane, staged: bool) -> Self {
+        self.mode = InputMode::Normal;
+        self.scope = Scope::Browse {
+            focused: false,
+            read_only: false,
+            csv_available: true,
+            pane,
+            connection_error: false,
+            inspector_ddl: true,
+            staged_delete: staged,
+            draft: false,
+            yank_pending: false,
+            delete_pending: false,
+            selected_row: true,
+            selected_cell: true,
+            connected: true,
+            can_edit_cell: true,
+            can_write: true,
+            can_paginate: true,
+            multiple_inspector_tabs: true,
+        };
+        self
     }
 
     pub fn for_browse_state(state: &AppState) -> Self {

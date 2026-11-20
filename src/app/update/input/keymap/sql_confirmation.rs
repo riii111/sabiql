@@ -34,6 +34,7 @@ fn rows(analyze: bool, typed: bool) -> Vec<Row> {
             bindings: vec![Binding::no_ctrl_alt(confirm, Key::Enter)],
             short: confirm_label,
             description: "Execute the confirmed statement",
+            references: &[],
             dynamic_label: None,
             visible: Some(|context, surface| {
                 surface != HintSurface::Border || context.is_sql_confirmation_matched()
@@ -48,6 +49,7 @@ fn rows(analyze: bool, typed: bool) -> Vec<Row> {
             bindings: vec![Binding::any_modifiers(cancel, Key::Esc)],
             short: cancel_label,
             description: "Cancel and return to editor",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: &[
@@ -79,6 +81,7 @@ fn rows(analyze: bool, typed: bool) -> Vec<Row> {
             ],
             short: "Scroll",
             description: "Scroll confirmation",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: &[HintSurface::Current],
@@ -95,6 +98,7 @@ fn rows(analyze: bool, typed: bool) -> Vec<Row> {
             bindings: vec![Binding::text(target)],
             short: "Type",
             description: "Type confirmation name",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: &[HintSurface::Current],

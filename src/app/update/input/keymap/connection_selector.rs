@@ -25,6 +25,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Confirm",
             description: "Confirm selection",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: button_surfaces,
@@ -37,6 +38,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "New",
             description: "New connection",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: button_surfaces,
@@ -48,6 +50,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Edit",
             description: "Edit connection",
+            references: &[],
             dynamic_label: None,
             visible: Some(|context, surface| {
                 surface != HintSurface::Border || !context.is_service_selected()
@@ -61,6 +64,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Delete",
             description: "Delete connection",
+            references: &[],
             dynamic_label: None,
             visible: Some(|context, surface| {
                 surface != HintSurface::Border || !context.is_service_selected()
@@ -74,6 +78,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Close",
             description: "Close selector",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: button_surfaces,

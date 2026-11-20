@@ -16,6 +16,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Copy",
             description: "Copy displayed text to clipboard",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: &[
@@ -31,6 +32,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Copy JSON",
             description: "Copy row as JSON to clipboard",
+            references: &[],
             dynamic_label: None,
             visible: None,
             surfaces: &[
@@ -55,6 +57,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
         )],
         short: "Close",
         description: "Close Row Detail modal",
+        references: &[],
         dynamic_label: None,
         visible: None,
         surfaces: &[

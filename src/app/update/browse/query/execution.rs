@@ -7,7 +7,6 @@ use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::{
     PREVIEW_PAGE_SIZE, PendingPreview, PostDeleteRowSelection,
 };
-use crate::model::shared::help::HelpOrigin;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::AdhocSuccessSnapshot;
 use crate::ports::outbound::DbOperationError;
@@ -15,6 +14,7 @@ use crate::update::action::{Action, QueryCompletionContext, QueryFailureContext,
 use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 use crate::update::input::command::{LineCommand, parse_line_command};
+use crate::update::input::keymap::KeyContext;
 use crate::update::reducer::quit;
 
 use super::write;
@@ -176,13 +176,14 @@ pub(in crate::update) fn reveal_pending_preview(
 
 pub(in crate::update) fn command_line_submit(state: &mut AppState) -> Vec<Effect> {
     let command = parse_line_command(state.command_line_input.content());
+    let context = KeyContext::from_state(state);
     state.modal.pop_mode();
     state.command_line_input.clear();
 
     match command {
         Some(LineCommand::Quit) => quit(state),
         Some(LineCommand::Help) => {
-            state.ui.help_mut().open(HelpOrigin::CommandLine);
+            state.ui.help_mut().open(context);
             state.modal.push_mode(InputMode::Help);
             vec![]
         }
