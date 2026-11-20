@@ -930,22 +930,31 @@ mod tests {
     mod feature_requirement_by_action_shape {
         use super::*;
 
-        const TEXT_TARGETS: [InputTarget; 14] = [
-            InputTarget::SqlModal,
-            InputTarget::SqlModalHighRisk,
-            InputTarget::SqlModalAnalyzeHighRisk,
-            InputTarget::ResultCellEdit,
-            InputTarget::ConnectionSetup,
-            InputTarget::CommandLine,
-            InputTarget::Filter,
-            InputTarget::ErFilter,
-            InputTarget::SettingsErBrowser,
-            InputTarget::QueryHistoryFilter,
-            InputTarget::JsonEdit,
-            InputTarget::JsonSearch,
-            InputTarget::CellDetailSearch,
-            InputTarget::HelpFilter,
+        const TEXT_REQUIREMENTS: [(InputTarget, FeatureRequirement); 14] = [
+            (InputTarget::SqlModal, FeatureRequirement::None),
+            (InputTarget::SqlModalHighRisk, FeatureRequirement::None),
+            (
+                InputTarget::SqlModalAnalyzeHighRisk,
+                FeatureRequirement::ExplainAnalyze,
+            ),
+            (InputTarget::ResultCellEdit, FeatureRequirement::None),
+            (InputTarget::ConnectionSetup, FeatureRequirement::None),
+            (InputTarget::CommandLine, FeatureRequirement::None),
+            (InputTarget::Filter, FeatureRequirement::None),
+            (InputTarget::ErFilter, FeatureRequirement::ErDiagram),
+            (InputTarget::SettingsErBrowser, FeatureRequirement::None),
+            (InputTarget::QueryHistoryFilter, FeatureRequirement::None),
+            (InputTarget::JsonEdit, FeatureRequirement::JsonDocumentEdit),
+            (
+                InputTarget::JsonSearch,
+                FeatureRequirement::JsonDocumentDetail,
+            ),
+            (InputTarget::CellDetailSearch, FeatureRequirement::None),
+            (InputTarget::HelpFilter, FeatureRequirement::None),
         ];
+
+        const JSON_EDIT_MOVE_CURSOR_REQUIREMENT: FeatureRequirement =
+            FeatureRequirement::JsonDocumentDetail;
 
         fn text_actions(target: InputTarget) -> [(&'static str, Action); 6] {
             [
@@ -970,132 +979,120 @@ mod tests {
             ]
         }
 
-        fn stateless_actions() -> Vec<(String, Action)> {
-            let mut actions: Vec<(String, Action)> = TEXT_TARGETS
-                .into_iter()
-                .flat_map(|target| {
-                    text_actions(target)
-                        .into_iter()
-                        .map(move |(op, action)| (format!("text {target:?} {op}"), action))
-                })
-                .collect();
-            actions.extend(
-                [
-                    (
-                        "copied SqlModal",
-                        Action::CopySucceeded(CopyTarget::Panel(FlashId::SqlModal)),
-                    ),
-                    (
-                        "copied Ddl",
-                        Action::CopySucceeded(CopyTarget::Panel(FlashId::Ddl)),
-                    ),
-                    (
-                        "copied JsonDetail",
-                        Action::CopySucceeded(CopyTarget::Panel(FlashId::JsonDetail)),
-                    ),
-                    (
-                        "copied CellDetail",
-                        Action::CopySucceeded(CopyTarget::Panel(FlashId::CellDetail)),
-                    ),
-                    (
-                        "copied RowDetail",
-                        Action::CopySucceeded(CopyTarget::Panel(FlashId::RowDetail)),
-                    ),
-                    (
-                        "copied ResultCell",
-                        Action::CopySucceeded(CopyTarget::ResultCell { row: 0, col: 0 }),
-                    ),
-                    (
-                        "copied ResultRow",
-                        Action::CopySucceeded(CopyTarget::ResultRow { row: 0 }),
-                    ),
-                    (
-                        "copied ConnectionError",
-                        Action::CopySucceeded(CopyTarget::ConnectionError),
-                    ),
-                    (
-                        "search JsonDetail Enter",
-                        Action::DetailSearch {
-                            target: DetailTarget::JsonDetail,
-                            step: SearchStep::Enter,
-                        },
-                    ),
-                    (
-                        "search JsonDetail Exit",
-                        Action::DetailSearch {
-                            target: DetailTarget::JsonDetail,
-                            step: SearchStep::Exit,
-                        },
-                    ),
-                    (
-                        "search JsonDetail Next",
-                        Action::DetailSearch {
-                            target: DetailTarget::JsonDetail,
-                            step: SearchStep::Next,
-                        },
-                    ),
-                    (
-                        "search JsonDetail Prev",
-                        Action::DetailSearch {
-                            target: DetailTarget::JsonDetail,
-                            step: SearchStep::Prev,
-                        },
-                    ),
-                    (
-                        "search JsonDetail Submit",
-                        Action::DetailSearch {
-                            target: DetailTarget::JsonDetail,
-                            step: SearchStep::Submit,
-                        },
-                    ),
-                    (
-                        "search CellDetail Enter",
-                        Action::DetailSearch {
-                            target: DetailTarget::CellDetail,
-                            step: SearchStep::Enter,
-                        },
-                    ),
-                    (
-                        "search CellDetail Exit",
-                        Action::DetailSearch {
-                            target: DetailTarget::CellDetail,
-                            step: SearchStep::Exit,
-                        },
-                    ),
-                    (
-                        "search CellDetail Next",
-                        Action::DetailSearch {
-                            target: DetailTarget::CellDetail,
-                            step: SearchStep::Next,
-                        },
-                    ),
-                    (
-                        "search CellDetail Prev",
-                        Action::DetailSearch {
-                            target: DetailTarget::CellDetail,
-                            step: SearchStep::Prev,
-                        },
-                    ),
-                    (
-                        "search CellDetail Submit",
-                        Action::DetailSearch {
-                            target: DetailTarget::CellDetail,
-                            step: SearchStep::Submit,
-                        },
-                    ),
-                    (
-                        "yank all JsonDetail",
-                        Action::DetailYankAll(DetailTarget::JsonDetail),
-                    ),
-                    (
-                        "yank all CellDetail",
-                        Action::DetailYankAll(DetailTarget::CellDetail),
-                    ),
-                    ("toggle Help", Action::ToggleHelp),
-                ]
-                .map(|(label, action)| (label.to_string(), action)),
-            );
-            actions
+        fn stateless_actions() -> Vec<(&'static str, Action)> {
+            vec![
+                (
+                    "copied SqlModal",
+                    Action::CopySucceeded(CopyTarget::Panel(FlashId::SqlModal)),
+                ),
+                (
+                    "copied Ddl",
+                    Action::CopySucceeded(CopyTarget::Panel(FlashId::Ddl)),
+                ),
+                (
+                    "copied JsonDetail",
+                    Action::CopySucceeded(CopyTarget::Panel(FlashId::JsonDetail)),
+                ),
+                (
+                    "copied CellDetail",
+                    Action::CopySucceeded(CopyTarget::Panel(FlashId::CellDetail)),
+                ),
+                (
+                    "copied RowDetail",
+                    Action::CopySucceeded(CopyTarget::Panel(FlashId::RowDetail)),
+                ),
+                (
+                    "copied ResultCell",
+                    Action::CopySucceeded(CopyTarget::ResultCell { row: 0, col: 0 }),
+                ),
+                (
+                    "copied ResultRow",
+                    Action::CopySucceeded(CopyTarget::ResultRow { row: 0 }),
+                ),
+                (
+                    "copied ConnectionError",
+                    Action::CopySucceeded(CopyTarget::ConnectionError),
+                ),
+                (
+                    "search JsonDetail Enter",
+                    Action::DetailSearch {
+                        target: DetailTarget::JsonDetail,
+                        step: SearchStep::Enter,
+                    },
+                ),
+                (
+                    "search JsonDetail Exit",
+                    Action::DetailSearch {
+                        target: DetailTarget::JsonDetail,
+                        step: SearchStep::Exit,
+                    },
+                ),
+                (
+                    "search JsonDetail Next",
+                    Action::DetailSearch {
+                        target: DetailTarget::JsonDetail,
+                        step: SearchStep::Next,
+                    },
+                ),
+                (
+                    "search JsonDetail Prev",
+                    Action::DetailSearch {
+                        target: DetailTarget::JsonDetail,
+                        step: SearchStep::Prev,
+                    },
+                ),
+                (
+                    "search JsonDetail Submit",
+                    Action::DetailSearch {
+                        target: DetailTarget::JsonDetail,
+                        step: SearchStep::Submit,
+                    },
+                ),
+                (
+                    "search CellDetail Enter",
+                    Action::DetailSearch {
+                        target: DetailTarget::CellDetail,
+                        step: SearchStep::Enter,
+                    },
+                ),
+                (
+                    "search CellDetail Exit",
+                    Action::DetailSearch {
+                        target: DetailTarget::CellDetail,
+                        step: SearchStep::Exit,
+                    },
+                ),
+                (
+                    "search CellDetail Next",
+                    Action::DetailSearch {
+                        target: DetailTarget::CellDetail,
+                        step: SearchStep::Next,
+                    },
+                ),
+                (
+                    "search CellDetail Prev",
+                    Action::DetailSearch {
+                        target: DetailTarget::CellDetail,
+                        step: SearchStep::Prev,
+                    },
+                ),
+                (
+                    "search CellDetail Submit",
+                    Action::DetailSearch {
+                        target: DetailTarget::CellDetail,
+                        step: SearchStep::Submit,
+                    },
+                ),
+                (
+                    "yank all JsonDetail",
+                    Action::DetailYankAll(DetailTarget::JsonDetail),
+                ),
+                (
+                    "yank all CellDetail",
+                    Action::DetailYankAll(DetailTarget::CellDetail),
+                ),
+                ("toggle Help", Action::ToggleHelp),
+            ]
         }
 
         fn state_in(mode: InputMode) -> AppState {
@@ -1159,6 +1156,28 @@ mod tests {
         }
 
         #[test]
+        fn text_actions_keep_requirements_per_target() {
+            let state = AppState::new("test".to_string());
+            for (target, requirement) in TEXT_REQUIREMENTS {
+                for (op, action) in text_actions(target) {
+                    let expected = if target == InputTarget::JsonEdit
+                        && matches!(action, Action::TextMoveCursor { .. })
+                    {
+                        JSON_EDIT_MOVE_CURSOR_REQUIREMENT
+                    } else {
+                        requirement
+                    };
+
+                    assert_eq!(
+                        action.feature_requirement_for_state(&state),
+                        expected,
+                        "text {target:?} {op}"
+                    );
+                }
+            }
+        }
+
+        #[test]
         fn keeps_requirements_for_each_shape() {
             let report = report();
 
@@ -1166,90 +1185,6 @@ mod tests {
         }
 
         const EXPECTED_REPORT: &str = "\
-text SqlModal Insert => None\n\
-text SqlModal Backspace => None\n\
-text SqlModal Delete => None\n\
-text SqlModal Kill => None\n\
-text SqlModal Yank => None\n\
-text SqlModal MoveCursor => None\n\
-text SqlModalHighRisk Insert => None\n\
-text SqlModalHighRisk Backspace => None\n\
-text SqlModalHighRisk Delete => None\n\
-text SqlModalHighRisk Kill => None\n\
-text SqlModalHighRisk Yank => None\n\
-text SqlModalHighRisk MoveCursor => None\n\
-text SqlModalAnalyzeHighRisk Insert => ExplainAnalyze\n\
-text SqlModalAnalyzeHighRisk Backspace => ExplainAnalyze\n\
-text SqlModalAnalyzeHighRisk Delete => ExplainAnalyze\n\
-text SqlModalAnalyzeHighRisk Kill => ExplainAnalyze\n\
-text SqlModalAnalyzeHighRisk Yank => ExplainAnalyze\n\
-text SqlModalAnalyzeHighRisk MoveCursor => ExplainAnalyze\n\
-text ResultCellEdit Insert => None\n\
-text ResultCellEdit Backspace => None\n\
-text ResultCellEdit Delete => None\n\
-text ResultCellEdit Kill => None\n\
-text ResultCellEdit Yank => None\n\
-text ResultCellEdit MoveCursor => None\n\
-text ConnectionSetup Insert => None\n\
-text ConnectionSetup Backspace => None\n\
-text ConnectionSetup Delete => None\n\
-text ConnectionSetup Kill => None\n\
-text ConnectionSetup Yank => None\n\
-text ConnectionSetup MoveCursor => None\n\
-text CommandLine Insert => None\n\
-text CommandLine Backspace => None\n\
-text CommandLine Delete => None\n\
-text CommandLine Kill => None\n\
-text CommandLine Yank => None\n\
-text CommandLine MoveCursor => None\n\
-text Filter Insert => None\n\
-text Filter Backspace => None\n\
-text Filter Delete => None\n\
-text Filter Kill => None\n\
-text Filter Yank => None\n\
-text Filter MoveCursor => None\n\
-text ErFilter Insert => ErDiagram\n\
-text ErFilter Backspace => ErDiagram\n\
-text ErFilter Delete => ErDiagram\n\
-text ErFilter Kill => ErDiagram\n\
-text ErFilter Yank => ErDiagram\n\
-text ErFilter MoveCursor => ErDiagram\n\
-text SettingsErBrowser Insert => None\n\
-text SettingsErBrowser Backspace => None\n\
-text SettingsErBrowser Delete => None\n\
-text SettingsErBrowser Kill => None\n\
-text SettingsErBrowser Yank => None\n\
-text SettingsErBrowser MoveCursor => None\n\
-text QueryHistoryFilter Insert => None\n\
-text QueryHistoryFilter Backspace => None\n\
-text QueryHistoryFilter Delete => None\n\
-text QueryHistoryFilter Kill => None\n\
-text QueryHistoryFilter Yank => None\n\
-text QueryHistoryFilter MoveCursor => None\n\
-text JsonEdit Insert => JsonDocumentEdit\n\
-text JsonEdit Backspace => JsonDocumentEdit\n\
-text JsonEdit Delete => JsonDocumentEdit\n\
-text JsonEdit Kill => JsonDocumentEdit\n\
-text JsonEdit Yank => JsonDocumentEdit\n\
-text JsonEdit MoveCursor => JsonDocumentDetail\n\
-text JsonSearch Insert => JsonDocumentDetail\n\
-text JsonSearch Backspace => JsonDocumentDetail\n\
-text JsonSearch Delete => JsonDocumentDetail\n\
-text JsonSearch Kill => JsonDocumentDetail\n\
-text JsonSearch Yank => JsonDocumentDetail\n\
-text JsonSearch MoveCursor => JsonDocumentDetail\n\
-text CellDetailSearch Insert => None\n\
-text CellDetailSearch Backspace => None\n\
-text CellDetailSearch Delete => None\n\
-text CellDetailSearch Kill => None\n\
-text CellDetailSearch Yank => None\n\
-text CellDetailSearch MoveCursor => None\n\
-text HelpFilter Insert => None\n\
-text HelpFilter Backspace => None\n\
-text HelpFilter Delete => None\n\
-text HelpFilter Kill => None\n\
-text HelpFilter Yank => None\n\
-text HelpFilter MoveCursor => None\n\
 copied SqlModal => None\n\
 copied Ddl => None\n\
 copied JsonDetail => JsonDocumentDetail\n\
