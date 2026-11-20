@@ -23,6 +23,7 @@ enum Scope {
     Help { editing: bool },
     Confirm { blocked: bool },
     ConnectionSelector { service_selected: bool },
+    ConnectionError { can_retry: bool },
     Other,
 }
 
@@ -55,6 +56,9 @@ impl KeyContext {
                         state.ui.connection_list_selected(),
                     ),
                 },
+                InputMode::ConnectionError => Scope::ConnectionError {
+                    can_retry: state.can_retry_connection_error(),
+                },
                 _ => Scope::Other,
             },
         }
@@ -74,6 +78,7 @@ impl KeyContext {
                 InputMode::ConnectionSelector => Scope::ConnectionSelector {
                     service_selected: false,
                 },
+                InputMode::ConnectionError => Scope::ConnectionError { can_retry: false },
                 _ => Scope::Other,
             },
         }
@@ -112,6 +117,10 @@ impl KeyContext {
                 service_selected: true
             }
         )
+    }
+
+    pub(super) fn can_retry_connection(&self) -> bool {
+        matches!(self.scope, Scope::ConnectionError { can_retry: true })
     }
 
     pub(crate) fn with_cell_detail_searching(mut self, searching: bool) -> Self {

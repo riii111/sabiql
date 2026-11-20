@@ -164,7 +164,7 @@ mod tests {
 
     mod resolve_mode_tests {
         use super::*;
-        use crate::update::input::keybindings::CONNECTION_ERROR_ROWS;
+        use crate::update::input::keybindings::SETTINGS_ROWS;
 
         #[test]
         fn empty_rows_returns_none() {
@@ -175,17 +175,16 @@ mod tests {
 
         #[test]
         fn mode_returns_none_for_no_match() {
-            let result = resolve_mode(&KeyCombo::plain(Key::F(12)), CONNECTION_ERROR_ROWS);
+            let result = resolve_mode(&KeyCombo::plain(Key::F(12)), SETTINGS_ROWS);
 
             assert!(result.is_none());
         }
 
-        // Esc resolves to connection_error::ESC_CLOSE even though earlier rows exist
         #[test]
         fn first_matching_binding_wins() {
-            let result = resolve_mode(&KeyCombo::plain(Key::Esc), CONNECTION_ERROR_ROWS);
+            let result = resolve_mode(&KeyCombo::plain(Key::Esc), SETTINGS_ROWS);
 
-            assert!(matches!(result, Some(Action::CloseConnectionError)));
+            assert!(matches!(result, Some(Action::SettingsCancel)));
         }
     }
 }

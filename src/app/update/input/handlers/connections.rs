@@ -2,7 +2,9 @@ use crate::model::app_state::AppState;
 use crate::model::shared::settings::KeymapPreset;
 use crate::update::action::{Action, InputTarget};
 use crate::update::input::keybindings::{self, Key, KeyCombo, Modifiers};
-use crate::update::input::keymap::{KeyContext, connection_selector_action};
+use crate::update::input::keymap::{
+    KeyContext, connection_error_action, connection_selector_action,
+};
 
 pub(super) fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action {
     use crate::model::connection::setup::ConnectionField;
@@ -90,10 +92,8 @@ pub(super) fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) ->
     }
 }
 
-pub(super) fn handle_connection_error_keys(combo: KeyCombo) -> Action {
-    keybindings::CONNECTION_ERROR
-        .resolve(&combo)
-        .unwrap_or(Action::None)
+pub(super) fn handle_connection_error_keys(combo: KeyCombo, state: &AppState) -> Action {
+    connection_error_action(combo, &KeyContext::from_state(state))
 }
 
 pub(super) fn handle_connection_selector_keys(combo: KeyCombo, state: &AppState) -> Action {
@@ -411,6 +411,12 @@ mod tests {
 
     mod connection_error {
         use super::*;
+
+        fn handle_connection_error_keys(combo: KeyCombo) -> Action {
+            let mut state = AppState::new("test".to_string());
+            state.modal.set_mode(InputMode::ConnectionError);
+            super::handle_connection_error_keys(combo, &state)
+        }
 
         enum Expected {
             Close,

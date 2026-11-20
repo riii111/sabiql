@@ -12,13 +12,13 @@ use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::policy::{FeaturePolicy, FeatureRequirement};
 use crate::app::update::input::keybindings::{
-    cell_edit, command_palette as command_palette_key, connection_error, csv_export,
-    exit_read_only, footer_nav, global, inspector_ddl, json_detail, json_edit, json_search,
-    overlay, query_history, read_only, result_active, settings, sql_modal, sqlite_diagnostics,
-    table_picker as table_picker_key,
+    cell_edit, command_palette as command_palette_key, csv_export, exit_read_only, footer_nav,
+    global, inspector_ddl, json_detail, json_edit, json_search, overlay, query_history, read_only,
+    result_active, settings, sql_modal, sqlite_diagnostics, table_picker as table_picker_key,
 };
 use crate::app::update::input::keymap::{
-    HintSurface, KeyContext, Picker, cell_detail_hints, picker_hints, sqlite_diagnostics_hints,
+    HintSurface, KeyContext, Picker, cell_detail_hints, connection_error_hints, picker_hints,
+    sqlite_diagnostics_hints,
 };
 use crate::primitives::atoms::key_text;
 use crate::primitives::atoms::spinner_char;
@@ -59,6 +59,9 @@ impl Footer {
                     Some(sqlite_diagnostics_hints(HintSurface::Footer, &context))
                 }
                 InputMode::CellDetail => Some(cell_detail_hints(HintSurface::Footer, &context)),
+                InputMode::ConnectionError => {
+                    Some(connection_error_hints(HintSurface::Footer, &context))
+                }
                 _ => None,
             };
             let hints = if let Some(ref derived) = derived {
@@ -253,6 +256,7 @@ impl Footer {
             | InputMode::ConnectionSetup
             | InputMode::RowDetail
             | InputMode::ConnectionSelector
+            | InputMode::ConnectionError
             | InputMode::QueryHistoryPicker
             | InputMode::ErTablePicker
             | InputMode::SqliteDiagnostics
@@ -270,19 +274,6 @@ impl Footer {
                 } else {
                     vec![]
                 }
-            }
-            InputMode::ConnectionError => {
-                let first = if state.can_retry_connection_error() {
-                    connection_error::RETRY.as_hint()
-                } else {
-                    connection_error::EDIT.as_hint()
-                };
-                vec![
-                    first,
-                    connection_error::SWITCH.as_hint(),
-                    connection_error::DETAILS.as_hint(),
-                    connection_error::COPY.as_hint(),
-                ]
             }
             InputMode::JsonDetail => {
                 let feature_policy =
@@ -353,7 +344,7 @@ mod tests {
     use crate::app::model::shared::ui_state::FocusMode;
     use crate::app::ports::outbound::DbOperationError;
     use crate::app::update::input::keybindings::{
-        connection_error, global, json_detail, result_active, settings, sql_modal,
+        global, json_detail, result_active, settings, sql_modal,
     };
     use rstest::rstest;
 
@@ -657,9 +648,12 @@ mod tests {
         );
         state.modal.set_mode(InputMode::ConnectionError);
 
-        let hints = Footer::get_context_hints(&state);
+        let hints = super::connection_error_hints(
+            super::HintSurface::Footer,
+            &super::KeyContext::from_state(&state),
+        );
 
-        assert_eq!(hints[0], connection_error::EDIT.as_hint());
-        assert!(!hints.contains(&connection_error::ESC_CLOSE.as_hint()));
+        assert_eq!(hints[0].short, "Edit");
+        assert!(hints.iter().all(|hint| hint.short != "Close"));
     }
 }

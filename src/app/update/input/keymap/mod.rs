@@ -1,6 +1,7 @@
 mod cell_detail;
 mod common;
 mod confirm;
+mod connection_error;
 mod connection_selector;
 mod context;
 mod help;
@@ -16,6 +17,7 @@ use crate::update::action::{Action, InputTarget};
 
 pub use cell_detail::{cell_detail_action, cell_detail_hints};
 pub use confirm::{confirm_action, confirm_hints};
+pub use connection_error::{connection_error_action, connection_error_hints};
 pub use connection_selector::{connection_selector_action, connection_selector_hints};
 pub use context::KeyContext;
 pub use help::{help_action, help_hints};
@@ -33,6 +35,7 @@ pub enum HintSurface {
     Advanced,
     ModalBasics,
     Connections,
+    Details,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

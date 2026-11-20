@@ -238,6 +238,7 @@ mod tests {
         SEARCHING as CELL_SEARCH_ROWS, VIEWING as CELL_VIEW_ROWS,
     };
     use crate::update::input::keymap::confirm::ROWS as CONFIRM_ROWS;
+    use crate::update::input::keymap::connection_error::ROWS as CONNECTION_ERROR_ROWS;
     use crate::update::input::keymap::connection_selector::ROWS as CONNECTION_SELECTOR_ROWS;
     use crate::update::input::keymap::help::{
         EDITING as HELP_EDIT_ROWS, VIEWING as HELP_VIEW_ROWS,
@@ -290,6 +291,10 @@ mod tests {
             (&*HELP_VIEW_ROWS, EngineFeatureProfile::postgres_like()),
             (&*HELP_EDIT_ROWS, EngineFeatureProfile::postgres_like()),
             (&*CONFIRM_ROWS, EngineFeatureProfile::postgres_like()),
+            (
+                &*CONNECTION_ERROR_ROWS,
+                EngineFeatureProfile::postgres_like(),
+            ),
             (
                 &*CONNECTION_SELECTOR_ROWS,
                 EngineFeatureProfile::postgres_like(),

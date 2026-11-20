@@ -96,7 +96,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
             )
         }
         InputMode::ConnectionSetup => connections::handle_connection_setup_keys(combo, state),
-        InputMode::ConnectionError => connections::handle_connection_error_keys(combo),
+        InputMode::ConnectionError => connections::handle_connection_error_keys(combo, state),
         InputMode::ConfirmDialog => overlays::handle_confirm_dialog_keys(combo),
         InputMode::SqliteDiagnostics => {
             overlays::handle_sqlite_diagnostics_keys_with_policy(combo, &feature_policy)

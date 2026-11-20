@@ -365,13 +365,13 @@ Scroll { target: ConnectionError, direction: Down, amount: Line }: 'j', ^'n', Do
 Scroll { target: ConnectionError, direction: Up, amount: Line }: 'k', ^'p', Up
 ToggleConnectionErrorDetails: 'd'
 footer: e:Edit  s:Switch  d:Details  y:Copy
+help: r: Retry connection
 help: e: Edit connection settings
 help: s: Switch to another connection
 help: d: Toggle error details and requirements
 help: y: Copy error to clipboard
-help: j / k / Ctrl+N / Ctrl+P / ↑ / ↓: Scroll error
+help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Scroll error
 help: Esc: Close
-help: r: Retry connection
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: T: Open Table Picker => OpenModal(TablePicker)

@@ -84,9 +84,6 @@ impl ModeBindings {
     }
 }
 
-pub const CONNECTION_ERROR: ModeBindings = ModeBindings {
-    rows: CONNECTION_ERROR_ROWS,
-};
 pub const SETTINGS: ModeBindings = ModeBindings {
     rows: SETTINGS_ROWS,
 };
@@ -98,7 +95,6 @@ pub const JSON_EDIT: ModeBindings = ModeBindings {
 };
 
 pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
-    ("CONNECTION_ERROR", &CONNECTION_ERROR),
     ("SETTINGS", &SETTINGS),
     ("JSON_DETAIL", &JSON_DETAIL),
     ("JSON_EDIT", &JSON_EDIT),
