@@ -6,6 +6,7 @@ use crate::model::shared::help::HelpMode;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::Prefix;
 use crate::model::shared::settings::{ErBrowserChoice, KeymapPreset, SettingsSection};
+use crate::model::sql_editor::modal::SqlModalStatus;
 use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::update::action::Action;
 
@@ -49,7 +50,19 @@ enum Scope {
         editing: bool,
         custom_selected: bool,
     },
+    SqlConfirmation {
+        kind: SqlConfirmation,
+        matched: bool,
+    },
     Other,
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum SqlConfirmation {
+    High,
+    Risk,
+    AnalyzeHigh,
+    AnalyzeRisk,
 }
 
 impl KeyContext {
@@ -96,6 +109,9 @@ impl KeyContext {
                     custom_selected: state.settings.section() == SettingsSection::ErDiagram
                         && state.settings.selected_er_browser_choice() == ErBrowserChoice::Custom,
                 },
+                InputMode::SqlModal => {
+                    sql_confirmation_scope(state.sql_modal.status()).unwrap_or(Scope::Other)
+                }
                 _ => Scope::Other,
             },
         }
@@ -158,6 +174,32 @@ impl KeyContext {
     pub(super) fn supports_json_detail(&self) -> bool {
         self.policy
             .is_enabled(FeatureRequirement::JsonDocumentDetail)
+    }
+
+    pub(super) fn sql_confirmation(&self) -> Option<SqlConfirmation> {
+        match self.scope {
+            Scope::SqlConfirmation { kind, .. } => Some(kind),
+            _ => None,
+        }
+    }
+
+    pub(super) fn is_sql_confirmation_matched(&self) -> bool {
+        matches!(self.scope, Scope::SqlConfirmation { matched: true, .. })
+    }
+
+    pub(crate) fn with_sql_status(mut self, status: &SqlModalStatus) -> Self {
+        self.mode = InputMode::SqlModal;
+        self.scope = sql_confirmation_scope(status).unwrap_or(Scope::Other);
+        self
+    }
+
+    pub(crate) fn with_sql_confirmation(mut self) -> Self {
+        self.mode = InputMode::SqlModal;
+        self.scope = Scope::SqlConfirmation {
+            kind: SqlConfirmation::Risk,
+            matched: true,
+        };
+        self
     }
 
     pub(super) fn can_run_diagnostics(&self) -> bool {
@@ -286,4 +328,25 @@ fn is_dropdown_field(field: ConnectionField) -> bool {
             | ConnectionField::SslMode
             | ConnectionField::CleartextAuth
     )
+}
+
+fn sql_confirmation_scope(status: &SqlModalStatus) -> Option<Scope> {
+    let (kind, matched) = match status {
+        SqlModalStatus::ConfirmingHigh {
+            input, target_name, ..
+        } => (
+            SqlConfirmation::High,
+            input.content() == target_name.as_str(),
+        ),
+        SqlModalStatus::ConfirmingRisk { .. } => (SqlConfirmation::Risk, true),
+        SqlModalStatus::ConfirmingAnalyzeHigh {
+            input, target_name, ..
+        } => (
+            SqlConfirmation::AnalyzeHigh,
+            input.content() == target_name.as_str(),
+        ),
+        SqlModalStatus::ConfirmingAnalyzeRisk { .. } => (SqlConfirmation::AnalyzeRisk, true),
+        _ => return None,
+    };
+    Some(Scope::SqlConfirmation { kind, matched })
 }

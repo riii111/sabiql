@@ -210,10 +210,6 @@ mod tests {
                     SQL_MODAL_COMPARE_KEYS,
                     "SQL_MODAL_COMPARE_KEYS",
                 );
-                check_none_action_entries_have_no_combos(
-                    SQL_MODAL_CONFIRMING_KEYS,
-                    "SQL_MODAL_CONFIRMING_KEYS",
-                );
                 check_none_action_entries_have_no_combos(OVERLAY_KEYS, "OVERLAY_KEYS");
                 check_none_action_entries_have_no_combos(RESULT_ACTIVE_KEYS, "RESULT_ACTIVE_KEYS");
             }

@@ -1,14 +1,14 @@
+use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::Prefix;
 use crate::model::shared::settings::KeymapPreset;
 use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
 use crate::policy::{FeaturePolicy, FeatureRequirement};
-use crate::update::action::{
-    Action, InputTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
-};
+use crate::update::action::{Action, InputTarget, ModalKind};
 use crate::update::input::keybindings::{
     Key, KeyCombo, Modifiers, sql_modal_compare_explain, sql_modal_normal_query_history,
     sql_modal_plan_explain,
 };
+use crate::update::input::keymap::{KeyContext, sql_confirmation_action};
 use crate::update::input::vim::{
     SqlModalVimContext, VimSurfaceContext, action_for_input, action_for_key,
 };
@@ -45,6 +45,12 @@ fn handle_sql_modal_keys_internal(
     supports_explain_analyze: bool,
 ) -> Action {
     use crate::update::action::CursorMove;
+
+    let context = KeyContext::for_scope(InputMode::SqlModal, keymap_preset, feature_policy)
+        .with_sql_status(status);
+    if let Some(action) = sql_confirmation_action(combo, &context) {
+        return action;
+    }
 
     // Running state: suppress all key input while EXPLAIN is executing
     if matches!(status, SqlModalStatus::Running) {
@@ -191,108 +197,6 @@ fn handle_sql_modal_keys_internal(
         };
     }
 
-    if matches!(status, SqlModalStatus::ConfirmingHigh { .. }) {
-        let plain = !combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT);
-        return match combo.key {
-            Key::Char(c) if plain => Action::TextInput {
-                target: InputTarget::SqlModalHighRisk,
-                ch: c,
-            },
-            Key::Backspace if plain => Action::TextBackspace {
-                target: InputTarget::SqlModalHighRisk,
-            },
-            Key::Left => Action::TextMoveCursor {
-                target: InputTarget::SqlModalHighRisk,
-                direction: CursorMove::Left,
-            },
-            Key::Right => Action::TextMoveCursor {
-                target: InputTarget::SqlModalHighRisk,
-                direction: CursorMove::Right,
-            },
-            Key::Home => Action::TextMoveCursor {
-                target: InputTarget::SqlModalHighRisk,
-                direction: CursorMove::Home,
-            },
-            Key::End => Action::TextMoveCursor {
-                target: InputTarget::SqlModalHighRisk,
-                direction: CursorMove::End,
-            },
-            Key::Enter if plain => Action::SqlModalConfirmExecute,
-            Key::Esc => Action::SqlModalCancelConfirm,
-            _ => Action::None,
-        };
-    }
-
-    if matches!(status, SqlModalStatus::ConfirmingAnalyzeHigh { .. }) {
-        let plain = !combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT);
-        return match combo.key {
-            Key::Up if plain => Action::Scroll {
-                target: ScrollTarget::ExplainConfirm,
-                direction: ScrollDirection::Up,
-                amount: ScrollAmount::Line,
-            },
-            Key::Down if plain => Action::Scroll {
-                target: ScrollTarget::ExplainConfirm,
-                direction: ScrollDirection::Down,
-                amount: ScrollAmount::Line,
-            },
-            Key::Char(c) if plain => Action::TextInput {
-                target: InputTarget::SqlModalAnalyzeHighRisk,
-                ch: c,
-            },
-            Key::Backspace if plain => Action::TextBackspace {
-                target: InputTarget::SqlModalAnalyzeHighRisk,
-            },
-            Key::Left => Action::TextMoveCursor {
-                target: InputTarget::SqlModalAnalyzeHighRisk,
-                direction: CursorMove::Left,
-            },
-            Key::Right => Action::TextMoveCursor {
-                target: InputTarget::SqlModalAnalyzeHighRisk,
-                direction: CursorMove::Right,
-            },
-            Key::Home => Action::TextMoveCursor {
-                target: InputTarget::SqlModalAnalyzeHighRisk,
-                direction: CursorMove::Home,
-            },
-            Key::End => Action::TextMoveCursor {
-                target: InputTarget::SqlModalAnalyzeHighRisk,
-                direction: CursorMove::End,
-            },
-            Key::Enter if plain => Action::ExplainAnalyzeConfirm,
-            Key::Esc => Action::ExplainAnalyzeCancel,
-            _ => Action::None,
-        };
-    }
-
-    if matches!(status, SqlModalStatus::ConfirmingRisk { .. }) {
-        let plain = !combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT);
-        return match combo.key {
-            Key::Enter if plain => Action::SqlModalConfirmExecute,
-            Key::Esc => Action::SqlModalCancelConfirm,
-            _ => Action::None,
-        };
-    }
-
-    if matches!(status, SqlModalStatus::ConfirmingAnalyzeRisk { .. }) {
-        let plain = !combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT);
-        return match combo.key {
-            Key::Up if plain => Action::Scroll {
-                target: ScrollTarget::ExplainConfirm,
-                direction: ScrollDirection::Up,
-                amount: ScrollAmount::Line,
-            },
-            Key::Down if plain => Action::Scroll {
-                target: ScrollTarget::ExplainConfirm,
-                direction: ScrollDirection::Down,
-                amount: ScrollAmount::Line,
-            },
-            Key::Enter if plain => Action::ExplainAnalyzeConfirm,
-            Key::Esc => Action::ExplainAnalyzeCancel,
-            _ => Action::None,
-        };
-    }
-
     let ctrl = combo.modifiers.contains(Modifiers::CTRL);
     let alt = combo.modifiers.contains(Modifiers::ALT);
     let shift = combo.modifiers.contains(Modifiers::SHIFT);
@@ -394,7 +298,7 @@ mod tests {
     use super::*;
     use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
     use crate::model::sql_editor::modal::AdhocSuccessSnapshot;
-    use crate::update::action::CursorMove;
+    use crate::update::action::{CursorMove, ScrollAmount, ScrollDirection, ScrollTarget};
     use crate::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
 

@@ -18,7 +18,7 @@ use crate::update::input::keymap::{
     HintSurface, KeyContext, Picker, cell_detail_hints, cell_edit_hints, command_line_hints,
     confirm_hints, connection_error_hints, connection_selector_hints, connection_setup_hints,
     help_hints, json_edit_hints, json_search_hints, json_view_hints, picker_hints,
-    row_detail_hints, settings_hints, sqlite_diagnostics_hints,
+    row_detail_hints, settings_hints, sql_confirmation_hints, sqlite_diagnostics_hints,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -523,7 +523,13 @@ fn reference_sections(
             .into_iter()
             .map(|hint| HelpRow::new(hint.key, hint.description))
             .collect(),
-        rows_from_bindings_if_visible(SQL_MODAL_CONFIRMING_KEYS, feature_policy),
+        sql_confirmation_hints(
+            HintSurface::Editing,
+            &key_context.clone().with_sql_confirmation(),
+        )
+        .into_iter()
+        .map(|hint| HelpRow::new(hint.key, hint.description))
+        .collect(),
     ]);
     if feature_policy.is_enabled(FeatureRequirement::JsonDocumentEdit) {
         editing_rows.extend(
@@ -726,9 +732,14 @@ fn sql_current_rows(
             ]);
             rows_from_binding_refs_if_visible(&bindings, feature_policy)
         }
-        SqlHelpMode::Confirm => {
-            rows_from_bindings_if_visible(SQL_MODAL_CONFIRMING_KEYS, feature_policy)
-        }
+        SqlHelpMode::Confirm => sql_confirmation_hints(
+            HintSurface::Current,
+            &KeyContext::for_scope(InputMode::SqlModal, keymap_preset, feature_policy)
+                .with_sql_confirmation(),
+        )
+        .into_iter()
+        .map(|hint| HelpRow::new(hint.key, hint.description))
+        .collect(),
     }
 }
 

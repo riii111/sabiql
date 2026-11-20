@@ -17,7 +17,7 @@ use crate::ports::inbound::{InputEvent, KeyCombo};
 use crate::update::action::Action;
 use crate::update::input::keybindings::readline_action_for;
 use crate::update::input::keymap::{
-    KeyContext, json_edit_action, json_search_action, json_view_action,
+    KeyContext, json_edit_action, json_search_action, json_view_action, sql_confirmation_action,
 };
 use interaction::{InputInteraction, resolve_input_interaction};
 
@@ -71,6 +71,11 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
             };
         }
         InputMode::JsonEdit => return json_edit_action(combo, &KeyContext::from_state(state)),
+        InputMode::SqlModal => {
+            if let Some(action) = sql_confirmation_action(combo, &KeyContext::from_state(state)) {
+                return action;
+            }
+        }
         _ => {}
     }
     let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
@@ -328,6 +333,11 @@ mod tests {
                 InputTarget::SqlModalHighRisk
             }
             FormSurface::SqlModalAnalyzeHighRisk => {
+                use crate::update::test_fixtures;
+                test_fixtures::activate_postgres_connection(
+                    &mut state,
+                    "postgres://localhost/test",
+                );
                 state.modal.set_mode(InputMode::SqlModal);
                 state.sql_modal.begin_confirming_analyze_high(
                     "EXPLAIN DELETE FROM users".to_string(),

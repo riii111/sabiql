@@ -107,6 +107,11 @@ impl Binding {
         self
     }
 
+    pub(super) fn with_any_modifiers(mut self, key: Key) -> Self {
+        self.triggers = vec![Trigger::AnyModifiers(key)];
+        self
+    }
+
     pub(super) fn command(
         command: LineCommand,
         name: &'static str,
@@ -470,6 +475,7 @@ mod tests {
     use crate::update::input::keymap::settings::{
         EDITING as SETTINGS_EDIT_ROWS, SELECTING as SETTINGS_ROWS,
     };
+    use crate::update::input::keymap::sql_confirmation::active_rows as confirmation_rows;
     use crate::update::input::keymap::sqlite_diagnostics::ROWS as DIAGNOSTIC_ROWS;
 
     #[test]
@@ -639,6 +645,100 @@ mod tests {
                                 | Trigger::Sequence { .. } => {
                                     continue;
                                 }
+                            };
+                            let Output::Action(expected) = &binding.output else {
+                                unreachable!()
+                            };
+                            assert_eq!(
+                                format!("{:?}", handle_event(InputEvent::Key(combo), &state)),
+                                format!("{expected:?}")
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn visible_confirmation_bindings_resolve_through_event_entry() {
+        use crate::model::app_state::AppState;
+        use crate::policy::write::sql_risk::AcknowledgeReason;
+        use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel};
+        use crate::ports::inbound::InputEvent;
+        use crate::update::{input::handle_event, test_fixtures};
+
+        for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
+            for kind in 0..4 {
+                let mut state = AppState::new("test".to_string());
+                test_fixtures::activate_postgres_connection(
+                    &mut state,
+                    "postgres://localhost/test",
+                );
+                state.modal.set_mode(InputMode::SqlModal);
+                state.settings.load_keymap_preset(preset);
+                match kind {
+                    0 => {
+                        state.sql_modal.begin_confirming_high(
+                            AdhocRiskDecision {
+                                risk_level: RiskLevel::High,
+                                label: "DROP",
+                            },
+                            "users".to_string(),
+                        );
+                        state
+                            .sql_modal
+                            .confirming_high_input_mut()
+                            .unwrap()
+                            .set_content("users".to_string());
+                    }
+                    1 => state
+                        .sql_modal
+                        .begin_confirming_risk(AcknowledgeReason::UnknownRisk, "risk".to_string()),
+                    2 => {
+                        state.sql_modal.begin_confirming_analyze_high(
+                            "DELETE".to_string(),
+                            "users".to_string(),
+                        );
+                        state
+                            .sql_modal
+                            .confirming_analyze_high_input_mut()
+                            .unwrap()
+                            .set_content("users".to_string());
+                    }
+                    _ => state.sql_modal.begin_confirming_analyze_risk(
+                        "DELETE".to_string(),
+                        AcknowledgeReason::AnalyzeExecution,
+                    ),
+                }
+                let context = KeyContext::from_state(&state);
+                let rows = confirmation_rows(&context).unwrap();
+                for (row_index, row) in rows
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, row)| row.surfaces.contains(&HintSurface::Border))
+                {
+                    assert!(
+                        row.visible
+                            .is_none_or(|visible| visible(&context, HintSurface::Border))
+                    );
+                    for (binding_index, binding) in row
+                        .bindings
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, binding)| binding.enabled(&context))
+                    {
+                        for trigger in binding.triggers(preset) {
+                            if winner(rows, &context, *trigger) != Some((row_index, binding_index))
+                            {
+                                continue;
+                            }
+                            let combo = match trigger {
+                                Trigger::Key(combo) => *combo,
+                                Trigger::AnyModifiers(key) | Trigger::NoCtrlAlt(key) => {
+                                    KeyCombo::plain(*key)
+                                }
+                                _ => continue,
                             };
                             let Output::Action(expected) = &binding.output else {
                                 unreachable!()

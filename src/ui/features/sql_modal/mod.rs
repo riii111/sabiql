@@ -18,9 +18,9 @@ use crate::app::model::sql_editor::modal::{SQL_MODAL_HEIGHT_PERCENT, SqlModalSta
 use crate::app::policy::write::sql_risk::AcknowledgeReason;
 use crate::app::policy::{FeaturePolicy, FeatureRequirement};
 use crate::app::update::input::keybindings::{
-    sql_modal, sql_modal_compare, sql_modal_confirming, sql_modal_normal, sql_modal_plan,
-    sql_modal_plan_explain,
+    sql_modal, sql_modal_compare, sql_modal_normal, sql_modal_plan, sql_modal_plan_explain,
 };
+use crate::app::update::input::keymap::{HintSurface, KeyContext, sql_confirmation_hints};
 use crate::primitives::molecules::overlay::{centered_rect, render_scrim};
 use crate::primitives::molecules::{FooterHintBar, render_modal_with_border_color};
 use crate::theme::ThemePalette;
@@ -46,27 +46,21 @@ impl SqlModal {
         let feature_policy = FeaturePolicy::new(&engine_feature_profile);
         let active_tab =
             engine_feature_profile.normalize_sql_modal_tab(state.sql_modal.active_tab());
+        let confirmation_hints =
+            sql_confirmation_hints(HintSurface::Border, &KeyContext::from_state(state));
 
         let (area, inner) = if is_confirming {
             match state.sql_modal.status() {
-                SqlModalStatus::ConfirmingHigh {
-                    decision,
-                    input,
-                    target_name,
-                } => {
+                SqlModalStatus::ConfirmingHigh { decision, .. } => {
                     let title = format!(
                         " SQL \u{2500}\u{2500} \u{26a0} {} ",
                         decision.risk_level.as_str()
                     );
-                    let is_match = input.content() == target_name.as_str();
-                    let footer = if is_match {
-                        FooterHintBar::new([
-                            sql_modal_confirming::ENTER_EXECUTE.as_hint(),
-                            sql_modal_confirming::CANCEL_CONFIRM.as_hint(),
-                        ])
-                    } else {
-                        FooterHintBar::new([sql_modal_confirming::CANCEL_CONFIRM.as_hint()])
-                    };
+                    let footer = FooterHintBar::new(
+                        confirmation_hints
+                            .iter()
+                            .map(|hint| (hint.key.clone(), hint.short)),
+                    );
                     render_modal_with_border_color(
                         frame,
                         Constraint::Percentage(80),
@@ -101,10 +95,11 @@ impl SqlModal {
                         Constraint::Percentage(80),
                         Constraint::Percentage(SQL_MODAL_HEIGHT_PERCENT),
                         title,
-                        FooterHintBar::new([
-                            sql_modal_confirming::ENTER_EXECUTE.as_hint(),
-                            sql_modal_confirming::CANCEL_CONFIRM.as_hint(),
-                        ]),
+                        FooterHintBar::new(
+                            confirmation_hints
+                                .iter()
+                                .map(|hint| (hint.key.clone(), hint.short)),
+                        ),
                         border_color,
                         theme,
                     )
@@ -117,19 +112,12 @@ impl SqlModal {
                     Self::editing_hint(&feature_policy, state.settings.saved_keymap_preset())
                 }
                 SqlModalStatus::Running => FooterHintBar::message("Running\u{2026}"),
-                SqlModalStatus::ConfirmingAnalyzeHigh {
-                    input, target_name, ..
-                } => {
-                    let is_match = input.content() == target_name.as_str();
-                    if is_match {
-                        FooterHintBar::new([("Enter", "Confirm"), ("Esc", "Cancel")])
-                    } else {
-                        FooterHintBar::new([("Esc", "Cancel")])
-                    }
-                }
-                SqlModalStatus::ConfirmingAnalyzeRisk { .. } => {
-                    FooterHintBar::new([("Enter", "Execute"), ("Esc", "Cancel")])
-                }
+                SqlModalStatus::ConfirmingAnalyzeHigh { .. }
+                | SqlModalStatus::ConfirmingAnalyzeRisk { .. } => FooterHintBar::new(
+                    confirmation_hints
+                        .iter()
+                        .map(|hint| (hint.key.clone(), hint.short)),
+                ),
                 _ => {
                     let compare_can_yank = state.explain.can_yank_compare();
                     Self::border_hint(

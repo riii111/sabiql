@@ -65,6 +65,20 @@ pub(super) fn text_field_any_modifiers(target: InputTarget) -> Vec<Row> {
     text_field_with(target, KeyModifiers::Any)
 }
 
+pub(super) fn confirmation_text_field(target: InputTarget) -> Vec<Row> {
+    let mut rows = text_field(target, true);
+    let first = rows.len() - 4;
+    for (row, key) in rows[first..]
+        .iter_mut()
+        .zip([Key::Left, Key::Right, Key::Home, Key::End])
+    {
+        for binding in &mut row.bindings {
+            *binding = binding.clone().with_any_modifiers(key);
+        }
+    }
+    rows
+}
+
 pub(super) fn consume_readline(target: InputTarget) -> Vec<Row> {
     let mut rows = READLINE
         .iter()
