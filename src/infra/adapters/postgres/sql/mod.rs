@@ -12,6 +12,7 @@ pub(in crate::adapters::postgres) mod query;
 #[cfg(test)]
 mod tests {
     use super::{quote_ident, quote_literal};
+    use rstest::rstest;
 
     #[test]
     fn quote_ident_escapes_embedded_quotes() {
@@ -21,6 +22,27 @@ mod tests {
     #[test]
     fn quote_ident_supports_empty_string() {
         assert_eq!(quote_ident(""), "\"\"");
+    }
+
+    #[rstest]
+    #[case::backtick("a`b", "\"a`b\"")]
+    #[case::backslash("a\\b", "\"a\\b\"")]
+    #[case::non_ascii("日本語", "\"日本語\"")]
+    fn quote_ident_keeps_other_characters_verbatim(#[case] name: &str, #[case] expected: &str) {
+        assert_eq!(quote_ident(name), expected);
+    }
+
+    #[rstest]
+    #[case::nul("a\0b", "'a\0b'")]
+    #[case::newline("a\nb", "'a\nb'")]
+    #[case::tab("a\tb", "'a\tb'")]
+    #[case::substitute("a\u{1a}b", "'a\u{1a}b'")]
+    #[case::non_ascii("日本語", "'日本語'")]
+    fn quote_literal_keeps_characters_other_than_quotes_verbatim(
+        #[case] value: &str,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(quote_literal(value), expected);
     }
 
     #[test]

@@ -345,6 +345,79 @@ mod tests {
         }
 
         #[test]
+        fn mysql_unlexable_statement_reports_validity_boundary() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .editor
+                .set_content("SELECT 'unterminated".to_string());
+            test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
+
+            let effects = route(
+                &mut state,
+                Action::ExplainRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.explain.error(),
+                Some("MySQL EXPLAIN requires one valid statement")
+            );
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
+        }
+
+        #[test]
+        fn sqlite_multiple_statements_sets_error_on_plan_tab() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .editor
+                .set_content("SELECT 1; SELECT 2".to_string());
+            activate_sqlite_connection(&mut state);
+
+            let effects = route(
+                &mut state,
+                Action::ExplainRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.explain.error(),
+                Some("EXPLAIN does not support multiple statements")
+            );
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
+        }
+
+        #[test]
+        fn sqlite_trailing_comment_fragment_reports_query_plan_boundary() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .editor
+                .set_content("SELECT 1; -- note".to_string());
+            activate_sqlite_connection(&mut state);
+
+            let effects = route(
+                &mut state,
+                Action::ExplainRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.explain.error(),
+                Some(
+                    "EXPLAIN QUERY PLAN supports SELECT, INSERT, UPDATE, DELETE, or REPLACE statements"
+                )
+            );
+        }
+
+        #[test]
         fn sqlite_ddl_sets_query_plan_error_on_plan_tab() {
             let mut state = sql_modal_state();
             state

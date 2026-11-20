@@ -19,3 +19,40 @@ pub(in crate::adapters::mysql) fn quote_string(value: &str) -> String {
     }
     format!("'{escaped}'")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{quote_identifier, quote_string};
+    use rstest::rstest;
+
+    #[rstest]
+    #[case::plain("users", "`users`")]
+    #[case::double_quote("a\"b", "`a\"b`")]
+    #[case::backtick("a`b", "`a``b`")]
+    #[case::empty("", "``")]
+    fn identifiers_double_embedded_backticks(#[case] name: &str, #[case] expected: &str) {
+        assert_eq!(quote_identifier(name), expected);
+    }
+
+    #[rstest]
+    #[case::single_quote("O'Reilly", "'O\\'Reilly'")]
+    #[case::backslash("C:\\temp", "'C:\\\\temp'")]
+    #[case::non_ascii("日本語", "'日本語'")]
+    fn strings_backslash_escape_quotes_and_backslashes(
+        #[case] value: &str,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(quote_string(value), expected);
+    }
+
+    #[rstest]
+    #[case::nul("a\0b", "'a\\0b'")]
+    #[case::newline("a\nb", "'a\\nb'")]
+    #[case::carriage_return("a\rb", "'a\\rb'")]
+    #[case::tab("a\tb", "'a\\tb'")]
+    #[case::backspace("a\u{8}b", "'a\\bb'")]
+    #[case::substitute("a\u{1a}b", "'a\\Zb'")]
+    fn strings_backslash_escape_control_characters(#[case] value: &str, #[case] expected: &str) {
+        assert_eq!(quote_string(value), expected);
+    }
+}

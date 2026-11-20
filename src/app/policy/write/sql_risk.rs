@@ -922,6 +922,92 @@ mod tests {
             let result = split_statements(sql);
             assert_eq!(result, vec!["SELECT 'İ'", "SELECT 2"]);
         }
+
+        mod by_engine {
+            use super::*;
+
+            fn split_for(database_type: DatabaseType, sql: &str) -> Result<Vec<String>, String> {
+                split_statements_for_database(database_type, sql).map_err(|error| error.to_string())
+            }
+
+            fn owned(statements: &[&str]) -> Vec<String> {
+                statements.iter().map(ToString::to_string).collect()
+            }
+
+            #[test]
+            fn postgres_keeps_dollar_quoted_semicolons_in_one_statement() {
+                assert_eq!(
+                    split_for(DatabaseType::PostgreSQL, "SELECT $$a;b$$; SELECT 2"),
+                    Ok(owned(&["SELECT $$a;b$$", "SELECT 2"]))
+                );
+            }
+
+            #[rstest]
+            #[case::mysql(DatabaseType::MySQL)]
+            #[case::sqlite(DatabaseType::SQLite)]
+            fn other_engines_split_inside_dollar_quotes(#[case] database_type: DatabaseType) {
+                assert_eq!(
+                    split_for(database_type, "SELECT $$a;b$$"),
+                    Ok(owned(&["SELECT $$a", "b$$"]))
+                );
+            }
+
+            #[rstest]
+            #[case::quoted_literal("SELECT 'a; SELECT 2", "unterminated MySQL quoted literal")]
+            #[case::block_comment("SELECT 1 /* note", "unterminated MySQL block comment")]
+            #[case::parentheses("SELECT (1; SELECT 2", "unbalanced MySQL parentheses")]
+            fn mysql_lex_failures_return_the_lexer_message(
+                #[case] sql: &str,
+                #[case] message: &str,
+            ) {
+                assert_eq!(
+                    split_for(DatabaseType::MySQL, sql),
+                    Err(message.to_string())
+                );
+            }
+
+            #[test]
+            fn mysql_drops_hash_comment_only_fragments() {
+                assert_eq!(
+                    split_for(DatabaseType::MySQL, "SELECT 1; # note\n; SELECT 2"),
+                    Ok(owned(&["SELECT 1", "SELECT 2"]))
+                );
+            }
+
+            #[test]
+            fn sqlite_drops_comment_only_fragments() {
+                assert_eq!(
+                    split_for(
+                        DatabaseType::SQLite,
+                        "SELECT 1; -- note\n; /* block */; SELECT 2; -- trailing"
+                    ),
+                    Ok(owned(&["SELECT 1", "SELECT 2"]))
+                );
+            }
+
+            #[test]
+            fn sqlite_keeps_trigger_body_statements_together() {
+                assert_eq!(
+                    split_for(
+                        DatabaseType::SQLite,
+                        "CREATE TRIGGER audit AFTER INSERT ON users BEGIN INSERT INTO log VALUES (1); END; SELECT 1"
+                    ),
+                    Ok(owned(&[
+                        "CREATE TRIGGER audit AFTER INSERT ON users BEGIN INSERT INTO log VALUES (1); END",
+                        "SELECT 1",
+                    ]))
+                );
+            }
+
+            #[rstest]
+            #[case::unclosed_body(
+                "CREATE TRIGGER audit AFTER INSERT ON users BEGIN INSERT INTO log VALUES (1);"
+            )]
+            #[case::missing_body("CREATE TRIGGER audit AFTER INSERT ON users")]
+            fn sqlite_returns_fragments_despite_trigger_split_errors(#[case] sql: &str) {
+                assert_eq!(split_for(DatabaseType::SQLite, sql), Ok(owned(&[sql])));
+            }
+        }
     }
 
     mod evaluate_sql_risk_tests {

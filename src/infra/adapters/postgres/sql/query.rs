@@ -652,4 +652,26 @@ mod tests {
             );
         }
     }
+
+    mod backslash_names {
+        use super::*;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case::path_like("C:\\temp", "'C:\\temp'")]
+        #[case::backslash_before_quote("a\\'b", "'a\\''b'")]
+        #[case::lone_backslash("\\", "'\\'")]
+        fn preview_and_detail_queries_keep_backslashes_in_standard_string_literals(
+            #[case] name: &str,
+            #[case] literal: &str,
+        ) {
+            for sql in [
+                PostgresAdapter::preview_pk_columns_query(name, name),
+                PostgresAdapter::table_detail_query(name, name),
+            ] {
+                assert!(sql.contains(&format!("n.nspname = {literal}")), "{sql}");
+                assert!(sql.contains(&format!("c.relname = {literal}")), "{sql}");
+            }
+        }
+    }
 }

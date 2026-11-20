@@ -218,5 +218,21 @@ mod tests {
 
             assert!(!ddl.contains("COMMENT ON"));
         }
+
+        #[test]
+        fn backslashes_in_comments_stay_in_standard_string_literals() {
+            let adapter = PostgresAdapter::new();
+            let mut col = make_column("id", "integer", false);
+            col.comment = Some("a\\'b".to_string());
+            let mut table = make_table(vec![col], None);
+            table.comment = Some("C:\\temp".to_string());
+
+            let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
+
+            assert!(ddl.contains("COMMENT ON TABLE \"public\".\"test_table\" IS 'C:\\temp';"));
+            assert!(
+                ddl.contains("COMMENT ON COLUMN \"public\".\"test_table\".\"id\" IS 'a\\''b';")
+            );
+        }
     }
 }
