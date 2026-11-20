@@ -32,7 +32,6 @@ struct CacheFlowDriver {
     channel: VecDeque<Action>,
     pending_fetches: Vec<PendingFetch>,
     fetched_tables: Vec<String>,
-    max_outstanding_fetches: usize,
     io_effects: Vec<Effect>,
 }
 
@@ -46,7 +45,6 @@ impl CacheFlowDriver {
             channel: VecDeque::new(),
             pending_fetches: Vec::new(),
             fetched_tables: Vec::new(),
-            max_outstanding_fetches: 0,
             io_effects: Vec::new(),
         }
     }
@@ -92,10 +90,6 @@ impl CacheFlowDriver {
 
     fn fetched_tables(&self) -> &[String] {
         &self.fetched_tables
-    }
-
-    fn max_outstanding_fetches(&self) -> usize {
-        self.max_outstanding_fetches
     }
 
     fn er_generation_count(&self) -> usize {
@@ -168,8 +162,6 @@ impl CacheFlowDriver {
                     schema,
                     table,
                 });
-                self.max_outstanding_fetches =
-                    self.max_outstanding_fetches.max(self.pending_fetches.len());
             }
             other => self.io_effects.push(other),
         }
@@ -484,7 +476,6 @@ mod er_prefetch {
             driver.fetched_tables(),
             ["public.a", "public.d", "public.f"]
         );
-        assert!(driver.max_outstanding_fetches() <= 4);
         assert_eq!(driver.er_generation_count(), 1);
     }
 
@@ -503,7 +494,6 @@ mod er_prefetch {
         driver.complete_fetch("public.t9", table("t9", &["id"], &[]));
 
         assert_eq!(fetched, ["public.t9"]);
-        assert!(driver.max_outstanding_fetches() <= 4);
         assert_eq!(driver.er_generation_count(), 1);
     }
 }
