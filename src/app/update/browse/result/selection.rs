@@ -1,8 +1,5 @@
-use std::time::Instant;
-
+use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
-use crate::update::action::Action;
-use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::EditGuardrailError;
 
 use super::scroll::{result_col_count, result_row_count};
@@ -24,77 +21,75 @@ fn ensure_cell_visible(state: &mut AppState) {
     }
 }
 
-pub(in crate::update) fn reduce_selection(
-    state: &mut AppState,
-    action: &Action,
-    _now: Instant,
-) -> DispatchResult {
-    match action {
-        Action::ResultActivateCell => {
-            let rows = result_row_count(state);
-            let cols = result_col_count(state);
-            if rows > 0 && cols > 0 {
-                let row = state.result_interaction.scroll_offset().min(rows - 1);
-                let col = state.result_interaction.horizontal_offset().min(cols - 1);
-                state.result_interaction.activate_cell(row, col);
-            }
-            DispatchResult::handled()
-        }
-        Action::ResultExitToScroll => {
-            state.result_interaction.exit_cell_to_scroll();
-            DispatchResult::handled()
-        }
-        Action::ResultCellLeft => {
-            if let Some(c) = state.result_interaction.selection().cell()
-                && c > 0
-            {
-                state.result_interaction.move_cell(c - 1);
-                ensure_cell_visible(state);
-            }
-            DispatchResult::handled()
-        }
-        Action::ResultCellRight => {
-            if let Some(c) = state.result_interaction.selection().cell() {
-                let max_col = result_col_count(state).saturating_sub(1);
-                if c < max_col {
-                    state.result_interaction.move_cell(c + 1);
-                    ensure_cell_visible(state);
-                }
-            }
-            DispatchResult::handled()
-        }
-        Action::ResultDeleteOperatorPending => {
-            state.result_interaction.start_delete_operator();
-            DispatchResult::handled()
-        }
-        Action::StageRowForDelete => {
-            if state.session.is_read_only() {
-                state
-                    .messages
-                    .set_error("Read-only mode: delete operations are disabled".to_string());
-                return DispatchResult::handled();
-            }
-            if let Some(reason) = state.visible_preview_target_read_only_reason() {
-                state
-                    .messages
-                    .set_error(EditGuardrailError::ReadOnlyPreviewTarget(reason).to_string());
-                return DispatchResult::handled();
-            }
-            if let Some(row_idx) = state.result_interaction.selection().row() {
-                state.result_interaction.stage_row(row_idx);
-            }
-            DispatchResult::handled()
-        }
-        Action::UnstageLastStagedRow => {
-            state.result_interaction.unstage_last_row();
-            DispatchResult::handled()
-        }
-        Action::ClearStagedDeletes => {
-            state.result_interaction.clear_staged_deletes();
-            DispatchResult::handled()
-        }
-        _ => DispatchResult::pass(),
+pub(in crate::update) fn result_activate_cell(state: &mut AppState) -> Vec<Effect> {
+    let rows = result_row_count(state);
+    let cols = result_col_count(state);
+    if rows > 0 && cols > 0 {
+        let row = state.result_interaction.scroll_offset().min(rows - 1);
+        let col = state.result_interaction.horizontal_offset().min(cols - 1);
+        state.result_interaction.activate_cell(row, col);
     }
+    vec![]
+}
+
+pub(in crate::update) fn result_exit_to_scroll(state: &mut AppState) -> Vec<Effect> {
+    state.result_interaction.exit_cell_to_scroll();
+    vec![]
+}
+
+pub(in crate::update) fn result_cell_left(state: &mut AppState) -> Vec<Effect> {
+    if let Some(c) = state.result_interaction.selection().cell()
+        && c > 0
+    {
+        state.result_interaction.move_cell(c - 1);
+        ensure_cell_visible(state);
+    }
+    vec![]
+}
+
+pub(in crate::update) fn result_cell_right(state: &mut AppState) -> Vec<Effect> {
+    if let Some(c) = state.result_interaction.selection().cell() {
+        let max_col = result_col_count(state).saturating_sub(1);
+        if c < max_col {
+            state.result_interaction.move_cell(c + 1);
+            ensure_cell_visible(state);
+        }
+    }
+    vec![]
+}
+
+pub(in crate::update) fn result_delete_operator_pending(state: &mut AppState) -> Vec<Effect> {
+    state.result_interaction.start_delete_operator();
+    vec![]
+}
+
+pub(in crate::update) fn stage_row_for_delete(state: &mut AppState) -> Vec<Effect> {
+    if state.session.is_read_only() {
+        state
+            .messages
+            .set_error("Read-only mode: delete operations are disabled".to_string());
+        return vec![];
+    }
+    if let Some(reason) = state.visible_preview_target_read_only_reason() {
+        state
+            .messages
+            .set_error(EditGuardrailError::ReadOnlyPreviewTarget(reason).to_string());
+        return vec![];
+    }
+    if let Some(row_idx) = state.result_interaction.selection().row() {
+        state.result_interaction.stage_row(row_idx);
+    }
+    vec![]
+}
+
+pub(in crate::update) fn unstage_last_staged_row(state: &mut AppState) -> Vec<Effect> {
+    state.result_interaction.unstage_last_row();
+    vec![]
+}
+
+pub(in crate::update) fn clear_staged_deletes(state: &mut AppState) -> Vec<Effect> {
+    state.result_interaction.clear_staged_deletes();
+    vec![]
 }
 
 #[cfg(test)]
@@ -104,6 +99,9 @@ mod tests {
     use super::*;
     use crate::domain::Column;
     use crate::domain::{QueryResult, QuerySource, Table};
+    use crate::services::AppServices;
+    use crate::update::action::Action;
+    use crate::update::reducer::route;
     use std::sync::Arc;
     use std::time::Instant;
 
@@ -154,7 +152,12 @@ mod tests {
             let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
             state.result_interaction.activate_cell(0, 0);
 
-            reduce_selection(&mut state, &Action::StageRowForDelete, Instant::now());
+            route(
+                &mut state,
+                Action::StageRowForDelete,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(state.result_interaction.staged_delete_rows().contains(&0));
         }
@@ -165,7 +168,12 @@ mod tests {
             state.result_interaction.activate_cell(0, 0);
             state.result_interaction.stage_row(0);
 
-            reduce_selection(&mut state, &Action::StageRowForDelete, Instant::now());
+            route(
+                &mut state,
+                Action::StageRowForDelete,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert_eq!(state.result_interaction.staged_delete_rows().len(), 1);
         }
@@ -174,7 +182,12 @@ mod tests {
         fn staging_requires_active_cell() {
             let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
 
-            reduce_selection(&mut state, &Action::StageRowForDelete, Instant::now());
+            route(
+                &mut state,
+                Action::StageRowForDelete,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(state.result_interaction.staged_delete_rows().is_empty());
         }
@@ -189,7 +202,12 @@ mod tests {
             state.result_interaction.stage_row(0);
             state.result_interaction.stage_row(1);
 
-            reduce_selection(&mut state, &Action::UnstageLastStagedRow, Instant::now());
+            route(
+                &mut state,
+                Action::UnstageLastStagedRow,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert_eq!(state.result_interaction.staged_delete_rows().len(), 1);
             assert!(state.result_interaction.staged_delete_rows().contains(&0));
@@ -205,7 +223,12 @@ mod tests {
             state.result_interaction.stage_row(0);
             state.result_interaction.stage_row(1);
 
-            reduce_selection(&mut state, &Action::ClearStagedDeletes, Instant::now());
+            route(
+                &mut state,
+                Action::ClearStagedDeletes,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(state.result_interaction.staged_delete_rows().is_empty());
         }
@@ -216,7 +239,12 @@ mod tests {
             state.result_interaction.activate_cell(0, 0);
             state.result_interaction.stage_row(0);
 
-            reduce_selection(&mut state, &Action::ResultExitToScroll, Instant::now());
+            route(
+                &mut state,
+                Action::ResultExitToScroll,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert_eq!(state.result_interaction.selection().row(), None);
             assert!(state.result_interaction.staged_delete_rows().contains(&0));
@@ -232,7 +260,12 @@ mod tests {
             state.result_interaction.stage_row(0);
             state.result_interaction.stage_row(1);
 
-            reduce_selection(&mut state, &Action::ClearStagedDeletes, Instant::now());
+            route(
+                &mut state,
+                Action::ClearStagedDeletes,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(state.result_interaction.staged_delete_rows().is_empty());
         }
@@ -249,9 +282,12 @@ mod tests {
             state.result_interaction.activate_cell(0, 0);
             state.session.enable_read_only();
 
-            let effects = reduce_selection(&mut state, &Action::StageRowForDelete, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects = route(
+                &mut state,
+                Action::StageRowForDelete,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
             assert!(state.result_interaction.staged_delete_rows().is_empty());
@@ -266,9 +302,12 @@ mod tests {
             state.session.set_table_detail_raw(Some(table));
             state.result_interaction.activate_cell(0, 0);
 
-            let effects = reduce_selection(&mut state, &Action::StageRowForDelete, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects = route(
+                &mut state,
+                Action::StageRowForDelete,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
             assert!(state.result_interaction.staged_delete_rows().is_empty());
@@ -276,36 +315,6 @@ mod tests {
                 state.messages.last_error(),
                 Some("Preview target is read-only: view")
             );
-        }
-    }
-
-    mod page_passthrough {
-        use super::*;
-
-        #[test]
-        fn next_page_returns_none_without_mutating_state() {
-            let mut state = row_delete::base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
-            state.result_interaction.activate_cell(0, 0);
-            state.result_interaction.stage_row(0);
-
-            let result = reduce_selection(&mut state, &Action::ResultNextPage, Instant::now());
-
-            assert!(result.is_pass());
-            assert_eq!(state.result_interaction.selection().row(), Some(0));
-            assert!(state.result_interaction.staged_delete_rows().contains(&0));
-        }
-
-        #[test]
-        fn prev_page_returns_none_without_mutating_state() {
-            let mut state = row_delete::base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
-            state.result_interaction.activate_cell(0, 0);
-            state.result_interaction.stage_row(0);
-
-            let result = reduce_selection(&mut state, &Action::ResultPrevPage, Instant::now());
-
-            assert!(result.is_pass());
-            assert_eq!(state.result_interaction.selection().row(), Some(0));
-            assert!(state.result_interaction.staged_delete_rows().contains(&0));
         }
     }
 }

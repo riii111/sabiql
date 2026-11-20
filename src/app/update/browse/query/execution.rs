@@ -11,230 +11,213 @@ use crate::model::shared::help::HelpOrigin;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::AdhocSuccessSnapshot;
 use crate::ports::outbound::DbOperationError;
-use crate::update::action::{
-    Action, ModalKind, QueryCompletionContext, QueryFailureContext, TableTarget,
-};
+use crate::update::action::{Action, QueryCompletionContext, QueryFailureContext, TableTarget};
 use crate::update::browse::query::preview_effect_for_current_table;
-use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
-use crate::update::input::command::action_for_command;
+use crate::update::input::command::{LineCommand, parse_line_command};
+use crate::update::reducer::quit;
 
 use super::write;
 
-pub(in crate::update) fn reduce_execution(
+pub(in crate::update) fn query_completed(
     state: &mut AppState,
-    action: &Action,
+    run_id: u64,
+    result: Arc<QueryResult>,
+    context: QueryCompletionContext,
     now: Instant,
-) -> DispatchResult {
-    match action {
-        Action::QueryCompleted {
-            run_id,
-            result,
-            context,
-        } => {
-            if !state.query.is_current_run(*run_id) {
-                return DispatchResult::handled();
-            }
-            if let QueryCompletionContext::Preview { generation, .. } = context
-                && *generation != state.session.selection_generation()
-            {
-                return DispatchResult::handled();
-            }
+) -> Vec<Effect> {
+    if !state.query.is_current_run(run_id) {
+        return vec![];
+    }
+    if let QueryCompletionContext::Preview { generation, .. } = context
+        && generation != state.session.selection_generation()
+    {
+        return vec![];
+    }
 
-            if let QueryCompletionContext::Preview {
-                generation,
-                target_page,
-            } = context
-                && result.source == QuerySource::Preview
-                && state.session.selected_table_key().is_some()
-                && !state.session.is_table_detail_terminal(*generation)
-            {
-                state.query.mark_idle();
-                state.query.defer_preview(
-                    Arc::clone(result),
-                    *generation,
-                    Some(*target_page),
-                    true,
-                );
-                return DispatchResult::handled();
-            }
+    if let QueryCompletionContext::Preview {
+        generation,
+        target_page,
+    } = context
+        && result.source == QuerySource::Preview
+        && state.session.selected_table_key().is_some()
+        && !state.session.is_table_detail_terminal(generation)
+    {
+        state.query.mark_idle();
+        state
+            .query
+            .defer_preview(Arc::clone(&result), generation, Some(target_page), true);
+        return vec![];
+    }
 
-            state.query.mark_idle();
+    state.query.mark_idle();
 
-            match (result.source, result.is_error()) {
-                // Adhoc errors stay inside the SQL modal; the existing preview
-                // result and its view state are kept untouched.
-                (QuerySource::Adhoc, true) => {
-                    state.sql_modal.finish_adhoc_error(
-                        result
-                            .error
-                            .clone()
-                            .unwrap_or_else(|| "Query failed".to_string()),
-                    );
-                }
-                (QuerySource::Adhoc, false) => {
-                    state.result_interaction.reset_view();
-                    state
-                        .query
-                        .set_result_highlight(now + Duration::from_millis(500));
-                    state.sql_modal.finish_adhoc_success(AdhocSuccessSnapshot {
-                        command_tag: result.command_tag.clone(),
-                        row_count: result.row_count(),
-                        execution_time_ms: result.execution_time_ms,
-                        mysql_diagnostics: result.mysql_diagnostics.clone(),
-                    });
-                    state.query.set_current_result(Arc::clone(result));
-                }
-                // Preview errors arrive as error results and are shown in the
-                // Result pane like any other preview.
-                (QuerySource::Preview, _) => {
-                    let target_page = match context {
-                        QueryCompletionContext::Adhoc => None,
-                        QueryCompletionContext::Preview { target_page, .. } => Some(*target_page),
-                    };
-                    apply_preview_result(state, result, target_page, now, true);
-                }
-            }
-
-            DispatchResult::handled_with(try_adhoc_refresh(state, result, now))
+    match (result.source, result.is_error()) {
+        // Adhoc errors stay inside the SQL modal; the existing preview
+        // result and its view state are kept untouched.
+        (QuerySource::Adhoc, true) => {
+            state.sql_modal.finish_adhoc_error(
+                result
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| "Query failed".to_string()),
+            );
         }
-        Action::QueryFailed {
-            run_id,
-            error,
-            context,
-        } => {
-            if !state.query.is_current_run(*run_id) {
-                return DispatchResult::handled();
-            }
-
-            let is_preview = matches!(context, QueryFailureContext::Preview { .. });
-            if is_preview && matches!(error, DbOperationError::PreviewSizeExceeded(_)) {
-                state.query.mark_idle();
-                state.messages.set_error(error.user_message());
-                return DispatchResult::handled();
-            }
-
-            if let QueryFailureContext::Preview { generation } = context
-                && *generation == state.session.selection_generation()
-                && state.session.selected_table_key().is_some()
-                && !state.session.is_table_detail_terminal(*generation)
-            {
-                let result = Arc::new(preview_error_result(state, error));
-                state.query.mark_idle();
-                state.query.defer_preview(result, *generation, None, false);
-                return DispatchResult::handled();
-            }
-
-            if !matches!(
-                context,
-                QueryFailureContext::Preview { generation }
-                    if *generation != state.session.selection_generation()
-            ) {
-                state.query.mark_idle();
-                if is_preview {
-                    let result = Arc::new(preview_error_result(state, error));
-                    state.result_interaction.reset_view();
-                    state
-                        .query
-                        .set_post_delete_selection(PostDeleteRowSelection::Keep);
-                    state.query.clear_delete_refresh_target();
-                    state.query.set_current_result(result);
-                } else {
-                    let user_message = error.user_message();
-                    state.messages.set_error(user_message.clone());
-                    state.sql_modal.finish_adhoc_error(user_message);
-                }
-            }
-            let refresh_scope = error
-                .post_change_refresh_scope()
-                .unwrap_or(RefreshScope::None);
-            let effects = if is_preview {
-                vec![]
-            } else {
-                refresh_effects_for_scope(state, refresh_scope, now)
+        (QuerySource::Adhoc, false) => {
+            state.result_interaction.reset_view();
+            state
+                .query
+                .set_result_highlight(now + Duration::from_millis(500));
+            state.sql_modal.finish_adhoc_success(AdhocSuccessSnapshot {
+                command_tag: result.command_tag.clone(),
+                row_count: result.row_count(),
+                execution_time_ms: result.execution_time_ms,
+                mysql_diagnostics: result.mysql_diagnostics.clone(),
+            });
+            state.query.set_current_result(Arc::clone(&result));
+        }
+        // Preview errors arrive as error results and are shown in the
+        // Result pane like any other preview.
+        (QuerySource::Preview, _) => {
+            let target_page = match context {
+                QueryCompletionContext::Adhoc => None,
+                QueryCompletionContext::Preview { target_page, .. } => Some(target_page),
             };
-            DispatchResult::handled_with(effects)
+            apply_preview_result(state, &result, target_page, now, true);
         }
+    }
 
-        Action::RevealPendingPreview { generation } => {
-            if !state.session.is_table_detail_terminal(*generation) {
-                return DispatchResult::handled();
-            }
+    try_adhoc_refresh(state, &result, now)
+}
 
-            let Some(pending) = state.query.take_pending_preview(*generation) else {
-                return DispatchResult::handled();
-            };
-            let PendingPreview {
-                result,
-                generation: _,
-                target_page,
-                highlight,
-            } = pending;
-            if result.is_error() && !highlight {
-                state.query.clear_delete_refresh_target();
-            }
-            apply_preview_result(state, &result, target_page, now, highlight);
-            DispatchResult::handled()
+pub(in crate::update) fn query_failed(
+    state: &mut AppState,
+    run_id: u64,
+    error: DbOperationError,
+    context: QueryFailureContext,
+    now: Instant,
+) -> Vec<Effect> {
+    if !state.query.is_current_run(run_id) {
+        return vec![];
+    }
+
+    let is_preview = matches!(context, QueryFailureContext::Preview { .. });
+    if is_preview && matches!(error, DbOperationError::PreviewSizeExceeded(_)) {
+        state.query.mark_idle();
+        state.messages.set_error(error.user_message());
+        return vec![];
+    }
+
+    if let QueryFailureContext::Preview { generation } = context
+        && generation == state.session.selection_generation()
+        && state.session.selected_table_key().is_some()
+        && !state.session.is_table_detail_terminal(generation)
+    {
+        let result = Arc::new(preview_error_result(state, &error));
+        state.query.mark_idle();
+        state.query.defer_preview(result, generation, None, false);
+        return vec![];
+    }
+
+    if !matches!(
+        context,
+        QueryFailureContext::Preview { generation }
+            if generation != state.session.selection_generation()
+    ) {
+        state.query.mark_idle();
+        if is_preview {
+            let result = Arc::new(preview_error_result(state, &error));
+            state.result_interaction.reset_view();
+            state
+                .query
+                .set_post_delete_selection(PostDeleteRowSelection::Keep);
+            state.query.clear_delete_refresh_target();
+            state.query.set_current_result(result);
+        } else {
+            let user_message = error.user_message();
+            state.messages.set_error(user_message.clone());
+            state.sql_modal.finish_adhoc_error(user_message);
         }
+    }
+    let refresh_scope = error
+        .post_change_refresh_scope()
+        .unwrap_or(RefreshScope::None);
+    if is_preview {
+        vec![]
+    } else {
+        refresh_effects_for_scope(state, refresh_scope, now)
+    }
+}
 
-        Action::CommandLineSubmit => {
-            let follow_up = action_for_command(state.command_line_input.content());
-            state.modal.pop_mode();
-            state.command_line_input.clear();
+pub(in crate::update) fn reveal_pending_preview(
+    state: &mut AppState,
+    generation: u64,
+    now: Instant,
+) -> Vec<Effect> {
+    if !state.session.is_table_detail_terminal(generation) {
+        return vec![];
+    }
 
-            DispatchResult::handled_with(match follow_up {
-                Action::Quit => {
-                    state.session.cancel_connection_save_and_disconnect();
-                    state.session.clear_mysql_connection_probe();
-                    state.should_quit = true;
-                    vec![Effect::CancelTrackedTasks]
-                }
-                Action::ToggleModal(ModalKind::Help) => {
-                    state.ui.help_mut().open(HelpOrigin::CommandLine);
-                    state.modal.push_mode(InputMode::Help);
-                    vec![]
-                }
-                Action::OpenModal(
-                    modal @ (ModalKind::SqlModal
-                    | ModalKind::ErTablePicker
-                    | ModalKind::Settings
-                    | ModalKind::CommandPalette),
-                ) => {
-                    vec![Effect::DispatchActions(vec![Action::OpenModal(modal)])]
-                }
-                Action::SubmitCellEditWrite => {
-                    write::reduce_write(state, &Action::SubmitCellEditWrite, now)
-                        .into_effects()
-                        .unwrap_or_default()
-                }
-                _ => vec![],
-            })
+    let Some(pending) = state.query.take_pending_preview(generation) else {
+        return vec![];
+    };
+    let PendingPreview {
+        result,
+        generation: _,
+        target_page,
+        highlight,
+    } = pending;
+    if result.is_error() && !highlight {
+        state.query.clear_delete_refresh_target();
+    }
+    apply_preview_result(state, &result, target_page, now, highlight);
+    vec![]
+}
+
+pub(in crate::update) fn command_line_submit(state: &mut AppState) -> Vec<Effect> {
+    let command = parse_line_command(state.command_line_input.content());
+    state.modal.pop_mode();
+    state.command_line_input.clear();
+
+    match command {
+        Some(LineCommand::Quit) => quit(state),
+        Some(LineCommand::Help) => {
+            state.ui.help_mut().open(HelpOrigin::CommandLine);
+            state.modal.push_mode(InputMode::Help);
+            vec![]
         }
-
-        Action::ExecutePreview(TableTarget {
-            schema,
-            table,
-            generation,
-        }) => {
-            if reject_pending_mysql_connection_probe(state) {
-                return DispatchResult::handled();
-            }
-            if state.session.dsn().is_none() {
-                return DispatchResult::handled();
-            }
-
-            state.query.pagination.reset_for_table(schema, table);
-
-            // Keep the generation captured at selection time, not the current
-            // one: the selection may have been cleared between dispatch and
-            // now, and such a completion must fail the stale check.
-            match preview_effect_for_current_table(state, now, 0, *generation) {
-                Some(effect) => DispatchResult::handled_with(vec![effect]),
-                None => DispatchResult::handled(),
-            }
+        Some(LineCommand::Open(kind)) => {
+            vec![Effect::DispatchActions(vec![Action::OpenModal(kind)])]
         }
+        Some(LineCommand::Write) => write::submit_cell_edit_write(state),
+        None => vec![],
+    }
+}
 
-        _ => DispatchResult::pass(),
+pub(in crate::update) fn execute_preview(
+    state: &mut AppState,
+    TableTarget {
+        schema,
+        table,
+        generation,
+    }: TableTarget,
+    now: Instant,
+) -> Vec<Effect> {
+    if reject_pending_mysql_connection_probe(state) {
+        return vec![];
+    }
+    if state.session.dsn().is_none() {
+        return vec![];
+    }
+
+    state.query.pagination.reset_for_table(&schema, &table);
+
+    // Keep the generation captured at selection time, not the current
+    // one: the selection may have been cleared between dispatch and
+    // now, and such a completion must fail the stale check.
+    match preview_effect_for_current_table(state, now, 0, generation) {
+        Some(effect) => vec![effect],
+        None => vec![],
     }
 }
 
@@ -258,8 +241,9 @@ pub(super) fn refresh_effects_for_scope(
         state.session.set_table_detail_raw(None);
         let run_id = state.session.begin_metadata_refresh();
 
+        state.table_detail_cache.clear();
+
         effects.push(Effect::CancelMetadataTasks);
-        effects.push(Effect::ClearCompletionEngineCache);
         effects.push(Effect::FetchMetadata { dsn, run_id });
     } else if !state.query.pagination.table().is_empty() {
         let page = state.query.pagination.current_page();
@@ -361,9 +345,9 @@ fn apply_preview_result(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::runner::EffectRunner;
     use crate::cmd::test_fixtures;
+    use crate::domain::TableSignatureSnapshot;
     use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType};
     use crate::model::er_state::ErStatus;
     use crate::ports::outbound::connection_store::MockConnectionStore;
@@ -371,12 +355,9 @@ mod tests {
     use crate::ports::outbound::query_executor::MockQueryExecutor;
     use crate::ports::outbound::{DbOperationError, RenderOutput, RenderResult, Renderer};
     use crate::services::AppServices;
-    use crate::update::action::SmartErRefreshResult;
-    use crate::update::browse::metadata::dispatch_metadata;
-    use crate::update::browse::query::dispatch_query;
+    use crate::update::action::{ModalKind, SmartErRefreshFetched};
     use crate::update::browse::query::tests::*;
-    use crate::update::er::dispatch_er;
-    use crate::update::reducer::reduce;
+    use crate::update::reducer::{reduce, route};
     use crate::update::test_fixtures as update_test_fixtures;
     use tokio::sync::mpsc;
 
@@ -418,16 +399,9 @@ mod tests {
         effects: Vec<Effect>,
         renderer: &mut T,
         state: &mut AppState,
-        completion_engine: &std::cell::RefCell<CompletionEngine>,
     ) -> Vec<Action> {
         let pending = runner
-            .execute_effects(
-                effects,
-                renderer,
-                state,
-                completion_engine,
-                &AppServices::stub(),
-            )
+            .execute_effects(effects, renderer, state, &AppServices::stub())
             .await
             .unwrap();
         state.clear_dirty();
@@ -444,7 +418,6 @@ mod tests {
             Arc::new(MockConnectionStore::new()),
             tx,
         );
-        let completion_engine = std::cell::RefCell::new(CompletionEngine::new());
         let mut renderer = RecordingRenderer { frames: vec![] };
         let query_action =
             query_completed_action(&mut state, preview_result(1), generation, Some(0));
@@ -456,15 +429,9 @@ mod tests {
         );
         append_runtime_render(&state, &mut query_effects);
         assert!(
-            run_effects_and_clear_dirty(
-                &runner,
-                query_effects,
-                &mut renderer,
-                &mut state,
-                &completion_engine,
-            )
-            .await
-            .is_empty()
+            run_effects_and_clear_dirty(&runner, query_effects, &mut renderer, &mut state,)
+                .await
+                .is_empty()
         );
         assert_eq!(
             renderer.frames,
@@ -499,14 +466,8 @@ mod tests {
             &AppServices::stub(),
         );
         append_runtime_render(&state, &mut effects);
-        let pending = run_effects_and_clear_dirty(
-            &runner,
-            effects,
-            &mut renderer,
-            &mut state,
-            &completion_engine,
-        )
-        .await;
+        let pending =
+            run_effects_and_clear_dirty(&runner, effects, &mut renderer, &mut state).await;
         assert_eq!(
             renderer.frames,
             [RenderFrame {
@@ -526,15 +487,9 @@ mod tests {
         }
         append_runtime_render(&state, &mut next_effects);
         assert!(
-            run_effects_and_clear_dirty(
-                &runner,
-                next_effects,
-                &mut renderer,
-                &mut state,
-                &completion_engine,
-            )
-            .await
-            .is_empty()
+            run_effects_and_clear_dirty(&runner, next_effects, &mut renderer, &mut state,)
+                .await
+                .is_empty()
         );
 
         renderer.frames
@@ -594,8 +549,12 @@ mod tests {
                 Some("app"),
             );
 
-            let effects =
-                dispatch_query(&mut state, &Action::CommandLineSubmit, Instant::now()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::CommandLineSubmit,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.should_quit);
@@ -613,7 +572,12 @@ mod tests {
                 .command_line_input
                 .set_content("unknown_cmd".to_string());
 
-            dispatch_query(&mut state, &Action::CommandLineSubmit, Instant::now());
+            route(
+                &mut state,
+                Action::CommandLineSubmit,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert!(!state.should_quit);
@@ -637,8 +601,12 @@ mod tests {
             state.modal.push_mode(InputMode::CommandLine);
             state.command_line_input.set_content("write".to_string());
 
-            let effects =
-                dispatch_query(&mut state, &Action::CommandLineSubmit, Instant::now()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::CommandLineSubmit,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
@@ -651,8 +619,12 @@ mod tests {
             state.modal.push_mode(InputMode::CommandLine);
             state.command_line_input.set_content("erd".to_string());
 
-            let effects =
-                dispatch_query(&mut state, &Action::CommandLineSubmit, Instant::now()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::CommandLineSubmit,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.command_line_input.content().is_empty());
@@ -674,8 +646,12 @@ mod tests {
             state.modal.push_mode(InputMode::CommandLine);
             state.command_line_input.set_content("settings".to_string());
 
-            let effects =
-                dispatch_query(&mut state, &Action::CommandLineSubmit, Instant::now()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::CommandLineSubmit,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.command_line_input.content().is_empty());
@@ -694,8 +670,12 @@ mod tests {
             state.modal.push_mode(InputMode::CommandLine);
             state.command_line_input.set_content("palette".to_string());
 
-            let effects =
-                dispatch_query(&mut state, &Action::CommandLineSubmit, Instant::now()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::CommandLineSubmit,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.command_line_input.content().is_empty());
@@ -725,14 +705,15 @@ mod tests {
             state.query.pagination.set_page_result(5, true);
             let now = Instant::now();
 
-            dispatch_query(
+            route(
                 &mut state,
-                &Action::ExecutePreview(TableTarget {
+                Action::ExecutePreview(TableTarget {
                     schema: "public".to_string(),
                     table: "users".to_string(),
                     generation: 1,
                 }),
                 now,
+                &AppServices::stub(),
             );
 
             assert_eq!(state.query.pagination.current_page(), 0);
@@ -775,17 +756,16 @@ mod tests {
                 Some("app"),
             );
 
-            let preview_effects = dispatch_query(
+            let preview_effects = route(
                 &mut state,
-                &Action::ExecutePreview(TableTarget {
+                Action::ExecutePreview(TableTarget {
                     schema: "public".to_string(),
                     table: "users".to_string(),
                     generation: 1,
                 }),
                 Instant::now(),
-            )
-            .into_effects()
-            .expect("preview should be handled");
+                &AppServices::stub(),
+            );
 
             assert!(preview_effects.is_empty());
             assert!(!state.query.is_running());
@@ -803,7 +783,7 @@ mod tests {
             let now = Instant::now();
             let action = query_completed_action(&mut state, result, 1, Some(2));
 
-            dispatch_query(&mut state, &action, now);
+            route(&mut state, action, now, &AppServices::stub());
 
             assert_eq!(state.query.pagination.current_page(), 2);
             assert!(state.query.pagination.reached_end());
@@ -817,7 +797,7 @@ mod tests {
             let now = Instant::now();
             let action = query_completed_action(&mut state, result, 1, Some(0));
 
-            dispatch_query(&mut state, &action, now);
+            route(&mut state, action, now, &AppServices::stub());
 
             assert_eq!(state.query.pagination.current_page(), 0);
             assert!(!state.query.pagination.reached_end());
@@ -829,7 +809,7 @@ mod tests {
             state.session.set_selection_generation(1);
             let action = query_completed_action(&mut state, preview_result(0), 1, Some(0));
 
-            dispatch_query(&mut state, &action, Instant::now());
+            route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert_eq!(state.query.pagination.current_page(), 0);
             assert!(state.query.pagination.reached_end());
@@ -842,10 +822,20 @@ mod tests {
             state.session.set_selection_generation(1);
             let first_page = preview_result(PREVIEW_PAGE_SIZE);
             let first_action = query_completed_action(&mut state, first_page, 1, Some(0));
-            dispatch_query(&mut state, &first_action, Instant::now());
+            route(
+                &mut state,
+                first_action,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             let next_action = query_completed_action(&mut state, preview_result(1), 1, Some(1));
-            dispatch_query(&mut state, &next_action, Instant::now());
+            route(
+                &mut state,
+                next_action,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert_eq!(state.query.pagination.current_page(), 1);
             assert!(state.query.pagination.reached_end());
@@ -859,10 +849,20 @@ mod tests {
             let last_page = preview_result(PREVIEW_PAGE_SIZE);
             let first_action =
                 query_completed_action(&mut state, Arc::clone(&last_page), 1, Some(0));
-            dispatch_query(&mut state, &first_action, Instant::now());
+            route(
+                &mut state,
+                first_action,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             let empty_action = query_completed_action(&mut state, preview_result(0), 1, Some(1));
-            dispatch_query(&mut state, &empty_action, Instant::now());
+            route(
+                &mut state,
+                empty_action,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert_eq!(state.query.pagination.current_page(), 0);
             assert!(state.query.pagination.reached_end());
@@ -890,14 +890,19 @@ mod tests {
                         1,
                         Some(page),
                     );
-                    dispatch_query(&mut state, &action, Instant::now());
+                    route(&mut state, action, Instant::now(), &AppServices::stub());
                     assert!(!state.query.pagination.reached_end());
                     assert!(state.query.pagination.can_next());
                 }
 
                 let empty_action =
                     query_completed_action(&mut state, preview_result(0), 1, Some(page_count));
-                dispatch_query(&mut state, &empty_action, Instant::now());
+                route(
+                    &mut state,
+                    empty_action,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(state.query.pagination.current_page(), page_count - 1);
                 assert!(state.query.pagination.reached_end());
@@ -917,7 +922,7 @@ mod tests {
             let now = Instant::now();
             let action = query_completed_action(&mut state, result, 0, None);
 
-            dispatch_query(&mut state, &action, now);
+            route(&mut state, action, now, &AppServices::stub());
 
             assert_eq!(state.query.pagination.current_page(), 3);
         }
@@ -933,17 +938,17 @@ mod tests {
             let now = Instant::now();
             let dsn = active_dsn(&state);
 
-            let inspector_effects = dispatch_metadata(
+            let inspector_effects = route(
                 &mut state,
-                &Action::TableDetailLoaded {
+                Action::TableDetailLoaded {
                     dsn,
                     run_id: detail_run_id,
                     outcome: Ok(Box::new(users_table_detail())),
                     generation,
                 },
                 now,
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
 
             assert!(inspector_effects.is_empty());
             assert!(state.session.is_table_detail_terminal(generation));
@@ -951,7 +956,7 @@ mod tests {
 
             let query_action =
                 query_completed_action(&mut state, preview_result(1), generation, Some(0));
-            dispatch_query(&mut state, &query_action, now);
+            route(&mut state, query_action, now, &AppServices::stub());
 
             assert!(state.query.current_result().is_some());
             assert!(!state.query.has_pending_preview(generation));
@@ -983,11 +988,21 @@ mod tests {
             let preview_action =
                 query_completed_action(&mut state, preview_result(1), generation, Some(0));
 
-            dispatch_query(&mut state, &preview_action, Instant::now());
+            route(
+                &mut state,
+                preview_action,
+                Instant::now(),
+                &AppServices::stub(),
+            );
             assert!(state.query.has_pending_preview(generation));
 
             let adhoc_action = query_completed_action(&mut state, adhoc_result(), 0, None);
-            dispatch_query(&mut state, &adhoc_action, Instant::now());
+            route(
+                &mut state,
+                adhoc_action,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert_eq!(
                 state.query.current_result().map(|result| result.source),
@@ -995,17 +1010,17 @@ mod tests {
             );
             assert!(!state.query.has_pending_preview(generation));
 
-            let effects = dispatch_metadata(
+            let effects = route(
                 &mut state,
-                &Action::TableDetailLoaded {
+                Action::TableDetailLoaded {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id: detail_run_id,
                     outcome: Ok(Box::new(users_table_detail())),
                     generation,
                 },
                 Instant::now(),
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -1020,7 +1035,12 @@ mod tests {
                 state_with_selected_table(DatabaseType::PostgreSQL);
             let old_query_action =
                 query_completed_action(&mut state, preview_result(1), old_generation, Some(0));
-            dispatch_query(&mut state, &old_query_action, Instant::now());
+            route(
+                &mut state,
+                old_query_action.clone(),
+                Instant::now(),
+                &AppServices::stub(),
+            );
             assert!(state.query.has_pending_preview(old_generation));
 
             let new_generation = state
@@ -1032,58 +1052,70 @@ mod tests {
             assert!(!state.query.has_pending_preview(old_generation));
             assert!(state.query.current_result().is_none());
 
-            dispatch_query(&mut state, &old_query_action, Instant::now());
+            route(
+                &mut state,
+                old_query_action,
+                Instant::now(),
+                &AppServices::stub(),
+            );
             assert!(state.query.current_result().is_none());
 
-            let stale_inspector_effects = dispatch_metadata(
+            let stale_inspector_effects = route(
                 &mut state,
-                &Action::TableDetailLoaded {
+                Action::TableDetailLoaded {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id: old_detail_run_id,
                     outcome: Ok(Box::new(users_table_detail())),
                     generation: old_generation,
                 },
                 Instant::now(),
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
             assert!(stale_inspector_effects.is_empty());
             assert!(!state.session.is_table_detail_terminal(new_generation));
 
             let new_query_action =
                 query_completed_action(&mut state, preview_result(1), new_generation, Some(0));
-            dispatch_query(&mut state, &new_query_action, Instant::now());
-            assert!(state.query.current_result().is_none());
-            assert!(state.query.has_pending_preview(new_generation));
-
-            dispatch_query(
+            route(
                 &mut state,
-                &Action::RevealPendingPreview {
-                    generation: old_generation,
-                },
+                new_query_action,
                 Instant::now(),
+                &AppServices::stub(),
             );
             assert!(state.query.current_result().is_none());
             assert!(state.query.has_pending_preview(new_generation));
 
-            let effects = dispatch_metadata(
+            route(
                 &mut state,
-                &Action::TableDetailLoaded {
+                Action::RevealPendingPreview {
+                    generation: old_generation,
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(state.query.current_result().is_none());
+            assert!(state.query.has_pending_preview(new_generation));
+
+            let effects = route(
+                &mut state,
+                Action::TableDetailLoaded {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id: new_detail_run_id,
                     outcome: Ok(Box::new(users_table_detail())),
                     generation: new_generation,
                 },
                 Instant::now(),
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
             assert!(matches!(effects.as_slice(), [Effect::DispatchActions(_)]));
 
-            dispatch_query(
+            route(
                 &mut state,
-                &Action::RevealPendingPreview {
+                Action::RevealPendingPreview {
                     generation: new_generation,
                 },
                 Instant::now(),
+                &AppServices::stub(),
             );
             assert!(state.query.current_result().is_some());
             assert!(!state.query.has_pending_preview(new_generation));
@@ -1100,7 +1132,7 @@ mod tests {
             let result = adhoc_result();
             let action = query_completed_action(&mut state, result, 0, None);
 
-            dispatch_query(&mut state, &action, Instant::now());
+            route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert!(state.query.current_result().is_some());
             assert_eq!(
@@ -1115,7 +1147,7 @@ mod tests {
 
         #[test]
         fn adhoc_error_preserves_current_result_and_view_state() {
-            let mut state = create_test_state();
+            let mut state = state_with_table("public", "users");
             state.query.set_current_result(preview_result(5));
             state.result_interaction.set_scroll_offset(20);
             state.result_interaction.set_horizontal_offset(5);
@@ -1123,8 +1155,9 @@ mod tests {
             let result = adhoc_error_result();
             let action = query_completed_action(&mut state, result, 0, None);
 
-            dispatch_query(&mut state, &action, Instant::now());
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
+            assert!(effects.is_empty());
             assert_eq!(
                 state.query.current_result().unwrap().source,
                 QuerySource::Preview,
@@ -1163,7 +1196,7 @@ mod tests {
             state.query.set_current_result(Arc::clone(&result));
             let action = query_completed_action(&mut state, result, 0, Some(0));
 
-            dispatch_query(&mut state, &action, Instant::now());
+            route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert_eq!(state.result_interaction.selection().row(), Some(1));
             assert_eq!(state.result_interaction.selection().cell(), Some(2));
@@ -1180,7 +1213,7 @@ mod tests {
             state.result_interaction.stage_row(0);
             let action = query_completed_action(&mut state, preview_result(1), 0, Some(0));
 
-            dispatch_query(&mut state, &action, Instant::now());
+            route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert_eq!(state.result_interaction.selection().row(), None);
             assert!(state.result_interaction.staged_delete_rows().is_empty());
@@ -1192,14 +1225,15 @@ mod tests {
             let old_run_id = begin_query_run(&mut state);
             let _ = begin_query_run(&mut state);
 
-            dispatch_query(
+            route(
                 &mut state,
-                &Action::QueryCompleted {
+                Action::QueryCompleted {
                     run_id: old_run_id,
                     result: adhoc_result(),
                     context: QueryCompletionContext::Adhoc,
                 },
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert!(state.query.current_result().is_none());
@@ -1226,7 +1260,7 @@ mod tests {
                 context: QueryCompletionContext::Adhoc,
             };
             assert!(!format!("{action:?}").contains("dsn:"));
-            dispatch_query(&mut state, &action, Instant::now());
+            route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert!(stale_run_id < current_run_id);
             assert!(state.query.current_result().is_none());
@@ -1241,14 +1275,15 @@ mod tests {
                 .session
                 .select_table("public", "users", &mut state.query);
 
-            dispatch_query(
+            route(
                 &mut state,
-                &Action::QueryCompleted {
+                Action::QueryCompleted {
                     run_id: stale_run_id,
                     result: adhoc_result(),
                     context: QueryCompletionContext::Adhoc,
                 },
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert!(state.query.current_result().is_none());
@@ -1275,7 +1310,7 @@ mod tests {
                 QuerySource::Preview,
             );
 
-            dispatch_query(&mut state, &action, Instant::now());
+            route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert_eq!(
                 state.result_interaction.selection().mode(),
@@ -1296,7 +1331,7 @@ mod tests {
                 QuerySource::Preview,
             );
 
-            dispatch_query(&mut state, &action, Instant::now());
+            route(&mut state, action, Instant::now(), &AppServices::stub());
 
             let result = state.query.current_result().expect("result");
             assert!(result.is_error());
@@ -1324,7 +1359,7 @@ mod tests {
                 QuerySource::Preview,
             );
 
-            dispatch_query(&mut state, &action, Instant::now());
+            route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert!(
                 state
@@ -1352,14 +1387,19 @@ mod tests {
                 QuerySource::Preview,
             );
 
-            dispatch_query(&mut state, &query_action, Instant::now());
+            route(
+                &mut state,
+                query_action,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(state.query.current_result().is_none());
             assert!(state.query.has_pending_preview(generation));
 
-            let effects = dispatch_metadata(
+            let effects = route(
                 &mut state,
-                &Action::TableDetailLoaded {
+                Action::TableDetailLoaded {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id: detail_run_id,
                     outcome: Err(DbOperationError::QueryFailed(
@@ -1368,8 +1408,8 @@ mod tests {
                     generation,
                 },
                 Instant::now(),
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
 
             assert!(state.session.is_table_detail_terminal(generation));
             assert!(state.messages.last_error().is_some());
@@ -1384,10 +1424,11 @@ mod tests {
                     )
             ));
 
-            dispatch_query(
+            route(
                 &mut state,
-                &Action::RevealPendingPreview { generation },
+                Action::RevealPendingPreview { generation },
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             let result = state.query.current_result().expect("released result");
@@ -1411,7 +1452,7 @@ mod tests {
                 QuerySource::Adhoc,
             );
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert!(effects.iter().any(|effect| matches!(
                 effect,
@@ -1438,7 +1479,7 @@ mod tests {
                 QuerySource::Adhoc,
             );
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert!(effects.iter().any(|effect| matches!(
                 effect,
@@ -1461,7 +1502,7 @@ mod tests {
                 QuerySource::Adhoc,
             );
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert!(matches!(effects[0], Effect::CancelMetadataTasks));
             assert!(
@@ -1491,7 +1532,7 @@ mod tests {
                 QuerySource::Preview,
             );
 
-            dispatch_query(&mut state, &action, Instant::now());
+            route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert!(matches!(
                 state.sql_modal.status(),
@@ -1517,7 +1558,7 @@ mod tests {
                 None,
             );
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert_eq!(effects.len(), 1);
             assert!(
@@ -1535,39 +1576,9 @@ mod tests {
                 None,
             );
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn ddl_emits_cache_invalidate_and_fetch_metadata() {
-            let mut state = state_with_table("public", "users");
-            let action = query_completed_action(
-                &mut state,
-                adhoc_result_with_tag(CommandTag::Create("TABLE".to_string())),
-                0,
-                None,
-            );
-
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
-
-            assert!(matches!(effects[0], Effect::CancelMetadataTasks));
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::ClearCompletionEngineCache))
-            );
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::FetchMetadata { .. }))
-            );
-            assert!(
-                !effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::ExecutePreview { .. }))
-            );
         }
 
         #[test]
@@ -1593,7 +1604,7 @@ mod tests {
                     None,
                 );
 
-                let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+                let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
                 assert!(!state.er_preparation.is_current_run(er_run_id));
                 assert!(effects.iter().any(|effect| matches!(
@@ -1620,7 +1631,7 @@ mod tests {
                 None,
             );
 
-            dispatch_query(&mut state, &action, Instant::now());
+            route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert!(state.table_prefetch.active_prefetch_run_id().is_none());
             assert!(!state.table_prefetch.has_pending_prefetch());
@@ -1640,23 +1651,23 @@ mod tests {
                 None,
             );
 
-            dispatch_query(&mut state, &action, Instant::now());
+            route(&mut state, action, Instant::now(), &AppServices::stub());
 
             let dsn = active_dsn(&state);
-            let effects = dispatch_er(
+            let effects = route(
                 &mut state,
-                &Action::SmartErRefreshCompleted(SmartErRefreshResult {
+                Action::SmartErRefreshFetched(SmartErRefreshFetched {
                     dsn,
                     run_id: old_er_run_id,
                     new_metadata: Arc::new(DatabaseMetadata::new("new".to_string())),
-                    stale_tables: vec![],
-                    removed_tables: vec![],
-                    missing_in_cache: vec![],
-                    new_signatures: std::collections::HashMap::new(),
+                    signature_snapshot: Arc::new(TableSignatureSnapshot {
+                        signatures: vec![],
+                        prefetched_table_details: vec![],
+                    }),
                 }),
                 Instant::now(),
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -1676,7 +1687,7 @@ mod tests {
                 let action =
                     query_completed_action(&mut state, adhoc_result_with_tag(tag), 0, None);
 
-                let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+                let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
                 assert!(effects.is_empty());
             }
@@ -1692,17 +1703,7 @@ mod tests {
                 None,
             );
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
-
-            assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn adhoc_error_emits_no_effects() {
-            let mut state = state_with_table("public", "users");
-            let action = query_completed_action(&mut state, adhoc_error_result(), 0, None);
-
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert!(effects.is_empty());
         }
@@ -1719,7 +1720,7 @@ mod tests {
             ));
             let action = query_completed_action(&mut state, result, 0, None);
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert!(effects.is_empty());
         }
@@ -1753,14 +1754,14 @@ mod tests {
                 None,
             );
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::ExecutePreview { .. }));
 
             let new_preview = preview_result(5);
             let action = query_completed_action(&mut state, Arc::clone(&new_preview), 0, Some(0));
-            dispatch_query(&mut state, &action, Instant::now());
+            route(&mut state, action, Instant::now(), &AppServices::stub());
 
             let stored = state.query.current_result().unwrap();
             assert_eq!(stored.source, QuerySource::Preview);
@@ -1776,20 +1777,28 @@ mod tests {
                 0,
                 None,
             );
+            update_test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
+            assert!(matches!(effects[0], Effect::CancelMetadataTasks));
+            assert!(!state.table_detail_cache.contains("public.cached"));
             assert!(state.table_prefetch.active_prefetch_run_id().is_none());
             assert!(
                 effects
                     .iter()
                     .any(|e| matches!(e, Effect::FetchMetadata { .. }))
             );
+            assert!(
+                !effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ExecutePreview { .. }))
+            );
 
             let metadata = make_metadata(vec![("public", "orders"), ("public", "users")]);
             let run_id = state.session.begin_metadata_refresh();
             let action = Action::MetadataLoaded { run_id, metadata };
-            let meta_effects = dispatch_metadata(&mut state, &action, Instant::now()).unwrap();
+            let meta_effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert_eq!(state.ui.explorer_selected(), 1);
             assert_eq!(state.query.pagination.table(), "users");
@@ -1811,7 +1820,7 @@ mod tests {
                 None,
             );
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert!(
                 effects
@@ -1822,7 +1831,7 @@ mod tests {
             let metadata = make_metadata(vec![("public", "orders")]);
             let run_id = state.session.begin_metadata_refresh();
             let action = Action::MetadataLoaded { run_id, metadata };
-            dispatch_metadata(&mut state, &action, Instant::now());
+            route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert!(state.query.pagination.table().is_empty());
             assert!(state.query.current_result().is_none());
@@ -1840,7 +1849,7 @@ mod tests {
                 None,
             );
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert!(
                 !effects
@@ -1863,7 +1872,7 @@ mod tests {
                 None,
             );
 
-            dispatch_query(&mut state, &action, Instant::now());
+            route(&mut state, action, Instant::now(), &AppServices::stub());
 
             let saved_tag = match state.sql_modal.status() {
                 SqlModalStatus::Success(snapshot) => snapshot.command_tag.clone(),
@@ -1872,7 +1881,7 @@ mod tests {
             assert!(matches!(saved_tag, Some(CommandTag::Alter(_))));
 
             let action = query_completed_action(&mut state, preview_result(5), 0, Some(0));
-            dispatch_query(&mut state, &action, Instant::now());
+            route(&mut state, action, Instant::now(), &AppServices::stub());
 
             let tag_after = match state.sql_modal.status() {
                 SqlModalStatus::Success(snapshot) => snapshot.command_tag.clone(),

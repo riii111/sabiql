@@ -921,6 +921,7 @@ pub const CONFIRM_DIALOG_KEYS: &[KeyBinding] = &[
 
 pub mod json_detail {
     use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
+    use crate::update::action::{DetailTarget, SearchStep};
     use crate::update::input::keybindings::{ExecBinding, Key, KeyCombo, ModeRow};
 
     pub const YANK: ModeRow = ModeRow {
@@ -929,7 +930,7 @@ pub mod json_detail {
         desc_short: "Copy",
         description: "Copy full JSON",
         bindings: &[ExecBinding {
-            action: Action::JsonYankAll,
+            action: Action::DetailYankAll(DetailTarget::JsonDetail),
             combos: &[KeyCombo::plain(Key::Char('y'))],
         }],
     };
@@ -957,7 +958,10 @@ pub mod json_detail {
         desc_short: "Search",
         description: "Search JSON text",
         bindings: &[ExecBinding {
-            action: Action::JsonEnterSearch,
+            action: Action::DetailSearch {
+                target: DetailTarget::JsonDetail,
+                step: SearchStep::Enter,
+            },
             combos: &[KeyCombo::plain(Key::Char('/'))],
         }],
     };
@@ -969,11 +973,17 @@ pub mod json_detail {
         description: "Jump to next / previous search result",
         bindings: &[
             ExecBinding {
-                action: Action::JsonSearchNext,
+                action: Action::DetailSearch {
+                    target: DetailTarget::JsonDetail,
+                    step: SearchStep::Next,
+                },
                 combos: &[KeyCombo::plain(Key::Char('n'))],
             },
             ExecBinding {
-                action: Action::JsonSearchPrev,
+                action: Action::DetailSearch {
+                    target: DetailTarget::JsonDetail,
+                    step: SearchStep::Prev,
+                },
                 combos: &[KeyCombo::plain(Key::Char('N'))],
             },
         ],
@@ -1127,6 +1137,7 @@ pub const JSON_DETAIL_ROWS: &[ModeRow] = &[
 
 pub mod cell_detail {
     use crate::update::action::{Action, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget};
+    use crate::update::action::{DetailTarget, SearchStep};
     use crate::update::input::keybindings::{ExecBinding, Key, KeyCombo, ModeRow};
 
     pub const YANK: ModeRow = ModeRow {
@@ -1135,7 +1146,7 @@ pub mod cell_detail {
         desc_short: "Copy",
         description: "Copy full cell text",
         bindings: &[ExecBinding {
-            action: Action::CellDetailYankAll,
+            action: Action::DetailYankAll(DetailTarget::CellDetail),
             combos: &[KeyCombo::plain(Key::Char('y'))],
         }],
     };
@@ -1146,7 +1157,10 @@ pub mod cell_detail {
         desc_short: "Search",
         description: "Search cell text",
         bindings: &[ExecBinding {
-            action: Action::CellDetailEnterSearch,
+            action: Action::DetailSearch {
+                target: DetailTarget::CellDetail,
+                step: SearchStep::Enter,
+            },
             combos: &[KeyCombo::plain(Key::Char('/'))],
         }],
     };
@@ -1158,11 +1172,17 @@ pub mod cell_detail {
         description: "Jump to next / previous search result",
         bindings: &[
             ExecBinding {
-                action: Action::CellDetailSearchNext,
+                action: Action::DetailSearch {
+                    target: DetailTarget::CellDetail,
+                    step: SearchStep::Next,
+                },
                 combos: &[KeyCombo::plain(Key::Char('n'))],
             },
             ExecBinding {
-                action: Action::CellDetailSearchPrev,
+                action: Action::DetailSearch {
+                    target: DetailTarget::CellDetail,
+                    step: SearchStep::Prev,
+                },
                 combos: &[KeyCombo::plain(Key::Char('N'))],
             },
         ],
@@ -1469,6 +1489,7 @@ pub const ROW_DETAIL_FOOTER_ROWS: &[ModeRow] =
 
 pub mod json_search {
     use crate::update::action::Action;
+    use crate::update::action::{DetailTarget, SearchStep};
     use crate::update::input::keybindings::{Key, KeyBinding, KeyCombo};
 
     pub const TYPE_SEARCH: KeyBinding = KeyBinding {
@@ -1485,7 +1506,10 @@ pub mod json_search {
         key: "Enter",
         desc_short: "Confirm",
         description: "Confirm search",
-        action: Action::JsonSearchSubmit,
+        action: Action::DetailSearch {
+            target: DetailTarget::JsonDetail,
+            step: SearchStep::Submit,
+        },
         combos: &[KeyCombo::plain(Key::Enter)],
     };
 
@@ -1494,7 +1518,10 @@ pub mod json_search {
         key: "Esc",
         desc_short: "Cancel",
         description: "Cancel search",
-        action: Action::JsonExitSearch,
+        action: Action::DetailSearch {
+            target: DetailTarget::JsonDetail,
+            step: SearchStep::Exit,
+        },
         combos: &[KeyCombo::plain(Key::Esc)],
     };
 }
@@ -1507,6 +1534,7 @@ pub const JSON_SEARCH_KEYS: &[KeyBinding] = &[
 
 pub mod cell_detail_search {
     use crate::update::action::Action;
+    use crate::update::action::{DetailTarget, SearchStep};
     use crate::update::input::keybindings::{Key, KeyBinding, KeyCombo};
 
     pub const TYPE_SEARCH: KeyBinding = KeyBinding {
@@ -1523,7 +1551,10 @@ pub mod cell_detail_search {
         key: "Enter",
         desc_short: "Confirm",
         description: "Confirm search",
-        action: Action::CellDetailSearchSubmit,
+        action: Action::DetailSearch {
+            target: DetailTarget::CellDetail,
+            step: SearchStep::Submit,
+        },
         combos: &[KeyCombo::plain(Key::Enter)],
     };
 
@@ -1532,7 +1563,10 @@ pub mod cell_detail_search {
         key: "Esc",
         desc_short: "Cancel",
         description: "Cancel search",
-        action: Action::CellDetailExitSearch,
+        action: Action::DetailSearch {
+            target: DetailTarget::CellDetail,
+            step: SearchStep::Exit,
+        },
         combos: &[KeyCombo::plain(Key::Esc)],
     };
 }
@@ -1671,7 +1705,7 @@ pub mod sqlite_diagnostics {
         desc_short: "Help",
         description: "Toggle help",
         bindings: &[ExecBinding {
-            action: Action::ToggleModal(ModalKind::Help),
+            action: Action::ToggleHelp,
             combos: &[KeyCombo::plain(Key::Char('?'))],
         }],
     };

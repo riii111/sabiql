@@ -93,7 +93,7 @@ mod tests {
             key: "?",
             desc_short: "Help",
             description: "Help",
-            action: Action::ToggleModal(ModalKind::Help),
+            action: Action::ToggleHelp,
             combos: HELP_COMBOS,
         }
     }

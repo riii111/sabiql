@@ -1,124 +1,121 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::ConnectionId;
 use crate::model::app_state::AppState;
 use crate::model::shared::confirm_dialog::ConfirmIntent;
 use crate::model::shared::input_mode::InputMode;
-use crate::update::action::{Action, ModalKind};
 use crate::update::connection::helpers::reset_active_connection_state;
-use crate::update::dispatch_result::DispatchResult;
 use crate::update::query_context::termination_effects;
 
-pub(super) fn reduce_connection_selector(
+pub(in crate::update) fn open_modal_connection_selector(state: &mut AppState) -> Vec<Effect> {
+    state.modal.set_mode(InputMode::ConnectionSelector);
+    state.ui.set_connection_list_selection(Some(0));
+    vec![Effect::LoadConnections]
+}
+
+pub(in crate::update) fn request_delete_selected_connection(state: &mut AppState) -> Vec<Effect> {
+    use crate::model::connection::list::ConnectionListItem;
+    let selected_idx = state.ui.connection_list_selected();
+    let profile_idx = match state.connection_list_items().get(selected_idx) {
+        Some(ConnectionListItem::Profile(i)) => *i,
+        _ => return vec![],
+    };
+    if let Some(connection) = state.connections().get(profile_idx) {
+        let id = connection.id.clone();
+        let name = connection.name.as_str().to_string();
+        let is_active = state.session.active_connection_id() == Some(&id);
+
+        let message = if is_active {
+            format!(
+                "Delete \"{name}\"?\n\n\u{26A0} This is the active connection.\nYou will be disconnected.\n\nThis action cannot be undone."
+            )
+        } else {
+            format!("Delete \"{name}\"?\n\nThis action cannot be undone.")
+        };
+        state.confirm_dialog.open(
+            "Delete Connection",
+            message,
+            ConfirmIntent::DeleteConnection(id),
+        );
+        state.modal.push_mode(InputMode::ConfirmDialog);
+    }
+    vec![]
+}
+
+pub(in crate::update) fn delete_connection(state: &mut AppState, id: ConnectionId) -> Vec<Effect> {
+    if state
+        .session
+        .pending_mysql_connection_probe()
+        .is_some_and(|pending| pending.id == id)
+    {
+        state.session.clear_mysql_connection_probe();
+    }
+    vec![Effect::DeleteConnection { id }]
+}
+
+pub(in crate::update) fn connection_deleted(
     state: &mut AppState,
-    action: &Action,
+    id: ConnectionId,
     now: Instant,
-) -> DispatchResult {
-    match action {
-        Action::OpenModal(ModalKind::ConnectionSelector) => {
-            state.modal.set_mode(InputMode::ConnectionSelector);
-            state.ui.set_connection_list_selection(Some(0));
-            DispatchResult::handled_with(vec![Effect::LoadConnections])
-        }
+) -> Vec<Effect> {
+    let was_active = state.session.active_connection_id() == Some(&id);
+    if state
+        .session
+        .pending_mysql_connection_probe()
+        .is_some_and(|pending| pending.id == id)
+    {
+        state.session.clear_mysql_connection_probe();
+    }
+    if was_active {
+        reset_active_connection_state(state);
+    }
 
-        // ===== Connection Deletion =====
-        Action::RequestDeleteSelectedConnection => {
-            use crate::model::connection::list::ConnectionListItem;
-            let selected_idx = state.ui.connection_list_selected();
-            let profile_idx = match state.connection_list_items().get(selected_idx) {
-                Some(ConnectionListItem::Profile(i)) => *i,
-                _ => return DispatchResult::handled(),
-            };
-            if let Some(connection) = state.connections().get(profile_idx) {
-                let id = connection.id.clone();
-                let name = connection.name.as_str().to_string();
-                let is_active = state.session.active_connection_id() == Some(&id);
+    let id_clone = id.clone();
+    state.retain_connections(move |c| c.id != id_clone);
+    state.connection_caches.remove(&id);
 
-                let message = if is_active {
-                    format!(
-                        "Delete \"{name}\"?\n\n\u{26A0} This is the active connection.\nYou will be disconnected.\n\nThis action cannot be undone."
-                    )
-                } else {
-                    format!("Delete \"{name}\"?\n\nThis action cannot be undone.")
-                };
-                state.confirm_dialog.open(
-                    "Delete Connection",
-                    message,
-                    ConfirmIntent::DeleteConnection(id),
-                );
-                state.modal.push_mode(InputMode::ConfirmDialog);
-            }
-            DispatchResult::handled()
-        }
-        Action::DeleteConnection(id) => {
-            if state
-                .session
-                .pending_mysql_connection_probe()
-                .is_some_and(|pending| pending.id == *id)
-            {
-                state.session.clear_mysql_connection_probe();
-            }
-            DispatchResult::handled_with(vec![Effect::DeleteConnection { id: id.clone() }])
-        }
-        Action::ConnectionDeleted(id) => {
-            let was_active = state.session.active_connection_id() == Some(id);
-            if state
-                .session
-                .pending_mysql_connection_probe()
-                .is_some_and(|pending| pending.id == *id)
-            {
-                state.session.clear_mysql_connection_probe();
-            }
-            if was_active {
-                reset_active_connection_state(state);
-            }
+    let list_len = state.connection_list_items().len();
+    if state.ui.connection_list_selected() >= list_len && list_len > 0 {
+        state.ui.set_connection_list_selection(Some(list_len - 1));
+    }
 
-            let id_clone = id.clone();
-            state.retain_connections(move |c| c.id != id_clone);
-            state.connection_caches.remove(id);
+    if state.connections().is_empty() && state.service_entries().is_empty() {
+        state.connection_setup.reset();
+        state.connection_setup.set_first_run(false);
+        state.modal.set_mode(InputMode::ConnectionSetup);
+    }
 
-            let list_len = state.connection_list_items().len();
-            if state.ui.connection_list_selected() >= list_len && list_len > 0 {
-                state.ui.set_connection_list_selection(Some(list_len - 1));
-            }
+    state
+        .messages
+        .set_success_at("Connection deleted".to_string(), now);
+    if was_active {
+        termination_effects(&state.query, vec![])
+    } else {
+        vec![]
+    }
+}
 
-            if state.connections().is_empty() && state.service_entries().is_empty() {
-                state.connection_setup.reset();
-                state.connection_setup.set_first_run(false);
-                state.modal.set_mode(InputMode::ConnectionSetup);
-            }
+pub(in crate::update) fn connection_delete_failed(
+    state: &mut AppState,
+    error: String,
+) -> Vec<Effect> {
+    state.messages.set_error(error);
+    vec![]
+}
 
-            state
-                .messages
-                .set_success_at("Connection deleted".to_string(), now);
-            DispatchResult::handled_with(if was_active {
-                termination_effects(&state.query, vec![])
-            } else {
-                vec![]
-            })
-        }
-        Action::ConnectionDeleteFailed(error) => {
-            state.messages.set_error(error.clone());
-            DispatchResult::handled()
-        }
-
-        // ===== Connection Edit =====
-        Action::RequestEditSelectedConnection => {
-            use crate::model::connection::list::ConnectionListItem;
-            let selected_idx = state.ui.connection_list_selected();
-            let profile_idx = match state.connection_list_items().get(selected_idx) {
-                Some(ConnectionListItem::Profile(i)) => *i,
-                _ => return DispatchResult::handled(),
-            };
-            if let Some(connection) = state.connections().get(profile_idx) {
-                let id = connection.id.clone();
-                DispatchResult::handled_with(vec![Effect::LoadConnectionForEdit { id }])
-            } else {
-                DispatchResult::handled()
-            }
-        }
-
-        _ => DispatchResult::pass(),
+pub(in crate::update) fn request_edit_selected_connection(state: &AppState) -> Vec<Effect> {
+    use crate::model::connection::list::ConnectionListItem;
+    let selected_idx = state.ui.connection_list_selected();
+    let profile_idx = match state.connection_list_items().get(selected_idx) {
+        Some(ConnectionListItem::Profile(i)) => *i,
+        _ => return vec![],
+    };
+    if let Some(connection) = state.connections().get(profile_idx) {
+        let id = connection.id.clone();
+        vec![Effect::LoadConnectionForEdit { id }]
+    } else {
+        vec![]
     }
 }
 
@@ -128,6 +125,9 @@ mod tests {
     use crate::domain::connection::{ConnectionId, ConnectionProfile, DatabaseType, SslMode};
     use crate::model::connection::list::build_connection_list;
     use crate::model::shared::ui_state::ResultNavMode;
+    use crate::services::AppServices;
+    use crate::update::action::{Action, ModalKind};
+    use crate::update::reducer::route;
 
     fn create_profile(name: &str) -> ConnectionProfile {
         ConnectionProfile::new_postgres(
@@ -153,16 +153,14 @@ mod tests {
         fn sets_mode_and_loads_connections() {
             let mut state = AppState::new("test".to_string());
 
-            let effects = reduce_connection_selector(
+            let effects = route(
                 &mut state,
-                &Action::OpenModal(ModalKind::ConnectionSelector),
+                Action::OpenModal(ModalKind::ConnectionSelector),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.input_mode(), InputMode::ConnectionSelector);
-            let effects = effects
-                .into_effects()
-                .expect("reducer should handle action");
             assert!(effects.iter().any(|e| matches!(e, Effect::LoadConnections)));
         }
 
@@ -171,10 +169,11 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.ui.set_connection_list_selection(Some(3));
 
-            reduce_connection_selector(
+            route(
                 &mut state,
-                &Action::OpenModal(ModalKind::ConnectionSelector),
+                Action::OpenModal(ModalKind::ConnectionSelector),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.connection_list_selected(), 0);
@@ -191,10 +190,11 @@ mod tests {
             state.set_connections(vec![profile]);
             state.ui.set_connection_list_selected_raw(0);
 
-            reduce_connection_selector(
+            route(
                 &mut state,
-                &Action::RequestDeleteSelectedConnection,
+                Action::RequestDeleteSelectedConnection,
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
@@ -222,10 +222,11 @@ mod tests {
                 "postgres://localhost/db",
             );
 
-            reduce_connection_selector(
+            route(
                 &mut state,
-                &Action::RequestDeleteSelectedConnection,
+                Action::RequestDeleteSelectedConnection,
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert!(
@@ -249,10 +250,11 @@ mod tests {
             state.set_connections(vec![profile]);
             state.ui.set_connection_list_selected_raw(0);
 
-            reduce_connection_selector(
+            route(
                 &mut state,
-                &Action::RequestDeleteSelectedConnection,
+                Action::RequestDeleteSelectedConnection,
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert!(
@@ -269,10 +271,11 @@ mod tests {
             state.set_connections(vec![]);
             state.modal.set_mode(InputMode::Normal);
 
-            reduce_connection_selector(
+            route(
                 &mut state,
-                &Action::RequestDeleteSelectedConnection,
+                Action::RequestDeleteSelectedConnection,
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -287,10 +290,11 @@ mod tests {
             state.modal.set_mode(InputMode::ConnectionSelector);
             state.modal.set_mode(InputMode::ConnectionSelector);
 
-            reduce_connection_selector(
+            route(
                 &mut state,
-                &Action::RequestDeleteSelectedConnection,
+                Action::RequestDeleteSelectedConnection,
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(
@@ -308,12 +312,10 @@ mod tests {
         use crate::model::shared::inspector_tab::InspectorTab;
         use crate::model::sql_editor::modal::SqlModalTab;
         use crate::ports::outbound::DbOperationError;
-        use crate::services::AppServices;
         use crate::test_support::connection::{
             assert_explain_state_cleared, assert_sqlite_diagnostics_cleared,
         };
         use crate::update::action::ConnectionTarget;
-        use crate::update::connection::lifecycle::reduce_connection_lifecycle;
 
         #[test]
         fn removes_connection_from_list() {
@@ -323,10 +325,11 @@ mod tests {
             let id_to_delete = profile1.id.clone();
             state.set_connections(vec![profile1, profile2]);
 
-            reduce_connection_selector(
+            route(
                 &mut state,
-                &Action::ConnectionDeleted(id_to_delete),
+                Action::ConnectionDeleted(id_to_delete),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.connections().len(), 1);
@@ -360,14 +363,15 @@ mod tests {
                 target.database.as_deref(),
             );
 
-            reduce_connection_selector(
+            route(
                 &mut state,
-                &Action::ConnectionDeleted(deleted_id),
+                Action::ConnectionDeleted(deleted_id),
                 Instant::now(),
+                &AppServices::stub(),
             );
-            reduce_connection_lifecycle(
+            route(
                 &mut state,
-                &Action::MySqlConnectionProbeCompleted {
+                Action::MySqlConnectionProbeCompleted {
                     target,
                     run_id: probe_run_id,
                     lower_case_table_names: 0,
@@ -407,14 +411,15 @@ mod tests {
                 target.database.as_deref(),
             );
 
-            reduce_connection_selector(
+            route(
                 &mut state,
-                &Action::DeleteConnection(deleted_id.clone()),
+                Action::DeleteConnection(deleted_id.clone()),
                 Instant::now(),
+                &AppServices::stub(),
             );
-            reduce_connection_lifecycle(
+            route(
                 &mut state,
-                &Action::MySqlConnectionProbeFailed {
+                Action::MySqlConnectionProbeFailed {
                     target,
                     run_id: probe_run_id,
                     error: DbOperationError::ConnectionFailed("refused".to_string()),
@@ -422,10 +427,11 @@ mod tests {
                 Instant::now(),
                 &AppServices::stub(),
             );
-            reduce_connection_selector(
+            route(
                 &mut state,
-                &Action::ConnectionDeleted(deleted_id),
+                Action::ConnectionDeleted(deleted_id),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.modal.active_mode(), InputMode::Normal);
@@ -449,10 +455,11 @@ mod tests {
                 .session
                 .set_connection_state(ConnectionState::Connected);
 
-            reduce_connection_selector(
+            route(
                 &mut state,
-                &Action::ConnectionDeleted(profile_id),
+                Action::ConnectionDeleted(profile_id),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert!(state.session.active_connection_id().is_none());
@@ -507,10 +514,11 @@ mod tests {
                 .table_prefetch
                 .queue_table_prefetch("public.users".to_string());
 
-            reduce_connection_selector(
+            route(
                 &mut state,
-                &Action::ConnectionDeleted(profile_id),
+                Action::ConnectionDeleted(profile_id),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.query.pagination.current_page(), 0);
@@ -567,10 +575,11 @@ mod tests {
                 .set_core_loaded(diagnostics_run_id, SqliteDiagnosticsSnapshot::default());
             let _ = state.sqlite_diagnostics.begin_quick_check();
 
-            reduce_connection_selector(
+            route(
                 &mut state,
-                &Action::ConnectionDeleted(profile_id),
+                Action::ConnectionDeleted(profile_id),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.inspector_tab(), InspectorTab::Info);
@@ -590,10 +599,11 @@ mod tests {
             state.set_connections(vec![profile1, profile2]);
             state.ui.set_connection_list_selected_raw(1);
 
-            reduce_connection_selector(
+            route(
                 &mut state,
-                &Action::ConnectionDeleted(id_to_delete),
+                Action::ConnectionDeleted(id_to_delete),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.connection_list_selected(), 0);
@@ -606,10 +616,11 @@ mod tests {
             let profile_id = profile.id.clone();
             state.set_connections(vec![profile]);
 
-            reduce_connection_selector(
+            route(
                 &mut state,
-                &Action::ConnectionDeleted(profile_id),
+                Action::ConnectionDeleted(profile_id),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert!(state.connections().is_empty());
@@ -624,10 +635,11 @@ mod tests {
             let id_to_delete = profile1.id.clone();
             state.set_connections(vec![profile1, profile2]);
 
-            reduce_connection_selector(
+            route(
                 &mut state,
-                &Action::ConnectionDeleted(id_to_delete),
+                Action::ConnectionDeleted(id_to_delete),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.connection_list_items(), build_connection_list(1, 0));
@@ -648,10 +660,11 @@ mod tests {
             );
             state.modal.set_mode(InputMode::Normal);
 
-            reduce_connection_selector(
+            route(
                 &mut state,
-                &Action::ConnectionDeleted(profile_id),
+                Action::ConnectionDeleted(profile_id),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert!(state.connections().is_empty());

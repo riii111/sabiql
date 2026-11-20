@@ -30,6 +30,7 @@ use crate::model::shared::ui_state::{UiState, scroll_max_offset};
 use crate::model::sql_editor::modal::SqlModalContext;
 use crate::model::sql_editor::query_history::QueryHistoryPickerState;
 use crate::model::sqlite::diagnostics::SqliteDiagnosticsState;
+use crate::model::table_detail_cache::TableDetailCache;
 use crate::model::table_prefetch::TablePrefetchState;
 use crate::policy::preview_cell_text::CellPresentationPolicy;
 use crate::policy::sql::result_query::is_rerunnable_select;
@@ -55,6 +56,7 @@ pub struct AppState {
     pub query: QueryExecution,
     pub sql_modal: SqlModalContext,
     pub table_prefetch: TablePrefetchState,
+    pub table_detail_cache: TableDetailCache,
     pub messages: MessageState,
     pub er_preparation: super::er_state::ErPreparationState,
     pub connection_setup: ConnectionSetupState,
@@ -91,6 +93,7 @@ impl AppState {
             query: QueryExecution::default(),
             sql_modal: SqlModalContext::default(),
             table_prefetch: TablePrefetchState::default(),
+            table_detail_cache: TableDetailCache::default(),
             messages: MessageState::default(),
             er_preparation: super::er_state::ErPreparationState::default(),
             connection_setup: ConnectionSetupState::default(),
@@ -500,7 +503,7 @@ mod tests {
     use crate::model::table_prefetch::FailedPrefetchEntry;
     use crate::services::AppServices;
     use crate::update::action::Action;
-    use crate::update::dispatch_metadata;
+    use crate::update::reducer::reduce;
     use rstest::rstest;
     fn make_state() -> AppState {
         AppState::new("test".to_string())
@@ -1302,7 +1305,12 @@ mod tests {
         fn resets_prefetch_state() {
             let mut state = prepare_state_for_reload();
 
-            dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
+            reduce(
+                &mut state,
+                Action::ReloadMetadata,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(state.table_prefetch.active_prefetch_run_id().is_none());
             assert!(!state.table_prefetch.has_pending_prefetch());
@@ -1320,7 +1328,12 @@ mod tests {
             let mut state = prepare_state_for_reload();
             let _ = state.er_preparation.start_waiting_run();
 
-            dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
+            reduce(
+                &mut state,
+                Action::ReloadMetadata,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
         }
@@ -1333,7 +1346,12 @@ mod tests {
             assert!(state.messages.last_error().is_some());
             assert!(state.messages.expires_at().is_none());
 
-            dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
+            reduce(
+                &mut state,
+                Action::ReloadMetadata,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(state.messages.last_error().is_none());
             assert!(state.messages.expires_at().is_none());
@@ -1544,15 +1562,16 @@ mod tests {
                 let run_id = state.session.begin_table_detail_run();
                 state.ui.set_inspector_scroll_offset(42);
 
-                dispatch_metadata(
+                reduce(
                     &mut state,
-                    &Action::TableDetailLoaded {
+                    Action::TableDetailLoaded {
                         dsn: "dsn://test".to_string(),
                         run_id,
                         outcome: Ok(Box::new(make_table_detail())),
                         generation,
                     },
                     Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.ui.inspector_scroll_offset(), 0);

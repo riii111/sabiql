@@ -1,5 +1,5 @@
 use crate::model::shared::cursor::CursorMove;
-use crate::model::shared::text_input::{TextInputState, TextKillDirection};
+use crate::model::shared::text_input::{TextEdit, TextInputState, TextKillDirection};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CellEditState {
@@ -63,6 +63,10 @@ impl CellEditState {
 
     pub fn move_cursor(&mut self, direction: CursorMove) {
         self.input.move_cursor(direction);
+    }
+
+    pub fn apply_edit(&mut self, edit: TextEdit, yank_text: Option<&str>) -> String {
+        self.input.apply_edit(edit, yank_text)
     }
 
     pub fn replace_draft(&mut self, content: String) {

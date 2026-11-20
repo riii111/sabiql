@@ -10,6 +10,8 @@ use crate::update::input::vim::{
 };
 
 use super::interaction::InputInteraction;
+use crate::update::action::DetailTarget;
+use crate::update::action::SearchStep;
 
 pub(super) fn handle_json_detail_keys_with_policy(
     combo: KeyCombo,
@@ -198,7 +200,10 @@ fn disabled_json_detail_exit_action(combo: KeyCombo, interaction: InputInteracti
             Action::CloseModal(ModalKind::JsonDetail)
         }
         (InputInteraction::FormEditing(InputTarget::JsonSearch), Key::Esc) => {
-            Action::JsonExitSearch
+            Action::DetailSearch {
+                target: DetailTarget::JsonDetail,
+                step: SearchStep::Exit,
+            }
         }
         (InputInteraction::VimEditing(InputTarget::JsonEdit), Key::Esc) => Action::JsonExitEdit,
         _ => Action::None,
@@ -324,7 +329,13 @@ mod tests {
             let result =
                 handle_json_detail_keys(combo(Key::Char('n')), InputInteraction::Viewing, None);
 
-            assert!(matches!(result, Action::JsonSearchNext));
+            assert!(matches!(
+                result,
+                Action::DetailSearch {
+                    target: DetailTarget::JsonDetail,
+                    step: SearchStep::Next,
+                }
+            ));
         }
 
         #[test]
@@ -332,7 +343,13 @@ mod tests {
             let result =
                 handle_json_detail_keys(combo(Key::Char('N')), InputInteraction::Viewing, None);
 
-            assert!(matches!(result, Action::JsonSearchPrev));
+            assert!(matches!(
+                result,
+                Action::DetailSearch {
+                    target: DetailTarget::JsonDetail,
+                    step: SearchStep::Prev,
+                }
+            ));
         }
 
         #[test]
@@ -382,7 +399,13 @@ mod tests {
                 &feature_policy,
             );
 
-            assert!(matches!(result, Action::JsonExitSearch));
+            assert!(matches!(
+                result,
+                Action::DetailSearch {
+                    target: DetailTarget::JsonDetail,
+                    step: SearchStep::Exit,
+                }
+            ));
         }
 
         #[test]
@@ -396,7 +419,7 @@ mod tests {
                     None,
                     &feature_policy,
                 ),
-                Action::JsonYankAll
+                Action::DetailYankAll(DetailTarget::JsonDetail)
             ));
             assert!(matches!(
                 handle_json_detail_keys_with_policy(
@@ -405,7 +428,10 @@ mod tests {
                     None,
                     &feature_policy,
                 ),
-                Action::JsonEnterSearch
+                Action::DetailSearch {
+                    target: DetailTarget::JsonDetail,
+                    step: SearchStep::Enter,
+                }
             ));
             assert!(matches!(
                 handle_json_detail_keys_with_policy(

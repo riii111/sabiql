@@ -5,6 +5,7 @@ use crate::model::shared::cursor::CursorMove;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::settings::KeymapPreset;
+use crate::model::shared::text_input::TextEdit;
 use crate::model::shared::text_input::TextInputState;
 use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
 
@@ -107,6 +108,14 @@ impl HelpState {
         let result = edit(&mut self.filter);
         self.reset_offsets();
         result
+    }
+
+    pub fn apply_filter_edit(&mut self, edit: TextEdit, yank_text: Option<&str>) -> String {
+        if let TextEdit::MoveCursor(direction) = edit {
+            self.move_filter_cursor(direction);
+            return String::new();
+        }
+        self.edit_filter(|input| input.apply_edit(edit, yank_text))
     }
 
     pub fn move_filter_cursor(&mut self, direction: CursorMove) {

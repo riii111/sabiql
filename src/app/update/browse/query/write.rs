@@ -1,5 +1,6 @@
 use std::time::Instant;
 
+use crate::cmd::effect::Effect;
 use crate::domain::{DatabaseDiagnostic, DiagnosticLevel, RefreshScope};
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::{DeleteRefreshTarget, PostDeleteRowSelection};
@@ -15,12 +16,11 @@ use crate::policy::write::write_guardrails::{
     ColumnDiff, RiskLevel, TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
 };
 use crate::policy::write::write_update::escape_preview_value;
+use crate::ports::outbound::DbOperationError;
 use crate::sql_builder::build_update_sql;
-use crate::update::action::Action;
 use crate::update::browse::query::{
     execution::refresh_effects_for_scope, preview_effect_for_current_table,
 };
-use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{
     EditGuardrailError, build_bulk_delete_preview, editable_preview_base, ensure_column_writable,
     reject_pending_mysql_connection_probe, reject_sqlite_null_pk,
@@ -166,174 +166,169 @@ fn build_write_preview_fallback_message(preview: &WritePreview) -> String {
     lines.join("\n")
 }
 
-pub(in crate::update) fn reduce_write(
+pub(in crate::update) fn submit_cell_edit_write(state: &mut AppState) -> Vec<Effect> {
+    if reject_pending_mysql_connection_probe(state) {
+        return vec![];
+    }
+    if !state.result_interaction.staged_delete_rows().is_empty() {
+        match build_bulk_delete_preview(state) {
+            Ok(result) => {
+                let staged_count = state.result_interaction.staged_delete_rows().len();
+                state.query.set_delete_refresh_target(
+                    result.target_page,
+                    result.target_row,
+                    staged_count,
+                );
+                return open_write_preview_confirm(state, &result.preview);
+            }
+            Err(err) => {
+                state.messages.set_error(err.to_string());
+                return vec![];
+            }
+        }
+    }
+
+    if state.query.is_running() {
+        state
+            .messages
+            .set_error(EditGuardrailError::WriteUnavailableWhileQueryRunning.to_string());
+        return vec![];
+    }
+
+    match build_update_preview(state) {
+        Ok(preview) => open_write_preview_confirm(state, &preview),
+        Err(err) => {
+            state.messages.set_error(err.to_string());
+            vec![]
+        }
+    }
+}
+
+pub(in crate::update) fn execute_write_succeeded(
     state: &mut AppState,
-    action: &Action,
+    run_id: u64,
+    affected_rows: usize,
+    diagnostics: Vec<DatabaseDiagnostic>,
     now: Instant,
-) -> DispatchResult {
-    match action {
-        Action::SubmitCellEditWrite => {
-            if reject_pending_mysql_connection_probe(state) {
-                return DispatchResult::handled();
-            }
-            if !state.result_interaction.staged_delete_rows().is_empty() {
-                match build_bulk_delete_preview(state) {
-                    Ok(result) => {
-                        let staged_count = state.result_interaction.staged_delete_rows().len();
-                        state.query.set_delete_refresh_target(
-                            result.target_page,
-                            result.target_row,
-                            staged_count,
-                        );
-                        return open_write_preview_confirm(state, &result.preview);
-                    }
-                    Err(err) => {
-                        state.messages.set_error(err.to_string());
-                        return DispatchResult::handled();
-                    }
-                }
-            }
+) -> Vec<Effect> {
+    if !state.query.is_current_run(run_id) {
+        return vec![];
+    }
 
-            if state.query.is_running() {
-                state
-                    .messages
-                    .set_error(EditGuardrailError::WriteUnavailableWhileQueryRunning.to_string());
-                return DispatchResult::handled();
-            }
-
-            match build_update_preview(state) {
-                Ok(preview) => open_write_preview_confirm(state, &preview),
-                Err(err) => {
-                    state.messages.set_error(err.to_string());
-                    DispatchResult::handled()
-                }
-            }
-        }
-
-        Action::ExecuteWriteSucceeded {
-            run_id,
-            affected_rows,
-            diagnostics,
-        } => {
-            if !state.query.is_current_run(*run_id) {
-                return DispatchResult::handled();
-            }
-
-            state.query.mark_idle();
-            let operation = state
-                .result_interaction
-                .pending_write_preview()
-                .map_or(WriteOperation::Update, |p| p.operation);
-            state.result_interaction.clear_write_preview();
-            match operation {
-                WriteOperation::Update => {
-                    if *affected_rows == 1 {
-                        state.messages.set_success_at(
-                            write_message_with_diagnostics(
-                                "Updated 1 row".to_string(),
-                                diagnostics,
-                            ),
-                            now,
-                        );
-                    } else {
-                        state.messages.set_error(write_message_with_diagnostics(
-                            format!("UPDATE expected 1 row, but affected {affected_rows} rows"),
-                            diagnostics,
-                        ));
-                    }
-
-                    state.result_interaction.clear_cell_edit();
-                    state.modal.set_mode(InputMode::Normal);
-
-                    let page = state.query.pagination.current_page();
-                    let generation = state.session.selection_generation();
-                    match preview_effect_for_current_table(state, now, page, generation) {
-                        Some(effect) => DispatchResult::handled_with(vec![effect]),
-                        None => DispatchResult::handled(),
-                    }
-                }
-                WriteOperation::Delete => {
-                    let DeleteRefreshTarget {
-                        target_page,
-                        target_row,
-                        expected_delete_count: expected,
-                    } = state.query.take_delete_refresh_target().unwrap_or_else(|| {
-                        DeleteRefreshTarget {
-                            target_page: state.query.pagination.current_page(),
-                            target_row: None,
-                            expected_delete_count: 1,
-                        }
-                    });
-
-                    let row_word = |n: usize| if n == 1 { "row" } else { "rows" };
-                    if *affected_rows == expected {
-                        state.messages.set_success_at(
-                            write_message_with_diagnostics(
-                                format!("Deleted {} {}", expected, row_word(expected)),
-                                diagnostics,
-                            ),
-                            now,
-                        );
-                    } else {
-                        state.messages.set_error(write_message_with_diagnostics(
-                            format!(
-                                "DELETE expected {} {}, but affected {} {}",
-                                expected,
-                                row_word(expected),
-                                affected_rows,
-                                row_word(*affected_rows),
-                            ),
-                            diagnostics,
-                        ));
-                    }
-                    state.result_interaction.clear_cell_edit();
-                    state.result_interaction.clear_staged_deletes();
-                    state.modal.set_mode(InputMode::Normal);
-
-                    state.query.set_post_delete_selection(target_row.map_or(
-                        PostDeleteRowSelection::Clear,
-                        PostDeleteRowSelection::Select,
-                    ));
-
-                    let generation = state.session.selection_generation();
-                    match preview_effect_for_current_table(state, now, target_page, generation) {
-                        Some(effect) => {
-                            state.query.pagination.clear_reached_end();
-                            DispatchResult::handled_with(vec![effect])
-                        }
-                        None => DispatchResult::handled(),
-                    }
-                }
-            }
-        }
-
-        Action::ExecuteWriteFailed { run_id, error } => {
-            if !state.query.is_current_run(*run_id) {
-                return DispatchResult::handled();
-            }
-
-            state.query.mark_idle();
-            let refresh_scope = error
-                .post_change_refresh_scope()
-                .unwrap_or(RefreshScope::None);
-            let operation = state.result_interaction.complete_write_failure();
-            state.query.clear_delete_refresh_target();
-            state.messages.set_error(error.user_message());
-            if refresh_scope == RefreshScope::None {
-                state.modal.set_mode(match operation {
-                    WriteOperation::Update => InputMode::CellEdit,
-                    WriteOperation::Delete => InputMode::Normal,
-                });
-                DispatchResult::handled()
+    state.query.mark_idle();
+    let operation = state
+        .result_interaction
+        .pending_write_preview()
+        .map_or(WriteOperation::Update, |p| p.operation);
+    state.result_interaction.clear_write_preview();
+    match operation {
+        WriteOperation::Update => {
+            if affected_rows == 1 {
+                state.messages.set_success_at(
+                    write_message_with_diagnostics("Updated 1 row".to_string(), &diagnostics),
+                    now,
+                );
             } else {
-                state.result_interaction.clear_cell_edit();
-                state.result_interaction.clear_staged_deletes();
-                state.modal.set_mode(InputMode::Normal);
-                DispatchResult::handled_with(refresh_effects_for_scope(state, refresh_scope, now))
+                state.messages.set_error(write_message_with_diagnostics(
+                    format!("UPDATE expected 1 row, but affected {affected_rows} rows"),
+                    &diagnostics,
+                ));
+            }
+
+            state.result_interaction.clear_cell_edit();
+            state.modal.set_mode(InputMode::Normal);
+
+            let page = state.query.pagination.current_page();
+            let generation = state.session.selection_generation();
+            match preview_effect_for_current_table(state, now, page, generation) {
+                Some(effect) => vec![effect],
+                None => vec![],
             }
         }
+        WriteOperation::Delete => {
+            let DeleteRefreshTarget {
+                target_page,
+                target_row,
+                expected_delete_count: expected,
+            } = state
+                .query
+                .take_delete_refresh_target()
+                .unwrap_or_else(|| DeleteRefreshTarget {
+                    target_page: state.query.pagination.current_page(),
+                    target_row: None,
+                    expected_delete_count: 1,
+                });
 
-        _ => DispatchResult::pass(),
+            let row_word = |n: usize| if n == 1 { "row" } else { "rows" };
+            if affected_rows == expected {
+                state.messages.set_success_at(
+                    write_message_with_diagnostics(
+                        format!("Deleted {} {}", expected, row_word(expected)),
+                        &diagnostics,
+                    ),
+                    now,
+                );
+            } else {
+                state.messages.set_error(write_message_with_diagnostics(
+                    format!(
+                        "DELETE expected {} {}, but affected {} {}",
+                        expected,
+                        row_word(expected),
+                        affected_rows,
+                        row_word(affected_rows),
+                    ),
+                    &diagnostics,
+                ));
+            }
+            state.result_interaction.clear_cell_edit();
+            state.result_interaction.clear_staged_deletes();
+            state.modal.set_mode(InputMode::Normal);
+
+            state.query.set_post_delete_selection(target_row.map_or(
+                PostDeleteRowSelection::Clear,
+                PostDeleteRowSelection::Select,
+            ));
+
+            let generation = state.session.selection_generation();
+            match preview_effect_for_current_table(state, now, target_page, generation) {
+                Some(effect) => {
+                    state.query.pagination.clear_reached_end();
+                    vec![effect]
+                }
+                None => vec![],
+            }
+        }
+    }
+}
+
+pub(in crate::update) fn execute_write_failed(
+    state: &mut AppState,
+    run_id: u64,
+    error: DbOperationError,
+    now: Instant,
+) -> Vec<Effect> {
+    if !state.query.is_current_run(run_id) {
+        return vec![];
+    }
+
+    state.query.mark_idle();
+    let refresh_scope = error
+        .post_change_refresh_scope()
+        .unwrap_or(RefreshScope::None);
+    let operation = state.result_interaction.complete_write_failure();
+    state.query.clear_delete_refresh_target();
+    state.messages.set_error(error.user_message());
+    if refresh_scope == RefreshScope::None {
+        state.modal.set_mode(match operation {
+            WriteOperation::Update => InputMode::CellEdit,
+            WriteOperation::Delete => InputMode::Normal,
+        });
+        vec![]
+    } else {
+        state.result_interaction.clear_cell_edit();
+        state.result_interaction.clear_staged_deletes();
+        state.modal.set_mode(InputMode::Normal);
+        refresh_effects_for_scope(state, refresh_scope, now)
     }
 }
 
@@ -358,12 +353,12 @@ fn write_diagnostic_message(diagnostic: &DatabaseDiagnostic) -> String {
     format!("{level} (Code {}): {}", diagnostic.code, diagnostic.message)
 }
 
-fn open_write_preview_confirm(state: &mut AppState, preview: &WritePreview) -> DispatchResult {
+fn open_write_preview_confirm(state: &mut AppState, preview: &WritePreview) -> Vec<Effect> {
     if state.session.is_read_only() {
         state
             .messages
             .set_error("Read-only mode: write operations are disabled".to_string());
-        return DispatchResult::handled();
+        return vec![];
     }
     state.result_interaction.set_write_preview(preview.clone());
     let operation = preview.operation;
@@ -399,7 +394,7 @@ fn open_write_preview_confirm(state: &mut AppState, preview: &WritePreview) -> D
     }
     state.modal.push_mode(InputMode::ConfirmDialog);
 
-    DispatchResult::handled()
+    vec![]
 }
 
 #[cfg(test)]
@@ -420,8 +415,10 @@ mod tests {
         GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
     };
     use crate::ports::outbound::DbOperationError;
-    use crate::update::browse::query::dispatch_query;
+    use crate::services::AppServices;
+    use crate::update::action::Action;
     use crate::update::browse::query::tests::*;
+    use crate::update::reducer::route;
     use rstest::rstest;
     use std::sync::Arc;
 
@@ -496,8 +493,12 @@ mod tests {
         }
 
         fn submit_write_preview(state: &mut AppState) -> WritePreview {
-            let effects =
-                dispatch_query(state, &Action::SubmitCellEditWrite, Instant::now()).unwrap();
+            let effects = route(
+                state,
+                Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            );
             assert!(effects.is_empty());
             state
                 .result_interaction
@@ -511,13 +512,13 @@ mod tests {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::Normal);
 
-            let effects = dispatch_query(&mut state, &Action::SubmitCellEditWrite, Instant::now());
-            assert!(
-                effects
-                    .into_effects()
-                    .expect("reducer should handle action")
-                    .is_empty()
+            let effects = route(
+                &mut state,
+                Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
             );
+            assert!(effects.is_empty());
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("No active cell edit session")
@@ -537,8 +538,12 @@ mod tests {
             detail.primary_key = None;
             state.session.set_table_detail_raw(Some(detail));
 
-            let effects =
-                dispatch_query(&mut state, &Action::SubmitCellEditWrite, Instant::now()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -552,13 +557,13 @@ mod tests {
             let mut state = editable_state();
             let _ = state.query.begin_running(Instant::now());
 
-            let effects = dispatch_query(&mut state, &Action::SubmitCellEditWrite, Instant::now());
-            assert!(
-                effects
-                    .into_effects()
-                    .expect("reducer should handle action")
-                    .is_empty()
+            let effects = route(
+                &mut state,
+                Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
             );
+            assert!(effects.is_empty());
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("Write is unavailable while query is running")
@@ -573,13 +578,13 @@ mod tests {
                 state.session.set_table_detail_raw(Some(detail));
             }
 
-            let effects = dispatch_query(&mut state, &Action::SubmitCellEditWrite, Instant::now());
-            assert!(
-                effects
-                    .into_effects()
-                    .expect("reducer should handle action")
-                    .is_empty()
+            let effects = route(
+                &mut state,
+                Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
             );
+            assert!(effects.is_empty());
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("Table metadata does not match current preview target")
@@ -612,14 +617,14 @@ mod tests {
                 .result_interaction
                 .begin_cell_edit(0, 1, draft.to_string());
 
-            let effects = dispatch_query(&mut state, &Action::SubmitCellEditWrite, Instant::now());
-
-            assert!(
-                effects
-                    .into_effects()
-                    .expect("reducer should handle action")
-                    .is_empty()
+            let effects = route(
+                &mut state,
+                Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
             );
+
+            assert!(effects.is_empty());
             assert_eq!(state.messages.last_error.as_deref(), Some(expected_error));
         }
 
@@ -632,14 +637,14 @@ mod tests {
                 state.session.set_table_detail_raw(Some(detail));
             }
 
-            let effects = dispatch_query(&mut state, &Action::SubmitCellEditWrite, Instant::now());
-
-            assert!(
-                effects
-                    .into_effects()
-                    .expect("reducer should handle action")
-                    .is_empty()
+            let effects = route(
+                &mut state,
+                Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
             );
+
+            assert!(effects.is_empty());
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("Read-only column cannot be edited: name (generated)")
@@ -677,9 +682,12 @@ mod tests {
             for (data_type, original, draft) in cases {
                 let mut state = mysql_editable_state(data_type, original, draft);
 
-                let effects =
-                    dispatch_query(&mut state, &Action::SubmitCellEditWrite, Instant::now())
-                        .unwrap();
+                let effects = route(
+                    &mut state,
+                    Action::SubmitCellEditWrite,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
 
                 assert!(effects.is_empty(), "{data_type} should not send SQL");
                 assert_eq!(
@@ -920,14 +928,14 @@ mod tests {
                 .result_interaction
                 .replace_cell_edit_draft("1e999".to_string());
 
-            let effects = dispatch_query(&mut state, &Action::SubmitCellEditWrite, Instant::now());
-
-            assert!(
-                effects
-                    .into_effects()
-                    .expect("reducer should handle action")
-                    .is_empty()
+            let effects = route(
+                &mut state,
+                Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
             );
+
+            assert!(effects.is_empty());
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("REAL value must be finite")
@@ -963,14 +971,14 @@ mod tests {
                 .result_interaction
                 .replace_cell_edit_draft("Bob".to_string());
 
-            let effects = dispatch_query(&mut state, &Action::SubmitCellEditWrite, Instant::now());
-
-            assert!(
-                effects
-                    .into_effects()
-                    .expect("reducer should handle action")
-                    .is_empty()
+            let effects = route(
+                &mut state,
+                Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
             );
+
+            assert!(effects.is_empty());
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("SQLite writes require non-NULL primary key values")
@@ -1016,8 +1024,12 @@ mod tests {
                 .result_interaction
                 .replace_cell_edit_draft(r#"{ "role": "admin" }"#.to_string());
 
-            let effects =
-                dispatch_query(&mut state, &Action::SubmitCellEditWrite, Instant::now()).unwrap();
+            let effects = route(
+                &mut state,
+                Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -1224,7 +1236,7 @@ mod tests {
             state.query.pagination.set_current_page(2);
             let action = write_succeeded_action(&mut state, 1);
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.query.is_running());
@@ -1248,7 +1260,7 @@ mod tests {
             let mut state = editable_state();
             let action = write_succeeded_action(&mut state, 0);
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert_eq!(effects.len(), 1);
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -1268,7 +1280,7 @@ mod tests {
             let mut state = editable_state();
             let action = write_succeeded_action(&mut state, 2);
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert_eq!(effects.len(), 1);
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -1288,16 +1300,16 @@ mod tests {
             let mut state = mysql_editable_state("text", QueryValue::text("Alice"), "Bob");
             let run_id = begin_query_run(&mut state);
 
-            let effects = dispatch_query(
+            let effects = route(
                 &mut state,
-                &Action::ExecuteWriteSucceeded {
+                Action::ExecuteWriteSucceeded {
                     run_id,
                     affected_rows: 0,
                     diagnostics: Vec::new(),
                 },
                 Instant::now(),
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
 
             assert_eq!(effects.len(), 1);
             assert_eq!(
@@ -1319,7 +1331,7 @@ mod tests {
                 }],
             );
 
-            dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert_eq!(
                 state.messages.last_success.as_deref(),
@@ -1340,7 +1352,7 @@ mod tests {
                 },
             );
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(!state.result_interaction.cell_edit().is_active());
@@ -1370,7 +1382,7 @@ mod tests {
                 },
             );
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(!state.result_interaction.cell_edit().is_active());
@@ -1398,7 +1410,7 @@ mod tests {
                 DbOperationError::QueryFailed("before write".to_string()),
             );
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::CellEdit);
@@ -1413,16 +1425,16 @@ mod tests {
             let old_run_id = begin_query_run(&mut state);
             let _ = begin_query_run(&mut state);
 
-            let effects = dispatch_query(
+            let effects = route(
                 &mut state,
-                &Action::ExecuteWriteSucceeded {
+                Action::ExecuteWriteSucceeded {
                     run_id: old_run_id,
                     affected_rows: 1,
                     diagnostics: Vec::new(),
                 },
                 Instant::now(),
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
             assert!(state.messages.last_success.is_none());
@@ -1446,15 +1458,15 @@ mod tests {
             let current_run_id = begin_query_run(&mut state);
             let input_mode = state.input_mode();
 
-            let effects = dispatch_query(
+            let effects = route(
                 &mut state,
-                &Action::ExecuteWriteFailed {
+                Action::ExecuteWriteFailed {
                     run_id: stale_run_id,
                     error: DbOperationError::QueryFailed("stale write".to_string()),
                 },
                 Instant::now(),
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
 
             assert!(stale_run_id < current_run_id);
             assert!(effects.is_empty());
@@ -1493,9 +1505,7 @@ mod tests {
             state.modal.set_mode(InputMode::Normal);
             let preview = delete_preview();
 
-            let effects = open_write_preview_confirm(&mut state, &preview)
-                .into_effects()
-                .expect("write preview should be handled");
+            let effects = open_write_preview_confirm(&mut state, &preview);
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
@@ -1513,9 +1523,7 @@ mod tests {
             state.query.set_delete_refresh_target(0, Some(2), 3);
             let preview = delete_preview();
 
-            let effects = open_write_preview_confirm(&mut state, &preview)
-                .into_effects()
-                .expect("write preview should be handled");
+            let effects = open_write_preview_confirm(&mut state, &preview);
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -1541,7 +1549,7 @@ mod tests {
             state.result_interaction.set_write_preview(delete_preview());
             let action = write_succeeded_action(&mut state, 1);
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(
@@ -1574,7 +1582,7 @@ mod tests {
             state.result_interaction.set_write_preview(delete_preview());
             let action = write_succeeded_action(&mut state, 0);
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(
@@ -1595,7 +1603,7 @@ mod tests {
                 DbOperationError::QueryFailed("boom".to_string()),
             );
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -1625,7 +1633,7 @@ mod tests {
                 },
             );
 
-            let effects = dispatch_query(&mut state, &action, Instant::now()).unwrap();
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.result_interaction.staged_delete_rows().is_empty());
@@ -1646,7 +1654,7 @@ mod tests {
                 .set_post_delete_selection(PostDeleteRowSelection::Select(1000));
             let action = query_completed_action(&mut state, preview_result(3), 1, Some(0));
 
-            dispatch_query(&mut state, &action, Instant::now());
+            route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert_eq!(state.result_interaction.selection().row(), Some(2));
             assert_eq!(
@@ -1665,7 +1673,7 @@ mod tests {
                 .set_post_delete_selection(PostDeleteRowSelection::Clear);
             let action = query_completed_action(&mut state, preview_result(2), 1, Some(0));
 
-            dispatch_query(&mut state, &action, Instant::now());
+            route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert_eq!(state.result_interaction.selection().row(), None);
             assert_eq!(

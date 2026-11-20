@@ -4,126 +4,81 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::ports::outbound::AppSettings;
-use crate::update::action::{Action, InputTarget, ModalKind};
-use crate::update::dispatch_result::DispatchResult;
 
-pub(super) fn reduce_settings(
+pub(in crate::update) fn open_modal_settings(state: &mut AppState) -> Vec<Effect> {
+    state.settings.open(state.ui.theme_id());
+    state.modal.set_mode(InputMode::Settings);
+    vec![]
+}
+
+pub(in crate::update) fn settings_select_next(state: &mut AppState) -> Vec<Effect> {
+    state.settings.select_next();
+    vec![]
+}
+
+pub(in crate::update) fn settings_select_previous(state: &mut AppState) -> Vec<Effect> {
+    state.settings.select_previous();
+    vec![]
+}
+
+pub(in crate::update) fn settings_next_section(state: &mut AppState) -> Vec<Effect> {
+    state.settings.switch_next_section();
+    vec![]
+}
+
+pub(in crate::update) fn settings_previous_section(state: &mut AppState) -> Vec<Effect> {
+    state.settings.switch_previous_section();
+    vec![]
+}
+
+pub(in crate::update) fn settings_start_custom_browser_edit(state: &mut AppState) -> Vec<Effect> {
+    state.settings.start_custom_browser_edit();
+    vec![]
+}
+
+pub(in crate::update) fn settings_stop_custom_browser_edit(state: &mut AppState) -> Vec<Effect> {
+    state.settings.stop_custom_browser_edit();
+    vec![]
+}
+
+pub(in crate::update) fn settings_apply(state: &AppState) -> Vec<Effect> {
+    let theme_id = state.settings.selected_theme();
+    let settings = AppSettings {
+        theme_id,
+        icon_mode: state.settings.selected_icon_mode(),
+        keymap_preset: state.settings.selected_keymap_preset(),
+        er_browser: state.settings.selected_er_browser(),
+    };
+    vec![Effect::SaveSettings { settings }]
+}
+
+pub(in crate::update) fn settings_cancel(state: &mut AppState) -> Vec<Effect> {
+    state.settings.discard_selection();
+    state.modal.set_mode(InputMode::Normal);
+    vec![]
+}
+
+pub(in crate::update) fn settings_saved(
     state: &mut AppState,
-    action: &Action,
+    settings: AppSettings,
     now: Instant,
-) -> DispatchResult {
-    match action {
-        Action::OpenModal(ModalKind::Settings) => {
-            state.settings.open(state.ui.theme_id());
-            state.modal.set_mode(InputMode::Settings);
-            DispatchResult::handled()
-        }
-        Action::SettingsSelectNext => {
-            state.settings.select_next();
-            DispatchResult::handled()
-        }
-        Action::SettingsSelectPrevious => {
-            state.settings.select_previous();
-            DispatchResult::handled()
-        }
-        Action::SettingsNextSection => {
-            state.settings.switch_next_section();
-            DispatchResult::handled()
-        }
-        Action::SettingsPreviousSection => {
-            state.settings.switch_previous_section();
-            DispatchResult::handled()
-        }
-        Action::SettingsStartCustomBrowserEdit => {
-            state.settings.start_custom_browser_edit();
-            DispatchResult::handled()
-        }
-        Action::SettingsStopCustomBrowserEdit => {
-            state.settings.stop_custom_browser_edit();
-            DispatchResult::handled()
-        }
-        Action::TextInput {
-            target: InputTarget::SettingsErBrowser,
-            ch,
-        } => {
-            state.settings.input_custom_browser(*ch);
-            DispatchResult::handled()
-        }
-        Action::TextBackspace {
-            target: InputTarget::SettingsErBrowser,
-        } => {
-            state.settings.backspace_custom_browser();
-            DispatchResult::handled()
-        }
-        Action::TextDelete {
-            target: InputTarget::SettingsErBrowser,
-        } => {
-            state.settings.delete_custom_browser();
-            DispatchResult::handled()
-        }
-        Action::TextKill {
-            target: InputTarget::SettingsErBrowser,
-            direction,
-        } => {
-            if let Some(killed) = state
-                .settings
-                .edit_custom_browser(|input| input.kill(*direction))
-            {
-                state.record_kill(killed);
-            }
-            DispatchResult::handled()
-        }
-        Action::TextYank {
-            target: InputTarget::SettingsErBrowser,
-        } => {
-            if let Some(killed) = state.kill_buffer().map(str::to_owned) {
-                state
-                    .settings
-                    .edit_custom_browser(|input| input.yank(&killed));
-            }
-            DispatchResult::handled()
-        }
-        Action::TextMoveCursor {
-            target: InputTarget::SettingsErBrowser,
-            direction,
-        } => {
-            state.settings.move_custom_browser_cursor(*direction);
-            DispatchResult::handled()
-        }
-        Action::SettingsApply => {
-            let theme_id = state.settings.selected_theme();
-            let settings = AppSettings {
-                theme_id,
-                icon_mode: state.settings.selected_icon_mode(),
-                keymap_preset: state.settings.selected_keymap_preset(),
-                er_browser: state.settings.selected_er_browser(),
-            };
-            DispatchResult::handled_with(vec![Effect::SaveSettings { settings }])
-        }
-        Action::SettingsCancel | Action::CloseModal(ModalKind::Settings) => {
-            state.settings.discard_selection();
-            state.modal.set_mode(InputMode::Normal);
-            DispatchResult::handled()
-        }
-        Action::SettingsSaved(settings) => {
-            state.ui.set_theme(settings.theme_id);
-            state.settings.commit_saved(
-                settings.theme_id,
-                settings.icon_mode,
-                settings.keymap_preset,
-                settings.er_browser.clone(),
-            );
-            state
-                .messages
-                .set_success_at("Settings saved".to_string(), now);
-            DispatchResult::handled()
-        }
-        Action::SettingsSaveFailed(error) => {
-            state
-                .messages
-                .set_error(format!("Failed to save settings: {error}"));
-            DispatchResult::handled()
-        }
-        _ => DispatchResult::pass(),
-    }
+) -> Vec<Effect> {
+    state.ui.set_theme(settings.theme_id);
+    state.settings.commit_saved(
+        settings.theme_id,
+        settings.icon_mode,
+        settings.keymap_preset,
+        settings.er_browser,
+    );
+    state
+        .messages
+        .set_success_at("Settings saved".to_string(), now);
+    vec![]
+}
+
+pub(in crate::update) fn settings_save_failed(state: &mut AppState, error: String) -> Vec<Effect> {
+    state
+        .messages
+        .set_error(format!("Failed to save settings: {error}"));
+    vec![]
 }

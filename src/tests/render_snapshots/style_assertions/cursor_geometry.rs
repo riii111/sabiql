@@ -1,5 +1,7 @@
 use super::*;
 use crate::tests::harness::{focus_connection_field, set_connection_input};
+use sabiql_app::update::action::DetailTarget;
+use sabiql_app::update::action::SearchStep;
 
 fn json_detail_state() -> (AppState, Instant) {
     let now = test_instant();
@@ -44,18 +46,13 @@ fn json_detail_state() -> (AppState, Instant) {
     state.query.pagination.reset_for_table("public", "users");
     state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 3);
-    dispatch_result(
+    reduce(
         &mut state,
-        &Action::OpenModal(ModalKind::JsonDetail),
-        &AppServices::stub(),
+        Action::OpenModal(ModalKind::JsonDetail),
         now,
-    );
-    dispatch_result(
-        &mut state,
-        &Action::JsonEnterEdit,
         &AppServices::stub(),
-        now,
     );
+    reduce(&mut state, Action::JsonEnterEdit, now, &AppServices::stub());
     (state, now)
 }
 fn block_cursor_position(buffer: &ratatui::buffer::Buffer) -> Option<(u16, u16)> {
@@ -328,14 +325,14 @@ fn json_edit_uses_terminal_cursor_without_fake_glyph() {
     let has_insert_glyph_at_head = has_cell(&head_buffer, |cell| cell.symbol() == "\u{258f}");
     let head = render_and_get_cursor_position(&mut terminal, &mut state);
 
-    dispatch_result(
+    reduce(
         &mut state,
-        &Action::TextMoveCursor {
+        Action::TextMoveCursor {
             target: InputTarget::JsonEdit,
             direction: CursorMove::Right,
         },
-        &AppServices::stub(),
         now,
+        &AppServices::stub(),
     );
 
     let moved_buffer = render_and_get_buffer(&mut terminal, &mut state);
@@ -352,33 +349,36 @@ fn json_edit_uses_terminal_cursor_without_fake_glyph() {
 fn json_search_cursor_uses_display_width_for_wide_chars() {
     let (mut state, now) = json_detail_state();
     let mut terminal = create_test_terminal();
-    dispatch_result(&mut state, &Action::JsonExitEdit, &AppServices::stub(), now);
-    dispatch_result(
+    reduce(&mut state, Action::JsonExitEdit, now, &AppServices::stub());
+    reduce(
         &mut state,
-        &Action::JsonEnterSearch,
-        &AppServices::stub(),
+        Action::DetailSearch {
+            target: DetailTarget::JsonDetail,
+            step: SearchStep::Enter,
+        },
         now,
+        &AppServices::stub(),
     );
 
     let head = render_and_get_cursor_position(&mut terminal, &mut state);
 
-    dispatch_result(
+    reduce(
         &mut state,
-        &Action::TextInput {
+        Action::TextInput {
             target: InputTarget::JsonSearch,
             ch: 'a',
         },
-        &AppServices::stub(),
         now,
+        &AppServices::stub(),
     );
-    dispatch_result(
+    reduce(
         &mut state,
-        &Action::TextInput {
+        Action::TextInput {
             target: InputTarget::JsonSearch,
             ch: '語',
         },
-        &AppServices::stub(),
         now,
+        &AppServices::stub(),
     );
 
     let after_wide = render_and_get_cursor_position(&mut terminal, &mut state);

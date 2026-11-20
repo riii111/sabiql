@@ -1,160 +1,119 @@
-use std::time::Instant;
-
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::browse::row_detail::RowDetailState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
-use crate::update::action::{Action, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget};
-use crate::update::dispatch_result::DispatchResult;
+use crate::update::action::CopyTarget;
+use crate::update::action::{Action, ScrollAmount, ScrollDirection};
 use crate::update::helpers::clipboard_unavailable;
 
-pub(in crate::update) fn reduce_row_detail(
+pub(in crate::update) fn open_modal_row_detail(state: &mut AppState) -> Vec<Effect> {
+    let result = match state.query.visible_result() {
+        Some(r) if !r.is_error() && r.data_row_count() > 0 => r,
+        _ => return vec![],
+    };
+
+    let Some(row_idx) = state.result_interaction.selection().row() else {
+        return vec![];
+    };
+
+    state.row_detail = if result.has_typed_values() {
+        let Some(values) = result.values().get(row_idx) else {
+            return vec![];
+        };
+        RowDetailState::open_with_values(&result.columns, values)
+    } else {
+        let Some(cells) = result.display_row_at(row_idx) else {
+            return vec![];
+        };
+        RowDetailState::open(&result.columns, &cells)
+    };
+    state.modal.push_mode(InputMode::RowDetail);
+    vec![]
+}
+
+pub(in crate::update) fn close_modal_row_detail(state: &mut AppState) -> Vec<Effect> {
+    state.row_detail.close();
+    state.modal.pop_mode();
+    vec![]
+}
+
+pub(in crate::update) fn row_detail_yank(state: &AppState) -> Vec<Effect> {
+    let content = state.row_detail.content_for_yank();
+    vec![Effect::CopyToClipboard {
+        content,
+        on_success: Box::new(Action::CopySucceeded(CopyTarget::Panel(FlashId::RowDetail))),
+        on_failure: Some(Box::new(clipboard_unavailable())),
+    }]
+}
+
+pub(in crate::update) fn row_detail_yank_json(state: &AppState) -> Vec<Effect> {
+    let content = state.row_detail.json_for_yank();
+    vec![Effect::CopyToClipboard {
+        content,
+        on_success: Box::new(Action::CopySucceeded(CopyTarget::Panel(FlashId::RowDetail))),
+        on_failure: Some(Box::new(clipboard_unavailable())),
+    }]
+}
+
+pub(in crate::update) fn scroll_row_detail(
     state: &mut AppState,
-    action: &Action,
-    now: Instant,
-) -> DispatchResult {
-    match action {
-        Action::OpenModal(ModalKind::RowDetail) => {
-            let result = match state.query.visible_result() {
-                Some(r) if !r.is_error() && r.data_row_count() > 0 => r,
-                _ => return DispatchResult::handled(),
-            };
-
-            let Some(row_idx) = state.result_interaction.selection().row() else {
-                return DispatchResult::handled();
-            };
-
-            state.row_detail = if result.has_typed_values() {
-                let Some(values) = result.values().get(row_idx) else {
-                    return DispatchResult::handled();
-                };
-                RowDetailState::open_with_values(&result.columns, values)
-            } else {
-                let Some(cells) = result.display_row_at(row_idx) else {
-                    return DispatchResult::handled();
-                };
-                RowDetailState::open(&result.columns, &cells)
-            };
-            state.modal.push_mode(InputMode::RowDetail);
-            DispatchResult::handled()
-        }
-
-        Action::CloseModal(ModalKind::RowDetail) => {
-            state.row_detail.close();
-            state.modal.pop_mode();
-            DispatchResult::handled()
-        }
-
-        Action::RowDetailYank => {
-            let content = state.row_detail.content_for_yank();
-            DispatchResult::handled_with(vec![Effect::CopyToClipboard {
-                content,
-                on_success: Box::new(Action::RowDetailYankSuccess),
-                on_failure: Some(Box::new(clipboard_unavailable())),
-            }])
-        }
-
-        Action::RowDetailYankJson => {
-            let content = state.row_detail.json_for_yank();
-            DispatchResult::handled_with(vec![Effect::CopyToClipboard {
-                content,
-                on_success: Box::new(Action::RowDetailYankSuccess),
-                on_failure: Some(Box::new(clipboard_unavailable())),
-            }])
-        }
-
-        Action::RowDetailYankSuccess => {
-            state.flash_timers.set(FlashId::RowDetail, now);
-            DispatchResult::handled()
-        }
-
-        Action::Scroll {
-            target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::Line,
-        } => {
+    direction: ScrollDirection,
+    amount: ScrollAmount,
+) -> Vec<Effect> {
+    match (direction, amount) {
+        (ScrollDirection::Up, ScrollAmount::Line) => {
             state.row_detail.scroll_up_by(1);
-            DispatchResult::handled()
         }
-
-        Action::Scroll {
-            target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::Line,
-        } => {
+        (ScrollDirection::Down, ScrollAmount::Line) => {
             state
                 .row_detail
                 .scroll_down_by(1, state.row_detail_content_visible_rows());
-            DispatchResult::handled()
         }
-
-        Action::Scroll {
-            target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::ToStart,
-        } => {
+        (ScrollDirection::Up, ScrollAmount::ToStart) => {
             state.row_detail.scroll_to_start();
-            DispatchResult::handled()
         }
-
-        Action::Scroll {
-            target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::ToEnd,
-        } => {
+        (ScrollDirection::Down, ScrollAmount::ToEnd) => {
             state
                 .row_detail
                 .scroll_to_end(state.row_detail_content_visible_rows());
-            DispatchResult::handled()
         }
-
-        Action::Scroll {
-            target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Left,
-            amount: ScrollAmount::Line,
-        } => {
+        (ScrollDirection::Left, ScrollAmount::Line) => {
             state.row_detail.scroll_left_by(1);
-            DispatchResult::handled()
         }
-
-        Action::Scroll {
-            target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Right,
-            amount: ScrollAmount::Line,
-        } => {
+        (ScrollDirection::Right, ScrollAmount::Line) => {
             state
                 .row_detail
                 .scroll_right_by(1, state.row_detail_content_visible_columns());
-            DispatchResult::handled()
         }
-
-        Action::Scroll {
-            target: ScrollTarget::RowDetail,
-            direction,
-            amount: amount @ (ScrollAmount::HalfPage | ScrollAmount::FullPage),
-        } => {
+        (_, ScrollAmount::HalfPage | ScrollAmount::FullPage) => {
             let visible = state.row_detail_content_visible_rows();
-            if let Some(delta) = (*amount).page_delta(visible) {
-                match *direction {
+            if let Some(delta) = amount.page_delta(visible) {
+                match direction {
                     ScrollDirection::Up => state.row_detail.scroll_up_by(delta),
                     ScrollDirection::Down => state.row_detail.scroll_down_by(delta, visible),
                     ScrollDirection::Left | ScrollDirection::Right => {}
                 }
             }
-            DispatchResult::handled()
         }
-
-        _ => DispatchResult::pass(),
+        _ => debug_assert!(
+            false,
+            "unsupported RowDetail scroll: {direction:?} {amount:?}"
+        ),
     }
+    vec![]
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::Arc;
+    use std::time::Instant;
 
     use crate::domain::{QueryResult, QuerySource, QueryValue};
+    use crate::services::AppServices;
+    use crate::update::action::{ModalKind, ScrollTarget};
+    use crate::update::reducer::route;
 
     fn state_with_result() -> AppState {
         let mut state = AppState::new("test".to_string());
@@ -173,10 +132,11 @@ mod tests {
 
     fn state_with_row_detail() -> AppState {
         let mut state = state_with_result();
-        reduce_row_detail(
+        route(
             &mut state,
-            &Action::OpenModal(ModalKind::RowDetail),
+            Action::OpenModal(ModalKind::RowDetail),
             Instant::now(),
+            &AppServices::stub(),
         );
         state
     }
@@ -185,10 +145,11 @@ mod tests {
     fn open_builds_row_detail() {
         let mut state = state_with_result();
 
-        reduce_row_detail(
+        route(
             &mut state,
-            &Action::OpenModal(ModalKind::RowDetail),
+            Action::OpenModal(ModalKind::RowDetail),
             Instant::now(),
+            &AppServices::stub(),
         );
 
         assert!(state.row_detail.is_active());
@@ -218,10 +179,11 @@ mod tests {
             )));
         state.result_interaction.activate_cell(0, 0);
 
-        reduce_row_detail(
+        route(
             &mut state,
-            &Action::OpenModal(ModalKind::RowDetail),
+            Action::OpenModal(ModalKind::RowDetail),
             Instant::now(),
+            &AppServices::stub(),
         );
 
         assert!(state.row_detail.content().contains("BLOB (2 bytes) AB CD"));
@@ -241,10 +203,11 @@ mod tests {
                 QuerySource::Preview,
             )));
 
-        reduce_row_detail(
+        route(
             &mut state,
-            &Action::OpenModal(ModalKind::RowDetail),
+            Action::OpenModal(ModalKind::RowDetail),
             Instant::now(),
+            &AppServices::stub(),
         );
 
         assert!(!state.row_detail.is_active());
@@ -254,17 +217,19 @@ mod tests {
     #[test]
     fn close_clears_state() {
         let mut state = state_with_result();
-        reduce_row_detail(
+        route(
             &mut state,
-            &Action::OpenModal(ModalKind::RowDetail),
+            Action::OpenModal(ModalKind::RowDetail),
             Instant::now(),
+            &AppServices::stub(),
         );
         assert!(state.row_detail.is_active());
 
-        reduce_row_detail(
+        route(
             &mut state,
-            &Action::CloseModal(ModalKind::RowDetail),
+            Action::CloseModal(ModalKind::RowDetail),
             Instant::now(),
+            &AppServices::stub(),
         );
 
         assert!(!state.row_detail.is_active());
@@ -275,15 +240,18 @@ mod tests {
     fn yank_display_text_returns_clipboard_effect() {
         let mut state = state_with_row_detail();
 
-        let effects = reduce_row_detail(&mut state, &Action::RowDetailYank, Instant::now())
-            .into_effects()
-            .expect("should return effects");
+        let effects = route(
+            &mut state,
+            Action::RowDetailYank,
+            Instant::now(),
+            &AppServices::stub(),
+        );
 
         assert_eq!(effects.len(), 1);
         assert!(matches!(
             &effects[0],
             Effect::CopyToClipboard { content, on_success, .. }
-            if content.contains("id\n  1") && matches!(on_success.as_ref(), Action::RowDetailYankSuccess)
+            if content.contains("id\n  1") && matches!(on_success.as_ref(), Action::CopySucceeded(CopyTarget::Panel(FlashId::RowDetail)))
         ));
     }
 
@@ -291,15 +259,18 @@ mod tests {
     fn yank_json_returns_clipboard_effect() {
         let mut state = state_with_row_detail();
 
-        let effects = reduce_row_detail(&mut state, &Action::RowDetailYankJson, Instant::now())
-            .into_effects()
-            .expect("should return effects");
+        let effects = route(
+            &mut state,
+            Action::RowDetailYankJson,
+            Instant::now(),
+            &AppServices::stub(),
+        );
 
         assert_eq!(effects.len(), 1);
         assert!(matches!(
             &effects[0],
             Effect::CopyToClipboard { content, on_success, .. }
-            if content.contains("\"name\": \"alice\"") && matches!(on_success.as_ref(), Action::RowDetailYankSuccess)
+            if content.contains("\"name\": \"alice\"") && matches!(on_success.as_ref(), Action::CopySucceeded(CopyTarget::Panel(FlashId::RowDetail)))
         ));
     }
 
@@ -311,14 +282,15 @@ mod tests {
         assert!(line_count > 3, "test content should span more than 3 lines");
         state.row_detail.scroll_down_by(line_count - 2, 1);
 
-        reduce_row_detail(
+        route(
             &mut state,
-            &Action::Scroll {
+            Action::Scroll {
                 target: ScrollTarget::RowDetail,
                 direction: ScrollDirection::Down,
                 amount: ScrollAmount::Line,
             },
             Instant::now(),
+            &AppServices::stub(),
         );
 
         assert_eq!(
@@ -334,14 +306,15 @@ mod tests {
         let line_count = state.row_detail.line_count();
         assert!(line_count > 3, "test content should span more than 3 lines");
 
-        reduce_row_detail(
+        route(
             &mut state,
-            &Action::Scroll {
+            Action::Scroll {
                 target: ScrollTarget::RowDetail,
                 direction: ScrollDirection::Down,
                 amount: ScrollAmount::ToEnd,
             },
             Instant::now(),
+            &AppServices::stub(),
         );
 
         assert_eq!(
@@ -363,22 +336,24 @@ mod tests {
                 QuerySource::Preview,
             )));
         state.result_interaction.activate_cell(0, 0);
-        reduce_row_detail(
+        route(
             &mut state,
-            &Action::OpenModal(ModalKind::RowDetail),
+            Action::OpenModal(ModalKind::RowDetail),
             Instant::now(),
+            &AppServices::stub(),
         );
         state.ui.row_detail_content_visible_columns = 10;
 
         for _ in 0..100 {
-            reduce_row_detail(
+            route(
                 &mut state,
-                &Action::Scroll {
+                Action::Scroll {
                     target: ScrollTarget::RowDetail,
                     direction: ScrollDirection::Right,
                     amount: ScrollAmount::Line,
                 },
                 Instant::now(),
+                &AppServices::stub(),
             );
         }
 
@@ -398,10 +373,11 @@ mod tests {
             QuerySource::Preview,
         )));
 
-        reduce_row_detail(
+        route(
             &mut state,
-            &Action::OpenModal(ModalKind::RowDetail),
+            Action::OpenModal(ModalKind::RowDetail),
             Instant::now(),
+            &AppServices::stub(),
         );
 
         assert!(!state.row_detail.is_active());
@@ -421,10 +397,11 @@ mod tests {
                 QuerySource::Preview,
             )));
 
-        reduce_row_detail(
+        route(
             &mut state,
-            &Action::OpenModal(ModalKind::RowDetail),
+            Action::OpenModal(ModalKind::RowDetail),
             Instant::now(),
+            &AppServices::stub(),
         );
 
         assert!(!state.row_detail.is_active());
@@ -438,14 +415,15 @@ mod tests {
         let line_count = state.row_detail.line_count();
         assert!(line_count > 3);
 
-        reduce_row_detail(
+        route(
             &mut state,
-            &Action::Scroll {
+            Action::Scroll {
                 target: ScrollTarget::RowDetail,
                 direction: ScrollDirection::Down,
                 amount: ScrollAmount::FullPage,
             },
             Instant::now(),
+            &AppServices::stub(),
         );
 
         assert_eq!(
@@ -463,14 +441,15 @@ mod tests {
             .row_detail
             .scroll_down_by(line_count.saturating_sub(3), 3);
 
-        reduce_row_detail(
+        route(
             &mut state,
-            &Action::Scroll {
+            Action::Scroll {
                 target: ScrollTarget::RowDetail,
                 direction: ScrollDirection::Up,
                 amount: ScrollAmount::FullPage,
             },
             Instant::now(),
+            &AppServices::stub(),
         );
 
         assert_eq!(state.row_detail.scroll_offset(), 0);
@@ -484,14 +463,15 @@ mod tests {
         let max_scroll = line_count.saturating_sub(3);
         state.row_detail.scroll_down_by(max_scroll, 3);
 
-        reduce_row_detail(
+        route(
             &mut state,
-            &Action::Scroll {
+            Action::Scroll {
                 target: ScrollTarget::RowDetail,
                 direction: ScrollDirection::Down,
                 amount: ScrollAmount::HalfPage,
             },
             Instant::now(),
+            &AppServices::stub(),
         );
 
         assert_eq!(state.row_detail.scroll_offset(), max_scroll);
@@ -502,14 +482,15 @@ mod tests {
         let mut state = state_with_row_detail();
         state.ui.row_detail_content_visible_rows = 2;
 
-        reduce_row_detail(
+        route(
             &mut state,
-            &Action::Scroll {
+            Action::Scroll {
                 target: ScrollTarget::RowDetail,
                 direction: ScrollDirection::Down,
                 amount: ScrollAmount::HalfPage,
             },
             Instant::now(),
+            &AppServices::stub(),
         );
 
         assert_eq!(state.row_detail.scroll_offset(), 1);
@@ -523,14 +504,15 @@ mod tests {
         state.row_detail.scroll_down_by(2, 1);
         state.ui.row_detail_content_visible_rows = 10;
 
-        reduce_row_detail(
+        route(
             &mut state,
-            &Action::Scroll {
+            Action::Scroll {
                 target: ScrollTarget::RowDetail,
                 direction: ScrollDirection::Up,
                 amount: ScrollAmount::HalfPage,
             },
             Instant::now(),
+            &AppServices::stub(),
         );
 
         assert_eq!(state.row_detail.scroll_offset(), 0);

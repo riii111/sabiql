@@ -1,103 +1,94 @@
-use std::time::Instant;
-
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
-use crate::update::action::{Action, ConnectionsLoadedPayload, ListMotion, ListTarget};
-use crate::update::dispatch_result::DispatchResult;
+use crate::update::action::{ConnectionsLoadedPayload, ListMotion};
 
-pub(in crate::update) fn reduce_connection_list(
+pub(in crate::update) fn list_select_connection_list(
     state: &mut AppState,
-    action: &Action,
-    _now: Instant,
-) -> DispatchResult {
-    match action {
-        Action::ListSelect {
-            target: ListTarget::ConnectionList,
-            motion: ListMotion::Next,
-        } => {
+    motion: ListMotion,
+) -> Vec<Effect> {
+    match motion {
+        ListMotion::Next => {
             let len = state.connection_list_items().len();
             let next = state.ui.connection_list_selected() + 1;
             if next < len {
                 state.ui.set_connection_list_selection(Some(next));
             }
-            DispatchResult::handled()
         }
-        Action::ListSelect {
-            target: ListTarget::ConnectionList,
-            motion: ListMotion::Previous,
-        } => {
+        ListMotion::Previous => {
             if state.ui.connection_list_selected() > 0 {
                 state
                     .ui
                     .set_connection_list_selection(Some(state.ui.connection_list_selected() - 1));
             }
-            DispatchResult::handled()
         }
-        Action::ConnectionsLoaded(ConnectionsLoadedPayload {
-            profiles,
-            services,
-            service_file_path,
-            profile_load_warning,
-            service_load_warning,
-        }) => {
-            let mut sorted = profiles.clone();
-            sorted.sort_by(|a, b| {
-                a.display_name()
-                    .to_lowercase()
-                    .cmp(&b.display_name().to_lowercase())
-            });
-            state.set_connections_and_services(sorted, services.clone());
-            state.set_service_file_path(service_file_path.clone());
+    }
+    vec![]
+}
 
-            if let Some(warning) = profile_load_warning {
-                state.messages.set_error(warning.clone());
-            }
-            if let Some(warning) = service_load_warning {
-                state.messages.set_error(warning.clone());
-            }
+pub(in crate::update) fn connections_loaded(
+    state: &mut AppState,
+    payload: ConnectionsLoadedPayload,
+) -> Vec<Effect> {
+    let ConnectionsLoadedPayload {
+        profiles,
+        services,
+        service_file_path,
+        profile_load_warning,
+        service_load_warning,
+    } = payload;
+    let mut sorted = profiles;
+    sorted.sort_by(|a, b| {
+        a.display_name()
+            .to_lowercase()
+            .cmp(&b.display_name().to_lowercase())
+    });
+    state.set_connections_and_services(sorted, services);
+    state.set_service_file_path(service_file_path);
 
-            let list_len = state.connection_list_items().len();
-            if list_len == 0 {
-                state.ui.set_connection_list_selection(Some(0));
-            } else if state.ui.connection_list_selected() >= list_len {
-                state
-                    .ui
-                    .set_connection_list_selection(Some(list_len.saturating_sub(1)));
-            } else {
-                state
-                    .ui
-                    .set_connection_list_selection(Some(state.ui.connection_list_selected()));
-            }
-            DispatchResult::handled()
-        }
-        Action::ConfirmConnectionSelection => {
-            use crate::model::connection::list::ConnectionListItem;
-            let selected_idx = state.ui.connection_list_selected();
+    if let Some(warning) = profile_load_warning {
+        state.messages.set_error(warning);
+    }
+    if let Some(warning) = service_load_warning {
+        state.messages.set_error(warning);
+    }
 
-            let effect = match state.connection_list_items().get(selected_idx) {
-                Some(ConnectionListItem::Profile(i)) => state
-                    .connections()
-                    .get(*i)
-                    .filter(|c| state.session.active_connection_id() != Some(&c.id))
-                    .map(|_| Effect::SwitchConnection {
-                        connection_index: *i,
-                    }),
-                Some(ConnectionListItem::Service(i)) => {
-                    Some(Effect::SwitchToService { service_index: *i })
-                }
-                _ => None,
-            };
+    let list_len = state.connection_list_items().len();
+    if list_len == 0 {
+        state.ui.set_connection_list_selection(Some(0));
+    } else if state.ui.connection_list_selected() >= list_len {
+        state
+            .ui
+            .set_connection_list_selection(Some(list_len.saturating_sub(1)));
+    } else {
+        state
+            .ui
+            .set_connection_list_selection(Some(state.ui.connection_list_selected()));
+    }
+    vec![]
+}
 
-            state.modal.set_mode(InputMode::Normal);
+pub(in crate::update) fn confirm_connection_selection(state: &mut AppState) -> Vec<Effect> {
+    use crate::model::connection::list::ConnectionListItem;
+    let selected_idx = state.ui.connection_list_selected();
 
-            match effect {
-                Some(e) => DispatchResult::handled_with(vec![e]),
-                None => DispatchResult::handled(),
-            }
-        }
+    let effect = match state.connection_list_items().get(selected_idx) {
+        Some(ConnectionListItem::Profile(i)) => state
+            .connections()
+            .get(*i)
+            .filter(|c| state.session.active_connection_id() != Some(&c.id))
+            .map(|_| Effect::SwitchConnection {
+                connection_index: *i,
+            }),
+        Some(ConnectionListItem::Service(i)) => Some(Effect::SwitchToService { service_index: *i }),
+        _ => None,
+    };
 
-        _ => DispatchResult::pass(),
+    state.modal.set_mode(InputMode::Normal);
+
+    match effect {
+        Some(e) => vec![e],
+        None => vec![],
     }
 }
 
@@ -106,7 +97,9 @@ mod tests {
     use super::*;
     use crate::domain::connection::{ConnectionId, ConnectionProfile, SslMode};
     use crate::services::AppServices;
-    use crate::update::browse::navigation::dispatch_navigation;
+    use crate::update::action::{Action, ListTarget};
+    use crate::update::reducer::route;
+    use std::time::Instant;
 
     fn create_test_profile(name: &str) -> ConnectionProfile {
         ConnectionProfile::new_postgres(
@@ -136,14 +129,14 @@ mod tests {
             setup_profiles(&mut state, 3);
             state.ui.set_connection_list_selection(Some(0));
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::ListSelect {
+                Action::ListSelect {
                     target: ListTarget::ConnectionList,
                     motion: ListMotion::Next,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.connection_list_selected(), 1);
@@ -155,14 +148,14 @@ mod tests {
             setup_profiles(&mut state, 2);
             state.ui.set_connection_list_selection(Some(1));
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::ListSelect {
+                Action::ListSelect {
                     target: ListTarget::ConnectionList,
                     motion: ListMotion::Next,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.connection_list_selected(), 1);
@@ -174,14 +167,14 @@ mod tests {
             setup_profiles(&mut state, 2);
             state.ui.set_connection_list_selection(Some(1));
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::ListSelect {
+                Action::ListSelect {
                     target: ListTarget::ConnectionList,
                     motion: ListMotion::Previous,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.connection_list_selected(), 0);
@@ -193,14 +186,14 @@ mod tests {
             setup_profiles(&mut state, 1);
             state.ui.set_connection_list_selection(Some(0));
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::ListSelect {
+                Action::ListSelect {
                     target: ListTarget::ConnectionList,
                     motion: ListMotion::Previous,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.connection_list_selected(), 0);
@@ -219,17 +212,17 @@ mod tests {
                 create_test_profile("Beta"),
             ];
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::ConnectionsLoaded(ConnectionsLoadedPayload {
+                Action::ConnectionsLoaded(ConnectionsLoadedPayload {
                     profiles,
                     services: vec![],
                     service_file_path: None,
                     profile_load_warning: None,
                     service_load_warning: None,
                 }),
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.connections()[0].display_name(), "alpha");
@@ -242,17 +235,17 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let profiles = vec![create_test_profile("conn1")];
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::ConnectionsLoaded(ConnectionsLoadedPayload {
+                Action::ConnectionsLoaded(ConnectionsLoadedPayload {
                     profiles,
                     services: vec![],
                     service_file_path: None,
                     profile_load_warning: None,
                     service_load_warning: None,
                 }),
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.connection_list_selected(), 0);
@@ -263,17 +256,17 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let path = std::path::PathBuf::from("/etc/pg_service.conf");
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::ConnectionsLoaded(ConnectionsLoadedPayload {
+                Action::ConnectionsLoaded(ConnectionsLoadedPayload {
                     profiles: vec![],
                     services: vec![],
                     service_file_path: Some(path.clone()),
                     profile_load_warning: None,
                     service_load_warning: None,
                 }),
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.service_file_path(), Some(path.as_path()));
@@ -283,17 +276,17 @@ mod tests {
         fn service_load_warning_sets_error_message() {
             let mut state = AppState::new("test".to_string());
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::ConnectionsLoaded(ConnectionsLoadedPayload {
+                Action::ConnectionsLoaded(ConnectionsLoadedPayload {
                     profiles: vec![],
                     services: vec![],
                     service_file_path: None,
                     profile_load_warning: None,
                     service_load_warning: Some("parse error at line 5".to_string()),
                 }),
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert!(state.messages.last_error().is_some());
@@ -336,13 +329,12 @@ mod tests {
             );
             state.ui.set_connection_list_selection(Some(1));
 
-            let effects = dispatch_navigation(
+            let effects = route(
                 &mut state,
-                &Action::ConfirmConnectionSelection,
-                &AppServices::stub(),
+                Action::ConfirmConnectionSelection,
                 Instant::now(),
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(
@@ -370,13 +362,12 @@ mod tests {
             );
             state.ui.set_connection_list_selection(Some(0));
 
-            let effects = dispatch_navigation(
+            let effects = route(
                 &mut state,
-                &Action::ConfirmConnectionSelection,
-                &AppServices::stub(),
+                Action::ConfirmConnectionSelection,
                 Instant::now(),
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
         }
@@ -385,13 +376,12 @@ mod tests {
         fn empty_connections_returns_empty_effects() {
             let mut state = AppState::new("test".to_string());
 
-            let effects = dispatch_navigation(
+            let effects = route(
                 &mut state,
-                &Action::ConfirmConnectionSelection,
-                &AppServices::stub(),
+                Action::ConfirmConnectionSelection,
                 Instant::now(),
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
 
             assert!(effects.is_empty());
         }
@@ -415,13 +405,12 @@ mod tests {
             state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(1));
 
-            let effects = dispatch_navigation(
+            let effects = route(
                 &mut state,
-                &Action::ConfirmConnectionSelection,
-                &AppServices::stub(),
+                Action::ConfirmConnectionSelection,
                 Instant::now(),
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(effects
@@ -447,13 +436,12 @@ mod tests {
             state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(0));
 
-            let effects = dispatch_navigation(
+            let effects = route(
                 &mut state,
-                &Action::ConfirmConnectionSelection,
-                &AppServices::stub(),
+                Action::ConfirmConnectionSelection,
                 Instant::now(),
-            )
-            .unwrap();
+                &AppServices::stub(),
+            );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(effects.is_empty());

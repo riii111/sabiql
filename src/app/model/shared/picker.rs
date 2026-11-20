@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use crate::model::shared::cursor::CursorMove;
 
 use super::text_input::TextInputState;
+use crate::model::shared::text_input::TextEdit;
 
 #[derive(Debug, Clone, Default)]
 pub struct PickerState {
@@ -81,6 +82,14 @@ impl PickerState {
         self.filter_input.update_viewport(self.filter_visible_width);
         self.reset();
         result
+    }
+
+    pub fn apply_filter_edit(&mut self, edit: TextEdit, yank_text: Option<&str>) -> String {
+        if let TextEdit::MoveCursor(direction) = edit {
+            self.move_filter_cursor(direction);
+            return String::new();
+        }
+        self.edit_filter(|input| input.apply_edit(edit, yank_text))
     }
 
     pub fn move_filter_cursor(&mut self, direction: CursorMove) {

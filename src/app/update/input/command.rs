@@ -1,15 +1,23 @@
-use crate::update::action::{Action, ModalKind};
+use crate::update::action::ModalKind;
 
-pub fn action_for_command(input: &str) -> Action {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LineCommand {
+    Quit,
+    Help,
+    Open(ModalKind),
+    Write,
+}
+
+pub fn parse_line_command(input: &str) -> Option<LineCommand> {
     match input.trim() {
-        "q" | "quit" => Action::Quit,
-        "?" | "help" => Action::ToggleModal(ModalKind::Help),
-        "sql" => Action::OpenModal(ModalKind::SqlModal),
-        "erd" => Action::OpenModal(ModalKind::ErTablePicker),
-        "settings" | "theme" => Action::OpenModal(ModalKind::Settings),
-        "palette" => Action::OpenModal(ModalKind::CommandPalette),
-        "w" | "write" => Action::SubmitCellEditWrite,
-        _ => Action::None,
+        "q" | "quit" => Some(LineCommand::Quit),
+        "?" | "help" => Some(LineCommand::Help),
+        "sql" => Some(LineCommand::Open(ModalKind::SqlModal)),
+        "erd" => Some(LineCommand::Open(ModalKind::ErTablePicker)),
+        "settings" | "theme" => Some(LineCommand::Open(ModalKind::Settings)),
+        "palette" => Some(LineCommand::Open(ModalKind::CommandPalette)),
+        "w" | "write" => Some(LineCommand::Write),
+        _ => None,
     }
 }
 
@@ -17,7 +25,7 @@ pub fn action_for_command(input: &str) -> Action {
 mod tests {
     use super::*;
 
-    mod action_for_command {
+    mod parse_line_command {
         use super::*;
         use rstest::rstest;
 
@@ -25,61 +33,55 @@ mod tests {
         #[case("q")]
         #[case("quit")]
         fn quit_aliases(#[case] input: &str) {
-            assert!(matches!(action_for_command(input), Action::Quit));
+            assert_eq!(parse_line_command(input), Some(LineCommand::Quit));
         }
 
         #[rstest]
         #[case("?")]
         #[case("help")]
         fn help_aliases(#[case] input: &str) {
-            assert!(matches!(
-                action_for_command(input),
-                Action::ToggleModal(ModalKind::Help)
-            ));
+            assert_eq!(parse_line_command(input), Some(LineCommand::Help));
         }
 
         #[test]
         fn sql_opens_sql_modal() {
-            assert!(matches!(
-                action_for_command("sql"),
-                Action::OpenModal(ModalKind::SqlModal)
-            ));
+            assert_eq!(
+                parse_line_command("sql"),
+                Some(LineCommand::Open(ModalKind::SqlModal))
+            );
         }
 
         #[test]
         fn erd_opens_er_table_picker() {
-            assert!(matches!(
-                action_for_command("erd"),
-                Action::OpenModal(ModalKind::ErTablePicker)
-            ));
+            assert_eq!(
+                parse_line_command("erd"),
+                Some(LineCommand::Open(ModalKind::ErTablePicker))
+            );
         }
 
         #[rstest]
         #[case("settings")]
         #[case("theme")]
         fn settings_aliases_open_settings(#[case] input: &str) {
-            assert!(matches!(
-                action_for_command(input),
-                Action::OpenModal(ModalKind::Settings)
-            ));
+            assert_eq!(
+                parse_line_command(input),
+                Some(LineCommand::Open(ModalKind::Settings))
+            );
         }
 
         #[test]
         fn palette_opens_command_palette() {
-            assert!(matches!(
-                action_for_command("palette"),
-                Action::OpenModal(ModalKind::CommandPalette)
-            ));
+            assert_eq!(
+                parse_line_command("palette"),
+                Some(LineCommand::Open(ModalKind::CommandPalette))
+            );
         }
 
         #[rstest]
         #[case("w")]
         #[case("write")]
         fn write_aliases(#[case] input: &str) {
-            assert!(matches!(
-                action_for_command(input),
-                Action::SubmitCellEditWrite
-            ));
+            assert_eq!(parse_line_command(input), Some(LineCommand::Write));
         }
 
         #[rstest]
@@ -89,15 +91,15 @@ mod tests {
         #[case("42foo")]
         #[case("")]
         fn unknown_commands_return_none(#[case] input: &str) {
-            assert!(matches!(action_for_command(input), Action::None));
+            assert_eq!(parse_line_command(input), None);
         }
 
         #[test]
         fn whitespace_is_trimmed() {
-            assert!(matches!(
-                action_for_command("  sql  "),
-                Action::OpenModal(ModalKind::SqlModal)
-            ));
+            assert_eq!(
+                parse_line_command("  sql  "),
+                Some(LineCommand::Open(ModalKind::SqlModal))
+            );
         }
     }
 }

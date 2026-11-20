@@ -469,7 +469,7 @@ pub const COMMAND_LINE_KEYS: &[KeyBinding] = &[
         key: ":help",
         desc_short: "Help",
         description: "Show help",
-        action: Action::ToggleModal(ModalKind::Help),
+        action: Action::ToggleHelp,
         combos: &[],
     },
     KeyBinding {

@@ -1,64 +1,61 @@
+use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::confirm_dialog::ConfirmIntent;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
-use crate::update::action::Action;
-use crate::update::dispatch_result::DispatchResult;
 
-pub(in crate::update) fn reduce_focus(state: &mut AppState, action: &Action) -> DispatchResult {
-    match action {
-        Action::SetFocusedPane(pane) => {
-            if *pane != FocusedPane::Result {
-                state.result_interaction.reset_interaction();
-                if state.modal.active_mode() == InputMode::CellEdit {
-                    state.modal.set_mode(InputMode::Normal);
-                }
-            }
-            state.ui.set_focused_pane(*pane);
-            DispatchResult::handled()
+pub(in crate::update) fn set_focused_pane(state: &mut AppState, pane: FocusedPane) -> Vec<Effect> {
+    if pane != FocusedPane::Result {
+        state.result_interaction.reset_interaction();
+        if state.modal.active_mode() == InputMode::CellEdit {
+            state.modal.set_mode(InputMode::Normal);
         }
-        Action::ToggleFocus => {
-            let was_focus = state.ui.is_focus_mode();
-            state.ui.toggle_focus();
-            if was_focus {
-                state.result_interaction.reset_interaction();
-            }
-            DispatchResult::handled()
-        }
-        Action::ToggleReadOnly => {
-            if state.session.is_read_only() {
-                state.confirm_dialog.open(
-                    "Disable Read-Only",
-                    "Switch to read-write mode? Write operations will be allowed.",
-                    ConfirmIntent::DisableReadOnly,
-                );
-                state.modal.push_mode(InputMode::ConfirmDialog);
-            } else {
-                state.session.enable_read_only();
-            }
-            DispatchResult::handled()
-        }
-        Action::InspectorNextTab => {
-            state.ui.set_inspector_tab(
-                state
-                    .session
-                    .active_engine_feature_profile()
-                    .next_inspector_tab(state.ui.inspector_tab()),
-            );
-            DispatchResult::handled()
-        }
-        Action::InspectorPrevTab => {
-            state.ui.set_inspector_tab(
-                state
-                    .session
-                    .active_engine_feature_profile()
-                    .prev_inspector_tab(state.ui.inspector_tab()),
-            );
-            DispatchResult::handled()
-        }
-
-        _ => DispatchResult::pass(),
     }
+    state.ui.set_focused_pane(pane);
+    vec![]
+}
+
+pub(in crate::update) fn toggle_focus(state: &mut AppState) -> Vec<Effect> {
+    let was_focus = state.ui.is_focus_mode();
+    state.ui.toggle_focus();
+    if was_focus {
+        state.result_interaction.reset_interaction();
+    }
+    vec![]
+}
+
+pub(in crate::update) fn toggle_read_only(state: &mut AppState) -> Vec<Effect> {
+    if state.session.is_read_only() {
+        state.confirm_dialog.open(
+            "Disable Read-Only",
+            "Switch to read-write mode? Write operations will be allowed.",
+            ConfirmIntent::DisableReadOnly,
+        );
+        state.modal.push_mode(InputMode::ConfirmDialog);
+    } else {
+        state.session.enable_read_only();
+    }
+    vec![]
+}
+
+pub(in crate::update) fn inspector_next_tab(state: &mut AppState) -> Vec<Effect> {
+    state.ui.set_inspector_tab(
+        state
+            .session
+            .active_engine_feature_profile()
+            .next_inspector_tab(state.ui.inspector_tab()),
+    );
+    vec![]
+}
+
+pub(in crate::update) fn inspector_prev_tab(state: &mut AppState) -> Vec<Effect> {
+    state.ui.set_inspector_tab(
+        state
+            .session
+            .active_engine_feature_profile()
+            .prev_inspector_tab(state.ui.inspector_tab()),
+    );
+    vec![]
 }
 
 #[cfg(test)]
@@ -67,7 +64,8 @@ mod tests {
     use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::shared::inspector_tab::InspectorTab;
     use crate::services::AppServices;
-    use crate::update::browse::navigation::dispatch_navigation;
+    use crate::update::action::Action;
+    use crate::update::reducer::route;
     use std::time::Instant;
 
     mod toggle_read_only {
@@ -78,11 +76,11 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             assert!(!state.session.is_read_only());
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::ToggleReadOnly,
-                &AppServices::stub(),
+                Action::ToggleReadOnly,
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert!(state.session.is_read_only());
@@ -94,11 +92,11 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.session.enable_read_only();
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::ToggleReadOnly,
-                &AppServices::stub(),
+                Action::ToggleReadOnly,
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert!(state.session.is_read_only());
@@ -128,11 +126,11 @@ mod tests {
             activate_sqlite_connection(&mut state);
             state.ui.set_inspector_tab(InspectorTab::Info);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::InspectorNextTab,
-                &AppServices::stub(),
+                Action::InspectorNextTab,
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.inspector_tab(), InspectorTab::Columns);
@@ -144,11 +142,11 @@ mod tests {
             activate_sqlite_connection(&mut state);
             state.ui.set_inspector_tab(InspectorTab::Info);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::InspectorPrevTab,
-                &AppServices::stub(),
+                Action::InspectorPrevTab,
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.inspector_tab(), InspectorTab::Ddl);

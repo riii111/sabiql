@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use super::cell_edit::CellEditState;
 use crate::model::shared::cursor::CursorMove;
-use crate::model::shared::text_input::TextKillDirection;
+use crate::model::shared::text_input::{TextEdit, TextKillDirection};
 use crate::model::shared::ui_state::{ResultSelection, YankFlash};
 use crate::policy::write::write_guardrails::{WriteOperation, WritePreview};
 
@@ -132,6 +132,15 @@ impl ResultInteraction {
 
     pub fn cell_edit_move_cursor(&mut self, direction: CursorMove) {
         self.cell_edit.move_cursor(direction);
+    }
+
+    pub fn edit_cell_text(&mut self, edit: TextEdit, yank_text: Option<&str>) -> String {
+        let killed = self.cell_edit.apply_edit(edit, yank_text);
+        // Cursor moves leave the draft unchanged, so the write preview stays valid.
+        if !matches!(edit, TextEdit::MoveCursor(_)) {
+            self.clear_write_preview();
+        }
+        killed
     }
 
     pub fn replace_cell_edit_draft(&mut self, content: String) {

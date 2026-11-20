@@ -4,6 +4,7 @@ use super::text_input::{
     TextInputState, TextKillDirection, char_to_byte_index, next_word_start, previous_word_start,
     readline_forward_word_end, readline_previous_whitespace_boundary, readline_previous_word_start,
 };
+use crate::model::shared::text_input::TextEdit;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct LineSpan {
@@ -131,6 +132,22 @@ impl MultiLineInputState {
             TextKillDirection::ReadlineWordEnd => self.kill_next_word(),
             TextKillDirection::ReadlinePreviousWhitespace => self.kill_previous_word(),
         }
+    }
+
+    pub fn apply_edit(&mut self, edit: TextEdit, yank_text: Option<&str>) -> String {
+        match edit {
+            TextEdit::Insert(ch) => self.insert_char(ch),
+            TextEdit::Backspace => self.backspace(),
+            TextEdit::Delete => self.delete(),
+            TextEdit::Kill(direction) => return self.kill(direction),
+            TextEdit::Yank => {
+                if let Some(text) = yank_text {
+                    self.yank(text);
+                }
+            }
+            TextEdit::MoveCursor(direction) => self.move_cursor(direction),
+        }
+        String::new()
     }
 
     pub fn yank(&mut self, text: &str) {

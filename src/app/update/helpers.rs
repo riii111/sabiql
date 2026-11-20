@@ -35,10 +35,10 @@ pub(in crate::update) fn clipboard_unavailable() -> Action {
 
 pub(in crate::update) fn metadata_reload_effects(state: &mut AppState, dsn: &str) -> Vec<Effect> {
     let run_id = state.session.begin_reload();
+    state.table_detail_cache.clear();
 
     vec![
         Effect::CancelMetadataTasks,
-        Effect::ClearCompletionEngineCache,
         Effect::FetchMetadata {
             dsn: dsn.to_string(),
             run_id,

@@ -8,8 +8,9 @@ use crate::policy::write::write_guardrails::{
     GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
 };
 use crate::services::AppServices;
+use crate::test_support::table::minimal as minimal_table;
 use crate::update::action::{Action, QueryCompletionContext, TableTarget};
-use crate::update::reducer::reduce;
+use crate::update::reducer::{reduce, route};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -143,24 +144,34 @@ pub fn complete_table_preview(state: &mut AppState, now: Instant) {
 pub fn assert_connection_save_fetch_effects(effects: &[Effect], database_type: DatabaseType) {
     match database_type {
         DatabaseType::SQLite => {
-            assert_eq!(effects.len(), 3);
+            assert_eq!(effects.len(), 2);
             assert!(matches!(effects[0], Effect::CancelTrackedTasks));
-            assert!(matches!(effects[1], Effect::ClearCompletionEngineCache));
-            assert!(matches!(effects[2], Effect::FetchMetadata { .. }));
+            assert!(matches!(effects[1], Effect::FetchMetadata { .. }));
         }
         DatabaseType::PostgreSQL => {
-            assert_eq!(effects.len(), 3);
+            assert_eq!(effects.len(), 2);
             assert!(matches!(effects[0], Effect::CancelTrackedTasks));
-            assert!(matches!(effects[1], Effect::ClearCompletionEngineCache));
             assert!(matches!(
-                &effects[2],
+                &effects[1],
                 Effect::DispatchActions(actions)
                     if matches!(actions.as_slice(), [Action::MetadataLoaded { .. }])
             ));
         }
         DatabaseType::MySQL => {
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(effects[0], Effect::ClearCompletionEngineCache));
+            assert!(effects.is_empty());
         }
     }
+}
+
+pub fn seed_table_detail_cache(state: &mut AppState, qualified_name: &str) {
+    let (schema, name) = qualified_name
+        .split_once('.')
+        .expect("qualified name should contain a schema");
+    state
+        .table_detail_cache
+        .insert(qualified_name.to_string(), minimal_table(schema, name));
+}
+
+pub fn edit_text(state: &mut AppState, action: &Action, now: Instant) -> Vec<Effect> {
+    route(state, action.clone(), now, &AppServices::stub())
 }

@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -7,7 +6,6 @@ use std::time::{Duration, Instant};
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
-use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::effect::Effect;
 use crate::cmd::runner::{ConnectionDeps, EffectRunner, ErDeps, QueryDeps, UtilityDeps};
 use crate::domain::SqliteDiagnosticsSnapshot;
@@ -187,7 +185,6 @@ pub fn run_one_effect<'a>(
     runner: &'a EffectRunner,
     effect: Effect,
     mut state: AppState,
-    completion_engine: RefCell<CompletionEngine>,
     action_rx: &'a mut mpsc::Receiver<Action>,
     action_timeout: Option<Duration>,
 ) -> Pin<Box<dyn Future<Output = Result<EffectRun>> + 'a>> {
@@ -198,7 +195,6 @@ pub fn run_one_effect<'a>(
                 vec![effect],
                 &mut renderer,
                 &mut state,
-                &completion_engine,
                 &AppServices::stub(),
             )
             .await?;

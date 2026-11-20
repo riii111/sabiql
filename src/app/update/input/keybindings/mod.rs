@@ -167,14 +167,23 @@ pub fn global_action_for_with_policy(
 pub mod test_support {
     use super::Action;
 
-    // Action has payload variants without PartialEq, so tests compare by
-    // discriminant — except modal actions, where several bindings differ only by
-    // ModalKind and the kind must participate in equality.
+    // Action has payload variants without PartialEq, so tests compare by discriminant.
+    // Bindings that differ only by a modal kind, detail target, or search step compare that payload too.
     pub fn same_payload_free_action(actual: &Action, expected: &Action) -> bool {
         match (actual, expected) {
             (Action::OpenModal(a), Action::OpenModal(b))
-            | (Action::CloseModal(a), Action::CloseModal(b))
-            | (Action::ToggleModal(a), Action::ToggleModal(b)) => a == b,
+            | (Action::CloseModal(a), Action::CloseModal(b)) => a == b,
+            (
+                Action::DetailSearch {
+                    target: a_target,
+                    step: a_step,
+                },
+                Action::DetailSearch {
+                    target: b_target,
+                    step: b_step,
+                },
+            ) => a_target == b_target && a_step == b_step,
+            (Action::DetailYankAll(a), Action::DetailYankAll(b)) => a == b,
             _ => std::mem::discriminant(actual) == std::mem::discriminant(expected),
         }
     }
@@ -195,7 +204,7 @@ mod tests {
 
             #[rstest]
             #[case(global::QUIT, Action::Quit)]
-            #[case(global::HELP, Action::ToggleModal(ModalKind::Help))]
+            #[case(global::HELP, Action::ToggleHelp)]
             #[case(global::TABLE_PICKER, Action::OpenModal(ModalKind::TablePicker))]
             #[case(global::SETTINGS, Action::OpenModal(ModalKind::Settings))]
             #[case(global::COMMAND_LINE, Action::EnterCommandLine)]

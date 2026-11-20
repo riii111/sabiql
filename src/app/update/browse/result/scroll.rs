@@ -1,11 +1,9 @@
+use crate::cmd::effect::Effect;
 use crate::domain::QueryResult;
 use crate::model::app_state::AppState;
 use crate::model::shared::key_sequence::KeySequenceState;
 use crate::model::shared::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
-use crate::update::action::{
-    Action, CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
-};
-use crate::update::dispatch_result::DispatchResult;
+use crate::update::action::{CursorPosition, ScrollAmount, ScrollDirection};
 
 pub(super) fn result_row_count(state: &AppState) -> usize {
     state
@@ -77,13 +75,13 @@ fn move_result_row_and_scroll(state: &mut AppState, direction: ScrollDirection, 
     scroll_result_by(state, direction, delta);
 }
 
-pub(in crate::update) fn reduce_scroll(state: &mut AppState, action: &Action) -> DispatchResult {
-    match action {
-        Action::Scroll {
-            target: ScrollTarget::Result,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::Line,
-        } => {
+pub(in crate::update) fn scroll_result(
+    state: &mut AppState,
+    direction: ScrollDirection,
+    amount: ScrollAmount,
+) -> Vec<Effect> {
+    match (direction, amount) {
+        (ScrollDirection::Up, ScrollAmount::Line) => {
             let new_row = state
                 .result_interaction
                 .selection()
@@ -98,13 +96,8 @@ pub(in crate::update) fn reduce_scroll(state: &mut AppState, action: &Action) ->
                 }
                 _ => {} // row == 0, no-op
             }
-            DispatchResult::handled()
         }
-        Action::Scroll {
-            target: ScrollTarget::Result,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::Line,
-        } => {
+        (ScrollDirection::Down, ScrollAmount::Line) => {
             let max_row = result_row_count(state).saturating_sub(1);
             let new_row = state
                 .result_interaction
@@ -118,33 +111,18 @@ pub(in crate::update) fn reduce_scroll(state: &mut AppState, action: &Action) ->
                         .set_scroll_offset(s.result_interaction.scroll_offset() + 1);
                 }
             });
-            DispatchResult::handled()
         }
-        Action::Scroll {
-            target: ScrollTarget::Result,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::ToStart,
-        } => {
+        (ScrollDirection::Up, ScrollAmount::ToStart) => {
             move_row_or_scroll(state, 0, |s| s.result_interaction.set_scroll_offset(0));
-            DispatchResult::handled()
         }
-        Action::Scroll {
-            target: ScrollTarget::Result,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::ToEnd,
-        } => {
+        (ScrollDirection::Down, ScrollAmount::ToEnd) => {
             let max_row = result_row_count(state).saturating_sub(1);
             let max_scroll = result_max_scroll(state);
             move_row_or_scroll(state, max_row, |s| {
                 s.result_interaction.set_scroll_offset(max_scroll);
             });
-            DispatchResult::handled()
         }
-        Action::Scroll {
-            target: ScrollTarget::Result,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::ViewportMiddle,
-        } => {
+        (ScrollDirection::Up, ScrollAmount::ViewportMiddle) => {
             if state.result_interaction.selection().row().is_some() {
                 let visible = state.result_visible_rows();
                 let total = result_row_count(state);
@@ -154,25 +132,15 @@ pub(in crate::update) fn reduce_scroll(state: &mut AppState, action: &Action) ->
                 state.result_interaction.move_row(target_row);
                 ensure_row_visible(state);
             }
-            DispatchResult::handled()
         }
-        Action::Scroll {
-            target: ScrollTarget::Result,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::ViewportTop,
-        } => {
+        (ScrollDirection::Up, ScrollAmount::ViewportTop) => {
             if state.result_interaction.selection().row().is_some() {
                 let target = state.result_interaction.scroll_offset();
                 state.result_interaction.move_row(target);
                 ensure_row_visible(state);
             }
-            DispatchResult::handled()
         }
-        Action::Scroll {
-            target: ScrollTarget::Result,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::ViewportBottom,
-        } => {
+        (ScrollDirection::Down, ScrollAmount::ViewportBottom) => {
             if state.result_interaction.selection().row().is_some() {
                 let visible = state.result_visible_rows();
                 let total = result_row_count(state);
@@ -182,24 +150,43 @@ pub(in crate::update) fn reduce_scroll(state: &mut AppState, action: &Action) ->
                 state.result_interaction.move_row(target);
                 ensure_row_visible(state);
             }
-            DispatchResult::handled()
         }
-        Action::Scroll {
-            target: ScrollTarget::Result,
-            direction: direction @ (ScrollDirection::Down | ScrollDirection::Up),
-            amount: amount @ (ScrollAmount::HalfPage | ScrollAmount::FullPage),
-        } => {
-            let delta = page_scroll_delta(state, *amount).unwrap_or(0);
+        (
+            ScrollDirection::Down | ScrollDirection::Up,
+            ScrollAmount::HalfPage | ScrollAmount::FullPage,
+        ) => {
+            let delta = page_scroll_delta(state, amount).unwrap_or(0);
             if delta > 0 {
-                move_result_row_and_scroll(state, *direction, delta);
+                move_result_row_and_scroll(state, direction, delta);
             }
-            DispatchResult::handled()
         }
-        // Scroll-to-cursor (zz/zt/zb): only meaningful with an active cell
-        Action::ScrollToCursor {
-            target: ScrollToCursorTarget::Result,
-            position: CursorPosition::Center,
-        } => {
+        (ScrollDirection::Left, ScrollAmount::Line) => {
+            state
+                .result_interaction
+                .set_horizontal_offset(calculate_prev_column_offset(
+                    state.result_interaction.horizontal_offset(),
+                ));
+        }
+        (ScrollDirection::Right, ScrollAmount::Line) => {
+            state
+                .result_interaction
+                .set_horizontal_offset(calculate_next_column_offset(
+                    state.result_interaction.horizontal_offset(),
+                    state.ui.result_viewport_plan().max_offset,
+                ));
+        }
+        _ => debug_assert!(false, "unsupported Result scroll: {direction:?} {amount:?}"),
+    }
+    vec![]
+}
+
+// Scroll-to-cursor (zz/zt/zb): only meaningful with an active cell
+pub(in crate::update) fn scroll_to_cursor_result(
+    state: &mut AppState,
+    position: CursorPosition,
+) -> Vec<Effect> {
+    match position {
+        CursorPosition::Center => {
             state.ui.set_key_sequence(KeySequenceState::Idle);
             if let Some(row) = state.result_interaction.selection().row() {
                 let visible = state.result_visible_rows();
@@ -210,12 +197,8 @@ pub(in crate::update) fn reduce_scroll(state: &mut AppState, action: &Action) ->
                         .set_scroll_offset(row.saturating_sub(visible / 2).min(max_scroll));
                 }
             }
-            DispatchResult::handled()
         }
-        Action::ScrollToCursor {
-            target: ScrollToCursorTarget::Result,
-            position: CursorPosition::Top,
-        } => {
+        CursorPosition::Top => {
             state.ui.set_key_sequence(KeySequenceState::Idle);
             if let Some(row) = state.result_interaction.selection().row() {
                 let visible = state.result_visible_rows();
@@ -226,12 +209,8 @@ pub(in crate::update) fn reduce_scroll(state: &mut AppState, action: &Action) ->
                         .set_scroll_offset(row.min(max_scroll));
                 }
             }
-            DispatchResult::handled()
         }
-        Action::ScrollToCursor {
-            target: ScrollToCursorTarget::Result,
-            position: CursorPosition::Bottom,
-        } => {
+        CursorPosition::Bottom => {
             state.ui.set_key_sequence(KeySequenceState::Idle);
             if let Some(row) = state.result_interaction.selection().row() {
                 let visible = state.result_visible_rows();
@@ -243,35 +222,9 @@ pub(in crate::update) fn reduce_scroll(state: &mut AppState, action: &Action) ->
                     );
                 }
             }
-            DispatchResult::handled()
         }
-        Action::Scroll {
-            target: ScrollTarget::Result,
-            direction: ScrollDirection::Left,
-            amount: ScrollAmount::Line,
-        } => {
-            state
-                .result_interaction
-                .set_horizontal_offset(calculate_prev_column_offset(
-                    state.result_interaction.horizontal_offset(),
-                ));
-            DispatchResult::handled()
-        }
-        Action::Scroll {
-            target: ScrollTarget::Result,
-            direction: ScrollDirection::Right,
-            amount: ScrollAmount::Line,
-        } => {
-            state
-                .result_interaction
-                .set_horizontal_offset(calculate_next_column_offset(
-                    state.result_interaction.horizontal_offset(),
-                    state.ui.result_viewport_plan().max_offset,
-                ));
-            DispatchResult::handled()
-        }
-        _ => DispatchResult::pass(),
     }
+    vec![]
 }
 
 #[cfg(test)]
@@ -281,6 +234,10 @@ mod tests {
     use super::*;
     use crate::domain::QuerySource;
     use crate::model::shared::key_sequence::Prefix;
+    use crate::services::AppServices;
+    use crate::update::action::{Action, ScrollTarget, ScrollToCursorTarget};
+    use crate::update::reducer::route;
+    use std::time::Instant;
 
     fn state_with_result_rows(rows: usize, pane_height: u16) -> AppState {
         let mut state = AppState::new("test".to_string());
@@ -308,16 +265,17 @@ mod tests {
             fn half_page_down_from_top() {
                 let mut state = state_with_result_rows(100, 25);
                 // visible = 25 - 5 = 20, half = 10
-                let effects = reduce_scroll(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Result,
                         direction: ScrollDirection::Down,
                         amount: ScrollAmount::HalfPage,
                     },
+                    Instant::now(),
+                    &AppServices::stub(),
                 );
 
-                assert!(effects.is_handled());
                 assert_eq!(state.result_interaction.scroll_offset(), 10);
             }
 
@@ -326,13 +284,15 @@ mod tests {
                 let mut state = state_with_result_rows(100, 25);
                 state.result_interaction.set_scroll_offset(50);
 
-                reduce_scroll(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Result,
                         direction: ScrollDirection::Up,
                         amount: ScrollAmount::HalfPage,
                     },
+                    Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.scroll_offset(), 40);
@@ -344,13 +304,15 @@ mod tests {
                 // visible = 20, max_scroll = 30-20 = 10
                 state.result_interaction.set_scroll_offset(5);
 
-                reduce_scroll(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Result,
                         direction: ScrollDirection::Down,
                         amount: ScrollAmount::FullPage,
                     },
+                    Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.scroll_offset(), 10);
@@ -361,13 +323,15 @@ mod tests {
                 let mut state = state_with_result_rows(100, 25);
                 state.result_interaction.set_scroll_offset(5);
 
-                reduce_scroll(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Result,
                         direction: ScrollDirection::Up,
                         amount: ScrollAmount::FullPage,
                     },
+                    Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.scroll_offset(), 0);
@@ -383,13 +347,15 @@ mod tests {
                 // visible = 20, mid_viewport = 10, target = 0 + 10 = 10
                 state.result_interaction.activate_cell(0, 0);
 
-                reduce_scroll(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Result,
                         direction: ScrollDirection::Up,
                         amount: ScrollAmount::ViewportMiddle,
                     },
+                    Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(10));
@@ -399,13 +365,15 @@ mod tests {
             fn scroll_middle_is_noop_in_scroll_mode() {
                 let mut state = state_with_result_rows(100, 25);
 
-                reduce_scroll(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Result,
                         direction: ScrollDirection::Up,
                         amount: ScrollAmount::ViewportMiddle,
                     },
+                    Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.scroll_offset(), 0);
@@ -421,13 +389,15 @@ mod tests {
                 state.result_interaction.activate_cell(10, 0);
                 state.result_interaction.set_scroll_offset(5);
 
-                reduce_scroll(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Result,
                         direction: ScrollDirection::Down,
                         amount: ScrollAmount::HalfPage,
                     },
+                    Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(20));
@@ -440,13 +410,15 @@ mod tests {
                 state.result_interaction.activate_cell(30, 0);
                 state.result_interaction.set_scroll_offset(25);
 
-                reduce_scroll(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Result,
                         direction: ScrollDirection::Up,
                         amount: ScrollAmount::HalfPage,
                     },
+                    Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(20));
@@ -459,13 +431,15 @@ mod tests {
                 state.result_interaction.activate_cell(15, 3);
                 state.result_interaction.set_scroll_offset(10);
 
-                reduce_scroll(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Result,
                         direction: ScrollDirection::Down,
                         amount: ScrollAmount::HalfPage,
                     },
+                    Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(25));
@@ -482,13 +456,15 @@ mod tests {
                 state.result_interaction.activate_cell(10, 3);
                 state.result_interaction.set_scroll_offset(5);
 
-                reduce_scroll(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Result,
                         direction: ScrollDirection::Down,
                         amount: ScrollAmount::HalfPage,
                     },
+                    Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(20));
@@ -502,13 +478,15 @@ mod tests {
                 state.result_interaction.activate_cell(10, 0);
                 state.result_interaction.set_scroll_offset(5);
 
-                reduce_scroll(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Result,
                         direction: ScrollDirection::Down,
                         amount: ScrollAmount::FullPage,
                     },
+                    Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(30));
@@ -521,13 +499,15 @@ mod tests {
                 state.result_interaction.activate_cell(40, 0);
                 state.result_interaction.set_scroll_offset(30);
 
-                reduce_scroll(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Result,
                         direction: ScrollDirection::Up,
                         amount: ScrollAmount::FullPage,
                     },
+                    Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(20));
@@ -541,13 +521,15 @@ mod tests {
             #[test]
             fn zero_height_scroll_mode_is_noop() {
                 let mut state = state_with_result_rows(100, 0);
-                reduce_scroll(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Result,
                         direction: ScrollDirection::Down,
                         amount: ScrollAmount::HalfPage,
                     },
+                    Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.scroll_offset(), 0);
@@ -559,13 +541,15 @@ mod tests {
                 state.result_interaction.activate_cell(95, 0);
                 state.result_interaction.set_scroll_offset(75);
 
-                reduce_scroll(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Result,
                         direction: ScrollDirection::Down,
                         amount: ScrollAmount::HalfPage,
                     },
+                    Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(99));
@@ -578,13 +562,15 @@ mod tests {
                 state.result_interaction.activate_cell(5, 0);
                 state.result_interaction.set_scroll_offset(3);
 
-                reduce_scroll(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Result,
                         direction: ScrollDirection::Up,
                         amount: ScrollAmount::HalfPage,
                     },
+                    Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(0));
@@ -597,13 +583,15 @@ mod tests {
                 state.result_interaction.activate_cell(5, 1);
                 state.result_interaction.set_scroll_offset(3);
 
-                reduce_scroll(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Result,
                         direction: ScrollDirection::Down,
                         amount: ScrollAmount::HalfPage,
                     },
+                    Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(5));
@@ -616,13 +604,15 @@ mod tests {
                 let mut state = state_with_result_rows(10, 25);
                 state.result_interaction.activate_cell(3, 0);
 
-                reduce_scroll(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Result,
                         direction: ScrollDirection::Down,
                         amount: ScrollAmount::HalfPage,
                     },
+                    Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(9));
@@ -635,13 +625,15 @@ mod tests {
                 state.result_interaction.activate_cell(90, 0);
                 state.result_interaction.set_scroll_offset(75);
 
-                reduce_scroll(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Result,
                         direction: ScrollDirection::Down,
                         amount: ScrollAmount::FullPage,
                     },
+                    Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(99));
@@ -654,13 +646,15 @@ mod tests {
                 state.result_interaction.activate_cell(10, 0);
                 state.result_interaction.set_scroll_offset(5);
 
-                reduce_scroll(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Result,
                         direction: ScrollDirection::Up,
                         amount: ScrollAmount::FullPage,
                     },
+                    Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(0));
@@ -673,13 +667,15 @@ mod tests {
                 state.result_interaction.activate_cell(5, 1);
                 state.result_interaction.set_scroll_offset(3);
 
-                reduce_scroll(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Result,
                         direction: ScrollDirection::Down,
                         amount: ScrollAmount::FullPage,
                     },
+                    Instant::now(),
+                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(5));
@@ -702,12 +698,14 @@ mod tests {
                 .ui
                 .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
-            reduce_scroll(
+            route(
                 &mut state,
-                &Action::ScrollToCursor {
+                Action::ScrollToCursor {
                     target: ScrollToCursorTarget::Result,
                     position: CursorPosition::Center,
                 },
+                Instant::now(),
+                &AppServices::stub(),
             );
 
             // row=50, visible=20, offset=50-10=40, max=80 → 40
@@ -724,12 +722,14 @@ mod tests {
                 .ui
                 .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
-            reduce_scroll(
+            route(
                 &mut state,
-                &Action::ScrollToCursor {
+                Action::ScrollToCursor {
                     target: ScrollToCursorTarget::Result,
                     position: CursorPosition::Top,
                 },
+                Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.result_interaction.scroll_offset(), 30);
@@ -745,12 +745,14 @@ mod tests {
                 .ui
                 .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
-            reduce_scroll(
+            route(
                 &mut state,
-                &Action::ScrollToCursor {
+                Action::ScrollToCursor {
                     target: ScrollToCursorTarget::Result,
                     position: CursorPosition::Bottom,
                 },
+                Instant::now(),
+                &AppServices::stub(),
             );
 
             // row=30, visible=20, offset=30-19=11, max=80 → 11
@@ -766,12 +768,14 @@ mod tests {
                 .ui
                 .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
-            reduce_scroll(
+            route(
                 &mut state,
-                &Action::ScrollToCursor {
+                Action::ScrollToCursor {
                     target: ScrollToCursorTarget::Result,
                     position: CursorPosition::Center,
                 },
+                Instant::now(),
+                &AppServices::stub(),
             );
 
             // No row selected, offset unchanged
@@ -789,12 +793,14 @@ mod tests {
                 .ui
                 .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
-            reduce_scroll(
+            route(
                 &mut state,
-                &Action::ScrollToCursor {
+                Action::ScrollToCursor {
                     target: ScrollToCursorTarget::Result,
                     position: CursorPosition::Top,
                 },
+                Instant::now(),
+                &AppServices::stub(),
             );
 
             // row=95, clamped to max_scroll=80

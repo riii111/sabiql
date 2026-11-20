@@ -1,19 +1,19 @@
+use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::key_sequence::KeySequenceState;
 use crate::model::shared::ui_state::scroll_max_offset;
 use crate::policy::table_kind::max_explorer_table_label_width;
-use crate::update::action::{
-    Action, CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
-    SelectMotion,
-};
-use crate::update::dispatch_result::DispatchResult;
+use crate::update::action::{CursorPosition, ScrollAmount, ScrollDirection, SelectMotion};
 
 use super::explorer_item_count;
 
-pub(in crate::update) fn reduce_explorer(state: &mut AppState, action: &Action) -> DispatchResult {
-    match action {
-        Action::Select(SelectMotion::Next) => {
+pub(in crate::update) fn select_explorer(
+    state: &mut AppState,
+    motion: SelectMotion,
+) -> Vec<Effect> {
+    match motion {
+        SelectMotion::Next => {
             if state.ui.focused_pane() == FocusedPane::Explorer {
                 let len = state.tables().len();
                 if len > 0 && state.ui.explorer_selected() < len - 1 {
@@ -22,31 +22,27 @@ pub(in crate::update) fn reduce_explorer(state: &mut AppState, action: &Action) 
                         .set_explorer_selection(Some(state.ui.explorer_selected() + 1));
                 }
             }
-            DispatchResult::handled()
         }
-        Action::Select(SelectMotion::Previous) => {
+        SelectMotion::Previous => {
             if state.ui.focused_pane() == FocusedPane::Explorer && !state.tables().is_empty() {
                 let new_idx = state.ui.explorer_selected().saturating_sub(1);
                 state.ui.set_explorer_selection(Some(new_idx));
             }
-            DispatchResult::handled()
         }
-        Action::Select(SelectMotion::First) => {
+        SelectMotion::First => {
             if state.ui.focused_pane() == FocusedPane::Explorer && !state.tables().is_empty() {
                 state.ui.set_explorer_selection(Some(0));
             }
-            DispatchResult::handled()
         }
-        Action::Select(SelectMotion::Last) => {
+        SelectMotion::Last => {
             if state.ui.focused_pane() == FocusedPane::Explorer {
                 let len = state.tables().len();
                 if len > 0 {
                     state.ui.set_explorer_selection(Some(len - 1));
                 }
             }
-            DispatchResult::handled()
         }
-        Action::Select(SelectMotion::ViewportMiddle) => {
+        SelectMotion::ViewportMiddle => {
             if state.ui.focused_pane() == FocusedPane::Explorer {
                 let len = explorer_item_count(state);
                 let visible = state.ui.explorer_visible_items();
@@ -57,9 +53,8 @@ pub(in crate::update) fn reduce_explorer(state: &mut AppState, action: &Action) 
                     state.ui.set_explorer_selection(Some(target));
                 }
             }
-            DispatchResult::handled()
         }
-        Action::Select(SelectMotion::ViewportTop) => {
+        SelectMotion::ViewportTop => {
             if state.ui.focused_pane() == FocusedPane::Explorer {
                 let len = explorer_item_count(state);
                 if len > 0 {
@@ -67,9 +62,8 @@ pub(in crate::update) fn reduce_explorer(state: &mut AppState, action: &Action) 
                     state.ui.set_explorer_selection(Some(target));
                 }
             }
-            DispatchResult::handled()
         }
-        Action::Select(SelectMotion::ViewportBottom) => {
+        SelectMotion::ViewportBottom => {
             if state.ui.focused_pane() == FocusedPane::Explorer {
                 let len = explorer_item_count(state);
                 let visible = state.ui.explorer_visible_items();
@@ -80,13 +74,35 @@ pub(in crate::update) fn reduce_explorer(state: &mut AppState, action: &Action) 
                     state.ui.set_explorer_selection(Some(target));
                 }
             }
-            DispatchResult::handled()
         }
+        SelectMotion::HalfPageDown | SelectMotion::FullPageDown => {
+            let len = explorer_item_count(state);
+            let visible = state.ui.explorer_visible_items();
+            let delta = match motion {
+                SelectMotion::HalfPageDown => (visible / 2).max(1),
+                _ => visible.max(1),
+            };
+            state.ui.scroll_explorer_page_down(len, delta);
+        }
+        SelectMotion::HalfPageUp | SelectMotion::FullPageUp => {
+            let len = explorer_item_count(state);
+            let visible = state.ui.explorer_visible_items();
+            let delta = match motion {
+                SelectMotion::HalfPageUp => (visible / 2).max(1),
+                _ => visible.max(1),
+            };
+            state.ui.scroll_explorer_page_up(len, delta);
+        }
+    }
+    vec![]
+}
 
-        Action::ScrollToCursor {
-            target: ScrollToCursorTarget::Explorer,
-            position: CursorPosition::Center,
-        } => {
+pub(in crate::update) fn scroll_to_cursor_explorer(
+    state: &mut AppState,
+    position: CursorPosition,
+) -> Vec<Effect> {
+    match position {
+        CursorPosition::Center => {
             state.ui.set_key_sequence(KeySequenceState::Idle);
             let len = explorer_item_count(state);
             let visible = state.ui.explorer_visible_items();
@@ -97,12 +113,8 @@ pub(in crate::update) fn reduce_explorer(state: &mut AppState, action: &Action) 
                     selected.saturating_sub(visible / 2).min(max_offset),
                 );
             }
-            DispatchResult::handled()
         }
-        Action::ScrollToCursor {
-            target: ScrollToCursorTarget::Explorer,
-            position: CursorPosition::Top,
-        } => {
+        CursorPosition::Top => {
             state.ui.set_key_sequence(KeySequenceState::Idle);
             let len = explorer_item_count(state);
             let visible = state.ui.explorer_visible_items();
@@ -113,12 +125,8 @@ pub(in crate::update) fn reduce_explorer(state: &mut AppState, action: &Action) 
                     .ui
                     .set_explorer_scroll_offset(selected.min(max_offset));
             }
-            DispatchResult::handled()
         }
-        Action::ScrollToCursor {
-            target: ScrollToCursorTarget::Explorer,
-            position: CursorPosition::Bottom,
-        } => {
+        CursorPosition::Bottom => {
             state.ui.set_key_sequence(KeySequenceState::Idle);
             let len = explorer_item_count(state);
             let visible = state.ui.explorer_visible_items();
@@ -131,45 +139,23 @@ pub(in crate::update) fn reduce_explorer(state: &mut AppState, action: &Action) 
                         .min(max_offset),
                 );
             }
-            DispatchResult::handled()
         }
+    }
+    vec![]
+}
 
-        Action::Select(motion @ (SelectMotion::HalfPageDown | SelectMotion::FullPageDown)) => {
-            let len = explorer_item_count(state);
-            let visible = state.ui.explorer_visible_items();
-            let delta = match motion {
-                SelectMotion::HalfPageDown => (visible / 2).max(1),
-                _ => visible.max(1),
-            };
-            state.ui.scroll_explorer_page_down(len, delta);
-            DispatchResult::handled()
-        }
-        Action::Select(motion @ (SelectMotion::HalfPageUp | SelectMotion::FullPageUp)) => {
-            let len = explorer_item_count(state);
-            let visible = state.ui.explorer_visible_items();
-            let delta = match motion {
-                SelectMotion::HalfPageUp => (visible / 2).max(1),
-                _ => visible.max(1),
-            };
-            state.ui.scroll_explorer_page_up(len, delta);
-            DispatchResult::handled()
-        }
-
-        Action::Scroll {
-            target: ScrollTarget::Explorer,
-            direction: ScrollDirection::Left,
-            amount: ScrollAmount::Line,
-        } => {
+pub(in crate::update) fn scroll_explorer(
+    state: &mut AppState,
+    direction: ScrollDirection,
+    amount: ScrollAmount,
+) -> Vec<Effect> {
+    match (direction, amount) {
+        (ScrollDirection::Left, ScrollAmount::Line) => {
             state.ui.set_explorer_horizontal_offset(
                 state.ui.explorer_horizontal_offset().saturating_sub(1),
             );
-            DispatchResult::handled()
         }
-        Action::Scroll {
-            target: ScrollTarget::Explorer,
-            direction: ScrollDirection::Right,
-            amount: ScrollAmount::Line,
-        } => {
+        (ScrollDirection::Right, ScrollAmount::Line) => {
             let max_name_width = max_explorer_table_label_width(
                 state.tables(),
                 state.session.active_database_type_or_default(),
@@ -180,11 +166,13 @@ pub(in crate::update) fn reduce_explorer(state: &mut AppState, action: &Action) 
                     .ui
                     .set_explorer_horizontal_offset(state.ui.explorer_horizontal_offset() + 1);
             }
-            DispatchResult::handled()
         }
-
-        _ => DispatchResult::pass(),
+        _ => debug_assert!(
+            false,
+            "unsupported Explorer scroll: {direction:?} {amount:?}"
+        ),
     }
+    vec![]
 }
 
 #[cfg(test)]
@@ -193,7 +181,8 @@ mod tests {
     use crate::domain::{DatabaseMetadata, TableSummary};
     use crate::model::shared::key_sequence::Prefix;
     use crate::services::AppServices;
-    use crate::update::browse::navigation::dispatch_navigation;
+    use crate::update::action::{Action, ScrollTarget, ScrollToCursorTarget};
+    use crate::update::reducer::route;
     use rstest::rstest;
     use std::sync::Arc;
     use std::time::Instant;
@@ -238,11 +227,11 @@ mod tests {
         #[test]
         fn half_page_down_jumps_by_correct_delta() {
             let mut state = state_with_tables(50, 23);
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Select(SelectMotion::HalfPageDown),
-                &AppServices::stub(),
+                Action::Select(SelectMotion::HalfPageDown),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 10);
@@ -253,11 +242,11 @@ mod tests {
             let mut state = state_with_tables(50, 23);
             state.ui.set_explorer_selection(Some(45));
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Select(SelectMotion::HalfPageDown),
-                &AppServices::stub(),
+                Action::Select(SelectMotion::HalfPageDown),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 49);
@@ -268,11 +257,11 @@ mod tests {
             let mut state = state_with_tables(50, 23);
             state.ui.set_explorer_selection(Some(3));
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Select(SelectMotion::HalfPageUp),
-                &AppServices::stub(),
+                Action::Select(SelectMotion::HalfPageUp),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 0);
@@ -281,11 +270,11 @@ mod tests {
         #[test]
         fn full_page_down_jumps_by_visible() {
             let mut state = state_with_tables(50, 23);
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Select(SelectMotion::FullPageDown),
-                &AppServices::stub(),
+                Action::Select(SelectMotion::FullPageDown),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 20);
@@ -296,25 +285,24 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.ui.set_explorer_pane_height(23);
 
-            let effects = dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Select(SelectMotion::HalfPageDown),
-                &AppServices::stub(),
+                Action::Select(SelectMotion::HalfPageDown),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
-            assert!(effects.is_handled());
             assert_eq!(state.ui.explorer_selected(), 0);
         }
 
         #[test]
         fn zero_height_pane_is_noop() {
             let mut state = state_with_tables(50, 0);
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Select(SelectMotion::HalfPageDown),
-                &AppServices::stub(),
+                Action::Select(SelectMotion::HalfPageDown),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 0);
@@ -327,11 +315,11 @@ mod tests {
             state.ui.set_explorer_selected_raw(15);
             state.ui.set_explorer_scroll_offset(10);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Select(SelectMotion::HalfPageDown),
-                &AppServices::stub(),
+                Action::Select(SelectMotion::HalfPageDown),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 25);
@@ -344,11 +332,11 @@ mod tests {
             state.ui.set_explorer_selected_raw(25);
             state.ui.set_explorer_scroll_offset(20);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Select(SelectMotion::HalfPageUp),
-                &AppServices::stub(),
+                Action::Select(SelectMotion::HalfPageUp),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 15);
@@ -361,11 +349,11 @@ mod tests {
             state.ui.set_explorer_selected_raw(15);
             state.ui.set_explorer_scroll_offset(10);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Select(SelectMotion::HalfPageDown),
-                &AppServices::stub(),
+                Action::Select(SelectMotion::HalfPageDown),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             let relative = state.ui.explorer_selected() - state.ui.explorer_scroll_offset();
@@ -377,11 +365,11 @@ mod tests {
             let mut state = state_with_tables(10, 23);
             state.ui.set_explorer_selected_raw(3);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Select(SelectMotion::HalfPageDown),
-                &AppServices::stub(),
+                Action::Select(SelectMotion::HalfPageDown),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 9);
@@ -394,11 +382,11 @@ mod tests {
             state.ui.set_explorer_selected_raw(10);
             state.ui.set_explorer_scroll_offset(5);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Select(SelectMotion::FullPageDown),
-                &AppServices::stub(),
+                Action::Select(SelectMotion::FullPageDown),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 30);
@@ -411,11 +399,11 @@ mod tests {
             state.ui.set_explorer_selected_raw(30);
             state.ui.set_explorer_scroll_offset(25);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Select(SelectMotion::FullPageUp),
-                &AppServices::stub(),
+                Action::Select(SelectMotion::FullPageUp),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 10);
@@ -428,11 +416,11 @@ mod tests {
             state.ui.set_explorer_selected_raw(40);
             state.ui.set_explorer_scroll_offset(25);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Select(SelectMotion::FullPageDown),
-                &AppServices::stub(),
+                Action::Select(SelectMotion::FullPageDown),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 49);
@@ -445,11 +433,11 @@ mod tests {
             state.ui.set_explorer_selected_raw(10);
             state.ui.set_explorer_scroll_offset(5);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Select(SelectMotion::FullPageUp),
-                &AppServices::stub(),
+                Action::Select(SelectMotion::FullPageUp),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 0);
@@ -463,11 +451,11 @@ mod tests {
         #[test]
         fn select_middle_moves_to_viewport_center() {
             let mut state = state_with_tables(50, 23);
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Select(SelectMotion::ViewportMiddle),
-                &AppServices::stub(),
+                Action::Select(SelectMotion::ViewportMiddle),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 10);
@@ -479,11 +467,11 @@ mod tests {
             let mut state = state_with_tables(50, 23);
             state.ui.set_explorer_scroll_offset(15);
             state.ui.set_explorer_selected_raw(15);
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Select(SelectMotion::ViewportMiddle),
-                &AppServices::stub(),
+                Action::Select(SelectMotion::ViewportMiddle),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 25);
@@ -496,11 +484,11 @@ mod tests {
             state.ui.set_explorer_scroll_offset(10);
             state.ui.set_explorer_selected_raw(20);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Select(SelectMotion::ViewportTop),
-                &AppServices::stub(),
+                Action::Select(SelectMotion::ViewportTop),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 10);
@@ -512,11 +500,11 @@ mod tests {
             state.ui.set_explorer_scroll_offset(10);
             state.ui.set_explorer_selected_raw(15);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Select(SelectMotion::ViewportBottom),
-                &AppServices::stub(),
+                Action::Select(SelectMotion::ViewportBottom),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 29);
@@ -525,11 +513,11 @@ mod tests {
         #[test]
         fn select_viewport_bottom_clamps_to_last_displayed_item() {
             let mut state = state_with_tables(10, 23);
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Select(SelectMotion::ViewportBottom),
-                &AppServices::stub(),
+                Action::Select(SelectMotion::ViewportBottom),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 9);
@@ -541,11 +529,11 @@ mod tests {
             state.ui.set_explorer_scroll_offset(40);
             state.ui.set_explorer_selected_raw(40);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Select(SelectMotion::ViewportMiddle),
-                &AppServices::stub(),
+                Action::Select(SelectMotion::ViewportMiddle),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 45);
@@ -557,11 +545,11 @@ mod tests {
             state.ui.set_explorer_scroll_offset(40);
             state.ui.set_explorer_selected_raw(40);
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Select(SelectMotion::ViewportBottom),
-                &AppServices::stub(),
+                Action::Select(SelectMotion::ViewportBottom),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 49);
@@ -580,14 +568,14 @@ mod tests {
                 .ui
                 .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::ScrollToCursor {
+                Action::ScrollToCursor {
                     target: ScrollToCursorTarget::Explorer,
                     position: CursorPosition::Center,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_scroll_offset(), 20);
@@ -603,14 +591,14 @@ mod tests {
                 .ui
                 .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::ScrollToCursor {
+                Action::ScrollToCursor {
                     target: ScrollToCursorTarget::Explorer,
                     position: CursorPosition::Top,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_scroll_offset(), 15);
@@ -626,14 +614,14 @@ mod tests {
                 .ui
                 .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::ScrollToCursor {
+                Action::ScrollToCursor {
                     target: ScrollToCursorTarget::Explorer,
                     position: CursorPosition::Bottom,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_scroll_offset(), 6);
@@ -649,14 +637,14 @@ mod tests {
                 .ui
                 .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::ScrollToCursor {
+                Action::ScrollToCursor {
                     target: ScrollToCursorTarget::Explorer,
                     position: CursorPosition::Top,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_scroll_offset(), 30);
@@ -685,15 +673,15 @@ mod tests {
             .saturating_sub(content_width);
 
             for _ in 0..presses {
-                dispatch_navigation(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Explorer,
                         direction: ScrollDirection::Right,
                         amount: ScrollAmount::Line,
                     },
-                    &AppServices::stub(),
                     Instant::now(),
+                    &AppServices::stub(),
                 );
             }
 
@@ -712,15 +700,15 @@ mod tests {
             );
 
             for _ in 0..3 {
-                dispatch_navigation(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Explorer,
                         direction: ScrollDirection::Right,
                         amount: ScrollAmount::Line,
                     },
-                    &AppServices::stub(),
                     Instant::now(),
+                    &AppServices::stub(),
                 );
             }
 
@@ -745,15 +733,15 @@ mod tests {
                 .saturating_sub(state.ui.explorer_content_width()),
             );
 
-            dispatch_navigation(
+            route(
                 &mut state,
-                &Action::Scroll {
+                Action::Scroll {
                     target: ScrollTarget::Explorer,
                     direction: ScrollDirection::Left,
                     amount: ScrollAmount::Line,
                 },
-                &AppServices::stub(),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(
@@ -796,15 +784,15 @@ mod tests {
             )
             .saturating_sub(4);
             for _ in 0..32 {
-                dispatch_navigation(
+                route(
                     &mut state,
-                    &Action::Scroll {
+                    Action::Scroll {
                         target: ScrollTarget::Explorer,
                         direction: ScrollDirection::Right,
                         amount: ScrollAmount::Line,
                     },
-                    &AppServices::stub(),
                     Instant::now(),
+                    &AppServices::stub(),
                 );
             }
 

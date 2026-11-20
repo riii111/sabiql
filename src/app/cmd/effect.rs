@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::domain::connection::{ConnectionConfig, ConnectionId, DatabaseType};
 use crate::domain::query_history::QueryHistoryScope;
-use crate::domain::{DatabaseMetadata, QueryValue, Table, TableSignatureSnapshot};
+use crate::domain::{ErTableInfo, QueryValue};
 use crate::model::browse::session::ConnectionSaveGuard;
 use crate::ports::outbound::{AccessMode, AppSettings};
 use crate::update::action::{Action, ConnectionTarget};
@@ -46,7 +46,7 @@ pub enum Effect {
         generation: u64,
         run_id: u64,
     },
-    // Only caches in completion_engine, does NOT update state.table_detail
+    // Only fills the table detail cache, does NOT update state.table_detail
     PrefetchTableColumnsAndFks {
         dsn: String,
         run_id: u64,
@@ -112,41 +112,19 @@ pub enum Effect {
         row_count: Option<usize>,
     },
 
-    CacheTableInCompletionEngine {
-        qualified_name: String,
-        table: Box<Table>,
-    },
-    EvictTablesFromCompletionCache {
-        tables: Vec<String>,
-    },
-    ClearCompletionEngineCache,
-    ResizeCompletionCache {
-        capacity: usize,
-    },
-    TriggerCompletion,
-
-    GenerateErDiagramFromCache {
+    GenerateErDiagram {
         run_id: u64,
         total_tables: usize,
         project_name: String,
-        target_tables: Vec<String>,
+        tables: Vec<ErTableInfo>,
+        filename: String,
     },
     WriteErFailureLog {
         failed_tables: Vec<(String, String)>,
     },
-    ExtractFkNeighbors {
-        run_id: u64,
-        seed_tables: Vec<String>,
-    },
     SmartErRefresh {
         dsn: String,
         run_id: u64,
-    },
-    SmartErRefreshCacheAndDiff {
-        dsn: String,
-        run_id: u64,
-        new_metadata: Arc<DatabaseMetadata>,
-        signature_snapshot: Arc<TableSignatureSnapshot>,
     },
 
     CopyToClipboard {

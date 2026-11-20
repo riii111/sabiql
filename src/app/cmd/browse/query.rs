@@ -400,13 +400,11 @@ pub(in crate::cmd) async fn run(
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
     use std::sync::Arc;
     use std::time::Duration;
 
     use tokio::sync::mpsc;
 
-    use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::effect::Effect;
     use crate::cmd::test_fixtures;
     use crate::domain::{DatabaseDiagnostic, DiagnosticLevel, WriteExecutionResult};
@@ -429,7 +427,6 @@ mod tests {
             &runner,
             effect,
             AppState::new("test".to_string()),
-            RefCell::new(CompletionEngine::new()),
             &mut rx,
             Some(Duration::from_millis(500)),
         )
@@ -1042,13 +1039,11 @@ mod tests {
         }
     }
     mod cached_csv_export_effect {
-        use std::cell::RefCell;
         use std::sync::Arc;
         use std::time::Duration;
 
         use tokio::sync::mpsc;
 
-        use crate::cmd::completion_engine::CompletionEngine;
         use crate::cmd::effect::Effect;
         use crate::cmd::test_fixtures;
         use crate::domain::QueryValue;
@@ -1100,7 +1095,6 @@ mod tests {
                     row_count: Some(1),
                 },
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(Duration::from_millis(500)),
             )
@@ -1140,7 +1134,6 @@ mod tests {
                     row_count: Some(1),
                 },
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(Duration::from_millis(500)),
             )
@@ -1153,13 +1146,11 @@ mod tests {
     }
 
     mod execute_preview {
-        use std::cell::RefCell;
         use std::sync::Arc;
         use std::time::Duration;
 
         use tokio::sync::mpsc;
 
-        use crate::cmd::completion_engine::CompletionEngine;
         use crate::cmd::effect::Effect;
         use crate::cmd::test_fixtures;
 
@@ -1199,7 +1190,6 @@ mod tests {
                     target_page: 0,
                 },
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(Duration::from_millis(500)),
             )
@@ -1244,7 +1234,6 @@ mod tests {
                     target_page: 0,
                 },
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut rx,
                 Some(Duration::from_millis(500)),
             )

@@ -1,7 +1,3 @@
-// RefCell Borrow Safety: when effects need data from `completion_engine`,
-// the borrow MUST be dropped before any await point.
-
-use std::cell::RefCell;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -9,14 +5,12 @@ use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
 use crate::cmd::browse as cmd_browse;
-use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::connection as cmd_connection;
 use crate::cmd::effect::Effect;
 use crate::cmd::er::handler as cmd_er;
 use crate::cmd::metadata_task::MetadataTaskRegistry;
 use crate::cmd::settings as cmd_settings;
 use crate::cmd::single_task_owner::SingleTaskOwner;
-use crate::cmd::sql_editor::completion as cmd_completion;
 use crate::cmd::sql_editor::query_history::spawn_query_history_load;
 use crate::cmd::sqlite_diagnostics;
 use crate::cmd::utility as cmd_utility;
@@ -108,13 +102,12 @@ impl EffectRunner {
         effects: Vec<Effect>,
         tui: &mut T,
         state: &mut AppState,
-        completion_engine: &RefCell<CompletionEngine>,
         services: &AppServices,
     ) -> Result<Vec<Action>> {
         let mut dispatched = Vec::new();
         for effect in effects {
             dispatched.extend(
-                self.execute_single_effect(effect, tui, state, completion_engine, services)
+                self.execute_single_effect(effect, tui, state, services)
                     .await?,
             );
         }
@@ -126,7 +119,6 @@ impl EffectRunner {
         effect: Effect,
         tui: &mut T,
         state: &mut AppState,
-        completion_engine: &RefCell<CompletionEngine>,
         services: &AppServices,
     ) -> Result<Vec<Action>> {
         match effect {
@@ -210,7 +202,6 @@ impl EffectRunner {
                     &self.connection.sqlite_path_validator,
                     &self.table_detail_tasks,
                     &self.metadata_tasks,
-                    completion_engine,
                 )
                 .await;
                 Ok(vec![])
@@ -250,10 +241,7 @@ impl EffectRunner {
                 Ok(vec![])
             }
 
-            e @ (Effect::GenerateErDiagramFromCache { .. }
-            | Effect::ExtractFkNeighbors { .. }
-            | Effect::WriteErFailureLog { .. }
-            | Effect::SmartErRefreshCacheAndDiff { .. }) => {
+            e @ (Effect::GenerateErDiagram { .. } | Effect::WriteErFailureLog { .. }) => {
                 cmd_er::run(
                     e,
                     &self.action_tx,
@@ -261,7 +249,6 @@ impl EffectRunner {
                     &self.er.config_writer,
                     &self.er.er_log_writer,
                     state,
-                    completion_engine,
                 )
                 .await?;
                 Ok(vec![])
@@ -307,12 +294,6 @@ impl EffectRunner {
                 .await;
                 Ok(vec![])
             }
-
-            e @ (Effect::CacheTableInCompletionEngine { .. }
-            | Effect::EvictTablesFromCompletionCache { .. }
-            | Effect::ClearCompletionEngineCache
-            | Effect::ResizeCompletionCache { .. }
-            | Effect::TriggerCompletion) => Ok(cmd_completion::run(e, state, completion_engine)),
         }
     }
 
@@ -421,7 +402,6 @@ mod tests {
                 &runner,
                 Effect::Render,
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut _rx,
                 None,
             )
@@ -452,7 +432,6 @@ mod tests {
             })));
             state.ui.set_explorer_horizontal_offset(20);
 
-            let ce = RefCell::new(CompletionEngine::new());
             let mut renderer = ExplorerWidthRenderer {
                 explorer_content_width: 8,
             };
@@ -462,7 +441,6 @@ mod tests {
                     vec![Effect::Render],
                     &mut renderer,
                     state,
-                    &ce,
                     &AppServices::stub(),
                 )
                 .await
@@ -494,7 +472,6 @@ mod tests {
                 29,
             );
 
-            let ce = RefCell::new(CompletionEngine::new());
             let mut renderer = JsonVisibleRowsRenderer { visible_rows: 2 };
 
             runner
@@ -502,7 +479,6 @@ mod tests {
                     vec![Effect::Render],
                     &mut renderer,
                     state,
-                    &ce,
                     &AppServices::stub(),
                 )
                 .await
@@ -700,7 +676,6 @@ mod tests {
                 .expect("SQLite diagnostics task should start");
 
             let mut state = AppState::new("test".to_string());
-            let completion_engine = RefCell::new(CompletionEngine::new());
             let mut renderer = test_fixtures::NoopRenderer;
             let services = AppServices::stub();
             let mut follow_up = Box::pin(runner.execute_effects(
@@ -710,7 +685,6 @@ mod tests {
                 ],
                 &mut renderer,
                 &mut state,
-                &completion_engine,
                 &services,
             ));
             timeout(Duration::from_secs(1), async {
@@ -789,7 +763,6 @@ mod tests {
                     Action::ProcessPrefetchQueue { run_id: 1 },
                 ]),
                 AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
                 &mut _rx,
                 None,
             )
@@ -963,7 +936,6 @@ mod tests {
                 .connection_caches
                 .insert(target_id.clone(), ConnectionCache::default());
             let run_id = state.query.begin_running(Instant::now());
-            let completion_engine = RefCell::new(CompletionEngine::new());
             let mut renderer = NoopRenderer;
 
             runner
@@ -980,7 +952,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -1003,13 +974,7 @@ mod tests {
                 &AppServices::stub(),
             );
             runner
-                .execute_effects(
-                    effects,
-                    &mut renderer,
-                    &mut state,
-                    &completion_engine,
-                    &AppServices::stub(),
-                )
+                .execute_effects(effects, &mut renderer, &mut state, &AppServices::stub())
                 .await
                 .unwrap();
 
@@ -1039,7 +1004,6 @@ mod tests {
                 action_tx,
             );
             let mut state = AppState::new("test".to_string());
-            let completion_engine = RefCell::new(CompletionEngine::new());
             let mut renderer = NoopRenderer;
 
             runner
@@ -1053,7 +1017,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -1075,7 +1038,6 @@ mod tests {
                     shutdown_effects,
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -1232,7 +1194,6 @@ mod tests {
                 Arc::new(probe),
             );
             let mut state = AppState::new("test".to_string());
-            let completion_engine = RefCell::new(CompletionEngine::new());
             let mut renderer = NoopRenderer;
 
             runner
@@ -1243,7 +1204,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -1264,7 +1224,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -1332,13 +1291,7 @@ mod tests {
             );
 
             runner
-                .execute_effects(
-                    effects,
-                    &mut NoopRenderer,
-                    &mut state,
-                    &RefCell::new(CompletionEngine::new()),
-                    &services,
-                )
+                .execute_effects(effects, &mut NoopRenderer, &mut state, &services)
                 .await
                 .unwrap();
             timeout(Duration::from_secs(1), started_rx)
@@ -1376,7 +1329,6 @@ mod tests {
                 action_tx,
             );
             let mut state = AppState::new("test".to_string());
-            let completion_engine = RefCell::new(CompletionEngine::new());
             let mut renderer = NoopRenderer;
 
             runner
@@ -1393,7 +1345,6 @@ mod tests {
                     ],
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -1413,7 +1364,6 @@ mod tests {
                     shutdown_effects,
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -1568,7 +1518,6 @@ mod tests {
                 Arc::new(probe),
             );
             let mut state = AppState::new("test".to_string());
-            let completion_engine = RefCell::new(CompletionEngine::new());
             let mut renderer = NoopRenderer;
 
             runner
@@ -1579,7 +1528,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -1597,7 +1545,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -1614,7 +1561,6 @@ mod tests {
                     vec![Effect::CancelTrackedTasks],
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -1640,7 +1586,6 @@ mod tests {
                 Arc::new(probe),
             );
             let mut state = AppState::new("test".to_string());
-            let completion_engine = RefCell::new(CompletionEngine::new());
             let mut renderer = NoopRenderer;
 
             runner
@@ -1654,7 +1599,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -1669,7 +1613,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -1686,7 +1629,6 @@ mod tests {
                     vec![Effect::CancelTrackedTasks],
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -1712,7 +1654,6 @@ mod tests {
                 Arc::new(probe),
             );
             let mut state = AppState::new("test".to_string());
-            let completion_engine = RefCell::new(CompletionEngine::new());
             let mut renderer = NoopRenderer;
 
             runner
@@ -1723,7 +1664,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -1745,7 +1685,6 @@ mod tests {
                     shutdown_effects,
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -1773,7 +1712,6 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let run_id = state.session.begin_connection_save();
             let run_guard = state.session.connection_save_guard();
-            let completion_engine = RefCell::new(CompletionEngine::new());
             let mut renderer = NoopRenderer;
 
             runner
@@ -1790,7 +1728,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -1809,7 +1746,6 @@ mod tests {
                     shutdown_effects,
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -1838,7 +1774,6 @@ mod tests {
                 action_tx,
             );
             let mut state = AppState::new("test".to_string());
-            let completion_engine = RefCell::new(CompletionEngine::new());
             let mut renderer = NoopRenderer;
 
             runner
@@ -1852,7 +1787,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -1864,7 +1798,6 @@ mod tests {
                     vec![Effect::CancelConnectionTask],
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -1969,7 +1902,6 @@ mod tests {
             let (action_tx, mut action_rx) = mpsc::channel(8);
             let runner = runner_with_pending_provider(started_tx, Arc::clone(&dropped), action_tx);
             let mut state = AppState::new("test".to_string());
-            let completion_engine = RefCell::new(CompletionEngine::new());
             let mut renderer = NoopRenderer;
 
             runner
@@ -1980,7 +1912,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -1998,7 +1929,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -2019,7 +1949,6 @@ mod tests {
             let (action_tx, mut action_rx) = mpsc::channel(8);
             let runner = runner_with_pending_provider(started_tx, Arc::clone(&dropped), action_tx);
             let mut state = AppState::new("test".to_string());
-            let completion_engine = RefCell::new(CompletionEngine::new());
             let mut renderer = NoopRenderer;
 
             runner
@@ -2030,7 +1959,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -2047,7 +1975,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -2064,7 +1991,6 @@ mod tests {
             let (action_tx, mut action_rx) = mpsc::channel(8);
             let runner = runner_with_pending_provider(started_tx, Arc::clone(&dropped), action_tx);
             let mut state = AppState::new("test".to_string());
-            let completion_engine = RefCell::new(CompletionEngine::new());
             let mut renderer = NoopRenderer;
 
             runner
@@ -2075,7 +2001,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -2093,7 +2018,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -2110,7 +2034,6 @@ mod tests {
             let (action_tx, mut action_rx) = mpsc::channel(8);
             let runner = runner_with_pending_provider(started_tx, Arc::clone(&dropped), action_tx);
             let mut state = AppState::new("test".to_string());
-            let completion_engine = RefCell::new(CompletionEngine::new());
             let mut renderer = NoopRenderer;
 
             runner
@@ -2121,7 +2044,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await
@@ -2143,7 +2065,6 @@ mod tests {
                     shutdown_effects,
                     &mut renderer,
                     &mut state,
-                    &completion_engine,
                     &AppServices::stub(),
                 )
                 .await

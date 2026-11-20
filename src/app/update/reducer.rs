@@ -7,8 +7,7 @@
 use std::time::Instant;
 
 use super::{
-    dispatch_connection, dispatch_er, dispatch_explain, dispatch_metadata, dispatch_modal,
-    dispatch_navigation, dispatch_query, dispatch_result, dispatch_sql_modal,
+    browse, clipboard, connection, er, explain, modal, sql_editor, target_routing, text_edit,
 };
 use crate::catalog::HelpDocument;
 use crate::cmd::effect::Effect;
@@ -17,10 +16,13 @@ use crate::model::app_state::AppState;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::KeySequenceState;
+use crate::model::shared::key_sequence::Prefix;
+use crate::model::shared::text_input::TextEdit;
 use crate::policy::FeaturePolicy;
 use crate::services::AppServices;
 use crate::update::action::{Action, TableTarget};
 use crate::update::helpers::reject_pending_mysql_connection_probe;
+use crate::update::input::palette::palette_action_for_index;
 use crate::update::query_context::termination_effects;
 
 pub fn reduce(
@@ -53,108 +55,450 @@ fn dispatch_enabled_action(
     services: &AppServices,
 ) -> Vec<Effect> {
     state.result_interaction.clear_operator_pending();
+    route(state, action, now, services)
+}
 
-    if let Some(effects) = dispatch_connection(state, &action, now, services)
-        .or_else(|| dispatch_modal(state, &action, now))
-        // Result page actions pass through the result dispatcher; pagination owns their
-        // view reset and preview effect.
-        .or_else(|| dispatch_result(state, &action, services, now))
-        .or_else(|| dispatch_navigation(state, &action, services, now))
-        .or_else(|| dispatch_sql_modal(state, &action, now))
-        .or_else(|| dispatch_explain(state, &action, now))
-        .or_else(|| dispatch_metadata(state, &action, now))
-        .or_else(|| dispatch_er(state, &action, now))
-        .or_else(|| dispatch_query(state, &action, now))
-        .into_effects()
-    {
-        return effects;
-    }
-
+#[deny(
+    clippy::wildcard_enum_match_arm,
+    clippy::match_wildcard_for_single_variants,
+    reason = "Every variant must name its handler so a new variant fails to compile instead of being silently dropped."
+)]
+pub(in crate::update) fn route(
+    state: &mut AppState,
+    action: Action,
+    now: Instant,
+    services: &AppServices,
+) -> Vec<Effect> {
     match action {
-        Action::BeginKeySequence(prefix) => {
-            state
-                .ui
-                .set_key_sequence(KeySequenceState::WaitingSecondKey(prefix));
-            vec![]
+        Action::None => vec![],
+        Action::Quit => quit(state),
+        Action::Render => vec![Effect::Render],
+        Action::Resize(width, height) => resize(state, width, height),
+        Action::SetFocusedPane(pane) => browse::navigation::focus::set_focused_pane(state, pane),
+        Action::TextInput { target, ch } => {
+            text_edit::apply_text_edit(state, target, TextEdit::Insert(ch), now)
         }
-        Action::CancelKeySequence => {
-            state.ui.set_key_sequence(KeySequenceState::Idle);
-            vec![]
+        Action::TextBackspace { target } => {
+            text_edit::apply_text_edit(state, target, TextEdit::Backspace, now)
         }
-        Action::Quit => {
-            state.session.cancel_connection_save_and_disconnect();
-            state.session.clear_mysql_connection_probe();
-            state.should_quit = true;
-            vec![Effect::CancelTrackedTasks]
+        Action::TextDelete { target } => {
+            text_edit::apply_text_edit(state, target, TextEdit::Delete, now)
         }
-        Action::Resize(w, h) => {
-            state.ui.set_terminal_width(w);
-            state.ui.set_terminal_height(h);
-            let document = HelpDocument::from_state(state);
-            state
-                .ui
-                .clamp_help_offsets(document.line_count(), document.content_width());
-            vec![]
+        Action::TextKill { target, direction } => {
+            text_edit::apply_text_edit(state, target, TextEdit::Kill(direction), now)
         }
-        Action::Render => {
-            vec![Effect::Render]
+        Action::TextYank { target } => {
+            text_edit::apply_text_edit(state, target, TextEdit::Yank, now)
         }
-
-        Action::ConfirmSelection => {
-            if state.modal.active_mode() == InputMode::TablePicker {
-                let table = state
-                    .filtered_tables()
-                    .get(state.ui.table_picker().selected())
-                    .copied()
-                    .cloned();
-                if let Some(table) = table {
-                    return select_table(state, &table);
-                }
-            } else if state.modal.active_mode() == InputMode::Normal {
-                if state.connection_error.has_error() {
-                    state.modal.replace_mode(InputMode::ConnectionError);
-                    return vec![];
-                }
-                if state.ui.focused_pane() != FocusedPane::Explorer {
-                    return vec![];
-                }
-                let table = state.tables().get(state.ui.explorer_selected()).cloned();
-                if let Some(table) = table {
-                    return select_table(state, &table);
-                }
-            } else if state.modal.active_mode() == InputMode::CommandPalette {
-                use crate::update::input::palette::palette_action_for_index;
-
-                let cmd_action = palette_action_for_index(
-                    state.ui.table_picker().selected(),
-                    state.settings.saved_keymap_preset(),
-                    &state.session.active_engine_feature_profile(),
-                );
-                state.modal.set_mode(InputMode::Normal);
-                return reduce(state, cmd_action, now, services);
-            }
-
-            vec![]
+        Action::TextMoveCursor { target, direction } => {
+            text_edit::apply_text_edit(state, target, TextEdit::MoveCursor(direction), now)
         }
-
-        // Invalid target/direction/amount combo — catch call-site bugs in debug builds
-        Action::Scroll { .. }
-        | Action::ScrollToCursor { .. }
-        | Action::TextInput { .. }
-        | Action::TextBackspace { .. }
-        | Action::TextDelete { .. }
-        | Action::TextKill { .. }
-        | Action::TextYank { .. }
-        | Action::TextMoveCursor { .. }
-        | Action::Select(_)
-        | Action::ListSelect { .. } => {
-            debug_assert!(false, "unhandled parametric action: {action:?}");
-            vec![]
+        Action::Scroll {
+            target,
+            direction,
+            amount,
+        } => target_routing::scroll(state, target, direction, amount, services),
+        Action::ScrollToCursor { target, position } => {
+            target_routing::scroll_to_cursor(state, target, position)
         }
-
-        // Handled by sub-reducers
-        _ => vec![],
+        Action::EnterHelpFilter => modal::help::enter_help_filter(state),
+        Action::ExitHelpFilter => modal::help::exit_help_filter(state),
+        Action::Select(motion) => target_routing::select(state, motion),
+        Action::ListSelect { target, motion } => target_routing::list_select(state, target, motion),
+        Action::Paste(text) => target_routing::paste(state, text, now),
+        Action::BeginKeySequence(prefix) => begin_key_sequence(state, prefix),
+        Action::OpenModal(kind) => target_routing::open_modal(state, kind, now),
+        Action::CloseModal(kind) => target_routing::close_modal(state, kind),
+        Action::CancelKeySequence => cancel_key_sequence(state),
+        Action::ToggleHelp => modal::help::toggle_help(state),
+        Action::Escape => modal::base::escape(state),
+        Action::ConfirmSelection => confirm_selection(state, now, services),
+        Action::ConfirmDialogConfirm => modal::confirm_dialog::confirm_dialog_confirm(state, now),
+        Action::ConfirmDialogCancel => modal::confirm_dialog::confirm_dialog_cancel(state),
+        Action::EnterCommandLine => browse::navigation::input::enter_command_line(state),
+        Action::ExitCommandLine => browse::navigation::input::exit_command_line(state),
+        Action::CommandLineSubmit => browse::query::execution::command_line_submit(state),
+        Action::TryConnect => connection::lifecycle::try_connect(state),
+        Action::SwitchConnection(target) => connection::lifecycle::switch_connection(state, target),
+        Action::ConnectionsLoaded(payload) => {
+            browse::navigation::connection_list::connections_loaded(state, payload)
+        }
+        Action::ConfirmConnectionSelection => {
+            browse::navigation::connection_list::confirm_connection_selection(state)
+        }
+        Action::ConnectionSetupNextField => connection::setup::connection_setup_next_field(state),
+        Action::ConnectionSetupPrevField => connection::setup::connection_setup_prev_field(state),
+        Action::ConnectionSetupToggleDropdown => {
+            connection::setup::connection_setup_toggle_dropdown(state)
+        }
+        Action::ConnectionSetupDropdownNext => {
+            connection::setup::connection_setup_dropdown_next(state)
+        }
+        Action::ConnectionSetupDropdownPrev => {
+            connection::setup::connection_setup_dropdown_prev(state)
+        }
+        Action::ConnectionSetupDropdownConfirm => {
+            connection::setup::connection_setup_dropdown_confirm(state)
+        }
+        Action::ConnectionSetupDropdownCancel => {
+            connection::setup::connection_setup_dropdown_cancel(state)
+        }
+        Action::ConnectionSetupSave => connection::setup::connection_setup_save(state),
+        Action::ConnectionSetupCancel => connection::setup::connection_setup_cancel(state),
+        Action::ConnectionSaveCompleted {
+            target,
+            run_id,
+            mysql_lower_case_table_names,
+            metadata,
+        } => connection::setup::connection_save_completed(
+            state,
+            target,
+            run_id,
+            mysql_lower_case_table_names,
+            metadata,
+        ),
+        Action::ConnectionSaveFailed { error, run_id } => {
+            connection::setup::connection_save_failed(state, error, run_id)
+        }
+        Action::MySqlConnectionProbeCompleted {
+            target,
+            run_id,
+            lower_case_table_names,
+        } => connection::lifecycle::mysql_connection_probe_completed(
+            state,
+            target,
+            run_id,
+            lower_case_table_names,
+        ),
+        Action::MySqlConnectionProbeFailed {
+            target,
+            run_id,
+            error,
+        } => connection::lifecycle::mysql_connection_probe_failed(state, target, run_id, error),
+        Action::ConnectionEditLoaded(profile) => {
+            connection::setup::connection_edit_loaded(state, profile)
+        }
+        Action::ConnectionEditLoadFailed(error) => {
+            connection::setup::connection_edit_load_failed(state, error)
+        }
+        Action::CloseConnectionError => connection::error::close_connection_error(state),
+        Action::ToggleConnectionErrorDetails => {
+            connection::error::toggle_connection_error_details(state)
+        }
+        Action::CopyConnectionError => connection::error::copy_connection_error(state),
+        Action::ReenterConnectionSetup => connection::error::reenter_connection_setup(state),
+        Action::RetryConnection => connection::error::retry_connection(state),
+        Action::RequestDeleteSelectedConnection => {
+            connection::selector::request_delete_selected_connection(state)
+        }
+        Action::DeleteConnection(id) => connection::selector::delete_connection(state, id),
+        Action::ConnectionDeleted(id) => connection::selector::connection_deleted(state, id, now),
+        Action::ConnectionDeleteFailed(error) => {
+            connection::selector::connection_delete_failed(state, error)
+        }
+        Action::RequestEditSelectedConnection => {
+            connection::selector::request_edit_selected_connection(state)
+        }
+        Action::RunSqliteDiagnosticsQuickCheck => {
+            modal::sqlite_diagnostics::run_sqlite_diagnostics_quick_check(state)
+        }
+        Action::SqliteDiagnosticsCoreLoaded { run_id, snapshot } => {
+            modal::sqlite_diagnostics::sqlite_diagnostics_core_loaded(state, run_id, snapshot)
+        }
+        Action::SqliteDiagnosticsQuickCheckLoaded {
+            run_id,
+            quick_check,
+        } => modal::sqlite_diagnostics::sqlite_diagnostics_quick_check_loaded(
+            state,
+            run_id,
+            quick_check,
+        ),
+        Action::SettingsSelectNext => modal::settings::settings_select_next(state),
+        Action::SettingsSelectPrevious => modal::settings::settings_select_previous(state),
+        Action::SettingsNextSection => modal::settings::settings_next_section(state),
+        Action::SettingsPreviousSection => modal::settings::settings_previous_section(state),
+        Action::SettingsStartCustomBrowserEdit => {
+            modal::settings::settings_start_custom_browser_edit(state)
+        }
+        Action::SettingsStopCustomBrowserEdit => {
+            modal::settings::settings_stop_custom_browser_edit(state)
+        }
+        Action::SettingsApply => modal::settings::settings_apply(state),
+        Action::SettingsCancel => modal::settings::settings_cancel(state),
+        Action::SettingsSaved(settings) => modal::settings::settings_saved(state, settings, now),
+        Action::SettingsSaveFailed(error) => modal::settings::settings_save_failed(state, error),
+        Action::ReloadMetadata => browse::metadata::loading::reload_metadata(state),
+        Action::MetadataLoaded { run_id, metadata } => {
+            browse::metadata::loading::metadata_loaded(state, run_id, metadata, now)
+        }
+        Action::MetadataFailed { run_id, error } => {
+            browse::metadata::loading::metadata_failed(state, run_id, error)
+        }
+        Action::EffectiveUserLoaded {
+            run_id,
+            effective_user,
+        } => browse::metadata::loading::effective_user_loaded(state, run_id, effective_user),
+        Action::TableDetailLoaded {
+            dsn,
+            run_id,
+            outcome,
+            generation,
+        } => browse::metadata::table_detail::table_detail_loaded(
+            state, dsn, run_id, outcome, generation,
+        ),
+        Action::PrefetchTableDetail {
+            run_id,
+            schema,
+            table,
+        } => browse::metadata::prefetch::prefetch_table_detail(state, run_id, schema, table, now),
+        Action::TableDetailCached {
+            dsn,
+            run_id,
+            schema,
+            table,
+            detail,
+        } => browse::metadata::prefetch::table_detail_cached(
+            state, dsn, run_id, schema, table, detail,
+        ),
+        Action::TableDetailCacheFailed {
+            dsn,
+            run_id,
+            schema,
+            table,
+            error,
+        } => browse::metadata::prefetch::table_detail_cache_failed(
+            state, dsn, run_id, schema, table, error, now,
+        ),
+        Action::StartErPrefetchAll => browse::metadata::prefetch::start_er_prefetch_all(state),
+        Action::StartErPrefetchScoped { tables } => {
+            browse::metadata::prefetch::start_er_prefetch_scoped(state, tables)
+        }
+        Action::StartCompletionPrefetch { tables } => {
+            browse::metadata::prefetch::start_completion_prefetch(state, tables)
+        }
+        Action::ProcessPrefetchQueue { run_id } => {
+            browse::metadata::prefetch::process_prefetch_queue(state, run_id, now)
+        }
+        Action::InspectorNextTab => browse::navigation::focus::inspector_next_tab(state),
+        Action::InspectorPrevTab => browse::navigation::focus::inspector_prev_tab(state),
+        Action::SqlModalAppendInsert => sql_editor::mode::sql_modal_append_insert(state),
+        Action::SqlModalEnterInsert => sql_editor::mode::sql_modal_enter_insert(state),
+        Action::SqlModalEnterNormal => sql_editor::mode::sql_modal_enter_normal(state),
+        Action::SqlModalYank => sql_editor::yank::sql_modal_yank(state),
+        Action::SqlModalNewLine => sql_editor::editing::sql_modal_new_line(state, now),
+        Action::SqlModalInsertTab => sql_editor::editing::sql_modal_insert_tab(state, now),
+        Action::SqlModalSubmit => sql_editor::submit::sql_modal_submit(state, now),
+        Action::SqlModalClear => sql_editor::editing::sql_modal_clear(state),
+        Action::SqlModalCancelConfirm => sql_editor::high_risk::sql_modal_cancel_confirm(state),
+        Action::SqlModalConfirmExecute => {
+            sql_editor::high_risk::sql_modal_confirm_execute(state, now)
+        }
+        Action::SqlModalNextTab => explain::tabs::sql_modal_next_tab(state),
+        Action::SqlModalPrevTab => explain::tabs::sql_modal_prev_tab(state),
+        Action::CompletionRequest => sql_editor::completion::completion_request(state),
+        Action::CompletionAccept => sql_editor::completion::completion_accept(state),
+        Action::CompletionDismiss => sql_editor::completion::completion_dismiss(state),
+        Action::CompletionNext => sql_editor::completion::completion_next(state),
+        Action::CompletionPrev => sql_editor::completion::completion_prev(state),
+        Action::ExplainRequest => explain::request::explain_request(state, now),
+        Action::ExplainAnalyzeRequest => explain::analyze::explain_analyze_request(state, now),
+        Action::ExplainAnalyzeConfirm => explain::analyze::explain_analyze_confirm(state, now),
+        Action::ExplainAnalyzeCancel => explain::analyze::explain_analyze_cancel(state),
+        Action::ExplainCompleted {
+            database_type,
+            database_generation,
+            run_id,
+            query,
+            plan_text,
+            is_analyze,
+            execution_time_ms,
+        } => explain::output::explain_completed(
+            state,
+            database_type,
+            database_generation,
+            run_id,
+            query,
+            plan_text,
+            is_analyze,
+            execution_time_ms,
+        ),
+        Action::ExplainFailed {
+            database_generation,
+            run_id,
+            error,
+            ..
+        } => explain::output::explain_failed(state, database_generation, run_id, error),
+        Action::CompareEditQuery => explain::tabs::compare_edit_query(state),
+        Action::ExecutePreview(target) => {
+            browse::query::execution::execute_preview(state, target, now)
+        }
+        Action::QueryCompleted {
+            run_id,
+            result,
+            context,
+        } => browse::query::execution::query_completed(state, run_id, result, context, now),
+        Action::QueryFailed {
+            run_id,
+            error,
+            context,
+        } => browse::query::execution::query_failed(state, run_id, error, context, now),
+        Action::RevealPendingPreview { generation } => {
+            browse::query::execution::reveal_pending_preview(state, generation, now)
+        }
+        Action::ExecuteWriteSucceeded {
+            run_id,
+            affected_rows,
+            diagnostics,
+        } => browse::query::write::execute_write_succeeded(
+            state,
+            run_id,
+            affected_rows,
+            diagnostics,
+            now,
+        ),
+        Action::ExecuteWriteFailed { run_id, error } => {
+            browse::query::write::execute_write_failed(state, run_id, error, now)
+        }
+        Action::ResultNextPage => browse::query::pagination::result_next_page(state, now),
+        Action::ResultPrevPage => browse::query::pagination::result_prev_page(state, now),
+        Action::ResultActivateCell => browse::result::selection::result_activate_cell(state),
+        Action::ResultExitToScroll => browse::result::selection::result_exit_to_scroll(state),
+        Action::ResultCellLeft => browse::result::selection::result_cell_left(state),
+        Action::ResultCellRight => browse::result::selection::result_cell_right(state),
+        Action::ResultCellYank => browse::result::yank::result_cell_yank(state),
+        Action::ResultRowYankOperatorPending => {
+            browse::result::yank::result_row_yank_operator_pending(state)
+        }
+        Action::ResultRowYank => browse::result::yank::result_row_yank(state),
+        Action::DdlYank => browse::result::yank::ddl_yank(state, services),
+        Action::ResultDeleteOperatorPending => {
+            browse::result::selection::result_delete_operator_pending(state)
+        }
+        Action::StageRowForDelete => browse::result::selection::stage_row_for_delete(state),
+        Action::UnstageLastStagedRow => browse::result::selection::unstage_last_staged_row(state),
+        Action::ClearStagedDeletes => browse::result::selection::clear_staged_deletes(state),
+        Action::ResultEnterCellEdit => browse::result::edit::result_enter_cell_edit(state),
+        Action::ResultOpenCellDetail => browse::result::cell_detail::result_open_cell_detail(state),
+        Action::ResultCancelCellEdit => browse::result::edit::result_cancel_cell_edit(state),
+        Action::ResultDiscardCellEdit => browse::result::edit::result_discard_cell_edit(state),
+        Action::SubmitCellEditWrite => browse::query::write::submit_cell_edit_write(state),
+        Action::CopySucceeded(target) => clipboard::copy_succeeded(state, target, now),
+        Action::CopyFailed(error) => clipboard::copy_failed(state, &error),
+        Action::OpenFolderFailed(error) => {
+            browse::query::pagination::open_folder_failed(state, error)
+        }
+        Action::ToggleFocus => browse::navigation::focus::toggle_focus(state),
+        Action::ToggleReadOnly => browse::navigation::focus::toggle_read_only(state),
+        Action::QueryHistoryLoaded(scope, entries) => {
+            modal::query_history::query_history_loaded(state, scope, entries)
+        }
+        Action::QueryHistoryLoadFailed(scope, error) => {
+            modal::query_history::query_history_load_failed(state, scope, error)
+        }
+        Action::QueryHistoryConfirmSelection => {
+            modal::query_history::query_history_confirm_selection(state)
+        }
+        Action::RequestCsvExport => browse::query::pagination::request_csv_export(state, now),
+        Action::CsvExportSucceeded {
+            run_id,
+            path,
+            row_count,
+        } => browse::query::pagination::csv_export_succeeded(state, run_id, path, row_count, now),
+        Action::CsvExportFailed { run_id, error } => {
+            browse::query::pagination::csv_export_failed(state, run_id, error)
+        }
+        Action::DetailSearch { target, step } => {
+            browse::result::detail_search::detail_search(state, target, step)
+        }
+        Action::DetailYankAll(target) => {
+            browse::result::detail_search::detail_yank_all(state, target)
+        }
+        Action::JsonEnterEdit => browse::result::json::json_enter_edit(state),
+        Action::JsonAppendInsert => browse::result::json::json_append_insert(state),
+        Action::JsonExitEdit => browse::result::json::json_exit_edit(state),
+        Action::RowDetailYank => browse::result::row_detail::row_detail_yank(state),
+        Action::RowDetailYankJson => browse::result::row_detail::row_detail_yank_json(state),
+        Action::ErToggleSelection => modal::er_picker::er_toggle_selection(state),
+        Action::ErSelectAll => modal::er_picker::er_select_all(state),
+        Action::ErConfirmSelection => modal::er_picker::er_confirm_selection(state),
+        Action::ErOpenDiagram => er::diagram::er_open_diagram(state, now),
+        Action::ErGenerateFromCache => er::diagram::er_generate_from_cache(state),
+        Action::SmartErRefreshFetched(fetched) => {
+            er::smart_refresh_fetched::smart_er_refresh_fetched(state, fetched, now)
+        }
+        Action::SmartErRefreshFailed(failure) => {
+            er::smart_refresh_failed::smart_er_refresh_failed(state, failure)
+        }
+        Action::ErDiagramOpened(info) => er::diagram::er_diagram_opened(state, info, now),
+        Action::ErDiagramFailed { run_id, error } => {
+            er::diagram::er_diagram_failed(state, run_id, error)
+        }
+        Action::ErLogWriteFailed(error) => er::diagram::er_log_write_failed(state, error),
     }
+}
+
+pub(in crate::update) fn quit(state: &mut AppState) -> Vec<Effect> {
+    state.session.cancel_connection_save_and_disconnect();
+    state.session.clear_mysql_connection_probe();
+    state.should_quit = true;
+    vec![Effect::CancelTrackedTasks]
+}
+
+fn resize(state: &mut AppState, width: u16, height: u16) -> Vec<Effect> {
+    state.ui.set_terminal_width(width);
+    state.ui.set_terminal_height(height);
+    let document = HelpDocument::from_state(state);
+    state
+        .ui
+        .clamp_help_offsets(document.line_count(), document.content_width());
+    vec![]
+}
+
+fn begin_key_sequence(state: &mut AppState, prefix: Prefix) -> Vec<Effect> {
+    state
+        .ui
+        .set_key_sequence(KeySequenceState::WaitingSecondKey(prefix));
+    vec![]
+}
+
+fn cancel_key_sequence(state: &mut AppState) -> Vec<Effect> {
+    state.ui.set_key_sequence(KeySequenceState::Idle);
+    vec![]
+}
+
+fn confirm_selection(state: &mut AppState, now: Instant, services: &AppServices) -> Vec<Effect> {
+    if state.modal.active_mode() == InputMode::TablePicker {
+        let table = state
+            .filtered_tables()
+            .get(state.ui.table_picker().selected())
+            .copied()
+            .cloned();
+        if let Some(table) = table {
+            return select_table(state, &table);
+        }
+    } else if state.modal.active_mode() == InputMode::Normal {
+        if state.connection_error.has_error() {
+            state.modal.replace_mode(InputMode::ConnectionError);
+            return vec![];
+        }
+        if state.ui.focused_pane() != FocusedPane::Explorer {
+            return vec![];
+        }
+        let table = state.tables().get(state.ui.explorer_selected()).cloned();
+        if let Some(table) = table {
+            return select_table(state, &table);
+        }
+    } else if state.modal.active_mode() == InputMode::CommandPalette {
+        let cmd_action = palette_action_for_index(
+            state.ui.table_picker().selected(),
+            state.settings.saved_keymap_preset(),
+            &state.session.active_engine_feature_profile(),
+        );
+        state.modal.set_mode(InputMode::Normal);
+        return reduce(state, cmd_action, now, services);
+    }
+
+    vec![]
 }
 
 fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
@@ -206,6 +550,7 @@ mod tests {
     use crate::model::browse::session::TableDetailState;
     use crate::model::shared::ui_state::UiState;
     use crate::ports::outbound::DbOperationError;
+    use crate::update::action::CopyTarget;
     use crate::update::action::ModalKind;
     use crate::update::action::QueryCompletionContext;
     use crate::update::action::{ConnectionSaveError, ConnectionTarget, SmartErRefreshError};
@@ -372,7 +717,6 @@ mod tests {
         use crate::domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
         use crate::model::er_state::ErStatus;
         use crate::model::shared::flash_timer::FlashId;
-        use crate::model::shared::key_sequence::Prefix;
         use crate::update::action::{ErDiagramInfo, ScrollAmount, ScrollDirection, ScrollTarget};
 
         fn sqlite_state() -> AppState {
@@ -431,7 +775,10 @@ mod tests {
         #[test]
         fn unsupported_json_and_analyze_actions_are_total_noops() {
             let mut json_state = sqlite_state();
-            assert_unsupported_action_is_a_noop(&mut json_state, Action::JsonYankSuccess);
+            assert_unsupported_action_is_a_noop(
+                &mut json_state,
+                Action::CopySucceeded(CopyTarget::Panel(FlashId::JsonDetail)),
+            );
             assert_unsupported_action_is_a_noop(&mut json_state, Action::JsonEnterEdit);
 
             let mut er_state = sqlite_state();
@@ -852,15 +1199,17 @@ mod tests {
             state.ui.help_mut().set_horizontal_offset(4);
             let now = Instant::now();
 
-            reduce(
+            let effects = reduce(
                 &mut state,
                 Action::CloseModal(ModalKind::Help),
                 now,
                 &AppServices::stub(),
             );
 
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(state.ui.help().scroll_offset(), 0);
             assert_eq!(state.ui.help().horizontal_offset(), 0);
+            assert!(effects.is_empty());
         }
     }
 
@@ -909,42 +1258,13 @@ mod tests {
             let now = Instant::now();
 
             // First open
-            let effects = reduce(
-                &mut state,
-                Action::ToggleModal(ModalKind::Help),
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::ToggleHelp, now, &AppServices::stub());
             assert_eq!(state.input_mode(), InputMode::Help);
             assert!(effects.is_empty());
 
             // Toggle back to normal
-            let effects = reduce(
-                &mut state,
-                Action::ToggleModal(ModalKind::Help),
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::ToggleHelp, now, &AppServices::stub());
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn close_help_resets_scroll_offset() {
-            let mut state = create_test_state();
-            state.modal.set_mode(InputMode::Help);
-            state.ui.help_mut().set_scroll_offset(12);
-            let now = Instant::now();
-
-            let effects = reduce(
-                &mut state,
-                Action::CloseModal(ModalKind::Help),
-                now,
-                &AppServices::stub(),
-            );
-
-            assert_eq!(state.input_mode(), InputMode::Normal);
-            assert_eq!(state.ui.help().scroll_offset(), 0);
             assert!(effects.is_empty());
         }
 
@@ -954,12 +1274,7 @@ mod tests {
             state.modal.set_mode(InputMode::SqlModal);
             let now = Instant::now();
 
-            reduce(
-                &mut state,
-                Action::ToggleModal(ModalKind::Help),
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::ToggleHelp, now, &AppServices::stub());
             let effects = reduce(
                 &mut state,
                 Action::CloseModal(ModalKind::Help),
@@ -995,7 +1310,10 @@ mod tests {
             assert_eq!(state.sql_modal.editor.content(), "a");
             assert_eq!(state.sql_modal.editor.cursor(), 1);
             assert!(effects.is_empty());
-            assert!(state.sql_modal.completion_debounce().is_some());
+            assert_eq!(
+                state.sql_modal.completion_debounce(),
+                Some(now + Duration::from_millis(100))
+            );
         }
 
         #[test]
@@ -1017,25 +1335,6 @@ mod tests {
             assert_eq!(state.sql_modal.editor.cursor(), 1);
             assert!(effects.is_empty());
             assert!(state.sql_modal.completion_debounce().is_some());
-        }
-
-        #[test]
-        fn debounce_state_uses_provided_now() {
-            let mut state = create_test_state();
-            let now = Instant::now();
-
-            reduce(
-                &mut state,
-                Action::TextInput {
-                    target: InputTarget::SqlModal,
-                    ch: 'x',
-                },
-                now,
-                &AppServices::stub(),
-            );
-
-            let expected = now + Duration::from_millis(100);
-            assert_eq!(state.sql_modal.completion_debounce(), Some(expected));
         }
 
         #[test]
@@ -1440,6 +1739,8 @@ mod tests {
             state.connection_error.toggle_details();
             state.connection_error.scroll_down(usize::MAX);
             let now = Instant::now();
+            state.connection_error.mark_copied_at(now);
+            assert!(state.connection_error.is_copied_visible_at(now));
 
             reduce(
                 &mut state,
@@ -1454,23 +1755,6 @@ mod tests {
             // UI state is reset
             assert!(!state.connection_error.details_expanded());
             assert_eq!(state.connection_error.scroll_offset(), 0);
-        }
-
-        #[test]
-        fn close_clears_copied_feedback() {
-            let mut state = state_with_error();
-            let now = Instant::now();
-            state.connection_error.mark_copied_at(now);
-            assert!(state.connection_error.is_copied_visible_at(now));
-
-            reduce(
-                &mut state,
-                Action::CloseConnectionError,
-                now,
-                &AppServices::stub(),
-            );
-
-            // Copied feedback is cleared on close
             assert!(!state.connection_error.is_copied_visible_at(now));
         }
 
@@ -1571,7 +1855,7 @@ mod tests {
 
             reduce(
                 &mut state,
-                Action::ConnectionErrorCopied,
+                Action::CopySucceeded(CopyTarget::ConnectionError),
                 now,
                 &AppServices::stub(),
             );
@@ -1661,6 +1945,8 @@ mod tests {
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             let now = Instant::now();
 
+            test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
+
             let effects = reduce(
                 &mut state,
                 Action::ReloadMetadata,
@@ -1670,12 +1956,9 @@ mod tests {
 
             assert!(matches!(
                 effects.as_slice(),
-                [
-                    Effect::CancelMetadataTasks,
-                    Effect::ClearCompletionEngineCache,
-                    Effect::FetchMetadata { .. },
-                ]
+                [Effect::CancelMetadataTasks, Effect::FetchMetadata { .. },]
             ));
+            assert!(!state.table_detail_cache.contains("public.cached"));
         }
 
         #[test]
@@ -1736,12 +2019,18 @@ mod tests {
         #[test]
         fn er_open_while_rendering_returns_no_effects() {
             let mut state = create_test_state();
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
+            state
+                .session
+                .set_metadata(Some(Arc::new(DatabaseMetadata::new("test".to_string()))));
             state.er_preparation.mark_rendering();
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
 
             assert!(effects.is_empty());
+            assert_eq!(state.er_preparation.status(), ErStatus::Rendering);
+            assert!(state.messages.last_error.is_none());
         }
 
         #[test]
@@ -1874,24 +2163,20 @@ mod tests {
                 .start_table_prefetch("public.users".to_string());
             let now = Instant::now();
 
-            let effects = reduce(
+            reduce(
                 &mut state,
                 Action::TableDetailCached {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    detail: Some(make_test_table()),
+                    detail: make_test_table(),
                 },
                 now,
                 &AppServices::stub(),
             );
 
-            assert!(!effects.is_empty());
-            assert!(matches!(
-                effects[0],
-                Effect::CacheTableInCompletionEngine { .. }
-            ));
+            assert!(state.table_detail_cache.contains("public.users"));
             assert!(!state.table_prefetch.is_table_prefetching("public.users"));
         }
 
@@ -1912,7 +2197,7 @@ mod tests {
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    detail: Some(make_test_table()),
+                    detail: make_test_table(),
                 },
                 now,
                 &AppServices::stub(),
@@ -2642,6 +2927,8 @@ mod tests {
             state.ui.set_explorer_selected_raw(5);
             let now = Instant::now();
 
+            test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
+
             let effects = reduce(
                 &mut state,
                 Action::SwitchConnection(ConnectionTarget {
@@ -2661,17 +2948,14 @@ mod tests {
             assert_eq!(state.connection_caches[&conn_a].explorer_selected, 5);
             assert!(matches!(
                 effects.as_slice(),
-                [
-                    Effect::CancelTrackedTasks,
-                    Effect::ClearCompletionEngineCache,
-                    Effect::FetchMetadata { .. }
-                ]
+                [Effect::CancelTrackedTasks, Effect::FetchMetadata { .. }]
             ));
             assert!(
                 !effects
                     .iter()
                     .any(|effect| matches!(effect, Effect::CancelSqliteDiagnostics))
             );
+            assert!(!state.table_detail_cache.contains("public.cached"));
         }
 
         #[test]
@@ -2700,6 +2984,8 @@ mod tests {
             state.connection_caches.insert(conn_b.clone(), cached);
             let now = Instant::now();
 
+            test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
+
             let effects = reduce(
                 &mut state,
                 Action::SwitchConnection(ConnectionTarget {
@@ -2725,7 +3011,6 @@ mod tests {
                 effects.as_slice(),
                 [
                     Effect::CancelTrackedTasks,
-                    Effect::ClearCompletionEngineCache,
                     Effect::FetchEffectiveUser { .. }
                 ]
             ));
@@ -2734,6 +3019,7 @@ mod tests {
                     .iter()
                     .any(|effect| matches!(effect, Effect::CancelSqliteDiagnostics))
             );
+            assert!(!state.table_detail_cache.contains("public.cached"));
         }
 
         #[test]
@@ -2865,6 +3151,7 @@ mod tests {
         use crate::domain::DatabaseMetadata;
         use crate::model::er_state::ErStatus;
         use crate::model::table_prefetch::FailedPrefetchEntry;
+        use crate::test_support::table as crate_table_fixture;
 
         fn state_with_metadata() -> AppState {
             let mut state = create_test_state();
@@ -3132,18 +3419,14 @@ mod tests {
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    detail: None,
+                    detail: Box::new(crate_table_fixture::minimal("public", "users")),
                 },
                 now,
                 &AppServices::stub(),
             );
 
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
-            assert!(
-                !effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::CacheTableInCompletionEngine { .. }))
-            );
+            assert!(state.table_detail_cache.contains("public.users"));
             assert!(effects.iter().any(|e| {
                 matches!(e, Effect::DispatchActions(actions)
                     if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache)))
@@ -3176,7 +3459,7 @@ mod tests {
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    detail: None,
+                    detail: Box::new(crate_table_fixture::minimal("public", "users")),
                 },
                 now,
                 &AppServices::stub(),
@@ -3390,18 +3673,13 @@ mod tests {
         fn same_palette_action(left: &Action, right: &Action) -> bool {
             match (left, right) {
                 (Action::OpenModal(a), Action::OpenModal(b))
-                | (Action::CloseModal(a), Action::CloseModal(b))
-                | (Action::ToggleModal(a), Action::ToggleModal(b)) => a == b,
+                | (Action::CloseModal(a), Action::CloseModal(b)) => a == b,
                 _ => std::mem::discriminant(left) == std::mem::discriminant(right),
             }
         }
 
         #[rstest]
-        #[case(
-            KeymapPreset::Default,
-            Action::ToggleModal(ModalKind::Help),
-            InputMode::Help
-        )]
+        #[case(KeymapPreset::Default, Action::ToggleHelp, InputMode::Help)]
         #[case(
             KeymapPreset::Default,
             Action::OpenModal(ModalKind::TablePicker),
@@ -3412,11 +3690,7 @@ mod tests {
             Action::OpenModal(ModalKind::SqlModal),
             InputMode::SqlModal
         )]
-        #[case(
-            KeymapPreset::Ide,
-            Action::ToggleModal(ModalKind::Help),
-            InputMode::Help
-        )]
+        #[case(KeymapPreset::Ide, Action::ToggleHelp, InputMode::Help)]
         #[case(
             KeymapPreset::Ide,
             Action::OpenModal(ModalKind::TablePicker),
@@ -3455,6 +3729,8 @@ mod tests {
             state.ui.table_picker_mut().set_selection(entry_index);
             let now = Instant::now();
 
+            test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
+
             let effects = reduce(
                 &mut state,
                 Action::ConfirmSelection,
@@ -3464,12 +3740,9 @@ mod tests {
 
             assert!(matches!(
                 effects.as_slice(),
-                [
-                    Effect::CancelMetadataTasks,
-                    Effect::ClearCompletionEngineCache,
-                    Effect::FetchMetadata { .. },
-                ]
+                [Effect::CancelMetadataTasks, Effect::FetchMetadata { .. },]
             ));
+            assert!(!state.table_detail_cache.contains("public.cached"));
         }
 
         #[test]

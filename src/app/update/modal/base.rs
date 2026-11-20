@@ -1,39 +1,41 @@
+use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
-use crate::update::action::{Action, ModalKind};
-use crate::update::dispatch_result::DispatchResult;
 
-pub(super) fn reduce_base_lifecycle(state: &mut AppState, action: &Action) -> DispatchResult {
-    match action {
-        Action::OpenModal(ModalKind::TablePicker) => {
-            state.modal.set_mode(InputMode::TablePicker);
-            state.ui.table_picker_mut().clear_filter_and_reset();
-            DispatchResult::handled()
-        }
-        Action::CloseModal(ModalKind::TablePicker | ModalKind::CommandPalette) => {
+pub(in crate::update) fn open_modal_table_picker(state: &mut AppState) -> Vec<Effect> {
+    state.modal.set_mode(InputMode::TablePicker);
+    state.ui.table_picker_mut().clear_filter_and_reset();
+    vec![]
+}
+
+pub(in crate::update) fn close_modal_table_picker_or_command_palette(
+    state: &mut AppState,
+) -> Vec<Effect> {
+    state.modal.set_mode(InputMode::Normal);
+    vec![]
+}
+
+pub(in crate::update) fn escape(state: &mut AppState) -> Vec<Effect> {
+    match state.modal.active_mode() {
+        InputMode::Normal | InputMode::ConnectionSelector => {
             state.modal.set_mode(InputMode::Normal);
-            DispatchResult::handled()
         }
-        Action::Escape => match state.modal.active_mode() {
-            InputMode::Normal | InputMode::ConnectionSelector => {
-                state.modal.set_mode(InputMode::Normal);
-                DispatchResult::handled()
-            }
-            _ => DispatchResult::pass(),
-        },
-        Action::OpenModal(ModalKind::CommandPalette) => {
-            state.modal.set_mode(InputMode::CommandPalette);
-            // Command palette currently reuses the generic picker selection state.
-            state.ui.table_picker_mut().reset();
-            DispatchResult::handled()
-        }
-        Action::CloseModal(ModalKind::SqlModal) => {
-            state.modal.set_mode(InputMode::Normal);
-            state.sql_modal.cleanup_on_close();
-            state.flash_timers.clear(FlashId::SqlModal);
-            DispatchResult::handled()
-        }
-        _ => DispatchResult::pass(),
+        _ => {}
     }
+    vec![]
+}
+
+pub(in crate::update) fn open_modal_command_palette(state: &mut AppState) -> Vec<Effect> {
+    state.modal.set_mode(InputMode::CommandPalette);
+    // Command palette currently reuses the generic picker selection state.
+    state.ui.table_picker_mut().reset();
+    vec![]
+}
+
+pub(in crate::update) fn close_modal_sql_modal(state: &mut AppState) -> Vec<Effect> {
+    state.modal.set_mode(InputMode::Normal);
+    state.sql_modal.cleanup_on_close();
+    state.flash_timers.clear(FlashId::SqlModal);
+    vec![]
 }

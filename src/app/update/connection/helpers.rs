@@ -46,7 +46,7 @@ pub(super) fn reset_for_new_connection(state: &mut AppState, target: &Connection
 }
 
 pub(super) fn connection_save_fetch_effects(
-    state: &AppState,
+    state: &mut AppState,
     dsn: &str,
     run_id: u64,
     metadata: Option<Arc<DatabaseMetadata>>,
@@ -60,22 +60,18 @@ pub(super) fn connection_save_fetch_effects(
         }
     };
 
-    termination_effects(
-        &state.query,
-        vec![Effect::ClearCompletionEngineCache, metadata_effect],
-    )
+    state.table_detail_cache.clear();
+    termination_effects(&state.query, vec![metadata_effect])
 }
 
 pub(super) fn mysql_connection_completion_effects(state: &mut AppState, dsn: &str) -> Vec<Effect> {
     state.session.mark_connecting();
     let run_id = state.session.begin_metadata_refresh();
-    let effects = vec![
-        Effect::ClearCompletionEngineCache,
-        Effect::FetchMetadata {
-            dsn: dsn.to_string(),
-            run_id,
-        },
-    ];
+    state.table_detail_cache.clear();
+    let effects = vec![Effect::FetchMetadata {
+        dsn: dsn.to_string(),
+        run_id,
+    }];
     termination_effects(&state.query, effects)
 }
 
