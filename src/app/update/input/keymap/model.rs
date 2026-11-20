@@ -30,6 +30,7 @@ pub(super) struct Binding {
     triggers: Vec<Trigger>,
     ide_triggers: Option<Vec<Trigger>>,
     output: Output,
+    condition: Option<fn(&KeyContext) -> bool>,
 }
 
 #[derive(Clone)]
@@ -47,6 +48,7 @@ impl Binding {
             triggers: combos.iter().copied().map(Trigger::Key).collect(),
             ide_triggers: None,
             output: Output::Action(action),
+            condition: None,
         }
     }
 
@@ -55,6 +57,7 @@ impl Binding {
             triggers: vec![Trigger::Text],
             ide_triggers: None,
             output: Output::Text(target),
+            condition: None,
         }
     }
 
@@ -63,6 +66,7 @@ impl Binding {
             triggers: vec![Trigger::AnyModifiers(key)],
             ide_triggers: None,
             output: Output::Action(action),
+            condition: None,
         }
     }
 
@@ -75,7 +79,18 @@ impl Binding {
             triggers: vec![Trigger::Command { name, aliases }],
             ide_triggers: None,
             output: Output::Command(command),
+            condition: None,
         }
+    }
+
+    pub(super) fn when(mut self, condition: fn(&KeyContext) -> bool) -> Self {
+        self.condition = Some(condition);
+        self
+    }
+
+    pub(super) fn ide(mut self, combos: &[KeyCombo]) -> Self {
+        self.ide_triggers = Some(combos.iter().copied().map(Trigger::Key).collect());
+        self
     }
 
     fn triggers(&self, preset: KeymapPreset) -> &[Trigger] {
@@ -86,14 +101,15 @@ impl Binding {
     }
 
     fn enabled(&self, context: &KeyContext) -> bool {
-        match &self.output {
-            Output::Action(action) => context.allows(action),
-            Output::Text(target) => context.allows(&Action::TextInput {
-                target: *target,
-                ch: ' ',
-            }),
-            Output::Command(command) => context.allows(&command.action()),
-        }
+        self.condition.is_none_or(|condition| condition(context))
+            && match &self.output {
+                Output::Action(action) => context.allows(action),
+                Output::Text(target) => context.allows(&Action::TextInput {
+                    target: *target,
+                    ch: ' ',
+                }),
+                Output::Command(command) => context.allows(&command.action()),
+            }
     }
 }
 
@@ -192,7 +208,20 @@ fn winner(rows: &[Row], context: &KeyContext, trigger: Trigger) -> Option<(usize
             .iter()
             .enumerate()
             .find(|(_, binding)| {
-                binding.enabled(context) && binding.triggers(context.preset).contains(&trigger)
+                binding.enabled(context)
+                    && binding
+                        .triggers(context.preset)
+                        .iter()
+                        .any(|candidate| match trigger {
+                            Trigger::Key(combo) => matches_combo(*candidate, combo),
+                            Trigger::AnyModifiers(key) => {
+                                matches_combo(*candidate, KeyCombo::plain(key))
+                            }
+                            Trigger::Text => {
+                                matches_combo(*candidate, KeyCombo::plain(Key::Char('x')))
+                            }
+                            Trigger::Command { .. } => *candidate == trigger,
+                        })
             })
             .map(|(binding_index, _)| (row_index, binding_index))
     })
@@ -303,6 +332,7 @@ mod tests {
     use crate::update::input::keymap::confirm::ROWS as CONFIRM_ROWS;
     use crate::update::input::keymap::connection_error::ROWS as CONNECTION_ERROR_ROWS;
     use crate::update::input::keymap::connection_selector::ROWS as CONNECTION_SELECTOR_ROWS;
+    use crate::update::input::keymap::connection_setup::active_rows as setup_rows;
     use crate::update::input::keymap::help::{
         EDITING as HELP_EDIT_ROWS, VIEWING as HELP_VIEW_ROWS,
     };
@@ -406,6 +436,60 @@ mod tests {
                                 ),
                                 Output::Command(_) => unreachable!(),
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn visible_setup_bindings_resolve_through_event_entry() {
+        use crate::model::app_state::AppState;
+        use crate::ports::inbound::InputEvent;
+        use crate::update::input::handle_event;
+
+        for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
+            for (text_field, dropdown_open) in [(false, false), (false, true), (true, false)] {
+                let mut state = AppState::new("test".to_string());
+                state.modal.set_mode(InputMode::ConnectionSetup);
+                state.settings.load_keymap_preset(preset);
+                if text_field {
+                    state.connection_setup.focus_next_field();
+                }
+                if dropdown_open {
+                    state.connection_setup.toggle_focused_dropdown();
+                }
+                let context = KeyContext::from_state(&state);
+                let rows = setup_rows(&context);
+                for (row_index, row) in rows
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, row)| row.surfaces.contains(&HintSurface::Border))
+                {
+                    for (binding_index, binding) in row
+                        .bindings
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, binding)| binding.enabled(&context))
+                    {
+                        for trigger in binding.triggers(preset) {
+                            if winner(rows, &context, *trigger) != Some((row_index, binding_index))
+                            {
+                                continue;
+                            }
+                            let combo = match trigger {
+                                Trigger::Key(combo) => *combo,
+                                Trigger::AnyModifiers(key) => KeyCombo::plain(*key),
+                                Trigger::Text | Trigger::Command { .. } => continue,
+                            };
+                            let Output::Action(expected) = &binding.output else {
+                                unreachable!()
+                            };
+                            assert_eq!(
+                                format!("{:?}", handle_event(InputEvent::Key(combo), &state)),
+                                format!("{expected:?}")
+                            );
                         }
                     }
                 }

@@ -55,6 +55,9 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
         InputMode::Settings => return pickers::handle_settings_keys(combo, state),
         InputMode::CommandLine => return editors::handle_command_line_mode(combo, state),
         InputMode::CellEdit => return editors::handle_cell_edit_keys(combo, state),
+        InputMode::ConnectionSetup => {
+            return connections::handle_connection_setup_keys(combo, state);
+        }
         _ => {}
     }
     let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());

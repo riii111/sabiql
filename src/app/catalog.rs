@@ -15,8 +15,8 @@ use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::update::input::keybindings::*;
 use crate::update::input::keymap::{
     HintSurface, KeyContext, Picker, cell_detail_hints, cell_edit_hints, command_line_hints,
-    confirm_hints, connection_error_hints, connection_selector_hints, help_hints, picker_hints,
-    row_detail_hints, settings_hints, sqlite_diagnostics_hints,
+    confirm_hints, connection_error_hints, connection_selector_hints, connection_setup_hints,
+    help_hints, picker_hints, row_detail_hints, settings_hints, sqlite_diagnostics_hints,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -341,10 +341,13 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
             mode,
             keymap_preset,
         } => sql_current_rows(mode, keymap_preset, feature_policy),
-        HelpOrigin::ConnectionSetup {
-            keymap_preset,
-            focused_field,
-        } => connection_setup_current_rows(keymap_preset, focused_field),
+        HelpOrigin::ConnectionSetup { focused_field, .. } => connection_setup_hints(
+            HintSurface::Current,
+            &key_context.with_connection_setup(focused_field, false),
+        )
+        .into_iter()
+        .map(|hint| HelpRow::new(hint.key, hint.description))
+        .collect(),
         HelpOrigin::ConnectionError => connection_error_hints(HintSurface::Current, &key_context)
             .into_iter()
             .map(|hint| HelpRow::new(hint.key, hint.description))
@@ -559,15 +562,33 @@ fn reference_sections(
         section(
             "Connections",
             merge_rows(&[
-                rows_from_binding_refs(&[
-                    &connection_setup::TAB_NAV,
-                    &connection_setup::TAB_NEXT,
-                    &connection_setup::TAB_PREV,
-                    connection_setup_save(keymap_preset),
-                    &connection_setup::ESC_CANCEL,
-                    &connection_setup::ENTER_DROPDOWN,
-                    &connection_setup::DROPDOWN_NAV,
-                ]),
+                connection_setup_hints(
+                    HintSurface::Connections,
+                    &key_context
+                        .clone()
+                        .with_connection_setup(ConnectionField::DatabaseType, false),
+                )
+                .into_iter()
+                .map(|hint| HelpRow::new(hint.key, hint.description))
+                .collect(),
+                connection_setup_hints(
+                    HintSurface::Connections,
+                    &key_context
+                        .clone()
+                        .with_connection_setup(ConnectionField::DatabaseType, true),
+                )
+                .into_iter()
+                .map(|hint| HelpRow::new(hint.key, hint.description))
+                .collect(),
+                connection_setup_hints(
+                    HintSurface::Connections,
+                    &key_context
+                        .clone()
+                        .with_connection_setup(ConnectionField::Name, false),
+                )
+                .into_iter()
+                .map(|hint| HelpRow::new(hint.key, hint.description))
+                .collect(),
                 connection_selector_hints(HintSurface::Connections, &key_context)
                     .into_iter()
                     .map(|hint| HelpRow::new(hint.key, hint.description))
@@ -667,38 +688,6 @@ fn sql_current_rows(
             rows_from_bindings_if_visible(SQL_MODAL_CONFIRMING_KEYS, feature_policy)
         }
     }
-}
-
-fn connection_setup_current_rows(
-    keymap_preset: KeymapPreset,
-    focused_field: ConnectionField,
-) -> Vec<HelpRow> {
-    let is_dropdown_field = matches!(
-        focused_field,
-        ConnectionField::DatabaseType | ConnectionField::Transport | ConnectionField::SslMode
-    );
-    let submit = if is_dropdown_field {
-        &connection_setup::ENTER_DROPDOWN
-    } else {
-        connection_setup_save(keymap_preset)
-    };
-    let mut rows = rows_from_binding_refs(&[
-        &connection_setup::TAB_NAV,
-        &connection_setup::TAB_NEXT,
-        &connection_setup::TAB_PREV,
-        submit,
-    ]);
-    if is_dropdown_field {
-        rows.push(HelpRow::new(
-            connection_setup::SAVE.key,
-            connection_setup::SAVE.description,
-        ));
-    }
-    rows.extend(rows_from_binding_refs(&[
-        &connection_setup::ESC_CANCEL,
-        &connection_setup::DROPDOWN_NAV,
-    ]));
-    rows
 }
 
 fn json_current_rows(mode: JsonHelpMode, feature_policy: &FeaturePolicy) -> Vec<HelpRow> {
@@ -1503,17 +1492,40 @@ mod tests {
         );
         let current_rows = document.sections()[0].rows();
 
-        assert!(current_rows.iter().any(|row| {
-            row.key() == connection_setup::ENTER_DROPDOWN.key
-                && row.description() == connection_setup::ENTER_DROPDOWN.description
-        }));
-        assert!(current_rows.iter().any(|row| {
-            row.key() == connection_setup::SAVE.key
-                && row.description() == connection_setup::SAVE.description
-        }));
-        assert!(!current_rows.iter().any(|row| {
-            row.key() == connection_setup::SAVE_IDE.key
-                && row.description() == connection_setup::SAVE_IDE.description
-        }));
+        assert!(
+            current_rows
+                .iter()
+                .any(|row| { row.key() == "Enter" && row.description() == "Toggle dropdown" })
+        );
+        assert!(
+            current_rows
+                .iter()
+                .any(|row| { row.key() == "Ctrl+S" && row.description() == "Save and connect" })
+        );
+        assert!(
+            !current_rows
+                .iter()
+                .any(|row| { row.key() == "Enter" && row.description() == "Save and connect" })
+        );
+    }
+
+    #[test]
+    fn connection_setup_help_treats_cleartext_auth_as_dropdown() {
+        let document = HelpDocument::new(
+            HelpOrigin::ConnectionSetup {
+                keymap_preset: KeymapPreset::Ide,
+                focused_field: ConnectionField::CleartextAuth,
+            },
+            "",
+        );
+        let rows = document.sections()[0].rows();
+        assert!(
+            rows.iter()
+                .any(|row| row.key() == "Enter" && row.description() == "Toggle dropdown")
+        );
+        assert!(
+            rows.iter()
+                .any(|row| row.key() == "Ctrl+S" && row.description() == "Save and connect")
+        );
     }
 }

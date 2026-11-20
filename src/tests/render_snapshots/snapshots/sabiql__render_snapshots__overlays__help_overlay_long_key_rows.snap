@@ -36,13 +36,13 @@ expression: output
 │                        │  Esc / ?                              Close help                                                               ││                        │
 │                        │                                                                                                                ││                        │
 │                        │▸ Connections                                                                                                   ││                        │
-│                        │  Tab/⇧Tab                             Next/Previous field                                                      ││                        │
-│                        │  Tab                                  Next field                                                               ││                        │
-│                        │  ⇧Tab                                 Previous field                                                           ││                        │
+│                        │  Tab / Shift+Tab                      Next/Previous field                                                      ││                        │
+│                        │  Enter                                Toggle dropdown                                                          ││                        │
 │                        │  Ctrl+S                               Save and connect                                                         ││                        │
 │                        │  Esc                                  Cancel                                                                   ││                        │
-│                        │  Enter                                Toggle dropdown                                                          ││                        │
-│                        │  Ctrl+N / Ctrl+P / ↑ / ↓              Dropdown navigation                                                      ││                        │
+│                        │  Enter                                Confirm dropdown selection                                               ││                        │
+│                        │  ↓ / Ctrl+N / ↑ / Ctrl+P              Dropdown navigation                                                      ││                        │
+│                        │  Esc                                  Cancel dropdown                                                          ││                        │
 │                        │  Enter                                Confirm selection                                                        ││                        │
 │                        │  j / k / ↓ / ↑ / Ctrl+N / Ctrl+P      Select connection                                                        ▼│                        │
 │                        │─────────────────────────────────────────────────────────────────────────────────────────────────────────────────│                        │

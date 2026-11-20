@@ -1,6 +1,7 @@
 use crate::model::app_state::AppState;
 use crate::model::browse::json_detail::JsonDetailMode;
 use crate::model::connection::list::is_service_selected;
+use crate::model::connection::setup::ConnectionField;
 use crate::model::shared::help::HelpMode;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::settings::{ErBrowserChoice, KeymapPreset, SettingsSection};
@@ -35,6 +36,12 @@ enum Scope {
     },
     ConnectionError {
         can_retry: bool,
+    },
+    ConnectionSetup {
+        dropdown_open: bool,
+        dropdown_field: bool,
+        text_focused: bool,
+        editing: bool,
     },
     Settings {
         editing: bool,
@@ -75,6 +82,12 @@ impl KeyContext {
                 InputMode::ConnectionError => Scope::ConnectionError {
                     can_retry: state.can_retry_connection_error(),
                 },
+                InputMode::ConnectionSetup => Scope::ConnectionSetup {
+                    dropdown_open: state.connection_setup.has_open_dropdown(),
+                    dropdown_field: is_dropdown_field(state.connection_setup.focused_field()),
+                    text_focused: state.connection_setup.focused_input().is_some(),
+                    editing: state.connection_setup.is_edit_mode(),
+                },
                 InputMode::Settings => Scope::Settings {
                     editing: state.settings.is_editing_custom_er_browser(),
                     custom_selected: state.settings.section() == SettingsSection::ErDiagram
@@ -100,6 +113,12 @@ impl KeyContext {
                     service_selected: false,
                 },
                 InputMode::ConnectionError => Scope::ConnectionError { can_retry: false },
+                InputMode::ConnectionSetup => Scope::ConnectionSetup {
+                    dropdown_open: false,
+                    dropdown_field: true,
+                    text_focused: false,
+                    editing: false,
+                },
                 InputMode::Settings => Scope::Settings {
                     editing: false,
                     custom_selected: true,
@@ -148,6 +167,56 @@ impl KeyContext {
         matches!(self.scope, Scope::ConnectionError { can_retry: true })
     }
 
+    pub(super) fn is_setup_dropdown_open(&self) -> bool {
+        matches!(
+            self.scope,
+            Scope::ConnectionSetup {
+                dropdown_open: true,
+                ..
+            }
+        )
+    }
+
+    pub(super) fn is_setup_dropdown_field(&self) -> bool {
+        matches!(
+            self.scope,
+            Scope::ConnectionSetup {
+                dropdown_field: true,
+                ..
+            }
+        )
+    }
+
+    pub(super) fn is_setup_text_focused(&self) -> bool {
+        matches!(
+            self.scope,
+            Scope::ConnectionSetup {
+                text_focused: true,
+                ..
+            }
+        )
+    }
+
+    pub(super) fn is_setup_editing(&self) -> bool {
+        matches!(self.scope, Scope::ConnectionSetup { editing: true, .. })
+    }
+
+    pub(crate) fn with_connection_setup(
+        mut self,
+        field: ConnectionField,
+        dropdown_open: bool,
+    ) -> Self {
+        let dropdown_field = is_dropdown_field(field);
+        self.mode = InputMode::ConnectionSetup;
+        self.scope = Scope::ConnectionSetup {
+            dropdown_open,
+            dropdown_field,
+            text_focused: !dropdown_field,
+            editing: false,
+        };
+        self
+    }
+
     pub(super) fn is_settings_editing(&self) -> bool {
         matches!(self.scope, Scope::Settings { editing: true, .. })
     }
@@ -173,4 +242,14 @@ impl KeyContext {
         self.scope = Scope::Help { editing };
         self
     }
+}
+
+fn is_dropdown_field(field: ConnectionField) -> bool {
+    matches!(
+        field,
+        ConnectionField::DatabaseType
+            | ConnectionField::Transport
+            | ConnectionField::SslMode
+            | ConnectionField::CleartextAuth
+    )
 }

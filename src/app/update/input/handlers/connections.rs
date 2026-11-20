@@ -1,95 +1,12 @@
 use crate::model::app_state::AppState;
-use crate::model::shared::settings::KeymapPreset;
-use crate::update::action::{Action, InputTarget};
-use crate::update::input::keybindings::{self, Key, KeyCombo, Modifiers};
+use crate::update::action::Action;
+use crate::update::input::keybindings::KeyCombo;
 use crate::update::input::keymap::{
-    KeyContext, connection_error_action, connection_selector_action,
+    KeyContext, connection_error_action, connection_selector_action, connection_setup_action,
 };
 
 pub(super) fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action {
-    use crate::model::connection::setup::ConnectionField;
-    use crate::update::action::CursorMove;
-
-    let dropdown_open = state.connection_setup.has_open_dropdown();
-    let ctrl = combo.modifiers.contains(Modifiers::CTRL);
-    let alt = combo.modifiers.contains(Modifiers::ALT);
-    let shift = combo.modifiers.contains(Modifiers::SHIFT);
-    let ctrl_only = ctrl && !alt && !shift;
-
-    let primary_save = keybindings::connection_setup_save(state.settings.saved_keymap_preset());
-    let auxiliary_save = state.settings.saved_keymap_preset() == KeymapPreset::Ide
-        && keybindings::connection_setup::SAVE.combos.contains(&combo);
-    if (primary_save.combos.contains(&combo) || auxiliary_save)
-        && !(combo.key == Key::Enter
-            && matches!(
-                state.connection_setup.focused_field(),
-                ConnectionField::DatabaseType
-                    | ConnectionField::Transport
-                    | ConnectionField::SslMode
-                    | ConnectionField::CleartextAuth
-            ))
-    {
-        return Action::ConnectionSetupSave;
-    }
-
-    if dropdown_open {
-        return match combo.key {
-            Key::Up => Action::ConnectionSetupDropdownPrev,
-            Key::Down => Action::ConnectionSetupDropdownNext,
-            Key::Char('p') if ctrl_only => Action::ConnectionSetupDropdownPrev,
-            Key::Char('n') if ctrl_only => Action::ConnectionSetupDropdownNext,
-            Key::Enter => Action::ConnectionSetupDropdownConfirm,
-            Key::Esc => Action::ConnectionSetupDropdownCancel,
-            _ => Action::None,
-        };
-    }
-
-    match combo.key {
-        Key::Tab => Action::ConnectionSetupNextField,
-        Key::BackTab => Action::ConnectionSetupPrevField,
-        Key::Esc => Action::ConnectionSetupCancel,
-
-        Key::Enter
-            if matches!(
-                state.connection_setup.focused_field(),
-                ConnectionField::DatabaseType
-                    | ConnectionField::Transport
-                    | ConnectionField::SslMode
-                    | ConnectionField::CleartextAuth
-            ) =>
-        {
-            Action::ConnectionSetupToggleDropdown
-        }
-
-        // Cursor movement
-        Key::Left => Action::TextMoveCursor {
-            target: InputTarget::ConnectionSetup,
-            direction: CursorMove::Left,
-        },
-        Key::Right => Action::TextMoveCursor {
-            target: InputTarget::ConnectionSetup,
-            direction: CursorMove::Right,
-        },
-        Key::Home => Action::TextMoveCursor {
-            target: InputTarget::ConnectionSetup,
-            direction: CursorMove::Home,
-        },
-        Key::End => Action::TextMoveCursor {
-            target: InputTarget::ConnectionSetup,
-            direction: CursorMove::End,
-        },
-
-        // Text input (allow Alt for international keyboards, block Ctrl-only)
-        Key::Backspace => Action::TextBackspace {
-            target: InputTarget::ConnectionSetup,
-        },
-        Key::Char(c) if !ctrl || alt => Action::TextInput {
-            target: InputTarget::ConnectionSetup,
-            ch: c,
-        },
-
-        _ => Action::None,
-    }
+    connection_setup_action(combo, &KeyContext::from_state(state))
 }
 
 pub(super) fn handle_connection_error_keys(combo: KeyCombo, state: &AppState) -> Action {
@@ -104,6 +21,8 @@ pub(super) fn handle_connection_selector_keys(combo: KeyCombo, state: &AppState)
 mod tests {
     use super::*;
     use crate::model::shared::input_mode::InputMode;
+    use crate::model::shared::settings::KeymapPreset;
+    use crate::update::action::InputTarget;
     use crate::update::action::{
         ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
     };
@@ -206,6 +125,31 @@ mod tests {
             let result = handle_connection_setup_keys(combo(Key::Enter), &state);
 
             assert!(matches!(result, Action::ConnectionSetupToggleDropdown));
+        }
+
+        #[test]
+        fn ide_dropdown_enter_and_save_resolve_through_event_entry() {
+            use crate::ports::inbound::InputEvent;
+            use crate::update::input::handle_event;
+
+            let mut state = setup_state_with_preset(KeymapPreset::Ide);
+            assert!(matches!(
+                handle_event(InputEvent::Key(combo(Key::Enter)), &state),
+                Action::ConnectionSetupToggleDropdown
+            ));
+            assert!(matches!(
+                handle_event(InputEvent::Key(combo_ctrl(Key::Char('s'))), &state),
+                Action::ConnectionSetupSave
+            ));
+            state.connection_setup.toggle_focused_dropdown();
+            assert!(matches!(
+                handle_event(InputEvent::Key(combo(Key::Enter)), &state),
+                Action::ConnectionSetupDropdownConfirm
+            ));
+            assert!(matches!(
+                handle_event(InputEvent::Key(combo_ctrl(Key::Char('s'))), &state),
+                Action::ConnectionSetupSave
+            ));
         }
 
         #[test]

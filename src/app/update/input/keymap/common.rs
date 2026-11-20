@@ -63,6 +63,29 @@ pub(super) fn text_field_any_modifiers(target: InputTarget) -> Vec<Row> {
     text_field_with(target, KeyModifiers::Any)
 }
 
+pub(super) fn conditional_text_field(
+    target: InputTarget,
+    editing: fn(&KeyContext) -> bool,
+    readline: fn(&KeyContext) -> bool,
+) -> Vec<Row> {
+    let readline_count = READLINE
+        .iter()
+        .find(|(candidate, _)| *candidate == target)
+        .map_or(0, |(_, rows)| rows.len());
+    let mut rows = text_field_any_modifiers(target);
+    for (index, row) in rows.iter_mut().enumerate() {
+        let condition = if index < readline_count {
+            readline
+        } else {
+            editing
+        };
+        for binding in &mut row.bindings {
+            *binding = binding.clone().when(condition);
+        }
+    }
+    rows
+}
+
 pub(super) fn text_field_with_navigation(target: InputTarget) -> (Vec<Row>, Vec<Row>) {
     let mut rows = text_field_any_modifiers(target);
     let first = rows.len() - 4;

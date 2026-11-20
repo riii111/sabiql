@@ -1,4 +1,3 @@
-mod connections;
 mod editors;
 mod normal;
 mod overlays;
@@ -9,7 +8,6 @@ use crate::policy::{FeaturePolicy, FeatureRequirement};
 pub use crate::ports::inbound::{Key, KeyCombo, Modifiers};
 use crate::update::action::{Action, ModalKind};
 use crate::update::input::keymap::{resolve_mode, resolve_mode_with_policy};
-pub use connections::*;
 pub use editors::*;
 pub use normal::*;
 pub use overlays::*;
@@ -301,10 +299,6 @@ mod tests {
                     "SQL_MODAL_CONFIRMING_KEYS",
                 );
                 check_none_action_entries_have_no_combos(OVERLAY_KEYS, "OVERLAY_KEYS");
-                check_none_action_entries_have_no_combos(
-                    CONNECTION_SETUP_KEYS,
-                    "CONNECTION_SETUP_KEYS",
-                );
                 check_none_action_entries_have_no_combos(RESULT_ACTIVE_KEYS, "RESULT_ACTIVE_KEYS");
                 check_none_action_entries_have_no_combos(JSON_SEARCH_KEYS, "JSON_SEARCH_KEYS");
             }
