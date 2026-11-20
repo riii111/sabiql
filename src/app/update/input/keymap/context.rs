@@ -12,9 +12,16 @@ pub struct KeyContext {
     mode: InputMode,
     json_mode: JsonDetailMode,
     policy: FeaturePolicy,
-    pub(super) can_run_diagnostics: bool,
-    pub(super) cell_detail_searching: bool,
-    pub(super) help_editing: bool,
+    scope: Scope,
+}
+
+#[derive(Clone, Copy)]
+enum Scope {
+    Diagnostics { can_run: bool },
+    CellDetail { searching: bool },
+    Help { editing: bool },
+    Confirm { blocked: bool },
+    Other,
 }
 
 impl KeyContext {
@@ -24,9 +31,24 @@ impl KeyContext {
             mode: state.input_mode(),
             json_mode: state.json_detail.mode(),
             policy: FeaturePolicy::new(&state.session.active_engine_feature_profile()),
-            can_run_diagnostics: state.sqlite_diagnostics.can_run_quick_check(),
-            cell_detail_searching: state.cell_detail.search().is_active(),
-            help_editing: state.ui.help().mode() == HelpMode::EditingFilter,
+            scope: match state.input_mode() {
+                InputMode::SqliteDiagnostics => Scope::Diagnostics {
+                    can_run: state.sqlite_diagnostics.can_run_quick_check(),
+                },
+                InputMode::CellDetail => Scope::CellDetail {
+                    searching: state.cell_detail.search().is_active(),
+                },
+                InputMode::Help => Scope::Help {
+                    editing: state.ui.help().mode() == HelpMode::EditingFilter,
+                },
+                InputMode::ConfirmDialog => Scope::Confirm {
+                    blocked: state
+                        .result_interaction
+                        .pending_write_preview()
+                        .is_some_and(|preview| preview.guardrail.blocked),
+                },
+                _ => Scope::Other,
+            },
         }
     }
 
@@ -36,9 +58,13 @@ impl KeyContext {
             mode,
             json_mode: JsonDetailMode::Viewing,
             policy: policy.clone(),
-            can_run_diagnostics: true,
-            cell_detail_searching: false,
-            help_editing: false,
+            scope: match mode {
+                InputMode::SqliteDiagnostics => Scope::Diagnostics { can_run: true },
+                InputMode::CellDetail => Scope::CellDetail { searching: false },
+                InputMode::Help => Scope::Help { editing: false },
+                InputMode::ConfirmDialog => Scope::Confirm { blocked: false },
+                _ => Scope::Other,
+            },
         }
     }
 
@@ -52,13 +78,31 @@ impl KeyContext {
             .is_enabled(FeatureRequirement::SqliteDiagnostics)
     }
 
+    pub(super) fn can_run_diagnostics(&self) -> bool {
+        matches!(self.scope, Scope::Diagnostics { can_run: true })
+    }
+
+    pub(super) fn is_cell_detail_searching(&self) -> bool {
+        matches!(self.scope, Scope::CellDetail { searching: true })
+    }
+
+    pub(super) fn is_help_editing(&self) -> bool {
+        matches!(self.scope, Scope::Help { editing: true })
+    }
+
+    pub(super) fn is_confirm_blocked(&self) -> bool {
+        matches!(self.scope, Scope::Confirm { blocked: true })
+    }
+
     pub(crate) fn with_cell_detail_searching(mut self, searching: bool) -> Self {
-        self.cell_detail_searching = searching;
+        self.mode = InputMode::CellDetail;
+        self.scope = Scope::CellDetail { searching };
         self
     }
 
     pub(crate) fn with_help_editing(mut self, editing: bool) -> Self {
-        self.help_editing = editing;
+        self.mode = InputMode::Help;
+        self.scope = Scope::Help { editing };
         self
     }
 }

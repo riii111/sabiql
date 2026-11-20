@@ -2,7 +2,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::settings::KeymapPreset;
 use crate::policy::FeaturePolicy;
 use crate::update::action::{Action, InputTarget};
-use crate::update::input::keybindings::{self, KeyCombo};
+use crate::update::input::keybindings::KeyCombo;
 use crate::update::input::keymap;
 use crate::update::input::keymap::KeyContext;
 
@@ -24,7 +24,10 @@ pub(super) fn handle_help_keys_with_policy(
 }
 
 pub(super) fn handle_confirm_dialog_keys(combo: KeyCombo) -> Action {
-    keymap::resolve(&combo, keybindings::CONFIRM_DIALOG_KEYS).unwrap_or(Action::None)
+    use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
+    let policy = FeaturePolicy::new(&EngineFeatureProfile::postgres_like());
+    let context = KeyContext::for_scope(InputMode::ConfirmDialog, KeymapPreset::Default, &policy);
+    keymap::confirm_action(combo, &context)
 }
 
 pub(super) fn handle_sqlite_diagnostics_keys_with_policy(

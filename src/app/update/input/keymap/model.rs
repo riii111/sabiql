@@ -236,6 +236,7 @@ mod tests {
     use crate::update::input::keymap::cell_detail::{
         SEARCHING as CELL_SEARCH_ROWS, VIEWING as CELL_VIEW_ROWS,
     };
+    use crate::update::input::keymap::confirm::ROWS as CONFIRM_ROWS;
     use crate::update::input::keymap::help::{
         EDITING as HELP_EDIT_ROWS, VIEWING as HELP_VIEW_ROWS,
     };
@@ -286,6 +287,7 @@ mod tests {
             (&*CELL_VIEW_ROWS, EngineFeatureProfile::postgres_like()),
             (&*HELP_VIEW_ROWS, EngineFeatureProfile::postgres_like()),
             (&*HELP_EDIT_ROWS, EngineFeatureProfile::postgres_like()),
+            (&*CONFIRM_ROWS, EngineFeatureProfile::postgres_like()),
         ] {
             for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
                 let context = KeyContext::for_scope(

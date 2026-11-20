@@ -14,8 +14,8 @@ use crate::policy::{FeaturePolicy, FeatureRequirement};
 )]
 use crate::update::input::keybindings::*;
 use crate::update::input::keymap::{
-    HintSurface, KeyContext, Picker, cell_detail_hints, help_hints, picker_hints, row_detail_hints,
-    sqlite_diagnostics_hints,
+    HintSurface, KeyContext, Picker, cell_detail_hints, confirm_hints, help_hints, picker_hints,
+    row_detail_hints, sqlite_diagnostics_hints,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -342,7 +342,10 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
                 .map(|hint| HelpRow::new(hint.key, hint.description))
                 .collect()
         }
-        HelpOrigin::ConfirmDialog => rows_from_bindings(CONFIRM_DIALOG_KEYS),
+        HelpOrigin::ConfirmDialog => confirm_hints(HintSurface::Current, &key_context)
+            .into_iter()
+            .map(|hint| HelpRow::new(hint.key, hint.description))
+            .collect(),
         HelpOrigin::ConnectionSelector => rows_from_mode_rows(CONNECTION_SELECTOR_ROWS),
         HelpOrigin::ErTablePicker { .. } => {
             picker_hints(Picker::Er, HintSurface::Current, &key_context)
@@ -560,7 +563,10 @@ fn reference_sections(
             "Modal Basics",
             merge_rows(&[
                 rows_from_bindings(OVERLAY_KEYS),
-                rows_from_bindings(CONFIRM_DIALOG_KEYS),
+                confirm_hints(HintSurface::ModalBasics, &key_context)
+                    .into_iter()
+                    .map(|hint| HelpRow::new(hint.key, hint.description))
+                    .collect(),
                 help_hints(HintSurface::ModalBasics, &key_context)
                     .into_iter()
                     .map(|hint| HelpRow::new(hint.key, hint.description))

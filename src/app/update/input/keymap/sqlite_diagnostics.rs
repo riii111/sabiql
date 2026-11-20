@@ -24,7 +24,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             short: "Run check",
             description: "Run quick check",
             visible: Some(|context, surface| {
-                surface != HintSurface::Border || context.can_run_diagnostics
+                surface != HintSurface::Border || context.can_run_diagnostics()
             }),
             surfaces: &[
                 HintSurface::Border,

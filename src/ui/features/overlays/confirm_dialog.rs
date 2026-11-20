@@ -7,6 +7,7 @@ use crate::app::model::shared::render_output::ConfirmPreviewLayout;
 use crate::app::policy::json::json_diff::JsonDiffLine;
 use crate::app::policy::write::write_guardrails::{RiskLevel, WriteOperation};
 use crate::app::policy::write::write_update::escape_preview_value;
+use crate::app::update::input::keymap::{HintSurface, KeyContext, confirm_hints};
 use crate::domain::{DatabaseType, QueryValue};
 use crate::primitives::atoms::highlight_sql;
 use crate::primitives::molecules::{FooterHintBar, render_modal, render_modal_with_border_color};
@@ -16,6 +17,14 @@ use crate::theme::ThemePalette;
 pub struct ConfirmDialog;
 
 impl ConfirmDialog {
+    fn hint_bar(state: &AppState) -> FooterHintBar {
+        FooterHintBar::new(
+            confirm_hints(HintSurface::Border, &KeyContext::from_state(state))
+                .into_iter()
+                .map(|hint| (hint.key, hint.short)),
+        )
+    }
+
     pub fn render(
         frame: &mut Frame,
         state: &AppState,
@@ -42,7 +51,7 @@ impl ConfirmDialog {
         theme: &ThemePalette,
     ) -> ConfirmPreviewLayout {
         let dialog = &state.confirm_dialog;
-        let hint = FooterHintBar::new([("Enter", "Confirm"), ("Esc", "Cancel")]);
+        let hint = Self::hint_bar(state);
 
         let full_area = frame.area();
         let max_modal_width = full_area.width.saturating_sub(2).max(20);
@@ -110,7 +119,6 @@ impl ConfirmDialog {
             .expect("write preview must be set");
 
         let border_color = theme.risk_color(preview.guardrail.risk_level);
-        let blocked = preview.guardrail.blocked;
         let title = format!(" {} ", state.confirm_dialog.title());
 
         let mut content_lines: Vec<Line> = Vec::new();
@@ -225,11 +233,7 @@ impl ConfirmDialog {
         // +4 = border top/bottom (2) + vertical padding (2)
         let modal_height = (wrapped_height + 4).clamp(min_modal_height, max_modal_height);
 
-        let hint = if blocked {
-            FooterHintBar::new([("Esc", "Cancel")])
-        } else {
-            FooterHintBar::new([("Enter", "Confirm"), ("Esc", "Cancel")])
-        };
+        let hint = Self::hint_bar(state);
 
         let (_, modal_inner) = render_modal_with_border_color(
             frame,

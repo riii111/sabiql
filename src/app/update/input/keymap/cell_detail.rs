@@ -144,7 +144,7 @@ pub(super) static SEARCHING: LazyLock<Vec<Row>> = LazyLock::new(|| {
 });
 
 fn rows(context: &KeyContext) -> &'static [Row] {
-    if context.cell_detail_searching {
+    if context.is_cell_detail_searching() {
         &SEARCHING
     } else {
         &VIEWING

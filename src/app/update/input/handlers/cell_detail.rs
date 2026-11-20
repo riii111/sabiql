@@ -10,6 +10,7 @@ pub(super) fn handle_cell_detail_keys(combo: KeyCombo, state: &AppState) -> Acti
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::shared::input_mode::InputMode;
     use crate::ports::inbound::{Key, Modifiers};
     use crate::update::action::DetailTarget;
     use crate::update::action::SearchStep;
@@ -18,6 +19,7 @@ mod tests {
 
     fn handle_cell_detail_keys(combo: KeyCombo, searching: bool) -> Action {
         let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::CellDetail);
         if searching {
             state.cell_detail.enter_search();
         }

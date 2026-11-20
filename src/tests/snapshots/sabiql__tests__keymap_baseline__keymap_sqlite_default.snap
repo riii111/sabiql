@@ -392,7 +392,7 @@ footer:
 border: ╭ Confirm ─────────────────────────────╮
 border: ╰ Enter: Confirm │ Esc: Cancel ────────╯
 help: Enter: Confirm
-help: Ctrl+N / j / ↓ / Ctrl+P / k / ↑: Scroll down / up
+help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Scroll down / up
 help: Esc: Cancel
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp

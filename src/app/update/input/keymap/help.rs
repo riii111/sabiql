@@ -82,7 +82,7 @@ pub(super) static EDITING: LazyLock<Vec<Row>> = LazyLock::new(|| {
 });
 
 fn rows(context: &KeyContext) -> &'static [Row] {
-    if context.help_editing {
+    if context.is_help_editing() {
         &EDITING
     } else {
         &VIEWING
