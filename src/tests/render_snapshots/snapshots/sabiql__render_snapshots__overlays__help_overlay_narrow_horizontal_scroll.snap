@@ -5,21 +5,21 @@ expression: output
 ⌂ test_pr… ▸ … ▸ - connected | localhost:5432/test
 ┌ [1] Explor┐[Info] [Cols] [Idx] [FK] [RLS] [Trig]
 │> ▦ pub╭ Help ───────────────────────────╮──────┐
-│  ▦ pub│                     Run EXPLAIN▲│      │
-│  ▦ pub│                     Return to N││      │
+│  ▦ pub│Home / End           Move by wor▲│      │
+│  ▦ pub│ L                   Jump by buf││      │
+│       │                     Close edito││      │
+│       │                     Return to N││      │
 │       │                     Move cursor││      │
 │       │                     Line start/││      │
-│       │                     Insert tab ││      │
+│       │                     Insert tab ┃│      │
 │       │                     Preview and││      │
-│       │                     Open comman┃│      │
-│       │                     Edit cell v││      │
-│       │                     Move cursor││──────┘
-│       │                     Jump to sta││──────┐
+│       │                     Open comman││──────┘
+│       │                     Edit cell v││──────┐
+│       │                     Move cursor││      │
+│       │                     Jump to sta││      │
 │       │                     Exit to Cel││      │
 │       │                     Execute the││      │
-│       │                     Cancel and ││      │
-│       │                                ││      │
-│       │                                ▼│      │
+│       │                     Cancel and ▼│      │
 │       │ x  25% ◀︎────══════────────────▶︎ │      │
 │       │─────────────────────────────────│      │
 │       │ [BROWSE]                        │      │

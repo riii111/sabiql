@@ -156,16 +156,43 @@ pub(super) fn document_navigation(target: InputTarget, shifted_prefix: bool) -> 
     let movement = |direction, combos: &[KeyCombo]| {
         Binding::action(Action::TextMoveCursor { target, direction }, combos)
     };
+    let arrow = |direction, combos: &[KeyCombo], key| {
+        let binding = movement(direction, combos);
+        if target == InputTarget::SqlModal {
+            binding.add_any_modifiers(key)
+        } else {
+            let mut all = combos.to_vec();
+            all.insert(1, KeyCombo::plain(key));
+            movement(direction, &all)
+        }
+    };
+    let mut jumps = vec![
+        movement(CursorMove::LineStart, &[KeyCombo::plain(Key::Char('0'))]),
+        movement(CursorMove::LineEnd, &[KeyCombo::plain(Key::Char('$'))]),
+        movement(CursorMove::WordForward, &[KeyCombo::plain(Key::Char('w'))]),
+        movement(CursorMove::WordBackward, &[KeyCombo::plain(Key::Char('b'))]),
+    ];
+    if target == InputTarget::SqlModal {
+        jumps.extend([
+            movement(CursorMove::Home, &[KeyCombo::plain(Key::Home)]),
+            movement(CursorMove::End, &[KeyCombo::plain(Key::End)]),
+        ]);
+    } else {
+        jumps[0] = jumps[0].clone().with_no_ctrl_alt(Key::Home);
+        jumps[1] = jumps[1].clone().with_no_ctrl_alt(Key::End);
+    }
     vec![
         Row {
             bindings: vec![
-                movement(
+                arrow(
                     CursorMove::Left,
-                    &[KeyCombo::plain(Key::Char('h')), KeyCombo::plain(Key::Left)],
+                    &[KeyCombo::plain(Key::Char('h'))],
+                    Key::Left,
                 ),
-                movement(
+                arrow(
                     CursorMove::Right,
-                    &[KeyCombo::plain(Key::Char('l')), KeyCombo::plain(Key::Right)],
+                    &[KeyCombo::plain(Key::Char('l'))],
+                    Key::Right,
                 ),
             ],
             short: "Left/Right",
@@ -179,21 +206,21 @@ pub(super) fn document_navigation(target: InputTarget, shifted_prefix: bool) -> 
         },
         Row {
             bindings: vec![
-                movement(
+                arrow(
                     CursorMove::Down,
                     &[
                         KeyCombo::plain(Key::Char('j')),
-                        KeyCombo::plain(Key::Down),
                         KeyCombo::ctrl(Key::Char('n')),
                     ],
+                    Key::Down,
                 ),
-                movement(
+                arrow(
                     CursorMove::Up,
                     &[
                         KeyCombo::plain(Key::Char('k')),
-                        KeyCombo::plain(Key::Up),
                         KeyCombo::ctrl(Key::Char('p')),
                     ],
+                    Key::Up,
                 ),
             ],
             short: "Down/Up",
@@ -206,14 +233,7 @@ pub(super) fn document_navigation(target: InputTarget, shifted_prefix: bool) -> 
             ],
         },
         Row {
-            bindings: vec![
-                movement(CursorMove::LineStart, &[KeyCombo::plain(Key::Char('0'))])
-                    .with_no_ctrl_alt(Key::Home),
-                movement(CursorMove::LineEnd, &[KeyCombo::plain(Key::Char('$'))])
-                    .with_no_ctrl_alt(Key::End),
-                movement(CursorMove::WordForward, &[KeyCombo::plain(Key::Char('w'))]),
-                movement(CursorMove::WordBackward, &[KeyCombo::plain(Key::Char('b'))]),
-            ],
+            bindings: jumps,
             short: "Jump",
             description: "Move by word or line boundary",
             visible: None,

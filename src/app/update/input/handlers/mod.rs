@@ -19,7 +19,7 @@ use crate::update::action::Action;
 use crate::update::input::keybindings::readline_action_for;
 use crate::update::input::keymap::{
     KeyContext, json_edit_action, json_search_action, json_view_action, sql_confirmation_action,
-    sql_edit_action,
+    sql_edit_action, sql_view_action,
 };
 use interaction::{InputInteraction, resolve_input_interaction};
 
@@ -74,10 +74,14 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
         }
         InputMode::JsonEdit => return json_edit_action(combo, &KeyContext::from_state(state)),
         InputMode::SqlModal => {
+            let context = KeyContext::from_state(state);
             if matches!(state.sql_modal.status(), SqlModalStatus::Editing) {
-                return sql_edit_action(combo, &KeyContext::from_state(state));
+                return sql_edit_action(combo, &context);
             }
-            if let Some(action) = sql_confirmation_action(combo, &KeyContext::from_state(state)) {
+            if let Some(action) = sql_confirmation_action(combo, &context) {
+                return action;
+            }
+            if let Some(action) = sql_view_action(combo, &context) {
                 return action;
             }
         }

@@ -2,15 +2,11 @@ use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::Prefix;
 use crate::model::shared::settings::KeymapPreset;
 use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
-use crate::policy::{FeaturePolicy, FeatureRequirement};
-use crate::update::action::{Action, InputTarget, ModalKind};
-use crate::update::input::keybindings::{
-    Key, KeyCombo, Modifiers, sql_modal_compare_explain, sql_modal_normal_query_history,
-    sql_modal_plan_explain,
-};
-use crate::update::input::keymap::{KeyContext, sql_confirmation_action, sql_edit_action};
-use crate::update::input::vim::{
-    SqlModalVimContext, VimSurfaceContext, action_for_input, action_for_key,
+use crate::policy::FeaturePolicy;
+use crate::ports::inbound::KeyCombo;
+use crate::update::action::Action;
+use crate::update::input::keymap::{
+    KeyContext, sql_confirmation_action, sql_edit_action, sql_view_action,
 };
 
 pub(super) fn handle_sql_modal_keys_with_feature_policy(
@@ -22,184 +18,21 @@ pub(super) fn handle_sql_modal_keys_with_feature_policy(
     keymap_preset: KeymapPreset,
     feature_policy: &FeaturePolicy,
 ) -> Action {
-    handle_sql_modal_keys_internal(
-        combo,
-        completion_visible,
-        status,
-        active_tab,
-        pending_prefix,
-        keymap_preset,
-        feature_policy,
-        feature_policy.is_enabled(FeatureRequirement::ExplainAnalyze),
-    )
-}
-
-fn handle_sql_modal_keys_internal(
-    combo: KeyCombo,
-    completion_visible: bool,
-    status: &SqlModalStatus,
-    active_tab: SqlModalTab,
-    pending_prefix: Option<Prefix>,
-    keymap_preset: KeymapPreset,
-    feature_policy: &FeaturePolicy,
-    supports_explain_analyze: bool,
-) -> Action {
-    use crate::update::action::CursorMove;
-
     let context = KeyContext::for_scope(InputMode::SqlModal, keymap_preset, feature_policy)
-        .with_sql_status(status);
+        .with_sql_status(status)
+        .with_prefix(pending_prefix);
     if let Some(action) = sql_confirmation_action(combo, &context) {
         return action;
     }
     if matches!(status, SqlModalStatus::Editing) {
         return sql_edit_action(combo, &context.with_sql_editing(completion_visible));
     }
-
-    // Running state: suppress all key input while EXPLAIN is executing
-    if matches!(status, SqlModalStatus::Running) {
-        return Action::None;
-    }
-
-    // Normal / Success / Error share the same command set (no text editing)
     if matches!(
         status,
         SqlModalStatus::Normal | SqlModalStatus::Success(_) | SqlModalStatus::Error(_)
     ) {
-        let ctrl = combo.modifiers.contains(Modifiers::CTRL);
-        let alt = combo.modifiers.contains(Modifiers::ALT);
-        let shift = combo.modifiers.contains(Modifiers::SHIFT);
-        let plain = !ctrl && !alt && !shift;
-
-        if let Some(prefix) = pending_prefix {
-            if ctrl || alt {
-                return Action::CancelKeySequence;
-            }
-            if active_tab != SqlModalTab::Sql {
-                return Action::CancelKeySequence;
-            }
-            return match action_for_input(
-                &combo,
-                Some(prefix),
-                VimSurfaceContext::SqlModal(SqlModalVimContext::QueryNormal),
-            ) {
-                Some(Action::None) | None => Action::CancelKeySequence,
-                Some(action) => action,
-            };
-        }
-
-        let explain_binding = match active_tab {
-            SqlModalTab::Compare => sql_modal_compare_explain(keymap_preset),
-            SqlModalTab::Sql | SqlModalTab::Plan => sql_modal_plan_explain(keymap_preset),
-        };
-        if explain_binding.combos.contains(&combo)
-            && feature_policy.is_enabled(explain_binding.feature_requirement())
-        {
-            return Action::ExplainRequest;
-        }
-
-        // Tab switching
-        if plain && combo.key == Key::Tab {
-            return Action::SqlModalNextTab;
-        }
-        if !combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT)
-            && combo.key == Key::BackTab
-        {
-            return Action::SqlModalPrevTab;
-        }
-
-        // Plan tab specific keys (read-only viewer)
-        if active_tab == SqlModalTab::Plan {
-            if let Some(action) = action_for_key(
-                &combo,
-                VimSurfaceContext::SqlModal(SqlModalVimContext::PlanViewer),
-            ) {
-                return action;
-            }
-
-            return match combo.key {
-                Key::Char('e') if alt && supports_explain_analyze => Action::ExplainAnalyzeRequest,
-                _ => Action::None,
-            };
-        }
-
-        // Compare tab specific keys (read-only viewer)
-        if active_tab == SqlModalTab::Compare {
-            if let Some(action) = action_for_key(
-                &combo,
-                VimSurfaceContext::SqlModal(SqlModalVimContext::CompareViewer),
-            ) {
-                return action;
-            }
-
-            return match combo.key {
-                Key::Char('e') if alt && supports_explain_analyze => Action::ExplainAnalyzeRequest,
-                Key::Char('e')
-                    if plain && feature_policy.is_enabled(FeatureRequirement::PlanComparison) =>
-                {
-                    Action::CompareEditQuery
-                }
-                _ => Action::None,
-            };
-        }
-
-        if alt && combo.key == Key::Char('e') && supports_explain_analyze {
-            return Action::ExplainAnalyzeRequest;
-        }
-        if sql_modal_normal_query_history(keymap_preset)
-            .combos
-            .contains(&combo)
-        {
-            return Action::OpenModal(ModalKind::QueryHistoryPicker);
-        }
-        if ctrl && combo.key == Key::Char('l') {
-            return Action::SqlModalClear;
-        }
-        if plain && combo.key == Key::Char('g') {
-            return Action::BeginKeySequence(Prefix::G);
-        }
-        if plain && combo.key == Key::Home {
-            return Action::TextMoveCursor {
-                target: InputTarget::SqlModal,
-                direction: CursorMove::Home,
-            };
-        }
-        if plain && combo.key == Key::End {
-            return Action::TextMoveCursor {
-                target: InputTarget::SqlModal,
-                direction: CursorMove::End,
-            };
-        }
-
-        if let Some(action) = action_for_key(
-            &combo,
-            VimSurfaceContext::SqlModal(SqlModalVimContext::QueryNormal),
-        ) {
-            return action;
-        }
-
-        return match combo.key {
-            Key::Enter if alt => Action::SqlModalSubmit,
-            Key::F(5) if plain => Action::SqlModalSubmit,
-            Key::Up => Action::TextMoveCursor {
-                target: InputTarget::SqlModal,
-                direction: CursorMove::Up,
-            },
-            Key::Down => Action::TextMoveCursor {
-                target: InputTarget::SqlModal,
-                direction: CursorMove::Down,
-            },
-            Key::Left => Action::TextMoveCursor {
-                target: InputTarget::SqlModal,
-                direction: CursorMove::Left,
-            },
-            Key::Right => Action::TextMoveCursor {
-                target: InputTarget::SqlModal,
-                direction: CursorMove::Right,
-            },
-            _ => Action::None,
-        };
+        return sql_view_action(combo, &context.with_sql_view(active_tab)).unwrap_or(Action::None);
     }
-
     Action::None
 }
 
@@ -208,7 +41,9 @@ mod tests {
     use super::*;
     use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
     use crate::model::sql_editor::modal::AdhocSuccessSnapshot;
-    use crate::update::action::{CursorMove, ScrollAmount, ScrollDirection, ScrollTarget};
+    use crate::update::action::{
+        CursorMove, InputTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
+    };
     use crate::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
 
@@ -269,7 +104,7 @@ mod tests {
             EngineFeatureProfile::sqlite_like()
         };
         let feature_policy = FeaturePolicy::new(&profile);
-        handle_sql_modal_keys_internal(
+        handle_sql_modal_keys_with_feature_policy(
             combo,
             completion_visible,
             status,
@@ -277,7 +112,6 @@ mod tests {
             pending_prefix,
             keymap_preset,
             &feature_policy,
-            supports_explain_analyze,
         )
     }
 
@@ -1440,106 +1274,6 @@ mod tests {
             );
 
             assert!(matches!(result, Action::None));
-        }
-    }
-
-    mod keybinding_contract {
-        use super::*;
-        use crate::update::input::keybindings::{
-            KeyBinding, SQL_MODAL_COMPARE_KEYS, SQL_MODAL_PLAN_KEYS,
-        };
-
-        fn assert_keybindings_match_handler(keys: &[KeyBinding], tab: SqlModalTab, label: &str) {
-            for kb in keys {
-                if matches!(kb.action, Action::None) || kb.combos.is_empty() {
-                    continue;
-                }
-                for c in kb.combos {
-                    let result = handle_sql_modal_keys(*c, false, &SqlModalStatus::Normal, tab);
-                    assert_action_matches(&result, &kb.action, label, c);
-                }
-            }
-        }
-
-        fn assert_action_matches(
-            result: &Action,
-            expected: &Action,
-            label: &str,
-            combo: &KeyCombo,
-        ) {
-            let same = match (result, expected) {
-                (
-                    Action::Scroll {
-                        target: rt,
-                        direction: rd,
-                        amount: ra,
-                    },
-                    Action::Scroll {
-                        target: et,
-                        direction: ed,
-                        amount: ea,
-                    },
-                ) => rt == et && rd == ed && ra == ea,
-                (
-                    Action::ScrollToCursor {
-                        target: rt,
-                        position: rp,
-                    },
-                    Action::ScrollToCursor {
-                        target: et,
-                        position: ep,
-                    },
-                ) => rt == et && rp == ep,
-                (
-                    Action::TextInput { target: rt, ch: rc },
-                    Action::TextInput { target: et, ch: ec },
-                ) => rt == et && rc == ec,
-                (Action::TextBackspace { target: rt }, Action::TextBackspace { target: et }) => {
-                    rt == et
-                }
-                (Action::TextDelete { target: rt }, Action::TextDelete { target: et }) => rt == et,
-                (
-                    Action::TextMoveCursor {
-                        target: rt,
-                        direction: rd,
-                    },
-                    Action::TextMoveCursor {
-                        target: et,
-                        direction: ed,
-                    },
-                ) => rt == et && rd == ed,
-                (Action::Select(rm), Action::Select(em)) => rm == em,
-                (
-                    Action::ListSelect {
-                        target: rt,
-                        motion: rm,
-                    },
-                    Action::ListSelect {
-                        target: et,
-                        motion: em,
-                    },
-                ) => rt == et && rm == em,
-                _ => std::mem::discriminant(result) == std::mem::discriminant(expected),
-            };
-
-            assert!(
-                same,
-                "{label}: combo {combo:?} returned {result:?}, expected {expected:?}",
-            );
-        }
-
-        #[test]
-        fn plan_keybinding_combo_returns_declared_action() {
-            assert_keybindings_match_handler(SQL_MODAL_PLAN_KEYS, SqlModalTab::Plan, "PLAN");
-        }
-
-        #[test]
-        fn compare_keybinding_combo_returns_declared_action() {
-            assert_keybindings_match_handler(
-                SQL_MODAL_COMPARE_KEYS,
-                SqlModalTab::Compare,
-                "COMPARE",
-            );
         }
     }
 }

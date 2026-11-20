@@ -122,29 +122,6 @@ mod tests {
                 assert_payload_free_action_eq(&kb, &expected);
             }
 
-            #[rstest]
-            #[case(sql_modal_plan::EXPLAIN, Action::ExplainRequest)]
-            #[case(sql_modal_plan::ANALYZE, Action::ExplainAnalyzeRequest)]
-            #[case(sql_modal_plan::YANK, Action::SqlModalYank)]
-            #[case(sql_modal_plan::TAB, Action::SqlModalNextTab)]
-            #[case(sql_modal_plan::BACKTAB, Action::SqlModalPrevTab)]
-            #[case(sql_modal_plan::CLOSE, Action::CloseModal(ModalKind::SqlModal))]
-            fn plan_key_action_matches(#[case] kb: KeyBinding, #[case] expected: Action) {
-                assert_payload_free_action_eq(&kb, &expected);
-            }
-
-            #[rstest]
-            #[case(sql_modal_compare::EXPLAIN, Action::ExplainRequest)]
-            #[case(sql_modal_compare::ANALYZE, Action::ExplainAnalyzeRequest)]
-            #[case(sql_modal_compare::EDIT_QUERY, Action::CompareEditQuery)]
-            #[case(sql_modal_compare::YANK, Action::SqlModalYank)]
-            #[case(sql_modal_compare::TAB, Action::SqlModalNextTab)]
-            #[case(sql_modal_compare::BACKTAB, Action::SqlModalPrevTab)]
-            #[case(sql_modal_compare::CLOSE, Action::CloseModal(ModalKind::SqlModal))]
-            fn compare_key_action_matches(#[case] kb: KeyBinding, #[case] expected: Action) {
-                assert_payload_free_action_eq(&kb, &expected);
-            }
-
             fn assert_payload_free_action_eq(kb: &KeyBinding, expected: &Action) {
                 assert!(
                     same_payload_free_action(&kb.action, expected),
@@ -197,18 +174,6 @@ mod tests {
                 check_none_action_entries_have_no_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
                 check_none_action_entries_have_no_combos(NAVIGATION_KEYS, "NAVIGATION_KEYS");
                 check_none_action_entries_have_no_combos(FOOTER_NAV_KEYS, "FOOTER_NAV_KEYS");
-                check_none_action_entries_have_no_combos(
-                    SQL_MODAL_NORMAL_KEYS,
-                    "SQL_MODAL_NORMAL_KEYS",
-                );
-                check_none_action_entries_have_no_combos(
-                    SQL_MODAL_PLAN_KEYS,
-                    "SQL_MODAL_PLAN_KEYS",
-                );
-                check_none_action_entries_have_no_combos(
-                    SQL_MODAL_COMPARE_KEYS,
-                    "SQL_MODAL_COMPARE_KEYS",
-                );
                 check_none_action_entries_have_no_combos(OVERLAY_KEYS, "OVERLAY_KEYS");
                 check_none_action_entries_have_no_combos(RESULT_ACTIVE_KEYS, "RESULT_ACTIVE_KEYS");
             }
@@ -254,18 +219,6 @@ mod tests {
         assert_eq!(
             global::SQLITE_DIAGNOSTICS.feature_requirement(),
             FeatureRequirement::SqliteDiagnostics
-        );
-        assert_eq!(
-            sql_modal_plan::EXPLAIN.feature_requirement(),
-            FeatureRequirement::Explain
-        );
-        assert_eq!(
-            sql_modal_plan::ANALYZE.feature_requirement(),
-            FeatureRequirement::ExplainAnalyze
-        );
-        assert_eq!(
-            sql_modal_compare::EDIT_QUERY.feature_requirement(),
-            FeatureRequirement::PlanComparison
         );
     }
 }

@@ -132,6 +132,11 @@ impl Binding {
         self
     }
 
+    pub(super) fn add_any_modifiers(mut self, key: Key) -> Self {
+        self.triggers.insert(1, Trigger::AnyModifiers(key));
+        self
+    }
+
     pub(super) fn command(
         command: LineCommand,
         name: &'static str,
@@ -196,7 +201,8 @@ impl Binding {
 
 pub(super) fn resolve(rows: &[Row], combo: KeyCombo, context: &KeyContext) -> Option<Action> {
     if let Some(pending) = context.pending_prefix()
-        && sequence_bindings(rows, context).next().is_some()
+        && (context.cancel_unmatched_sql_prefix()
+            || sequence_bindings(rows, context).next().is_some())
     {
         for (binding, trigger) in sequence_bindings(rows, context) {
             if let Trigger::Sequence { prefix, second, .. } = trigger
@@ -316,6 +322,7 @@ pub(super) fn hints(rows: &[Row], context: &KeyContext, surface: HintSurface) ->
                     | HintSurface::Connections
                     | HintSurface::Editing
                     | HintSurface::DataActions
+                    | HintSurface::ExplainPlaceholder
             ) {
                 long_name(&winning)
             } else {
@@ -505,6 +512,7 @@ mod tests {
     };
     use crate::update::input::keymap::sql_confirmation::active_rows as confirmation_rows;
     use crate::update::input::keymap::sql_edit::ROWS as SQL_EDIT_ROWS;
+    use crate::update::input::keymap::sql_view::active_rows as sql_view_rows;
     use crate::update::input::keymap::sqlite_diagnostics::ROWS as DIAGNOSTIC_ROWS;
 
     #[test]
@@ -857,6 +865,74 @@ mod tests {
                                 format!("{:?}", handle_event(InputEvent::Key(combo), &state)),
                                 format!("{expected:?}")
                             );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn visible_sql_view_bindings_resolve_through_event_entry() {
+        use crate::domain::{ConnectionId, DatabaseType};
+        use crate::model::app_state::AppState;
+        use crate::model::sql_editor::modal::SqlModalTab;
+        use crate::ports::inbound::InputEvent;
+        use crate::update::input::handle_event;
+
+        for engine in [
+            DatabaseType::PostgreSQL,
+            DatabaseType::MySQL,
+            DatabaseType::SQLite,
+        ] {
+            for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
+                for tab in [SqlModalTab::Sql, SqlModalTab::Plan, SqlModalTab::Compare] {
+                    let mut state = AppState::new("test".to_string());
+                    state.session.activate_connection_with_dsn(
+                        &ConnectionId::new(),
+                        "database",
+                        engine,
+                        "test://database",
+                    );
+                    state.modal.set_mode(InputMode::SqlModal);
+                    state.settings.load_keymap_preset(preset);
+                    state.sql_modal.set_active_tab(tab);
+                    let context = KeyContext::from_state(&state);
+                    let rows = sql_view_rows(&context).unwrap();
+                    for (row_index, row) in rows
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, row)| !row.surfaces.is_empty())
+                    {
+                        for (binding_index, binding) in row
+                            .bindings
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, binding)| binding.enabled(&context))
+                        {
+                            for trigger in binding.triggers(preset) {
+                                if winner(rows, &context, *trigger)
+                                    != Some((row_index, binding_index))
+                                {
+                                    continue;
+                                }
+                                let combo = match trigger {
+                                    Trigger::Key(combo) => *combo,
+                                    Trigger::AnyModifiers(key) | Trigger::NoCtrlAlt(key) => {
+                                        KeyCombo::plain(*key)
+                                    }
+                                    Trigger::WithAlt(key) => KeyCombo::alt(*key),
+                                    Trigger::WithCtrl(key) => KeyCombo::ctrl(*key),
+                                    _ => continue,
+                                };
+                                let Output::Action(expected) = &binding.output else {
+                                    unreachable!()
+                                };
+                                assert_eq!(
+                                    format!("{:?}", handle_event(InputEvent::Key(combo), &state)),
+                                    format!("{expected:?}")
+                                );
+                            }
                         }
                     }
                 }

@@ -294,17 +294,20 @@ TextMoveCursor { target: SqlModal, direction: WordBackward }: 'b'
 TextMoveCursor { target: SqlModal, direction: WordForward }: 'w'
 footer: 
 border: ╭ SQL Editor ── [SQL] [Plan] [Compare] ────────────────────────────────────────────────────────────────────────────────────────────╮
-border: ╰ ⌥Enter/F5: Run │ E: Explain │ i: Insert │ Tab/⇧Tab: Switch │ Esc: Close ─────────────────────────────────────────────────────────╯
+border: ╰ ⌥Enter/F5: Run │ E: Explain │ i/A: Insert │ Tab/⇧Tab: Switch │ Esc: Close ───────────────────────────────────────────────────────╯
 help: Alt+Enter / F5: Execute query
+help: E: Run EXPLAIN on current query
+help: Alt+E: Run EXPLAIN ANALYZE on current query
 help: y: Copy query to clipboard
-help: i: Enter Insert mode
-help: A: Append at line end
-help: h / j / k / l / ↑↓←→: Move cursor
+help: i / A: Enter Insert mode / append at line end
+help: Tab / Shift+Tab: Switch tab
+help: Ctrl+L: Clear editor
+help: O: Open Query History
+help: h / l / ← / →: Move cursor left / right
+help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Move cursor down / up
 help: 0 / $ / w / b / Home / End: Move by word or line boundary
 help: gg / G / H / M / L: Jump by buffer or viewport
 help: Esc: Close editor
-help: Ctrl+L: Clear editor
-help: O: Open Query History
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: T: Open Table Picker => OpenModal(TablePicker)
@@ -1418,9 +1421,8 @@ border: ╰ y: Yank │ Tab/⇧Tab: Switch │ Esc: Close ───────�
 help: E: Run EXPLAIN on current query
 help: Alt+E: Run EXPLAIN ANALYZE on current query
 help: y: Copy to clipboard
-help: Ctrl+N / Ctrl+P / ↑↓ / j / k: Scroll plan text
-help: Tab: Switch tab
-help: Shift+Tab: Previous tab
+help: Tab / Shift+Tab: Switch tab
+help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Scroll plan text
 help: Esc: Close editor
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
@@ -1452,9 +1454,8 @@ help: E: Run EXPLAIN on current query
 help: Alt+E: Run EXPLAIN ANALYZE on current query
 help: e: Edit query in SQL tab
 help: y: Copy to clipboard
-help: Ctrl+N / Ctrl+P / ↑↓ / j / k: Scroll comparison text
-help: Tab: Switch tab
-help: Shift+Tab: Previous tab
+help: Tab / Shift+Tab: Switch tab
+help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Scroll comparison text
 help: Esc: Close editor
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp

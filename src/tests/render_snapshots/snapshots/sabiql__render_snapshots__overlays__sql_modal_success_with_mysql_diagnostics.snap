@@ -42,7 +42,7 @@ expression: output
 │                │  [NORMAL] ✓ 1 row inserted (0.01s)                                                                                               │               │
 │                │           ⚠ Warning (Code 1062): Duplicate entry '1' for key 'users.PRIMARY'                                                     │               │
 │                │           ⚠ Note (Code 1050): Table 'users' already exists                                                                       │               │
-│                ╰ ⌥Enter/F5: Run │ ^E: Explain │ i: Insert │ Tab/⇧Tab: Switch │ Esc: Close ────────────────────────────────────────────────────────╯               │
+│                ╰ ⌥Enter/F5: Run │ ^E: Explain │ i/A: Insert │ Tab/⇧Tab: Switch │ Esc: Close ──────────────────────────────────────────────────────╯               │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

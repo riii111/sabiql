@@ -8,6 +8,7 @@ use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::help::{HelpOrigin, JsonHelpMode, SqlHelpMode};
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::settings::KeymapPreset;
+use crate::model::sql_editor::modal::SqlModalTab;
 use crate::policy::{FeaturePolicy, FeatureRequirement};
 #[allow(
     clippy::wildcard_imports,
@@ -18,7 +19,7 @@ use crate::update::input::keymap::{
     HintSurface, KeyContext, Picker, cell_detail_hints, cell_edit_hints, command_line_hints,
     confirm_hints, connection_error_hints, connection_selector_hints, connection_setup_hints,
     help_hints, json_edit_hints, json_search_hints, json_view_hints, picker_hints,
-    row_detail_hints, settings_hints, sql_confirmation_hints, sql_edit_hints,
+    row_detail_hints, settings_hints, sql_confirmation_hints, sql_edit_hints, sql_view_hints,
     sqlite_diagnostics_hints,
 };
 
@@ -674,69 +675,32 @@ fn sql_current_rows(
     keymap_preset: KeymapPreset,
     feature_policy: &FeaturePolicy,
 ) -> Vec<HelpRow> {
-    match mode {
-        SqlHelpMode::Normal => rows_from_binding_refs_if_visible(
-            &[
-                &sql_modal_normal::RUN,
-                &sql_modal_normal::YANK,
-                &sql_modal_normal::ENTER_INSERT,
-                &sql_modal_normal::APPEND,
-                &sql_modal_normal::MOVE,
-                &sql_modal_normal::HOME_END,
-                &sql_modal_normal::VIEWPORT,
-                &sql_modal_normal::CLOSE,
-                &sql_modal_normal::CLEAR,
-                sql_modal_normal_query_history(keymap_preset),
-            ],
-            feature_policy,
+    let context = KeyContext::for_scope(InputMode::SqlModal, keymap_preset, feature_policy);
+    let hints = match mode {
+        SqlHelpMode::Normal => sql_view_hints(
+            HintSurface::Current,
+            &context.with_sql_view(SqlModalTab::Sql),
         ),
-        SqlHelpMode::Insert => sql_edit_hints(
-            HintSurface::Current,
-            &KeyContext::for_scope(InputMode::SqlModal, keymap_preset, feature_policy)
-                .with_sql_editing(false),
-        )
-        .into_iter()
-        .map(|hint| HelpRow::new(hint.key, hint.description))
-        .collect(),
+        SqlHelpMode::Insert => {
+            sql_edit_hints(HintSurface::Current, &context.with_sql_editing(false))
+        }
         SqlHelpMode::Running => Vec::new(),
-        SqlHelpMode::Plan => {
-            let mut bindings: Vec<&KeyBinding> = vec![sql_modal_plan_explain(keymap_preset)];
-            if feature_policy.is_enabled(sql_modal_plan::ANALYZE.feature_requirement()) {
-                bindings.push(&sql_modal_plan::ANALYZE);
-            }
-            bindings.extend([
-                &sql_modal_plan::YANK,
-                &sql_modal_plan::SCROLL,
-                &sql_modal_plan::TAB,
-                &sql_modal_plan::BACKTAB,
-                &sql_modal_plan::CLOSE,
-            ]);
-            rows_from_binding_refs_if_visible(&bindings, feature_policy)
-        }
-        SqlHelpMode::Compare => {
-            let mut bindings: Vec<&KeyBinding> = vec![sql_modal_compare_explain(keymap_preset)];
-            if feature_policy.is_enabled(sql_modal_compare::ANALYZE.feature_requirement()) {
-                bindings.push(&sql_modal_compare::ANALYZE);
-            }
-            bindings.extend([
-                &sql_modal_compare::EDIT_QUERY,
-                &sql_modal_compare::YANK,
-                &sql_modal_compare::SCROLL,
-                &sql_modal_compare::TAB,
-                &sql_modal_compare::BACKTAB,
-                &sql_modal_compare::CLOSE,
-            ]);
-            rows_from_binding_refs_if_visible(&bindings, feature_policy)
-        }
-        SqlHelpMode::Confirm => sql_confirmation_hints(
+        SqlHelpMode::Plan => sql_view_hints(
             HintSurface::Current,
-            &KeyContext::for_scope(InputMode::SqlModal, keymap_preset, feature_policy)
-                .with_sql_confirmation(),
-        )
+            &context.with_sql_view(SqlModalTab::Plan),
+        ),
+        SqlHelpMode::Compare => sql_view_hints(
+            HintSurface::Current,
+            &context.with_sql_view(SqlModalTab::Compare),
+        ),
+        SqlHelpMode::Confirm => {
+            sql_confirmation_hints(HintSurface::Current, &context.with_sql_confirmation())
+        }
+    };
+    hints
         .into_iter()
         .map(|hint| HelpRow::new(hint.key, hint.description))
-        .collect(),
-    }
+        .collect()
 }
 
 fn section(title: &str, rows: Vec<HelpRow>) -> HelpSection {
@@ -752,18 +716,6 @@ fn rows_from_bindings(bindings: &[KeyBinding]) -> Vec<HelpRow> {
 
 fn rows_from_binding_refs(bindings: &[&KeyBinding]) -> Vec<HelpRow> {
     rows_from_binding_iter(bindings.iter().copied())
-}
-
-fn rows_from_binding_refs_if_visible(
-    bindings: &[&KeyBinding],
-    feature_policy: &FeaturePolicy,
-) -> Vec<HelpRow> {
-    rows_from_binding_iter(
-        bindings
-            .iter()
-            .copied()
-            .filter(|binding| feature_policy.is_enabled(binding.feature_requirement())),
-    )
 }
 
 fn rows_from_binding_iter<'a>(bindings: impl IntoIterator<Item = &'a KeyBinding>) -> Vec<HelpRow> {
@@ -829,7 +781,6 @@ mod tests {
         ColumnAttributes, ConnectionId, DatabaseType, QueryResult, QuerySource, QueryValue,
     };
     use crate::model::shared::ui_state::FocusMode;
-    use crate::model::sql_editor::modal::SqlModalTab;
     use crate::test_support;
     use std::sync::Arc;
 

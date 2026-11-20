@@ -6,7 +6,7 @@ use crate::model::shared::help::HelpMode;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::Prefix;
 use crate::model::shared::settings::{ErBrowserChoice, KeymapPreset, SettingsSection};
-use crate::model::sql_editor::modal::SqlModalStatus;
+use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
 use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::update::action::Action;
 
@@ -56,6 +56,11 @@ enum Scope {
     },
     SqlEditing {
         completion_visible: bool,
+    },
+    SqlNormal {
+        tab: SqlModalTab,
+        multiple_tabs: bool,
+        compare_can_yank: bool,
     },
     Other,
 }
@@ -118,6 +123,21 @@ impl KeyContext {
                     Scope::SqlEditing {
                         completion_visible: state.sql_modal.completion().visible
                             && !state.sql_modal.completion().candidates.is_empty(),
+                    }
+                }
+                InputMode::SqlModal
+                    if matches!(
+                        state.sql_modal.status(),
+                        SqlModalStatus::Normal
+                            | SqlModalStatus::Success(_)
+                            | SqlModalStatus::Error(_)
+                    ) =>
+                {
+                    let profile = state.session.active_engine_feature_profile();
+                    Scope::SqlNormal {
+                        tab: profile.normalize_sql_modal_tab(state.sql_modal.active_tab()),
+                        multiple_tabs: profile.supported_sql_modal_tabs().len() > 1,
+                        compare_can_yank: state.explain.can_yank_compare(),
                     }
                 }
                 InputMode::SqlModal => {
@@ -205,6 +225,53 @@ impl KeyContext {
                 completion_visible: true
             }
         )
+    }
+
+    pub(super) fn sql_tab(&self) -> Option<SqlModalTab> {
+        match self.scope {
+            Scope::SqlNormal { tab, .. } => Some(tab),
+            _ => None,
+        }
+    }
+
+    pub(super) fn sql_has_multiple_tabs(&self) -> bool {
+        matches!(
+            self.scope,
+            Scope::SqlNormal {
+                multiple_tabs: true,
+                ..
+            }
+        )
+    }
+
+    pub(super) fn sql_compare_can_yank(&self) -> bool {
+        matches!(
+            self.scope,
+            Scope::SqlNormal {
+                compare_can_yank: true,
+                ..
+            }
+        )
+    }
+
+    pub(super) fn cancel_unmatched_sql_prefix(&self) -> bool {
+        matches!(
+            self.scope,
+            Scope::SqlNormal {
+                tab: SqlModalTab::Plan | SqlModalTab::Compare,
+                ..
+            }
+        )
+    }
+
+    pub(crate) fn with_sql_view(mut self, tab: SqlModalTab) -> Self {
+        self.mode = InputMode::SqlModal;
+        self.scope = Scope::SqlNormal {
+            tab,
+            multiple_tabs: true,
+            compare_can_yank: true,
+        };
+        self
     }
 
     pub(crate) fn with_sql_editing(mut self, completion_visible: bool) -> Self {
