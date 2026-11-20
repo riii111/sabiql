@@ -84,9 +84,6 @@ impl ModeBindings {
     }
 }
 
-pub const SETTINGS: ModeBindings = ModeBindings {
-    rows: SETTINGS_ROWS,
-};
 pub const JSON_DETAIL: ModeBindings = ModeBindings {
     rows: JSON_DETAIL_ROWS,
 };
@@ -94,11 +91,8 @@ pub const JSON_EDIT: ModeBindings = ModeBindings {
     rows: JSON_EDIT_ROWS,
 };
 
-pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
-    ("SETTINGS", &SETTINGS),
-    ("JSON_DETAIL", &JSON_DETAIL),
-    ("JSON_EDIT", &JSON_EDIT),
-];
+pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] =
+    &[("JSON_DETAIL", &JSON_DETAIL), ("JSON_EDIT", &JSON_EDIT)];
 
 pub const HELP_KEY_INDENT_WIDTH: usize = 2;
 pub const HELP_KEY_DESC_GAP: usize = 2;

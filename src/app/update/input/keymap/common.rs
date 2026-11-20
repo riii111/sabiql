@@ -49,20 +49,42 @@ pub(super) fn readline_action_for(combo: &KeyCombo, target: InputTarget) -> Opti
 }
 
 pub(super) fn text_field(target: InputTarget, shift_keys: bool) -> Vec<Row> {
+    text_field_with(
+        target,
+        if shift_keys {
+            KeyModifiers::Shift
+        } else {
+            KeyModifiers::None
+        },
+    )
+}
+
+pub(super) fn text_field_any_modifiers(target: InputTarget) -> Vec<Row> {
+    text_field_with(target, KeyModifiers::Any)
+}
+
+#[derive(Clone, Copy)]
+enum KeyModifiers {
+    None,
+    Shift,
+    Any,
+}
+
+fn text_field_with(target: InputTarget, modifiers: KeyModifiers) -> Vec<Row> {
     let mut rows = READLINE
         .iter()
         .find(|(candidate, _)| *candidate == target)
         .map_or_default(|(_, rows)| rows.clone());
     rows.extend([
-        hidden(Action::TextBackspace { target }, Key::Backspace, shift_keys),
-        hidden(Action::TextDelete { target }, Key::Delete, shift_keys),
+        hidden(Action::TextBackspace { target }, Key::Backspace, modifiers),
+        hidden(Action::TextDelete { target }, Key::Delete, modifiers),
         hidden(
             Action::TextMoveCursor {
                 target,
                 direction: CursorMove::Left,
             },
             Key::Left,
-            shift_keys,
+            modifiers,
         ),
         hidden(
             Action::TextMoveCursor {
@@ -70,7 +92,7 @@ pub(super) fn text_field(target: InputTarget, shift_keys: bool) -> Vec<Row> {
                 direction: CursorMove::Right,
             },
             Key::Right,
-            shift_keys,
+            modifiers,
         ),
         hidden(
             Action::TextMoveCursor {
@@ -78,7 +100,7 @@ pub(super) fn text_field(target: InputTarget, shift_keys: bool) -> Vec<Row> {
                 direction: CursorMove::Home,
             },
             Key::Home,
-            shift_keys,
+            modifiers,
         ),
         hidden(
             Action::TextMoveCursor {
@@ -86,7 +108,7 @@ pub(super) fn text_field(target: InputTarget, shift_keys: bool) -> Vec<Row> {
                 direction: CursorMove::End,
             },
             Key::End,
-            shift_keys,
+            modifiers,
         ),
     ]);
     rows
@@ -123,10 +145,20 @@ pub(super) fn list_navigation(target: ListTarget, vim_keys: bool) -> Row {
     }
 }
 
-fn hidden(action: Action, key: Key, shift_keys: bool) -> Row {
+fn hidden(action: Action, key: Key, modifiers: KeyModifiers) -> Row {
     let combos = [KeyCombo::plain(key), KeyCombo::shift(key)];
-    let len = if shift_keys { 2 } else { 1 };
-    hidden_binding(action, &combos[..len])
+    let binding = match modifiers {
+        KeyModifiers::None => Binding::action(action, &combos[..1]),
+        KeyModifiers::Shift => Binding::action(action, &combos),
+        KeyModifiers::Any => Binding::any_modifiers(action, key),
+    };
+    Row {
+        bindings: vec![binding],
+        short: "",
+        description: "",
+        visible: None,
+        surfaces: &[],
+    }
 }
 
 fn hidden_combo(action: Action, combo: KeyCombo) -> Row {

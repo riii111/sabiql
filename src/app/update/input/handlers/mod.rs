@@ -52,6 +52,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
     match state.input_mode() {
         InputMode::ErTablePicker => return pickers::handle_er_table_picker_keys(combo, state),
         InputMode::CellDetail => return cell_detail::handle_cell_detail_keys(combo, state),
+        InputMode::Settings => return pickers::handle_settings_keys(combo, state),
         _ => {}
     }
     let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());

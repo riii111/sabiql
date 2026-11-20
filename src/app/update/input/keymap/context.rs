@@ -3,7 +3,7 @@ use crate::model::browse::json_detail::JsonDetailMode;
 use crate::model::connection::list::is_service_selected;
 use crate::model::shared::help::HelpMode;
 use crate::model::shared::input_mode::InputMode;
-use crate::model::shared::settings::KeymapPreset;
+use crate::model::shared::settings::{ErBrowserChoice, KeymapPreset, SettingsSection};
 use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::update::action::Action;
 
@@ -18,12 +18,28 @@ pub struct KeyContext {
 
 #[derive(Clone, Copy)]
 enum Scope {
-    Diagnostics { can_run: bool },
-    CellDetail { searching: bool },
-    Help { editing: bool },
-    Confirm { blocked: bool },
-    ConnectionSelector { service_selected: bool },
-    ConnectionError { can_retry: bool },
+    Diagnostics {
+        can_run: bool,
+    },
+    CellDetail {
+        searching: bool,
+    },
+    Help {
+        editing: bool,
+    },
+    Confirm {
+        blocked: bool,
+    },
+    ConnectionSelector {
+        service_selected: bool,
+    },
+    ConnectionError {
+        can_retry: bool,
+    },
+    Settings {
+        editing: bool,
+        custom_selected: bool,
+    },
     Other,
 }
 
@@ -59,6 +75,11 @@ impl KeyContext {
                 InputMode::ConnectionError => Scope::ConnectionError {
                     can_retry: state.can_retry_connection_error(),
                 },
+                InputMode::Settings => Scope::Settings {
+                    editing: state.settings.is_editing_custom_er_browser(),
+                    custom_selected: state.settings.section() == SettingsSection::ErDiagram
+                        && state.settings.selected_er_browser_choice() == ErBrowserChoice::Custom,
+                },
                 _ => Scope::Other,
             },
         }
@@ -79,6 +100,10 @@ impl KeyContext {
                     service_selected: false,
                 },
                 InputMode::ConnectionError => Scope::ConnectionError { can_retry: false },
+                InputMode::Settings => Scope::Settings {
+                    editing: false,
+                    custom_selected: true,
+                },
                 _ => Scope::Other,
             },
         }
@@ -121,6 +146,20 @@ impl KeyContext {
 
     pub(super) fn can_retry_connection(&self) -> bool {
         matches!(self.scope, Scope::ConnectionError { can_retry: true })
+    }
+
+    pub(super) fn is_settings_editing(&self) -> bool {
+        matches!(self.scope, Scope::Settings { editing: true, .. })
+    }
+
+    pub(super) fn is_custom_browser_selected(&self) -> bool {
+        matches!(
+            self.scope,
+            Scope::Settings {
+                custom_selected: true,
+                ..
+            }
+        )
     }
 
     pub(crate) fn with_cell_detail_searching(mut self, searching: bool) -> Self {

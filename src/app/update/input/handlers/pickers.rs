@@ -1,7 +1,7 @@
 use crate::model::app_state::AppState;
-use crate::update::action::{Action, InputTarget};
-use crate::update::input::keybindings::{self, Key, KeyCombo};
-use crate::update::input::keymap::{KeyContext, Picker, picker_action};
+use crate::update::action::Action;
+use crate::update::input::keybindings::KeyCombo;
+use crate::update::input::keymap::{KeyContext, Picker, picker_action, settings_action};
 
 pub(super) fn handle_table_picker_keys(combo: KeyCombo, state: &AppState) -> Action {
     picker_action(Picker::Table, combo, &KeyContext::from_state(state))
@@ -16,48 +16,7 @@ pub(super) fn handle_command_palette_keys(combo: KeyCombo, state: &AppState) -> 
 }
 
 pub(super) fn handle_settings_keys(combo: KeyCombo, state: &AppState) -> Action {
-    if state.settings.is_editing_custom_er_browser() {
-        return handle_custom_browser_edit_keys(combo);
-    }
-    if let Some(action) = keybindings::SETTINGS.resolve(&combo) {
-        return action;
-    }
-    Action::None
-}
-
-fn handle_custom_browser_edit_keys(combo: KeyCombo) -> Action {
-    use crate::update::action::CursorMove;
-    match combo.key {
-        Key::Enter => Action::SettingsApply,
-        Key::Esc => Action::SettingsStopCustomBrowserEdit,
-        Key::Char(c) => Action::TextInput {
-            target: InputTarget::SettingsErBrowser,
-            ch: c,
-        },
-        Key::Backspace => Action::TextBackspace {
-            target: InputTarget::SettingsErBrowser,
-        },
-        Key::Delete => Action::TextDelete {
-            target: InputTarget::SettingsErBrowser,
-        },
-        Key::Left => Action::TextMoveCursor {
-            target: InputTarget::SettingsErBrowser,
-            direction: CursorMove::Left,
-        },
-        Key::Right => Action::TextMoveCursor {
-            target: InputTarget::SettingsErBrowser,
-            direction: CursorMove::Right,
-        },
-        Key::Home => Action::TextMoveCursor {
-            target: InputTarget::SettingsErBrowser,
-            direction: CursorMove::Home,
-        },
-        Key::End => Action::TextMoveCursor {
-            target: InputTarget::SettingsErBrowser,
-            direction: CursorMove::End,
-        },
-        _ => Action::None,
-    }
+    settings_action(combo, &KeyContext::from_state(state))
 }
 
 pub(super) fn handle_query_history_picker_keys(combo: KeyCombo, state: &AppState) -> Action {
@@ -71,9 +30,10 @@ pub(super) fn handle_er_table_picker_keys(combo: KeyCombo, state: &AppState) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::settings::KeymapPreset;
     use crate::update::action::ModalKind;
-    use crate::update::action::{ListMotion, ListTarget};
+    use crate::update::action::{InputTarget, ListMotion, ListTarget};
     use crate::update::input::keybindings::{Key, KeyCombo, Modifiers};
     use rstest::rstest;
 
@@ -223,7 +183,9 @@ mod tests {
         use super::*;
 
         fn settings_state() -> AppState {
-            AppState::new("test".to_string())
+            let mut state = AppState::new("test".to_string());
+            state.modal.set_mode(InputMode::Settings);
+            state
         }
 
         fn editing_custom_browser_state() -> AppState {
@@ -241,6 +203,8 @@ mod tests {
         #[case(combo(Key::Up), Action::SettingsSelectPrevious)]
         #[case(combo(Key::Char('j')), Action::SettingsSelectNext)]
         #[case(combo(Key::Char('k')), Action::SettingsSelectPrevious)]
+        #[case(combo_ctrl(Key::Char('n')), Action::SettingsSelectNext)]
+        #[case(combo_ctrl(Key::Char('p')), Action::SettingsSelectPrevious)]
         #[case(combo(Key::Char('i')), Action::SettingsStartCustomBrowserEdit)]
         #[case(combo(Key::Tab), Action::SettingsNextSection)]
         #[case(combo_shift(Key::BackTab), Action::SettingsPreviousSection)]

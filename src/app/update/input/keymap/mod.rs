@@ -10,6 +10,7 @@ mod model;
 mod pickers;
 mod row_detail;
 mod scroll;
+mod settings;
 mod sqlite_diagnostics;
 
 use crate::ports::inbound::KeyCombo;
@@ -24,6 +25,7 @@ pub use help::{help_action, help_hints};
 pub use legacy::{resolve, resolve_mode, resolve_mode_with_policy, resolve_with_policy};
 pub use pickers::{Picker, picker_action, picker_hints};
 pub use row_detail::{row_detail_action, row_detail_hints};
+pub use settings::{settings_action, settings_hints};
 pub use sqlite_diagnostics::{sqlite_diagnostics_action, sqlite_diagnostics_hints};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

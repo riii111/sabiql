@@ -9,6 +9,7 @@ use super::{Hint, HintSurface, KeyContext};
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Trigger {
     Key(KeyCombo),
+    AnyModifiers(Key),
     Text,
 }
 
@@ -48,6 +49,14 @@ impl Binding {
             triggers: vec![Trigger::Text],
             ide_triggers: None,
             output: Output::Text(target),
+        }
+    }
+
+    pub(super) fn any_modifiers(action: Action, key: Key) -> Self {
+        Self {
+            triggers: vec![Trigger::AnyModifiers(key)],
+            ide_triggers: None,
+            output: Output::Action(action),
         }
     }
 
@@ -151,7 +160,15 @@ fn winner(rows: &[Row], context: &KeyContext, trigger: Trigger) -> Option<(usize
 
 fn matches_combo(trigger: Trigger, combo: KeyCombo) -> bool {
     match trigger {
-        Trigger::Key(key) => key == combo,
+        Trigger::Key(mut key) => {
+            let mut combo = combo;
+            if key.key == Key::BackTab && combo.key == Key::BackTab {
+                key.modifiers.set(Modifiers::SHIFT, false);
+                combo.modifiers.set(Modifiers::SHIFT, false);
+            }
+            key == combo
+        }
+        Trigger::AnyModifiers(key) => key == combo.key,
         Trigger::Text => {
             matches!(combo.key, Key::Char(_))
                 && (!combo.modifiers.contains(Modifiers::CTRL)
@@ -186,8 +203,10 @@ fn long_name(bindings: &[Vec<Trigger>]) -> String {
 }
 
 fn name(trigger: Trigger, long: bool) -> String {
-    let Trigger::Key(combo) = trigger else {
-        return "type".to_string();
+    let combo = match trigger {
+        Trigger::Key(combo) => combo,
+        Trigger::AnyModifiers(key) => KeyCombo::plain(key),
+        Trigger::Text => return "type".to_string(),
     };
     let mut result = String::new();
     if combo.modifiers.contains(Modifiers::CTRL) {
@@ -196,7 +215,7 @@ fn name(trigger: Trigger, long: bool) -> String {
     if combo.modifiers.contains(Modifiers::ALT) {
         result.push_str(if long { "Alt+" } else { "⌥" });
     }
-    if combo.modifiers.contains(Modifiers::SHIFT) {
+    if combo.modifiers.contains(Modifiers::SHIFT) && combo.key != Key::BackTab {
         result.push_str(if long { "Shift+" } else { "⇧" });
     }
     match combo.key {
@@ -245,6 +264,9 @@ mod tests {
     };
     use crate::update::input::keymap::pickers::{ER_ROWS, HISTORY_ROWS, PALETTE_ROWS, TABLE_ROWS};
     use crate::update::input::keymap::row_detail::ROWS as ROW_DETAIL_ROWS;
+    use crate::update::input::keymap::settings::{
+        EDITING as SETTINGS_EDIT_ROWS, SELECTING as SETTINGS_ROWS,
+    };
     use crate::update::input::keymap::sqlite_diagnostics::ROWS as DIAGNOSTIC_ROWS;
 
     #[test]
@@ -254,6 +276,7 @@ mod tests {
             (&*HISTORY_ROWS, None),
             (&*ER_ROWS, Some(' ')),
             (&*CELL_SEARCH_ROWS, None),
+            (&*SETTINGS_EDIT_ROWS, None),
             (&*HELP_EDIT_ROWS, None),
         ] {
             for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
@@ -291,6 +314,8 @@ mod tests {
             (&*HELP_VIEW_ROWS, EngineFeatureProfile::postgres_like()),
             (&*HELP_EDIT_ROWS, EngineFeatureProfile::postgres_like()),
             (&*CONFIRM_ROWS, EngineFeatureProfile::postgres_like()),
+            (&*SETTINGS_ROWS, EngineFeatureProfile::postgres_like()),
+            (&*SETTINGS_EDIT_ROWS, EngineFeatureProfile::postgres_like()),
             (
                 &*CONNECTION_ERROR_ROWS,
                 EngineFeatureProfile::postgres_like(),
@@ -319,6 +344,7 @@ mod tests {
                             );
                             let combo = match trigger {
                                 Trigger::Key(combo) => *combo,
+                                Trigger::AnyModifiers(key) => KeyCombo::plain(*key),
                                 Trigger::Text => KeyCombo::plain(Key::Char('x')),
                             };
                             let actual = resolve(rows, combo, &context).unwrap();

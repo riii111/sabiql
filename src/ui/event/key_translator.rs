@@ -28,6 +28,7 @@ pub fn translate(event: KeyEvent) -> KeyCombo {
     // flag to prevent double-encoding (e.g. Kitty sends 'G' + SHIFT).
     let raw_shift = event.modifiers.contains(KeyModifiers::SHIFT);
     let shift = match key {
+        Key::BackTab => true,
         Key::Char(c) if c.is_ascii_uppercase() => false,
         _ => raw_shift,
     };
@@ -87,6 +88,13 @@ mod tests {
                 modifiers: Modifiers::SHIFT,
             }
         );
+    }
+
+    #[test]
+    fn backtab_without_shift_normalizes_to_shift_backtab() {
+        let event = KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE);
+
+        assert_eq!(translate(event), KeyCombo::shift(Key::BackTab));
     }
 
     #[test]

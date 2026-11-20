@@ -18,7 +18,7 @@ use crate::app::update::input::keybindings::{
 };
 use crate::app::update::input::keymap::{
     HintSurface, KeyContext, Picker, cell_detail_hints, connection_error_hints, picker_hints,
-    sqlite_diagnostics_hints,
+    settings_hints, sqlite_diagnostics_hints,
 };
 use crate::primitives::atoms::key_text;
 use crate::primitives::atoms::spinner_char;
@@ -62,6 +62,7 @@ impl Footer {
                 InputMode::ConnectionError => {
                     Some(connection_error_hints(HintSurface::Footer, &context))
                 }
+                InputMode::Settings => Some(settings_hints(HintSurface::Footer, &context)),
                 _ => None,
             };
             let hints = if let Some(ref derived) = derived {
@@ -257,17 +258,11 @@ impl Footer {
             | InputMode::RowDetail
             | InputMode::ConnectionSelector
             | InputMode::ConnectionError
+            | InputMode::Settings
             | InputMode::QueryHistoryPicker
             | InputMode::ErTablePicker
             | InputMode::SqliteDiagnostics
             | InputMode::CellDetail => vec![],
-            InputMode::Settings => {
-                if state.settings.is_editing_custom_er_browser() {
-                    vec![]
-                } else {
-                    vec![settings::SELECT.as_hint()]
-                }
-            }
             InputMode::SqlModal => {
                 if matches!(state.sql_modal.status(), SqlModalStatus::Editing) {
                     vec![sql_modal::MOVE.as_hint()]
@@ -343,9 +338,7 @@ mod tests {
     use crate::app::model::shared::settings::KeymapPreset;
     use crate::app::model::shared::ui_state::FocusMode;
     use crate::app::ports::outbound::DbOperationError;
-    use crate::app::update::input::keybindings::{
-        global, json_detail, result_active, settings, sql_modal,
-    };
+    use crate::app::update::input::keybindings::{global, json_detail, result_active, sql_modal};
     use rstest::rstest;
 
     fn inspector_state() -> AppState {
@@ -566,10 +559,12 @@ mod tests {
         state.settings.start_custom_browser_edit();
         state.settings.stop_custom_browser_edit();
 
-        assert_eq!(
-            Footer::get_context_hints(&state),
-            vec![settings::SELECT.as_hint()]
+        let hints = super::settings_hints(
+            super::HintSurface::Footer,
+            &super::KeyContext::from_state(&state),
         );
+        assert_eq!(hints.len(), 1);
+        assert_eq!(hints[0].short, "Select");
     }
 
     #[test]
@@ -580,7 +575,10 @@ mod tests {
         state.settings.switch_next_section();
         state.settings.start_custom_browser_edit();
 
-        let hints = Footer::get_context_hints(&state);
+        let hints = super::settings_hints(
+            super::HintSurface::Footer,
+            &super::KeyContext::from_state(&state),
+        );
 
         assert!(hints.is_empty());
     }

@@ -164,7 +164,7 @@ mod tests {
 
     mod resolve_mode_tests {
         use super::*;
-        use crate::update::input::keybindings::SETTINGS_ROWS;
+        use crate::update::input::keybindings::JSON_DETAIL_ROWS;
 
         #[test]
         fn empty_rows_returns_none() {
@@ -175,16 +175,16 @@ mod tests {
 
         #[test]
         fn mode_returns_none_for_no_match() {
-            let result = resolve_mode(&KeyCombo::plain(Key::F(12)), SETTINGS_ROWS);
+            let result = resolve_mode(&KeyCombo::plain(Key::F(12)), JSON_DETAIL_ROWS);
 
             assert!(result.is_none());
         }
 
         #[test]
         fn first_matching_binding_wins() {
-            let result = resolve_mode(&KeyCombo::plain(Key::Esc), SETTINGS_ROWS);
+            let result = resolve_mode(&KeyCombo::plain(Key::Esc), JSON_DETAIL_ROWS);
 
-            assert!(matches!(result, Some(Action::SettingsCancel)));
+            assert!(matches!(result, Some(Action::CloseModal(_))));
         }
     }
 }

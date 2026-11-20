@@ -15,7 +15,7 @@ use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::update::input::keybindings::*;
 use crate::update::input::keymap::{
     HintSurface, KeyContext, Picker, cell_detail_hints, confirm_hints, connection_error_hints,
-    connection_selector_hints, help_hints, picker_hints, row_detail_hints,
+    connection_selector_hints, help_hints, picker_hints, row_detail_hints, settings_hints,
     sqlite_diagnostics_hints,
 };
 
@@ -323,7 +323,10 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
                 .map(|hint| HelpRow::new(hint.key, hint.description))
                 .collect()
         }
-        HelpOrigin::Settings => rows_from_mode_rows(SETTINGS_ROWS),
+        HelpOrigin::Settings => settings_hints(HintSurface::Current, &key_context)
+            .into_iter()
+            .map(|hint| HelpRow::new(hint.key, hint.description))
+            .collect(),
         HelpOrigin::Help => help_hints(HintSurface::Current, &key_context)
             .into_iter()
             .map(|hint| HelpRow::new(hint.key, hint.description))
@@ -783,10 +786,6 @@ fn paired_binding_row(first: &KeyBinding, second: &KeyBinding) -> Option<HelpRow
         format!("{}{}{}", first.key, separator, second.key),
         description,
     ))
-}
-
-fn rows_from_mode_rows(rows: &[ModeRow]) -> Vec<HelpRow> {
-    rows.iter().map(row_from_mode_row).collect()
 }
 
 fn rows_from_mode_rows_if_visible(
