@@ -8,10 +8,11 @@ expression: output
 │  ▦ public.posts                       ││(select a table)                                                                                                          │
 │  ▦ public.comments                    ││                                                                                                                          │
 │                        ╭ Help ───────────────────────────────────────────────────────────────────────────────────────────────────────────╮                        │
-│                        │  Esc                                  Return to Normal mode                                                    ▲│                        │
-│                        │  ↑↓←→                                 Move cursor                                                              ││                        │
-│                        │  Home/End                             Line start/end                                                           ││                        │
-│                        │  Tab                                  Insert tab / Accept completion                                           ││                        │
+│                        │  Alt+E                                Run EXPLAIN ANALYZE on current query                                     ▲│                        │
+│                        │  Esc                                  Return to Normal mode                                                    ││                        │
+│                        │  ← / → / ↑ / ↓                        Move cursor                                                              ││                        │
+│                        │  Home / End                           Line start/end                                                           ││                        │
+│                        │  Tab                                  Insert tab                                                               ││                        │
 │                        │  :w                                   Preview and confirm UPDATE                                               ││                        │
 │                        │  :                                    Open command line                                                        ││                        │
 │                        │  type                                 Edit cell value                                                          ││                        │
@@ -20,17 +21,15 @@ expression: output
 │                        │  Esc                                  Exit to Cell Active (draft preserved)                                    ││                        │
 │                        │  Enter                                Execute the confirmed statement                                          ││                        │
 │                        │  Esc                                  Cancel and return to editor                                              ││                        │
-│                        │  ← / → / ↑ / ↓                        Move cursor                                                              ││                        │
-│                        │  Home / End                           Line start/end                                                           ││                        │
-│                        │                                                                                                                ┃│                        │
+│                        │                                                                                                                ││                        │
 │                        │▸ Search / Filter                                                                                               ┃│                        │
 │                        │  type                                 Type to filter                                                           ┃│                        │
 │                        │  Enter                                Confirm search                                                           ┃│                        │
-│                        │  Esc                                  Cancel search                                                            ┃│────────────────────────┘
-│                        │  type                                 Type to search                                                           ┃│────────────────────────┐
-│                        │  j / k / ↓ / ↑ / Ctrl+N / Ctrl+P      Scroll down / up                                                         ┃│                        │
+│                        │  Esc                                  Cancel search                                                            ┃│                        │
+│                        │  type                                 Type to search                                                           ┃│────────────────────────┘
+│                        │  j / k / ↓ / ↑ / Ctrl+N / Ctrl+P      Scroll down / up                                                         ┃│────────────────────────┐
 │                        │  h / l / ← / →                        Scroll left / right                                                      ┃│                        │
-│                        │  Ctrl+D / Ctrl+U                      Scroll half page down / up                                               ││                        │
+│                        │  Ctrl+D / Ctrl+U                      Scroll half page down / up                                               ┃│                        │
 │                        │  PageDown / PageUp / Ctrl+F / Ctrl+B  Scroll full page down / up                                               ││                        │
 │                        │  Home / End                           Jump to top / bottom                                                     ││                        │
 │                        │  /                                    Edit filter                                                              ││                        │
@@ -44,7 +43,8 @@ expression: output
 │                        │  Enter                                Confirm dropdown selection                                               ││                        │
 │                        │  ↓ / Ctrl+N / ↑ / Ctrl+P              Dropdown navigation                                                      ││                        │
 │                        │  Esc                                  Cancel dropdown                                                          ││                        │
-│                        │  Enter                                Confirm selection                                                        ▼│                        │
+│                        │  Enter                                Confirm selection                                                        ││                        │
+│                        │  j / k / ↓ / ↑ / Ctrl+N / Ctrl+P      Select connection                                                        ▼│                        │
 │                        │─────────────────────────────────────────────────────────────────────────────────────────────────────────────────│                        │
 │                        │ [BROWSE]                                                                                                        │                        │
 │                        ╰ /: Filter │ Esc/?: Close ───────────────────────────────────────────────────────────────────────────────────────╯                        │

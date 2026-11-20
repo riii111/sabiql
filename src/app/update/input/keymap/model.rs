@@ -13,6 +13,8 @@ pub(super) enum Trigger {
     Key(KeyCombo),
     AnyModifiers(Key),
     NoCtrlAlt(Key),
+    WithAlt(Key),
+    WithCtrl(Key),
     Sequence {
         prefix: Prefix,
         second: KeyCombo,
@@ -96,6 +98,24 @@ impl Binding {
     pub(super) fn no_ctrl_alt(action: Action, key: Key) -> Self {
         Self {
             triggers: vec![Trigger::NoCtrlAlt(key)],
+            ide_triggers: None,
+            output: Output::Action(action),
+            condition: None,
+        }
+    }
+
+    pub(super) fn with_alt(action: Action, key: Key) -> Self {
+        Self {
+            triggers: vec![Trigger::WithAlt(key)],
+            ide_triggers: None,
+            output: Output::Action(action),
+            condition: None,
+        }
+    }
+
+    pub(super) fn with_ctrl(action: Action, key: Key) -> Self {
+        Self {
+            triggers: vec![Trigger::WithCtrl(key)],
             ide_triggers: None,
             output: Output::Action(action),
             condition: None,
@@ -325,6 +345,10 @@ fn winner(rows: &[Row], context: &KeyContext, trigger: Trigger) -> Option<(usize
                             Trigger::AnyModifiers(key) | Trigger::NoCtrlAlt(key) => {
                                 matches_combo(*candidate, KeyCombo::plain(key))
                             }
+                            Trigger::WithAlt(key) => matches_combo(*candidate, KeyCombo::alt(key)),
+                            Trigger::WithCtrl(key) => {
+                                matches_combo(*candidate, KeyCombo::ctrl(key))
+                            }
                             Trigger::Text | Trigger::AnyText => {
                                 matches_combo(*candidate, KeyCombo::plain(Key::Char('x')))
                             }
@@ -351,6 +375,8 @@ fn matches_combo(trigger: Trigger, combo: KeyCombo) -> bool {
         Trigger::NoCtrlAlt(key) => {
             key == combo.key && !combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT)
         }
+        Trigger::WithAlt(key) => key == combo.key && combo.modifiers.contains(Modifiers::ALT),
+        Trigger::WithCtrl(key) => key == combo.key && combo.modifiers.contains(Modifiers::CTRL),
         Trigger::Sequence { .. } | Trigger::Command { .. } => false,
         Trigger::Text => {
             matches!(combo.key, Key::Char(_))
@@ -390,6 +416,8 @@ fn name(trigger: Trigger, long: bool) -> String {
     let combo = match trigger {
         Trigger::Key(combo) => combo,
         Trigger::AnyModifiers(key) | Trigger::NoCtrlAlt(key) => KeyCombo::plain(key),
+        Trigger::WithAlt(key) => KeyCombo::alt(key),
+        Trigger::WithCtrl(key) => KeyCombo::ctrl(key),
         Trigger::Sequence { prefix, second, .. } => {
             return format!(
                 "{}{}",
@@ -476,6 +504,7 @@ mod tests {
         EDITING as SETTINGS_EDIT_ROWS, SELECTING as SETTINGS_ROWS,
     };
     use crate::update::input::keymap::sql_confirmation::active_rows as confirmation_rows;
+    use crate::update::input::keymap::sql_edit::ROWS as SQL_EDIT_ROWS;
     use crate::update::input::keymap::sqlite_diagnostics::ROWS as DIAGNOSTIC_ROWS;
 
     #[test]
@@ -567,6 +596,8 @@ mod tests {
                                 Trigger::AnyModifiers(key) | Trigger::NoCtrlAlt(key) => {
                                     KeyCombo::plain(*key)
                                 }
+                                Trigger::WithAlt(key) => KeyCombo::alt(*key),
+                                Trigger::WithCtrl(key) => KeyCombo::ctrl(*key),
                                 Trigger::Sequence { prefix, second, .. } => {
                                     let Output::Action(expected) = &binding.output else {
                                         unreachable!()
@@ -639,6 +670,8 @@ mod tests {
                                 Trigger::AnyModifiers(key) | Trigger::NoCtrlAlt(key) => {
                                     KeyCombo::plain(*key)
                                 }
+                                Trigger::WithAlt(key) => KeyCombo::alt(*key),
+                                Trigger::WithCtrl(key) => KeyCombo::ctrl(*key),
                                 Trigger::Text
                                 | Trigger::AnyText
                                 | Trigger::Command { .. }
@@ -738,6 +771,83 @@ mod tests {
                                 Trigger::AnyModifiers(key) | Trigger::NoCtrlAlt(key) => {
                                     KeyCombo::plain(*key)
                                 }
+                                Trigger::WithAlt(key) => KeyCombo::alt(*key),
+                                Trigger::WithCtrl(key) => KeyCombo::ctrl(*key),
+                                _ => continue,
+                            };
+                            let Output::Action(expected) = &binding.output else {
+                                unreachable!()
+                            };
+                            assert_eq!(
+                                format!("{:?}", handle_event(InputEvent::Key(combo), &state)),
+                                format!("{expected:?}")
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn visible_sql_edit_bindings_resolve_through_event_entry() {
+        use crate::model::app_state::AppState;
+        use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
+        use crate::ports::inbound::InputEvent;
+        use crate::update::{input::handle_event, test_fixtures};
+
+        for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
+            for visible in [false, true] {
+                let mut state = AppState::new("test".to_string());
+                test_fixtures::activate_postgres_connection(
+                    &mut state,
+                    "postgres://localhost/test",
+                );
+                state.modal.set_mode(InputMode::SqlModal);
+                state.settings.load_keymap_preset(preset);
+                state.sql_modal.enter_editing();
+                if visible {
+                    let candidates = [CompletionCandidate {
+                        text: "users".to_string(),
+                        kind: CompletionKind::Table,
+                        score: 1,
+                    }];
+                    state
+                        .sql_modal
+                        .apply_completion_update(&candidates, 0, true);
+                    assert!(matches!(
+                        handle_event(InputEvent::Key(KeyCombo::plain(Key::Enter)), &state),
+                        Action::CompletionAccept
+                    ));
+                    assert!(matches!(
+                        handle_event(InputEvent::Key(KeyCombo::plain(Key::Esc)), &state),
+                        Action::CompletionDismiss
+                    ));
+                }
+                let context = KeyContext::from_state(&state);
+                let rows = &*SQL_EDIT_ROWS;
+                for (row_index, row) in rows.iter().enumerate().filter(|(_, row)| {
+                    row.surfaces.contains(&HintSurface::Border)
+                        || row.surfaces.contains(&HintSurface::Footer)
+                }) {
+                    for (binding_index, binding) in row
+                        .bindings
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, binding)| binding.enabled(&context))
+                    {
+                        for trigger in binding.triggers(preset) {
+                            if winner(rows, &context, *trigger) != Some((row_index, binding_index))
+                            {
+                                continue;
+                            }
+                            let combo = match trigger {
+                                Trigger::Key(combo) => *combo,
+                                Trigger::AnyModifiers(key) | Trigger::NoCtrlAlt(key) => {
+                                    KeyCombo::plain(*key)
+                                }
+                                Trigger::WithAlt(key) => KeyCombo::alt(*key),
+                                Trigger::WithCtrl(key) => KeyCombo::ctrl(*key),
                                 _ => continue,
                             };
                             let Output::Action(expected) = &binding.output else {

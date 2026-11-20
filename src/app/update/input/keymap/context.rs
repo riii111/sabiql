@@ -54,6 +54,9 @@ enum Scope {
         kind: SqlConfirmation,
         matched: bool,
     },
+    SqlEditing {
+        completion_visible: bool,
+    },
     Other,
 }
 
@@ -109,6 +112,14 @@ impl KeyContext {
                     custom_selected: state.settings.section() == SettingsSection::ErDiagram
                         && state.settings.selected_er_browser_choice() == ErBrowserChoice::Custom,
                 },
+                InputMode::SqlModal
+                    if matches!(state.sql_modal.status(), SqlModalStatus::Editing) =>
+                {
+                    Scope::SqlEditing {
+                        completion_visible: state.sql_modal.completion().visible
+                            && !state.sql_modal.completion().candidates.is_empty(),
+                    }
+                }
                 InputMode::SqlModal => {
                     sql_confirmation_scope(state.sql_modal.status()).unwrap_or(Scope::Other)
                 }
@@ -185,6 +196,21 @@ impl KeyContext {
 
     pub(super) fn is_sql_confirmation_matched(&self) -> bool {
         matches!(self.scope, Scope::SqlConfirmation { matched: true, .. })
+    }
+
+    pub(super) fn is_sql_completion_visible(&self) -> bool {
+        matches!(
+            self.scope,
+            Scope::SqlEditing {
+                completion_visible: true
+            }
+        )
+    }
+
+    pub(crate) fn with_sql_editing(mut self, completion_visible: bool) -> Self {
+        self.mode = InputMode::SqlModal;
+        self.scope = Scope::SqlEditing { completion_visible };
+        self
     }
 
     pub(crate) fn with_sql_status(mut self, status: &SqlModalStatus) -> Self {

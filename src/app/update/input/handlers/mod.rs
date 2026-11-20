@@ -12,12 +12,14 @@ mod sql_modal;
 use crate::model::app_state::AppState;
 use crate::model::browse::json_detail::JsonDetailMode;
 use crate::model::shared::input_mode::InputMode;
+use crate::model::sql_editor::modal::SqlModalStatus;
 use crate::policy::FeaturePolicy;
 use crate::ports::inbound::{InputEvent, KeyCombo};
 use crate::update::action::Action;
 use crate::update::input::keybindings::readline_action_for;
 use crate::update::input::keymap::{
     KeyContext, json_edit_action, json_search_action, json_view_action, sql_confirmation_action,
+    sql_edit_action,
 };
 use interaction::{InputInteraction, resolve_input_interaction};
 
@@ -72,6 +74,9 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
         }
         InputMode::JsonEdit => return json_edit_action(combo, &KeyContext::from_state(state)),
         InputMode::SqlModal => {
+            if matches!(state.sql_modal.status(), SqlModalStatus::Editing) {
+                return sql_edit_action(combo, &KeyContext::from_state(state));
+            }
             if let Some(action) = sql_confirmation_action(combo, &KeyContext::from_state(state)) {
                 return action;
             }

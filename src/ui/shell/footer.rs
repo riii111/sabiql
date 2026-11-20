@@ -13,13 +13,13 @@ use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::policy::{FeaturePolicy, FeatureRequirement};
 use crate::app::update::input::keybindings::{
     cell_edit, command_palette as command_palette_key, csv_export, exit_read_only, footer_nav,
-    global, inspector_ddl, overlay, query_history, read_only, result_active, settings, sql_modal,
+    global, inspector_ddl, overlay, query_history, read_only, result_active, settings,
     sqlite_diagnostics, table_picker as table_picker_key,
 };
 use crate::app::update::input::keymap::{
     HintSurface, KeyContext, Picker, cell_detail_hints, cell_edit_hints, command_line_hints,
     connection_error_hints, json_edit_hints, json_search_hints, json_view_hints, picker_hints,
-    settings_hints, sqlite_diagnostics_hints,
+    settings_hints, sql_edit_hints, sqlite_diagnostics_hints,
 };
 use crate::primitives::atoms::key_text;
 use crate::primitives::atoms::spinner_char;
@@ -74,6 +74,11 @@ impl Footer {
                     })
                 }
                 InputMode::JsonEdit => Some(json_edit_hints(HintSurface::Footer, &context)),
+                InputMode::SqlModal
+                    if matches!(state.sql_modal.status(), SqlModalStatus::Editing) =>
+                {
+                    Some(sql_edit_hints(HintSurface::Footer, &context))
+                }
                 _ => None,
             };
             let hints = if let Some(ref derived) = derived {
@@ -265,14 +270,8 @@ impl Footer {
             | InputMode::QueryHistoryPicker
             | InputMode::ErTablePicker
             | InputMode::SqliteDiagnostics
+            | InputMode::SqlModal
             | InputMode::CellDetail => vec![],
-            InputMode::SqlModal => {
-                if matches!(state.sql_modal.status(), SqlModalStatus::Editing) {
-                    vec![sql_modal::MOVE.as_hint()]
-                } else {
-                    vec![]
-                }
-            }
         }
     }
 
@@ -314,7 +313,7 @@ mod tests {
     use crate::app::model::shared::settings::KeymapPreset;
     use crate::app::model::shared::ui_state::FocusMode;
     use crate::app::ports::outbound::DbOperationError;
-    use crate::app::update::input::keybindings::{global, result_active, sql_modal};
+    use crate::app::update::input::keybindings::{global, result_active};
     use rstest::rstest;
 
     fn inspector_state() -> AppState {
@@ -603,9 +602,13 @@ mod tests {
         state.sql_modal.enter_editing();
         state.settings.load_keymap_preset(preset);
 
-        let hints = Footer::get_context_hints(&state);
+        let hints = super::sql_edit_hints(
+            super::HintSurface::Footer,
+            &super::KeyContext::from_state(&state),
+        );
 
-        assert_eq!(hints, vec![sql_modal::MOVE.as_hint()]);
+        assert_eq!(hints.len(), 1);
+        assert_eq!(hints[0].short, "Move");
     }
 
     #[test]

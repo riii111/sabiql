@@ -8,7 +8,7 @@ use crate::update::input::keybindings::{
     Key, KeyCombo, Modifiers, sql_modal_compare_explain, sql_modal_normal_query_history,
     sql_modal_plan_explain,
 };
-use crate::update::input::keymap::{KeyContext, sql_confirmation_action};
+use crate::update::input::keymap::{KeyContext, sql_confirmation_action, sql_edit_action};
 use crate::update::input::vim::{
     SqlModalVimContext, VimSurfaceContext, action_for_input, action_for_key,
 };
@@ -50,6 +50,9 @@ fn handle_sql_modal_keys_internal(
         .with_sql_status(status);
     if let Some(action) = sql_confirmation_action(combo, &context) {
         return action;
+    }
+    if matches!(status, SqlModalStatus::Editing) {
+        return sql_edit_action(combo, &context.with_sql_editing(completion_visible));
     }
 
     // Running state: suppress all key input while EXPLAIN is executing
@@ -197,100 +200,7 @@ fn handle_sql_modal_keys_internal(
         };
     }
 
-    let ctrl = combo.modifiers.contains(Modifiers::CTRL);
-    let alt = combo.modifiers.contains(Modifiers::ALT);
-    let shift = combo.modifiers.contains(Modifiers::SHIFT);
-    let ctrl_only = ctrl && !alt && !shift;
-
-    let plain = !ctrl && !alt && !shift;
-
-    if (alt && combo.key == Key::Enter) || (plain && combo.key == Key::F(5)) {
-        return Action::SqlModalSubmit;
-    }
-
-    if keymap_preset == KeymapPreset::Default && ctrl_only && combo.key == Key::Char('o') {
-        return Action::OpenModal(ModalKind::QueryHistoryPicker);
-    }
-
-    if keymap_preset == KeymapPreset::Ide && ctrl_only && combo.key == Key::Char('o') {
-        return Action::None;
-    }
-
-    if ctrl_only && combo.key == Key::Char('e') {
-        return Action::None;
-    }
-
-    if ctrl && combo.key == Key::Char('l') {
-        return Action::SqlModalClear;
-    }
-
-    if alt && combo.key == Key::Char('e') {
-        return if supports_explain_analyze {
-            Action::ExplainAnalyzeRequest
-        } else {
-            Action::None
-        };
-    }
-
-    if completion_visible {
-        match combo.key {
-            Key::Char('p') if ctrl_only => return Action::CompletionPrev,
-            Key::Char('n') if ctrl_only => return Action::CompletionNext,
-            Key::Up => return Action::CompletionPrev,
-            Key::Down => return Action::CompletionNext,
-            Key::Tab | Key::Enter => return Action::CompletionAccept,
-            Key::Esc | Key::Left | Key::Right => return Action::CompletionDismiss,
-            _ => {}
-        }
-    }
-
-    if let Some(action) = action_for_key(
-        &combo,
-        VimSurfaceContext::SqlModal(SqlModalVimContext::QueryEditing),
-    ) {
-        return action;
-    }
-
-    match combo.key {
-        Key::Left => Action::TextMoveCursor {
-            target: InputTarget::SqlModal,
-            direction: CursorMove::Left,
-        },
-        Key::Right => Action::TextMoveCursor {
-            target: InputTarget::SqlModal,
-            direction: CursorMove::Right,
-        },
-        Key::Up => Action::TextMoveCursor {
-            target: InputTarget::SqlModal,
-            direction: CursorMove::Up,
-        },
-        Key::Down => Action::TextMoveCursor {
-            target: InputTarget::SqlModal,
-            direction: CursorMove::Down,
-        },
-        Key::Home => Action::TextMoveCursor {
-            target: InputTarget::SqlModal,
-            direction: CursorMove::Home,
-        },
-        Key::End => Action::TextMoveCursor {
-            target: InputTarget::SqlModal,
-            direction: CursorMove::End,
-        },
-        // Editing
-        Key::Backspace => Action::TextBackspace {
-            target: InputTarget::SqlModal,
-        },
-        Key::Delete => Action::TextDelete {
-            target: InputTarget::SqlModal,
-        },
-        Key::Enter => Action::SqlModalNewLine,
-        Key::Tab => Action::SqlModalInsertTab,
-        Key::Char(c) => Action::TextInput {
-            target: InputTarget::SqlModal,
-            ch: c,
-        },
-        _ => Action::None,
-    }
+    Action::None
 }
 
 #[cfg(test)]
@@ -353,7 +263,12 @@ mod tests {
         keymap_preset: KeymapPreset,
         supports_explain_analyze: bool,
     ) -> Action {
-        let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::postgres_like());
+        let profile = if supports_explain_analyze {
+            EngineFeatureProfile::postgres_like()
+        } else {
+            EngineFeatureProfile::sqlite_like()
+        };
+        let feature_policy = FeaturePolicy::new(&profile);
         handle_sql_modal_keys_internal(
             combo,
             completion_visible,

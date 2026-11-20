@@ -17,6 +17,7 @@ mod row_detail;
 mod scroll;
 mod settings;
 mod sql_confirmation;
+mod sql_edit;
 mod sqlite_diagnostics;
 
 use crate::ports::inbound::KeyCombo;
@@ -38,6 +39,7 @@ pub use pickers::{Picker, picker_action, picker_hints};
 pub use row_detail::{row_detail_action, row_detail_hints};
 pub use settings::{settings_action, settings_hints};
 pub use sql_confirmation::{sql_confirmation_action, sql_confirmation_hints};
+pub use sql_edit::{sql_edit_action, sql_edit_hints};
 pub use sqlite_diagnostics::{sqlite_diagnostics_action, sqlite_diagnostics_hints};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

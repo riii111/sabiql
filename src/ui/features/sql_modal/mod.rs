@@ -18,9 +18,11 @@ use crate::app::model::sql_editor::modal::{SQL_MODAL_HEIGHT_PERCENT, SqlModalSta
 use crate::app::policy::write::sql_risk::AcknowledgeReason;
 use crate::app::policy::{FeaturePolicy, FeatureRequirement};
 use crate::app::update::input::keybindings::{
-    sql_modal, sql_modal_compare, sql_modal_normal, sql_modal_plan, sql_modal_plan_explain,
+    sql_modal_compare, sql_modal_normal, sql_modal_plan, sql_modal_plan_explain,
 };
-use crate::app::update::input::keymap::{HintSurface, KeyContext, sql_confirmation_hints};
+use crate::app::update::input::keymap::{
+    HintSurface, KeyContext, sql_confirmation_hints, sql_edit_hints,
+};
 use crate::primitives::molecules::overlay::{centered_rect, render_scrim};
 use crate::primitives::molecules::{FooterHintBar, render_modal_with_border_color};
 use crate::theme::ThemePalette;
@@ -108,9 +110,11 @@ impl SqlModal {
             }
         } else {
             let hint = match state.sql_modal.status() {
-                SqlModalStatus::Editing => {
-                    Self::editing_hint(&feature_policy, state.settings.saved_keymap_preset())
-                }
+                SqlModalStatus::Editing => FooterHintBar::new(
+                    sql_edit_hints(HintSurface::Border, &KeyContext::from_state(state))
+                        .into_iter()
+                        .map(|hint| (hint.key, hint.short)),
+                ),
                 SqlModalStatus::Running => FooterHintBar::message("Running\u{2026}"),
                 SqlModalStatus::ConfirmingAnalyzeHigh { .. }
                 | SqlModalStatus::ConfirmingAnalyzeRisk { .. } => FooterHintBar::new(
@@ -315,32 +319,6 @@ impl SqlModal {
                     ])
                 }
             }
-        }
-    }
-
-    fn editing_hint(feature_policy: &FeaturePolicy, keymap_preset: KeymapPreset) -> FooterHintBar {
-        match (
-            feature_policy.is_enabled(FeatureRequirement::Explain),
-            keymap_preset,
-        ) {
-            (true, KeymapPreset::Default) => FooterHintBar::new([
-                sql_modal::RUN.as_hint(),
-                sql_modal_plan::EXPLAIN.as_hint(),
-                sql_modal::CLEAR.as_hint(),
-                sql_modal::QUERY_HISTORY.as_hint(),
-                sql_modal::ESC_NORMAL.as_hint(),
-            ]),
-            (false, KeymapPreset::Default) => FooterHintBar::new([
-                sql_modal::RUN.as_hint(),
-                sql_modal::CLEAR.as_hint(),
-                sql_modal::QUERY_HISTORY.as_hint(),
-                sql_modal::ESC_NORMAL.as_hint(),
-            ]),
-            (_, KeymapPreset::Ide) => FooterHintBar::new([
-                sql_modal::RUN.as_hint(),
-                sql_modal::CLEAR.as_hint(),
-                sql_modal::ESC_NORMAL.as_hint(),
-            ]),
         }
     }
 }

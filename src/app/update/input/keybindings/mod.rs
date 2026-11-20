@@ -201,7 +201,6 @@ mod tests {
                     SQL_MODAL_NORMAL_KEYS,
                     "SQL_MODAL_NORMAL_KEYS",
                 );
-                check_none_action_entries_have_no_combos(SQL_MODAL_KEYS, "SQL_MODAL_KEYS");
                 check_none_action_entries_have_no_combos(
                     SQL_MODAL_PLAN_KEYS,
                     "SQL_MODAL_PLAN_KEYS",

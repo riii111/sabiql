@@ -18,7 +18,8 @@ use crate::update::input::keymap::{
     HintSurface, KeyContext, Picker, cell_detail_hints, cell_edit_hints, command_line_hints,
     confirm_hints, connection_error_hints, connection_selector_hints, connection_setup_hints,
     help_hints, json_edit_hints, json_search_hints, json_view_hints, picker_hints,
-    row_detail_hints, settings_hints, sql_confirmation_hints, sqlite_diagnostics_hints,
+    row_detail_hints, settings_hints, sql_confirmation_hints, sql_edit_hints,
+    sqlite_diagnostics_hints,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -689,20 +690,15 @@ fn sql_current_rows(
             ],
             feature_policy,
         ),
-        SqlHelpMode::Insert | SqlHelpMode::Running => match keymap_preset {
-            KeymapPreset::Default => rows_from_bindings_if_visible(SQL_MODAL_KEYS, feature_policy),
-            KeymapPreset::Ide => rows_from_binding_refs_if_visible(
-                &[
-                    &sql_modal::RUN,
-                    &sql_modal::ESC_NORMAL,
-                    &sql_modal::MOVE,
-                    &sql_modal::HOME_END,
-                    &sql_modal::TAB,
-                    &sql_modal::CLEAR,
-                ],
-                feature_policy,
-            ),
-        },
+        SqlHelpMode::Insert => sql_edit_hints(
+            HintSurface::Current,
+            &KeyContext::for_scope(InputMode::SqlModal, keymap_preset, feature_policy)
+                .with_sql_editing(false),
+        )
+        .into_iter()
+        .map(|hint| HelpRow::new(hint.key, hint.description))
+        .collect(),
+        SqlHelpMode::Running => Vec::new(),
         SqlHelpMode::Plan => {
             let mut bindings: Vec<&KeyBinding> = vec![sql_modal_plan_explain(keymap_preset)];
             if feature_policy.is_enabled(sql_modal_plan::ANALYZE.feature_requirement()) {
@@ -752,17 +748,6 @@ fn section(title: &str, rows: Vec<HelpRow>) -> HelpSection {
 
 fn rows_from_bindings(bindings: &[KeyBinding]) -> Vec<HelpRow> {
     rows_from_binding_iter(bindings.iter())
-}
-
-fn rows_from_bindings_if_visible(
-    bindings: &[KeyBinding],
-    feature_policy: &FeaturePolicy,
-) -> Vec<HelpRow> {
-    rows_from_binding_iter(
-        bindings
-            .iter()
-            .filter(|binding| feature_policy.is_enabled(binding.feature_requirement())),
-    )
 }
 
 fn rows_from_binding_refs(bindings: &[&KeyBinding]) -> Vec<HelpRow> {
