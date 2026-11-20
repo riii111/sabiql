@@ -206,24 +206,26 @@ fn name(trigger: Trigger, long: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::update::input::keymap::table_picker::ROWS;
+    use crate::update::input::keymap::pickers::{HISTORY_ROWS, TABLE_ROWS};
 
     #[test]
-    fn table_picker_has_unique_keys_and_keeps_plain_text_unclaimed() {
-        for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
-            let mut seen = Vec::new();
-            for row in ROWS.iter() {
-                for binding in &row.bindings {
-                    for trigger in binding.triggers(preset) {
-                        assert!(!seen.contains(trigger));
-                        seen.push(*trigger);
-                        assert!(!matches!(
-                            trigger,
-                            Trigger::Key(KeyCombo {
-                                key: Key::Char(_),
-                                modifiers: Modifiers::NONE
-                            })
-                        ));
+    fn text_pickers_have_unique_keys_and_keep_plain_text_unclaimed() {
+        for rows in [&*TABLE_ROWS, &*HISTORY_ROWS] {
+            for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
+                let mut seen = Vec::new();
+                for row in rows {
+                    for binding in &row.bindings {
+                        for trigger in binding.triggers(preset) {
+                            assert!(!seen.contains(trigger));
+                            seen.push(*trigger);
+                            assert!(!matches!(
+                                trigger,
+                                Trigger::Key(KeyCombo {
+                                    key: Key::Char(_),
+                                    modifiers: Modifiers::NONE
+                                })
+                            ));
+                        }
                     }
                 }
             }
@@ -231,31 +233,33 @@ mod tests {
     }
 
     #[test]
-    fn visible_table_picker_bindings_resolve_to_the_same_actions() {
-        for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
-            for (row_index, row) in ROWS
-                .iter()
-                .enumerate()
-                .filter(|(_, row)| !row.surfaces.is_empty())
-            {
-                for (binding_index, binding) in row.bindings.iter().enumerate() {
-                    for trigger in binding.triggers(preset) {
-                        assert_eq!(
-                            winner(&ROWS, preset, *trigger),
-                            Some((row_index, binding_index))
-                        );
-                        let combo = match trigger {
-                            Trigger::Key(combo) => *combo,
-                            Trigger::Text => KeyCombo::plain(Key::Char('x')),
-                        };
-                        let actual = resolve(&ROWS, combo, preset).unwrap();
-                        match &binding.output {
-                            Output::Action(expected) => {
-                                assert_eq!(format!("{actual:?}"), format!("{expected:?}"));
+    fn visible_text_picker_bindings_resolve_to_the_same_actions() {
+        for rows in [&*TABLE_ROWS, &*HISTORY_ROWS] {
+            for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
+                for (row_index, row) in rows
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, row)| !row.surfaces.is_empty())
+                {
+                    for (binding_index, binding) in row.bindings.iter().enumerate() {
+                        for trigger in binding.triggers(preset) {
+                            assert_eq!(
+                                winner(rows, preset, *trigger),
+                                Some((row_index, binding_index))
+                            );
+                            let combo = match trigger {
+                                Trigger::Key(combo) => *combo,
+                                Trigger::Text => KeyCombo::plain(Key::Char('x')),
+                            };
+                            let actual = resolve(rows, combo, preset).unwrap();
+                            match &binding.output {
+                                Output::Action(expected) => {
+                                    assert_eq!(format!("{actual:?}"), format!("{expected:?}"));
+                                }
+                                Output::Text(target) => assert!(
+                                    matches!(actual, Action::TextInput { target: actual_target, ch: 'x' } if actual_target == *target)
+                                ),
                             }
-                            Output::Text(target) => assert!(
-                                matches!(actual, Action::TextInput { target: actual_target, ch: 'x' } if actual_target == *target)
-                            ),
                         }
                     }
                 }

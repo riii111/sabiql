@@ -3,10 +3,10 @@ use crate::policy::FeaturePolicy;
 use crate::update::action::{Action, InputTarget};
 use crate::update::input::keybindings::{self, Key, KeyCombo, Modifiers};
 use crate::update::input::keymap::resolve_mode_with_policy;
-use crate::update::input::keymap::table_picker_action;
+use crate::update::input::keymap::{TextPicker, picker_action};
 
 pub(super) fn handle_table_picker_keys(combo: KeyCombo) -> Action {
-    table_picker_action(combo)
+    picker_action(TextPicker::Table, combo)
 }
 
 pub(super) fn handle_command_palette_keys(combo: KeyCombo) -> Action {
@@ -61,16 +61,7 @@ fn handle_custom_browser_edit_keys(combo: KeyCombo) -> Action {
 }
 
 pub(super) fn handle_query_history_picker_keys(combo: KeyCombo) -> Action {
-    if let Some(action) = keybindings::QUERY_HISTORY_PICKER.resolve(&combo) {
-        return action;
-    }
-    match combo.key {
-        Key::Char(c) => Action::TextInput {
-            target: InputTarget::QueryHistoryFilter,
-            ch: c,
-        },
-        _ => Action::None,
-    }
+    picker_action(TextPicker::QueryHistory, combo)
 }
 
 pub(super) fn handle_er_table_picker_keys(combo: KeyCombo, state: &AppState) -> Action {

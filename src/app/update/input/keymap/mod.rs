@@ -1,13 +1,13 @@
 mod common;
 mod legacy;
 mod model;
-mod table_picker;
+mod pickers;
 
 use crate::ports::inbound::KeyCombo;
 use crate::update::action::{Action, InputTarget};
 
 pub use legacy::{resolve, resolve_mode, resolve_mode_with_policy, resolve_with_policy};
-pub use table_picker::{table_picker_action, table_picker_hints};
+pub use pickers::{TextPicker, picker_action, picker_hints};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HintSurface {

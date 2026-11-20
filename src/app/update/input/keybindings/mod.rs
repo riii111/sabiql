@@ -91,9 +91,6 @@ pub const CONNECTION_ERROR: ModeBindings = ModeBindings {
 pub const ER_PICKER: ModeBindings = ModeBindings {
     rows: ER_PICKER_ROWS,
 };
-pub const QUERY_HISTORY_PICKER: ModeBindings = ModeBindings {
-    rows: QUERY_HISTORY_PICKER_ROWS,
-};
 pub const COMMAND_PALETTE: ModeBindings = ModeBindings {
     rows: COMMAND_PALETTE_ROWS,
 };
@@ -123,7 +120,6 @@ pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("HELP", &HELP),
     ("CONNECTION_ERROR", &CONNECTION_ERROR),
     ("ER_PICKER", &ER_PICKER),
-    ("QUERY_HISTORY_PICKER", &QUERY_HISTORY_PICKER),
     ("COMMAND_PALETTE", &COMMAND_PALETTE),
     ("SETTINGS", &SETTINGS),
     ("CONNECTION_SELECTOR", &CONNECTION_SELECTOR),
@@ -523,15 +519,6 @@ mod tests {
                     ER_PICKER_ROWS_IDE,
                     "ER_PICKER_ROWS_IDE",
                     &[' '],
-                );
-            }
-
-            #[test]
-            fn query_history_picker_has_no_plain_char_combos() {
-                check_no_plain_char_in_filter_mode_rows(
-                    QUERY_HISTORY_PICKER_ROWS,
-                    "QUERY_HISTORY_PICKER_ROWS",
-                    &[],
                 );
             }
 

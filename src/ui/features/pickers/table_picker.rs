@@ -6,7 +6,7 @@ use ratatui::widgets::{List, ListItem, ListState};
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::render_output::PickerLayout;
 use crate::app::policy::table_kind::table_display_name;
-use crate::app::update::input::keymap::{HintSurface, table_picker_hints};
+use crate::app::update::input::keymap::{HintSurface, TextPicker, picker_hints};
 use crate::primitives::atoms::Icon;
 use crate::primitives::molecules::{FooterHintBar, render_filter_input_line, render_modal};
 use crate::theme::ThemePalette;
@@ -24,7 +24,7 @@ impl TablePicker {
             " Table Picker ",
             FooterHintBar::with_prefix(
                 format!("{filtered_count} tables"),
-                table_picker_hints(HintSurface::Border)
+                picker_hints(TextPicker::Table, HintSurface::Border)
                     .into_iter()
                     .map(|hint| (hint.key, hint.short)),
             ),
