@@ -49,6 +49,7 @@ pub(super) struct Row {
     pub bindings: Vec<Binding>,
     pub short: &'static str,
     pub description: &'static str,
+    pub dynamic_label: Option<fn(&KeyContext) -> (&'static str, &'static str)>,
     pub visible: Option<fn(&KeyContext, HintSurface) -> bool>,
     pub surfaces: &'static [HintSurface],
 }
@@ -286,6 +287,17 @@ pub(super) fn resolve_command(rows: &[Row], input: &str) -> Option<LineCommand> 
 }
 
 pub(super) fn hints(rows: &[Row], context: &KeyContext, surface: HintSurface) -> Vec<Hint> {
+    indexed_hints(rows, context, surface)
+        .into_iter()
+        .map(|(_, hint)| hint)
+        .collect()
+}
+
+pub(super) fn indexed_hints(
+    rows: &[Row],
+    context: &KeyContext,
+    surface: HintSurface,
+) -> Vec<(usize, Hint)> {
     rows.iter()
         .enumerate()
         .filter(|(_, row)| {
@@ -313,28 +325,59 @@ pub(super) fn hints(rows: &[Row], context: &KeyContext, surface: HintSurface) ->
             if winning.is_empty() {
                 return None;
             }
-            let key = if matches!(
-                surface,
-                HintSurface::Current
-                    | HintSurface::SearchFilter
-                    | HintSurface::Advanced
-                    | HintSurface::ModalBasics
-                    | HintSurface::Connections
-                    | HintSurface::Editing
-                    | HintSurface::DataActions
-                    | HintSurface::ExplainPlaceholder
-            ) {
-                long_name(&winning)
-            } else {
-                short_name(&winning)
-            };
-            Some(Hint {
-                key,
-                short: row.short,
-                description: row.description,
-            })
+            Some((row_index, display_hint(row, context, surface, &winning)))
         })
         .collect()
+}
+
+pub(super) fn retained_hint(row: &Row, context: &KeyContext, surface: HintSurface) -> Hint {
+    let triggers: Vec<_> = row
+        .bindings
+        .iter()
+        .map(|binding| binding.triggers(context.preset).to_vec())
+        .collect();
+    display_hint(row, context, surface, &triggers)
+}
+
+pub(super) fn row_action(row: &Row) -> Option<Action> {
+    row.bindings
+        .iter()
+        .find_map(|binding| match &binding.output {
+            Output::Action(action) => Some(action.clone()),
+            _ => None,
+        })
+}
+
+fn display_hint(
+    row: &Row,
+    context: &KeyContext,
+    surface: HintSurface,
+    triggers: &[Vec<Trigger>],
+) -> Hint {
+    let key = if matches!(
+        surface,
+        HintSurface::Current
+            | HintSurface::SearchFilter
+            | HintSurface::Advanced
+            | HintSurface::ModalBasics
+            | HintSurface::Connections
+            | HintSurface::Editing
+            | HintSurface::DataActions
+            | HintSurface::ExplainPlaceholder
+            | HintSurface::Palette
+    ) {
+        long_name(triggers)
+    } else {
+        short_name(triggers)
+    };
+    let (short, description) = row
+        .dynamic_label
+        .map_or((row.short, row.description), |label| label(context));
+    Hint {
+        key,
+        short,
+        description,
+    }
 }
 
 fn winner(rows: &[Row], context: &KeyContext, trigger: Trigger) -> Option<(usize, usize)> {

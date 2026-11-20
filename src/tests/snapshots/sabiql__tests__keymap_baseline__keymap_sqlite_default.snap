@@ -48,9 +48,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## CommandLine
 CommandLineSubmit: Enter
@@ -89,9 +87,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## CellEdit
 EnterCommandLine: ':'
@@ -128,9 +124,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## TablePicker
 CloseModal(TablePicker): Esc
@@ -169,9 +163,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## CommandPalette
 CloseModal(CommandPalette): Esc
@@ -193,9 +185,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## Settings
 SettingsApply: Enter
@@ -224,9 +214,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## Help
 CloseModal(Help): '?', Esc
@@ -260,9 +248,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## SqlModal
 BeginKeySequence(G): 'g'
@@ -314,9 +300,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## ConnectionSetup
 ConnectionSetupCancel: Esc, ^Esc, ⌥Esc, ^⌥Esc, ⇧Esc, ^⇧Esc
@@ -347,9 +331,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## ConnectionError
 CloseConnectionError: Esc
@@ -377,9 +359,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## ConfirmDialog
 ConfirmDialogCancel: Esc
@@ -401,9 +381,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## ConnectionSelector
 ConfirmConnectionSelection: Enter
@@ -431,9 +409,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## ErTablePicker
 CloseModal(ErTablePicker): Esc
@@ -450,9 +426,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## QueryHistoryPicker
 CloseModal(QueryHistoryPicker): Esc
@@ -491,9 +465,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## JsonDetail
 CloseModal(JsonDetail): 'q', Esc
@@ -508,9 +480,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## JsonEdit
 JsonExitEdit: Esc
@@ -525,9 +495,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## CellDetail
 CloseModal(CellDetail): 'q', Esc
@@ -561,9 +529,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## SqliteDiagnostics
 CloseModal(SqliteDiagnostics): Esc
@@ -587,9 +553,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## RowDetail
 CloseModal(RowDetail): Esc
@@ -623,9 +587,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## Normal Inspector
 BeginKeySequence(Z): 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z'
@@ -671,9 +633,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## Normal Result
 BeginKeySequence(Z): 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z'
@@ -724,9 +684,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## Normal focus
 BeginKeySequence(Z): 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z'
@@ -769,14 +727,12 @@ palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
 palette: ,: Open Settings => OpenModal(Settings)
-palette: f: Toggle Focus mode => ToggleFocus
+palette: f: Exit Focus mode => ToggleFocus
 palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## Normal read-only
 BeginKeySequence(Z): 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z'
@@ -824,8 +780,6 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
-palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
 palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## Normal result with connection error
@@ -878,9 +832,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## Normal result active
 BeginKeySequence(Z): 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z'
@@ -941,7 +893,6 @@ palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
 palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## Normal result draft
 BeginKeySequence(Z): 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z'
@@ -1002,7 +953,6 @@ palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
 palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## Normal result staged
 BeginKeySequence(Z): 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z'
@@ -1061,7 +1011,6 @@ palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
 palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## Normal result yank pending
 BeginKeySequence(Z): 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z'
@@ -1122,7 +1071,6 @@ palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
 palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## Normal result delete pending
 BeginKeySequence(Z): 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z'
@@ -1183,7 +1131,6 @@ palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
 palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## Normal result prefix
 CancelKeySequence: ' ', ^' ', ⌥' ', ^⌥' ', ⇧' ', ^⇧' ', '!', ^'!', ⌥'!', ^⌥'!', ⇧'!', ^⇧'!', '"', ^'"', ⌥'"', ^⌥'"', ⇧'"', ^⇧'"', '#', ^'#', ⌥'#', ^⌥'#', ⇧'#', ^⇧'#', '$', ^'$', ⌥'$', ^⌥'$', ⇧'$', ^⇧'$', '%', ^'%', ⌥'%', ^⌥'%', ⇧'%', ^⇧'%', '&', ^'&', ⌥'&', ^⌥'&', ⇧'&', ^⇧'&', '\'', ^'\'', ⌥'\'', ^⌥'\'', ⇧'\'', ^⇧'\'', '(', ^'(', ⌥'(', ^⌥'(', ⇧'(', ^⇧'(', ')', ^')', ⌥')', ^⌥')', ⇧')', ^⇧')', '*', ^'*', ⌥'*', ^⌥'*', ⇧'*', ^⇧'*', '+', ^'+', ⌥'+', ^⌥'+', ⇧'+', ^⇧'+', ',', ^',', ⌥',', ^⌥',', ⇧',', ^⇧',', '-', ^'-', ⌥'-', ^⌥'-', ⇧'-', ^⇧'-', '.', ^'.', ⌥'.', ^⌥'.', ⇧'.', ^⇧'.', '/', ^'/', ⌥'/', ^⌥'/', ⇧'/', ^⇧'/', '0', ^'0', ⌥'0', ^⌥'0', ⇧'0', ^⇧'0', '1', ^'1', ⌥'1', ^⌥'1', ⇧'1', ^⇧'1', '2', ^'2', ⌥'2', ^⌥'2', ⇧'2', ^⇧'2', '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3', '4', ^'4', ⌥'4', ^⌥'4', ⇧'4', ^⇧'4', '5', ^'5', ⌥'5', ^⌥'5', ⇧'5', ^⇧'5', '6', ^'6', ⌥'6', ^⌥'6', ⇧'6', ^⇧'6', '7', ^'7', ⌥'7', ^⌥'7', ⇧'7', ^⇧'7', '8', ^'8', ⌥'8', ^⌥'8', ⇧'8', ^⇧'8', '9', ^'9', ⌥'9', ^⌥'9', ⇧'9', ^⇧'9', ':', ^':', ⌥':', ^⌥':', ⇧':', ^⇧':', ';', ^';', ⌥';', ^⌥';', ⇧';', ^⇧';', '<', ^'<', ⌥'<', ^⌥'<', ⇧'<', ^⇧'<', '=', ^'=', ⌥'=', ^⌥'=', ⇧'=', ^⇧'=', '>', ^'>', ⌥'>', ^⌥'>', ⇧'>', ^⇧'>', '?', ^'?', ⌥'?', ^⌥'?', ⇧'?', ^⇧'?', '@', ^'@', ⌥'@', ^⌥'@', ⇧'@', ^⇧'@', 'A', ^'A', ⌥'A', ^⌥'A', ⇧'A', ^⇧'A', 'B', ^'B', ⌥'B', ^⌥'B', ⇧'B', ^⇧'B', 'C', ^'C', ⌥'C', ^⌥'C', ⇧'C', ^⇧'C', 'D', ^'D', ⌥'D', ^⌥'D', ⇧'D', ^⇧'D', 'E', ^'E', ⌥'E', ^⌥'E', ⇧'E', ^⇧'E', 'F', ^'F', ⌥'F', ^⌥'F', ⇧'F', ^⇧'F', 'G', ^'G', ⌥'G', ^⌥'G', ⇧'G', ^⇧'G', 'H', ^'H', ⌥'H', ^⌥'H', ⇧'H', ^⇧'H', 'I', ^'I', ⌥'I', ^⌥'I', ⇧'I', ^⇧'I', 'J', ^'J', ⌥'J', ^⌥'J', ⇧'J', ^⇧'J', 'K', ^'K', ⌥'K', ^⌥'K', ⇧'K', ^⇧'K', 'L', ^'L', ⌥'L', ^⌥'L', ⇧'L', ^⇧'L', 'M', ^'M', ⌥'M', ^⌥'M', ⇧'M', ^⇧'M', 'N', ^'N', ⌥'N', ^⌥'N', ⇧'N', ^⇧'N', 'O', ^'O', ⌥'O', ^⌥'O', ⇧'O', ^⇧'O', 'P', ^'P', ⌥'P', ^⌥'P', ⇧'P', ^⇧'P', 'Q', ^'Q', ⌥'Q', ^⌥'Q', ⇧'Q', ^⇧'Q', 'R', ^'R', ⌥'R', ^⌥'R', ⇧'R', ^⇧'R', 'S', ^'S', ⌥'S', ^⌥'S', ⇧'S', ^⇧'S', 'T', ^'T', ⌥'T', ^⌥'T', ⇧'T', ^⇧'T', 'U', ^'U', ⌥'U', ^⌥'U', ⇧'U', ^⇧'U', 'V', ^'V', ⌥'V', ^⌥'V', ⇧'V', ^⇧'V', 'W', ^'W', ⌥'W', ^⌥'W', ⇧'W', ^⇧'W', 'X', ^'X', ⌥'X', ^⌥'X', ⇧'X', ^⇧'X', 'Y', ^'Y', ⌥'Y', ^⌥'Y', ⇧'Y', ^⇧'Y', 'Z', ^'Z', ⌥'Z', ^⌥'Z', ⇧'Z', ^⇧'Z', '[', ^'[', ⌥'[', ^⌥'[', ⇧'[', ^⇧'[', '\\', ^'\\', ⌥'\\', ^⌥'\\', ⇧'\\', ^⇧'\\', ']', ^']', ⌥']', ^⌥']', ⇧']', ^⇧']', '^', ^'^', ⌥'^', ^⌥'^', ⇧'^', ^⇧'^', '_', ^'_', ⌥'_', ^⌥'_', ⇧'_', ^⇧'_', '`', ^'`', ⌥'`', ^⌥'`', ⇧'`', ^⇧'`', 'a', ^'a', ⌥'a', ^⌥'a', ⇧'a', ^⇧'a', ^'b', ⌥'b', ^⌥'b', ⇧'b', ^⇧'b', 'c', ^'c', ⌥'c', ^⌥'c', ⇧'c', ^⇧'c', 'd', ^'d', ⌥'d', ^⌥'d', ⇧'d', ^⇧'d', 'e', ^'e', ⌥'e', ^⌥'e', ⇧'e', ^⇧'e', 'f', ^'f', ⌥'f', ^⌥'f', ⇧'f', ^⇧'f', 'g', ^'g', ⌥'g', ^⌥'g', ⇧'g', ^⇧'g', 'h', ^'h', ⌥'h', ^⌥'h', ⇧'h', ^⇧'h', 'i', ^'i', ⌥'i', ^⌥'i', ⇧'i', ^⇧'i', 'j', ^'j', ⌥'j', ^⌥'j', ⇧'j', ^⇧'j', 'k', ^'k', ⌥'k', ^⌥'k', ⇧'k', ^⇧'k', 'l', ^'l', ⌥'l', ^⌥'l', ⇧'l', ^⇧'l', 'm', ^'m', ⌥'m', ^⌥'m', ⇧'m', ^⇧'m', 'n', ^'n', ⌥'n', ^⌥'n', ⇧'n', ^⇧'n', 'o', ^'o', ⌥'o', ^⌥'o', ⇧'o', ^⇧'o', 'p', ^'p', ⌥'p', ^⌥'p', ⇧'p', ^⇧'p', 'q', ^'q', ⌥'q', ^⌥'q', ⇧'q', ^⇧'q', 'r', ^'r', ⌥'r', ^⌥'r', ⇧'r', ^⇧'r', 's', ^'s', ⌥'s', ^⌥'s', ⇧'s', ^⇧'s', ^'t', ⌥'t', ^⌥'t', ⇧'t', ^⇧'t', 'u', ^'u', ⌥'u', ^⌥'u', ⇧'u', ^⇧'u', 'v', ^'v', ⌥'v', ^⌥'v', ⇧'v', ^⇧'v', 'w', ^'w', ⌥'w', ^⌥'w', ⇧'w', ^⇧'w', 'x', ^'x', ⌥'x', ^⌥'x', ⇧'x', ^⇧'x', 'y', ^'y', ⌥'y', ^⌥'y', ⇧'y', ^⇧'y', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z', '{', ^'{', ⌥'{', ^⌥'{', ⇧'{', ^⇧'{', '|', ^'|', ⌥'|', ^⌥'|', ⇧'|', ^⇧'|', '}', ^'}', ⌥'}', ^⌥'}', ⇧'}', ^⇧'}', '~', ^'~', ⌥'~', ^⌥'~', ⇧'~', ^⇧'~', Enter, ^Enter, ⌥Enter, ^⌥Enter, ⇧Enter, ^⇧Enter, Esc, ^Esc, ⌥Esc, ^⌥Esc, ⇧Esc, ^⇧Esc, Tab, ^Tab, ⌥Tab, ^⌥Tab, ⇧Tab, ^⇧Tab, BackTab, ^BackTab, ⌥BackTab, ^⌥BackTab, ⇧BackTab, ^⇧BackTab, Up, ^Up, ⌥Up, ^⌥Up, ⇧Up, ^⇧Up, Down, ^Down, ⌥Down, ^⌥Down, ⇧Down, ^⇧Down, Left, ^Left, ⌥Left, ^⌥Left, ⇧Left, ^⇧Left, Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right, Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home, End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End, Backspace, ^Backspace, ⌥Backspace, ^⌥Backspace, ⇧Backspace, ^⇧Backspace, Delete, ^Delete, ⌥Delete, ^⌥Delete, ⇧Delete, ^⇧Delete, PageUp, ^PageUp, ⌥PageUp, ^⌥PageUp, ⇧PageUp, ^⇧PageUp, PageDown, ^PageDown, ⌥PageDown, ^⌥PageDown, ⇧PageDown, ^⇧PageDown, F(1), ^F(1), ⌥F(1), ^⌥F(1), ⇧F(1), ^⇧F(1), F(5), ^F(5), ⌥F(5), ^⌥F(5), ⇧F(5), ^⇧F(5)
@@ -1208,7 +1155,6 @@ palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
 palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## ConnectionSetup dropdown
 ConnectionSetupDropdownCancel: Esc, ^Esc, ⌥Esc, ^⌥Esc, ⇧Esc, ^⇧Esc
@@ -1232,9 +1178,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## ConnectionSetup cleartext
 ConnectionSetupCancel: Esc, ^Esc, ⌥Esc, ^⌥Esc, ⇧Esc, ^⇧Esc
@@ -1265,9 +1209,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## SqlModal editing
 OpenModal(QueryHistoryPicker): ^'o'
@@ -1304,9 +1246,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## SqlModal completion
 CompletionAccept: Enter, ^Enter, ⇧Enter, ^⇧Enter, Tab, ^Tab, ⌥Tab, ^⌥Tab, ⇧Tab, ^⇧Tab
@@ -1340,9 +1280,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## SqlModal Plan
 CloseModal(SqlModal): Esc, ⇧Esc
@@ -1369,9 +1307,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## SqlModal Compare
 BeginKeySequence(G): 'g'
@@ -1423,9 +1359,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## SqlModal confirm high
 SqlModalCancelConfirm: Esc, ^Esc, ⌥Esc, ^⌥Esc, ⇧Esc, ^⇧Esc
@@ -1460,9 +1394,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## SqlModal confirm analyze high
 footer: 
@@ -1479,9 +1411,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## SqlModal confirm risk
 SqlModalCancelConfirm: Esc, ^Esc, ⌥Esc, ^⌥Esc, ⇧Esc, ^⇧Esc
@@ -1500,9 +1430,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## SqlModal confirm analyze risk
 footer: 
@@ -1519,9 +1447,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## JsonDetail search
 DetailSearch { target: JsonDetail, step: Exit }: Esc
@@ -1536,9 +1462,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## Help filter
 ExitHelpFilter: Esc
@@ -1577,9 +1501,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## Settings browser
 SettingsApply: Enter, ^Enter, ⌥Enter, ^⌥Enter, ⇧Enter, ^⇧Enter
@@ -1617,9 +1539,7 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## CellDetail search
 DetailSearch { target: CellDetail, step: Exit }: Esc
@@ -1653,7 +1573,5 @@ palette: r: Reload metadata => ReloadMetadata
 palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
-palette: Ctrl+E: Export result to CSV => RequestCsvExport
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)

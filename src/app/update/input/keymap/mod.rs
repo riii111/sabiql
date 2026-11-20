@@ -7,6 +7,7 @@ mod connection_error;
 mod connection_selector;
 mod connection_setup;
 mod context;
+mod global;
 mod help;
 mod json_edit;
 mod json_search;
@@ -32,6 +33,7 @@ pub use connection_error::{connection_error_action, connection_error_hints};
 pub use connection_selector::{connection_selector_action, connection_selector_hints};
 pub use connection_setup::{connection_setup_action, connection_setup_hints};
 pub use context::KeyContext;
+pub use global::{PaletteEntry, global_action, palette_action, palette_available, palette_entry};
 pub use help::{help_action, help_hints};
 pub use json_edit::{json_edit_action, json_edit_hints};
 pub use json_search::{json_search_action, json_search_hints};
@@ -58,6 +60,7 @@ pub enum HintSurface {
     Write,
     DataActions,
     ExplainPlaceholder,
+    Palette,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

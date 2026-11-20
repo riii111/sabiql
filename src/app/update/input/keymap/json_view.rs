@@ -35,6 +35,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Copy",
             description: "Copy full JSON",
+            dynamic_label: None,
             visible: None,
             surfaces: &[
                 HintSurface::Border,
@@ -50,6 +51,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             ],
             short: "Insert",
             description: "Enter Insert mode / append at line end",
+            dynamic_label: None,
             visible: None,
             surfaces: view,
         },
@@ -63,6 +65,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Search",
             description: "Search JSON text",
+            dynamic_label: None,
             visible: None,
             surfaces: view,
         },
@@ -70,6 +73,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             bindings: vec![search(SearchStep::Next, 'n'), search(SearchStep::Prev, 'N')],
             short: "Next/Prev",
             description: "Jump to next / previous search result",
+            dynamic_label: None,
             visible: None,
             surfaces: &[
                 HintSurface::Footer,
@@ -90,6 +94,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
         ],
         short: "Close",
         description: "Close JSON detail",
+        dynamic_label: None,
         visible: None,
         surfaces: view,
     });

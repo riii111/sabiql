@@ -2,6 +2,7 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
+use crate::update::input::keymap::{KeyContext, palette_available};
 
 pub(in crate::update) fn open_modal_table_picker(state: &mut AppState) -> Vec<Effect> {
     state.modal.set_mode(InputMode::TablePicker);
@@ -27,6 +28,11 @@ pub(in crate::update) fn escape(state: &mut AppState) -> Vec<Effect> {
 }
 
 pub(in crate::update) fn open_modal_command_palette(state: &mut AppState) -> Vec<Effect> {
+    let commands = palette_available(&KeyContext::for_browse_state(state))
+        .into_iter()
+        .map(|entry| entry.id)
+        .collect();
+    state.ui.set_palette_commands(commands);
     state.modal.set_mode(InputMode::CommandPalette);
     // Command palette currently reuses the generic picker selection state.
     state.ui.table_picker_mut().reset();

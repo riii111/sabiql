@@ -4,6 +4,7 @@ use crate::model::shared::key_sequence::Prefix;
 use crate::policy::FeaturePolicy;
 use crate::update::action::{Action, ModalKind};
 use crate::update::input::keybindings::{self as kb, Key, KeyCombo, Modifiers};
+use crate::update::input::keymap::{KeyContext, global_action};
 use crate::update::input::vim::{
     BrowseVimContext, VimSurfaceContext, action_for_input, action_for_key,
 };
@@ -58,11 +59,7 @@ pub(super) fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     }
 
     // Global actions (predicate-based, no modifiers)
-    if let Some(action) = kb::global_action_for_with_policy(&combo, keymap_preset, &feature_policy)
-    {
-        if matches!(action, Action::RequestCsvExport) && !state.can_request_csv_export() {
-            return Action::None;
-        }
+    if let Some(action) = global_action(combo, &KeyContext::from_state(state)) {
         return action;
     }
     if combo.key == Key::Enter && combo.modifiers.is_empty() && state.connection_error.has_error() {
@@ -1172,18 +1169,6 @@ mod tests {
                     let state = sqlite_connected_state();
 
                     let result = handle_normal_mode(combo_ctrl_shift(Key::Char('d')), &state);
-
-                    assert!(matches!(
-                        result,
-                        Action::OpenModal(ModalKind::SqliteDiagnostics)
-                    ));
-                }
-
-                #[test]
-                fn normalized_ctrl_uppercase_d_opens_diagnostics() {
-                    let state = sqlite_connected_state();
-
-                    let result = handle_normal_mode(combo_ctrl(Key::Char('D')), &state);
 
                     assert!(matches!(
                         result,

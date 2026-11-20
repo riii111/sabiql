@@ -28,6 +28,7 @@ pub(super) static VIEWING: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Copy",
             description: "Copy full cell text",
+            dynamic_label: None,
             visible: None,
             surfaces: &[
                 HintSurface::Border,
@@ -39,6 +40,7 @@ pub(super) static VIEWING: LazyLock<Vec<Row>> = LazyLock::new(|| {
             bindings: vec![search(SearchStep::Enter, '/')],
             short: "Search",
             description: "Search cell text",
+            dynamic_label: None,
             visible: None,
             surfaces: &[
                 HintSurface::Border,
@@ -50,6 +52,7 @@ pub(super) static VIEWING: LazyLock<Vec<Row>> = LazyLock::new(|| {
             bindings: vec![search(SearchStep::Next, 'n'), search(SearchStep::Prev, 'N')],
             short: "Next/Prev",
             description: "Jump to next / previous search result",
+            dynamic_label: None,
             visible: None,
             surfaces: &[
                 HintSurface::Footer,
@@ -79,6 +82,7 @@ pub(super) static VIEWING: LazyLock<Vec<Row>> = LazyLock::new(|| {
         )],
         short: "Close",
         description: "Close cell detail",
+        dynamic_label: None,
         visible: None,
         surfaces: &[
             HintSurface::Border,

@@ -25,10 +25,10 @@ expression: output
 │                                       ││  s                  ▷ Open SQL Editor                                           │                                        │
 │                                       ││  e                  ⑂ Open ER Diagram                                           │                                        │
 │                                       ││  c                  ⇄ Open Connection Selector                                  │                                        │
-│                                       ││  Ctrl+E             ↓ Export result to CSV                                      │                                        │
-│                                       ││  Ctrl+R             ⊘ Enable Read-Only mode                                     │────────────────────────────────────────┘
-│                                       ││  Ctrl+R             ⊘ Disable Read-Only mode                                    │────────────────────────────────────────┐
-│                                       ││  Ctrl+O             ◷ Open Query History                                        │                                        │
+│                                       ││  Ctrl+R             ⊘ Enable Read-Only mode                                     │                                        │
+│                                       ││  Ctrl+O             ◷ Open Query History                                        │────────────────────────────────────────┘
+│                                       ││                                                                                 │────────────────────────────────────────┐
+│                                       ││                                                                                 │                                        │
 │                                       ││                                                                                 │                                        │
 │                                       ││                                                                                 │                                        │
 │                                       ││                                                                                 │                                        │

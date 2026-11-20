@@ -62,6 +62,11 @@ enum Scope {
         multiple_tabs: bool,
         compare_can_yank: bool,
     },
+    Browse {
+        focused: bool,
+        read_only: bool,
+        csv_available: bool,
+    },
     Other,
 }
 
@@ -82,6 +87,7 @@ impl KeyContext {
             policy: FeaturePolicy::new(&state.session.active_engine_feature_profile()),
             pending_prefix: state.ui.key_sequence().pending_prefix(),
             scope: match state.input_mode() {
+                InputMode::Normal => browse_scope(state),
                 InputMode::SqliteDiagnostics => Scope::Diagnostics {
                     can_run: state.sqlite_diagnostics.can_run_quick_check(),
                 },
@@ -177,6 +183,37 @@ impl KeyContext {
                 _ => Scope::Other,
             },
         }
+    }
+
+    pub fn for_browse_state(state: &AppState) -> Self {
+        let mut context = Self::from_state(state);
+        context.mode = InputMode::Normal;
+        context.scope = browse_scope(state);
+        context
+    }
+
+    pub(super) fn browse_focused(&self) -> bool {
+        matches!(self.scope, Scope::Browse { focused: true, .. })
+    }
+
+    pub(super) fn browse_read_only(&self) -> bool {
+        matches!(
+            self.scope,
+            Scope::Browse {
+                read_only: true,
+                ..
+            }
+        )
+    }
+
+    pub(super) fn browse_csv_available(&self) -> bool {
+        matches!(
+            self.scope,
+            Scope::Browse {
+                csv_available: true,
+                ..
+            }
+        )
     }
 
     pub(super) fn allows(&self, action: &Action) -> bool {
@@ -421,6 +458,14 @@ fn is_dropdown_field(field: ConnectionField) -> bool {
             | ConnectionField::SslMode
             | ConnectionField::CleartextAuth
     )
+}
+
+fn browse_scope(state: &AppState) -> Scope {
+    Scope::Browse {
+        focused: state.ui.is_focus_mode(),
+        read_only: state.session.is_read_only(),
+        csv_available: state.can_request_csv_export(),
+    }
 }
 
 fn sql_confirmation_scope(status: &SqlModalStatus) -> Option<Scope> {

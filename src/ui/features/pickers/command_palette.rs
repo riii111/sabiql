@@ -5,8 +5,9 @@ use ratatui::widgets::{List, ListItem};
 
 use crate::app::model::app_state::AppState;
 use crate::app::update::action::{Action, ModalKind};
-use crate::app::update::input::keymap::{HintSurface, KeyContext, Picker, picker_hints};
-use crate::app::update::input::palette::palette_commands;
+use crate::app::update::input::keymap::{
+    HintSurface, KeyContext, Picker, palette_entry, picker_hints,
+};
 use crate::primitives::atoms::Icon;
 use crate::theme::ThemePalette;
 
@@ -33,23 +34,25 @@ impl CommandPalette {
             theme,
         );
 
-        let items: Vec<ListItem> = palette_commands(
-            state.settings.saved_keymap_preset(),
-            &state.session.active_engine_feature_profile(),
-        )
-        .enumerate()
-        .map(|(i, kb)| {
-            let style = if i == state.ui.table_picker().selected() {
-                theme.picker_selected_style()
-            } else {
-                Style::default().fg(theme.semantic.text.secondary)
-            };
-            let icon = command_icon(&kb.action)
-                .map_or("", |icon| icon.prefix(state.settings.saved_icon_mode()));
-            let content = format!("  {:<18} {icon}{}", kb.key, kb.description);
-            ListItem::new(content).style(style)
-        })
-        .collect();
+        let context = KeyContext::for_browse_state(state);
+        let items: Vec<ListItem> = state
+            .ui
+            .palette_commands()
+            .iter()
+            .filter_map(|&id| palette_entry(id, &context))
+            .enumerate()
+            .map(|(i, kb)| {
+                let style = if i == state.ui.table_picker().selected() {
+                    theme.picker_selected_style()
+                } else {
+                    Style::default().fg(theme.semantic.text.secondary)
+                };
+                let icon = command_icon(&kb.action)
+                    .map_or("", |icon| icon.prefix(state.settings.saved_icon_mode()));
+                let content = format!("  {:<18} {icon}{}", kb.key, kb.description);
+                ListItem::new(content).style(style)
+            })
+            .collect();
 
         let list = List::new(items);
         frame.render_widget(list, inner);

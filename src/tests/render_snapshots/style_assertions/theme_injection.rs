@@ -69,6 +69,14 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
         "Expected shared modal hint to use injected hint color"
     );
 
+    state.ui.set_palette_commands(
+        sabiql_app::update::input::keymap::palette_available(
+            &sabiql_app::update::input::keymap::KeyContext::for_browse_state(&state),
+        )
+        .into_iter()
+        .map(|entry| entry.id)
+        .collect(),
+    );
     state.modal.set_mode(InputMode::CommandPalette);
     let picker_buffer = render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &theme);
     let has_custom_picker_selection = has_cell(&picker_buffer, |cell| {

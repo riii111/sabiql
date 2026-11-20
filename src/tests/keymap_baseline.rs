@@ -19,7 +19,8 @@ use sabiql_app::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel};
 use sabiql_app::ports::inbound::{InputEvent, Key, KeyCombo, Modifiers};
 use sabiql_app::ports::outbound::DbOperationError;
 use sabiql_app::update::action::Action;
-use sabiql_app::update::input::{handle_event, palette::palette_commands};
+use sabiql_app::update::input::handle_event;
+use sabiql_app::update::input::keymap::{KeyContext, palette_available};
 use sabiql_domain::{ConnectionId, DatabaseType};
 use sabiql_ui::shell::footer::Footer;
 use sabiql_ui::theme::palette_for;
@@ -71,6 +72,14 @@ fn state(engine: DatabaseType, preset: KeymapPreset, mode: InputMode) -> AppStat
         "test://keymap",
     );
     state.settings.load_keymap_preset(preset);
+    if mode == InputMode::CommandPalette {
+        state.ui.set_palette_commands(
+            palette_available(&KeyContext::for_browse_state(&state))
+                .into_iter()
+                .map(|entry| entry.id)
+                .collect(),
+        );
+    }
     state.modal.set_mode(mode);
     state
 }
@@ -97,7 +106,12 @@ fn capture(name: &str, mut state: AppState, output: &mut String) {
     writeln!(output, "## {name}").unwrap();
     let mut actions = BTreeMap::<String, Vec<String>>::new();
     for combo in input_keys() {
-        let action = handle_event(InputEvent::Key(combo), &state);
+        let normalized = if combo == KeyCombo::ctrl(Key::Char('D')) {
+            KeyCombo::ctrl_shift(Key::Char('d'))
+        } else {
+            combo
+        };
+        let action = handle_event(InputEvent::Key(normalized), &state);
         let description = match action {
             Action::None => continue,
             Action::TextInput { target, .. } => format!("TextInput {{ target: {target:?} }}"),
@@ -144,10 +158,7 @@ fn capture(name: &str, mut state: AppState, output: &mut String) {
             writeln!(output, "help: {}: {}", row.key(), row.description()).unwrap();
         }
     }
-    for command in palette_commands(
-        state.settings.saved_keymap_preset(),
-        &state.session.active_engine_feature_profile(),
-    ) {
+    for command in palette_available(&KeyContext::for_browse_state(&state)) {
         writeln!(
             output,
             "palette: {}: {} => {:?}",

@@ -536,6 +536,14 @@ fn command_palette_overlay() {
     let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
+    state.ui.set_palette_commands(
+        sabiql_app::update::input::keymap::palette_available(
+            &sabiql_app::update::input::keymap::KeyContext::for_browse_state(&state),
+        )
+        .into_iter()
+        .map(|entry| entry.id)
+        .collect(),
+    );
     state.modal.set_mode(InputMode::CommandPalette);
 
     let output = render_to_string(&mut terminal, &mut state);

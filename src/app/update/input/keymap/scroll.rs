@@ -41,6 +41,7 @@ pub(super) fn scroll_rows(target: ScrollTarget, options: ScrollOptions) -> Vec<R
             ],
             short: "H-Scroll",
             description: "Scroll left / right",
+            dynamic_label: None,
             visible: None,
             surfaces,
         });
@@ -52,6 +53,7 @@ pub(super) fn scroll_rows(target: ScrollTarget, options: ScrollOptions) -> Vec<R
         ],
         short: "Half Page",
         description: "Scroll half page down / up",
+        dynamic_label: None,
         visible: None,
         surfaces,
     });
@@ -68,6 +70,7 @@ pub(super) fn scroll_rows(target: ScrollTarget, options: ScrollOptions) -> Vec<R
         ],
         short: "Full Page",
         description: "Scroll full page down / up",
+        dynamic_label: None,
         visible: None,
         surfaces,
     });
@@ -81,6 +84,7 @@ pub(super) fn scroll_rows(target: ScrollTarget, options: ScrollOptions) -> Vec<R
         bindings: vec![scroll(Up, ToStart, &top), scroll(Down, ToEnd, &bottom)],
         short: "Top/Btm",
         description: "Jump to top / bottom",
+        dynamic_label: None,
         visible: None,
         surfaces,
     });
@@ -119,6 +123,7 @@ pub(super) fn line_scroll(target: ScrollTarget) -> Row {
         ],
         short: "Scroll",
         description: "Scroll down / up",
+        dynamic_label: None,
         visible: None,
         surfaces: &[HintSurface::Current, HintSurface::Advanced],
     }

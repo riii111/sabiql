@@ -3,7 +3,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use crate::app::ports::inbound::{Key, KeyCombo, Modifiers};
 
 pub fn translate(event: KeyEvent) -> KeyCombo {
-    let key = match event.code {
+    let mut key = match event.code {
         KeyCode::Char(c) => Key::Char(c),
         KeyCode::Enter => Key::Enter,
         KeyCode::Esc => Key::Esc,
@@ -29,6 +29,10 @@ pub fn translate(event: KeyEvent) -> KeyCombo {
     let raw_shift = event.modifiers.contains(KeyModifiers::SHIFT);
     let shift = match key {
         Key::BackTab => true,
+        Key::Char('D') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+            key = Key::Char('d');
+            true
+        }
         Key::Char(c) if c.is_ascii_uppercase() => false,
         _ => raw_shift,
     };
@@ -64,6 +68,17 @@ mod tests {
         let combo = translate(event);
 
         assert_eq!(combo, KeyCombo::ctrl(Key::Char('p')));
+    }
+
+    #[test]
+    fn ctrl_shift_d_encodings_translate_to_the_same_combo() {
+        let lower = KeyEvent::new(
+            KeyCode::Char('d'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        );
+        let upper = KeyEvent::new(KeyCode::Char('D'), KeyModifiers::CONTROL);
+        assert_eq!(translate(lower), KeyCombo::ctrl_shift(Key::Char('d')));
+        assert_eq!(translate(upper), translate(lower));
     }
 
     #[test]
@@ -169,7 +184,7 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_shift_uppercase_d_normalizes_to_ctrl_uppercase_d_without_shift() {
+    fn ctrl_shift_uppercase_d_normalizes_to_ctrl_shift_lowercase_d() {
         let event = KeyEvent::new(
             KeyCode::Char('D'),
             KeyModifiers::CONTROL | KeyModifiers::SHIFT,
@@ -177,7 +192,7 @@ mod tests {
 
         let combo = translate(event);
 
-        assert_eq!(combo, KeyCombo::ctrl(Key::Char('D')));
+        assert_eq!(combo, KeyCombo::ctrl_shift(Key::Char('d')));
     }
 
     #[test]

@@ -24,6 +24,7 @@ fn rows(tab: SqlModalTab) -> Vec<Row> {
             ],
             short: "Run",
             description: "Execute query",
+            dynamic_label: None,
             visible: None,
             surfaces: &[
                 HintSurface::Border,
@@ -39,6 +40,7 @@ fn rows(tab: SqlModalTab) -> Vec<Row> {
         ],
         short: "Explain",
         description: "Run EXPLAIN on current query",
+        dynamic_label: None,
         visible: None,
         surfaces: if sql {
             &[
@@ -62,6 +64,7 @@ fn rows(tab: SqlModalTab) -> Vec<Row> {
         )],
         short: "Analyze",
         description: "Run EXPLAIN ANALYZE on current query",
+        dynamic_label: None,
         visible: None,
         surfaces: &[HintSurface::Current, HintSurface::Advanced],
     });
@@ -73,6 +76,7 @@ fn rows(tab: SqlModalTab) -> Vec<Row> {
             )],
             short: "Edit",
             description: "Edit query in SQL tab",
+            dynamic_label: None,
             visible: None,
             surfaces: &[
                 HintSurface::Border,
@@ -89,6 +93,7 @@ fn rows(tab: SqlModalTab) -> Vec<Row> {
         } else {
             "Copy to clipboard"
         },
+        dynamic_label: None,
         visible: if tab == SqlModalTab::Compare {
             Some(|context, surface| {
                 surface != HintSurface::Border || context.sql_compare_can_yank()
@@ -114,6 +119,7 @@ fn rows(tab: SqlModalTab) -> Vec<Row> {
             ],
             short: "Insert",
             description: "Enter Insert mode / append at line end",
+            dynamic_label: None,
             visible: None,
             surfaces: &[
                 HintSurface::Border,
@@ -129,6 +135,7 @@ fn rows(tab: SqlModalTab) -> Vec<Row> {
         ],
         short: "Switch",
         description: "Switch tab",
+        dynamic_label: None,
         visible: Some(|context, surface| {
             surface != HintSurface::Border || context.sql_has_multiple_tabs()
         }),
@@ -143,6 +150,7 @@ fn rows(tab: SqlModalTab) -> Vec<Row> {
             bindings: vec![Binding::with_ctrl(Action::SqlModalClear, Key::Char('l'))],
             short: "Clear",
             description: "Clear editor",
+            dynamic_label: None,
             visible: None,
             surfaces: &[HintSurface::Current, HintSurface::Editing],
         });
@@ -156,6 +164,7 @@ fn rows(tab: SqlModalTab) -> Vec<Row> {
             ],
             short: "History",
             description: "Open Query History",
+            dynamic_label: None,
             visible: None,
             surfaces: &[HintSurface::Current, HintSurface::Editing],
         });
@@ -186,6 +195,7 @@ fn rows(tab: SqlModalTab) -> Vec<Row> {
         )],
         short: "Close",
         description: "Close editor",
+        dynamic_label: None,
         visible: None,
         surfaces: &[
             HintSurface::Border,

@@ -108,6 +108,7 @@ pub(super) fn detail_search(
             )],
             short: "Confirm",
             description: "Confirm search",
+            dynamic_label: None,
             visible: None,
             surfaces: &[
                 HintSurface::Border,
@@ -125,6 +126,7 @@ pub(super) fn detail_search(
             )],
             short: "Cancel",
             description: "Cancel search",
+            dynamic_label: None,
             visible: None,
             surfaces: &[
                 HintSurface::Border,
@@ -142,6 +144,7 @@ pub(super) fn detail_search(
         bindings: vec![Binding::text(input)],
         short: "Search",
         description: "Type to search",
+        dynamic_label: None,
         visible: None,
         surfaces: &[
             HintSurface::Footer,
@@ -197,6 +200,7 @@ pub(super) fn document_navigation(target: InputTarget, shifted_prefix: bool) -> 
             ],
             short: "Left/Right",
             description: "Move cursor left / right",
+            dynamic_label: None,
             visible: None,
             surfaces: &[
                 HintSurface::Footer,
@@ -225,6 +229,7 @@ pub(super) fn document_navigation(target: InputTarget, shifted_prefix: bool) -> 
             ],
             short: "Down/Up",
             description: "Move cursor down / up",
+            dynamic_label: None,
             visible: None,
             surfaces: &[
                 HintSurface::Footer,
@@ -236,6 +241,7 @@ pub(super) fn document_navigation(target: InputTarget, shifted_prefix: bool) -> 
             bindings: jumps,
             short: "Jump",
             description: "Move by word or line boundary",
+            dynamic_label: None,
             visible: None,
             surfaces: &[HintSurface::Current, HintSurface::Advanced],
         },
@@ -263,6 +269,7 @@ pub(super) fn document_navigation(target: InputTarget, shifted_prefix: bool) -> 
             ],
             short: "View",
             description: "Jump by buffer or viewport",
+            dynamic_label: None,
             visible: None,
             surfaces: &[HintSurface::Current, HintSurface::Advanced],
         },
@@ -391,6 +398,7 @@ pub(super) fn list_navigation(target: ListTarget, vim_keys: bool) -> Row {
         ],
         short: "Navigate",
         description: "Navigate",
+        dynamic_label: None,
         visible: None,
         surfaces: &[HintSurface::Current],
     }
@@ -407,6 +415,7 @@ fn hidden(action: Action, key: Key, modifiers: KeyModifiers) -> Row {
         bindings: vec![binding],
         short: "",
         description: "",
+        dynamic_label: None,
         visible: None,
         surfaces: &[],
     }
@@ -421,6 +430,7 @@ fn hidden_binding(action: Action, combos: &[KeyCombo]) -> Row {
         bindings: vec![Binding::action(action, combos)],
         short: "",
         description: "",
+        dynamic_label: None,
         visible: None,
         surfaces: &[],
     }
