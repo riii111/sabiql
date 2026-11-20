@@ -2019,12 +2019,18 @@ mod tests {
         #[test]
         fn er_open_while_rendering_returns_no_effects() {
             let mut state = create_test_state();
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
+            state
+                .session
+                .set_metadata(Some(Arc::new(DatabaseMetadata::new("test".to_string()))));
             state.er_preparation.mark_rendering();
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
 
             assert!(effects.is_empty());
+            assert_eq!(state.er_preparation.status(), ErStatus::Rendering);
+            assert!(state.messages.last_error.is_none());
         }
 
         #[test]

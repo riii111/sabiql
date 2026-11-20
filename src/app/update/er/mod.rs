@@ -299,16 +299,6 @@ mod tests {
         }
 
         #[test]
-        fn rendering_status_returns_empty_effects() {
-            let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.mark_rendering();
-
-            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now());
-
-            assert!(effects.is_empty());
-        }
-
-        #[test]
         fn waiting_status_returns_empty_effects() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let _ = state.er_preparation.start_waiting_run();

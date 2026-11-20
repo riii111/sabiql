@@ -1147,7 +1147,7 @@ mod tests {
 
         #[test]
         fn adhoc_error_preserves_current_result_and_view_state() {
-            let mut state = create_test_state();
+            let mut state = state_with_table("public", "users");
             state.query.set_current_result(preview_result(5));
             state.result_interaction.set_scroll_offset(20);
             state.result_interaction.set_horizontal_offset(5);
@@ -1155,8 +1155,9 @@ mod tests {
             let result = adhoc_error_result();
             let action = query_completed_action(&mut state, result, 0, None);
 
-            route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
+            assert!(effects.is_empty());
             assert_eq!(
                 state.query.current_result().unwrap().source,
                 QuerySource::Preview,
@@ -1701,16 +1702,6 @@ mod tests {
                 0,
                 None,
             );
-
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
-
-            assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn adhoc_error_emits_no_effects() {
-            let mut state = state_with_table("public", "users");
-            let action = query_completed_action(&mut state, adhoc_error_result(), 0, None);
 
             let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 

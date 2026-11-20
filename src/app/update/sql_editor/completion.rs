@@ -69,3 +69,49 @@ fn prefetch_missing_tables(state: &AppState, missing_tables: Vec<String>) -> Vec
     }
     vec![Effect::DispatchActions(actions)]
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::domain::{DatabaseMetadata, TableSummary};
+    use crate::model::shared::input_mode::InputMode;
+    use crate::services::AppServices;
+    use crate::update::reducer::route;
+    use std::time::Instant;
+
+    #[test]
+    fn request_prefetches_only_referenced_tables() {
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::SqlModal);
+        state
+            .sql_modal
+            .editor_mut_for_input()
+            .set_content("SELECT * FROM public.users".to_string());
+        let mut metadata = DatabaseMetadata::new("test".to_string());
+        metadata.table_summaries = (0..3)
+            .map(|index| {
+                TableSummary::new("public".to_string(), format!("table_{index}"), None, false)
+            })
+            .collect();
+        state.session.set_metadata(Some(Arc::new(metadata)));
+
+        let effects = route(
+            &mut state,
+            Action::CompletionRequest,
+            Instant::now(),
+            &AppServices::stub(),
+        );
+
+        assert!(matches!(
+            effects.as_slice(),
+            [Effect::DispatchActions(actions)]
+                if matches!(
+                    actions.as_slice(),
+                    [Action::StartCompletionPrefetch { tables }]
+                        if *tables == vec!["public.users".to_string()]
+                )
+        ));
+    }
+}
