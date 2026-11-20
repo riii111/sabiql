@@ -8,11 +8,11 @@ use crate::model::shared::settings::KeymapPreset;
 use crate::model::sql_editor::modal::SqlModalTab;
 use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::update::input::keymap::{
-    HintSurface, KeyContext, Picker, browse_reference_hints, cell_detail_hints, cell_edit_hints,
-    confirm_hints, connection_error_hints, connection_selector_hints, connection_setup_hints,
-    current_hints, help_hints, json_edit_hints, json_search_hints, json_view_hints, picker_hints,
-    readline_reference_hints, row_detail_hints, sql_confirmation_hints, sql_edit_hints,
-    sql_view_hints, sqlite_diagnostics_hints,
+    Hint, HintSurface, KeyContext, Picker, browse_reference_hints, cell_detail_hints,
+    cell_edit_hints, confirm_hints, connection_error_hints, connection_selector_hints,
+    connection_setup_hints, current_hints, help_hints, json_edit_hints, json_search_hints,
+    json_view_hints, picker_hints, readline_reference_hints, row_detail_hints,
+    sql_confirmation_hints, sql_edit_hints, sql_view_hints, sqlite_diagnostics_hints,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -315,7 +315,7 @@ fn reference_sections(
     if feature_policy.is_enabled(FeatureRequirement::PlanComparison) {
         advanced_rows.extend(rows_from_hints(sql_view_hints(
             HintSurface::Advanced,
-            &sql_context.clone().with_sql_view(SqlModalTab::Compare),
+            &sql_context.with_sql_view(SqlModalTab::Compare),
         )));
     }
     if feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
@@ -441,7 +441,7 @@ fn section(title: &str, rows: Vec<HelpRow>) -> HelpSection {
     }
 }
 
-fn rows_from_hints(hints: Vec<crate::update::input::keymap::Hint>) -> Vec<HelpRow> {
+fn rows_from_hints(hints: Vec<Hint>) -> Vec<HelpRow> {
     hints
         .into_iter()
         .map(|hint| HelpRow::new(hint.key, hint.description))

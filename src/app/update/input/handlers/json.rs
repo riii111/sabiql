@@ -43,8 +43,8 @@ pub(super) fn handle_json_edit_keys_with_policy(
 mod tests {
     use super::*;
     use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
+    use crate::ports::inbound::Key;
     use crate::update::action::{CursorMove, DetailTarget, ModalKind, SearchStep};
-    use crate::update::input::keybindings::Key;
 
     fn combo(k: Key) -> KeyCombo {
         KeyCombo::plain(k)

@@ -3651,12 +3651,13 @@ mod tests {
         use crate::domain::{QueryResult, QuerySource};
         use crate::model::shared::settings::KeymapPreset;
         use crate::update::input::keymap::palette_entry;
+        use crate::update::modal::base::open_modal_command_palette;
         use rstest::rstest;
 
         fn state_in_palette_mode(preset: KeymapPreset) -> AppState {
             let mut state = create_test_state();
             state.settings.load_keymap_preset(preset);
-            crate::update::modal::base::open_modal_command_palette(&mut state);
+            open_modal_command_palette(&mut state);
 
             state
         }
@@ -3784,7 +3785,7 @@ mod tests {
                     1,
                     QuerySource::Preview,
                 )));
-            crate::update::modal::base::open_modal_command_palette(&mut state);
+            open_modal_command_palette(&mut state);
             let selected =
                 palette_index_of(&state, |action| matches!(action, Action::RequestCsvExport));
             let captured = state.ui.palette_commands().to_vec();

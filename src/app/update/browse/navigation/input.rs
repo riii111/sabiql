@@ -289,6 +289,7 @@ mod tests {
     mod picker_navigation {
         use super::*;
         use crate::domain::{DatabaseMetadata, TableSummary};
+        use crate::update::modal::base::open_modal_command_palette;
         use std::sync::Arc;
 
         fn state_with_tables(count: usize) -> AppState {
@@ -417,7 +418,7 @@ mod tests {
         #[test]
         fn command_palette_next_increments() {
             let mut state = AppState::new("test".to_string());
-            crate::update::modal::base::open_modal_command_palette(&mut state);
+            open_modal_command_palette(&mut state);
 
             route(
                 &mut state,

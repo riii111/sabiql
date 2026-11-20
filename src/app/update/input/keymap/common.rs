@@ -1,17 +1,13 @@
 use std::sync::LazyLock;
 
-use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
-use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::Prefix;
-use crate::model::shared::settings::KeymapPreset;
-use crate::policy::FeaturePolicy;
 use crate::ports::inbound::{Key, KeyCombo};
 use crate::update::action::{
     Action, CursorMove, DetailTarget, InputTarget, ListMotion, ListTarget, SearchStep,
     TextKillDirection,
 };
 
-use super::model::{Binding, Row, hints, resolve};
+use super::model::{Binding, Row, hints};
 use super::{Hint, HintSurface, KeyContext};
 
 static READLINE: LazyLock<Vec<(InputTarget, Vec<Row>)>> = LazyLock::new(|| {
@@ -35,21 +31,6 @@ static READLINE: LazyLock<Vec<(InputTarget, Vec<Row>)>> = LazyLock::new(|| {
     .map(|target| (target, readline_rows(target)))
     .collect()
 });
-static READLINE_CONTEXT: LazyLock<KeyContext> = LazyLock::new(|| {
-    KeyContext::for_scope(
-        InputMode::Normal,
-        KeymapPreset::Default,
-        &FeaturePolicy::new(&EngineFeatureProfile::postgres_like()),
-    )
-});
-
-pub(super) fn readline_action_for(combo: &KeyCombo, target: InputTarget) -> Option<Action> {
-    let rows = READLINE
-        .iter()
-        .find(|(candidate, _)| *candidate == target)?;
-    resolve(&rows.1, *combo, &READLINE_CONTEXT)
-}
-
 pub(super) fn text_field(target: InputTarget, shift_keys: bool) -> Vec<Row> {
     text_field_with(
         target,
@@ -93,7 +74,7 @@ pub(super) fn consume_readline(target: InputTarget) -> Vec<Row> {
     rows
 }
 
-pub(crate) fn readline_hints(context: &KeyContext) -> Vec<Hint> {
+pub(super) fn readline_hints(context: &KeyContext) -> Vec<Hint> {
     READLINE
         .iter()
         .find(|(target, _)| *target == InputTarget::CommandLine)

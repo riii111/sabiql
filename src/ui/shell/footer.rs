@@ -163,7 +163,6 @@ mod tests {
     use crate::app::model::shared::settings::KeymapPreset;
     use crate::app::model::shared::ui_state::FocusMode;
     use crate::app::ports::outbound::DbOperationError;
-    use crate::app::update::input::keybindings::{global, result_active};
     use rstest::rstest;
 
     fn contains(hints: &[(String, &str)], expected: (&str, &str)) -> bool {
@@ -203,7 +202,7 @@ mod tests {
 
         let hints = Footer::get_context_hints(&state);
 
-        assert!(contains(&hints, global::CONNECTIONS.as_hint()));
+        assert!(contains(&hints, ("c", "Connections")));
     }
 
     #[test]
@@ -213,8 +212,8 @@ mod tests {
 
         let hints = Footer::get_context_hints(&state);
 
-        assert!(!contains(&hints, global::RELOAD.as_hint()));
-        assert!(contains(&hints, global::CONNECTIONS.as_hint()));
+        assert!(!contains(&hints, ("r", "Reload")));
+        assert!(contains(&hints, ("c", "Connections")));
     }
 
     #[rstest]
@@ -231,7 +230,7 @@ mod tests {
 
         let hints = Footer::get_context_hints(&state);
 
-        assert!(contains(&hints, global::CONNECTIONS.as_hint()));
+        assert!(contains(&hints, ("c", "Connections")));
     }
 
     #[rstest]
@@ -253,10 +252,7 @@ mod tests {
 
         let hints = Footer::get_context_hints(&state);
 
-        assert_eq!(
-            contains(&hints, global::INSPECTOR_TABS.as_hint()),
-            expected_visible
-        );
+        assert_eq!(contains(&hints, ("Tab/⇧Tab", "InsTabs")), expected_visible);
     }
 
     #[rstest]
@@ -276,10 +272,7 @@ mod tests {
 
         let hints = Footer::get_context_hints(&state);
 
-        assert_eq!(
-            contains(&hints, global::ER_DIAGRAM.as_hint()),
-            expected_visible
-        );
+        assert_eq!(contains(&hints, ("e", "ER Diagram")), expected_visible);
     }
 
     #[test]
@@ -338,7 +331,7 @@ mod tests {
 
         let hints = Footer::get_context_hints(&state);
 
-        assert!(!contains(&hints, result_active::ROW_DETAIL.as_hint()));
+        assert!(!contains(&hints, ("K", "Row Detail")));
     }
 
     #[test]
@@ -350,7 +343,7 @@ mod tests {
 
         let hints = Footer::get_context_hints(&state);
 
-        assert!(!contains(&hints, result_active::ROW_DETAIL.as_hint()));
+        assert!(!contains(&hints, ("K", "Row Detail")));
     }
 
     #[test]
@@ -360,7 +353,7 @@ mod tests {
 
         let hints = Footer::get_context_hints(&state);
 
-        assert!(contains(&hints, result_active::ROW_DETAIL.as_hint()));
+        assert!(contains(&hints, ("K", "Row Detail")));
     }
 
     #[test]

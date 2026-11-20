@@ -10,7 +10,7 @@ use crate::app::model::shared::ui_state::{
     explorer_content_width_from_inner_width, scroll_max_offset, text_display_width,
 };
 use crate::app::policy::table_kind::{explorer_table_label, max_explorer_table_label_width};
-use crate::app::update::input::keybindings::global;
+use crate::app::update::input::keymap::{BrowseShortcut, KeyContext, browse_shortcut};
 use crate::domain::MetadataState;
 use crate::primitives::atoms::Icon;
 use crate::theme::ThemePalette;
@@ -80,10 +80,24 @@ impl Explorer {
                     vec![ListItem::new(" Loading metadata...")]
                 }
                 MetadataState::Error => {
+                    let context = KeyContext::for_browse_state(state);
                     let action_hint = if state.session.dsn().is_some() {
-                        " (r: retry, Enter: details)".to_string()
+                        let mut hints = Vec::new();
+                        if let Some(key) = browse_shortcut(BrowseShortcut::ReloadMetadata, &context)
+                        {
+                            hints.push(format!("{key}: retry"));
+                        }
+                        if let Some(key) = browse_shortcut(BrowseShortcut::ErrorDetails, &context) {
+                            hints.push(format!("{key}: details"));
+                        }
+                        if hints.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" ({})", hints.join(", "))
+                        }
                     } else {
-                        format!(" ({}: select connection)", global::CONNECTIONS.key_short)
+                        browse_shortcut(BrowseShortcut::SelectConnection, &context)
+                            .map_or_else(String::new, |key| format!(" ({key}: select connection)"))
                     };
                     vec![
                         ListItem::new(" Metadata load failed"),
@@ -94,14 +108,14 @@ impl Explorer {
                     vec![ListItem::new(" No tables found")]
                 }
                 MetadataState::NotLoaded => {
-                    let action_hint = if state.session.dsn().is_some() {
-                        " Press 'r' to load metadata".to_string()
+                    let context = KeyContext::for_browse_state(state);
+                    let (shortcut, action) = if state.session.dsn().is_some() {
+                        (BrowseShortcut::ReloadMetadata, "load metadata")
                     } else {
-                        format!(
-                            " Press '{}' to select a connection",
-                            global::CONNECTIONS.key_short
-                        )
+                        (BrowseShortcut::SelectConnection, "select a connection")
                     };
+                    let action_hint = browse_shortcut(shortcut, &context)
+                        .map_or_else(String::new, |key| format!(" Press '{key}' to {action}"));
                     vec![ListItem::new(action_hint)]
                 }
             }

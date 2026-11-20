@@ -1,6 +1,6 @@
 use crate::model::app_state::AppState;
+use crate::ports::inbound::KeyCombo;
 use crate::update::action::Action;
-use crate::update::input::keybindings::KeyCombo;
 use crate::update::input::keymap::{KeyContext, row_detail_action};
 
 pub(super) fn handle_row_detail_keys(combo: KeyCombo, state: &AppState) -> Action {
@@ -10,8 +10,8 @@ pub(super) fn handle_row_detail_keys(combo: KeyCombo, state: &AppState) -> Actio
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ports::inbound::Key;
     use crate::update::action::{ModalKind, ScrollAmount, ScrollDirection, ScrollTarget};
-    use crate::update::input::keybindings::Key;
     use rstest::rstest;
 
     fn handle_row_detail_keys(combo: KeyCombo) -> Action {

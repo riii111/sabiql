@@ -52,10 +52,12 @@ pub(super) struct Row {
     pub short: &'static str,
     pub description: &'static str,
     pub references: &'static [HintSurface],
-    pub dynamic_label: Option<fn(&KeyContext) -> (&'static str, &'static str)>,
+    pub dynamic_label: Option<DynamicLabel>,
     pub visible: Option<fn(&KeyContext, HintSurface) -> bool>,
     pub surfaces: &'static [HintSurface],
 }
+
+type DynamicLabel = fn(&KeyContext) -> (&'static str, &'static str);
 
 impl Binding {
     pub(super) fn action(action: Action, combos: &[KeyCombo]) -> Self {
@@ -457,14 +459,11 @@ fn matches_combo(trigger: Trigger, combo: KeyCombo) -> bool {
             key == combo
         }
         Trigger::AnyModifiers(key) => key == combo.key,
-        Trigger::NoCtrlAlt(key) => {
+        Trigger::NoCtrlAlt(key) | Trigger::Repeat(key) => {
             key == combo.key && !combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT)
         }
         Trigger::WithAlt(key) => key == combo.key && combo.modifiers.contains(Modifiers::ALT),
         Trigger::WithCtrl(key) => key == combo.key && combo.modifiers.contains(Modifiers::CTRL),
-        Trigger::Repeat(key) => {
-            key == combo.key && !combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT)
-        }
         Trigger::Sequence { .. } | Trigger::Command { .. } => false,
         Trigger::Text => {
             matches!(combo.key, Key::Char(_))

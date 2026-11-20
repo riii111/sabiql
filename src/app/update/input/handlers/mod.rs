@@ -1,12 +1,22 @@
+#[cfg(test)]
 mod cell_detail;
+#[cfg(test)]
 mod connections;
+#[cfg(test)]
 mod editors;
+#[cfg(test)]
 mod interaction;
+#[cfg(test)]
 mod json;
+#[cfg(test)]
 mod normal;
+#[cfg(test)]
 mod overlays;
+#[cfg(test)]
 mod pickers;
+#[cfg(test)]
 mod row_detail;
+#[cfg(test)]
 mod sql_modal;
 
 use crate::model::app_state::AppState;
@@ -16,12 +26,13 @@ use crate::model::sql_editor::modal::SqlModalStatus;
 use crate::policy::FeaturePolicy;
 use crate::ports::inbound::{InputEvent, KeyCombo};
 use crate::update::action::Action;
-use crate::update::input::keybindings::readline_action_for;
 use crate::update::input::keymap::{
-    KeyContext, json_edit_action, json_search_action, json_view_action, sql_confirmation_action,
-    sql_edit_action, sql_view_action,
+    KeyContext, Picker, browse_action, cell_detail_action, cell_edit_action, command_line_action,
+    confirm_action, connection_error_action, connection_selector_action, connection_setup_action,
+    help_action, json_edit_action, json_search_action, json_view_action, picker_action,
+    row_detail_action, settings_action, sql_confirmation_action, sql_edit_action, sql_view_action,
+    sqlite_diagnostics_action,
 };
-use interaction::{InputInteraction, resolve_input_interaction};
 
 pub fn handle_event(event: InputEvent, state: &AppState) -> Action {
     match event {
@@ -55,95 +66,35 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
 }
 
 fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
+    let context = KeyContext::from_state(state);
     match state.input_mode() {
-        InputMode::ErTablePicker => return pickers::handle_er_table_picker_keys(combo, state),
-        InputMode::CellDetail => return cell_detail::handle_cell_detail_keys(combo, state),
-        InputMode::Settings => return pickers::handle_settings_keys(combo, state),
-        InputMode::CommandLine => return editors::handle_command_line_mode(combo, state),
-        InputMode::CellEdit => return editors::handle_cell_edit_keys(combo, state),
-        InputMode::ConnectionSetup => {
-            return connections::handle_connection_setup_keys(combo, state);
+        InputMode::Normal => browse_action(combo, &context),
+        InputMode::CommandLine => command_line_action(combo, &context),
+        InputMode::CellEdit => cell_edit_action(combo, &context),
+        InputMode::TablePicker => picker_action(Picker::Table, combo, &context),
+        InputMode::CommandPalette => picker_action(Picker::CommandPalette, combo, &context),
+        InputMode::Settings => settings_action(combo, &context),
+        InputMode::Help => help_action(combo, &context),
+        InputMode::SqlModal if matches!(state.sql_modal.status(), SqlModalStatus::Editing) => {
+            sql_edit_action(combo, &context)
         }
-        InputMode::JsonDetail => {
-            let context = KeyContext::from_state(state);
-            return if state.json_detail.mode() == JsonDetailMode::Searching {
-                json_search_action(combo, &context)
-            } else {
-                json_view_action(combo, &context)
-            };
+        InputMode::SqlModal => sql_confirmation_action(combo, &context)
+            .or_else(|| sql_view_action(combo, &context))
+            .unwrap_or(Action::None),
+        InputMode::ConnectionSetup => connection_setup_action(combo, &context),
+        InputMode::ConnectionError => connection_error_action(combo, &context),
+        InputMode::ConfirmDialog => confirm_action(combo, &context),
+        InputMode::SqliteDiagnostics => sqlite_diagnostics_action(combo, &context),
+        InputMode::ConnectionSelector => connection_selector_action(combo, &context),
+        InputMode::ErTablePicker => picker_action(Picker::Er, combo, &context),
+        InputMode::QueryHistoryPicker => picker_action(Picker::QueryHistory, combo, &context),
+        InputMode::JsonDetail if state.json_detail.mode() == JsonDetailMode::Searching => {
+            json_search_action(combo, &context)
         }
-        InputMode::JsonEdit => return json_edit_action(combo, &KeyContext::from_state(state)),
-        InputMode::SqlModal => {
-            let context = KeyContext::from_state(state);
-            if matches!(state.sql_modal.status(), SqlModalStatus::Editing) {
-                return sql_edit_action(combo, &context);
-            }
-            if let Some(action) = sql_confirmation_action(combo, &context) {
-                return action;
-            }
-            if let Some(action) = sql_view_action(combo, &context) {
-                return action;
-            }
-        }
-        _ => {}
-    }
-    let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
-    let interaction = resolve_input_interaction(state);
-    match interaction {
-        InputInteraction::FormEditing(target) => {
-            if let Some(action) = readline_action_for(&combo, target) {
-                return action;
-            }
-        }
-        InputInteraction::VimEditing(target) if readline_action_for(&combo, target).is_some() => {
-            return Action::None;
-        }
-        InputInteraction::Viewing | InputInteraction::VimEditing(_) => {}
-    }
-    match state.input_mode() {
-        InputMode::Normal => normal::handle_normal_mode(combo, state),
-        InputMode::CommandLine => editors::handle_command_line_mode(combo, state),
-        InputMode::CellEdit => editors::handle_cell_edit_keys(combo, state),
-        InputMode::TablePicker => pickers::handle_table_picker_keys(combo, state),
-        InputMode::CommandPalette => pickers::handle_command_palette_keys(combo, state),
-        InputMode::Settings => pickers::handle_settings_keys(combo, state),
-        InputMode::Help => {
-            overlays::handle_help_keys_with_policy(combo, interaction, &feature_policy)
-        }
-        InputMode::SqlModal => {
-            let completion_visible = state.sql_modal.completion().visible
-                && !state.sql_modal.completion().candidates.is_empty();
-            sql_modal::handle_sql_modal_keys_with_feature_policy(
-                combo,
-                completion_visible,
-                state.sql_modal.status(),
-                state
-                    .session
-                    .active_engine_feature_profile()
-                    .normalize_sql_modal_tab(state.sql_modal.active_tab()),
-                state.ui.key_sequence().pending_prefix(),
-                state.settings.saved_keymap_preset(),
-                &feature_policy,
-            )
-        }
-        InputMode::ConnectionSetup => connections::handle_connection_setup_keys(combo, state),
-        InputMode::ConnectionError => connections::handle_connection_error_keys(combo, state),
-        InputMode::ConfirmDialog => overlays::handle_confirm_dialog_keys(combo),
-        InputMode::SqliteDiagnostics => {
-            overlays::handle_sqlite_diagnostics_keys_with_policy(combo, &feature_policy)
-        }
-        InputMode::ConnectionSelector => connections::handle_connection_selector_keys(combo, state),
-        InputMode::ErTablePicker => pickers::handle_er_table_picker_keys(combo, state),
-        InputMode::QueryHistoryPicker => pickers::handle_query_history_picker_keys(combo, state),
-        InputMode::JsonDetail => json::handle_json_detail_keys_with_policy(
-            combo,
-            interaction,
-            state.ui.key_sequence().pending_prefix(),
-            &feature_policy,
-        ),
-        InputMode::JsonEdit => json::handle_json_edit_keys_with_policy(combo, &feature_policy),
-        InputMode::CellDetail => cell_detail::handle_cell_detail_keys(combo, state),
-        InputMode::RowDetail => row_detail::handle_row_detail_keys(combo, state),
+        InputMode::JsonDetail => json_view_action(combo, &context),
+        InputMode::JsonEdit => json_edit_action(combo, &context),
+        InputMode::CellDetail => cell_detail_action(combo, &context),
+        InputMode::RowDetail => row_detail_action(combo, &context),
     }
 }
 
@@ -473,24 +424,6 @@ mod tests {
                 ch: 'g'
             }
         ));
-    }
-
-    #[rstest]
-    #[case(InputTarget::CommandLine)]
-    #[case(InputTarget::ResultCellEdit)]
-    #[case(InputTarget::Filter)]
-    #[case(InputTarget::ErFilter)]
-    #[case(InputTarget::QueryHistoryFilter)]
-    #[case(InputTarget::SettingsErBrowser)]
-    #[case(InputTarget::ConnectionSetup)]
-    #[case(InputTarget::SqlModalHighRisk)]
-    #[case(InputTarget::SqlModalAnalyzeHighRisk)]
-    #[case(InputTarget::JsonSearch)]
-    #[case(InputTarget::HelpFilter)]
-    fn readline_leaves_ctrl_n_and_ctrl_p_for_existing_handlers(#[case] target: InputTarget) {
-        for key in ['n', 'p'] {
-            assert!(readline_action_for(&KeyCombo::ctrl(Key::Char(key)), target).is_none());
-        }
     }
 
     #[rstest]

@@ -1,8 +1,8 @@
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::settings::KeymapPreset;
 use crate::policy::FeaturePolicy;
+use crate::ports::inbound::KeyCombo;
 use crate::update::action::{Action, InputTarget};
-use crate::update::input::keybindings::KeyCombo;
 use crate::update::input::keymap;
 use crate::update::input::keymap::KeyContext;
 
@@ -46,11 +46,11 @@ pub(super) fn handle_sqlite_diagnostics_keys_with_policy(
 mod tests {
     use super::*;
     use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
+    use crate::ports::inbound::{Key, KeyCombo};
     use crate::update::action::ModalKind;
     use crate::update::action::{
         CursorMove, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget,
     };
-    use crate::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {

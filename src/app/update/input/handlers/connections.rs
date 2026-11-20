@@ -1,6 +1,6 @@
 use crate::model::app_state::AppState;
+use crate::ports::inbound::KeyCombo;
 use crate::update::action::Action;
-use crate::update::input::keybindings::KeyCombo;
 use crate::update::input::keymap::{
     KeyContext, connection_error_action, connection_selector_action, connection_setup_action,
 };
@@ -22,11 +22,11 @@ mod tests {
     use super::*;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::settings::KeymapPreset;
+    use crate::ports::inbound::{Key, KeyCombo, Modifiers};
     use crate::update::action::InputTarget;
     use crate::update::action::{
         ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
     };
-    use crate::update::input::keybindings::{Key, KeyCombo, Modifiers};
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {

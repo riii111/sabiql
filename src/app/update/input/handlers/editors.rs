@@ -1,6 +1,6 @@
 use crate::model::app_state::AppState;
+use crate::ports::inbound::KeyCombo;
 use crate::update::action::Action;
-use crate::update::input::keybindings::KeyCombo;
 use crate::update::input::keymap::{KeyContext, cell_edit_action, command_line_action};
 
 pub(super) fn handle_cell_edit_keys(combo: KeyCombo, state: &AppState) -> Action {
@@ -15,8 +15,8 @@ pub(super) fn handle_command_line_mode(combo: KeyCombo, state: &AppState) -> Act
 mod tests {
     use super::*;
     use crate::model::shared::input_mode::InputMode;
+    use crate::ports::inbound::Key;
     use crate::update::action::InputTarget;
-    use crate::update::input::keybindings::Key;
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {

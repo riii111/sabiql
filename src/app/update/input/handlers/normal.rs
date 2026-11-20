@@ -20,12 +20,12 @@ mod tests {
     use crate::model::shared::key_sequence::KeySequenceState;
     use crate::model::shared::settings::KeymapPreset;
     use crate::model::shared::ui_state::FocusMode;
+    use crate::ports::inbound::{InputEvent, Key, KeyCombo};
     use crate::update::action::{
         CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
         SelectMotion,
     };
-    use crate::update::input::keybindings::test_support::same_payload_free_action;
-    use crate::update::input::keybindings::{Key, KeyCombo};
+    use crate::update::input::handle_event;
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {
@@ -169,7 +169,7 @@ mod tests {
 
                 let result = handle_normal_mode(input, &state);
 
-                assert!(same_payload_free_action(&result, &expected));
+                assert_eq!(format!("{result:?}"), format!("{expected:?}"));
             }
 
             #[rstest]
@@ -189,7 +189,7 @@ mod tests {
 
                 let result = handle_normal_mode(input, &state);
 
-                assert!(same_payload_free_action(&result, &expected));
+                assert_eq!(format!("{result:?}"), format!("{expected:?}"));
             }
 
             #[test]
@@ -463,10 +463,7 @@ mod tests {
                     "boom",
                 ));
 
-                let result = crate::update::input::handle_event(
-                    crate::ports::inbound::InputEvent::Key(KeyCombo::plain(Key::Enter)),
-                    &state,
-                );
+                let result = handle_event(InputEvent::Key(KeyCombo::plain(Key::Enter)), &state);
 
                 assert!(matches!(result, Action::ConfirmSelection));
             }

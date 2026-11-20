@@ -10,7 +10,7 @@ use crate::update::action::{
 
 use super::context::BrowsePane;
 use super::global;
-use super::model::{Binding, Row, hints, indexed_hints, resolve};
+use super::model::{Binding, Row, hints, indexed_hints, resolve, row_action};
 use super::{Hint, HintSurface, KeyContext};
 
 static EXPLORER: LazyLock<Vec<Row>> = LazyLock::new(|| rows(BrowsePane::Explorer));
@@ -370,7 +370,10 @@ enum Movement {
 }
 
 fn navigation(pane: BrowsePane) -> Vec<Row> {
-    use Movement::*;
+    use Movement::{
+        Bottom, BottomCursor, CenterCursor, Down, First, HalfDown, HalfUp, Last, Left, Middle,
+        PageDown, PageUp, Right, Top, TopCursor, Up,
+    };
     let bind = |movement, combos: &[KeyCombo]| {
         Binding::action(
             navigation_action(pane, movement).unwrap_or(Action::None),
@@ -492,7 +495,10 @@ fn navigation(pane: BrowsePane) -> Vec<Row> {
 }
 
 fn navigation_action(pane: BrowsePane, movement: Movement) -> Option<Action> {
-    use Movement::*;
+    use Movement::{
+        Bottom, BottomCursor, CenterCursor, Down, First, HalfDown, HalfUp, Last, Left, Middle,
+        PageDown, PageUp, Right, Top, TopCursor, Up,
+    };
     if pane == BrowsePane::Explorer {
         let motion = match movement {
             Down => Some(SelectMotion::Next),
@@ -576,6 +582,32 @@ pub fn browse_action(combo: KeyCombo, context: &KeyContext) -> Action {
     resolve(active_rows(context), combo, context).unwrap_or(Action::None)
 }
 
+#[derive(Clone, Copy)]
+pub enum BrowseShortcut {
+    ReloadMetadata,
+    SelectConnection,
+    ErrorDetails,
+}
+
+pub fn browse_shortcut(shortcut: BrowseShortcut, context: &KeyContext) -> Option<String> {
+    let rows = active_rows(context);
+    indexed_hints(rows, context, HintSurface::Current)
+        .into_iter()
+        .find_map(|(index, hint)| {
+            let action = row_action(&rows[index])?;
+            let matches = match shortcut {
+                BrowseShortcut::ReloadMetadata => matches!(action, Action::ReloadMetadata),
+                BrowseShortcut::SelectConnection => {
+                    matches!(action, Action::OpenModal(ModalKind::ConnectionSelector))
+                }
+                BrowseShortcut::ErrorDetails => {
+                    matches!(action, Action::ConfirmSelection) && context.browse_connection_error()
+                }
+            };
+            matches.then_some(hint.key)
+        })
+}
+
 pub fn browse_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
     let rows = active_rows(context);
     if surface == HintSurface::Current {
@@ -612,7 +644,7 @@ pub fn browse_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
     result
 }
 
-pub(crate) fn reference_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
+pub(super) fn reference_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
     let mut result = Vec::new();
     for pane in [
         BrowsePane::Explorer,

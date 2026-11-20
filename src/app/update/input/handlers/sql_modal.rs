@@ -41,10 +41,10 @@ mod tests {
     use super::*;
     use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
     use crate::model::sql_editor::modal::AdhocSuccessSnapshot;
+    use crate::ports::inbound::{Key, KeyCombo};
     use crate::update::action::{
         CursorMove, InputTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
     };
-    use crate::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {

@@ -473,6 +473,7 @@ impl KeyContext {
         self.pending_prefix
     }
 
+    #[cfg(test)]
     pub(crate) fn with_prefix(mut self, prefix: Option<Prefix>) -> Self {
         self.pending_prefix = prefix;
         self
@@ -565,6 +566,7 @@ impl KeyContext {
         self
     }
 
+    #[cfg(test)]
     pub(crate) fn with_sql_status(mut self, status: &SqlModalStatus) -> Self {
         self.mode = InputMode::SqlModal;
         self.scope = sql_confirmation_scope(status).unwrap_or(Scope::Other);
@@ -679,6 +681,7 @@ impl KeyContext {
         self
     }
 
+    #[cfg(test)]
     pub(crate) fn with_help_editing(mut self, editing: bool) -> Self {
         self.mode = InputMode::Help;
         self.scope = Scope::Help { editing };
