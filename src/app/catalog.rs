@@ -14,8 +14,8 @@ use crate::policy::{FeaturePolicy, FeatureRequirement};
 )]
 use crate::update::input::keybindings::*;
 use crate::update::input::keymap::{
-    HintSurface, KeyContext, Picker, cell_detail_hints, confirm_hints, help_hints, picker_hints,
-    row_detail_hints, sqlite_diagnostics_hints,
+    HintSurface, KeyContext, Picker, cell_detail_hints, confirm_hints, connection_selector_hints,
+    help_hints, picker_hints, row_detail_hints, sqlite_diagnostics_hints,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -346,7 +346,12 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
             .into_iter()
             .map(|hint| HelpRow::new(hint.key, hint.description))
             .collect(),
-        HelpOrigin::ConnectionSelector => rows_from_mode_rows(CONNECTION_SELECTOR_ROWS),
+        HelpOrigin::ConnectionSelector => {
+            connection_selector_hints(HintSurface::Current, &key_context)
+                .into_iter()
+                .map(|hint| HelpRow::new(hint.key, hint.description))
+                .collect()
+        }
         HelpOrigin::ErTablePicker { .. } => {
             picker_hints(Picker::Er, HintSurface::Current, &key_context)
                 .into_iter()
@@ -555,7 +560,10 @@ fn reference_sections(
                     &connection_setup::ENTER_DROPDOWN,
                     &connection_setup::DROPDOWN_NAV,
                 ]),
-                rows_from_mode_rows(CONNECTION_SELECTOR_ROWS),
+                connection_selector_hints(HintSurface::Connections, &key_context)
+                    .into_iter()
+                    .map(|hint| HelpRow::new(hint.key, hint.description))
+                    .collect(),
                 rows_from_mode_rows(CONNECTION_ERROR_ROWS),
             ]),
         ),

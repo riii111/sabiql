@@ -1,6 +1,7 @@
 mod cell_detail;
 mod common;
 mod confirm;
+mod connection_selector;
 mod context;
 mod help;
 mod legacy;
@@ -15,6 +16,7 @@ use crate::update::action::{Action, InputTarget};
 
 pub use cell_detail::{cell_detail_action, cell_detail_hints};
 pub use confirm::{confirm_action, confirm_hints};
+pub use connection_selector::{connection_selector_action, connection_selector_hints};
 pub use context::KeyContext;
 pub use help::{help_action, help_hints};
 pub use legacy::{resolve, resolve_mode, resolve_mode_with_policy, resolve_with_policy};
@@ -30,6 +32,7 @@ pub enum HintSurface {
     SearchFilter,
     Advanced,
     ModalBasics,
+    Connections,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

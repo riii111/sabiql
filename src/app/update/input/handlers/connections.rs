@@ -2,6 +2,7 @@ use crate::model::app_state::AppState;
 use crate::model::shared::settings::KeymapPreset;
 use crate::update::action::{Action, InputTarget};
 use crate::update::input::keybindings::{self, Key, KeyCombo, Modifiers};
+use crate::update::input::keymap::{KeyContext, connection_selector_action};
 
 pub(super) fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action {
     use crate::model::connection::setup::ConnectionField;
@@ -95,10 +96,8 @@ pub(super) fn handle_connection_error_keys(combo: KeyCombo) -> Action {
         .unwrap_or(Action::None)
 }
 
-pub(super) fn handle_connection_selector_keys(combo: KeyCombo) -> Action {
-    keybindings::CONNECTION_SELECTOR
-        .resolve(&combo)
-        .unwrap_or(Action::None)
+pub(super) fn handle_connection_selector_keys(combo: KeyCombo, state: &AppState) -> Action {
+    connection_selector_action(combo, &KeyContext::from_state(state))
 }
 
 #[cfg(test)]
@@ -502,6 +501,10 @@ mod tests {
 
     mod connection_selector_keys {
         use super::*;
+
+        fn handle_connection_selector_keys(combo: KeyCombo) -> Action {
+            super::super::handle_connection_selector_keys(combo, &AppState::new("test".to_string()))
+        }
 
         #[rstest]
         #[case(Key::Char('j'), Action::ListSelect { target: ListTarget::ConnectionList, motion: ListMotion::Next })]

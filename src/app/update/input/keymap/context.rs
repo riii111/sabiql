@@ -1,5 +1,6 @@
 use crate::model::app_state::AppState;
 use crate::model::browse::json_detail::JsonDetailMode;
+use crate::model::connection::list::is_service_selected;
 use crate::model::shared::help::HelpMode;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::settings::KeymapPreset;
@@ -21,6 +22,7 @@ enum Scope {
     CellDetail { searching: bool },
     Help { editing: bool },
     Confirm { blocked: bool },
+    ConnectionSelector { service_selected: bool },
     Other,
 }
 
@@ -47,6 +49,12 @@ impl KeyContext {
                         .pending_write_preview()
                         .is_some_and(|preview| preview.guardrail.blocked),
                 },
+                InputMode::ConnectionSelector => Scope::ConnectionSelector {
+                    service_selected: is_service_selected(
+                        state.connection_list_items(),
+                        state.ui.connection_list_selected(),
+                    ),
+                },
                 _ => Scope::Other,
             },
         }
@@ -63,6 +71,9 @@ impl KeyContext {
                 InputMode::CellDetail => Scope::CellDetail { searching: false },
                 InputMode::Help => Scope::Help { editing: false },
                 InputMode::ConfirmDialog => Scope::Confirm { blocked: false },
+                InputMode::ConnectionSelector => Scope::ConnectionSelector {
+                    service_selected: false,
+                },
                 _ => Scope::Other,
             },
         }
@@ -92,6 +103,15 @@ impl KeyContext {
 
     pub(super) fn is_confirm_blocked(&self) -> bool {
         matches!(self.scope, Scope::Confirm { blocked: true })
+    }
+
+    pub(super) fn is_service_selected(&self) -> bool {
+        matches!(
+            self.scope,
+            Scope::ConnectionSelector {
+                service_selected: true
+            }
+        )
     }
 
     pub(crate) fn with_cell_detail_searching(mut self, searching: bool) -> Self {

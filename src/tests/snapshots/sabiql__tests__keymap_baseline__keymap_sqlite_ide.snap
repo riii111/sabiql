@@ -419,7 +419,7 @@ footer:
 border: ╭ Select Connection ──────────────────────────────────────────────────────────────────────────────╮
 border: ╰ Enter: Confirm │ n: New │ e: Edit │ d: Delete │ Esc: Close ─────────────────────────────────────╯
 help: Enter: Confirm selection
-help: Ctrl+N / Ctrl+P / ↑ / ↓ / j / k: Select connection
+help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Select connection
 help: n: New connection
 help: e: Edit connection
 help: d: Delete connection

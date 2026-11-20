@@ -44,7 +44,7 @@ expression: output
 │                        │  Enter                                Toggle dropdown                                                          ││                        │
 │                        │  Ctrl+N / Ctrl+P / ↑ / ↓              Dropdown navigation                                                      ││                        │
 │                        │  Enter                                Confirm selection                                                        ││                        │
-│                        │  Ctrl+N / Ctrl+P / ↑ / ↓ / j / k      Select connection                                                        ▼│                        │
+│                        │  j / k / ↓ / ↑ / Ctrl+N / Ctrl+P      Select connection                                                        ▼│                        │
 │                        │─────────────────────────────────────────────────────────────────────────────────────────────────────────────────│                        │
 │                        │ [BROWSE]                                                                                                        │                        │
 │                        ╰ /: Filter │ Esc/?: Close ───────────────────────────────────────────────────────────────────────────────────────╯                        │

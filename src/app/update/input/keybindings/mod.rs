@@ -90,9 +90,6 @@ pub const CONNECTION_ERROR: ModeBindings = ModeBindings {
 pub const SETTINGS: ModeBindings = ModeBindings {
     rows: SETTINGS_ROWS,
 };
-pub const CONNECTION_SELECTOR: ModeBindings = ModeBindings {
-    rows: CONNECTION_SELECTOR_ROWS,
-};
 pub const JSON_DETAIL: ModeBindings = ModeBindings {
     rows: JSON_DETAIL_ROWS,
 };
@@ -103,7 +100,6 @@ pub const JSON_EDIT: ModeBindings = ModeBindings {
 pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("CONNECTION_ERROR", &CONNECTION_ERROR),
     ("SETTINGS", &SETTINGS),
-    ("CONNECTION_SELECTOR", &CONNECTION_SELECTOR),
     ("JSON_DETAIL", &JSON_DETAIL),
     ("JSON_EDIT", &JSON_EDIT),
 ];

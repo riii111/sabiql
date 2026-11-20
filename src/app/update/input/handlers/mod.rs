@@ -101,7 +101,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
         InputMode::SqliteDiagnostics => {
             overlays::handle_sqlite_diagnostics_keys_with_policy(combo, &feature_policy)
         }
-        InputMode::ConnectionSelector => connections::handle_connection_selector_keys(combo),
+        InputMode::ConnectionSelector => connections::handle_connection_selector_keys(combo, state),
         InputMode::ErTablePicker => pickers::handle_er_table_picker_keys(combo, state),
         InputMode::QueryHistoryPicker => pickers::handle_query_history_picker_keys(combo, state),
         InputMode::JsonDetail => json::handle_json_detail_keys_with_policy(
