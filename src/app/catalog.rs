@@ -13,7 +13,9 @@ use crate::policy::{FeaturePolicy, FeatureRequirement};
     reason = "help catalog enumerates nearly every keybindings table; explicit list is churn"
 )]
 use crate::update::input::keybindings::*;
-use crate::update::input::keymap::{HintSurface, KeyContext, Picker, picker_hints};
+use crate::update::input::keymap::{
+    HintSurface, KeyContext, Picker, picker_hints, row_detail_hints,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HelpDocument {
@@ -351,7 +353,10 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
         HelpOrigin::JsonEdit => rows_from_mode_rows_if_visible(JSON_EDIT_ROWS, feature_policy),
         HelpOrigin::CellDetail { searching: true } => rows_from_bindings(CELL_DETAIL_SEARCH_KEYS),
         HelpOrigin::CellDetail { searching: false } => rows_from_mode_rows(CELL_DETAIL_ROWS),
-        HelpOrigin::RowDetail => rows_from_mode_rows(ROW_DETAIL_ROWS),
+        HelpOrigin::RowDetail => row_detail_hints(HintSurface::Current, &key_context)
+            .into_iter()
+            .map(|hint| HelpRow::new(hint.key, hint.description))
+            .collect(),
     };
 
     HelpSection {
@@ -475,7 +480,11 @@ fn reference_sections(
             feature_policy,
         ));
     }
-    advanced_rows.extend(rows_from_mode_rows(ROW_DETAIL_ROWS));
+    advanced_rows.extend(
+        row_detail_hints(HintSurface::Advanced, &key_context)
+            .into_iter()
+            .map(|hint| HelpRow::new(hint.key, hint.description)),
+    );
 
     vec![
         section(

@@ -659,20 +659,21 @@ RowDetailYank: 'y'
 RowDetailYankJson: 'Y'
 Scroll { target: RowDetail, direction: Down, amount: FullPage }: ^'f', PageDown
 Scroll { target: RowDetail, direction: Down, amount: HalfPage }: ^'d'
-Scroll { target: RowDetail, direction: Down, amount: Line }: 'j', Down
+Scroll { target: RowDetail, direction: Down, amount: Line }: 'j', ^'n', Down
 Scroll { target: RowDetail, direction: Down, amount: ToEnd }: 'G', End
 Scroll { target: RowDetail, direction: Left, amount: Line }: 'h', Left
 Scroll { target: RowDetail, direction: Right, amount: Line }: 'l', Right
 Scroll { target: RowDetail, direction: Up, amount: FullPage }: ^'b', PageUp
 Scroll { target: RowDetail, direction: Up, amount: HalfPage }: ^'u'
-Scroll { target: RowDetail, direction: Up, amount: Line }: 'k', Up
+Scroll { target: RowDetail, direction: Up, amount: Line }: 'k', ^'p', Up
 Scroll { target: RowDetail, direction: Up, amount: ToStart }: 'g', Home
 footer: 
 help: y: Copy displayed text to clipboard
 help: Y: Copy row as JSON to clipboard
-help: j / k / PageDown / PageUp / Ctrl+F / Ctrl+B: Scroll by line or page
+help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Scroll down / up
 help: h / l / ← / →: Scroll left / right
 help: Ctrl+D / Ctrl+U: Scroll half page down / up
+help: PageDown / PageUp / Ctrl+F / Ctrl+B: Scroll full page down / up
 help: g / G / Home / End: Jump to top / bottom
 help: Esc: Close Row Detail modal
 palette: q: Quit application => Quit

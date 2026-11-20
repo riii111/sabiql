@@ -1,8 +1,10 @@
+use crate::model::app_state::AppState;
 use crate::update::action::Action;
-use crate::update::input::keybindings::{KeyCombo, ROW_DETAIL};
+use crate::update::input::keybindings::KeyCombo;
+use crate::update::input::keymap::{KeyContext, row_detail_action};
 
-pub(super) fn handle_row_detail_keys(combo: KeyCombo) -> Action {
-    ROW_DETAIL.resolve(&combo).unwrap_or(Action::None)
+pub(super) fn handle_row_detail_keys(combo: KeyCombo, state: &AppState) -> Action {
+    row_detail_action(combo, &KeyContext::from_state(state))
 }
 
 #[cfg(test)]
@@ -11,6 +13,10 @@ mod tests {
     use crate::update::action::{ModalKind, ScrollAmount, ScrollDirection, ScrollTarget};
     use crate::update::input::keybindings::Key;
     use rstest::rstest;
+
+    fn handle_row_detail_keys(combo: KeyCombo) -> Action {
+        super::handle_row_detail_keys(combo, &AppState::new("test".to_string()))
+    }
 
     fn combo(k: Key) -> KeyCombo {
         KeyCombo::plain(k)
@@ -77,6 +83,16 @@ mod tests {
                 amount: ScrollAmount::Line,
             }
         ));
+    }
+
+    #[test]
+    fn ctrl_n_and_p_scroll_by_line() {
+        for (key, expected) in [('n', ScrollDirection::Down), ('p', ScrollDirection::Up)] {
+            let action = handle_row_detail_keys(combo_ctrl(Key::Char(key)));
+            assert!(
+                matches!(action, Action::Scroll { target: ScrollTarget::RowDetail, direction, amount: ScrollAmount::Line } if direction == expected)
+            );
+        }
     }
 
     #[rstest]

@@ -227,6 +227,7 @@ mod tests {
     use crate::model::shared::input_mode::InputMode;
     use crate::policy::FeaturePolicy;
     use crate::update::input::keymap::pickers::{ER_ROWS, HISTORY_ROWS, PALETTE_ROWS, TABLE_ROWS};
+    use crate::update::input::keymap::row_detail::ROWS as ROW_DETAIL_ROWS;
 
     #[test]
     fn text_pickers_have_unique_keys_and_keep_plain_text_unclaimed() {
@@ -258,7 +259,13 @@ mod tests {
 
     #[test]
     fn visible_picker_bindings_resolve_to_the_same_actions() {
-        for rows in [&*TABLE_ROWS, &*HISTORY_ROWS, &*PALETTE_ROWS, &*ER_ROWS] {
+        for rows in [
+            &*TABLE_ROWS,
+            &*HISTORY_ROWS,
+            &*PALETTE_ROWS,
+            &*ER_ROWS,
+            &*ROW_DETAIL_ROWS,
+        ] {
             for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
                 let context = KeyContext::for_scope(
                     InputMode::TablePicker,
