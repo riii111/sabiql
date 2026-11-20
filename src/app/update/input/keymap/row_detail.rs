@@ -4,7 +4,7 @@ use crate::ports::inbound::{Key, KeyCombo};
 use crate::update::action::{Action, ModalKind, ScrollTarget};
 
 use super::model::{Binding, Row, hints, resolve};
-use super::scroll::scroll_rows;
+use super::scroll::{ScrollOptions, scroll_rows};
 use super::{Hint, HintSurface, KeyContext};
 
 pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
@@ -38,7 +38,14 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             ],
         },
     ];
-    rows.extend(scroll_rows(ScrollTarget::RowDetail));
+    rows.extend(scroll_rows(
+        ScrollTarget::RowDetail,
+        ScrollOptions {
+            horizontal: true,
+            ctrl_full_page: true,
+            vim_jumps: true,
+        },
+    ));
     rows.push(Row {
         bindings: vec![Binding::action(
             Action::CloseModal(ModalKind::RowDetail),

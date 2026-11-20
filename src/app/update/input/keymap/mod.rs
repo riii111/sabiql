@@ -1,3 +1,4 @@
+mod cell_detail;
 mod common;
 mod context;
 mod legacy;
@@ -10,6 +11,7 @@ mod sqlite_diagnostics;
 use crate::ports::inbound::KeyCombo;
 use crate::update::action::{Action, InputTarget};
 
+pub use cell_detail::{cell_detail_action, cell_detail_hints};
 pub use context::KeyContext;
 pub use legacy::{resolve, resolve_mode, resolve_mode_with_policy, resolve_with_policy};
 pub use pickers::{Picker, picker_action, picker_hints};

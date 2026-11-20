@@ -12,6 +12,7 @@ pub struct KeyContext {
     json_mode: JsonDetailMode,
     policy: FeaturePolicy,
     pub(super) can_run_diagnostics: bool,
+    pub(super) cell_detail_searching: bool,
 }
 
 impl KeyContext {
@@ -22,6 +23,7 @@ impl KeyContext {
             json_mode: state.json_detail.mode(),
             policy: FeaturePolicy::new(&state.session.active_engine_feature_profile()),
             can_run_diagnostics: state.sqlite_diagnostics.can_run_quick_check(),
+            cell_detail_searching: state.cell_detail.search().is_active(),
         }
     }
 
@@ -32,6 +34,7 @@ impl KeyContext {
             json_mode: JsonDetailMode::Viewing,
             policy: policy.clone(),
             can_run_diagnostics: true,
+            cell_detail_searching: false,
         }
     }
 
@@ -43,5 +46,10 @@ impl KeyContext {
     pub(super) fn supports_diagnostics(&self) -> bool {
         self.policy
             .is_enabled(FeatureRequirement::SqliteDiagnostics)
+    }
+
+    pub(crate) fn with_cell_detail_searching(mut self, searching: bool) -> Self {
+        self.cell_detail_searching = searching;
+        self
     }
 }

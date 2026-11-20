@@ -12,13 +12,13 @@ use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::policy::{FeaturePolicy, FeatureRequirement};
 use crate::app::update::input::keybindings::{
-    cell_detail, cell_detail_search, cell_edit, command_palette as command_palette_key,
-    connection_error, csv_export, exit_read_only, footer_nav, global, inspector_ddl, json_detail,
-    json_edit, json_search, overlay, query_history, read_only, result_active, settings, sql_modal,
-    sqlite_diagnostics, table_picker as table_picker_key,
+    cell_edit, command_palette as command_palette_key, connection_error, csv_export,
+    exit_read_only, footer_nav, global, inspector_ddl, json_detail, json_edit, json_search,
+    overlay, query_history, read_only, result_active, settings, sql_modal, sqlite_diagnostics,
+    table_picker as table_picker_key,
 };
 use crate::app::update::input::keymap::{
-    HintSurface, KeyContext, Picker, picker_hints, sqlite_diagnostics_hints,
+    HintSurface, KeyContext, Picker, cell_detail_hints, picker_hints, sqlite_diagnostics_hints,
 };
 use crate::primitives::atoms::key_text;
 use crate::primitives::atoms::spinner_char;
@@ -58,6 +58,7 @@ impl Footer {
                 InputMode::SqliteDiagnostics => {
                     Some(sqlite_diagnostics_hints(HintSurface::Footer, &context))
                 }
+                InputMode::CellDetail => Some(cell_detail_hints(HintSurface::Footer, &context)),
                 _ => None,
             };
             let hints = if let Some(ref derived) = derived {
@@ -254,7 +255,8 @@ impl Footer {
             | InputMode::ConnectionSelector
             | InputMode::QueryHistoryPicker
             | InputMode::ErTablePicker
-            | InputMode::SqliteDiagnostics => vec![],
+            | InputMode::SqliteDiagnostics
+            | InputMode::CellDetail => vec![],
             InputMode::Settings => {
                 if state.settings.is_editing_custom_er_browser() {
                     vec![]
@@ -307,16 +309,6 @@ impl Footer {
                     vec![json_edit::MOVE.as_hint(), json_edit::HOME_END.as_hint()]
                 } else {
                     vec![]
-                }
-            }
-            InputMode::CellDetail => {
-                if state.cell_detail.search().is_active() {
-                    vec![cell_detail_search::TYPE_SEARCH.as_hint()]
-                } else {
-                    vec![
-                        cell_detail::NEXT_PREV.as_hint(),
-                        cell_detail::SCROLL.as_hint(),
-                    ]
                 }
             }
         }

@@ -611,12 +611,13 @@ Scroll { target: CellDetail, direction: Up, amount: FullPage }: PageUp
 Scroll { target: CellDetail, direction: Up, amount: HalfPage }: ^'u'
 Scroll { target: CellDetail, direction: Up, amount: Line }: 'k', ^'p', Up
 Scroll { target: CellDetail, direction: Up, amount: ToStart }: Home
-footer: n/N:Next/Prev  j/k/↑↓:Scroll
+footer: n/N:Next/Prev  j/k:Scroll
 help: y: Copy full cell text
 help: /: Search cell text
 help: n / N: Jump to next / previous search result
-help: j / k / Ctrl+N / Ctrl+P / ↑ / ↓: Scroll text down / up
-help: Ctrl+D / Ctrl+U / PageDown / PageUp: Scroll by page
+help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Scroll down / up
+help: Ctrl+D / Ctrl+U: Scroll half page down / up
+help: PageDown / PageUp: Scroll full page down / up
 help: Home / End: Jump to top / bottom
 help: Esc / q: Close cell detail
 palette: q: Quit application => Quit
@@ -1719,17 +1720,26 @@ palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## CellDetail search
 DetailSearch { target: CellDetail, step: Exit }: Esc
 DetailSearch { target: CellDetail, step: Submit }: Enter
-TextBackspace { target: CellDetailSearch }: Backspace, ⇧Backspace
-TextDelete { target: CellDetailSearch }: Delete, ⇧Delete
-TextInput { target: CellDetailSearch }: ' ', ⇧' ', '!', ⇧'!', '"', ⇧'"', '#', ⇧'#', '$', ⇧'$', '%', ⇧'%', '&', ⇧'&', '\'', ⇧'\'', '(', ⇧'(', ')', ⇧')', '*', ⇧'*', '+', ⇧'+', ',', ⇧',', '-', ⇧'-', '.', ⇧'.', '/', ⇧'/', '0', ⇧'0', '1', ⇧'1', '2', ⇧'2', '3', ⇧'3', '4', ⇧'4', '5', ⇧'5', '6', ⇧'6', '7', ⇧'7', '8', ⇧'8', '9', ⇧'9', ':', ⇧':', ';', ⇧';', '<', ⇧'<', '=', ⇧'=', '>', ⇧'>', '?', ⇧'?', '@', ⇧'@', 'A', ⇧'A', 'B', ⇧'B', 'C', ⇧'C', 'D', ⇧'D', 'E', ⇧'E', 'F', ⇧'F', 'G', ⇧'G', 'H', ⇧'H', 'I', ⇧'I', 'J', ⇧'J', 'K', ⇧'K', 'L', ⇧'L', 'M', ⇧'M', 'N', ⇧'N', 'O', ⇧'O', 'P', ⇧'P', 'Q', ⇧'Q', 'R', ⇧'R', 'S', ⇧'S', 'T', ⇧'T', 'U', ⇧'U', 'V', ⇧'V', 'W', ⇧'W', 'X', ⇧'X', 'Y', ⇧'Y', 'Z', ⇧'Z', '[', ⇧'[', '\\', ⇧'\\', ']', ⇧']', '^', ⇧'^', '_', ⇧'_', '`', ⇧'`', 'a', ⇧'a', 'b', ⇧'b', 'c', ⇧'c', 'd', ⇧'d', 'e', ⇧'e', 'f', ⇧'f', 'g', ⇧'g', 'h', ⇧'h', 'i', ⇧'i', 'j', ⇧'j', 'k', ⇧'k', 'l', ⇧'l', 'm', ⇧'m', 'n', ⇧'n', 'o', ⇧'o', 'p', ⇧'p', 'q', ⇧'q', 'r', ⇧'r', 's', ⇧'s', 't', ⇧'t', 'u', ⇧'u', 'v', ⇧'v', 'w', ⇧'w', 'x', ⇧'x', 'y', ⇧'y', 'z', ⇧'z', '{', ⇧'{', '|', ⇧'|', '}', ⇧'}', '~', ⇧'~'
+TextBackspace { target: CellDetailSearch }: ^'h', Backspace, ⇧Backspace
+TextDelete { target: CellDetailSearch }: ^'d', Delete, ⇧Delete
+TextInput { target: CellDetailSearch }: ' ', ⌥' ', ^⌥' ', ⇧' ', '!', ⌥'!', ^⌥'!', ⇧'!', '"', ⌥'"', ^⌥'"', ⇧'"', '#', ⌥'#', ^⌥'#', ⇧'#', '$', ⌥'$', ^⌥'$', ⇧'$', '%', ⌥'%', ^⌥'%', ⇧'%', '&', ⌥'&', ^⌥'&', ⇧'&', '\'', ⌥'\'', ^⌥'\'', ⇧'\'', '(', ⌥'(', ^⌥'(', ⇧'(', ')', ⌥')', ^⌥')', ⇧')', '*', ⌥'*', ^⌥'*', ⇧'*', '+', ⌥'+', ^⌥'+', ⇧'+', ',', ⌥',', ^⌥',', ⇧',', '-', ⌥'-', ^⌥'-', ⇧'-', '.', ⌥'.', ^⌥'.', ⇧'.', '/', ⌥'/', ^⌥'/', ⇧'/', '0', ⌥'0', ^⌥'0', ⇧'0', '1', ⌥'1', ^⌥'1', ⇧'1', '2', ⌥'2', ^⌥'2', ⇧'2', '3', ⌥'3', ^⌥'3', ⇧'3', '4', ⌥'4', ^⌥'4', ⇧'4', '5', ⌥'5', ^⌥'5', ⇧'5', '6', ⌥'6', ^⌥'6', ⇧'6', '7', ⌥'7', ^⌥'7', ⇧'7', '8', ⌥'8', ^⌥'8', ⇧'8', '9', ⌥'9', ^⌥'9', ⇧'9', ':', ⌥':', ^⌥':', ⇧':', ';', ⌥';', ^⌥';', ⇧';', '<', ⌥'<', ^⌥'<', ⇧'<', '=', ⌥'=', ^⌥'=', ⇧'=', '>', ⌥'>', ^⌥'>', ⇧'>', '?', ⌥'?', ^⌥'?', ⇧'?', '@', ⌥'@', ^⌥'@', ⇧'@', 'A', ⌥'A', ^⌥'A', ⇧'A', 'B', ⌥'B', ^⌥'B', ⇧'B', 'C', ⌥'C', ^⌥'C', ⇧'C', 'D', ⌥'D', ^⌥'D', ⇧'D', 'E', ⌥'E', ^⌥'E', ⇧'E', 'F', ⌥'F', ^⌥'F', ⇧'F', 'G', ⌥'G', ^⌥'G', ⇧'G', 'H', ⌥'H', ^⌥'H', ⇧'H', 'I', ⌥'I', ^⌥'I', ⇧'I', 'J', ⌥'J', ^⌥'J', ⇧'J', 'K', ⌥'K', ^⌥'K', ⇧'K', 'L', ⌥'L', ^⌥'L', ⇧'L', 'M', ⌥'M', ^⌥'M', ⇧'M', 'N', ⌥'N', ^⌥'N', ⇧'N', 'O', ⌥'O', ^⌥'O', ⇧'O', 'P', ⌥'P', ^⌥'P', ⇧'P', 'Q', ⌥'Q', ^⌥'Q', ⇧'Q', 'R', ⌥'R', ^⌥'R', ⇧'R', 'S', ⌥'S', ^⌥'S', ⇧'S', 'T', ⌥'T', ^⌥'T', ⇧'T', 'U', ⌥'U', ^⌥'U', ⇧'U', 'V', ⌥'V', ^⌥'V', ⇧'V', 'W', ⌥'W', ^⌥'W', ⇧'W', 'X', ⌥'X', ^⌥'X', ⇧'X', 'Y', ⌥'Y', ^⌥'Y', ⇧'Y', 'Z', ⌥'Z', ^⌥'Z', ⇧'Z', '[', ⌥'[', ^⌥'[', ⇧'[', '\\', ⌥'\\', ^⌥'\\', ⇧'\\', ']', ⌥']', ^⌥']', ⇧']', '^', ⌥'^', ^⌥'^', ⇧'^', '_', ⌥'_', ^⌥'_', ⇧'_', '`', ⌥'`', ^⌥'`', ⇧'`', 'a', ⌥'a', ^⌥'a', ⇧'a', 'b', ^⌥'b', ⇧'b', 'c', ⌥'c', ^⌥'c', ⇧'c', 'd', ^⌥'d', ⇧'d', 'e', ⌥'e', ^⌥'e', ⇧'e', 'f', ^⌥'f', ⇧'f', 'g', ⌥'g', ^⌥'g', ⇧'g', 'h', ⌥'h', ^⌥'h', ⇧'h', 'i', ⌥'i', ^⌥'i', ⇧'i', 'j', ⌥'j', ^⌥'j', ⇧'j', 'k', ⌥'k', ^⌥'k', ⇧'k', 'l', ⌥'l', ^⌥'l', ⇧'l', 'm', ⌥'m', ^⌥'m', ⇧'m', 'n', ⌥'n', ^⌥'n', ⇧'n', 'o', ⌥'o', ^⌥'o', ⇧'o', 'p', ⌥'p', ^⌥'p', ⇧'p', 'q', ⌥'q', ^⌥'q', ⇧'q', 'r', ⌥'r', ^⌥'r', ⇧'r', 's', ⌥'s', ^⌥'s', ⇧'s', 't', ⌥'t', ^⌥'t', ⇧'t', 'u', ⌥'u', ^⌥'u', ⇧'u', 'v', ⌥'v', ^⌥'v', ⇧'v', 'w', ⌥'w', ^⌥'w', ⇧'w', 'x', ⌥'x', ^⌥'x', ⇧'x', 'y', ⌥'y', ^⌥'y', ⇧'y', 'z', ⌥'z', ^⌥'z', ⇧'z', '{', ⌥'{', ^⌥'{', ⇧'{', '|', ⌥'|', ^⌥'|', ⇧'|', '}', ⌥'}', ^⌥'}', ⇧'}', '~', ⌥'~', ^⌥'~', ⇧'~'
+TextKill { target: CellDetailSearch, direction: ReadlinePreviousWhitespace }: ^'w'
+TextKill { target: CellDetailSearch, direction: ReadlineWordEnd }: ⌥'d'
+TextKill { target: CellDetailSearch, direction: ToLineEnd }: ^'k'
+TextKill { target: CellDetailSearch, direction: ToLineStart }: ^'u'
 TextMoveCursor { target: CellDetailSearch, direction: End }: End, ⇧End
 TextMoveCursor { target: CellDetailSearch, direction: Home }: Home, ⇧Home
-TextMoveCursor { target: CellDetailSearch, direction: Left }: Left, ⇧Left
-TextMoveCursor { target: CellDetailSearch, direction: Right }: Right, ⇧Right
+TextMoveCursor { target: CellDetailSearch, direction: Left }: ^'b', Left, ⇧Left
+TextMoveCursor { target: CellDetailSearch, direction: LineEnd }: ^'e'
+TextMoveCursor { target: CellDetailSearch, direction: LineStart }: ^'a'
+TextMoveCursor { target: CellDetailSearch, direction: ReadlineWordEnd }: ⌥'f'
+TextMoveCursor { target: CellDetailSearch, direction: ReadlineWordStart }: ⌥'b'
+TextMoveCursor { target: CellDetailSearch, direction: Right }: ^'f', Right, ⇧Right
+TextYank { target: CellDetailSearch }: ^'y'
 footer: type:Search
-help: type: Type to search
 help: Enter: Confirm search
 help: Esc: Cancel search
+help: type: Type to search
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)

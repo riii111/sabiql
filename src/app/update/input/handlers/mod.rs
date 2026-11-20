@@ -49,8 +49,10 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
 }
 
 fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
-    if state.input_mode() == InputMode::ErTablePicker {
-        return pickers::handle_er_table_picker_keys(combo, state);
+    match state.input_mode() {
+        InputMode::ErTablePicker => return pickers::handle_er_table_picker_keys(combo, state),
+        InputMode::CellDetail => return cell_detail::handle_cell_detail_keys(combo, state),
+        _ => {}
     }
     let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
     let interaction = resolve_input_interaction(state);
@@ -109,10 +111,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
             &feature_policy,
         ),
         InputMode::JsonEdit => json::handle_json_edit_keys_with_policy(combo, &feature_policy),
-        InputMode::CellDetail => {
-            let is_searching = state.cell_detail.search().is_active();
-            cell_detail::handle_cell_detail_keys(combo, is_searching)
-        }
+        InputMode::CellDetail => cell_detail::handle_cell_detail_keys(combo, state),
         InputMode::RowDetail => row_detail::handle_row_detail_keys(combo, state),
     }
 }
@@ -255,6 +254,7 @@ mod tests {
         SqlModalHighRisk,
         SqlModalAnalyzeHighRisk,
         JsonSearch,
+        CellDetailSearch,
         HelpFilter,
     }
 
@@ -323,6 +323,11 @@ mod tests {
                 state.json_detail.enter_search();
                 InputTarget::JsonSearch
             }
+            FormSurface::CellDetailSearch => {
+                state.modal.set_mode(InputMode::CellDetail);
+                state.cell_detail.enter_search();
+                InputTarget::CellDetailSearch
+            }
             FormSurface::HelpFilter => {
                 state.modal.set_mode(InputMode::Help);
                 state.ui.help_mut().enter_filter_editing();
@@ -343,6 +348,7 @@ mod tests {
     #[case(FormSurface::SqlModalHighRisk)]
     #[case(FormSurface::SqlModalAnalyzeHighRisk)]
     #[case(FormSurface::JsonSearch)]
+    #[case(FormSurface::CellDetailSearch)]
     #[case(FormSurface::HelpFilter)]
     fn form_editing_surfaces_prioritize_readline(#[case] surface: FormSurface) {
         let (state, target) = form_editing_state(surface);

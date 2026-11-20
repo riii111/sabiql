@@ -230,6 +230,9 @@ mod tests {
     use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
     use crate::model::shared::input_mode::InputMode;
     use crate::policy::FeaturePolicy;
+    use crate::update::input::keymap::cell_detail::{
+        SEARCHING as CELL_SEARCH_ROWS, VIEWING as CELL_VIEW_ROWS,
+    };
     use crate::update::input::keymap::pickers::{ER_ROWS, HISTORY_ROWS, PALETTE_ROWS, TABLE_ROWS};
     use crate::update::input::keymap::row_detail::ROWS as ROW_DETAIL_ROWS;
     use crate::update::input::keymap::sqlite_diagnostics::ROWS as DIAGNOSTIC_ROWS;
@@ -240,6 +243,7 @@ mod tests {
             (&*TABLE_ROWS, None),
             (&*HISTORY_ROWS, None),
             (&*ER_ROWS, Some(' ')),
+            (&*CELL_SEARCH_ROWS, None),
         ] {
             for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
                 let mut seen = Vec::new();
@@ -271,6 +275,8 @@ mod tests {
             (&*ER_ROWS, EngineFeatureProfile::postgres_like()),
             (&*ROW_DETAIL_ROWS, EngineFeatureProfile::postgres_like()),
             (&*DIAGNOSTIC_ROWS, EngineFeatureProfile::sqlite_like()),
+            (&*CELL_SEARCH_ROWS, EngineFeatureProfile::postgres_like()),
+            (&*CELL_VIEW_ROWS, EngineFeatureProfile::postgres_like()),
         ] {
             for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
                 let context = KeyContext::for_scope(

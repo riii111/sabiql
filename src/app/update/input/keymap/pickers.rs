@@ -114,7 +114,7 @@ fn rows(picker: Picker) -> Vec<Row> {
     }
     rows.push(navigation);
     if let Some(input) = input {
-        rows.extend(text_field(input));
+        rows.extend(text_field(input, false));
         rows.push(Row {
             bindings: vec![Binding::text(input)],
             short: "Filter",

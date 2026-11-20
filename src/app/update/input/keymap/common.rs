@@ -48,20 +48,21 @@ pub(super) fn readline_action_for(combo: &KeyCombo, target: InputTarget) -> Opti
     resolve(&rows.1, *combo, &READLINE_CONTEXT)
 }
 
-pub(super) fn text_field(target: InputTarget) -> Vec<Row> {
+pub(super) fn text_field(target: InputTarget, shift_keys: bool) -> Vec<Row> {
     let mut rows = READLINE
         .iter()
         .find(|(candidate, _)| *candidate == target)
         .map_or_default(|(_, rows)| rows.clone());
     rows.extend([
-        hidden(Action::TextBackspace { target }, Key::Backspace),
-        hidden(Action::TextDelete { target }, Key::Delete),
+        hidden(Action::TextBackspace { target }, Key::Backspace, shift_keys),
+        hidden(Action::TextDelete { target }, Key::Delete, shift_keys),
         hidden(
             Action::TextMoveCursor {
                 target,
                 direction: CursorMove::Left,
             },
             Key::Left,
+            shift_keys,
         ),
         hidden(
             Action::TextMoveCursor {
@@ -69,6 +70,7 @@ pub(super) fn text_field(target: InputTarget) -> Vec<Row> {
                 direction: CursorMove::Right,
             },
             Key::Right,
+            shift_keys,
         ),
         hidden(
             Action::TextMoveCursor {
@@ -76,6 +78,7 @@ pub(super) fn text_field(target: InputTarget) -> Vec<Row> {
                 direction: CursorMove::Home,
             },
             Key::Home,
+            shift_keys,
         ),
         hidden(
             Action::TextMoveCursor {
@@ -83,6 +86,7 @@ pub(super) fn text_field(target: InputTarget) -> Vec<Row> {
                 direction: CursorMove::End,
             },
             Key::End,
+            shift_keys,
         ),
     ]);
     rows
@@ -119,13 +123,19 @@ pub(super) fn list_navigation(target: ListTarget, vim_keys: bool) -> Row {
     }
 }
 
-fn hidden(action: Action, key: Key) -> Row {
-    hidden_combo(action, KeyCombo::plain(key))
+fn hidden(action: Action, key: Key, shift_keys: bool) -> Row {
+    let combos = [KeyCombo::plain(key), KeyCombo::shift(key)];
+    let len = if shift_keys { 2 } else { 1 };
+    hidden_binding(action, &combos[..len])
 }
 
 fn hidden_combo(action: Action, combo: KeyCombo) -> Row {
+    hidden_binding(action, &[combo])
+}
+
+fn hidden_binding(action: Action, combos: &[KeyCombo]) -> Row {
     Row {
-        bindings: vec![Binding::action(action, &[combo])],
+        bindings: vec![Binding::action(action, combos)],
         short: "",
         description: "",
         visible: None,

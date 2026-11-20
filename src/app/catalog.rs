@@ -14,7 +14,8 @@ use crate::policy::{FeaturePolicy, FeatureRequirement};
 )]
 use crate::update::input::keybindings::*;
 use crate::update::input::keymap::{
-    HintSurface, KeyContext, Picker, picker_hints, row_detail_hints, sqlite_diagnostics_hints,
+    HintSurface, KeyContext, Picker, cell_detail_hints, picker_hints, row_detail_hints,
+    sqlite_diagnostics_hints,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -354,8 +355,13 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
         }
         HelpOrigin::JsonDetail { mode } => json_current_rows(mode, feature_policy),
         HelpOrigin::JsonEdit => rows_from_mode_rows_if_visible(JSON_EDIT_ROWS, feature_policy),
-        HelpOrigin::CellDetail { searching: true } => rows_from_bindings(CELL_DETAIL_SEARCH_KEYS),
-        HelpOrigin::CellDetail { searching: false } => rows_from_mode_rows(CELL_DETAIL_ROWS),
+        HelpOrigin::CellDetail { searching } => cell_detail_hints(
+            HintSurface::Current,
+            &key_context.with_cell_detail_searching(searching),
+        )
+        .into_iter()
+        .map(|hint| HelpRow::new(hint.key, hint.description))
+        .collect(),
         HelpOrigin::RowDetail => row_detail_hints(HintSurface::Current, &key_context)
             .into_iter()
             .map(|hint| HelpRow::new(hint.key, hint.description))
@@ -440,6 +446,14 @@ fn reference_sections(
             feature_policy,
         ));
     }
+    search_filter_rows.extend(
+        cell_detail_hints(
+            HintSurface::SearchFilter,
+            &key_context.clone().with_cell_detail_searching(true),
+        )
+        .into_iter()
+        .map(|hint| HelpRow::new(hint.key, hint.description)),
+    );
     search_filter_rows.extend(rows_from_mode_rows(HELP_ROWS));
 
     let mut editing_rows = merge_rows(&[
@@ -485,6 +499,11 @@ fn reference_sections(
     }
     advanced_rows.extend(
         row_detail_hints(HintSurface::Advanced, &key_context)
+            .into_iter()
+            .map(|hint| HelpRow::new(hint.key, hint.description)),
+    );
+    advanced_rows.extend(
+        cell_detail_hints(HintSurface::Advanced, &key_context)
             .into_iter()
             .map(|hint| HelpRow::new(hint.key, hint.description)),
     );
@@ -658,7 +677,7 @@ fn json_current_rows(mode: JsonHelpMode, feature_policy: &FeaturePolicy) -> Vec<
 fn section(title: &str, rows: Vec<HelpRow>) -> HelpSection {
     HelpSection {
         title: title.to_string(),
-        rows,
+        rows: merge_rows(&[rows]),
     }
 }
 
