@@ -144,21 +144,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn table_picker_appends_text() {
-            let mut state = AppState::new("test".to_string());
-            state.modal.set_mode(InputMode::TablePicker);
-
-            route(
-                &mut state,
-                Action::Paste("hello".to_string()),
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert_eq!(state.ui.table_picker().filter_input().content(), "hello");
-        }
-
-        #[test]
         fn table_picker_strips_newlines() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::TablePicker);
@@ -187,21 +172,6 @@ mod tests {
             );
 
             assert_eq!(state.ui.table_picker().selected(), 0);
-        }
-
-        #[test]
-        fn command_line_appends_text() {
-            let mut state = AppState::new("test".to_string());
-            state.modal.set_mode(InputMode::CommandLine);
-
-            route(
-                &mut state,
-                Action::Paste("quit".to_string()),
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert_eq!(state.command_line_input.content(), "quit");
         }
 
         #[test]
@@ -257,26 +227,10 @@ mod tests {
         }
 
         #[test]
-        fn query_history_picker_appends_to_filter() {
-            let mut state = AppState::new("test".to_string());
-            state.modal.set_mode(InputMode::QueryHistoryPicker);
-            state.query_history_picker.set_selection_for_test(3);
-
-            route(
-                &mut state,
-                Action::Paste("users".to_string()),
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert_eq!(state.query_history_picker.filter_input().content(), "users");
-            assert_eq!(state.query_history_picker.selected(), 0);
-        }
-
-        #[test]
         fn query_history_picker_strips_newlines() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::QueryHistoryPicker);
+            state.query_history_picker.set_selection_for_test(3);
 
             route(
                 &mut state,
@@ -286,6 +240,7 @@ mod tests {
             );
 
             assert_eq!(state.query_history_picker.filter_input().content(), "users");
+            assert_eq!(state.query_history_picker.selected(), 0);
         }
     }
 

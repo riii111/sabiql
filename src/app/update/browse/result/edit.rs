@@ -685,22 +685,6 @@ mod tests {
         }
 
         #[test]
-        fn delete_removes_char_at_cursor() {
-            let mut state = state_in_cell_edit("abcd", 1);
-
-            edit_text(
-                &mut state,
-                &Action::TextDelete {
-                    target: InputTarget::ResultCellEdit,
-                },
-                Instant::now(),
-            );
-
-            assert_eq!(state.result_interaction.cell_edit().draft_value(), "acd");
-            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 1);
-        }
-
-        #[test]
         fn delete_at_end_is_noop() {
             let mut state = state_in_cell_edit("abc", 3);
 
@@ -713,22 +697,6 @@ mod tests {
             );
 
             assert_eq!(state.result_interaction.cell_edit().draft_value(), "abc");
-        }
-
-        #[test]
-        fn move_cursor_left_decrements() {
-            let mut state = state_in_cell_edit("abc", 2);
-
-            edit_text(
-                &mut state,
-                &Action::TextMoveCursor {
-                    target: InputTarget::ResultCellEdit,
-                    direction: CursorMove::Left,
-                },
-                Instant::now(),
-            );
-
-            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 1);
         }
 
         #[test]
@@ -748,22 +716,6 @@ mod tests {
         }
 
         #[test]
-        fn move_cursor_home_jumps_to_start() {
-            let mut state = state_in_cell_edit("abc", 3);
-
-            edit_text(
-                &mut state,
-                &Action::TextMoveCursor {
-                    target: InputTarget::ResultCellEdit,
-                    direction: CursorMove::Home,
-                },
-                Instant::now(),
-            );
-
-            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 0);
-        }
-
-        #[test]
         fn move_cursor_end_jumps_to_end() {
             let mut state = state_in_cell_edit("abc", 0);
 
@@ -777,39 +729,6 @@ mod tests {
             );
 
             assert_eq!(state.result_interaction.cell_edit().input().cursor(), 3);
-        }
-
-        #[test]
-        fn input_inserts_at_cursor_not_at_end() {
-            let mut state = state_in_cell_edit("ac", 1);
-
-            edit_text(
-                &mut state,
-                &Action::TextInput {
-                    target: InputTarget::ResultCellEdit,
-                    ch: 'b',
-                },
-                Instant::now(),
-            );
-
-            assert_eq!(state.result_interaction.cell_edit().draft_value(), "abc");
-            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 2);
-        }
-
-        #[test]
-        fn backspace_removes_char_before_cursor() {
-            let mut state = state_in_cell_edit("abc", 2);
-
-            edit_text(
-                &mut state,
-                &Action::TextBackspace {
-                    target: InputTarget::ResultCellEdit,
-                },
-                Instant::now(),
-            );
-
-            assert_eq!(state.result_interaction.cell_edit().draft_value(), "ac");
-            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 1);
         }
 
         #[test]

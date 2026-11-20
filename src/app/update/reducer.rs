@@ -1327,7 +1327,10 @@ mod tests {
             assert_eq!(state.sql_modal.editor.content(), "a");
             assert_eq!(state.sql_modal.editor.cursor(), 1);
             assert!(effects.is_empty());
-            assert!(state.sql_modal.completion_debounce().is_some());
+            assert_eq!(
+                state.sql_modal.completion_debounce(),
+                Some(now + Duration::from_millis(100))
+            );
         }
 
         #[test]
@@ -1349,25 +1352,6 @@ mod tests {
             assert_eq!(state.sql_modal.editor.cursor(), 1);
             assert!(effects.is_empty());
             assert!(state.sql_modal.completion_debounce().is_some());
-        }
-
-        #[test]
-        fn debounce_state_uses_provided_now() {
-            let mut state = create_test_state();
-            let now = Instant::now();
-
-            reduce(
-                &mut state,
-                Action::TextInput {
-                    target: InputTarget::SqlModal,
-                    ch: 'x',
-                },
-                now,
-                &AppServices::stub(),
-            );
-
-            let expected = now + Duration::from_millis(100);
-            assert_eq!(state.sql_modal.completion_debounce(), Some(expected));
         }
 
         #[test]

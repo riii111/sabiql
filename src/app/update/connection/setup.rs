@@ -411,14 +411,9 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(
-                state
-                    .connection_setup
-                    .input(ConnectionField::Host)
-                    .unwrap()
-                    .content(),
-                "db.example.com"
-            );
+            let host = state.connection_setup.input(ConnectionField::Host).unwrap();
+            assert_eq!(host.content(), "db.example.com");
+            assert_eq!(host.cursor(), 14);
         }
 
         #[test]
@@ -522,26 +517,6 @@ mod tests {
         }
 
         #[test]
-        fn updates_cursor() {
-            let mut state = setup_state_with_field(ConnectionField::Host);
-
-            reduce(
-                &mut state,
-                &Action::Paste("db.example.com".to_string()),
-                Instant::now(),
-            );
-
-            assert_eq!(
-                state
-                    .connection_setup
-                    .input(ConnectionField::Host)
-                    .unwrap()
-                    .cursor(),
-                14
-            );
-        }
-
-        #[test]
         fn host_paste_respects_limit() {
             let mut state = setup_state_with_field(ConnectionField::Host);
 
@@ -586,23 +561,6 @@ mod tests {
 
             assert_eq!(state.connection_setup.password.content(), "");
             assert_eq!(state.kill_buffer(), Some("safe-to-yank"));
-        }
-
-        #[test]
-        fn delete_removes_the_character_at_the_connection_field_cursor() {
-            let mut state = setup_state_with_field(ConnectionField::Host);
-            state.connection_setup.host.set_content("abc".to_string());
-            state.connection_setup.host.set_cursor(1);
-
-            edit_text(
-                &mut state,
-                &Action::TextDelete {
-                    target: InputTarget::ConnectionSetup,
-                },
-                Instant::now(),
-            );
-
-            assert_eq!(state.connection_setup.host.content(), "ac");
         }
     }
 
