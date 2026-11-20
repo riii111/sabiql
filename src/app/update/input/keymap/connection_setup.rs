@@ -4,7 +4,7 @@ use crate::ports::inbound::{Key, KeyCombo};
 use crate::update::action::{Action, InputTarget};
 
 use super::common::conditional_text_field;
-use super::model::{Binding, Row, hints, resolve};
+use super::model::{Binding, Row, hints};
 use super::{Hint, HintSurface, KeyContext};
 
 static CONNECT: LazyLock<Vec<Row>> = LazyLock::new(|| rows("Connect"));
@@ -115,7 +115,7 @@ fn rows(submit: &'static str) -> Vec<Row> {
         vec![Binding::text(InputTarget::ConnectionSetup).when(form)],
         "Edit",
         "Edit connection setting",
-        &[],
+        &[HintSurface::Connections],
     ));
     rows
 }
@@ -126,10 +126,6 @@ pub(super) fn active_rows(context: &KeyContext) -> &'static [Row] {
     } else {
         &CONNECT
     }
-}
-
-pub fn connection_setup_action(combo: KeyCombo, context: &KeyContext) -> Action {
-    resolve(active_rows(context), combo, context).unwrap_or(Action::None)
 }
 
 pub fn connection_setup_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {

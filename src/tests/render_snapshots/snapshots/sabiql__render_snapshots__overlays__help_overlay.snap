@@ -15,7 +15,6 @@ expression: output
 │                        │  Enter                                Select table                                                             ┃│                        │
 │                        │  Esc                                  Cancel                                                                   ┃│                        │
 │                        │  Ctrl+P                               Open Table Picker                                                        ┃│                        │
-│                        │  r                                    Reload metadata                                                          ┃│                        │
 │                        │  s                                    Open SQL Editor                                                          ││                        │
 │                        │  e                                    Open ER Diagram                                                          ││                        │
 │                        │  c                                    Open Connection Selector                                                 ││                        │
@@ -26,9 +25,13 @@ expression: output
 │                        │  ?                                    Toggle help                                                              ││                        │
 │                        │  ,                                    Open Settings                                                            ││                        │
 │                        │  :                                    Enter command line                                                       ││                        │
-│                        │  F1                                   Open Command Palette                                                     ││────────────────────────┘
-│                        │  f                                    Toggle Focus mode                                                        ││────────────────────────┐
-│                        │  Ctrl+R                               Enable Read-Only mode                                                    ││                        │
+│                        │  F1                                   Open Command Palette                                                     ││                        │
+│                        │  f                                    Toggle Focus mode                                                        ││────────────────────────┘
+│                        │  Ctrl+R                               Enable Read-Only mode                                                    ││────────────────────────┐
+│                        │  f                                    Exit Focus mode                                                          ││                        │
+│                        │  Ctrl+R                               Disable Read-Only mode                                                   ││                        │
+│                        │  :quit                                Quit application                                                         ││                        │
+│                        │  :help                                Show help                                                                ││                        │
 │                        │                                                                                                                ││                        │
 │                        │▸ Navigation                                                                                                    ││                        │
 │                        │  j / k / ↓ / ↑                        Move down/up                                                             ││                        │
@@ -38,13 +41,10 @@ expression: output
 │                        │  Ctrl+D / Ctrl+U                      Scroll half page down/up                                                 ││                        │
 │                        │  Ctrl+F / Ctrl+B / PageDown / PageUp  Scroll full page down/up                                                 ││                        │
 │                        │  zz / zt / zb                         Scroll cursor to center/top/bottom                                       ││                        │
-│                        │                                                                                                                ││                        │
-│                        │▸ Open / Switch                                                                                                 ││                        │
-│                        │  Ctrl+P                               Open Table Picker                                                        ││                        │
-│                        │  s                                    Open SQL Editor                                                          ││                        │
-│                        │  e                                    Open ER Diagram                                                          ││                        │
-│                        │  c                                    Open Connection Selector                                                 ││                        │
-│                        │  Ctrl+O                               Open Query History                                                       ▼│                        │
+│                        │  Enter                                Select table                                                             ││                        │
+│                        │  Esc                                  Cancel                                                                   ││                        │
+│                        │  Enter                                Enter cell selection at the current viewport anchor                      ││                        │
+│                        │  ] / [                                Next/Previous page                                                       ▼│                        │
 │                        │─────────────────────────────────────────────────────────────────────────────────────────────────────────────────│                        │
 │                        │ [BROWSE]                                                                                                        │                        │
 │                        ╰ /: Filter │ Esc/?: Close ───────────────────────────────────────────────────────────────────────────────────────╯                        │

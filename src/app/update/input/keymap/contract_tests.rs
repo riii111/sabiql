@@ -161,6 +161,60 @@ fn state(engine: DatabaseType, preset: KeymapPreset, mode: InputMode) -> AppStat
 }
 
 #[test]
+fn described_operations_have_a_help_reference_section() {
+    let sections = [
+        HintSurface::Common,
+        HintSurface::Navigation,
+        HintSurface::OpenSwitch,
+        HintSurface::DataActions,
+        HintSurface::Editing,
+        HintSurface::SearchFilter,
+        HintSurface::Connections,
+        HintSurface::ModalBasics,
+        HintSurface::Advanced,
+    ];
+    let mut missing = std::collections::BTreeSet::new();
+    for engine in [
+        DatabaseType::PostgreSQL,
+        DatabaseType::MySQL,
+        DatabaseType::SQLite,
+    ] {
+        for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
+            let state = state(engine, preset, InputMode::Normal);
+            for context in super::super::reference_scopes(&KeyContext::from_state(&state)) {
+                let Some(rows) = super::super::scope_rows(&context) else {
+                    continue;
+                };
+                for row in rows {
+                    let actionable = row.bindings.iter().any(|binding| match &binding.output {
+                        Output::Action(action) => {
+                            !matches!(action, Action::None | Action::CancelKeySequence)
+                        }
+                        Output::Text(_) | Output::Command(_) => true,
+                        Output::Consume => false,
+                    });
+                    if actionable
+                        && !row.description.is_empty()
+                        && !row
+                            .references
+                            .iter()
+                            .chain(row.surfaces)
+                            .any(|section| sections.contains(section))
+                    {
+                        missing.insert(format!("{}: {}", context.label(), row.description));
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "Unclassified operations:\n{}",
+        missing.into_iter().collect::<Vec<_>>().join("\n")
+    );
+}
+
+#[test]
 fn sql_history_hint_and_input_follow_availability() {
     let mut sql = state(
         DatabaseType::PostgreSQL,
@@ -204,6 +258,18 @@ fn sql_history_hint_and_input_follow_availability() {
     );
     assert!(matches!(handle_event(key.clone(), &sql), Action::None));
     sql.query.mark_idle();
+    let _ = sql.session.begin_mysql_connection_probe(
+        &ConnectionId::new(),
+        "mysql",
+        "mysql://localhost/test",
+        Some("test"),
+    );
+    assert!(
+        !sql_edit_hints(HintSurface::Border, &KeyContext::from_state(&sql))
+            .iter()
+            .any(|hint| hint.short == "History")
+    );
+    assert!(matches!(handle_event(key.clone(), &sql), Action::None));
     sql.session.clear_connection();
     assert!(matches!(handle_event(key, &sql), Action::None));
 }

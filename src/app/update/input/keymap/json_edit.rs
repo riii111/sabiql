@@ -4,7 +4,7 @@ use crate::ports::inbound::{Key, KeyCombo};
 use crate::update::action::{Action, CursorMove, InputTarget};
 
 use super::common::consume_readline;
-use super::model::{Binding, Row, hints, resolve};
+use super::model::{Binding, Row, hints};
 use super::{Hint, HintSurface, KeyContext};
 
 fn supported(context: &KeyContext) -> bool {
@@ -83,10 +83,6 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
     ));
     rows
 });
-
-pub fn json_edit_action(combo: KeyCombo, context: &KeyContext) -> Action {
-    resolve(&ROWS, combo, context).unwrap_or(Action::None)
-}
 
 pub fn json_edit_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
     hints(&ROWS, context, surface)

@@ -11,7 +11,7 @@ use crate::update::action::{
 use super::common::{NavigationKey, NavigationLayout, navigation_binding};
 use super::context::BrowsePane;
 use super::global;
-use super::model::{Binding, Row, hints, indexed_hints, resolve, row_action};
+use super::model::{Binding, Row, hints, indexed_hints, row_action};
 use super::{Hint, HintSurface, KeyContext};
 
 static EXPLORER: LazyLock<Vec<Row>> = LazyLock::new(|| rows(BrowsePane::Explorer));
@@ -22,6 +22,7 @@ static RESULT_CELL: LazyLock<Vec<Row>> = LazyLock::new(|| rows(BrowsePane::Resul
 fn rows(pane: BrowsePane) -> Vec<Row> {
     let mut rows = global::ROWS.clone();
     rows.push(Row {
+        references: &[HintSurface::Connections],
         visible: Some(|context, surface| {
             surface != HintSurface::FooterAction
                 || (!context.browse_focused() && context.browse_pane() != BrowsePane::ResultCell)
@@ -76,13 +77,13 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
                 vec![Binding::no_ctrl_alt(Action::ConfirmSelection, Key::Enter)],
                 "Select",
                 "Select table",
-                &[HintSurface::Current],
+                &[HintSurface::Current, HintSurface::Navigation],
             ));
             rows.push(row(
                 vec![Binding::no_ctrl_alt(Action::Escape, Key::Esc)],
                 "Back",
                 "Cancel",
-                &[HintSurface::Current],
+                &[HintSurface::Current, HintSurface::Navigation],
             ));
         }
         BrowsePane::Inspector => {
@@ -90,7 +91,7 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
                 vec![Binding::no_ctrl_alt(Action::Escape, Key::Esc)],
                 "Back",
                 "Cancel",
-                &[HintSurface::Current],
+                &[HintSurface::Current, HintSurface::Navigation],
             ));
             rows.push(Row {
                 references: &[HintSurface::DataActions],
@@ -132,7 +133,11 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
                     vec![Binding::no_ctrl_alt(Action::ResultActivateCell, Key::Enter)],
                     "Select",
                     "Enter cell selection at the current viewport anchor",
-                    &[HintSurface::Current, HintSurface::FooterAction],
+                    &[
+                        HintSurface::Current,
+                        HintSurface::FooterAction,
+                        HintSurface::Navigation,
+                    ],
                 ));
                 rows.push(Row {
                     references: &[HintSurface::DataActions],
@@ -182,7 +187,7 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
                     )
                 });
                 rows.push(Row {
-                    references: &[],
+                    references: &[HintSurface::Navigation],
                     dynamic_label: Some(|context| {
                         if context.browse_draft() {
                             ("Discard", "Discard pending draft")
@@ -325,7 +330,11 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
                     ],
                     "Page",
                     "Next/Previous page",
-                    &[HintSurface::Current, HintSurface::FooterNavigation],
+                    &[
+                        HintSurface::Current,
+                        HintSurface::FooterNavigation,
+                        HintSurface::Navigation,
+                    ],
                 )
             });
         }
@@ -560,10 +569,6 @@ pub(super) fn active_rows(context: &KeyContext) -> &'static [Row] {
     }
 }
 
-pub fn browse_action(combo: KeyCombo, context: &KeyContext) -> Action {
-    resolve(active_rows(context), combo, context).unwrap_or(Action::None)
-}
-
 #[derive(Clone, Copy)]
 pub enum BrowseShortcut {
     ReloadMetadata,
@@ -623,22 +628,6 @@ pub fn browse_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
             result.extend(super::command::browse_write_hints(context));
         }
         result.extend(global.into_iter().map(|(_, hint)| hint));
-    }
-    result
-}
-
-pub(super) fn reference_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
-    let mut result = Vec::new();
-    for pane in [
-        BrowsePane::Explorer,
-        BrowsePane::Inspector,
-        BrowsePane::ResultScroll,
-        BrowsePane::ResultCell,
-    ] {
-        for staged in [false, true] {
-            let context = context.clone().with_browse_reference(pane, staged);
-            result.extend(hints(active_rows(&context), &context, surface));
-        }
     }
     result
 }

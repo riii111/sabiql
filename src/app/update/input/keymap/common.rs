@@ -390,7 +390,7 @@ pub(super) fn list_navigation(target: ListTarget, vim_keys: bool) -> Row {
         ],
         "Navigate",
         "Navigate",
-        &[HintSurface::Current],
+        &[HintSurface::Current, HintSurface::Navigation],
     )
 }
 

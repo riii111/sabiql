@@ -6,7 +6,7 @@ use crate::update::action::{
 };
 
 use super::common::detail_search;
-use super::model::{Binding, Row, hints, resolve};
+use super::model::{Binding, Row, hints};
 use super::scroll::{ScrollOptions, scroll_rows};
 use super::{Hint, HintSurface, KeyContext};
 
@@ -99,10 +99,6 @@ fn rows(context: &KeyContext) -> &'static [Row] {
     } else {
         &VIEWING
     }
-}
-
-pub fn cell_detail_action(combo: KeyCombo, context: &KeyContext) -> Action {
-    resolve(rows(context), combo, context).unwrap_or(Action::None)
 }
 
 pub fn cell_detail_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {

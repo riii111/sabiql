@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 use crate::ports::inbound::{Key, KeyCombo};
 use crate::update::action::{Action, ScrollTarget};
 
-use super::model::{Binding, Row, hints, resolve};
+use super::model::{Binding, Row, hints};
 use super::scroll::line_scroll;
 use super::{Hint, HintSurface, KeyContext};
 
@@ -45,10 +45,6 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
         ),
     ]
 });
-
-pub fn confirm_action(combo: KeyCombo, context: &KeyContext) -> Action {
-    resolve(&ROWS, combo, context).unwrap_or(Action::None)
-}
 
 pub fn confirm_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
     hints(&ROWS, context, surface)

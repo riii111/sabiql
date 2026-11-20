@@ -31,27 +31,27 @@ use crate::policy::FeatureRequirement;
 use crate::ports::inbound::KeyCombo;
 use crate::update::action::Action;
 
-pub use browse::{BrowseShortcut, browse_action, browse_hints, browse_shortcut};
-pub use cell_detail::{cell_detail_action, cell_detail_hints};
-pub use cell_edit::{cell_edit_action, cell_edit_hints};
-pub use command::{LineCommand, command_line_action, command_line_hints, parse_command};
-pub use confirm::{confirm_action, confirm_hints};
-pub use connection_error::{connection_error_action, connection_error_hints};
-pub use connection_selector::{connection_selector_action, connection_selector_hints};
-pub use connection_setup::{connection_setup_action, connection_setup_hints};
+pub use browse::{BrowseShortcut, browse_hints, browse_shortcut};
+pub use cell_detail::cell_detail_hints;
+pub use cell_edit::cell_edit_hints;
+pub use command::{LineCommand, command_line_hints, parse_command};
+pub use confirm::confirm_hints;
+pub use connection_error::connection_error_hints;
+pub use connection_selector::connection_selector_hints;
+pub use connection_setup::connection_setup_hints;
 pub use context::KeyContext;
 pub use global::{PaletteEntry, palette_action, palette_available, palette_entry};
-pub use help::{help_action, help_hints};
-pub use json_edit::{json_edit_action, json_edit_hints};
-pub use json_search::{json_search_action, json_search_hints};
-pub use json_view::{json_view_action, json_view_hints};
-pub use pickers::{Picker, picker_action, picker_hints};
-pub use row_detail::{row_detail_action, row_detail_hints};
-pub use settings::{settings_action, settings_hints};
-pub use sql_confirmation::{sql_confirmation_action, sql_confirmation_hints};
-pub use sql_edit::{sql_edit_action, sql_edit_hints};
-pub use sql_view::{sql_view_action, sql_view_hints};
-pub use sqlite_diagnostics::{sqlite_diagnostics_action, sqlite_diagnostics_hints};
+pub use help::help_hints;
+pub use json_edit::json_edit_hints;
+pub use json_search::json_search_hints;
+pub use json_view::json_view_hints;
+pub use pickers::{Picker, picker_hints};
+pub use row_detail::row_detail_hints;
+pub use settings::settings_hints;
+pub use sql_confirmation::sql_confirmation_hints;
+pub use sql_edit::sql_edit_hints;
+pub use sql_view::sql_view_hints;
+pub use sqlite_diagnostics::sqlite_diagnostics_hints;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HintSurface {
@@ -118,11 +118,44 @@ fn scope_rows(context: &KeyContext) -> Option<&'static [model::Row]> {
 }
 
 pub(crate) fn reference_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
+    reference_scopes(context)
+        .iter()
+        .filter_map(|scope| scope_rows(scope).map(|rows| model::hints(rows, scope, surface)))
+        .flatten()
+        .collect()
+}
+
+fn reference_scopes(context: &KeyContext) -> Vec<KeyContext> {
+    use context::BrowsePane;
     use context::SqlConfirmation;
 
-    let mut result = browse::reference_hints(surface, context);
-    let make = |mode| KeyContext::for_scope(mode, context.preset(), context.policy());
     let mut scopes = Vec::new();
+    for pane in [
+        BrowsePane::Explorer,
+        BrowsePane::Inspector,
+        BrowsePane::ResultScroll,
+        BrowsePane::ResultCell,
+    ] {
+        for staged in [false, true] {
+            scopes.push(context.clone().with_browse_reference(pane, staged, false));
+        }
+        if pane == BrowsePane::ResultCell {
+            scopes.push(context.clone().with_browse_reference(pane, false, true));
+        }
+    }
+    scopes.push(
+        context
+            .clone()
+            .with_browse_reference(BrowsePane::Explorer, false, false)
+            .with_browse_reference_error(),
+    );
+    scopes.push(
+        context
+            .clone()
+            .with_browse_reference(BrowsePane::ResultScroll, false, false)
+            .with_browse_reference_focus_read_only(),
+    );
+    let make = |mode| KeyContext::for_scope(mode, context.preset(), context.policy());
     for mode in [
         InputMode::CommandLine,
         InputMode::CellEdit,
@@ -195,12 +228,7 @@ pub(crate) fn reference_hints(surface: HintSurface, context: &KeyContext) -> Vec
     {
         scopes.push(make(InputMode::JsonEdit).with_json_edit());
     }
-    for scope in scopes {
-        if let Some(rows) = scope_rows(&scope) {
-            result.extend(model::hints(rows, &scope, surface));
-        }
-    }
-    result
+    scopes
 }
 
 pub fn current_hints(context: &KeyContext) -> Vec<Hint> {

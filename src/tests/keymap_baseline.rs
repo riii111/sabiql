@@ -113,7 +113,12 @@ fn capture(name: &str, mut state: AppState, output: &mut String) {
         let action = handle_event(InputEvent::Key(normalized), &state);
         let description = match action {
             Action::None => continue,
-            Action::TextInput { target, .. } => format!("TextInput {{ target: {target:?} }}"),
+            Action::TextInput { target, ch } => {
+                if let Key::Char(input) = normalized.key {
+                    assert_eq!(ch, input, "{name}: {normalized:?}");
+                }
+                format!("TextInput {{ target: {target:?} }}")
+            }
             _ => format!("{action:?}"),
         };
         actions

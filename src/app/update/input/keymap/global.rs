@@ -95,8 +95,10 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             ),
             HintSurface::FooterAction,
             Some(|context, surface| {
-                !matches!(surface, HintSurface::FooterAction | HintSurface::Palette)
-                    || (regular_footer(context, surface) && context.browse_connected())
+                !matches!(
+                    surface,
+                    HintSurface::FooterAction | HintSurface::Palette | HintSurface::Current
+                ) || (regular_footer(context, surface) && context.browse_connected())
             }),
         ),
         footer(
@@ -331,18 +333,33 @@ pub fn palette_action(id: usize, context: &KeyContext) -> Option<Action> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{ConnectionId, DatabaseType};
+    use crate::domain::{ConnectionId, DatabaseType, QueryResult, QuerySource};
     use crate::model::app_state::AppState;
+    use std::sync::Arc;
     use std::time::Instant;
 
     #[test]
     fn palette_checks_connection_and_history_availability_again_on_selection() {
         let mut state = AppState::new("test".to_string());
+        state
+            .query
+            .set_current_result(Arc::new(QueryResult::success(
+                "SELECT 1".to_string(),
+                vec![],
+                vec![],
+                1,
+                QuerySource::Adhoc,
+            )));
         let unavailable = palette_available(&KeyContext::for_browse_state(&state));
         assert!(!unavailable.iter().any(|entry| matches!(
             entry.action,
             Action::ReloadMetadata | Action::OpenModal(ModalKind::QueryHistoryPicker)
         )));
+        assert!(
+            !unavailable
+                .iter()
+                .any(|entry| matches!(entry.action, Action::RequestCsvExport))
+        );
 
         state.session.activate_connection_with_dsn(
             &ConnectionId::new(),

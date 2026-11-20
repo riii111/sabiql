@@ -295,6 +295,133 @@ mod tests {
         }
     }
 
+    #[test]
+    fn normal_help_references_commands_and_conditional_navigation() {
+        for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
+            let mut state = AppState::new("test".to_string());
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "database",
+                DatabaseType::PostgreSQL,
+                "postgres://test",
+            );
+            state.settings.load_keymap_preset(preset);
+            let context = KeyContext::from_state(&state);
+            state.ui.help_mut().open(context.clone());
+            let document = HelpDocument::from_state(&state);
+            let rows: Vec<_> = document
+                .sections()
+                .iter()
+                .skip(1)
+                .flat_map(HelpSection::rows)
+                .collect();
+            for key in [
+                ":quit",
+                ":help",
+                ":sql",
+                ":erd",
+                ":settings",
+                ":palette",
+                ":w",
+            ] {
+                assert!(rows.iter().any(|row| row.key() == key), "{preset:?}: {key}");
+                let filtered = HelpDocument::new(context.clone(), key, key.len());
+                assert!(
+                    filtered
+                        .sections()
+                        .iter()
+                        .flat_map(HelpSection::rows)
+                        .any(|row| row.key() == key),
+                    "filtered {key}"
+                );
+            }
+            for description in [
+                "Exit command line",
+                "Enter cell selection at the current viewport anchor",
+                "Exit cell selection",
+                "Discard pending draft",
+                "Exit Focus mode",
+                "Disable Read-Only mode",
+            ] {
+                assert!(
+                    rows.iter().any(|row| row.description() == description),
+                    "{description}"
+                );
+            }
+            assert!(rows.iter().any(|row| row.description() == "Navigate"
+                && row.key().contains('j')
+                && row.key().contains('k')));
+        }
+
+        let mut sqlite = AppState::new("test".to_string());
+        sqlite.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "sqlite",
+            DatabaseType::SQLite,
+            "sqlite:///tmp/test.db",
+        );
+        let document = HelpDocument::new(KeyContext::from_state(&sqlite), "", 0);
+        assert!(
+            !document
+                .sections()
+                .iter()
+                .skip(1)
+                .flat_map(HelpSection::rows)
+                .any(|row| row.key() == ":erd")
+        );
+    }
+
+    #[test]
+    fn reload_is_current_only_when_connected_but_always_in_reference() {
+        let mut state = AppState::new("test".to_string());
+        let context = KeyContext::from_state(&state);
+        state.ui.help_mut().open(context);
+        let document = HelpDocument::from_state(&state);
+        assert!(
+            !document.sections()[0]
+                .rows()
+                .iter()
+                .any(|row| row.description() == "Reload metadata")
+        );
+        assert!(
+            document
+                .sections()
+                .iter()
+                .find(|section| section.title() == "Data Actions")
+                .unwrap()
+                .rows()
+                .iter()
+                .any(|row| row.description() == "Reload metadata")
+        );
+
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            DatabaseType::PostgreSQL,
+            "postgres://test",
+        );
+        let document = HelpDocument::new(KeyContext::from_state(&state), "", 0);
+        assert!(
+            document.sections()[0]
+                .rows()
+                .iter()
+                .any(|row| row.description() == "Reload metadata")
+        );
+    }
+
+    #[test]
+    fn pending_sequence_does_not_filter_reference_sections() {
+        use crate::model::shared::key_sequence::{KeySequenceState, Prefix};
+
+        let mut state = AppState::new("test".to_string());
+        let idle = HelpDocument::new(KeyContext::from_state(&state), "", 0);
+        state
+            .ui
+            .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::G));
+        let pending = HelpDocument::new(KeyContext::from_state(&state), "", 0);
+        assert_eq!(&idle.sections()[1..], &pending.sections()[1..]);
+    }
+
     fn result_state_with_selected_column(
         database_type: DatabaseType,
         selected_column: usize,

@@ -4,7 +4,7 @@ use crate::ports::inbound::{Key, KeyCombo};
 use crate::update::action::{Action, InputTarget, ModalKind};
 
 use super::common::text_field_any_modifiers;
-use super::model::{Binding, Row, hints, resolve, resolve_command};
+use super::model::{Binding, Row, hints, resolve_command};
 use super::{Hint, HintSurface, KeyContext};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,10 +94,10 @@ fn command_row(
         bindings: vec![Binding::command(command, name, aliases)],
         short,
         description,
-        references: if command == LineCommand::Write {
-            &[HintSurface::Editing]
-        } else {
-            &[]
+        references: match command {
+            LineCommand::Write => &[HintSurface::Editing],
+            LineCommand::Open(_) => &[HintSurface::OpenSwitch],
+            LineCommand::Quit | LineCommand::Help => &[HintSurface::Common],
         },
         dynamic_label: None,
         visible: if command == LineCommand::Write {
@@ -140,7 +140,11 @@ pub(super) static EDITING: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             "Exit",
             "Exit command line",
-            &[HintSurface::Footer, HintSurface::Current],
+            &[
+                HintSurface::Footer,
+                HintSurface::Current,
+                HintSurface::ModalBasics,
+            ],
         ),
     ]);
     rows.extend(text_field_any_modifiers(InputTarget::CommandLine));
@@ -148,14 +152,10 @@ pub(super) static EDITING: LazyLock<Vec<Row>> = LazyLock::new(|| {
         vec![Binding::text(InputTarget::CommandLine)],
         "Type",
         "Enter command",
-        &[],
+        &[HintSurface::ModalBasics],
     ));
     rows
 });
-
-pub fn command_line_action(combo: KeyCombo, context: &KeyContext) -> Action {
-    resolve(&EDITING, combo, context).unwrap_or(Action::None)
-}
 
 pub fn command_line_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
     hints(&EDITING, context, surface)

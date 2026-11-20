@@ -5,7 +5,7 @@ use crate::update::action::{Action, InputTarget};
 
 use super::command::cell_edit_write_row;
 use super::common::text_field_with_navigation;
-use super::model::{Binding, Row, hints, resolve};
+use super::model::{Binding, Row, hints};
 use super::{Hint, HintSurface, KeyContext};
 
 pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
@@ -49,10 +49,6 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
     ));
     rows
 });
-
-pub fn cell_edit_action(combo: KeyCombo, context: &KeyContext) -> Action {
-    resolve(&ROWS, combo, context).unwrap_or(Action::None)
-}
 
 pub fn cell_edit_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
     hints(&ROWS, context, surface)

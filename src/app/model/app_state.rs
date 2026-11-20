@@ -373,6 +373,7 @@ impl AppState {
 
     pub fn can_open_query_history(&self) -> bool {
         self.session.active_connection_id().is_some()
+            && self.session.pending_mysql_connection_probe().is_none()
             && !self.query.is_running()
             && !matches!(
                 self.input_mode(),

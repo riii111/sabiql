@@ -1,11 +1,11 @@
 use std::sync::LazyLock;
 
-use crate::ports::inbound::{Key, KeyCombo};
+use crate::ports::inbound::Key;
 use crate::update::action::{Action, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget};
 
 use super::common::confirmation_text_field;
 use super::context::SqlConfirmation;
-use super::model::{Binding, Row, hints, resolve};
+use super::model::{Binding, Row, hints};
 use super::{Hint, HintSurface, KeyContext};
 
 static HIGH: LazyLock<Vec<Row>> = LazyLock::new(|| rows(false, true));
@@ -78,7 +78,7 @@ fn rows(analyze: bool, typed: bool) -> Vec<Row> {
             ],
             "Scroll",
             "Scroll confirmation",
-            &[HintSurface::Current],
+            &[HintSurface::Current, HintSurface::Navigation],
         ));
     }
     if typed {
@@ -92,7 +92,7 @@ fn rows(analyze: bool, typed: bool) -> Vec<Row> {
             vec![Binding::text(target)],
             "Type",
             "Type confirmation name",
-            &[HintSurface::Current],
+            &[HintSurface::Current, HintSurface::Editing],
         ));
     }
     rows
@@ -105,10 +105,6 @@ pub(super) fn active_rows(context: &KeyContext) -> Option<&'static [Row]> {
         SqlConfirmation::AnalyzeHigh => &ANALYZE_HIGH,
         SqlConfirmation::AnalyzeRisk => &ANALYZE_RISK,
     })
-}
-
-pub fn sql_confirmation_action(combo: KeyCombo, context: &KeyContext) -> Option<Action> {
-    active_rows(context).map(|rows| resolve(rows, combo, context).unwrap_or(Action::None))
 }
 
 pub fn sql_confirmation_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {

@@ -3801,6 +3801,7 @@ mod tests {
         #[test]
         fn unavailable_export_does_not_execute_another_command() {
             let mut state = create_test_state();
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             state
                 .query
                 .set_current_result(Arc::new(QueryResult::success(
@@ -3828,6 +3829,78 @@ mod tests {
             assert!(effects.is_empty());
             assert!(!state.session.is_read_only());
             assert_eq!(state.ui.palette_commands(), captured);
+        }
+
+        #[test]
+        fn mysql_switch_hides_export_and_rechecks_open_palette_selection() {
+            use crate::update::input::keymap::{palette_action, palette_available};
+
+            let mut state = create_test_state();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "mysql-a",
+                DatabaseType::MySQL,
+                "mysql://localhost/a",
+            );
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    "SELECT 1".to_string(),
+                    vec!["col".to_string()],
+                    vec![vec!["value".to_string()]],
+                    1,
+                    QuerySource::Adhoc,
+                )));
+            open_modal_command_palette(&mut state);
+            let selected =
+                palette_index_of(&state, |action| matches!(action, Action::RequestCsvExport));
+            let captured = state.ui.palette_commands().to_vec();
+            let export_id = captured[selected];
+            state.ui.table_picker_mut().set_selection(selected);
+            let now = Instant::now();
+            let effects = reduce(
+                &mut state,
+                Action::SwitchConnection(ConnectionTarget {
+                    id: ConnectionId::new(),
+                    name: "mysql-b".to_string(),
+                    database_type: DatabaseType::MySQL,
+                    dsn: "mysql://localhost/b".to_string(),
+                    database: Some("b".to_string()),
+                }),
+                now,
+                &AppServices::stub(),
+            );
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::ProbeMySqlConnection { .. }))
+            );
+            let context = KeyContext::for_browse_state(&state);
+            assert!(!palette_available(&context).iter().any(|entry| matches!(
+                entry.action,
+                Action::RequestCsvExport | Action::OpenModal(ModalKind::QueryHistoryPicker)
+            )));
+            assert!(palette_action(export_id, &context).is_none());
+            assert_eq!(state.ui.palette_commands(), captured);
+            let effects = reduce(
+                &mut state,
+                Action::ConfirmSelection,
+                now,
+                &AppServices::stub(),
+            );
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(state.messages.last_error().is_none());
+            assert!(
+                reduce(
+                    &mut state,
+                    Action::OpenModal(ModalKind::QueryHistoryPicker),
+                    now,
+                    &AppServices::stub()
+                )
+                .is_empty()
+            );
+            assert_eq!(state.input_mode(), InputMode::Normal);
         }
     }
 

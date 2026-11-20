@@ -289,9 +289,15 @@ impl KeyContext {
         }
     }
 
-    pub(super) fn with_browse_reference(mut self, pane: BrowsePane, staged: bool) -> Self {
+    pub(super) fn with_browse_reference(
+        mut self,
+        pane: BrowsePane,
+        staged: bool,
+        draft: bool,
+    ) -> Self {
         self.mode = InputMode::Normal;
         self.history_available = true;
+        self.pending_prefix = None;
         self.scope = Scope::Browse(BrowseScope {
             focused: false,
             read_only: false,
@@ -300,7 +306,7 @@ impl KeyContext {
             connection_error: false,
             inspector_ddl: true,
             staged_delete: staged,
-            draft: false,
+            draft,
             yank_pending: false,
             delete_pending: false,
             selected_row: true,
@@ -311,6 +317,21 @@ impl KeyContext {
             can_paginate: true,
             multiple_inspector_tabs: true,
         });
+        self
+    }
+
+    pub(super) fn with_browse_reference_error(mut self) -> Self {
+        if let Scope::Browse(ref mut scope) = self.scope {
+            scope.connection_error = true;
+        }
+        self
+    }
+
+    pub(super) fn with_browse_reference_focus_read_only(mut self) -> Self {
+        if let Scope::Browse(ref mut scope) = self.scope {
+            scope.focused = true;
+            scope.read_only = true;
+        }
         self
     }
 
@@ -659,7 +680,9 @@ fn browse_scope(state: &AppState) -> Scope {
     Scope::Browse(BrowseScope {
         focused: state.ui.is_focus_mode(),
         read_only: state.session.is_read_only(),
-        csv_available: state.can_request_csv_export(),
+        csv_available: state.session.dsn().is_some()
+            && state.session.pending_mysql_connection_probe().is_none()
+            && state.can_request_csv_export(),
         pane,
         connection_error: state.connection_error.has_error(),
         inspector_ddl: state.ui.inspector_tab() == InspectorTab::Ddl,

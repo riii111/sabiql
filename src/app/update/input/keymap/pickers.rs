@@ -4,7 +4,7 @@ use crate::ports::inbound::{Key, KeyCombo};
 use crate::update::action::{Action, InputTarget, ListTarget, ModalKind};
 
 use super::common::{list_navigation, text_field};
-use super::model::{Binding, Row, hints, resolve};
+use super::model::{Binding, Row, hints};
 use super::{Hint, HintSurface, KeyContext};
 
 pub(super) static TABLE_ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| rows(Picker::Table));
@@ -144,16 +144,13 @@ fn rows_for(picker: Picker) -> &'static [Row] {
     }
 }
 
-pub fn picker_action(picker: Picker, combo: KeyCombo, context: &KeyContext) -> Action {
-    resolve(rows_for(picker), combo, context).unwrap_or(Action::None)
-}
-
 pub fn picker_hints(picker: Picker, surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
     hints(rows_for(picker), context, surface)
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::key_action;
     use super::*;
     use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::app_state::AppState;
@@ -161,19 +158,21 @@ mod tests {
 
     #[test]
     fn text_field_handles_delete_and_international_input() {
-        let context = KeyContext::from_state(&AppState::new("test".to_string()));
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::TablePicker);
+        let context = KeyContext::from_state(&state);
         assert!(matches!(
-            picker_action(Picker::Table, KeyCombo::plain(Key::Delete), &context),
+            key_action(KeyCombo::plain(Key::Delete), &context),
             Action::TextDelete {
                 target: InputTarget::Filter
             }
         ));
         assert!(matches!(
-            picker_action(Picker::Table, KeyCombo::ctrl(Key::Char('z')), &context),
+            key_action(KeyCombo::ctrl(Key::Char('z')), &context),
             Action::None
         ));
         assert!(matches!(
-            picker_action(Picker::Table, KeyCombo::ctrl_alt(Key::Char('z')), &context),
+            key_action(KeyCombo::ctrl_alt(Key::Char('z')), &context),
             Action::TextInput {
                 target: InputTarget::Filter,
                 ch: 'z'
@@ -194,11 +193,11 @@ mod tests {
         let context = KeyContext::from_state(&state);
 
         assert!(matches!(
-            picker_action(Picker::Er, KeyCombo::plain(Key::Char(' ')), &context),
+            key_action(KeyCombo::plain(Key::Char(' ')), &context),
             Action::ErToggleSelection
         ));
         assert!(matches!(
-            picker_action(Picker::Er, KeyCombo::ctrl_alt(Key::Char(' ')), &context),
+            key_action(KeyCombo::ctrl_alt(Key::Char(' ')), &context),
             Action::TextInput {
                 target: InputTarget::ErFilter,
                 ch: ' '
@@ -219,15 +218,15 @@ mod tests {
         let context = KeyContext::from_state(&state);
 
         assert!(matches!(
-            picker_action(Picker::Er, KeyCombo::plain(Key::Char(' ')), &context),
+            key_action(KeyCombo::plain(Key::Char(' ')), &context),
             Action::None
         ));
         assert!(matches!(
-            picker_action(Picker::Er, KeyCombo::plain(Key::Char('a')), &context),
+            key_action(KeyCombo::plain(Key::Char('a')), &context),
             Action::None
         ));
         assert!(matches!(
-            picker_action(Picker::Er, KeyCombo::plain(Key::Esc), &context),
+            key_action(KeyCombo::plain(Key::Esc), &context),
             Action::CloseModal(ModalKind::ErTablePicker)
         ));
         assert!(picker_hints(Picker::Er, HintSurface::Footer, &context).is_empty());

@@ -5,7 +5,7 @@ use crate::ports::inbound::{Key, KeyCombo};
 use crate::update::action::{Action, InputTarget, ModalKind, ScrollTarget};
 
 use super::common::document_navigation;
-use super::model::{Binding, Row, hints, resolve};
+use super::model::{Binding, Row, hints};
 use super::scroll::line_scroll;
 use super::{Hint, HintSurface, KeyContext};
 
@@ -200,10 +200,6 @@ pub(super) fn active_rows(context: &KeyContext) -> Option<&'static [Row]> {
         SqlModalTab::Plan => &PLAN,
         SqlModalTab::Compare => &COMPARE,
     })
-}
-
-pub fn sql_view_action(combo: KeyCombo, context: &KeyContext) -> Option<Action> {
-    active_rows(context).map(|rows| resolve(rows, combo, context).unwrap_or(Action::None))
 }
 
 pub fn sql_view_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {

@@ -5,7 +5,7 @@ use crate::ports::inbound::{Key, KeyCombo};
 use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
 
 use super::common::consume_readline;
-use super::model::{Binding, Row, hints, resolve};
+use super::model::{Binding, Row, hints};
 use super::{Hint, HintSurface, KeyContext};
 
 fn completion(context: &KeyContext) -> bool {
@@ -92,7 +92,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             ],
             "Select",
             "Select completion",
-            &[HintSurface::Current],
+            &[HintSurface::Current, HintSurface::Editing],
         ),
         Row::new(
             vec![
@@ -182,10 +182,6 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
     ));
     rows
 });
-
-pub fn sql_edit_action(combo: KeyCombo, context: &KeyContext) -> Action {
-    resolve(&ROWS, combo, context).unwrap_or(Action::None)
-}
 
 pub fn sql_edit_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
     hints(&ROWS, context, surface)

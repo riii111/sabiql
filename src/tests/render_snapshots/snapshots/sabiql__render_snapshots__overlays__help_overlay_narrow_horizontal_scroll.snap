@@ -5,22 +5,22 @@ expression: output
 ⌂ test_pr… ▸ … ▸ - connected | localhost:5432/test
 ┌ [1] Explor┐[Info] [Cols] [Idx] [FK] [RLS] [Trig]
 │> ▦ pub╭ Help ───────────────────────────╮──────┐
-│  ▦ pub│                     Move to lin▲│      │
-│  ▦ pub│                     Move left  ││      │
-│       │                     Move right ││      │
-│       │                     Delete prev││      │
-│       │                     Delete next││      │
-│       │                     Cut to line┃│      │
-│       │                     Cut to line││      │
-│       │                     Cut previou││      │
-│       │                     Paste cut t││──────┘
-│       │                     Move to pre││──────┐
-│       │                     Move to nex││      │
-│       │                     Cut next wo││      │
-│       │                     Open comman││      │
-│       │                     Edit cell v││      │
-│       │                     Move cursor▼│      │
-│       │ x  34% ◀︎─────═══════──────────▶︎ │      │
+│  ▦ pub│                     Export resu▲│      │
+│  ▦ pub│                     Copy DDL to││      │
+│       │                     Cancel     ││      │
+│       │                     Open Row De││      │
+│       │                     Copy the ac││      │
+│       │                     Clear all s┃│      │
+│       │                     Unstage the││      │
+│       │                     Open active││      │
+│       │                     Copy the ac││──────┘
+│       │                     Stage the a││──────┐
+│       │                     Copy full J││      │
+│       │                                ││      │
+│       │                                ││      │
+│       │                     Edit active││      │
+│       │                     Preview and▼│      │
+│       │ x  31% ◀︎─────═══════──────────▶︎ │      │
 │       │─────────────────────────────────│      │
 │       │ [BROWSE]                        │      │
 └───────╰ /: Filter │ Esc/?: Close ───────╯──────┘

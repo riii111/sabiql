@@ -4,7 +4,7 @@ use crate::ports::inbound::{Key, KeyCombo};
 use crate::update::action::{Action, InputTarget};
 
 use super::common::text_field_any_modifiers;
-use super::model::{Binding, Row, hints, resolve};
+use super::model::{Binding, Row, hints};
 use super::{Hint, HintSurface, KeyContext};
 
 pub(super) static SELECTING: LazyLock<Vec<Row>> = LazyLock::new(|| {
@@ -141,10 +141,6 @@ fn rows(context: &KeyContext) -> &'static [Row] {
     } else {
         &SELECTING
     }
-}
-
-pub fn settings_action(combo: KeyCombo, context: &KeyContext) -> Action {
-    resolve(rows(context), combo, context).unwrap_or(Action::None)
 }
 
 pub fn settings_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
