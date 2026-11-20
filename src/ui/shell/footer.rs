@@ -17,7 +17,7 @@ use crate::app::update::input::keybindings::{
     json_detail, json_edit, json_search, overlay, query_history, read_only, result_active,
     settings, sql_modal, sqlite_diagnostics, table_picker as table_picker_key,
 };
-use crate::app::update::input::keymap::{HintSurface, TextPicker, picker_hints};
+use crate::app::update::input::keymap::{HintSurface, Picker, picker_hints};
 use crate::primitives::atoms::key_text;
 use crate::primitives::atoms::spinner_char;
 use crate::primitives::atoms::status_message::{MessageType, StatusMessage};
@@ -45,7 +45,7 @@ impl Footer {
             frame.render_widget(Paragraph::new(line).style(base_style), area);
         } else {
             // Show hints with optional inline success message
-            let picker_hints = picker_hints(TextPicker::Table, HintSurface::Footer);
+            let picker_hints = picker_hints(Picker::Table, HintSurface::Footer);
             let hints = if state.input_mode() == InputMode::TablePicker {
                 picker_hints
                     .iter()

@@ -91,9 +91,6 @@ pub const CONNECTION_ERROR: ModeBindings = ModeBindings {
 pub const ER_PICKER: ModeBindings = ModeBindings {
     rows: ER_PICKER_ROWS,
 };
-pub const COMMAND_PALETTE: ModeBindings = ModeBindings {
-    rows: COMMAND_PALETTE_ROWS,
-};
 pub const SETTINGS: ModeBindings = ModeBindings {
     rows: SETTINGS_ROWS,
 };
@@ -120,7 +117,6 @@ pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("HELP", &HELP),
     ("CONNECTION_ERROR", &CONNECTION_ERROR),
     ("ER_PICKER", &ER_PICKER),
-    ("COMMAND_PALETTE", &COMMAND_PALETTE),
     ("SETTINGS", &SETTINGS),
     ("CONNECTION_SELECTOR", &CONNECTION_SELECTOR),
     ("JSON_DETAIL", &JSON_DETAIL),

@@ -78,7 +78,13 @@ pub(super) fn text_field(target: InputTarget) -> Vec<Row> {
     rows
 }
 
-pub(super) fn list_navigation(target: ListTarget) -> Row {
+pub(super) fn list_navigation(target: ListTarget, vim_keys: bool) -> Row {
+    let mut next = vec![KeyCombo::plain(Key::Down), KeyCombo::ctrl(Key::Char('n'))];
+    let mut previous = vec![KeyCombo::plain(Key::Up), KeyCombo::ctrl(Key::Char('p'))];
+    if vim_keys {
+        next.insert(0, KeyCombo::plain(Key::Char('j')));
+        previous.insert(0, KeyCombo::plain(Key::Char('k')));
+    }
     Row {
         bindings: vec![
             Binding::action(
@@ -86,14 +92,14 @@ pub(super) fn list_navigation(target: ListTarget) -> Row {
                     target,
                     motion: ListMotion::Next,
                 },
-                &[KeyCombo::plain(Key::Down), KeyCombo::ctrl(Key::Char('n'))],
+                &next,
             ),
             Binding::action(
                 Action::ListSelect {
                     target,
                     motion: ListMotion::Previous,
                 },
-                &[KeyCombo::plain(Key::Up), KeyCombo::ctrl(Key::Char('p'))],
+                &previous,
             ),
         ],
         short: "Navigate",

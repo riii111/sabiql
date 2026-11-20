@@ -185,7 +185,7 @@ footer:
 border: ╭ Command Palette ────────────────────────────────────────────────────────────────╮
 border: ╰ Enter: Execute │ Esc: Close ────────────────────────────────────────────────────╯
 help: Enter: Execute command
-help: j / k / Ctrl+N / Ctrl+P / ↑ / ↓: Navigate
+help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Navigate
 help: Esc: Close
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp

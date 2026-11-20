@@ -12,7 +12,7 @@ use crate::policy::{FeaturePolicy, FeatureRequirement};
     reason = "help catalog enumerates nearly every keybindings table; explicit list is churn"
 )]
 use crate::update::input::keybindings::*;
-use crate::update::input::keymap::{HintSurface, TextPicker, picker_hints};
+use crate::update::input::keymap::{HintSurface, Picker, picker_hints};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HelpDocument {
@@ -306,11 +306,14 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
         ]),
         HelpOrigin::CommandLine => command_line_rows(feature_policy),
         HelpOrigin::CellEdit => rows_from_bindings(CELL_EDIT_KEYS),
-        HelpOrigin::TablePicker => picker_hints(TextPicker::Table, HintSurface::Current)
+        HelpOrigin::TablePicker => picker_hints(Picker::Table, HintSurface::Current)
             .into_iter()
             .map(|hint| HelpRow::new(hint.key, hint.description))
             .collect(),
-        HelpOrigin::CommandPalette => rows_from_mode_rows(COMMAND_PALETTE_ROWS),
+        HelpOrigin::CommandPalette => picker_hints(Picker::CommandPalette, HintSurface::Current)
+            .into_iter()
+            .map(|hint| HelpRow::new(hint.key, hint.description))
+            .collect(),
         HelpOrigin::Settings => rows_from_mode_rows(SETTINGS_ROWS),
         HelpOrigin::Help => rows_from_mode_rows(HELP_ROWS),
         HelpOrigin::SqlModal {
@@ -330,12 +333,10 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
         HelpOrigin::ErTablePicker { keymap_preset } => {
             rows_from_mode_rows_if_visible(er_picker_rows(keymap_preset), feature_policy)
         }
-        HelpOrigin::QueryHistoryPicker => {
-            picker_hints(TextPicker::QueryHistory, HintSurface::Current)
-                .into_iter()
-                .map(|hint| HelpRow::new(hint.key, hint.description))
-                .collect()
-        }
+        HelpOrigin::QueryHistoryPicker => picker_hints(Picker::QueryHistory, HintSurface::Current)
+            .into_iter()
+            .map(|hint| HelpRow::new(hint.key, hint.description))
+            .collect(),
         HelpOrigin::JsonDetail { mode } => json_current_rows(mode, feature_policy),
         HelpOrigin::JsonEdit => rows_from_mode_rows_if_visible(JSON_EDIT_ROWS, feature_policy),
         HelpOrigin::CellDetail { searching: true } => rows_from_bindings(CELL_DETAIL_SEARCH_KEYS),
@@ -392,12 +393,12 @@ fn reference_sections(
         ));
     }
 
-    let mut search_filter_rows = picker_hints(TextPicker::Table, HintSurface::Reference)
+    let mut search_filter_rows = picker_hints(Picker::Table, HintSurface::Reference)
         .into_iter()
         .map(|hint| HelpRow::new(hint.key, hint.description))
         .collect::<Vec<_>>();
     search_filter_rows.extend(
-        picker_hints(TextPicker::QueryHistory, HintSurface::Reference)
+        picker_hints(Picker::QueryHistory, HintSurface::Reference)
             .into_iter()
             .map(|hint| HelpRow::new(hint.key, hint.description)),
     );

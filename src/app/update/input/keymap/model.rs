@@ -206,7 +206,7 @@ fn name(trigger: Trigger, long: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::update::input::keymap::pickers::{HISTORY_ROWS, TABLE_ROWS};
+    use crate::update::input::keymap::pickers::{HISTORY_ROWS, PALETTE_ROWS, TABLE_ROWS};
 
     #[test]
     fn text_pickers_have_unique_keys_and_keep_plain_text_unclaimed() {
@@ -233,8 +233,8 @@ mod tests {
     }
 
     #[test]
-    fn visible_text_picker_bindings_resolve_to_the_same_actions() {
-        for rows in [&*TABLE_ROWS, &*HISTORY_ROWS] {
+    fn visible_picker_bindings_resolve_to_the_same_actions() {
+        for rows in [&*TABLE_ROWS, &*HISTORY_ROWS, &*PALETTE_ROWS] {
             for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
                 for (row_index, row) in rows
                     .iter()
