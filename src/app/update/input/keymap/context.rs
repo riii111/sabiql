@@ -138,6 +138,10 @@ impl KeyContext {
             .is_enabled(FeatureRequirement::SqliteDiagnostics)
     }
 
+    pub(super) fn supports_json_edit(&self) -> bool {
+        self.policy.is_enabled(FeatureRequirement::JsonDocumentEdit)
+    }
+
     pub(super) fn can_run_diagnostics(&self) -> bool {
         matches!(self.scope, Scope::Diagnostics { can_run: true })
     }
@@ -246,6 +250,12 @@ impl KeyContext {
     pub(crate) fn with_json_mode(mut self, mode: JsonDetailMode) -> Self {
         self.mode = InputMode::JsonDetail;
         self.json_mode = mode;
+        self
+    }
+
+    pub(crate) fn with_json_edit(mut self) -> Self {
+        self.mode = InputMode::JsonEdit;
+        self.json_mode = JsonDetailMode::Editing;
         self
     }
 }

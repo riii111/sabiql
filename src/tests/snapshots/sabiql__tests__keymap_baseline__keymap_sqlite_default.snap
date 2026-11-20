@@ -513,6 +513,7 @@ palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## JsonEdit
 JsonExitEdit: Esc
 footer: 
+help: Esc: Return to Normal mode
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)

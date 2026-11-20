@@ -64,6 +64,19 @@ pub(super) fn text_field_any_modifiers(target: InputTarget) -> Vec<Row> {
     text_field_with(target, KeyModifiers::Any)
 }
 
+pub(super) fn consume_readline(target: InputTarget) -> Vec<Row> {
+    let mut rows = READLINE
+        .iter()
+        .find(|(candidate, _)| *candidate == target)
+        .map_or_default(|(_, rows)| rows.clone());
+    for row in &mut rows {
+        for binding in &mut row.bindings {
+            *binding = binding.clone().consume();
+        }
+    }
+    rows
+}
+
 pub(super) fn detail_search(
     target: DetailTarget,
     input: InputTarget,

@@ -16,7 +16,7 @@ use crate::policy::FeaturePolicy;
 use crate::ports::inbound::{InputEvent, KeyCombo};
 use crate::update::action::Action;
 use crate::update::input::keybindings::readline_action_for;
-use crate::update::input::keymap::{KeyContext, json_search_action};
+use crate::update::input::keymap::{KeyContext, json_edit_action, json_search_action};
 use interaction::{InputInteraction, resolve_input_interaction};
 
 pub fn handle_event(event: InputEvent, state: &AppState) -> Action {
@@ -63,6 +63,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
         InputMode::JsonDetail if state.json_detail.mode() == JsonDetailMode::Searching => {
             return json_search_action(combo, &KeyContext::from_state(state));
         }
+        InputMode::JsonEdit => return json_edit_action(combo, &KeyContext::from_state(state)),
         _ => {}
     }
     let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
@@ -418,7 +419,9 @@ mod tests {
     #[case(InputMode::SqlModal)]
     #[case(InputMode::JsonEdit)]
     fn document_editors_do_not_intercept_readline_shortcuts(#[case] mode: InputMode) {
+        use crate::update::test_fixtures;
         let mut state = AppState::new("test".to_string());
+        test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
         state.modal.set_mode(mode);
         if mode == InputMode::SqlModal {
             state.sql_modal.enter_editing();

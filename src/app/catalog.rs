@@ -17,7 +17,7 @@ use crate::update::input::keybindings::*;
 use crate::update::input::keymap::{
     HintSurface, KeyContext, Picker, cell_detail_hints, cell_edit_hints, command_line_hints,
     confirm_hints, connection_error_hints, connection_selector_hints, connection_setup_hints,
-    help_hints, json_search_hints, picker_hints, row_detail_hints, settings_hints,
+    help_hints, json_edit_hints, json_search_hints, picker_hints, row_detail_hints, settings_hints,
     sqlite_diagnostics_hints,
 };
 
@@ -391,8 +391,18 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
         .into_iter()
         .map(|hint| HelpRow::new(hint.key, hint.description))
         .collect(),
-        HelpOrigin::JsonDetail { mode } => json_current_rows(mode, feature_policy),
-        HelpOrigin::JsonEdit => rows_from_mode_rows_if_visible(JSON_EDIT_ROWS, feature_policy),
+        HelpOrigin::JsonDetail {
+            mode: JsonHelpMode::Edit,
+        }
+        | HelpOrigin::JsonEdit => {
+            json_edit_hints(HintSurface::Current, &key_context.with_json_edit())
+                .into_iter()
+                .map(|hint| HelpRow::new(hint.key, hint.description))
+                .collect()
+        }
+        HelpOrigin::JsonDetail {
+            mode: JsonHelpMode::Detail,
+        } => rows_from_mode_rows_if_visible(JSON_DETAIL_ROWS, feature_policy),
         HelpOrigin::CellDetail { searching } => cell_detail_hints(
             HintSurface::Current,
             &key_context.with_cell_detail_searching(searching),
@@ -506,10 +516,11 @@ fn reference_sections(
         rows_from_bindings_if_visible(SQL_MODAL_CONFIRMING_KEYS, feature_policy),
     ]);
     if feature_policy.is_enabled(FeatureRequirement::JsonDocumentEdit) {
-        editing_rows.extend(rows_from_mode_rows_if_visible(
-            JSON_EDIT_ROWS,
-            feature_policy,
-        ));
+        editing_rows.extend(
+            json_edit_hints(HintSurface::Editing, &key_context.clone().with_json_edit())
+                .into_iter()
+                .map(|hint| HelpRow::new(hint.key, hint.description)),
+        );
     }
 
     let mut advanced_rows = Vec::new();
@@ -704,14 +715,6 @@ fn sql_current_rows(
         SqlHelpMode::Confirm => {
             rows_from_bindings_if_visible(SQL_MODAL_CONFIRMING_KEYS, feature_policy)
         }
-    }
-}
-
-fn json_current_rows(mode: JsonHelpMode, feature_policy: &FeaturePolicy) -> Vec<HelpRow> {
-    match mode {
-        JsonHelpMode::Detail => rows_from_mode_rows_if_visible(JSON_DETAIL_ROWS, feature_policy),
-        JsonHelpMode::Search => unreachable!(),
-        JsonHelpMode::Edit => rows_from_mode_rows_if_visible(JSON_EDIT_ROWS, feature_policy),
     }
 }
 

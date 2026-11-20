@@ -4,8 +4,8 @@ use crate::model::shared::key_sequence::Prefix;
 use crate::model::shared::settings::KeymapPreset;
 use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
-use crate::update::input::keybindings::{JSON_DETAIL, JSON_EDIT, Key, KeyCombo, Modifiers};
-use crate::update::input::keymap::{KeyContext, json_search_action};
+use crate::update::input::keybindings::{JSON_DETAIL, Key, KeyCombo, Modifiers};
+use crate::update::input::keymap::{KeyContext, json_edit_action, json_search_action};
 use crate::update::input::vim::{
     JsonDetailVimContext, VimSurfaceContext, action_for_input, action_for_key,
 };
@@ -92,69 +92,9 @@ pub(super) fn handle_json_edit_keys_with_policy(
     combo: KeyCombo,
     feature_policy: &FeaturePolicy,
 ) -> Action {
-    if !feature_policy.is_enabled(FeatureRequirement::JsonDocumentEdit) {
-        return if combo.modifiers.is_empty() && combo.key == Key::Esc {
-            Action::JsonExitEdit
-        } else {
-            Action::None
-        };
-    }
-
-    if let Some(action) = action_for_key(
-        &combo,
-        VimSurfaceContext::JsonDetail(JsonDetailVimContext::Editing),
-    ) {
-        return action;
-    }
-
-    if let Some(action) = JSON_EDIT.resolve_with_policy(&combo, feature_policy) {
-        return action;
-    }
-    match combo.key {
-        Key::Char(c) => Action::TextInput {
-            target: InputTarget::JsonEdit,
-            ch: c,
-        },
-        Key::Backspace => Action::TextBackspace {
-            target: InputTarget::JsonEdit,
-        },
-        Key::Delete => Action::TextDelete {
-            target: InputTarget::JsonEdit,
-        },
-        Key::Left => Action::TextMoveCursor {
-            target: InputTarget::JsonEdit,
-            direction: CursorMove::Left,
-        },
-        Key::Right => Action::TextMoveCursor {
-            target: InputTarget::JsonEdit,
-            direction: CursorMove::Right,
-        },
-        Key::Up => Action::TextMoveCursor {
-            target: InputTarget::JsonEdit,
-            direction: CursorMove::Up,
-        },
-        Key::Down => Action::TextMoveCursor {
-            target: InputTarget::JsonEdit,
-            direction: CursorMove::Down,
-        },
-        Key::Home => Action::TextMoveCursor {
-            target: InputTarget::JsonEdit,
-            direction: CursorMove::Home,
-        },
-        Key::End => Action::TextMoveCursor {
-            target: InputTarget::JsonEdit,
-            direction: CursorMove::End,
-        },
-        Key::Enter => Action::TextInput {
-            target: InputTarget::JsonEdit,
-            ch: '\n',
-        },
-        Key::Tab => Action::TextInput {
-            target: InputTarget::JsonEdit,
-            ch: '\t',
-        },
-        _ => Action::None,
-    }
+    let context = KeyContext::for_scope(InputMode::JsonEdit, KeymapPreset::Default, feature_policy)
+        .with_json_edit();
+    json_edit_action(combo, &context)
 }
 
 fn disabled_json_detail_exit_action(combo: KeyCombo, interaction: InputInteraction) -> Action {

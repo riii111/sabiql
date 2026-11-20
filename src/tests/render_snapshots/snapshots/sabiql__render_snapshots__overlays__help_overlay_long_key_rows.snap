@@ -20,16 +20,18 @@ expression: output
 │                        │  Esc                                  Exit to Cell Active (draft preserved)                                    ││                        │
 │                        │  Enter                                Execute the confirmed statement                                          ││                        │
 │                        │  Esc                                  Cancel and return to editor                                              ││                        │
-│                        │  Home / End                           Line start/end                                                           ││                        │
-│                        │                                                                                                                ││                        │
+│                        │  Esc / Shift+Esc                      Return to Normal mode                                                    ││                        │
+│                        │  ← / → / ↑ / ↓                        Move cursor                                                              ││                        │
+│                        │  Home / End                           Line start/end                                                           ┃│                        │
+│                        │                                                                                                                ┃│                        │
 │                        │▸ Search / Filter                                                                                               ┃│                        │
 │                        │  type                                 Type to filter                                                           ┃│                        │
-│                        │  Enter                                Confirm search                                                           ┃│                        │
-│                        │  Esc                                  Cancel search                                                            ┃│                        │
-│                        │  type                                 Type to search                                                           ┃│────────────────────────┘
-│                        │  j / k / ↓ / ↑ / Ctrl+N / Ctrl+P      Scroll down / up                                                         ┃│────────────────────────┐
-│                        │  h / l / ← / →                        Scroll left / right                                                      ┃│                        │
-│                        │  Ctrl+D / Ctrl+U                      Scroll half page down / up                                               ┃│                        │
+│                        │  Enter                                Confirm search                                                           ┃│────────────────────────┘
+│                        │  Esc                                  Cancel search                                                            ┃│────────────────────────┐
+│                        │  type                                 Type to search                                                           ┃│                        │
+│                        │  j / k / ↓ / ↑ / Ctrl+N / Ctrl+P      Scroll down / up                                                         ┃│                        │
+│                        │  h / l / ← / →                        Scroll left / right                                                      ││                        │
+│                        │  Ctrl+D / Ctrl+U                      Scroll half page down / up                                               ││                        │
 │                        │  PageDown / PageUp / Ctrl+F / Ctrl+B  Scroll full page down / up                                               ││                        │
 │                        │  Home / End                           Jump to top / bottom                                                     ││                        │
 │                        │  /                                    Edit filter                                                              ││                        │
@@ -42,9 +44,7 @@ expression: output
 │                        │  Esc                                  Cancel                                                                   ││                        │
 │                        │  Enter                                Confirm dropdown selection                                               ││                        │
 │                        │  ↓ / Ctrl+N / ↑ / Ctrl+P              Dropdown navigation                                                      ││                        │
-│                        │  Esc                                  Cancel dropdown                                                          ││                        │
-│                        │  Enter                                Confirm selection                                                        ││                        │
-│                        │  j / k / ↓ / ↑ / Ctrl+N / Ctrl+P      Select connection                                                        ▼│                        │
+│                        │  Esc                                  Cancel dropdown                                                          ▼│                        │
 │                        │─────────────────────────────────────────────────────────────────────────────────────────────────────────────────│                        │
 │                        │ [BROWSE]                                                                                                        │                        │
 │                        ╰ /: Filter │ Esc/?: Close ───────────────────────────────────────────────────────────────────────────────────────╯                        │

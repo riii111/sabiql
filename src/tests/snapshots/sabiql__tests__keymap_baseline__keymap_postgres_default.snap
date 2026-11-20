@@ -575,9 +575,9 @@ TextMoveCursor { target: JsonEdit, direction: Home }: Home, ^Home, ⌥Home, ^⌥
 TextMoveCursor { target: JsonEdit, direction: Left }: Left, ^Left, ⌥Left, ^⌥Left, ⇧Left, ^⇧Left
 TextMoveCursor { target: JsonEdit, direction: Right }: Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
 TextMoveCursor { target: JsonEdit, direction: Up }: Up, ^Up, ⌥Up, ^⌥Up, ⇧Up, ^⇧Up
-footer: ↑↓←→:Move  Home/End:Line
-help: Esc: Return to Normal mode
-help: ↑↓←→: Move cursor
+footer: ←/→/↑/↓:Move  Home/End:Line
+help: Esc / Shift+Esc: Return to Normal mode
+help: ← / → / ↑ / ↓: Move cursor
 help: Home / End: Line start/end
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp

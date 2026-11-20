@@ -17,9 +17,9 @@ expression: output
 │       │                     Exit to Cel││──────┐
 │       │                     Execute the││      │
 │       │                     Cancel and ││      │
-│       │                     Line start/││      │
-│       │                                ││      │
-│       │                                ▼│      │
+│       │                     Return to N││      │
+│       │                     Move cursor││      │
+│       │                     Line start/▼│      │
 │       │ x  25% ◀︎────══════────────────▶︎ │      │
 │       │─────────────────────────────────│      │
 │       │ [BROWSE]                        │      │

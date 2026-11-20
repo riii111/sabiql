@@ -16,6 +16,7 @@ pub(super) enum Trigger {
         aliases: &'static [&'static str],
     },
     Text,
+    AnyText,
 }
 
 #[derive(Clone)]
@@ -23,6 +24,7 @@ pub(super) enum Output {
     Action(Action),
     Text(InputTarget),
     Command(LineCommand),
+    Consume,
 }
 
 #[derive(Clone)]
@@ -59,6 +61,20 @@ impl Binding {
             output: Output::Text(target),
             condition: None,
         }
+    }
+
+    pub(super) fn text_any_modifiers(target: InputTarget) -> Self {
+        Self {
+            triggers: vec![Trigger::AnyText],
+            ide_triggers: None,
+            output: Output::Text(target),
+            condition: None,
+        }
+    }
+
+    pub(super) fn consume(mut self) -> Self {
+        self.output = Output::Consume;
+        self
     }
 
     pub(super) fn any_modifiers(action: Action, key: Key) -> Self {
@@ -109,6 +125,7 @@ impl Binding {
                     ch: ' ',
                 }),
                 Output::Command(command) => context.allows(&command.action()),
+                Output::Consume => true,
             }
     }
 }
@@ -129,6 +146,7 @@ pub(super) fn resolve(rows: &[Row], combo: KeyCombo, context: &KeyContext) -> Op
                     _ => unreachable!(),
                 },
                 Output::Command(_) => unreachable!(),
+                Output::Consume => Action::None,
             })
         })
 }
@@ -217,7 +235,7 @@ fn winner(rows: &[Row], context: &KeyContext, trigger: Trigger) -> Option<(usize
                             Trigger::AnyModifiers(key) => {
                                 matches_combo(*candidate, KeyCombo::plain(key))
                             }
-                            Trigger::Text => {
+                            Trigger::Text | Trigger::AnyText => {
                                 matches_combo(*candidate, KeyCombo::plain(Key::Char('x')))
                             }
                             Trigger::Command { .. } => *candidate == trigger,
@@ -244,6 +262,7 @@ fn matches_combo(trigger: Trigger, combo: KeyCombo) -> bool {
                 && (!combo.modifiers.contains(Modifiers::CTRL)
                     || combo.modifiers.contains(Modifiers::ALT))
         }
+        Trigger::AnyText => matches!(combo.key, Key::Char(_)),
     }
 }
 
@@ -277,7 +296,7 @@ fn name(trigger: Trigger, long: bool) -> String {
         Trigger::Key(combo) => combo,
         Trigger::AnyModifiers(key) => KeyCombo::plain(key),
         Trigger::Command { name, .. } => return format!(":{name}"),
-        Trigger::Text => return "type".to_string(),
+        Trigger::Text | Trigger::AnyText => return "type".to_string(),
     };
     let mut result = String::new();
     if combo.modifiers.contains(Modifiers::CTRL) {
@@ -336,6 +355,7 @@ mod tests {
     use crate::update::input::keymap::help::{
         EDITING as HELP_EDIT_ROWS, VIEWING as HELP_VIEW_ROWS,
     };
+    use crate::update::input::keymap::json_edit::ROWS as JSON_EDIT_ROWS;
     use crate::update::input::keymap::json_search::ROWS as JSON_SEARCH_ROWS;
     use crate::update::input::keymap::pickers::{ER_ROWS, HISTORY_ROWS, PALETTE_ROWS, TABLE_ROWS};
     use crate::update::input::keymap::row_detail::ROWS as ROW_DETAIL_ROWS;
@@ -389,6 +409,7 @@ mod tests {
             (&*DIAGNOSTIC_ROWS, EngineFeatureProfile::sqlite_like()),
             (&*CELL_SEARCH_ROWS, EngineFeatureProfile::postgres_like()),
             (&*JSON_SEARCH_ROWS, EngineFeatureProfile::postgres_like()),
+            (&*JSON_EDIT_ROWS, EngineFeatureProfile::postgres_like()),
             (&*CELL_VIEW_ROWS, EngineFeatureProfile::postgres_like()),
             (&*HELP_VIEW_ROWS, EngineFeatureProfile::postgres_like()),
             (&*HELP_EDIT_ROWS, EngineFeatureProfile::postgres_like()),
@@ -427,7 +448,7 @@ mod tests {
                                 Trigger::Key(combo) => *combo,
                                 Trigger::AnyModifiers(key) => KeyCombo::plain(*key),
                                 Trigger::Command { .. } => continue,
-                                Trigger::Text => KeyCombo::plain(Key::Char('x')),
+                                Trigger::Text | Trigger::AnyText => KeyCombo::plain(Key::Char('x')),
                             };
                             let actual = resolve(rows, combo, &context).unwrap();
                             match &binding.output {
@@ -438,6 +459,7 @@ mod tests {
                                     matches!(actual, Action::TextInput { target: actual_target, ch: 'x' } if actual_target == *target)
                                 ),
                                 Output::Command(_) => unreachable!(),
+                                Output::Consume => assert!(matches!(actual, Action::None)),
                             }
                         }
                     }
@@ -484,7 +506,9 @@ mod tests {
                             let combo = match trigger {
                                 Trigger::Key(combo) => *combo,
                                 Trigger::AnyModifiers(key) => KeyCombo::plain(*key),
-                                Trigger::Text | Trigger::Command { .. } => continue,
+                                Trigger::Text | Trigger::AnyText | Trigger::Command { .. } => {
+                                    continue;
+                                }
                             };
                             let Output::Action(expected) = &binding.output else {
                                 unreachable!()
