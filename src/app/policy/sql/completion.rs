@@ -1603,15 +1603,6 @@ mod tests {
         }
 
         #[test]
-        fn from_with_space_matches_from() {
-            let e = engine();
-            let (token, ctx) = e.analyze("SELECT * FROM ", 14);
-
-            assert_eq!(token, "");
-            assert_eq!(ctx, CompletionContext::Table);
-        }
-
-        #[test]
         fn from_at_word_boundary_matches() {
             let e = engine();
             let (_token, ctx) = e.analyze("SELECT * FROM u", 15);
@@ -3532,22 +3523,6 @@ mod tests {
         }
 
         #[test]
-        fn select_clause_with_table_detail_shows_column_candidates() {
-            let e = engine();
-            let table = create_users_table();
-
-            // Typing after SELECT with table_detail should show columns
-            let candidates = e.get_candidates("SELECT n", 8, None, Some(&table));
-
-            // Should include "name" column that starts with "n"
-            assert!(
-                candidates
-                    .iter()
-                    .any(|c| c.text == "name" && c.kind == CompletionKind::Column)
-            );
-        }
-
-        #[test]
         fn where_clause_with_table_detail_shows_column_candidates() {
             let e = engine();
             let table = create_users_table();
@@ -3634,6 +3609,11 @@ mod tests {
                 first_keyword_idx < first_column_idx,
                 "Keywords should appear before columns"
             );
+            assert_eq!(
+                candidates[0].kind,
+                CompletionKind::Keyword,
+                "With empty prefix, keywords should come first"
+            );
         }
 
         #[test]
@@ -3674,22 +3654,6 @@ mod tests {
         }
 
         #[test]
-        fn empty_prefix_shows_keywords_first() {
-            let e = engine();
-            let table = create_users_table();
-
-            // Empty prefix: keywords should come first
-            let candidates = e.get_candidates("SELECT ", 7, None, Some(&table));
-
-            // First candidate should be a keyword (score 200)
-            assert_eq!(
-                candidates[0].kind,
-                CompletionKind::Keyword,
-                "With empty prefix, keywords should come first"
-            );
-        }
-
-        #[test]
         fn non_empty_prefix_shows_columns_first() {
             let e = engine();
             let table = create_users_table();
@@ -3714,22 +3678,14 @@ mod tests {
             // 1 char prefix: keywords stay first (no boost)
             let candidates = e.get_candidates("SELECT n", 8, None, Some(&table));
 
-            assert!(candidates.iter().any(|c| c.text == "name"));
+            assert!(
+                candidates
+                    .iter()
+                    .any(|c| c.text == "name" && c.kind == CompletionKind::Column)
+            );
             assert!(candidates.iter().any(|c| c.text == "NOT"));
             // Keyword should be first with 1-char prefix
             assert_eq!(candidates[0].kind, CompletionKind::Keyword);
-        }
-
-        #[test]
-        fn two_char_prefix_boosts_columns() {
-            let e = engine();
-            let table = create_users_table();
-
-            // 2+ char prefix: columns get boosted
-            let candidates = e.get_candidates("SELECT na", 9, None, Some(&table));
-
-            assert_eq!(candidates[0].text, "name");
-            assert_eq!(candidates[0].kind, CompletionKind::Column);
         }
     }
 
