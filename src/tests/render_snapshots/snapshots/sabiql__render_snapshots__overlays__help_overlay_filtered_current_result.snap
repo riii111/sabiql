@@ -27,11 +27,11 @@ expression: output
 │                        │  y   Copy error to clipboard                                                                                    │                        │
 │                        │                                                                                                                 │                        │
 │                        │▸ Advanced                                                                                                       │────────────────────────┘
-│                        │  y   Copy to clipboard                                                                                          │────────────────────────┐
-│                        │  y   Copy full JSON                                                                                             │                        │
+│                        │  y   Copy full cell text                                                                                        │────────────────────────┐
 │                        │  y   Copy displayed text to clipboard                                                                           │                        │
 │                        │  Y   Copy row as JSON to clipboard                                                                              │                        │
-│                        │  y   Copy full cell text                                                                                        │                        │
+│                        │  y   Copy to clipboard                                                                                          │                        │
+│                        │  y   Copy full JSON                                                                                             │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │

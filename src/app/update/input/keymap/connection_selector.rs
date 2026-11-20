@@ -18,31 +18,25 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
         HintSurface::Connections,
     ];
     vec![
-        Row {
-            bindings: vec![Binding::action(
+        Row::new(
+            vec![Binding::action(
                 Action::ConfirmConnectionSelection,
                 &[KeyCombo::plain(Key::Enter)],
             )],
-            short: "Confirm",
-            description: "Confirm selection",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: button_surfaces,
-        },
+            "Confirm",
+            "Confirm selection",
+            button_surfaces,
+        ),
         navigation,
-        Row {
-            bindings: vec![Binding::action(
+        Row::new(
+            vec![Binding::action(
                 Action::OpenModal(ModalKind::ConnectionSetup),
                 &[KeyCombo::plain(Key::Char('n'))],
             )],
-            short: "New",
-            description: "New connection",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: button_surfaces,
-        },
+            "New",
+            "New connection",
+            button_surfaces,
+        ),
         Row {
             bindings: vec![Binding::action(
                 Action::RequestEditSelectedConnection,
@@ -71,18 +65,15 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             }),
             surfaces: button_surfaces,
         },
-        Row {
-            bindings: vec![Binding::action(
+        Row::new(
+            vec![Binding::action(
                 Action::Escape,
                 &[KeyCombo::plain(Key::Esc)],
             )],
-            short: "Close",
-            description: "Close selector",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: button_surfaces,
-        },
+            "Close",
+            "Close selector",
+            button_surfaces,
+        ),
     ]
 });
 

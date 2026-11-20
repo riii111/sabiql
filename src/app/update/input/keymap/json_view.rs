@@ -28,67 +28,55 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
         )
     };
     let mut rows = vec![
-        Row {
-            bindings: vec![shifted(
+        Row::new(
+            vec![shifted(
                 Action::DetailYankAll(DetailTarget::JsonDetail),
                 Key::Char('y'),
             )],
-            short: "Copy",
-            description: "Copy full JSON",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[
+            "Copy",
+            "Copy full JSON",
+            &[
                 HintSurface::Border,
                 HintSurface::Current,
                 HintSurface::Advanced,
                 HintSurface::DataActions,
             ],
-        },
-        Row {
-            bindings: vec![
+        ),
+        Row::new(
+            vec![
                 shifted(Action::JsonEnterEdit, Key::Char('i')),
                 shifted(Action::JsonAppendInsert, Key::Char('A')),
             ],
-            short: "Insert",
-            description: "Enter Insert mode / append at line end",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: view,
-        },
-        Row {
-            bindings: vec![Binding::action(
+            "Insert",
+            "Enter Insert mode / append at line end",
+            view,
+        ),
+        Row::new(
+            vec![Binding::action(
                 Action::DetailSearch {
                     target: DetailTarget::JsonDetail,
                     step: SearchStep::Enter,
                 },
                 &[KeyCombo::plain(Key::Char('/'))],
             )],
-            short: "Search",
-            description: "Search JSON text",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: view,
-        },
-        Row {
-            bindings: vec![search(SearchStep::Next, 'n'), search(SearchStep::Prev, 'N')],
-            short: "Next/Prev",
-            description: "Jump to next / previous search result",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[
+            "Search",
+            "Search JSON text",
+            view,
+        ),
+        Row::new(
+            vec![search(SearchStep::Next, 'n'), search(SearchStep::Prev, 'N')],
+            "Next/Prev",
+            "Jump to next / previous search result",
+            &[
                 HintSurface::Footer,
                 HintSurface::Current,
                 HintSurface::Advanced,
             ],
-        },
+        ),
     ];
     rows.extend(document_navigation(InputTarget::JsonEdit, true));
-    rows.push(Row {
-        bindings: vec![
+    rows.push(Row::new(
+        vec![
             Binding::no_ctrl_alt(Action::CloseModal(ModalKind::JsonDetail), Key::Esc)
                 .when(supported),
             Binding::action(
@@ -96,13 +84,10 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
                 &[KeyCombo::plain(Key::Esc), KeyCombo::plain(Key::Char('q'))],
             ),
         ],
-        short: "Close",
-        description: "Close JSON detail",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces: view,
-    });
+        "Close",
+        "Close JSON detail",
+        view,
+    ));
     rows
 });
 

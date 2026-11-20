@@ -26,8 +26,8 @@ pub(super) fn scroll_rows(target: ScrollTarget, options: ScrollOptions) -> Vec<R
     let surfaces = &[HintSurface::Current, HintSurface::Advanced];
     let mut rows = vec![line_scroll(target)];
     if options.horizontal {
-        rows.push(Row {
-            bindings: vec![
+        rows.push(Row::new(
+            vec![
                 scroll(
                     Left,
                     Line,
@@ -39,59 +39,47 @@ pub(super) fn scroll_rows(target: ScrollTarget, options: ScrollOptions) -> Vec<R
                     &[KeyCombo::plain(Key::Char('l')), KeyCombo::plain(Key::Right)],
                 ),
             ],
-            short: "H-Scroll",
-            description: "Scroll left / right",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
+            "H-Scroll",
+            "Scroll left / right",
             surfaces,
-        });
+        ));
     }
-    rows.push(Row {
-        bindings: vec![
+    rows.push(Row::new(
+        vec![
             scroll(Down, HalfPage, &[KeyCombo::ctrl(Key::Char('d'))]),
             scroll(Up, HalfPage, &[KeyCombo::ctrl(Key::Char('u'))]),
         ],
-        short: "Half Page",
-        description: "Scroll half page down / up",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
+        "Half Page",
+        "Scroll half page down / up",
         surfaces,
-    });
+    ));
     let mut page_down = vec![KeyCombo::plain(Key::PageDown)];
     let mut page_up = vec![KeyCombo::plain(Key::PageUp)];
     if options.ctrl_full_page {
         page_down.push(KeyCombo::ctrl(Key::Char('f')));
         page_up.push(KeyCombo::ctrl(Key::Char('b')));
     }
-    rows.push(Row {
-        bindings: vec![
+    rows.push(Row::new(
+        vec![
             scroll(Down, FullPage, &page_down),
             scroll(Up, FullPage, &page_up),
         ],
-        short: "Full Page",
-        description: "Scroll full page down / up",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
+        "Full Page",
+        "Scroll full page down / up",
         surfaces,
-    });
+    ));
     let mut top = vec![KeyCombo::plain(Key::Home)];
     let mut bottom = vec![KeyCombo::plain(Key::End)];
     if options.vim_jumps {
         top.insert(0, KeyCombo::plain(Key::Char('g')));
         bottom.insert(0, KeyCombo::plain(Key::Char('G')));
     }
-    rows.push(Row {
-        bindings: vec![scroll(Up, ToStart, &top), scroll(Down, ToEnd, &bottom)],
-        short: "Top/Btm",
-        description: "Jump to top / bottom",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
+    rows.push(Row::new(
+        vec![scroll(Up, ToStart, &top), scroll(Down, ToEnd, &bottom)],
+        "Top/Btm",
+        "Jump to top / bottom",
         surfaces,
-    });
+    ));
     rows
 }
 
@@ -106,8 +94,8 @@ pub(super) fn line_scroll(target: ScrollTarget) -> Row {
             keys,
         )
     };
-    Row {
-        bindings: vec![
+    Row::new(
+        vec![
             scroll(
                 ScrollDirection::Down,
                 &[
@@ -125,11 +113,8 @@ pub(super) fn line_scroll(target: ScrollTarget) -> Row {
                 ],
             ),
         ],
-        short: "Scroll",
-        description: "Scroll down / up",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces: &[HintSurface::Current, HintSurface::Advanced],
-    }
+        "Scroll",
+        "Scroll down / up",
+        &[HintSurface::Current, HintSurface::Advanced],
+    )
 }

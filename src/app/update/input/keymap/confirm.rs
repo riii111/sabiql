@@ -30,22 +30,19 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             ],
         },
         scroll,
-        Row {
-            bindings: vec![Binding::action(
+        Row::new(
+            vec![Binding::action(
                 Action::ConfirmDialogCancel,
                 &[KeyCombo::plain(Key::Esc)],
             )],
-            short: "Cancel",
-            description: "Cancel",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[
+            "Cancel",
+            "Cancel",
+            &[
                 HintSurface::Border,
                 HintSurface::Current,
                 HintSurface::ModalBasics,
             ],
-        },
+        ),
     ]
 });
 

@@ -20,78 +20,64 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
     ];
     let mut rows = consume_readline(target);
     rows.extend([
-        Row {
-            bindings: vec![
+        Row::new(
+            vec![
                 Binding::with_alt(Action::SqlModalSubmit, Key::Enter),
                 Binding::action(Action::SqlModalSubmit, &[KeyCombo::plain(Key::F(5))]),
             ],
-            short: "Run",
-            description: "Execute query",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: border,
-        },
-        Row {
-            bindings: vec![Binding::with_ctrl(Action::SqlModalClear, Key::Char('l'))],
-            short: "Clear",
-            description: "Clear editor",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: border,
-        },
-        Row {
-            bindings: vec![
+            "Run",
+            "Execute query",
+            border,
+        ),
+        Row::new(
+            vec![Binding::with_ctrl(Action::SqlModalClear, Key::Char('l'))],
+            "Clear",
+            "Clear editor",
+            border,
+        ),
+        Row::new(
+            vec![
                 Binding::action(
                     Action::OpenModal(ModalKind::QueryHistoryPicker),
                     &[KeyCombo::ctrl(Key::Char('o'))],
                 )
                 .ide(&[]),
             ],
-            short: "History",
-            description: "Open Query History",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: border,
-        },
-        Row {
-            bindings: vec![
+            "History",
+            "Open Query History",
+            border,
+        ),
+        Row::new(
+            vec![
                 Binding::action(Action::None, &[])
                     .ide(&[KeyCombo::ctrl(Key::Char('o'))])
                     .consume(),
             ],
-            short: "",
-            description: "",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[],
-        },
-        Row {
-            bindings: vec![Binding::with_alt(
+            "",
+            "",
+            &[],
+        ),
+        Row::new(
+            vec![Binding::with_alt(
                 Action::ExplainAnalyzeRequest,
                 Key::Char('e'),
             )],
-            short: "Analyze",
-            description: "Run EXPLAIN ANALYZE on current query",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[HintSurface::Current, HintSurface::Editing],
-        },
-        Row {
-            bindings: vec![Binding::with_alt(Action::None, Key::Char('e')).consume()],
-            short: "",
-            description: "",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[],
-        },
-        Row {
-            bindings: vec![
+            "Analyze",
+            "Run EXPLAIN ANALYZE on current query",
+            &[HintSurface::Current, HintSurface::Editing],
+        ),
+        Row::new(
+            vec![
+                Binding::with_alt(Action::None, Key::Char('e'))
+                    .consume()
+                    .when(|context| !context.allows(&Action::ExplainAnalyzeRequest)),
+            ],
+            "",
+            "",
+            &[],
+        ),
+        Row::new(
+            vec![
                 Binding::any_modifiers(Action::CompletionPrev, Key::Up).when(completion),
                 Binding::action(Action::CompletionPrev, &[KeyCombo::ctrl(Key::Char('p'))])
                     .when(completion),
@@ -99,59 +85,42 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
                 Binding::action(Action::CompletionNext, &[KeyCombo::ctrl(Key::Char('n'))])
                     .when(completion),
             ],
-            short: "Select",
-            description: "Select completion",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[HintSurface::Current],
-        },
-        Row {
-            bindings: vec![
+            "Select",
+            "Select completion",
+            &[HintSurface::Current],
+        ),
+        Row::new(
+            vec![
                 Binding::any_modifiers(Action::CompletionAccept, Key::Tab).when(completion),
                 Binding::any_modifiers(Action::CompletionAccept, Key::Enter).when(completion),
             ],
-            short: "Accept",
-            description: "Accept completion",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: border,
-        },
-        Row {
-            bindings: vec![
-                Binding::any_modifiers(Action::CompletionDismiss, Key::Esc).when(completion),
-            ],
-            short: "Dismiss",
-            description: "Dismiss completion",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: border,
-        },
-        Row {
-            bindings: vec![
+            "Accept",
+            "Accept completion",
+            border,
+        ),
+        Row::new(
+            vec![Binding::any_modifiers(Action::CompletionDismiss, Key::Esc).when(completion)],
+            "Dismiss",
+            "Dismiss completion",
+            border,
+        ),
+        Row::new(
+            vec![
                 Binding::any_modifiers(Action::CompletionDismiss, Key::Left).when(completion),
                 Binding::any_modifiers(Action::CompletionDismiss, Key::Right).when(completion),
             ],
-            short: "",
-            description: "",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[],
-        },
-        Row {
-            bindings: vec![Binding::no_ctrl_alt(Action::SqlModalEnterNormal, Key::Esc)],
-            short: "Normal",
-            description: "Return to Normal mode",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: border,
-        },
-        Row {
-            bindings: [
+            "",
+            "",
+            &[],
+        ),
+        Row::new(
+            vec![Binding::no_ctrl_alt(Action::SqlModalEnterNormal, Key::Esc)],
+            "Normal",
+            "Return to Normal mode",
+            border,
+        ),
+        Row::new(
+            [
                 (Key::Left, CursorMove::Left),
                 (Key::Right, CursorMove::Right),
                 (Key::Up, CursorMove::Up),
@@ -162,65 +131,50 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
                 Binding::any_modifiers(Action::TextMoveCursor { target, direction }, key)
             })
             .collect(),
-            short: "Move",
-            description: "Move cursor",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[
+            "Move",
+            "Move cursor",
+            &[
                 HintSurface::Footer,
                 HintSurface::Current,
                 HintSurface::Editing,
             ],
-        },
-        Row {
-            bindings: [(Key::Home, CursorMove::Home), (Key::End, CursorMove::End)]
+        ),
+        Row::new(
+            [(Key::Home, CursorMove::Home), (Key::End, CursorMove::End)]
                 .into_iter()
                 .map(|(key, direction)| {
                     Binding::any_modifiers(Action::TextMoveCursor { target, direction }, key)
                 })
                 .collect(),
-            short: "Line",
-            description: "Line start/end",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[HintSurface::Current, HintSurface::Editing],
-        },
-        Row {
-            bindings: vec![Binding::any_modifiers(Action::SqlModalInsertTab, Key::Tab)],
-            short: "Tab",
-            description: "Insert tab",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[HintSurface::Current, HintSurface::Editing],
-        },
+            "Line",
+            "Line start/end",
+            &[HintSurface::Current, HintSurface::Editing],
+        ),
+        Row::new(
+            vec![Binding::any_modifiers(Action::SqlModalInsertTab, Key::Tab)],
+            "Tab",
+            "Insert tab",
+            &[HintSurface::Current, HintSurface::Editing],
+        ),
     ]);
     for (key, action) in [
         (Key::Backspace, Action::TextBackspace { target }),
         (Key::Delete, Action::TextDelete { target }),
         (Key::Enter, Action::SqlModalNewLine),
     ] {
-        rows.push(Row {
-            bindings: vec![Binding::any_modifiers(action, key)],
-            short: "",
-            description: "",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[],
-        });
+        rows.push(Row::new(
+            vec![Binding::any_modifiers(action, key)],
+            "",
+            "",
+            &[],
+        ));
     }
-    rows.push(Row {
-        bindings: vec![Binding::text_any_modifiers(target)],
-        short: "",
-        description: "",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces: &[],
-    });
+    rows.push(Row::new(
+        vec![Binding::text_any_modifiers(target)],
+        "",
+        "",
+        &[],
+    ));
     rows
 });
 

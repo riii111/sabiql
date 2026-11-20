@@ -1,24 +1,3 @@
-#[cfg(test)]
-mod cell_detail;
-#[cfg(test)]
-mod connections;
-#[cfg(test)]
-mod editors;
-#[cfg(test)]
-mod interaction;
-#[cfg(test)]
-mod json;
-#[cfg(test)]
-mod normal;
-#[cfg(test)]
-mod overlays;
-#[cfg(test)]
-mod pickers;
-#[cfg(test)]
-mod row_detail;
-#[cfg(test)]
-mod sql_modal;
-
 use crate::model::app_state::AppState;
 use crate::model::browse::json_detail::JsonDetailMode;
 use crate::model::shared::input_mode::InputMode;

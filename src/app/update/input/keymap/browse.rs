@@ -8,6 +8,7 @@ use crate::update::action::{
     ScrollToCursorTarget, SelectMotion,
 };
 
+use super::common::{NavigationKey, NavigationLayout, navigation_binding};
 use super::context::BrowsePane;
 use super::global;
 use super::model::{Binding, Row, hints, indexed_hints, resolve, row_action};
@@ -338,15 +339,7 @@ fn row(
     description: &'static str,
     surfaces: &'static [HintSurface],
 ) -> Row {
-    Row {
-        bindings,
-        short,
-        description,
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces,
-    }
+    Row::new(bindings, short, description, surfaces)
 }
 
 #[derive(Clone, Copy)]
@@ -380,6 +373,13 @@ fn navigation(pane: BrowsePane) -> Vec<Row> {
             combos,
         )
     };
+    let navigate = |movement, key| {
+        navigation_binding(
+            NavigationLayout::Browse,
+            key,
+            navigation_action(pane, movement).unwrap_or(Action::None),
+        )
+    };
     let seq = |movement, key| {
         Binding::sequence(
             navigation_action(pane, movement).unwrap_or(Action::CancelKeySequence),
@@ -393,14 +393,8 @@ fn navigation(pane: BrowsePane) -> Vec<Row> {
     vec![
         row(
             vec![
-                bind(
-                    Down,
-                    &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
-                ),
-                bind(
-                    Up,
-                    &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
-                ),
+                navigate(Down, NavigationKey::Down),
+                navigate(Up, NavigationKey::Up),
             ],
             "Scroll",
             "Move down/up",
@@ -408,14 +402,8 @@ fn navigation(pane: BrowsePane) -> Vec<Row> {
         ),
         row(
             vec![
-                bind(
-                    Left,
-                    &[KeyCombo::plain(Key::Char('h')), KeyCombo::plain(Key::Left)],
-                ),
-                bind(
-                    Right,
-                    &[KeyCombo::plain(Key::Char('l')), KeyCombo::plain(Key::Right)],
-                ),
+                navigate(Left, NavigationKey::Left),
+                navigate(Right, NavigationKey::Right),
             ],
             "Horizontal",
             "Move left/right",
@@ -423,14 +411,8 @@ fn navigation(pane: BrowsePane) -> Vec<Row> {
         ),
         row(
             vec![
-                bind(
-                    First,
-                    &[KeyCombo::plain(Key::Char('g')), KeyCombo::plain(Key::Home)],
-                ),
-                bind(
-                    Last,
-                    &[KeyCombo::plain(Key::Char('G')), KeyCombo::plain(Key::End)],
-                ),
+                navigate(First, NavigationKey::First),
+                navigate(Last, NavigationKey::Last),
             ],
             "Top/Bottom",
             "First/last item",
@@ -438,9 +420,9 @@ fn navigation(pane: BrowsePane) -> Vec<Row> {
         ),
         row(
             vec![
-                bind(Top, &[KeyCombo::plain(Key::Char('H'))]),
-                bind(Middle, &[KeyCombo::plain(Key::Char('M'))]),
-                bind(Bottom, &[KeyCombo::plain(Key::Char('L'))]),
+                navigate(Top, NavigationKey::Top),
+                navigate(Middle, NavigationKey::Middle),
+                navigate(Bottom, NavigationKey::Bottom),
             ],
             "Viewport",
             "First/middle/last visible item",
@@ -569,7 +551,7 @@ fn navigation_action(pane: BrowsePane, movement: Movement) -> Option<Action> {
     })
 }
 
-fn active_rows(context: &KeyContext) -> &'static [Row] {
+pub(super) fn active_rows(context: &KeyContext) -> &'static [Row] {
     match context.browse_pane() {
         BrowsePane::Explorer => &EXPLORER,
         BrowsePane::Inspector => &INSPECTOR,

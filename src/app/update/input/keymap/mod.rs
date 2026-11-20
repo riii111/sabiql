@@ -24,12 +24,15 @@ mod sql_view;
 mod sqlite_diagnostics;
 
 use crate::model::browse::json_detail::JsonDetailMode;
+use crate::model::connection::setup::ConnectionField;
 use crate::model::shared::input_mode::InputMode;
+use crate::model::sql_editor::modal::SqlModalTab;
+use crate::policy::FeatureRequirement;
 
 pub use browse::{BrowseShortcut, browse_action, browse_hints, browse_shortcut};
 pub use cell_detail::{cell_detail_action, cell_detail_hints};
 pub use cell_edit::{cell_edit_action, cell_edit_hints};
-pub use command::{command_line_action, command_line_hints, parse_command};
+pub use command::{LineCommand, command_line_action, command_line_hints, parse_command};
 pub use confirm::{confirm_action, confirm_hints};
 pub use connection_error::{connection_error_action, connection_error_hints};
 pub use connection_selector::{connection_selector_action, connection_selector_hints};
@@ -80,12 +83,124 @@ pub struct Hint {
     pub description: &'static str,
 }
 
-pub(crate) fn browse_reference_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
-    browse::reference_hints(surface, context)
+fn scope_rows(context: &KeyContext) -> Option<&'static [model::Row]> {
+    Some(match context.mode() {
+        InputMode::Normal => browse::active_rows(context),
+        InputMode::CommandLine => &command::EDITING,
+        InputMode::CellEdit => &cell_edit::ROWS,
+        InputMode::TablePicker => &pickers::TABLE_ROWS,
+        InputMode::CommandPalette => &pickers::PALETTE_ROWS,
+        InputMode::Settings if context.is_settings_editing() => &settings::EDITING,
+        InputMode::Settings => &settings::SELECTING,
+        InputMode::Help if context.is_help_editing() => &help::EDITING,
+        InputMode::Help => &help::VIEWING,
+        InputMode::SqlModal if context.is_sql_editing() => &sql_edit::ROWS,
+        InputMode::SqlModal => {
+            sql_confirmation::active_rows(context).or_else(|| sql_view::active_rows(context))?
+        }
+        InputMode::ConnectionSetup => connection_setup::active_rows(context),
+        InputMode::ConnectionError => &connection_error::ROWS,
+        InputMode::ConfirmDialog => &confirm::ROWS,
+        InputMode::SqliteDiagnostics => &sqlite_diagnostics::ROWS,
+        InputMode::ConnectionSelector => &connection_selector::ROWS,
+        InputMode::ErTablePicker => &pickers::ER_ROWS,
+        InputMode::QueryHistoryPicker => &pickers::HISTORY_ROWS,
+        InputMode::JsonDetail if context.json_mode() == JsonDetailMode::Searching => {
+            &json_search::ROWS
+        }
+        InputMode::JsonDetail => &json_view::ROWS,
+        InputMode::JsonEdit => &json_edit::ROWS,
+        InputMode::CellDetail if context.is_cell_detail_searching() => &cell_detail::SEARCHING,
+        InputMode::CellDetail => &cell_detail::VIEWING,
+        InputMode::RowDetail => &row_detail::ROWS,
+    })
 }
 
-pub(crate) fn readline_reference_hints(context: &KeyContext) -> Vec<Hint> {
-    common::readline_hints(context)
+pub(crate) fn reference_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
+    use context::SqlConfirmation;
+
+    let mut result = browse::reference_hints(surface, context);
+    let make = |mode| KeyContext::for_scope(mode, context.preset(), context.policy());
+    let mut scopes = Vec::new();
+    for mode in [
+        InputMode::CommandLine,
+        InputMode::CellEdit,
+        InputMode::TablePicker,
+        InputMode::CommandPalette,
+        InputMode::Settings,
+        InputMode::Help,
+        InputMode::ConnectionError,
+        InputMode::ConfirmDialog,
+        InputMode::ConnectionSelector,
+        InputMode::QueryHistoryPicker,
+        InputMode::CellDetail,
+        InputMode::RowDetail,
+    ] {
+        scopes.push(make(mode));
+    }
+    scopes.push(make(InputMode::Settings).with_settings_editing());
+    scopes.push(make(InputMode::Help).with_help_editing());
+    scopes.push(make(InputMode::CellDetail).with_cell_detail_searching(true));
+    for (field, open) in [
+        (ConnectionField::DatabaseType, false),
+        (ConnectionField::DatabaseType, true),
+        (ConnectionField::Name, false),
+    ] {
+        scopes.push(make(InputMode::ConnectionSetup).with_connection_setup(field, open));
+    }
+    let sql = make(InputMode::SqlModal);
+    scopes.push(sql.clone().with_sql_view(SqlModalTab::Sql));
+    scopes.push(sql.clone().with_sql_editing(false));
+    scopes.push(sql.clone().with_sql_editing(true));
+    for kind in [SqlConfirmation::High, SqlConfirmation::Risk] {
+        scopes.push(sql.clone().with_sql_confirmation(kind));
+    }
+    if context
+        .policy()
+        .is_enabled(FeatureRequirement::ExplainAnalyze)
+    {
+        for kind in [SqlConfirmation::AnalyzeHigh, SqlConfirmation::AnalyzeRisk] {
+            scopes.push(sql.clone().with_sql_confirmation(kind));
+        }
+    }
+    if context.policy().is_enabled(FeatureRequirement::Explain) {
+        scopes.push(sql.clone().with_sql_view(SqlModalTab::Plan));
+    }
+    if context
+        .policy()
+        .is_enabled(FeatureRequirement::PlanComparison)
+    {
+        scopes.push(sql.with_sql_view(SqlModalTab::Compare));
+    }
+    if context.policy().is_enabled(FeatureRequirement::ErDiagram) {
+        scopes.push(make(InputMode::ErTablePicker));
+    }
+    if context
+        .policy()
+        .is_enabled(FeatureRequirement::SqliteDiagnostics)
+    {
+        scopes.push(make(InputMode::SqliteDiagnostics));
+    }
+    if context
+        .policy()
+        .is_enabled(FeatureRequirement::JsonDocumentDetail)
+    {
+        scopes.push(make(InputMode::JsonDetail).with_json_mode(JsonDetailMode::Viewing));
+        scopes.push(make(InputMode::JsonDetail).with_json_mode(JsonDetailMode::Searching));
+    }
+    if context
+        .policy()
+        .is_enabled(FeatureRequirement::JsonDocumentEdit)
+    {
+        scopes.push(make(InputMode::JsonEdit).with_json_edit());
+    }
+    for scope in scopes {
+        if let Some(rows) = scope_rows(&scope) {
+            result.extend(model::hints(rows, &scope, surface));
+        }
+    }
+    result.extend(command::reference_hints(surface, context));
+    result
 }
 
 pub fn current_hints(context: &KeyContext) -> Vec<Hint> {

@@ -45,64 +45,52 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             }),
             surfaces: action_surfaces,
         },
-        Row {
-            bindings: vec![Binding::action(
+        Row::new(
+            vec![Binding::action(
                 Action::OpenModal(ModalKind::ConnectionSelector),
                 &[KeyCombo::plain(Key::Char('s'))],
             )],
-            short: "Switch",
-            description: "Switch to another connection",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: action_surfaces,
-        },
-        Row {
-            bindings: vec![Binding::action(
+            "Switch",
+            "Switch to another connection",
+            action_surfaces,
+        ),
+        Row::new(
+            vec![Binding::action(
                 Action::ToggleConnectionErrorDetails,
                 &[KeyCombo::plain(Key::Char('d'))],
             )],
-            short: "Details",
-            description: "Toggle error details and requirements",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[
+            "Details",
+            "Toggle error details and requirements",
+            &[
                 HintSurface::Footer,
                 HintSurface::Current,
                 HintSurface::Connections,
                 HintSurface::Details,
             ],
-        },
-        Row {
-            bindings: vec![Binding::action(
+        ),
+        Row::new(
+            vec![Binding::action(
                 Action::CopyConnectionError,
                 &[KeyCombo::plain(Key::Char('y'))],
             )],
-            short: "Copy",
-            description: "Copy error to clipboard",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: action_surfaces,
-        },
+            "Copy",
+            "Copy error to clipboard",
+            action_surfaces,
+        ),
         scroll,
-        Row {
-            bindings: vec![Binding::action(
+        Row::new(
+            vec![Binding::action(
                 Action::CloseConnectionError,
                 &[KeyCombo::plain(Key::Esc)],
             )],
-            short: "Close",
-            description: "Close",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[
+            "Close",
+            "Close",
+            &[
                 HintSurface::Border,
                 HintSurface::Current,
                 HintSurface::Connections,
             ],
-        },
+        ),
     ]
 });
 

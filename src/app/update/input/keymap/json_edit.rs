@@ -13,25 +13,22 @@ fn supported(context: &KeyContext) -> bool {
 
 pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
     let target = InputTarget::JsonEdit;
-    let mut rows = vec![Row {
-        bindings: vec![
+    let mut rows = vec![Row::new(
+        vec![
             Binding::no_ctrl_alt(Action::JsonExitEdit, Key::Esc).when(supported),
             Binding::action(Action::JsonExitEdit, &[KeyCombo::plain(Key::Esc)]),
         ],
-        short: "Normal",
-        description: "Return to Normal mode",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces: &[
+        "Normal",
+        "Return to Normal mode",
+        &[
             HintSurface::Border,
             HintSurface::Current,
             HintSurface::Editing,
         ],
-    }];
+    )];
     rows.extend(consume_readline(target));
-    rows.push(Row {
-        bindings: [
+    rows.push(Row::new(
+        [
             (Key::Left, CursorMove::Left),
             (Key::Right, CursorMove::Right),
             (Key::Up, CursorMove::Up),
@@ -42,60 +39,48 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             Binding::any_modifiers(Action::TextMoveCursor { target, direction }, key)
         })
         .collect(),
-        short: "Move",
-        description: "Move cursor",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces: &[
+        "Move",
+        "Move cursor",
+        &[
             HintSurface::Footer,
             HintSurface::Current,
             HintSurface::Editing,
         ],
-    });
-    rows.push(Row {
-        bindings: [(Key::Home, CursorMove::Home), (Key::End, CursorMove::End)]
+    ));
+    rows.push(Row::new(
+        [(Key::Home, CursorMove::Home), (Key::End, CursorMove::End)]
             .into_iter()
             .map(|(key, direction)| {
                 Binding::any_modifiers(Action::TextMoveCursor { target, direction }, key)
             })
             .collect(),
-        short: "Line",
-        description: "Line start/end",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces: &[
+        "Line",
+        "Line start/end",
+        &[
             HintSurface::Footer,
             HintSurface::Current,
             HintSurface::Editing,
         ],
-    });
+    ));
     for (key, action) in [
         (Key::Backspace, Action::TextBackspace { target }),
         (Key::Delete, Action::TextDelete { target }),
         (Key::Enter, Action::TextInput { target, ch: '\n' }),
         (Key::Tab, Action::TextInput { target, ch: '\t' }),
     ] {
-        rows.push(Row {
-            bindings: vec![Binding::any_modifiers(action, key)],
-            short: "",
-            description: "",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[],
-        });
+        rows.push(Row::new(
+            vec![Binding::any_modifiers(action, key)],
+            "",
+            "",
+            &[],
+        ));
     }
-    rows.push(Row {
-        bindings: vec![Binding::text_any_modifiers(target)],
-        short: "",
-        description: "",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces: &[],
-    });
+    rows.push(Row::new(
+        vec![Binding::text_any_modifiers(target)],
+        "",
+        "",
+        &[],
+    ));
     rows
 });
 

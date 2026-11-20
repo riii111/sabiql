@@ -9,20 +9,17 @@ use super::{Hint, HintSurface, KeyContext};
 
 pub(super) static SELECTING: LazyLock<Vec<Row>> = LazyLock::new(|| {
     vec![
-        Row {
-            bindings: vec![Binding::action(
+        Row::new(
+            vec![Binding::action(
                 Action::SettingsApply,
                 &[KeyCombo::plain(Key::Enter)],
             )],
-            short: "Apply",
-            description: "Apply setting",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[HintSurface::Border, HintSurface::Current],
-        },
-        Row {
-            bindings: vec![
+            "Apply",
+            "Apply setting",
+            &[HintSurface::Border, HintSurface::Current],
+        ),
+        Row::new(
+            vec![
                 Binding::action(
                     Action::SettingsSelectNext,
                     &[
@@ -40,13 +37,10 @@ pub(super) static SELECTING: LazyLock<Vec<Row>> = LazyLock::new(|| {
                     ],
                 ),
             ],
-            short: "Select",
-            description: "Select setting",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[HintSurface::Footer, HintSurface::Current],
-        },
+            "Select",
+            "Select setting",
+            &[HintSurface::Footer, HintSurface::Current],
+        ),
         Row {
             bindings: vec![Binding::action(
                 Action::SettingsStartCustomBrowserEdit,
@@ -61,70 +55,55 @@ pub(super) static SELECTING: LazyLock<Vec<Row>> = LazyLock::new(|| {
             }),
             surfaces: &[HintSurface::Border, HintSurface::Current],
         },
-        Row {
-            bindings: vec![
+        Row::new(
+            vec![
                 Binding::action(Action::SettingsNextSection, &[KeyCombo::plain(Key::Tab)]),
                 Binding::action(
                     Action::SettingsPreviousSection,
                     &[KeyCombo::shift(Key::BackTab)],
                 ),
             ],
-            short: "Section",
-            description: "Switch settings section",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[HintSurface::Border, HintSurface::Current],
-        },
-        Row {
-            bindings: vec![Binding::action(
+            "Section",
+            "Switch settings section",
+            &[HintSurface::Border, HintSurface::Current],
+        ),
+        Row::new(
+            vec![Binding::action(
                 Action::SettingsCancel,
                 &[KeyCombo::plain(Key::Esc)],
             )],
-            short: "Cancel",
-            description: "Cancel",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[HintSurface::Border, HintSurface::Current],
-        },
+            "Cancel",
+            "Cancel",
+            &[HintSurface::Border, HintSurface::Current],
+        ),
     ]
 });
 
 pub(super) static EDITING: LazyLock<Vec<Row>> = LazyLock::new(|| {
     let mut rows = vec![
-        Row {
-            bindings: vec![Binding::any_modifiers(Action::SettingsApply, Key::Enter)],
-            short: "Apply",
-            description: "Apply setting",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[HintSurface::Border, HintSurface::Current],
-        },
-        Row {
-            bindings: vec![Binding::any_modifiers(
+        Row::new(
+            vec![Binding::any_modifiers(Action::SettingsApply, Key::Enter)],
+            "Apply",
+            "Apply setting",
+            &[HintSurface::Border, HintSurface::Current],
+        ),
+        Row::new(
+            vec![Binding::any_modifiers(
                 Action::SettingsStopCustomBrowserEdit,
                 Key::Esc,
             )],
-            short: "Done",
-            description: "Finish editing",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[HintSurface::Border, HintSurface::Current],
-        },
+            "Done",
+            "Finish editing",
+            &[HintSurface::Border, HintSurface::Current],
+        ),
     ];
     rows.extend(text_field_any_modifiers(InputTarget::SettingsErBrowser));
-    rows.push(Row {
-        bindings: vec![Binding::text(InputTarget::SettingsErBrowser)],
-        short: "Browser",
-        description: "Edit custom browser",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces: &[HintSurface::Border, HintSurface::Current],
-    });
+    rows.push(Row::new(
+        vec![Binding::text(InputTarget::SettingsErBrowser)],
+        "Browser",
+        "Edit custom browser",
+        &[HintSurface::Border, HintSurface::Current],
+    ));
     rows
 });
 

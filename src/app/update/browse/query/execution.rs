@@ -13,8 +13,7 @@ use crate::ports::outbound::DbOperationError;
 use crate::update::action::{Action, QueryCompletionContext, QueryFailureContext, TableTarget};
 use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
-use crate::update::input::command::{LineCommand, parse_line_command};
-use crate::update::input::keymap::KeyContext;
+use crate::update::input::keymap::{KeyContext, LineCommand, parse_command};
 use crate::update::reducer::quit;
 
 use super::write;
@@ -175,7 +174,7 @@ pub(in crate::update) fn reveal_pending_preview(
 }
 
 pub(in crate::update) fn command_line_submit(state: &mut AppState) -> Vec<Effect> {
-    let command = parse_line_command(state.command_line_input.content());
+    let command = parse_command(state.command_line_input.content());
     let context = KeyContext::from_state(state);
     state.modal.pop_mode();
     state.command_line_input.clear();
@@ -586,6 +585,9 @@ mod tests {
 
         #[test]
         fn submit_write_enters_confirm_dialog_without_action_redispatch() {
+            use crate::ports::inbound::{InputEvent, Key, KeyCombo};
+            use crate::update::{input::handle_event, reducer::reduce};
+
             let mut state = create_test_state();
             state.query.set_current_result(editable_preview_result());
             state
@@ -599,15 +601,13 @@ mod tests {
             state
                 .result_interaction
                 .replace_cell_edit_draft("Bob".to_string());
-            state.modal.push_mode(InputMode::CommandLine);
-            state.command_line_input.set_content("write".to_string());
-
-            let effects = route(
-                &mut state,
-                Action::CommandLineSubmit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let services = AppServices::stub();
+            for key in [Key::Char(':'), Key::Char('w')] {
+                let action = handle_event(InputEvent::Key(KeyCombo::plain(key)), &state);
+                reduce(&mut state, action, Instant::now(), &services);
+            }
+            let action = handle_event(InputEvent::Key(KeyCombo::plain(Key::Enter)), &state);
+            let effects = reduce(&mut state, action, Instant::now(), &services);
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);

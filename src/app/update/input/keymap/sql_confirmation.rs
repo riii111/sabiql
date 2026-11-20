@@ -45,23 +45,20 @@ fn rows(analyze: bool, typed: bool) -> Vec<Row> {
                 HintSurface::Editing,
             ],
         },
-        Row {
-            bindings: vec![Binding::any_modifiers(cancel, Key::Esc)],
-            short: cancel_label,
-            description: "Cancel and return to editor",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[
+        Row::new(
+            vec![Binding::any_modifiers(cancel, Key::Esc)],
+            cancel_label,
+            "Cancel and return to editor",
+            &[
                 HintSurface::Border,
                 HintSurface::Current,
                 HintSurface::Editing,
             ],
-        },
+        ),
     ];
     if analyze {
-        rows.push(Row {
-            bindings: vec![
+        rows.push(Row::new(
+            vec![
                 Binding::no_ctrl_alt(
                     Action::Scroll {
                         target: ScrollTarget::ExplainConfirm,
@@ -79,13 +76,10 @@ fn rows(analyze: bool, typed: bool) -> Vec<Row> {
                     Key::Up,
                 ),
             ],
-            short: "Scroll",
-            description: "Scroll confirmation",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[HintSurface::Current],
-        });
+            "Scroll",
+            "Scroll confirmation",
+            &[HintSurface::Current],
+        ));
     }
     if typed {
         let target = if analyze {
@@ -94,15 +88,12 @@ fn rows(analyze: bool, typed: bool) -> Vec<Row> {
             InputTarget::SqlModalHighRisk
         };
         rows.extend(confirmation_text_field(target));
-        rows.push(Row {
-            bindings: vec![Binding::text(target)],
-            short: "Type",
-            description: "Type confirmation name",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[HintSurface::Current],
-        });
+        rows.push(Row::new(
+            vec![Binding::text(target)],
+            "Type",
+            "Type confirmation name",
+            &[HintSurface::Current],
+        ));
     }
     rows
 }

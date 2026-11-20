@@ -9,50 +9,41 @@ use super::model::{Binding, Row, hints, resolve};
 use super::{Hint, HintSurface, KeyContext};
 
 pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
-    let mut rows = vec![Row {
-        bindings: vec![Binding::action(
+    let mut rows = vec![Row::new(
+        vec![Binding::action(
             Action::EnterCommandLine,
             &[KeyCombo::plain(Key::Char(':'))],
         )],
-        short: "Cmd",
-        description: "Open command line",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces: &[HintSurface::Current, HintSurface::Editing],
-    }];
+        "Cmd",
+        "Open command line",
+        &[HintSurface::Current, HintSurface::Editing],
+    )];
     let (editing, navigation) = text_field_with_navigation(InputTarget::ResultCellEdit);
     rows.extend(editing);
-    rows.push(Row {
-        bindings: vec![Binding::text(InputTarget::ResultCellEdit)],
-        short: "Edit",
-        description: "Edit cell value",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces: &[
+    rows.push(Row::new(
+        vec![Binding::text(InputTarget::ResultCellEdit)],
+        "Edit",
+        "Edit cell value",
+        &[
             HintSurface::Footer,
             HintSurface::Current,
             HintSurface::Editing,
         ],
-    });
+    ));
     rows.extend(navigation);
-    rows.push(Row {
-        bindings: vec![Binding::action(
+    rows.push(Row::new(
+        vec![Binding::action(
             Action::ResultCancelCellEdit,
             &[KeyCombo::plain(Key::Esc)],
         )],
-        short: "Normal",
-        description: "Exit to Cell Active (draft preserved)",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces: &[
+        "Normal",
+        "Exit to Cell Active (draft preserved)",
+        &[
             HintSurface::Footer,
             HintSurface::Current,
             HintSurface::Editing,
         ],
-    });
+    ));
     rows
 });
 

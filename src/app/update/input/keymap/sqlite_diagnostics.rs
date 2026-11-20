@@ -52,22 +52,19 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
                 HintSurface::Advanced,
             ],
         },
-        Row {
-            bindings: vec![Binding::action(
+        Row::new(
+            vec![Binding::action(
                 Action::CloseModal(ModalKind::SqliteDiagnostics),
                 &[KeyCombo::plain(Key::Esc)],
             )],
-            short: "Close",
-            description: "Close",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[
+            "Close",
+            "Close",
+            &[
                 HintSurface::Border,
                 HintSurface::Current,
                 HintSurface::Advanced,
             ],
-        },
+        ),
     ]
 });
 

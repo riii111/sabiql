@@ -21,48 +21,39 @@ pub(super) static VIEWING: LazyLock<Vec<Row>> = LazyLock::new(|| {
         )
     };
     let mut rows = vec![
-        Row {
-            bindings: vec![Binding::action(
+        Row::new(
+            vec![Binding::action(
                 Action::DetailYankAll(DetailTarget::CellDetail),
                 &[KeyCombo::plain(Key::Char('y'))],
             )],
-            short: "Copy",
-            description: "Copy full cell text",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[
+            "Copy",
+            "Copy full cell text",
+            &[
                 HintSurface::Border,
                 HintSurface::Current,
                 HintSurface::Advanced,
             ],
-        },
-        Row {
-            bindings: vec![search(SearchStep::Enter, '/')],
-            short: "Search",
-            description: "Search cell text",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[
+        ),
+        Row::new(
+            vec![search(SearchStep::Enter, '/')],
+            "Search",
+            "Search cell text",
+            &[
                 HintSurface::Border,
                 HintSurface::Current,
                 HintSurface::Advanced,
             ],
-        },
-        Row {
-            bindings: vec![search(SearchStep::Next, 'n'), search(SearchStep::Prev, 'N')],
-            short: "Next/Prev",
-            description: "Jump to next / previous search result",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[
+        ),
+        Row::new(
+            vec![search(SearchStep::Next, 'n'), search(SearchStep::Prev, 'N')],
+            "Next/Prev",
+            "Jump to next / previous search result",
+            &[
                 HintSurface::Footer,
                 HintSurface::Current,
                 HintSurface::Advanced,
             ],
-        },
+        ),
     ];
     let mut scrolling = scroll_rows(
         ScrollTarget::CellDetail,
@@ -78,22 +69,19 @@ pub(super) static VIEWING: LazyLock<Vec<Row>> = LazyLock::new(|| {
         HintSurface::Advanced,
     ];
     rows.extend(scrolling);
-    rows.push(Row {
-        bindings: vec![Binding::action(
+    rows.push(Row::new(
+        vec![Binding::action(
             Action::CloseModal(ModalKind::CellDetail),
             &[KeyCombo::plain(Key::Esc), KeyCombo::plain(Key::Char('q'))],
         )],
-        short: "Close",
-        description: "Close cell detail",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces: &[
+        "Close",
+        "Close cell detail",
+        &[
             HintSurface::Border,
             HintSurface::Current,
             HintSurface::Advanced,
         ],
-    });
+    ));
     rows
 });
 

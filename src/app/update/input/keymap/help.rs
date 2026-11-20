@@ -25,67 +25,55 @@ pub(super) static VIEWING: LazyLock<Vec<Row>> = LazyLock::new(|| {
         ];
     }
     rows.extend([
-        Row {
-            bindings: vec![Binding::action(
+        Row::new(
+            vec![Binding::action(
                 Action::EnterHelpFilter,
                 &[KeyCombo::plain(Key::Char('/'))],
             )],
-            short: "Filter",
-            description: "Edit filter",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[
+            "Filter",
+            "Edit filter",
+            &[
                 HintSurface::Border,
                 HintSurface::Current,
                 HintSurface::SearchFilter,
                 HintSurface::ModalBasics,
             ],
-        },
-        Row {
-            bindings: vec![Binding::action(
+        ),
+        Row::new(
+            vec![Binding::action(
                 Action::CloseModal(ModalKind::Help),
                 &[KeyCombo::plain(Key::Esc), KeyCombo::plain(Key::Char('?'))],
             )],
-            short: "Close",
-            description: "Close help",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[
+            "Close",
+            "Close help",
+            &[
                 HintSurface::Border,
                 HintSurface::Current,
                 HintSurface::SearchFilter,
                 HintSurface::ModalBasics,
             ],
-        },
+        ),
     ]);
     rows
 });
 
 pub(super) static EDITING: LazyLock<Vec<Row>> = LazyLock::new(|| {
-    let mut rows = vec![Row {
-        bindings: vec![Binding::action(
+    let mut rows = vec![Row::new(
+        vec![Binding::action(
             Action::ExitHelpFilter,
             &[KeyCombo::plain(Key::Esc)],
         )],
-        short: "Browse",
-        description: "Return to help browsing",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces: &[HintSurface::Border, HintSurface::Current],
-    }];
+        "Browse",
+        "Return to help browsing",
+        &[HintSurface::Border, HintSurface::Current],
+    )];
     rows.extend(text_field(InputTarget::HelpFilter, false));
-    rows.push(Row {
-        bindings: vec![Binding::text(InputTarget::HelpFilter)],
-        short: "Filter",
-        description: "Filter help",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces: &[HintSurface::Current],
-    });
+    rows.push(Row::new(
+        vec![Binding::text(InputTarget::HelpFilter)],
+        "Filter",
+        "Filter help",
+        &[HintSurface::Current],
+    ));
     rows
 });
 

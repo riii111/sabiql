@@ -65,30 +65,38 @@ enum Scope {
         multiple_tabs: bool,
         compare_can_yank: bool,
     },
-    Browse {
-        focused: bool,
-        read_only: bool,
-        csv_available: bool,
-        pane: BrowsePane,
-        connection_error: bool,
-        inspector_ddl: bool,
-        staged_delete: bool,
-        draft: bool,
-        yank_pending: bool,
-        delete_pending: bool,
-        selected_row: bool,
-        selected_cell: bool,
-        connected: bool,
-        can_edit_cell: bool,
-        can_write: bool,
-        can_paginate: bool,
-        multiple_inspector_tabs: bool,
-    },
+    Browse(BrowseScope),
     Other,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "Browse bindings depend on independent state flags."
+)]
+struct BrowseScope {
+    focused: bool,
+    read_only: bool,
+    csv_available: bool,
+    pane: BrowsePane,
+    connection_error: bool,
+    inspector_ddl: bool,
+    staged_delete: bool,
+    draft: bool,
+    yank_pending: bool,
+    delete_pending: bool,
+    selected_row: bool,
+    selected_cell: bool,
+    connected: bool,
+    can_edit_cell: bool,
+    can_write: bool,
+    can_paginate: bool,
+    multiple_inspector_tabs: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(super) enum BrowsePane {
+    #[default]
     Explorer,
     Inspector,
     ResultScroll,
@@ -280,7 +288,7 @@ impl KeyContext {
 
     pub(super) fn with_browse_reference(mut self, pane: BrowsePane, staged: bool) -> Self {
         self.mode = InputMode::Normal;
-        self.scope = Scope::Browse {
+        self.scope = Scope::Browse(BrowseScope {
             focused: false,
             read_only: false,
             csv_available: true,
@@ -298,7 +306,7 @@ impl KeyContext {
             can_write: true,
             can_paginate: true,
             multiple_inspector_tabs: true,
-        };
+        });
         self
     }
 
@@ -309,159 +317,79 @@ impl KeyContext {
         context
     }
 
-    pub(super) fn browse_focused(&self) -> bool {
-        matches!(self.scope, Scope::Browse { focused: true, .. })
-    }
-
-    pub(super) fn browse_read_only(&self) -> bool {
-        matches!(
-            self.scope,
-            Scope::Browse {
-                read_only: true,
-                ..
-            }
-        )
-    }
-
-    pub(super) fn browse_csv_available(&self) -> bool {
-        matches!(
-            self.scope,
-            Scope::Browse {
-                csv_available: true,
-                ..
-            }
-        )
-    }
-
-    pub(super) fn browse_pane(&self) -> BrowsePane {
+    fn browse(&self) -> BrowseScope {
         match self.scope {
-            Scope::Browse { pane, .. } => pane,
-            _ => BrowsePane::Explorer,
+            Scope::Browse(scope) => scope,
+            _ => BrowseScope::default(),
         }
     }
 
+    pub(super) fn browse_pane(&self) -> BrowsePane {
+        self.browse().pane
+    }
+
+    pub(super) fn browse_focused(&self) -> bool {
+        self.browse().focused
+    }
+
+    pub(super) fn browse_read_only(&self) -> bool {
+        self.browse().read_only
+    }
+
+    pub(super) fn browse_csv_available(&self) -> bool {
+        self.browse().csv_available
+    }
+
     pub(super) fn browse_connection_error(&self) -> bool {
-        matches!(
-            self.scope,
-            Scope::Browse {
-                connection_error: true,
-                ..
-            }
-        )
+        self.browse().connection_error
     }
 
     pub(super) fn browse_inspector_ddl(&self) -> bool {
-        matches!(
-            self.scope,
-            Scope::Browse {
-                inspector_ddl: true,
-                ..
-            }
-        )
+        self.browse().inspector_ddl
     }
 
     pub(super) fn browse_staged_delete(&self) -> bool {
-        matches!(
-            self.scope,
-            Scope::Browse {
-                staged_delete: true,
-                ..
-            }
-        )
+        self.browse().staged_delete
     }
 
     pub(super) fn browse_draft(&self) -> bool {
-        matches!(self.scope, Scope::Browse { draft: true, .. })
+        self.browse().draft
     }
 
     pub(super) fn browse_yank_pending(&self) -> bool {
-        matches!(
-            self.scope,
-            Scope::Browse {
-                yank_pending: true,
-                ..
-            }
-        )
+        self.browse().yank_pending
     }
 
     pub(super) fn browse_delete_pending(&self) -> bool {
-        matches!(
-            self.scope,
-            Scope::Browse {
-                delete_pending: true,
-                ..
-            }
-        )
+        self.browse().delete_pending
     }
 
     pub(super) fn browse_selected_row(&self) -> bool {
-        matches!(
-            self.scope,
-            Scope::Browse {
-                selected_row: true,
-                ..
-            }
-        )
+        self.browse().selected_row
     }
 
     pub(super) fn browse_selected_cell(&self) -> bool {
-        matches!(
-            self.scope,
-            Scope::Browse {
-                selected_cell: true,
-                ..
-            }
-        )
+        self.browse().selected_cell
     }
 
     pub(super) fn browse_connected(&self) -> bool {
-        matches!(
-            self.scope,
-            Scope::Browse {
-                connected: true,
-                ..
-            }
-        )
+        self.browse().connected
     }
 
     pub(super) fn browse_can_edit_cell(&self) -> bool {
-        matches!(
-            self.scope,
-            Scope::Browse {
-                can_edit_cell: true,
-                ..
-            }
-        )
+        self.browse().can_edit_cell
     }
 
     pub(super) fn browse_can_write(&self) -> bool {
-        matches!(
-            self.scope,
-            Scope::Browse {
-                can_write: true,
-                ..
-            }
-        )
+        self.browse().can_write
     }
 
     pub(super) fn browse_can_paginate(&self) -> bool {
-        matches!(
-            self.scope,
-            Scope::Browse {
-                can_paginate: true,
-                ..
-            }
-        )
+        self.browse().can_paginate
     }
 
     pub(super) fn browse_multiple_inspector_tabs(&self) -> bool {
-        matches!(
-            self.scope,
-            Scope::Browse {
-                multiple_inspector_tabs: true,
-                ..
-            }
-        )
+        self.browse().multiple_inspector_tabs
     }
 
     pub(super) fn allows(&self, action: &Action) -> bool {
@@ -471,12 +399,6 @@ impl KeyContext {
 
     pub(super) fn pending_prefix(&self) -> Option<Prefix> {
         self.pending_prefix
-    }
-
-    #[cfg(test)]
-    pub(crate) fn with_prefix(mut self, prefix: Option<Prefix>) -> Self {
-        self.pending_prefix = prefix;
-        self
     }
 
     pub(super) fn supports_diagnostics(&self) -> bool {
@@ -554,7 +476,7 @@ impl KeyContext {
         self.mode = InputMode::SqlModal;
         self.scope = Scope::SqlNormal {
             tab,
-            multiple_tabs: true,
+            multiple_tabs: self.policy.is_enabled(FeatureRequirement::Explain),
             compare_can_yank: true,
         };
         self
@@ -566,17 +488,10 @@ impl KeyContext {
         self
     }
 
-    #[cfg(test)]
-    pub(crate) fn with_sql_status(mut self, status: &SqlModalStatus) -> Self {
-        self.mode = InputMode::SqlModal;
-        self.scope = sql_confirmation_scope(status).unwrap_or(Scope::Other);
-        self
-    }
-
-    pub(crate) fn with_sql_confirmation(mut self) -> Self {
+    pub(super) fn with_sql_confirmation(mut self, kind: SqlConfirmation) -> Self {
         self.mode = InputMode::SqlModal;
         self.scope = Scope::SqlConfirmation {
-            kind: SqlConfirmation::Risk,
+            kind,
             matched: true,
         };
         self
@@ -665,6 +580,21 @@ impl KeyContext {
         matches!(self.scope, Scope::Settings { editing: true, .. })
     }
 
+    pub(super) fn with_settings_editing(mut self) -> Self {
+        self.mode = InputMode::Settings;
+        self.scope = Scope::Settings {
+            editing: true,
+            custom_selected: true,
+        };
+        self
+    }
+
+    pub(super) fn with_help_editing(mut self) -> Self {
+        self.mode = InputMode::Help;
+        self.scope = Scope::Help { editing: true };
+        self
+    }
+
     pub(super) fn is_custom_browser_selected(&self) -> bool {
         matches!(
             self.scope,
@@ -678,13 +608,6 @@ impl KeyContext {
     pub(crate) fn with_cell_detail_searching(mut self, searching: bool) -> Self {
         self.mode = InputMode::CellDetail;
         self.scope = Scope::CellDetail { searching };
-        self
-    }
-
-    #[cfg(test)]
-    pub(crate) fn with_help_editing(mut self, editing: bool) -> Self {
-        self.mode = InputMode::Help;
-        self.scope = Scope::Help { editing };
         self
     }
 
@@ -723,7 +646,7 @@ fn browse_scope(state: &AppState) -> Scope {
     } else {
         BrowsePane::Explorer
     };
-    Scope::Browse {
+    Scope::Browse(BrowseScope {
         focused: state.ui.is_focus_mode(),
         read_only: state.session.is_read_only(),
         csv_available: state.can_request_csv_export(),
@@ -746,7 +669,7 @@ fn browse_scope(state: &AppState) -> Scope {
             .supported_inspector_tabs()
             .len()
             > 1,
-    }
+    })
 }
 
 fn sql_confirmation_scope(status: &SqlModalStatus) -> Option<Scope> {

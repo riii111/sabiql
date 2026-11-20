@@ -7,8 +7,8 @@ use crate::update::action::{
     TextKillDirection,
 };
 
-use super::model::{Binding, Row, hints};
-use super::{Hint, HintSurface, KeyContext};
+use super::model::{Binding, Row};
+use super::{HintSurface, KeyContext};
 
 static READLINE: LazyLock<Vec<(InputTarget, Vec<Row>)>> = LazyLock::new(|| {
     [
@@ -74,94 +74,147 @@ pub(super) fn consume_readline(target: InputTarget) -> Vec<Row> {
     rows
 }
 
-pub(super) fn readline_hints(context: &KeyContext) -> Vec<Hint> {
-    READLINE
-        .iter()
-        .find(|(target, _)| *target == InputTarget::CommandLine)
-        .map_or_else(Vec::new, |(_, rows)| {
-            hints(rows, context, HintSurface::Editing)
-        })
-}
-
 pub(super) fn detail_search(
     target: DetailTarget,
     input: InputTarget,
     any_modifiers: bool,
 ) -> Vec<Row> {
     let mut rows = vec![
-        Row {
-            bindings: vec![Binding::action(
+        Row::new(
+            vec![Binding::action(
                 Action::DetailSearch {
                     target,
                     step: SearchStep::Submit,
                 },
                 &[KeyCombo::plain(Key::Enter)],
             )],
-            short: "Confirm",
-            description: "Confirm search",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[
+            "Confirm",
+            "Confirm search",
+            &[
                 HintSurface::Border,
                 HintSurface::Current,
                 HintSurface::SearchFilter,
             ],
-        },
-        Row {
-            bindings: vec![Binding::action(
+        ),
+        Row::new(
+            vec![Binding::action(
                 Action::DetailSearch {
                     target,
                     step: SearchStep::Exit,
                 },
                 &[KeyCombo::plain(Key::Esc)],
             )],
-            short: "Cancel",
-            description: "Cancel search",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[
+            "Cancel",
+            "Cancel search",
+            &[
                 HintSurface::Border,
                 HintSurface::Current,
                 HintSurface::SearchFilter,
             ],
-        },
+        ),
     ];
     rows.extend(if any_modifiers {
         text_field_any_modifiers(input)
     } else {
         text_field(input, true)
     });
-    rows.push(Row {
-        bindings: vec![Binding::text(input)],
-        short: "Search",
-        description: "Type to search",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces: &[
+    rows.push(Row::new(
+        vec![Binding::text(input)],
+        "Search",
+        "Type to search",
+        &[
             HintSurface::Footer,
             HintSurface::Current,
             HintSurface::SearchFilter,
         ],
-    });
+    ));
     rows
 }
 
+#[derive(Clone, Copy)]
+pub(super) enum NavigationKey {
+    Down,
+    Up,
+    Left,
+    Right,
+    First,
+    Last,
+    Top,
+    Middle,
+    Bottom,
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum NavigationLayout {
+    Browse,
+    Document { sql: bool, shifted_prefix: bool },
+}
+
+pub(super) fn navigation_binding(
+    layout: NavigationLayout,
+    movement: NavigationKey,
+    action: Action,
+) -> Binding {
+    use NavigationKey::{Bottom, Down, First, Last, Left, Middle, Right, Top, Up};
+    let directional = match movement {
+        Down => Some(('j', Key::Down, Some('n'))),
+        Up => Some(('k', Key::Up, Some('p'))),
+        Left => Some(('h', Key::Left, None)),
+        Right => Some(('l', Key::Right, None)),
+        _ => None,
+    };
+    if let Some((ch, arrow, control)) = directional {
+        let mut combos = vec![KeyCombo::plain(Key::Char(ch))];
+        let any_arrow = matches!(layout, NavigationLayout::Document { sql: true, .. });
+        if !any_arrow {
+            combos.push(KeyCombo::plain(arrow));
+        }
+        if let (NavigationLayout::Document { .. }, Some(control)) = (layout, control) {
+            combos.push(KeyCombo::ctrl(Key::Char(control)));
+        }
+        let binding = Binding::action(action, &combos);
+        return if any_arrow {
+            binding.add_any_modifiers(arrow)
+        } else {
+            binding
+        };
+    }
+    match (layout, movement) {
+        (NavigationLayout::Document { shifted_prefix, .. }, First) => Binding::sequence(
+            action,
+            Prefix::G,
+            KeyCombo::plain(Key::Char('g')),
+            shifted_prefix,
+        ),
+        (NavigationLayout::Browse, First) => Binding::action(
+            action,
+            &[KeyCombo::plain(Key::Char('g')), KeyCombo::plain(Key::Home)],
+        ),
+        (NavigationLayout::Browse, Last) => Binding::action(
+            action,
+            &[KeyCombo::plain(Key::Char('G')), KeyCombo::plain(Key::End)],
+        ),
+        (NavigationLayout::Document { .. }, Last) => {
+            Binding::action(action, &[KeyCombo::plain(Key::Char('G'))])
+        }
+        (_, Top) => Binding::action(action, &[KeyCombo::plain(Key::Char('H'))]),
+        (_, Middle) => Binding::action(action, &[KeyCombo::plain(Key::Char('M'))]),
+        (_, Bottom) => Binding::action(action, &[KeyCombo::plain(Key::Char('L'))]),
+        (_, Down | Up | Left | Right) => unreachable!(),
+    }
+}
+
 pub(super) fn document_navigation(target: InputTarget, shifted_prefix: bool) -> Vec<Row> {
+    use NavigationKey::{Bottom, Down, First, Last, Left, Middle, Right, Top, Up};
     let movement = |direction, combos: &[KeyCombo]| {
         Binding::action(Action::TextMoveCursor { target, direction }, combos)
     };
-    let arrow = |direction, combos: &[KeyCombo], key| {
-        let binding = movement(direction, combos);
-        if target == InputTarget::SqlModal {
-            binding.add_any_modifiers(key)
-        } else {
-            let mut all = combos.to_vec();
-            all.insert(1, KeyCombo::plain(key));
-            movement(direction, &all)
-        }
+    let layout = NavigationLayout::Document {
+        sql: target == InputTarget::SqlModal,
+        shifted_prefix,
+    };
+    let navigate = |key, direction| {
+        navigation_binding(layout, key, Action::TextMoveCursor { target, direction })
     };
     let mut jumps = vec![
         movement(CursorMove::LineStart, &[KeyCombo::plain(Key::Char('0'))]),
@@ -179,98 +232,50 @@ pub(super) fn document_navigation(target: InputTarget, shifted_prefix: bool) -> 
         jumps[1] = jumps[1].clone().with_no_ctrl_alt(Key::End);
     }
     vec![
-        Row {
-            bindings: vec![
-                arrow(
-                    CursorMove::Left,
-                    &[KeyCombo::plain(Key::Char('h'))],
-                    Key::Left,
-                ),
-                arrow(
-                    CursorMove::Right,
-                    &[KeyCombo::plain(Key::Char('l'))],
-                    Key::Right,
-                ),
+        Row::new(
+            vec![
+                navigate(Left, CursorMove::Left),
+                navigate(Right, CursorMove::Right),
             ],
-            short: "Left/Right",
-            description: "Move cursor left / right",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[
+            "Left/Right",
+            "Move cursor left / right",
+            &[
                 HintSurface::Footer,
                 HintSurface::Current,
                 HintSurface::Advanced,
             ],
-        },
-        Row {
-            bindings: vec![
-                arrow(
-                    CursorMove::Down,
-                    &[
-                        KeyCombo::plain(Key::Char('j')),
-                        KeyCombo::ctrl(Key::Char('n')),
-                    ],
-                    Key::Down,
-                ),
-                arrow(
-                    CursorMove::Up,
-                    &[
-                        KeyCombo::plain(Key::Char('k')),
-                        KeyCombo::ctrl(Key::Char('p')),
-                    ],
-                    Key::Up,
-                ),
+        ),
+        Row::new(
+            vec![
+                navigate(Down, CursorMove::Down),
+                navigate(Up, CursorMove::Up),
             ],
-            short: "Down/Up",
-            description: "Move cursor down / up",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[
+            "Down/Up",
+            "Move cursor down / up",
+            &[
                 HintSurface::Footer,
                 HintSurface::Current,
                 HintSurface::Advanced,
             ],
-        },
-        Row {
-            bindings: jumps,
-            short: "Jump",
-            description: "Move by word or line boundary",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[HintSurface::Current, HintSurface::Advanced],
-        },
-        Row {
-            bindings: vec![
-                Binding::sequence(
-                    Action::TextMoveCursor {
-                        target,
-                        direction: CursorMove::FirstLine,
-                    },
-                    Prefix::G,
-                    KeyCombo::plain(Key::Char('g')),
-                    shifted_prefix,
-                ),
-                movement(CursorMove::LastLine, &[KeyCombo::plain(Key::Char('G'))]),
-                movement(CursorMove::ViewportTop, &[KeyCombo::plain(Key::Char('H'))]),
-                movement(
-                    CursorMove::ViewportMiddle,
-                    &[KeyCombo::plain(Key::Char('M'))],
-                ),
-                movement(
-                    CursorMove::ViewportBottom,
-                    &[KeyCombo::plain(Key::Char('L'))],
-                ),
+        ),
+        Row::new(
+            jumps,
+            "Jump",
+            "Move by word or line boundary",
+            &[HintSurface::Current, HintSurface::Advanced],
+        ),
+        Row::new(
+            vec![
+                navigate(First, CursorMove::FirstLine),
+                navigate(Last, CursorMove::LastLine),
+                navigate(Top, CursorMove::ViewportTop),
+                navigate(Middle, CursorMove::ViewportMiddle),
+                navigate(Bottom, CursorMove::ViewportBottom),
             ],
-            short: "View",
-            description: "Jump by buffer or viewport",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[HintSurface::Current, HintSurface::Advanced],
-        },
+            "View",
+            "Jump by buffer or viewport",
+            &[HintSurface::Current, HintSurface::Advanced],
+        ),
     ]
 }
 
@@ -377,8 +382,8 @@ pub(super) fn list_navigation(target: ListTarget, vim_keys: bool) -> Row {
         next.insert(0, KeyCombo::plain(Key::Char('j')));
         previous.insert(0, KeyCombo::plain(Key::Char('k')));
     }
-    Row {
-        bindings: vec![
+    Row::new(
+        vec![
             Binding::action(
                 Action::ListSelect {
                     target,
@@ -394,13 +399,10 @@ pub(super) fn list_navigation(target: ListTarget, vim_keys: bool) -> Row {
                 &previous,
             ),
         ],
-        short: "Navigate",
-        description: "Navigate",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces: &[HintSurface::Current],
-    }
+        "Navigate",
+        "Navigate",
+        &[HintSurface::Current],
+    )
 }
 
 fn hidden(action: Action, key: Key, modifiers: KeyModifiers) -> Row {
@@ -410,15 +412,7 @@ fn hidden(action: Action, key: Key, modifiers: KeyModifiers) -> Row {
         KeyModifiers::Shift => Binding::action(action, &combos),
         KeyModifiers::Any => Binding::any_modifiers(action, key),
     };
-    Row {
-        bindings: vec![binding],
-        short: "",
-        description: "",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces: &[],
-    }
+    Row::new(vec![binding], "", "", &[])
 }
 
 fn hidden_combo(action: Action, combo: KeyCombo) -> Row {

@@ -9,38 +9,32 @@ use super::{Hint, HintSurface, KeyContext};
 
 pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
     let mut rows = vec![
-        Row {
-            bindings: vec![Binding::action(
+        Row::new(
+            vec![Binding::action(
                 Action::RowDetailYank,
                 &[KeyCombo::plain(Key::Char('y'))],
             )],
-            short: "Copy",
-            description: "Copy displayed text to clipboard",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[
+            "Copy",
+            "Copy displayed text to clipboard",
+            &[
                 HintSurface::Border,
                 HintSurface::Current,
                 HintSurface::Advanced,
             ],
-        },
-        Row {
-            bindings: vec![Binding::action(
+        ),
+        Row::new(
+            vec![Binding::action(
                 Action::RowDetailYankJson,
                 &[KeyCombo::plain(Key::Char('Y'))],
             )],
-            short: "Copy JSON",
-            description: "Copy row as JSON to clipboard",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[
+            "Copy JSON",
+            "Copy row as JSON to clipboard",
+            &[
                 HintSurface::Border,
                 HintSurface::Current,
                 HintSurface::Advanced,
             ],
-        },
+        ),
     ];
     rows.extend(scroll_rows(
         ScrollTarget::RowDetail,
@@ -50,22 +44,19 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             vim_jumps: true,
         },
     ));
-    rows.push(Row {
-        bindings: vec![Binding::action(
+    rows.push(Row::new(
+        vec![Binding::action(
             Action::CloseModal(ModalKind::RowDetail),
             &[KeyCombo::plain(Key::Esc)],
         )],
-        short: "Close",
-        description: "Close Row Detail modal",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces: &[
+        "Close",
+        "Close Row Detail modal",
+        &[
             HintSurface::Border,
             HintSurface::Current,
             HintSurface::Advanced,
         ],
-    });
+    ));
     rows
 });
 

@@ -17,34 +17,28 @@ fn rows(tab: SqlModalTab) -> Vec<Row> {
     let sql = tab == SqlModalTab::Sql;
     let mut rows = Vec::new();
     if sql {
-        rows.push(Row {
-            bindings: vec![
+        rows.push(Row::new(
+            vec![
                 Binding::with_alt(Action::SqlModalSubmit, Key::Enter),
                 Binding::action(Action::SqlModalSubmit, &[KeyCombo::plain(Key::F(5))]),
             ],
-            short: "Run",
-            description: "Execute query",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[
+            "Run",
+            "Execute query",
+            &[
                 HintSurface::Border,
                 HintSurface::Current,
                 HintSurface::Editing,
             ],
-        });
+        ));
     }
-    rows.push(Row {
-        bindings: vec![
+    rows.push(Row::new(
+        vec![
             Binding::action(Action::ExplainRequest, &[KeyCombo::ctrl(Key::Char('e'))])
                 .ide(&[KeyCombo::plain(Key::Char('E'))]),
         ],
-        short: "Explain",
-        description: "Run EXPLAIN on current query",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces: if sql {
+        "Explain",
+        "Run EXPLAIN on current query",
+        if sql {
             &[
                 HintSurface::Border,
                 HintSurface::Current,
@@ -58,36 +52,30 @@ fn rows(tab: SqlModalTab) -> Vec<Row> {
                 HintSurface::ExplainPlaceholder,
             ]
         },
-    });
-    rows.push(Row {
-        bindings: vec![Binding::with_alt(
+    ));
+    rows.push(Row::new(
+        vec![Binding::with_alt(
             Action::ExplainAnalyzeRequest,
             Key::Char('e'),
         )],
-        short: "Analyze",
-        description: "Run EXPLAIN ANALYZE on current query",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces: &[HintSurface::Current, HintSurface::Advanced],
-    });
+        "Analyze",
+        "Run EXPLAIN ANALYZE on current query",
+        &[HintSurface::Current, HintSurface::Advanced],
+    ));
     if tab == SqlModalTab::Compare {
-        rows.push(Row {
-            bindings: vec![Binding::action(
+        rows.push(Row::new(
+            vec![Binding::action(
                 Action::CompareEditQuery,
                 &[KeyCombo::plain(Key::Char('e'))],
             )],
-            short: "Edit",
-            description: "Edit query in SQL tab",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[
+            "Edit",
+            "Edit query in SQL tab",
+            &[
                 HintSurface::Border,
                 HintSurface::Current,
                 HintSurface::Advanced,
             ],
-        });
+        ));
     }
     rows.push(Row {
         bindings: vec![Binding::no_ctrl_alt(Action::SqlModalYank, Key::Char('y'))],
@@ -117,22 +105,19 @@ fn rows(tab: SqlModalTab) -> Vec<Row> {
         },
     });
     if sql {
-        rows.push(Row {
-            bindings: vec![
+        rows.push(Row::new(
+            vec![
                 Binding::no_ctrl_alt(Action::SqlModalEnterInsert, Key::Char('i')),
                 Binding::no_ctrl_alt(Action::SqlModalAppendInsert, Key::Char('A')),
             ],
-            short: "Insert",
-            description: "Enter Insert mode / append at line end",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[
+            "Insert",
+            "Enter Insert mode / append at line end",
+            &[
                 HintSurface::Border,
                 HintSurface::Current,
                 HintSurface::Editing,
             ],
-        });
+        ));
     }
     rows.push(Row {
         bindings: vec![
@@ -153,30 +138,24 @@ fn rows(tab: SqlModalTab) -> Vec<Row> {
         ],
     });
     if sql {
-        rows.push(Row {
-            bindings: vec![Binding::with_ctrl(Action::SqlModalClear, Key::Char('l'))],
-            short: "Clear",
-            description: "Clear editor",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[HintSurface::Current, HintSurface::Editing],
-        });
-        rows.push(Row {
-            bindings: vec![
+        rows.push(Row::new(
+            vec![Binding::with_ctrl(Action::SqlModalClear, Key::Char('l'))],
+            "Clear",
+            "Clear editor",
+            &[HintSurface::Current, HintSurface::Editing],
+        ));
+        rows.push(Row::new(
+            vec![
                 Binding::action(
                     Action::OpenModal(ModalKind::QueryHistoryPicker),
                     &[KeyCombo::ctrl(Key::Char('o'))],
                 )
                 .ide(&[KeyCombo::plain(Key::Char('O'))]),
             ],
-            short: "History",
-            description: "Open Query History",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[HintSurface::Current, HintSurface::Editing],
-        });
+            "History",
+            "Open Query History",
+            &[HintSurface::Current, HintSurface::Editing],
+        ));
         let mut navigation = document_navigation(InputTarget::SqlModal, false);
         for row in &mut navigation {
             row.surfaces = &[HintSurface::Current, HintSurface::Editing];
@@ -197,23 +176,20 @@ fn rows(tab: SqlModalTab) -> Vec<Row> {
         scroll.surfaces = &[HintSurface::Current, HintSurface::Advanced];
         rows.push(scroll);
     }
-    rows.push(Row {
-        bindings: vec![Binding::no_ctrl_alt(
+    rows.push(Row::new(
+        vec![Binding::no_ctrl_alt(
             Action::CloseModal(ModalKind::SqlModal),
             Key::Esc,
         )],
-        short: "Close",
-        description: "Close editor",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces: &[
+        "Close",
+        "Close editor",
+        &[
             HintSurface::Border,
             HintSurface::Current,
             HintSurface::Advanced,
             HintSurface::Editing,
         ],
-    });
+    ));
     rows
 }
 

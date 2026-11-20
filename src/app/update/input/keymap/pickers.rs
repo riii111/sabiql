@@ -81,41 +81,32 @@ fn rows(picker: Picker) -> Vec<Row> {
             HintSurface::ModalBasics,
         ]
     };
-    let mut rows = vec![Row {
-        bindings: vec![Binding::action(confirm, &[KeyCombo::plain(Key::Enter)])],
+    let mut rows = vec![Row::new(
+        vec![Binding::action(confirm, &[KeyCombo::plain(Key::Enter)])],
         short,
         description,
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces: button_surfaces,
-    }];
+        button_surfaces,
+    )];
     if matches!(picker, Picker::Er) {
         rows.extend([
-            Row {
-                bindings: vec![Binding::action(
+            Row::new(
+                vec![Binding::action(
                     Action::ErToggleSelection,
                     &[KeyCombo::plain(Key::Char(' '))],
                 )],
-                short: "Select",
-                description: "Toggle table selection",
-                references: &[],
-                dynamic_label: None,
-                visible: None,
-                surfaces: button_surfaces,
-            },
-            Row {
-                bindings: vec![Binding::action(
+                "Select",
+                "Toggle table selection",
+                button_surfaces,
+            ),
+            Row::new(
+                vec![Binding::action(
                     Action::ErSelectAll,
                     &[KeyCombo::alt(Key::Char('a'))],
                 )],
-                short: "All",
-                description: "Select/deselect all tables",
-                references: &[],
-                dynamic_label: None,
-                visible: None,
-                surfaces: button_surfaces,
-            },
+                "All",
+                "Select/deselect all tables",
+                button_surfaces,
+            ),
         ]);
     }
     let mut navigation = list_navigation(target, matches!(picker, Picker::CommandPalette));
@@ -125,28 +116,22 @@ fn rows(picker: Picker) -> Vec<Row> {
     rows.push(navigation);
     if let Some(input) = input {
         rows.extend(text_field(input, false));
-        rows.push(Row {
-            bindings: vec![Binding::text(input)],
-            short: "Filter",
-            description: "Type to filter",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: filter_surfaces,
-        });
+        rows.push(Row::new(
+            vec![Binding::text(input)],
+            "Filter",
+            "Type to filter",
+            filter_surfaces,
+        ));
     }
-    rows.push(Row {
-        bindings: vec![Binding::action(
+    rows.push(Row::new(
+        vec![Binding::action(
             Action::CloseModal(close),
             &[KeyCombo::plain(Key::Esc)],
         )],
-        short: "Close",
-        description: "Close",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces: button_surfaces,
-    });
+        "Close",
+        "Close",
+        button_surfaces,
+    ));
     rows
 }
 

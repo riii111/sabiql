@@ -1,19 +1,9 @@
 use unicode_width::UnicodeWidthStr;
 
 use crate::model::app_state::AppState;
-use crate::model::browse::json_detail::JsonDetailMode;
-use crate::model::connection::setup::ConnectionField;
 use crate::model::shared::input_mode::InputMode;
-use crate::model::shared::settings::KeymapPreset;
-use crate::model::sql_editor::modal::SqlModalTab;
-use crate::policy::{FeaturePolicy, FeatureRequirement};
-use crate::update::input::keymap::{
-    Hint, HintSurface, KeyContext, Picker, browse_reference_hints, cell_detail_hints,
-    cell_edit_hints, confirm_hints, connection_error_hints, connection_selector_hints,
-    connection_setup_hints, current_hints, help_hints, json_edit_hints, json_search_hints,
-    json_view_hints, picker_hints, readline_reference_hints, row_detail_hints,
-    sql_confirmation_hints, sql_edit_hints, sql_view_hints, sqlite_diagnostics_hints,
-};
+use crate::policy::FeaturePolicy;
+use crate::update::input::keymap::{Hint, HintSurface, KeyContext, current_hints, reference_hints};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HelpDocument {
@@ -44,7 +34,7 @@ impl HelpDocument {
     fn new(context: KeyContext, filter: &str, filter_cursor: usize) -> Self {
         let normalized = filter.trim().to_lowercase();
         let mut sections = vec![current_section(&context)];
-        sections.extend(reference_sections(context.preset(), context.policy()));
+        sections.extend(reference_sections(&context));
 
         if !normalized.is_empty() {
             sections = sections
@@ -205,231 +195,20 @@ fn current_section(context: &KeyContext) -> HelpSection {
     }
 }
 
-fn reference_sections(
-    keymap_preset: KeymapPreset,
-    feature_policy: &FeaturePolicy,
-) -> Vec<HelpSection> {
-    let key_context = KeyContext::for_scope(InputMode::Normal, keymap_preset, feature_policy);
-    let sql_context = KeyContext::for_scope(InputMode::SqlModal, keymap_preset, feature_policy);
-    let open_switch_rows = rows_from_hints(browse_reference_hints(
-        HintSurface::OpenSwitch,
-        &key_context,
-    ));
-    let mut data_action_rows = rows_from_hints(browse_reference_hints(
-        HintSurface::DataActions,
-        &key_context,
-    ));
-    if feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail) {
-        data_action_rows.extend(rows_from_hints(json_view_hints(
-            HintSurface::DataActions,
-            &key_context.clone().with_json_mode(JsonDetailMode::Viewing),
-        )));
-    }
-
-    let mut search_filter_rows =
-        picker_hints(Picker::Table, HintSurface::SearchFilter, &key_context)
-            .into_iter()
-            .map(|hint| HelpRow::new(hint.key, hint.description))
-            .collect::<Vec<_>>();
-    search_filter_rows.extend(
-        picker_hints(
-            Picker::QueryHistory,
-            HintSurface::SearchFilter,
-            &key_context,
-        )
-        .into_iter()
-        .map(|hint| HelpRow::new(hint.key, hint.description)),
-    );
-    if feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
-        let mut er_rows = picker_hints(Picker::Er, HintSurface::SearchFilter, &key_context)
-            .into_iter()
-            .map(|hint| HelpRow::new(hint.key, hint.description));
-        if let Some(er_row) = er_rows.next() {
-            search_filter_rows.insert(1, er_row);
-        }
-    }
-    if feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail) {
-        search_filter_rows.extend(
-            json_search_hints(
-                HintSurface::SearchFilter,
-                &key_context
-                    .clone()
-                    .with_json_mode(JsonDetailMode::Searching),
-            )
-            .into_iter()
-            .map(|hint| HelpRow::new(hint.key, hint.description)),
-        );
-    }
-    search_filter_rows.extend(
-        cell_detail_hints(
-            HintSurface::SearchFilter,
-            &key_context.clone().with_cell_detail_searching(true),
-        )
-        .into_iter()
-        .map(|hint| HelpRow::new(hint.key, hint.description)),
-    );
-    search_filter_rows.extend(
-        help_hints(HintSurface::SearchFilter, &key_context)
-            .into_iter()
-            .map(|hint| HelpRow::new(hint.key, hint.description)),
-    );
-
-    let mut editing_rows = merge_rows(&[
-        rows_from_hints(readline_reference_hints(&key_context)),
-        rows_from_hints(browse_reference_hints(HintSurface::Editing, &key_context)),
-        rows_from_hints(sql_view_hints(
-            HintSurface::Editing,
-            &sql_context.clone().with_sql_view(SqlModalTab::Sql),
-        )),
-        rows_from_hints(sql_edit_hints(
-            HintSurface::Editing,
-            &sql_context.clone().with_sql_editing(false),
-        )),
-        cell_edit_hints(HintSurface::Editing, &key_context)
-            .into_iter()
-            .map(|hint| HelpRow::new(hint.key, hint.description))
-            .collect(),
-        sql_confirmation_hints(
-            HintSurface::Editing,
-            &key_context.clone().with_sql_confirmation(),
-        )
-        .into_iter()
-        .map(|hint| HelpRow::new(hint.key, hint.description))
-        .collect(),
-    ]);
-    if feature_policy.is_enabled(FeatureRequirement::JsonDocumentEdit) {
-        editing_rows.extend(
-            json_edit_hints(HintSurface::Editing, &key_context.clone().with_json_edit())
-                .into_iter()
-                .map(|hint| HelpRow::new(hint.key, hint.description)),
-        );
-    }
-
-    let mut advanced_rows = Vec::new();
-    if feature_policy.is_enabled(FeatureRequirement::Explain) {
-        advanced_rows.extend(rows_from_hints(sql_view_hints(
-            HintSurface::Advanced,
-            &sql_context.clone().with_sql_view(SqlModalTab::Plan),
-        )));
-    }
-    if feature_policy.is_enabled(FeatureRequirement::PlanComparison) {
-        advanced_rows.extend(rows_from_hints(sql_view_hints(
-            HintSurface::Advanced,
-            &sql_context.with_sql_view(SqlModalTab::Compare),
-        )));
-    }
-    if feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
-        advanced_rows.extend(
-            picker_hints(Picker::Er, HintSurface::Advanced, &key_context)
-                .into_iter()
-                .map(|hint| HelpRow::new(hint.key, hint.description)),
-        );
-    }
-    if feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail) {
-        advanced_rows.extend(
-            json_view_hints(
-                HintSurface::Advanced,
-                &key_context.clone().with_json_mode(JsonDetailMode::Viewing),
-            )
-            .into_iter()
-            .map(|hint| HelpRow::new(hint.key, hint.description)),
-        );
-    }
-    advanced_rows.extend(
-        row_detail_hints(HintSurface::Advanced, &key_context)
-            .into_iter()
-            .map(|hint| HelpRow::new(hint.key, hint.description)),
-    );
-    advanced_rows.extend(
-        cell_detail_hints(HintSurface::Advanced, &key_context)
-            .into_iter()
-            .map(|hint| HelpRow::new(hint.key, hint.description)),
-    );
-    if feature_policy.is_enabled(FeatureRequirement::SqliteDiagnostics) {
-        advanced_rows.extend(
-            sqlite_diagnostics_hints(HintSurface::Advanced, &key_context)
-                .into_iter()
-                .map(|hint| HelpRow::new(hint.key, hint.description)),
-        );
-    }
-
-    vec![
-        section(
-            "Common",
-            rows_from_hints(browse_reference_hints(HintSurface::Common, &key_context)),
-        ),
-        section(
-            "Navigation",
-            rows_from_hints(browse_reference_hints(
-                HintSurface::Navigation,
-                &key_context,
-            )),
-        ),
-        section("Open / Switch", open_switch_rows),
-        section("Data Actions", data_action_rows),
-        section("Editing", editing_rows),
-        section("Search / Filter", search_filter_rows),
-        section(
-            "Connections",
-            merge_rows(&[
-                connection_setup_hints(
-                    HintSurface::Connections,
-                    &key_context
-                        .clone()
-                        .with_connection_setup(ConnectionField::DatabaseType, false),
-                )
-                .into_iter()
-                .map(|hint| HelpRow::new(hint.key, hint.description))
-                .collect(),
-                connection_setup_hints(
-                    HintSurface::Connections,
-                    &key_context
-                        .clone()
-                        .with_connection_setup(ConnectionField::DatabaseType, true),
-                )
-                .into_iter()
-                .map(|hint| HelpRow::new(hint.key, hint.description))
-                .collect(),
-                connection_setup_hints(
-                    HintSurface::Connections,
-                    &key_context
-                        .clone()
-                        .with_connection_setup(ConnectionField::Name, false),
-                )
-                .into_iter()
-                .map(|hint| HelpRow::new(hint.key, hint.description))
-                .collect(),
-                connection_selector_hints(HintSurface::Connections, &key_context)
-                    .into_iter()
-                    .map(|hint| HelpRow::new(hint.key, hint.description))
-                    .collect(),
-                connection_error_hints(HintSurface::Connections, &key_context)
-                    .into_iter()
-                    .map(|hint| HelpRow::new(hint.key, hint.description))
-                    .collect(),
-            ]),
-        ),
-        section(
-            "Modal Basics",
-            merge_rows(&[
-                rows_from_hints(picker_hints(
-                    Picker::Table,
-                    HintSurface::ModalBasics,
-                    &key_context,
-                )),
-                confirm_hints(HintSurface::ModalBasics, &key_context)
-                    .into_iter()
-                    .map(|hint| HelpRow::new(hint.key, hint.description))
-                    .collect(),
-                help_hints(HintSurface::ModalBasics, &key_context)
-                    .into_iter()
-                    .map(|hint| HelpRow::new(hint.key, hint.description))
-                    .collect(),
-            ]),
-        ),
-        section("Advanced", merge_rows(&[advanced_rows])),
+fn reference_sections(context: &KeyContext) -> Vec<HelpSection> {
+    [
+        ("Common", HintSurface::Common),
+        ("Navigation", HintSurface::Navigation),
+        ("Open / Switch", HintSurface::OpenSwitch),
+        ("Data Actions", HintSurface::DataActions),
+        ("Editing", HintSurface::Editing),
+        ("Search / Filter", HintSurface::SearchFilter),
+        ("Connections", HintSurface::Connections),
+        ("Modal Basics", HintSurface::ModalBasics),
+        ("Advanced", HintSurface::Advanced),
     ]
     .into_iter()
+    .map(|(title, surface)| section(title, rows_from_hints(reference_hints(surface, context))))
     .filter(|section| !section.rows.is_empty())
     .collect()
 }
@@ -468,8 +247,12 @@ mod tests {
     use crate::domain::{
         ColumnAttributes, ConnectionId, DatabaseType, QueryResult, QuerySource, QueryValue,
     };
+    use crate::model::connection::setup::ConnectionField;
     use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
     use crate::model::shared::focused_pane::FocusedPane;
+    use crate::model::shared::settings::KeymapPreset;
+    use crate::model::sql_editor::modal::SqlModalTab;
+    use crate::policy::FeatureRequirement;
     use crate::test_support;
     use std::sync::Arc;
 

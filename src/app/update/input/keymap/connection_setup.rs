@@ -30,59 +30,47 @@ fn rows(submit: &'static str) -> Vec<Row> {
         HintSurface::Connections,
     ];
     let mut rows = vec![
-        Row {
-            bindings: vec![
+        Row::new(
+            vec![
                 Binding::any_modifiers(Action::ConnectionSetupNextField, Key::Tab).when(form),
                 Binding::any_modifiers(Action::ConnectionSetupPrevField, Key::BackTab).when(form),
             ],
-            short: "Field",
-            description: "Next/Previous field",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: border,
-        },
-        Row {
-            bindings: vec![
+            "Field",
+            "Next/Previous field",
+            border,
+        ),
+        Row::new(
+            vec![
                 Binding::any_modifiers(Action::ConnectionSetupToggleDropdown, Key::Enter)
                     .when(closed_dropdown),
             ],
-            short: "Toggle",
-            description: "Toggle dropdown",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: border,
-        },
-        Row {
-            bindings: vec![
+            "Toggle",
+            "Toggle dropdown",
+            border,
+        ),
+        Row::new(
+            vec![
                 Binding::any_modifiers(Action::ConnectionSetupDropdownConfirm, Key::Enter)
                     .when(open_dropdown),
             ],
-            short: "Select",
-            description: "Confirm dropdown selection",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: border,
-        },
-        Row {
-            bindings: vec![
+            "Select",
+            "Confirm dropdown selection",
+            border,
+        ),
+        Row::new(
+            vec![
                 Binding::action(
                     Action::ConnectionSetupSave,
                     &[KeyCombo::ctrl(Key::Char('s'))],
                 )
                 .ide(&[KeyCombo::plain(Key::Enter), KeyCombo::ctrl(Key::Char('s'))]),
             ],
-            short: submit,
-            description: "Save and connect",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: border,
-        },
-        Row {
-            bindings: vec![
+            submit,
+            "Save and connect",
+            border,
+        ),
+        Row::new(
+            vec![
                 Binding::any_modifiers(Action::ConnectionSetupDropdownNext, Key::Down)
                     .when(open_dropdown),
                 Binding::action(
@@ -98,51 +86,37 @@ fn rows(submit: &'static str) -> Vec<Row> {
                 )
                 .when(open_dropdown),
             ],
-            short: "Select",
-            description: "Dropdown navigation",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[HintSurface::Current, HintSurface::Connections],
-        },
-        Row {
-            bindings: vec![
+            "Select",
+            "Dropdown navigation",
+            &[HintSurface::Current, HintSurface::Connections],
+        ),
+        Row::new(
+            vec![
                 Binding::any_modifiers(Action::ConnectionSetupDropdownCancel, Key::Esc)
                     .when(open_dropdown),
             ],
-            short: "Cancel",
-            description: "Cancel dropdown",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: border,
-        },
-        Row {
-            bindings: vec![
-                Binding::any_modifiers(Action::ConnectionSetupCancel, Key::Esc).when(form),
-            ],
-            short: "Cancel",
-            description: "Cancel",
-            references: &[],
-            dynamic_label: None,
-            visible: None,
-            surfaces: border,
-        },
+            "Cancel",
+            "Cancel dropdown",
+            border,
+        ),
+        Row::new(
+            vec![Binding::any_modifiers(Action::ConnectionSetupCancel, Key::Esc).when(form)],
+            "Cancel",
+            "Cancel",
+            border,
+        ),
     ];
     rows.extend(conditional_text_field(
         InputTarget::ConnectionSetup,
         form,
         text,
     ));
-    rows.push(Row {
-        bindings: vec![Binding::text(InputTarget::ConnectionSetup).when(form)],
-        short: "Edit",
-        description: "Edit connection setting",
-        references: &[],
-        dynamic_label: None,
-        visible: None,
-        surfaces: &[],
-    });
+    rows.push(Row::new(
+        vec![Binding::text(InputTarget::ConnectionSetup).when(form)],
+        "Edit",
+        "Edit connection setting",
+        &[],
+    ));
     rows
 }
 
