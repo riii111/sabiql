@@ -27,14 +27,13 @@ expression: output
 │                        │  type                                 Type to search                                                           ┃│                        │
 │                        │  Enter                                Confirm search                                                           ┃│                        │
 │                        │  Esc                                  Cancel search                                                            ┃│────────────────────────┘
-│                        │  Ctrl+N / Ctrl+P / j / k / ↑ / ↓      Scroll down / up                                                         ┃│────────────────────────┐
-│                        │  Home / End                           Jump to top / bottom                                                     ┃│                        │
+│                        │  j / k / ↓ / ↑ / Ctrl+N / Ctrl+P      Scroll down / up                                                         ┃│────────────────────────┐
+│                        │  h / l / ← / →                        Scroll left / right                                                      ┃│                        │
 │                        │  Ctrl+D / Ctrl+U                      Scroll half page down / up                                               ┃│                        │
-│                        │  Ctrl+F / Ctrl+B / PageDown / PageUp  Scroll full page down / up                                               ││                        │
-│                        │  h / l / ← / →                        Scroll left / right                                                      ││                        │
+│                        │  PageDown / PageUp / Ctrl+F / Ctrl+B  Scroll full page down / up                                               ││                        │
+│                        │  Home / End                           Jump to top / bottom                                                     ││                        │
 │                        │  /                                    Edit filter                                                              ││                        │
-│                        │  Esc                                  Close help                                                               ││                        │
-│                        │  ?                                    Close help                                                               ││                        │
+│                        │  Esc / ?                              Close help                                                               ││                        │
 │                        │                                                                                                                ││                        │
 │                        │▸ Connections                                                                                                   ││                        │
 │                        │  Tab/⇧Tab                             Next/Previous field                                                      ││                        │
@@ -44,10 +43,11 @@ expression: output
 │                        │  Esc                                  Cancel                                                                   ││                        │
 │                        │  Enter                                Toggle dropdown                                                          ││                        │
 │                        │  Ctrl+N / Ctrl+P / ↑ / ↓              Dropdown navigation                                                      ││                        │
-│                        │  Enter                                Confirm selection                                                        ▼│                        │
+│                        │  Enter                                Confirm selection                                                        ││                        │
+│                        │  Ctrl+N / Ctrl+P / ↑ / ↓ / j / k      Select connection                                                        ▼│                        │
 │                        │─────────────────────────────────────────────────────────────────────────────────────────────────────────────────│                        │
 │                        │ [BROWSE]                                                                                                        │                        │
-│                        ╰ /: Filter │ Esc: Close │ ?: Close ──────────────────────────────────────────────────────────────────────────────╯                        │
+│                        ╰ /: Filter │ Esc/?: Close ───────────────────────────────────────────────────────────────────────────────────────╯                        │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘

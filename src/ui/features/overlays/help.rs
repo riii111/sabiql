@@ -14,7 +14,8 @@ use crate::app::model::shared::ui_state::{
     HELP_MODAL_HEIGHT_PERCENT, HELP_MODAL_WIDTH_PERCENT, HELP_MODE_STATUS_HEIGHT,
     HelpViewportLayout, help_viewport_layout_for,
 };
-use crate::app::update::input::keybindings::{HELP_KEY_DESC_GAP, HELP_KEY_INDENT_WIDTH, help};
+use crate::app::update::input::keybindings::{HELP_KEY_DESC_GAP, HELP_KEY_INDENT_WIDTH};
+use crate::app::update::input::keymap::{HintSurface, KeyContext, help_hints};
 
 use crate::primitives::atoms::scroll_indicator::{
     HorizontalScrollParams, VerticalScrollParams, clamp_scroll_offset,
@@ -30,14 +31,11 @@ const FILTER_LABEL: &str = "Filter: ";
 impl HelpOverlay {
     pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) {
         let document = HelpDocument::from_state(state);
-        let footer = match state.ui.help().mode() {
-            HelpMode::Viewing => FooterHintBar::new([
-                help::START_FILTER.as_hint(),
-                help::ESC_CLOSE.as_hint(),
-                help::CLOSE.as_hint(),
-            ]),
-            HelpMode::EditingFilter => FooterHintBar::new([help::ESC_VIEWING.as_hint()]),
-        };
+        let footer = FooterHintBar::new(
+            help_hints(HintSurface::Border, &KeyContext::from_state(state))
+                .into_iter()
+                .map(|hint| (hint.key, hint.short)),
+        );
         let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(HELP_MODAL_WIDTH_PERCENT),

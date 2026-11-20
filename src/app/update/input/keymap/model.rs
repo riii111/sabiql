@@ -118,7 +118,10 @@ pub(super) fn hints(rows: &[Row], context: &KeyContext, surface: HintSurface) ->
             }
             let key = if matches!(
                 surface,
-                HintSurface::Current | HintSurface::SearchFilter | HintSurface::Advanced
+                HintSurface::Current
+                    | HintSurface::SearchFilter
+                    | HintSurface::Advanced
+                    | HintSurface::ModalBasics
             ) {
                 long_name(&winning)
             } else {
@@ -233,6 +236,9 @@ mod tests {
     use crate::update::input::keymap::cell_detail::{
         SEARCHING as CELL_SEARCH_ROWS, VIEWING as CELL_VIEW_ROWS,
     };
+    use crate::update::input::keymap::help::{
+        EDITING as HELP_EDIT_ROWS, VIEWING as HELP_VIEW_ROWS,
+    };
     use crate::update::input::keymap::pickers::{ER_ROWS, HISTORY_ROWS, PALETTE_ROWS, TABLE_ROWS};
     use crate::update::input::keymap::row_detail::ROWS as ROW_DETAIL_ROWS;
     use crate::update::input::keymap::sqlite_diagnostics::ROWS as DIAGNOSTIC_ROWS;
@@ -244,6 +250,7 @@ mod tests {
             (&*HISTORY_ROWS, None),
             (&*ER_ROWS, Some(' ')),
             (&*CELL_SEARCH_ROWS, None),
+            (&*HELP_EDIT_ROWS, None),
         ] {
             for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
                 let mut seen = Vec::new();
@@ -277,6 +284,8 @@ mod tests {
             (&*DIAGNOSTIC_ROWS, EngineFeatureProfile::sqlite_like()),
             (&*CELL_SEARCH_ROWS, EngineFeatureProfile::postgres_like()),
             (&*CELL_VIEW_ROWS, EngineFeatureProfile::postgres_like()),
+            (&*HELP_VIEW_ROWS, EngineFeatureProfile::postgres_like()),
+            (&*HELP_EDIT_ROWS, EngineFeatureProfile::postgres_like()),
         ] {
             for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
                 let context = KeyContext::for_scope(

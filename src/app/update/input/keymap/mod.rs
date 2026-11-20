@@ -1,6 +1,7 @@
 mod cell_detail;
 mod common;
 mod context;
+mod help;
 mod legacy;
 mod model;
 mod pickers;
@@ -13,6 +14,7 @@ use crate::update::action::{Action, InputTarget};
 
 pub use cell_detail::{cell_detail_action, cell_detail_hints};
 pub use context::KeyContext;
+pub use help::{help_action, help_hints};
 pub use legacy::{resolve, resolve_mode, resolve_mode_with_policy, resolve_with_policy};
 pub use pickers::{Picker, picker_action, picker_hints};
 pub use row_detail::{row_detail_action, row_detail_hints};
@@ -25,6 +27,7 @@ pub enum HintSurface {
     Current,
     SearchFilter,
     Advanced,
+    ModalBasics,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

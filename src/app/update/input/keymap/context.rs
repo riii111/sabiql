@@ -1,5 +1,6 @@
 use crate::model::app_state::AppState;
 use crate::model::browse::json_detail::JsonDetailMode;
+use crate::model::shared::help::HelpMode;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::settings::KeymapPreset;
 use crate::policy::{FeaturePolicy, FeatureRequirement};
@@ -13,6 +14,7 @@ pub struct KeyContext {
     policy: FeaturePolicy,
     pub(super) can_run_diagnostics: bool,
     pub(super) cell_detail_searching: bool,
+    pub(super) help_editing: bool,
 }
 
 impl KeyContext {
@@ -24,6 +26,7 @@ impl KeyContext {
             policy: FeaturePolicy::new(&state.session.active_engine_feature_profile()),
             can_run_diagnostics: state.sqlite_diagnostics.can_run_quick_check(),
             cell_detail_searching: state.cell_detail.search().is_active(),
+            help_editing: state.ui.help().mode() == HelpMode::EditingFilter,
         }
     }
 
@@ -35,6 +38,7 @@ impl KeyContext {
             policy: policy.clone(),
             can_run_diagnostics: true,
             cell_detail_searching: false,
+            help_editing: false,
         }
     }
 
@@ -50,6 +54,11 @@ impl KeyContext {
 
     pub(crate) fn with_cell_detail_searching(mut self, searching: bool) -> Self {
         self.cell_detail_searching = searching;
+        self
+    }
+
+    pub(crate) fn with_help_editing(mut self, editing: bool) -> Self {
+        self.help_editing = editing;
         self
     }
 }

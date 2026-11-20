@@ -57,7 +57,6 @@ pub fn resolve_mode_with_policy(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::update::action::ModalKind;
     use crate::update::input::keybindings::{Key, KeyCombo};
 
     static QUIT_COMBOS: &[KeyCombo] = &[KeyCombo::plain(Key::Char('q'))];
@@ -165,7 +164,7 @@ mod tests {
 
     mod resolve_mode_tests {
         use super::*;
-        use crate::update::input::keybindings::{CONNECTION_ERROR_ROWS, HELP_ROWS};
+        use crate::update::input::keybindings::CONNECTION_ERROR_ROWS;
 
         #[test]
         fn empty_rows_returns_none() {
@@ -175,15 +174,8 @@ mod tests {
         }
 
         #[test]
-        fn matches_binding_in_rows() {
-            let result = resolve_mode(&KeyCombo::plain(Key::Esc), HELP_ROWS);
-
-            assert!(matches!(result, Some(Action::CloseModal(ModalKind::Help))));
-        }
-
-        #[test]
         fn mode_returns_none_for_no_match() {
-            let result = resolve_mode(&KeyCombo::plain(Key::F(12)), HELP_ROWS);
+            let result = resolve_mode(&KeyCombo::plain(Key::F(12)), CONNECTION_ERROR_ROWS);
 
             assert!(result.is_none());
         }

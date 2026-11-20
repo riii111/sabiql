@@ -14,7 +14,7 @@ use crate::policy::{FeaturePolicy, FeatureRequirement};
 )]
 use crate::update::input::keybindings::*;
 use crate::update::input::keymap::{
-    HintSurface, KeyContext, Picker, cell_detail_hints, picker_hints, row_detail_hints,
+    HintSurface, KeyContext, Picker, cell_detail_hints, help_hints, picker_hints, row_detail_hints,
     sqlite_diagnostics_hints,
 };
 
@@ -323,7 +323,10 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
                 .collect()
         }
         HelpOrigin::Settings => rows_from_mode_rows(SETTINGS_ROWS),
-        HelpOrigin::Help => rows_from_mode_rows(HELP_ROWS),
+        HelpOrigin::Help => help_hints(HintSurface::Current, &key_context)
+            .into_iter()
+            .map(|hint| HelpRow::new(hint.key, hint.description))
+            .collect(),
         HelpOrigin::SqlModal {
             mode,
             keymap_preset,
@@ -454,7 +457,11 @@ fn reference_sections(
         .into_iter()
         .map(|hint| HelpRow::new(hint.key, hint.description)),
     );
-    search_filter_rows.extend(rows_from_mode_rows(HELP_ROWS));
+    search_filter_rows.extend(
+        help_hints(HintSurface::SearchFilter, &key_context)
+            .into_iter()
+            .map(|hint| HelpRow::new(hint.key, hint.description)),
+    );
 
     let mut editing_rows = merge_rows(&[
         sql_current_rows(SqlHelpMode::Normal, keymap_preset, feature_policy),
@@ -554,7 +561,10 @@ fn reference_sections(
             merge_rows(&[
                 rows_from_bindings(OVERLAY_KEYS),
                 rows_from_bindings(CONFIRM_DIALOG_KEYS),
-                rows_from_mode_rows(HELP_ROWS),
+                help_hints(HintSurface::ModalBasics, &key_context)
+                    .into_iter()
+                    .map(|hint| HelpRow::new(hint.key, hint.description))
+                    .collect(),
             ]),
         ),
         section("Advanced", merge_rows(&[advanced_rows])),

@@ -1,8 +1,8 @@
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::settings::KeymapPreset;
 use crate::policy::FeaturePolicy;
-use crate::update::action::{Action, CursorMove, InputTarget};
-use crate::update::input::keybindings::{self, Key, KeyCombo, Modifiers};
+use crate::update::action::{Action, InputTarget};
+use crate::update::input::keybindings::{self, KeyCombo};
 use crate::update::input::keymap;
 use crate::update::input::keymap::KeyContext;
 
@@ -13,53 +13,14 @@ pub(super) fn handle_help_keys_with_policy(
     interaction: InputInteraction,
     feature_policy: &FeaturePolicy,
 ) -> Action {
-    match interaction {
-        InputInteraction::Viewing => handle_help_viewing_keys(combo, feature_policy),
-        InputInteraction::FormEditing(InputTarget::HelpFilter) => {
-            handle_help_editing_keys(combo, feature_policy)
-        }
-        InputInteraction::FormEditing(_) | InputInteraction::VimEditing(_) => Action::None,
-    }
-}
-
-fn handle_help_viewing_keys(combo: KeyCombo, feature_policy: &FeaturePolicy) -> Action {
-    keymap::resolve_mode_with_policy(&combo, keybindings::HELP_VIEWING_ROWS, feature_policy)
-        .unwrap_or(Action::None)
-}
-
-fn handle_help_editing_keys(combo: KeyCombo, feature_policy: &FeaturePolicy) -> Action {
-    if let Some(action) =
-        keymap::resolve_mode_with_policy(&combo, keybindings::HELP_EDITING_ROWS, feature_policy)
-    {
-        return action;
-    }
-
-    match (combo.key, combo.modifiers) {
-        (Key::Delete, Modifiers::NONE) => Action::TextDelete {
-            target: InputTarget::HelpFilter,
-        },
-        (Key::Left, Modifiers::NONE) => Action::TextMoveCursor {
-            target: InputTarget::HelpFilter,
-            direction: CursorMove::Left,
-        },
-        (Key::Right, Modifiers::NONE) => Action::TextMoveCursor {
-            target: InputTarget::HelpFilter,
-            direction: CursorMove::Right,
-        },
-        (Key::Home, Modifiers::NONE) => Action::TextMoveCursor {
-            target: InputTarget::HelpFilter,
-            direction: CursorMove::Home,
-        },
-        (Key::End, Modifiers::NONE) => Action::TextMoveCursor {
-            target: InputTarget::HelpFilter,
-            direction: CursorMove::End,
-        },
-        (Key::Char(ch), Modifiers::NONE | Modifiers::SHIFT) => Action::TextInput {
-            target: InputTarget::HelpFilter,
-            ch,
-        },
-        _ => Action::None,
-    }
+    let editing = match interaction {
+        InputInteraction::Viewing => false,
+        InputInteraction::FormEditing(InputTarget::HelpFilter) => true,
+        InputInteraction::FormEditing(_) | InputInteraction::VimEditing(_) => return Action::None,
+    };
+    let context = KeyContext::for_scope(InputMode::Help, KeymapPreset::Default, feature_policy)
+        .with_help_editing(editing);
+    keymap::help_action(combo, &context)
 }
 
 pub(super) fn handle_confirm_dialog_keys(combo: KeyCombo) -> Action {
