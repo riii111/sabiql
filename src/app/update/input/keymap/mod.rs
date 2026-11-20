@@ -1,4 +1,5 @@
 mod cell_detail;
+mod cell_edit;
 mod command;
 mod common;
 mod confirm;
@@ -18,6 +19,7 @@ use crate::ports::inbound::KeyCombo;
 use crate::update::action::{Action, InputTarget};
 
 pub use cell_detail::{cell_detail_action, cell_detail_hints};
+pub use cell_edit::{cell_edit_action, cell_edit_hints};
 pub use command::{command_line_action, command_line_hints, parse_command};
 pub use confirm::{confirm_action, confirm_hints};
 pub use connection_error::{connection_error_action, connection_error_hints};
@@ -40,6 +42,8 @@ pub enum HintSurface {
     ModalBasics,
     Connections,
     Details,
+    Editing,
+    Write,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

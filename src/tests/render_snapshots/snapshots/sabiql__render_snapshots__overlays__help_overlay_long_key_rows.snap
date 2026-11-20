@@ -13,10 +13,10 @@ expression: output
 │                        │  Home/End                             Line start/end                                                           ││                        │
 │                        │  Tab                                  Insert tab / Accept completion                                           ││                        │
 │                        │  :w                                   Preview and confirm UPDATE                                               ││                        │
-│                        │  type                                 Edit cell value                                                          ││                        │
-│                        │  ←→                                   Move cursor                                                              ││                        │
-│                        │  Home/End                             Jump to start/end                                                        ││                        │
 │                        │  :                                    Open command line                                                        ││                        │
+│                        │  type                                 Edit cell value                                                          ││                        │
+│                        │  ← / →                                Move cursor                                                              ││                        │
+│                        │  Home / End                           Jump to start/end                                                        ││                        │
 │                        │  Esc                                  Exit to Cell Active (draft preserved)                                    ││                        │
 │                        │  Enter                                Execute the confirmed statement                                          ││                        │
 │                        │  Esc                                  Cancel and return to editor                                              ││                        │

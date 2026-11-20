@@ -242,7 +242,6 @@ mod tests {
             fn all_non_none_bindings_have_combos() {
                 check_non_none_have_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
                 check_non_none_have_combos(IDE_GLOBAL_KEYS, "IDE_GLOBAL_KEYS");
-                check_non_none_have_combos(CELL_EDIT_KEYS, "CELL_EDIT_KEYS");
                 check_non_none_have_combos(JSON_SEARCH_KEYS, "JSON_SEARCH_KEYS");
             }
 
@@ -375,40 +374,6 @@ mod tests {
                 for (name, mb) in ALL_MODE_BINDINGS {
                     check_no_duplicate_combos_rows(mb.rows, name);
                 }
-            }
-        }
-
-        mod conflict_safety {
-            use super::*;
-
-            fn check_no_plain_char_in_filter_mode(
-                bindings: &[KeyBinding],
-                name: &str,
-                allowed_chars: &[char],
-            ) {
-                let no_mods = Modifiers::empty();
-                for kb in bindings
-                    .iter()
-                    .filter(|kb| !matches!(kb.action, Action::None))
-                {
-                    for combo in kb.combos {
-                        if combo.modifiers == no_mods
-                            && let Key::Char(c) = combo.key
-                        {
-                            assert!(
-                                allowed_chars.contains(&c),
-                                "{name}: executable entry {:?} has plain Char({c:?}) combo \
-                             which would shadow filter input",
-                                kb.action
-                            );
-                        }
-                    }
-                }
-            }
-
-            #[test]
-            fn cell_edit_plain_char_combos_are_intentional() {
-                check_no_plain_char_in_filter_mode(CELL_EDIT_KEYS, "CELL_EDIT_KEYS", &[':']);
             }
         }
     }

@@ -1,43 +1,10 @@
 use crate::model::app_state::AppState;
-use crate::update::action::{Action, InputTarget};
-use crate::update::input::keybindings;
-use crate::update::input::keybindings::{Key, KeyCombo};
-use crate::update::input::keymap::{self, KeyContext, command_line_action};
+use crate::update::action::Action;
+use crate::update::input::keybindings::KeyCombo;
+use crate::update::input::keymap::{KeyContext, cell_edit_action, command_line_action};
 
-pub(super) fn handle_cell_edit_keys(combo: KeyCombo) -> Action {
-    use crate::update::action::CursorMove;
-    if let Some(action) = keymap::resolve(&combo, keybindings::CELL_EDIT_KEYS) {
-        return action;
-    }
-    match combo.key {
-        Key::Backspace => Action::TextBackspace {
-            target: InputTarget::ResultCellEdit,
-        },
-        Key::Delete => Action::TextDelete {
-            target: InputTarget::ResultCellEdit,
-        },
-        Key::Left => Action::TextMoveCursor {
-            target: InputTarget::ResultCellEdit,
-            direction: CursorMove::Left,
-        },
-        Key::Right => Action::TextMoveCursor {
-            target: InputTarget::ResultCellEdit,
-            direction: CursorMove::Right,
-        },
-        Key::Home => Action::TextMoveCursor {
-            target: InputTarget::ResultCellEdit,
-            direction: CursorMove::Home,
-        },
-        Key::End => Action::TextMoveCursor {
-            target: InputTarget::ResultCellEdit,
-            direction: CursorMove::End,
-        },
-        Key::Char(c) => Action::TextInput {
-            target: InputTarget::ResultCellEdit,
-            ch: c,
-        },
-        _ => Action::None,
-    }
+pub(super) fn handle_cell_edit_keys(combo: KeyCombo, state: &AppState) -> Action {
+    cell_edit_action(combo, &KeyContext::from_state(state))
 }
 
 pub(super) fn handle_command_line_mode(combo: KeyCombo, state: &AppState) -> Action {
@@ -48,6 +15,7 @@ pub(super) fn handle_command_line_mode(combo: KeyCombo, state: &AppState) -> Act
 mod tests {
     use super::*;
     use crate::model::shared::input_mode::InputMode;
+    use crate::update::action::InputTarget;
     use crate::update::input::keybindings::Key;
     use rstest::rstest;
 
@@ -59,6 +27,12 @@ mod tests {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::CommandLine);
         super::handle_command_line_mode(combo, &state)
+    }
+
+    fn handle_cell_edit_keys(combo: KeyCombo) -> Action {
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::CellEdit);
+        super::handle_cell_edit_keys(combo, &state)
     }
 
     mod cell_edit_mode {
@@ -82,6 +56,22 @@ mod tests {
                     target: InputTarget::ResultCellEdit,
                     ch: 'x'
                 }
+            ));
+        }
+
+        #[test]
+        fn command_prefix_takes_precedence_over_text_input() {
+            assert!(matches!(
+                handle_cell_edit_keys(combo(Key::Char(':'))),
+                Action::EnterCommandLine
+            ));
+        }
+
+        #[test]
+        fn ctrl_only_characters_are_not_inserted() {
+            assert!(matches!(
+                handle_cell_edit_keys(KeyCombo::ctrl(Key::Char('z'))),
+                Action::None
             ));
         }
 

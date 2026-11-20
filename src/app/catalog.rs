@@ -14,9 +14,9 @@ use crate::policy::{FeaturePolicy, FeatureRequirement};
 )]
 use crate::update::input::keybindings::*;
 use crate::update::input::keymap::{
-    HintSurface, KeyContext, Picker, cell_detail_hints, command_line_hints, confirm_hints,
-    connection_error_hints, connection_selector_hints, help_hints, picker_hints, row_detail_hints,
-    settings_hints, sqlite_diagnostics_hints,
+    HintSurface, KeyContext, Picker, cell_detail_hints, cell_edit_hints, command_line_hints,
+    confirm_hints, connection_error_hints, connection_selector_hints, help_hints, picker_hints,
+    row_detail_hints, settings_hints, sqlite_diagnostics_hints,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -315,7 +315,10 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
             .into_iter()
             .map(|hint| HelpRow::new(hint.key, hint.description))
             .collect(),
-        HelpOrigin::CellEdit => rows_from_bindings(CELL_EDIT_KEYS),
+        HelpOrigin::CellEdit => cell_edit_hints(HintSurface::Current, &key_context)
+            .into_iter()
+            .map(|hint| HelpRow::new(hint.key, hint.description))
+            .collect(),
         HelpOrigin::TablePicker => picker_hints(Picker::Table, HintSurface::Current, &key_context)
             .into_iter()
             .map(|hint| HelpRow::new(hint.key, hint.description))
@@ -476,7 +479,10 @@ fn reference_sections(
     let mut editing_rows = merge_rows(&[
         sql_current_rows(SqlHelpMode::Normal, keymap_preset, feature_policy),
         sql_current_rows(SqlHelpMode::Insert, keymap_preset, feature_policy),
-        rows_from_bindings(CELL_EDIT_KEYS),
+        cell_edit_hints(HintSurface::Editing, &key_context)
+            .into_iter()
+            .map(|hint| HelpRow::new(hint.key, hint.description))
+            .collect(),
         rows_from_bindings_if_visible(SQL_MODAL_CONFIRMING_KEYS, feature_policy),
     ]);
     if feature_policy.is_enabled(FeatureRequirement::JsonDocumentEdit) {

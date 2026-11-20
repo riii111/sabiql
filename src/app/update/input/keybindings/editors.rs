@@ -455,7 +455,7 @@ pub const SQL_MODAL_CONFIRMING_KEYS: &[KeyBinding] = &[
 
 pub mod cell_edit {
     use crate::update::action::Action;
-    use crate::update::input::keybindings::{Key, KeyBinding, KeyCombo};
+    use crate::update::input::keybindings::KeyBinding;
 
     pub const WRITE: KeyBinding = KeyBinding {
         key_short: ":w",
@@ -465,58 +465,4 @@ pub mod cell_edit {
         action: Action::SubmitCellEditWrite,
         combos: &[], // :w is a command sequence, not a single combo
     };
-
-    pub const TYPE: KeyBinding = KeyBinding {
-        key_short: "type",
-        key: "type",
-        desc_short: "Edit",
-        description: "Edit cell value",
-        action: Action::None,
-        combos: &[],
-    };
-
-    pub const MOVE: KeyBinding = KeyBinding {
-        key_short: "←→",
-        key: "←→",
-        desc_short: "Move",
-        description: "Move cursor",
-        action: Action::None,
-        combos: &[],
-    };
-
-    pub const HOME_END: KeyBinding = KeyBinding {
-        key_short: "Home/End",
-        key: "Home/End",
-        desc_short: "Jump",
-        description: "Jump to start/end",
-        action: Action::None,
-        combos: &[],
-    };
-
-    pub const COMMAND: KeyBinding = KeyBinding {
-        key_short: ":",
-        key: ":",
-        desc_short: "Cmd",
-        description: "Open command line",
-        action: Action::EnterCommandLine,
-        combos: &[KeyCombo::plain(Key::Char(':'))],
-    };
-
-    pub const ESC_CANCEL: KeyBinding = KeyBinding {
-        key_short: "Esc",
-        key: "Esc",
-        desc_short: "Normal",
-        description: "Exit to Cell Active (draft preserved)",
-        action: Action::ResultCancelCellEdit,
-        combos: &[KeyCombo::plain(Key::Esc)],
-    };
 }
-
-pub const CELL_EDIT_KEYS: &[KeyBinding] = &[
-    cell_edit::WRITE,
-    cell_edit::TYPE,
-    cell_edit::MOVE,
-    cell_edit::HOME_END,
-    cell_edit::COMMAND,
-    cell_edit::ESC_CANCEL,
-];

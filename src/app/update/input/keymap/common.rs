@@ -63,6 +63,28 @@ pub(super) fn text_field_any_modifiers(target: InputTarget) -> Vec<Row> {
     text_field_with(target, KeyModifiers::Any)
 }
 
+pub(super) fn text_field_with_navigation(target: InputTarget) -> (Vec<Row>, Vec<Row>) {
+    let mut rows = text_field_any_modifiers(target);
+    let first = rows.len() - 4;
+    let mut left = rows.remove(first);
+    let right = rows.remove(first);
+    let mut home = rows.remove(first);
+    let end = rows.remove(first);
+    left.bindings.extend(right.bindings);
+    left.short = "Move";
+    left.description = "Move cursor";
+    left.surfaces = &[
+        HintSurface::Footer,
+        HintSurface::Current,
+        HintSurface::Editing,
+    ];
+    home.bindings.extend(end.bindings);
+    home.short = "Jump";
+    home.description = "Jump to start/end";
+    home.surfaces = &[HintSurface::Current, HintSurface::Editing];
+    (rows, vec![left, home])
+}
+
 #[derive(Clone, Copy)]
 enum KeyModifiers {
     None,

@@ -171,6 +171,7 @@ pub(super) fn hints(rows: &[Row], context: &KeyContext, surface: HintSurface) ->
                     | HintSurface::Advanced
                     | HintSurface::ModalBasics
                     | HintSurface::Connections
+                    | HintSurface::Editing
             ) {
                 long_name(&winning)
             } else {
@@ -297,6 +298,7 @@ mod tests {
     use crate::update::input::keymap::cell_detail::{
         SEARCHING as CELL_SEARCH_ROWS, VIEWING as CELL_VIEW_ROWS,
     };
+    use crate::update::input::keymap::cell_edit::ROWS as CELL_EDIT_ROWS;
     use crate::update::input::keymap::command::EDITING as COMMAND_EDIT_ROWS;
     use crate::update::input::keymap::confirm::ROWS as CONFIRM_ROWS;
     use crate::update::input::keymap::connection_error::ROWS as CONNECTION_ERROR_ROWS;
@@ -320,6 +322,7 @@ mod tests {
             (&*CELL_SEARCH_ROWS, None),
             (&*SETTINGS_EDIT_ROWS, None),
             (&*COMMAND_EDIT_ROWS, None),
+            (&*CELL_EDIT_ROWS, Some(':')),
             (&*HELP_EDIT_ROWS, None),
         ] {
             for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
@@ -360,6 +363,7 @@ mod tests {
             (&*SETTINGS_ROWS, EngineFeatureProfile::postgres_like()),
             (&*SETTINGS_EDIT_ROWS, EngineFeatureProfile::postgres_like()),
             (&*COMMAND_EDIT_ROWS, EngineFeatureProfile::postgres_like()),
+            (&*CELL_EDIT_ROWS, EngineFeatureProfile::postgres_like()),
             (
                 &*CONNECTION_ERROR_ROWS,
                 EngineFeatureProfile::postgres_like(),

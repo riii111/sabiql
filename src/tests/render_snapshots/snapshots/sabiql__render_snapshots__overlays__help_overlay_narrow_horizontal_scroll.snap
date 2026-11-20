@@ -10,10 +10,10 @@ expression: output
 │       │                     Line start/││      │
 │       │                     Insert tab ││      │
 │       │                     Preview and││      │
-│       │                     Edit cell v││      │
-│       │                     Move cursor┃│      │
-│       │                     Jump to sta││      │
-│       │                     Open comman││──────┘
+│       │                     Open comman││      │
+│       │                     Edit cell v┃│      │
+│       │                     Move cursor││      │
+│       │                     Jump to sta││──────┘
 │       │                     Exit to Cel││──────┐
 │       │                     Execute the││      │
 │       │                     Cancel and ││      │
