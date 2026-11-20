@@ -60,9 +60,21 @@ static COMMANDS: LazyLock<Vec<Row>> = LazyLock::new(|| {
         short,
         description,
         dynamic_label: None,
-        visible: None,
+        visible: if command == LineCommand::Write {
+            Some(|context, surface| {
+                surface != HintSurface::FooterAction
+                    || context.browse_draft()
+                    || context.browse_staged_delete()
+            })
+        } else {
+            None
+        },
         surfaces: if command == LineCommand::Write {
-            &[HintSurface::Current, HintSurface::Write]
+            &[
+                HintSurface::Current,
+                HintSurface::Write,
+                HintSurface::FooterAction,
+            ]
         } else {
             &[HintSurface::Current]
         },
@@ -130,6 +142,10 @@ pub(super) fn write_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hin
     } else {
         Vec::new()
     }
+}
+
+pub(super) fn browse_write_hints(context: &KeyContext) -> Vec<Hint> {
+    hints(&COMMANDS, context, HintSurface::FooterAction)
 }
 
 pub fn parse_command(input: &str) -> Option<LineCommand> {

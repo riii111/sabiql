@@ -3,44 +3,65 @@ use std::sync::LazyLock;
 use crate::ports::inbound::{Key, KeyCombo};
 use crate::update::action::{Action, ModalKind};
 
+use super::context::BrowsePane;
 use super::model::{Binding, Row, indexed_hints, retained_hint, row_action};
 use super::{HintSurface, KeyContext};
 
 pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
     vec![
-        row(Action::Quit, 'q', "Quit", "Quit application"),
-        row(Action::ToggleHelp, '?', "Help", "Toggle help"),
-        preset_row(
-            Action::OpenModal(ModalKind::TablePicker),
-            'p',
-            'T',
-            "Tables",
-            "Open Table Picker",
+        footer(
+            row(Action::Quit, 'q', "Quit", "Quit application"),
+            HintSurface::FooterQuit,
+            None,
         ),
-        row(
-            Action::OpenModal(ModalKind::Settings),
-            ',',
-            "Settings",
-            "Open Settings",
+        footer(
+            row(Action::ToggleHelp, '?', "Help", "Toggle help"),
+            HintSurface::FooterHelp,
+            None,
+        ),
+        footer(
+            preset_row(
+                Action::OpenModal(ModalKind::TablePicker),
+                'p',
+                'T',
+                "Tables",
+                "Open Table Picker",
+            ),
+            HintSurface::FooterAction,
+            Some(regular_footer),
+        ),
+        footer(
+            row(
+                Action::OpenModal(ModalKind::Settings),
+                ',',
+                "Settings",
+                "Open Settings",
+            ),
+            HintSurface::FooterHelp,
+            Some(non_cell_footer),
         ),
         Row {
             surfaces: &[],
             ..row(Action::EnterCommandLine, ':', "Cmd", "Enter command line")
         },
-        Row {
-            bindings: vec![
-                Binding::action(
-                    Action::OpenModal(ModalKind::CommandPalette),
-                    &[KeyCombo::plain(Key::F(1))],
-                )
-                .ide(&[KeyCombo::plain(Key::Char('P'))]),
-            ],
-            short: "Palette",
-            description: "Open Command Palette",
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[],
-        },
+        footer(
+            Row {
+                bindings: vec![
+                    Binding::action(
+                        Action::OpenModal(ModalKind::CommandPalette),
+                        &[KeyCombo::plain(Key::F(1))],
+                    )
+                    .ide(&[KeyCombo::plain(Key::Char('P'))]),
+                ],
+                short: "Palette",
+                description: "Open Command Palette",
+                dynamic_label: None,
+                visible: None,
+                surfaces: &[],
+            },
+            HintSurface::FooterHelp,
+            Some(regular_footer),
+        ),
         Row {
             dynamic_label: Some(|context| {
                 if context.browse_focused() {
@@ -49,80 +70,154 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
                     ("Focus", "Toggle Focus mode")
                 }
             }),
+            visible: Some(|context, surface| match surface {
+                HintSurface::FooterAction => {
+                    !context.browse_focused() && context.browse_pane() != BrowsePane::ResultCell
+                }
+                HintSurface::FooterClose => {
+                    context.browse_focused() && context.browse_pane() != BrowsePane::ResultCell
+                }
+                _ => true,
+            }),
+            surfaces: &[
+                HintSurface::Palette,
+                HintSurface::FooterAction,
+                HintSurface::FooterClose,
+            ],
             ..row(Action::ToggleFocus, 'f', "Focus", "Toggle Focus mode")
         },
-        row(Action::ReloadMetadata, 'r', "Reload", "Reload metadata"),
-        row(
-            Action::OpenModal(ModalKind::SqlModal),
-            's',
-            "SQL",
-            "Open SQL Editor",
-        ),
-        row(
-            Action::OpenModal(ModalKind::ErTablePicker),
-            'e',
-            "ER Diagram",
-            "Open ER Diagram",
-        ),
-        row(
-            Action::OpenModal(ModalKind::ConnectionSelector),
-            'c',
-            "Connections",
-            "Open Connection Selector",
-        ),
-        Row {
-            bindings: vec![
-                Binding::action(
-                    Action::OpenModal(ModalKind::SqliteDiagnostics),
-                    &[KeyCombo::ctrl_shift(Key::Char('d'))],
-                )
-                .ide(&[KeyCombo::plain(Key::Char('D'))]),
-            ],
-            short: "Diagnostics",
-            description: "Open SQLite Diagnostics",
-            dynamic_label: None,
-            visible: None,
-            surfaces: &[HintSurface::Palette],
-        },
-        Row {
-            bindings: vec![
-                Binding::action(Action::RequestCsvExport, &[KeyCombo::ctrl(Key::Char('e'))])
-                    .ide(&[KeyCombo::plain(Key::Char('E'))])
-                    .when(KeyContext::browse_csv_available),
-            ],
-            ..preset_row(
-                Action::RequestCsvExport,
-                'e',
-                'E',
-                "Export",
-                "Export result to CSV",
-            )
-        },
-        Row {
-            dynamic_label: Some(|context| {
-                if context.browse_read_only() {
-                    ("Read-Write", "Disable Read-Only mode")
-                } else {
-                    ("Read-Only", "Enable Read-Only mode")
-                }
+        footer(
+            row(Action::ReloadMetadata, 'r', "Reload", "Reload metadata"),
+            HintSurface::FooterAction,
+            Some(|context, surface| {
+                surface == HintSurface::Palette
+                    || (regular_footer(context, surface) && context.browse_connected())
             }),
-            ..preset_row(
-                Action::ToggleReadOnly,
-                'r',
-                'R',
-                "Read-Only",
-                "Enable Read-Only mode",
-            )
-        },
-        preset_row(
-            Action::OpenModal(ModalKind::QueryHistoryPicker),
-            'o',
-            'O',
-            "History",
-            "Open Query History",
+        ),
+        footer(
+            row(
+                Action::OpenModal(ModalKind::SqlModal),
+                's',
+                "SQL",
+                "Open SQL Editor",
+            ),
+            HintSurface::FooterAction,
+            Some(regular_footer),
+        ),
+        footer(
+            row(
+                Action::OpenModal(ModalKind::ErTablePicker),
+                'e',
+                "ER Diagram",
+                "Open ER Diagram",
+            ),
+            HintSurface::FooterAction,
+            Some(regular_footer),
+        ),
+        footer(
+            row(
+                Action::OpenModal(ModalKind::ConnectionSelector),
+                'c',
+                "Connections",
+                "Open Connection Selector",
+            ),
+            HintSurface::FooterAction,
+            None,
+        ),
+        footer(
+            Row {
+                bindings: vec![
+                    Binding::action(
+                        Action::OpenModal(ModalKind::SqliteDiagnostics),
+                        &[KeyCombo::ctrl_shift(Key::Char('d'))],
+                    )
+                    .ide(&[KeyCombo::plain(Key::Char('D'))]),
+                ],
+                short: "Diagnostics",
+                description: "Open SQLite Diagnostics",
+                dynamic_label: None,
+                visible: None,
+                surfaces: &[HintSurface::Palette],
+            },
+            HintSurface::FooterAction,
+            Some(regular_footer),
+        ),
+        footer(
+            Row {
+                bindings: vec![
+                    Binding::action(Action::RequestCsvExport, &[KeyCombo::ctrl(Key::Char('e'))])
+                        .ide(&[KeyCombo::plain(Key::Char('E'))])
+                        .when(KeyContext::browse_csv_available),
+                ],
+                ..preset_row(
+                    Action::RequestCsvExport,
+                    'e',
+                    'E',
+                    "Export",
+                    "Export result to CSV",
+                )
+            },
+            HintSurface::FooterAction,
+            Some(non_cell_footer),
+        ),
+        footer(
+            Row {
+                dynamic_label: Some(|context| {
+                    if context.browse_read_only() {
+                        ("Read-Write", "Disable Read-Only mode")
+                    } else {
+                        ("Read-Only", "Enable Read-Only mode")
+                    }
+                }),
+                ..preset_row(
+                    Action::ToggleReadOnly,
+                    'r',
+                    'R',
+                    "Read-Only",
+                    "Enable Read-Only mode",
+                )
+            },
+            HintSurface::FooterAction,
+            Some(regular_footer),
+        ),
+        footer(
+            preset_row(
+                Action::OpenModal(ModalKind::QueryHistoryPicker),
+                'o',
+                'O',
+                "History",
+                "Open Query History",
+            ),
+            HintSurface::FooterAction,
+            Some(regular_footer),
         ),
     ]
 });
+
+fn regular_footer(context: &KeyContext, surface: HintSurface) -> bool {
+    surface == HintSurface::Palette
+        || (!context.browse_focused() && context.browse_pane() != BrowsePane::ResultCell)
+}
+
+fn non_cell_footer(context: &KeyContext, surface: HintSurface) -> bool {
+    surface == HintSurface::Palette || context.browse_pane() != BrowsePane::ResultCell
+}
+
+fn footer(
+    mut row: Row,
+    group: HintSurface,
+    visible: Option<fn(&KeyContext, HintSurface) -> bool>,
+) -> Row {
+    row.surfaces = match (row.surfaces.contains(&HintSurface::Palette), group) {
+        (true, HintSurface::FooterAction) => &[HintSurface::Palette, HintSurface::FooterAction],
+        (true, HintSurface::FooterHelp) => &[HintSurface::Palette, HintSurface::FooterHelp],
+        (true, HintSurface::FooterQuit) => &[HintSurface::Palette, HintSurface::FooterQuit],
+        (false, HintSurface::FooterHelp) => &[HintSurface::FooterHelp],
+        _ => unreachable!(),
+    };
+    row.visible = visible;
+    row
+}
 
 fn row(action: Action, key: char, short: &'static str, description: &'static str) -> Row {
     Row {

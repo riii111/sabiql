@@ -64,6 +64,11 @@ pub enum HintSurface {
     ExplainPlaceholder,
     Navigation,
     Palette,
+    FooterAction,
+    FooterNavigation,
+    FooterHelp,
+    FooterClose,
+    FooterQuit,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

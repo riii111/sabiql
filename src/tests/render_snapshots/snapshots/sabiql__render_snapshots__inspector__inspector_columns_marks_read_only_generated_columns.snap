@@ -51,4 +51,4 @@ expression: output
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-r:Reload  s:SQL  e:ER Diagram  c:Connections  ^P:Tables  ^O:History  ^R:Read-Only  f:Focus  Tab/⇧Tab:InsTabs  ?:Help  F1:Palette  ,:Settings  q:Quit
+^P:Tables  f:Focus  r:Reload  s:SQL  e:ER Diagram  c:Connections  ^R:Read-Only  ^O:History  Tab/⇧Tab:InsTabs  ?:Help  ,:Settings  F1:Palette  q:Quit

@@ -51,4 +51,4 @@ expression: output
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-Enter:Detail  Y:Yank Cell  yy:Yank Row  K:Row Detail  c:Connections  ?:Help  Esc:Back  q:Quit
+Enter:Detail  yy:Yank Row  K:Row Detail  Y:Yank Cell  c:Connections  ?:Help  Esc:Back  q:Quit

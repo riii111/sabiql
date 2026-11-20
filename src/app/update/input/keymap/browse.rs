@@ -10,7 +10,7 @@ use crate::update::action::{
 
 use super::context::BrowsePane;
 use super::global;
-use super::model::{Binding, Row, hints, resolve};
+use super::model::{Binding, Row, hints, indexed_hints, resolve};
 use super::{Hint, HintSurface, KeyContext};
 
 static EXPLORER: LazyLock<Vec<Row>> = LazyLock::new(|| rows(BrowsePane::Explorer));
@@ -20,15 +20,21 @@ static RESULT_CELL: LazyLock<Vec<Row>> = LazyLock::new(|| rows(BrowsePane::Resul
 
 fn rows(pane: BrowsePane) -> Vec<Row> {
     let mut rows = global::ROWS.clone();
-    rows.push(row(
-        vec![
-            Binding::action(Action::ConfirmSelection, &[KeyCombo::plain(Key::Enter)])
-                .when(KeyContext::browse_connection_error),
-        ],
-        "Error",
-        "Open connection error details",
-        &[HintSurface::Current],
-    ));
+    rows.push(Row {
+        visible: Some(|context, surface| {
+            surface != HintSurface::FooterAction
+                || (!context.browse_focused() && context.browse_pane() != BrowsePane::ResultCell)
+        }),
+        ..row(
+            vec![
+                Binding::action(Action::ConfirmSelection, &[KeyCombo::plain(Key::Enter)])
+                    .when(KeyContext::browse_connection_error),
+            ],
+            "Error",
+            "Open connection error details",
+            &[HintSurface::Current, HintSurface::FooterAction],
+        )
+    });
     for (key, target) in [
         ('1', FocusedPane::Explorer),
         ('2', FocusedPane::Inspector),
@@ -78,24 +84,37 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
                 "Cancel",
                 &[HintSurface::Current],
             ));
-            rows.push(row(
-                vec![
-                    Binding::no_ctrl_alt(Action::DdlYank, Key::Char('y'))
-                        .when(KeyContext::browse_inspector_ddl),
-                ],
-                "Yank",
-                "Copy DDL to clipboard",
-                &[HintSurface::Current],
-            ));
-            rows.push(row(
-                vec![
-                    Binding::any_modifiers(Action::InspectorNextTab, Key::Tab),
-                    Binding::any_modifiers(Action::InspectorPrevTab, Key::BackTab),
-                ],
-                "InsTabs",
-                "Inspector prev/next tab",
-                &[HintSurface::Current],
-            ));
+            rows.push(Row {
+                visible: Some(|context, surface| {
+                    surface != HintSurface::FooterAction
+                        || (!context.browse_focused()
+                            && context.browse_pane() != BrowsePane::ResultCell)
+                }),
+                ..row(
+                    vec![
+                        Binding::no_ctrl_alt(Action::DdlYank, Key::Char('y'))
+                            .when(KeyContext::browse_inspector_ddl),
+                    ],
+                    "Yank",
+                    "Copy DDL to clipboard",
+                    &[HintSurface::Current, HintSurface::FooterAction],
+                )
+            });
+            rows.push(Row {
+                visible: Some(|context, surface| {
+                    surface != HintSurface::FooterNavigation
+                        || context.browse_multiple_inspector_tabs()
+                }),
+                ..row(
+                    vec![
+                        Binding::any_modifiers(Action::InspectorNextTab, Key::Tab),
+                        Binding::any_modifiers(Action::InspectorPrevTab, Key::BackTab),
+                    ],
+                    "InsTabs",
+                    "Inspector prev/next tab",
+                    &[HintSurface::Current, HintSurface::FooterNavigation],
+                )
+            });
         }
         BrowsePane::ResultScroll | BrowsePane::ResultCell => {
             if pane == BrowsePane::ResultScroll {
@@ -103,19 +122,31 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
                     vec![Binding::no_ctrl_alt(Action::ResultActivateCell, Key::Enter)],
                     "Select",
                     "Enter cell selection at the current viewport anchor",
-                    &[HintSurface::Current],
+                    &[HintSurface::Current, HintSurface::FooterAction],
                 ));
-                rows.push(row(
-                    vec![
-                        Binding::no_ctrl_alt(Action::ClearStagedDeletes, Key::Esc)
-                            .when(KeyContext::browse_staged_delete),
-                        Binding::no_ctrl_alt(Action::Escape, Key::Esc)
-                            .when(|context| !context.browse_staged_delete()),
-                    ],
-                    "Back",
-                    "Cancel",
-                    &[HintSurface::Current],
-                ));
+                rows.push(Row {
+                    visible: Some(|context, surface| {
+                        surface != HintSurface::FooterClose || context.browse_staged_delete()
+                    }),
+                    dynamic_label: Some(|context| {
+                        if context.browse_staged_delete() {
+                            ("Clear Del", "Clear all staged row deletions")
+                        } else {
+                            ("Back", "Cancel")
+                        }
+                    }),
+                    ..row(
+                        vec![
+                            Binding::no_ctrl_alt(Action::ClearStagedDeletes, Key::Esc)
+                                .when(KeyContext::browse_staged_delete),
+                            Binding::no_ctrl_alt(Action::Escape, Key::Esc)
+                                .when(|context| !context.browse_staged_delete()),
+                        ],
+                        "Back",
+                        "Cancel",
+                        &[HintSurface::Current, HintSurface::FooterClose],
+                    )
+                });
                 rows.push(row(
                     vec![Binding::no_ctrl_alt(Action::None, Key::Char('y')).consume()],
                     "",
@@ -123,101 +154,161 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
                     &[],
                 ));
             } else {
-                rows.push(row(
-                    vec![Binding::no_ctrl_alt(
-                        Action::ResultOpenCellDetail,
-                        Key::Enter,
-                    )],
-                    "Detail",
-                    "Open active cell detail",
-                    &[HintSurface::Current],
-                ));
-                rows.push(row(
-                    vec![
-                        Binding::no_ctrl_alt(Action::ResultDiscardCellEdit, Key::Esc)
-                            .when(KeyContext::browse_draft),
-                        Binding::no_ctrl_alt(Action::ResultExitToScroll, Key::Esc)
-                            .when(|context| !context.browse_draft()),
-                    ],
-                    "Back",
-                    "Exit cell selection or discard draft",
-                    &[HintSurface::Current],
-                ));
-                rows.push(row(
-                    vec![Binding::no_ctrl_alt(
-                        Action::ResultEnterCellEdit,
-                        Key::Char('i'),
-                    )],
-                    "Edit",
-                    "Edit active cell",
-                    &[HintSurface::Current],
-                ));
-                rows.push(row(
-                    vec![
-                        Binding::repeat(Action::ResultRowYankOperatorPending, Key::Char('y'))
-                            .when(|context| !context.browse_yank_pending()),
-                        Binding::repeat(Action::ResultRowYank, Key::Char('y'))
-                            .when(KeyContext::browse_yank_pending),
-                    ],
-                    "Yank Row",
-                    "Copy the active row values to clipboard (TSV)",
-                    &[HintSurface::Current],
-                ));
-                rows.push(row(
-                    vec![
-                        Binding::repeat(Action::ResultDeleteOperatorPending, Key::Char('d'))
-                            .when(|context| !context.browse_delete_pending()),
-                        Binding::repeat(Action::StageRowForDelete, Key::Char('d'))
-                            .when(KeyContext::browse_delete_pending),
-                    ],
-                    "Stage Del",
-                    "Stage the active row for deletion",
-                    &[HintSurface::Current],
-                ));
-            }
-            rows.push(row(
-                vec![
-                    Binding::action(
-                        Action::OpenModal(ModalKind::RowDetail),
-                        &[KeyCombo::plain(Key::Char('K'))],
-                    )
-                    .when(|context| {
-                        !context.browse_staged_delete() && context.browse_selected_row()
+                rows.push(Row {
+                    visible: Some(|context, surface| {
+                        !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
+                            || (!context.browse_staged_delete() && !context.browse_draft())
                     }),
-                ],
-                "Row Detail",
-                "Open Row Detail",
-                &[HintSurface::Current],
-            ));
-            rows.push(row(
-                vec![
-                    Binding::action(Action::ResultCellYank, &[KeyCombo::plain(Key::Char('Y'))])
+                    ..row(
+                        vec![Binding::no_ctrl_alt(
+                            Action::ResultOpenCellDetail,
+                            Key::Enter,
+                        )],
+                        "Detail",
+                        "Open active cell detail",
+                        &[HintSurface::Current, HintSurface::FooterAction],
+                    )
+                });
+                rows.push(Row {
+                    dynamic_label: Some(|context| {
+                        if context.browse_draft() {
+                            ("Discard", "Discard pending draft")
+                        } else {
+                            ("Back", "Exit cell selection")
+                        }
+                    }),
+                    ..row(
+                        vec![
+                            Binding::no_ctrl_alt(Action::ResultDiscardCellEdit, Key::Esc)
+                                .when(KeyContext::browse_draft),
+                            Binding::no_ctrl_alt(Action::ResultExitToScroll, Key::Esc)
+                                .when(|context| !context.browse_draft()),
+                        ],
+                        "Back",
+                        "Exit cell selection or discard draft",
+                        &[HintSurface::Current, HintSurface::FooterClose],
+                    )
+                });
+                rows.push(Row {
+                    visible: Some(|context, surface| {
+                        !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
+                            || (!context.browse_staged_delete()
+                                && (context.browse_can_edit_cell() || context.browse_draft()))
+                    }),
+                    ..row(
+                        vec![Binding::no_ctrl_alt(
+                            Action::ResultEnterCellEdit,
+                            Key::Char('i'),
+                        )],
+                        "Edit",
+                        "Edit active cell",
+                        &[HintSurface::Current, HintSurface::FooterAction],
+                    )
+                });
+                rows.push(Row {
+                    visible: Some(|context, surface| {
+                        !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
+                            || (!context.browse_staged_delete() && !context.browse_draft())
+                    }),
+                    ..row(
+                        vec![
+                            Binding::repeat(Action::ResultRowYankOperatorPending, Key::Char('y'))
+                                .when(|context| !context.browse_yank_pending()),
+                            Binding::repeat(Action::ResultRowYank, Key::Char('y'))
+                                .when(KeyContext::browse_yank_pending),
+                        ],
+                        "Yank Row",
+                        "Copy the active row values to clipboard (TSV)",
+                        &[HintSurface::Current, HintSurface::FooterAction],
+                    )
+                });
+                rows.push(Row {
+                    visible: Some(|context, surface| {
+                        !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
+                            || (!context.browse_draft()
+                                && (context.browse_staged_delete() || context.browse_can_write()))
+                    }),
+                    ..row(
+                        vec![
+                            Binding::repeat(Action::ResultDeleteOperatorPending, Key::Char('d'))
+                                .when(|context| !context.browse_delete_pending()),
+                            Binding::repeat(Action::StageRowForDelete, Key::Char('d'))
+                                .when(KeyContext::browse_delete_pending),
+                        ],
+                        "Stage Del",
+                        "Stage the active row for deletion",
+                        &[HintSurface::Current, HintSurface::FooterAction],
+                    )
+                });
+            }
+            rows.push(Row {
+                visible: Some(|context, surface| {
+                    !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
+                        || !context.browse_draft()
+                }),
+                ..row(
+                    vec![
+                        Binding::action(
+                            Action::OpenModal(ModalKind::RowDetail),
+                            &[KeyCombo::plain(Key::Char('K'))],
+                        )
                         .when(|context| {
-                            !context.browse_staged_delete() && context.browse_selected_cell()
+                            !context.browse_staged_delete() && context.browse_selected_row()
                         }),
-                ],
-                "Yank Cell",
-                "Copy the active cell value to clipboard",
-                &[HintSurface::Current],
-            ));
-            rows.push(row(
-                vec![
-                    Binding::any_modifiers(Action::UnstageLastStagedRow, Key::Char('u'))
-                        .when(KeyContext::browse_staged_delete),
-                ],
-                "Unstage",
-                "Unstage the last staged row deletion",
-                &[HintSurface::Current],
-            ));
-            rows.push(row(
-                vec![
-                    Binding::any_modifiers(Action::ResultNextPage, Key::Char(']')),
-                    Binding::any_modifiers(Action::ResultPrevPage, Key::Char('[')),
-                ],
-                "Page",
-                "Next/Previous page",
-                &[HintSurface::Current],
-            ));
+                    ],
+                    "Row Detail",
+                    "Open Row Detail",
+                    &[HintSurface::Current, HintSurface::FooterAction],
+                )
+            });
+            rows.push(Row {
+                visible: Some(|context, surface| {
+                    !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
+                        || !context.browse_draft()
+                }),
+                ..row(
+                    vec![
+                        Binding::action(Action::ResultCellYank, &[KeyCombo::plain(Key::Char('Y'))])
+                            .when(|context| {
+                                !context.browse_staged_delete() && context.browse_selected_cell()
+                            }),
+                    ],
+                    "Yank Cell",
+                    "Copy the active cell value to clipboard",
+                    &[HintSurface::Current, HintSurface::FooterAction],
+                )
+            });
+            rows.push(Row {
+                visible: Some(|context, surface| {
+                    !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
+                        || !context.browse_draft()
+                }),
+                ..row(
+                    vec![
+                        Binding::any_modifiers(Action::UnstageLastStagedRow, Key::Char('u'))
+                            .when(KeyContext::browse_staged_delete),
+                    ],
+                    "Unstage",
+                    "Unstage the last staged row deletion",
+                    &[HintSurface::Current, HintSurface::FooterAction],
+                )
+            });
+            rows.push(Row {
+                visible: Some(|context, surface| {
+                    surface != HintSurface::FooterNavigation
+                        || (context.browse_pane() == BrowsePane::ResultScroll
+                            && context.browse_can_paginate())
+                }),
+                ..row(
+                    vec![
+                        Binding::any_modifiers(Action::ResultNextPage, Key::Char(']')),
+                        Binding::any_modifiers(Action::ResultPrevPage, Key::Char('[')),
+                    ],
+                    "Page",
+                    "Next/Previous page",
+                    &[HintSurface::Current, HintSurface::FooterNavigation],
+                )
+            });
         }
     }
     rows
@@ -467,5 +558,64 @@ pub fn browse_action(combo: KeyCombo, context: &KeyContext) -> Action {
 }
 
 pub fn browse_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
-    hints(active_rows(context), context, surface)
+    let rows = active_rows(context);
+    if surface != HintSurface::Footer {
+        return hints(rows, context, surface);
+    }
+    let mut result = Vec::new();
+    for group in [
+        HintSurface::FooterAction,
+        HintSurface::FooterNavigation,
+        HintSurface::FooterHelp,
+        HintSurface::FooterClose,
+        HintSurface::FooterQuit,
+    ] {
+        let (global, pane): (Vec<_>, Vec<_>) = indexed_hints(rows, context, group)
+            .into_iter()
+            .partition(|(index, _)| *index < global::ROWS.len());
+        result.extend(pane.into_iter().map(|(_, hint)| hint));
+        if group == HintSurface::FooterAction {
+            result.extend(super::command::browse_write_hints(context));
+        }
+        result.extend(global.into_iter().map(|(_, hint)| hint));
+    }
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::app_state::AppState;
+
+    #[test]
+    fn footer_follows_draft_and_staged_delete_state() {
+        let mut state = AppState::new("test".to_string());
+        state.ui.set_focused_pane(FocusedPane::Result);
+        state.result_interaction.activate_cell(0, 0);
+        state.result_interaction.stage_row(0);
+        let context = KeyContext::from_state(&state);
+        let hints = browse_hints(HintSurface::Footer, &context);
+        let labels: Vec<_> = hints.iter().map(|hint| hint.short).collect();
+        assert!(labels.contains(&"Stage Del"));
+        assert!(labels.contains(&"Unstage"));
+        assert!(hints.iter().any(|hint| hint.key == ":w"));
+        assert!(!labels.contains(&"Detail"));
+        assert!(!labels.contains(&"Yank Row"));
+
+        state.result_interaction.clear_staged_deletes();
+        state
+            .result_interaction
+            .begin_cell_edit(0, 0, "before".to_string());
+        state
+            .result_interaction
+            .replace_cell_edit_draft("after".to_string());
+        let context = KeyContext::from_state(&state);
+        let hints = browse_hints(HintSurface::Footer, &context);
+        let labels: Vec<_> = hints.iter().map(|hint| hint.short).collect();
+        assert!(labels.contains(&"Edit"));
+        assert!(labels.contains(&"Discard"));
+        assert!(hints.iter().any(|hint| hint.key == ":w"));
+        assert!(!labels.contains(&"Stage Del"));
+        assert!(!labels.contains(&"Yank Row"));
+    }
 }

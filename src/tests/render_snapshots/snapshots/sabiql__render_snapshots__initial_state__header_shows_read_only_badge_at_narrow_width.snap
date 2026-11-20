@@ -20,4 +20,4 @@ expression: output
 │                  ││                                                          │
 │ x   0% ◀︎══════─▶︎ ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-r:Reload  s:SQL  e:ER Diagram  c:Connections  ^P:Tables  ^O:History  ^R:Read-Wri
+^P:Tables  f:Focus  r:Reload  s:SQL  e:ER Diagram  c:Connections  ^R:Read-Write

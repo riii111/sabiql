@@ -35,7 +35,7 @@ SetFocusedPane(Result): '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3'
 ToggleFocus: 'f'
 ToggleHelp: '?'
 ToggleReadOnly: ^'r'
-footer: r:Reload  s:SQL  ^⇧D:Diagnostics  c:Connections  ^P:Tables  ^O:History  ^R:Read-Only  f:Focus  ?:Help  F1:Palette  ,:Settings  q:Quit
+footer: ^P:Tables  f:Focus  r:Reload  s:SQL  c:Connections  ^⇧D:Diagnostics  ^R:Read-Only  ^O:History  ?:Help  ,:Settings  F1:Palette  q:Quit
 help: Ctrl+P: Open Table Picker
 help: c: Open Connection Selector
 help: s: Open SQL Editor
@@ -620,7 +620,7 @@ SetFocusedPane(Result): '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3'
 ToggleFocus: 'f'
 ToggleHelp: '?'
 ToggleReadOnly: ^'r'
-footer: r:Reload  s:SQL  ^⇧D:Diagnostics  c:Connections  ^P:Tables  ^O:History  ^R:Read-Only  f:Focus  Tab/⇧Tab:InsTabs  ?:Help  F1:Palette  ,:Settings  q:Quit
+footer: ^P:Tables  f:Focus  r:Reload  s:SQL  c:Connections  ^⇧D:Diagnostics  ^R:Read-Only  ^O:History  Tab/⇧Tab:InsTabs  ?:Help  ,:Settings  F1:Palette  q:Quit
 help: c: Open Connection Selector
 help: Tab/⇧Tab: Inspector prev/next tab
 help: y: Copy DDL to clipboard
@@ -670,7 +670,7 @@ SetFocusedPane(Result): '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3'
 ToggleFocus: 'f'
 ToggleHelp: '?'
 ToggleReadOnly: ^'r'
-footer: r:Reload  s:SQL  ^⇧D:Diagnostics  c:Connections  ^P:Tables  ^O:History  ^R:Read-Only  f:Focus  Enter:Select  ?:Help  F1:Palette  ,:Settings  q:Quit
+footer: Enter:Select  ^P:Tables  f:Focus  r:Reload  s:SQL  c:Connections  ^⇧D:Diagnostics  ^R:Read-Only  ^O:History  ?:Help  ,:Settings  F1:Palette  q:Quit
 help: Enter: Enter cell selection at the current viewport anchor
 help: c: Open Connection Selector
 help: ] / [: Next/Previous page
@@ -767,7 +767,7 @@ SetFocusedPane(Result): '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3'
 ToggleFocus: 'f'
 ToggleHelp: '?'
 ToggleReadOnly: ^'r'
-footer: r:Reload  s:SQL  ^⇧D:Diagnostics  c:Connections  ^P:Tables  ^O:History  ^R:Read-Write  f:Focus  ?:Help  F1:Palette  ,:Settings  q:Quit
+footer: ^P:Tables  f:Focus  r:Reload  s:SQL  c:Connections  ^⇧D:Diagnostics  ^R:Read-Write  ^O:History  ?:Help  ,:Settings  F1:Palette  q:Quit
 help: Ctrl+P: Open Table Picker
 help: c: Open Connection Selector
 help: s: Open SQL Editor
@@ -818,7 +818,7 @@ SetFocusedPane(Result): '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3'
 ToggleFocus: 'f'
 ToggleHelp: '?'
 ToggleReadOnly: ^'r'
-footer: r:Reload  s:SQL  ^⇧D:Diagnostics  c:Connections  ^P:Tables  ^O:History  Enter:Error  ^R:Read-Only  f:Focus  Enter:Select  ?:Help  F1:Palette  ,:Settings  q:Quit
+footer: Enter:Error  ^P:Tables  f:Focus  r:Reload  s:SQL  c:Connections  ^⇧D:Diagnostics  ^R:Read-Only  ^O:History  ?:Help  ,:Settings  F1:Palette  q:Quit
 help: Enter: Enter cell selection at the current viewport anchor
 help: c: Open Connection Selector
 help: ] / [: Next/Previous page
@@ -875,7 +875,7 @@ SetFocusedPane(Result): '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3'
 ToggleFocus: 'f'
 ToggleHelp: '?'
 ToggleReadOnly: ^'r'
-footer: Enter:Detail  Y:Yank Cell  yy:Yank Row  K:Row Detail  dd:Stage Del  c:Connections  ?:Help  Esc:Back  q:Quit
+footer: Enter:Detail  yy:Yank Row  dd:Stage Del  K:Row Detail  Y:Yank Cell  c:Connections  ?:Help  Esc:Back  q:Quit
 help: Y: Copy the active cell value to clipboard
 help: y, y: Copy the active row values to clipboard (TSV)
 help: K: Open Row Detail
@@ -1053,7 +1053,7 @@ SetFocusedPane(Result): '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3'
 ToggleFocus: 'f'
 ToggleHelp: '?'
 ToggleReadOnly: ^'r'
-footer: Enter:Detail  Y:Yank Cell  yy:Yank Row  K:Row Detail  dd:Stage Del  c:Connections  ?:Help  Esc:Back  q:Quit
+footer: Enter:Detail  yy:Yank Row  dd:Stage Del  K:Row Detail  Y:Yank Cell  c:Connections  ?:Help  Esc:Back  q:Quit
 help: Y: Copy the active cell value to clipboard
 help: y, y: Copy the active row values to clipboard (TSV)
 help: K: Open Row Detail
@@ -1113,7 +1113,7 @@ StageRowForDelete: 'd', ⇧'d'
 ToggleFocus: 'f'
 ToggleHelp: '?'
 ToggleReadOnly: ^'r'
-footer: Enter:Detail  Y:Yank Cell  yy:Yank Row  K:Row Detail  dd:Stage Del  c:Connections  ?:Help  Esc:Back  q:Quit
+footer: Enter:Detail  yy:Yank Row  dd:Stage Del  K:Row Detail  Y:Yank Cell  c:Connections  ?:Help  Esc:Back  q:Quit
 help: Y: Copy the active cell value to clipboard
 help: y, y: Copy the active row values to clipboard (TSV)
 help: K: Open Row Detail
@@ -1137,7 +1137,7 @@ CancelKeySequence: ' ', ^' ', ⌥' ', ^⌥' ', ⇧' ', ^⇧' ', '!', ^'!', ⌥'!
 ScrollToCursor { target: Result, position: Bottom }: 'b'
 ScrollToCursor { target: Result, position: Center }: 'z'
 ScrollToCursor { target: Result, position: Top }: 't'
-footer: Enter:Detail  Y:Yank Cell  yy:Yank Row  K:Row Detail  dd:Stage Del  c:Connections  ?:Help  Esc:Back  q:Quit
+footer: Enter:Detail  yy:Yank Row  dd:Stage Del  K:Row Detail  Y:Yank Cell  c:Connections  ?:Help  Esc:Back  q:Quit
 help: Y: Copy the active cell value to clipboard
 help: y, y: Copy the active row values to clipboard (TSV)
 help: K: Open Row Detail

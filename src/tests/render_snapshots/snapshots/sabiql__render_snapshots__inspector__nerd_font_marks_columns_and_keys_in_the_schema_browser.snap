@@ -25,4 +25,4 @@ expression: output
 │                            ││                                                                                        │
 │                            ││                                                                                        │
 └────────────────────────────┘└────────────────────────────────────────────────────────────────────────────────────────┘
-r:Reload  s:SQL  e:ER Diagram  c:Connections  ^P:Tables  ^O:History  ^R:Read-Only  f:Focus  ^E:Export  ?:Help  F1:Palett
+^P:Tables  f:Focus  r:Reload  s:SQL  e:ER Diagram  c:Connections  ^E:Export  ^R:Read-Only  ^O:History  ?:Help  ,:Setting

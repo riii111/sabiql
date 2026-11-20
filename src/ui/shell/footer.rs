@@ -8,18 +8,11 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::browse::json_detail::JsonDetailMode;
 use crate::app::model::er_state::ErStatus;
 use crate::app::model::shared::input_mode::InputMode;
-use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
-use crate::app::policy::{FeaturePolicy, FeatureRequirement};
-use crate::app::update::input::keybindings::{
-    cell_edit, command_palette as command_palette_key, csv_export, exit_read_only, footer_nav,
-    global, inspector_ddl, overlay, query_history, read_only, result_active, settings,
-    sqlite_diagnostics, table_picker as table_picker_key,
-};
 use crate::app::update::input::keymap::{
-    HintSurface, KeyContext, Picker, cell_detail_hints, cell_edit_hints, command_line_hints,
-    connection_error_hints, json_edit_hints, json_search_hints, json_view_hints, picker_hints,
-    settings_hints, sql_edit_hints, sqlite_diagnostics_hints,
+    HintSurface, KeyContext, Picker, browse_hints, cell_detail_hints, cell_edit_hints,
+    command_line_hints, connection_error_hints, json_edit_hints, json_search_hints,
+    json_view_hints, picker_hints, settings_hints, sql_edit_hints, sqlite_diagnostics_hints,
 };
 use crate::primitives::atoms::key_text;
 use crate::primitives::atoms::spinner_char;
@@ -50,6 +43,7 @@ impl Footer {
             // Show hints with optional inline success message
             let context = KeyContext::from_state(state);
             let derived = match state.input_mode() {
+                InputMode::Normal => Some(browse_hints(HintSurface::Footer, &context)),
                 InputMode::TablePicker => {
                     Some(picker_hints(Picker::Table, HintSurface::Footer, &context))
                 }
@@ -87,7 +81,7 @@ impl Footer {
                     .map(|hint| (hint.key.as_str(), hint.short))
                     .collect()
             } else {
-                Self::get_context_hints(state)
+                Vec::new()
             };
             let line =
                 Self::build_hint_line_with_success(&hints, state.messages.last_success(), theme);
@@ -119,159 +113,15 @@ impl Footer {
         ))
     }
 
-    // Hint ordering: Actions → Navigation → Help → Close/Cancel → Quit
-    fn get_context_hints(state: &AppState) -> Vec<(&str, &str)> {
-        use crate::app::model::shared::focused_pane::FocusedPane;
-
-        match state.input_mode() {
-            InputMode::Normal => {
-                let keymap_preset = state.settings.saved_keymap_preset();
-                let result_navigation =
-                    state.ui.is_focus_mode() || state.ui.focused_pane() == FocusedPane::Result;
-                let nav_mode = state.result_interaction.selection().mode();
-
-                if result_navigation && nav_mode == ResultNavMode::CellActive {
-                    let can_write_preview = state.can_write_visible_preview();
-                    let can_edit_selected_cell = state.can_edit_selected_cell();
-                    if state.result_interaction.cell_edit().has_pending_draft() {
-                        vec![
-                            result_active::EDIT.as_hint(),
-                            cell_edit::WRITE.as_hint(),
-                            global::CONNECTIONS.as_hint(),
-                            global::HELP.as_hint(),
-                            result_active::DRAFT_DISCARD.as_hint(),
-                            global::QUIT.as_hint(),
-                        ]
-                    } else if state.result_interaction.staged_delete_rows().is_empty() {
-                        let mut hints = vec![result_active::DETAIL.as_hint()];
-                        if can_edit_selected_cell {
-                            hints.push(result_active::EDIT.as_hint());
-                        }
-                        hints.extend([
-                            result_active::YANK.as_hint(),
-                            result_active::ROW_YANK.as_hint(),
-                            result_active::ROW_DETAIL.as_hint(),
-                        ]);
-                        if can_write_preview {
-                            hints.push(result_active::STAGE_DELETE.as_hint());
-                        }
-                        hints.extend([
-                            global::CONNECTIONS.as_hint(),
-                            global::HELP.as_hint(),
-                            result_active::ESC_BACK.as_hint(),
-                            global::QUIT.as_hint(),
-                        ]);
-                        hints
-                    } else {
-                        vec![
-                            result_active::STAGE_DELETE.as_hint(),
-                            result_active::UNSTAGE_DELETE.as_hint(),
-                            cell_edit::WRITE.as_hint(),
-                            global::CONNECTIONS.as_hint(),
-                            global::HELP.as_hint(),
-                            result_active::ESC_BACK.as_hint(),
-                            global::QUIT.as_hint(),
-                        ]
-                    }
-                } else if state.ui.is_focus_mode() {
-                    // Actions → Navigation → Help → Close/Cancel → Quit
-                    let mut list = vec![result_active::ENTER_DEEPEN.as_hint()];
-                    list.push(global::CONNECTIONS.as_hint());
-                    if !state.result_interaction.staged_delete_rows().is_empty() {
-                        list.push(result_active::UNSTAGE_DELETE.as_hint());
-                        list.push(result_active::CLEAR_STAGED_DELETE.as_hint());
-                        list.push(cell_edit::WRITE.as_hint());
-                    }
-                    if state.can_request_csv_export() {
-                        list.push(csv_export(keymap_preset).as_hint());
-                    }
-                    if state.query.can_paginate_visible_result() {
-                        list.push(footer_nav::PAGE_NAV.as_hint());
-                    }
-                    list.push(global::HELP.as_hint());
-                    list.push(settings(keymap_preset).as_hint());
-                    list.push(global::EXIT_FOCUS.as_hint());
-                    list.push(global::QUIT.as_hint());
-                    list
-                } else {
-                    // Actions → Navigation → Help → Close/Cancel → Quit
-                    let capabilities = state.session.active_engine_feature_profile();
-                    let feature_policy = FeaturePolicy::new(&capabilities);
-                    let active_inspector_tab =
-                        capabilities.normalize_inspector_tab(state.ui.inspector_tab());
-                    let mut list = vec![global::SQL.as_hint()];
-                    if state.session.dsn().is_some() {
-                        list.insert(0, global::RELOAD.as_hint());
-                    }
-                    if feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
-                        list.push(global::ER_DIAGRAM.as_hint());
-                    }
-                    if feature_policy.is_enabled(FeatureRequirement::SqliteDiagnostics) {
-                        list.push(sqlite_diagnostics(keymap_preset).as_hint());
-                    }
-                    list.push(global::CONNECTIONS.as_hint());
-                    list.push(table_picker_key(keymap_preset).as_hint());
-                    list.push(query_history(keymap_preset).as_hint());
-                    if state.connection_error.has_error() {
-                        list.push(overlay::ERROR_OPEN.as_hint());
-                    }
-                    if state.session.is_read_only() {
-                        list.push(exit_read_only(keymap_preset).as_hint());
-                    } else {
-                        list.push(read_only(keymap_preset).as_hint());
-                    }
-                    list.push(global::FOCUS.as_hint());
-                    if state.can_request_csv_export() {
-                        list.push(csv_export(keymap_preset).as_hint());
-                    }
-                    if state.ui.focused_pane() == FocusedPane::Inspector {
-                        use crate::app::model::shared::inspector_tab::InspectorTab;
-                        if active_inspector_tab == InspectorTab::Ddl {
-                            list.push(inspector_ddl::YANK.as_hint());
-                        }
-                    }
-                    // Navigation
-                    if state.ui.focused_pane() == FocusedPane::Result {
-                        list.push(result_active::ENTER_DEEPEN.as_hint());
-                        if !state.result_interaction.staged_delete_rows().is_empty() {
-                            list.push(result_active::UNSTAGE_DELETE.as_hint());
-                            list.push(result_active::CLEAR_STAGED_DELETE.as_hint());
-                            list.push(cell_edit::WRITE.as_hint());
-                        }
-                        if state.query.can_paginate_visible_result() {
-                            list.push(footer_nav::PAGE_NAV.as_hint());
-                        }
-                    }
-                    if state.ui.focused_pane() == FocusedPane::Inspector
-                        && capabilities.supported_inspector_tabs().len() > 1
-                    {
-                        list.push(global::INSPECTOR_TABS.as_hint());
-                    }
-                    list.push(global::HELP.as_hint());
-                    list.push(command_palette_key(keymap_preset).as_hint());
-                    list.push(settings(keymap_preset).as_hint());
-                    list.push(global::QUIT.as_hint());
-                    list
-                }
-            }
-            InputMode::TablePicker
-            | InputMode::CommandPalette
-            | InputMode::Help
-            | InputMode::ConfirmDialog
-            | InputMode::ConnectionSetup
-            | InputMode::RowDetail
-            | InputMode::ConnectionSelector
-            | InputMode::ConnectionError
-            | InputMode::Settings
-            | InputMode::CommandLine
-            | InputMode::CellEdit
-            | InputMode::JsonEdit
-            | InputMode::JsonDetail
-            | InputMode::QueryHistoryPicker
-            | InputMode::ErTablePicker
-            | InputMode::SqliteDiagnostics
-            | InputMode::SqlModal
-            | InputMode::CellDetail => vec![],
+    #[cfg(test)]
+    fn get_context_hints(state: &AppState) -> Vec<(String, &'static str)> {
+        if state.input_mode() == InputMode::Normal {
+            browse_hints(HintSurface::Footer, &KeyContext::from_state(state))
+                .into_iter()
+                .map(|hint| (hint.key, hint.short))
+                .collect()
+        } else {
+            Vec::new()
         }
     }
 
@@ -316,6 +166,12 @@ mod tests {
     use crate::app::update::input::keybindings::{global, result_active};
     use rstest::rstest;
 
+    fn contains(hints: &[(String, &str)], expected: (&str, &str)) -> bool {
+        hints
+            .iter()
+            .any(|(key, label)| (key.as_str(), *label) == expected)
+    }
+
     fn inspector_state() -> AppState {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::Normal);
@@ -347,7 +203,7 @@ mod tests {
 
         let hints = Footer::get_context_hints(&state);
 
-        assert!(hints.contains(&global::CONNECTIONS.as_hint()));
+        assert!(contains(&hints, global::CONNECTIONS.as_hint()));
     }
 
     #[test]
@@ -357,8 +213,8 @@ mod tests {
 
         let hints = Footer::get_context_hints(&state);
 
-        assert!(!hints.contains(&global::RELOAD.as_hint()));
-        assert!(hints.contains(&global::CONNECTIONS.as_hint()));
+        assert!(!contains(&hints, global::RELOAD.as_hint()));
+        assert!(contains(&hints, global::CONNECTIONS.as_hint()));
     }
 
     #[rstest]
@@ -375,7 +231,7 @@ mod tests {
 
         let hints = Footer::get_context_hints(&state);
 
-        assert!(hints.contains(&global::CONNECTIONS.as_hint()));
+        assert!(contains(&hints, global::CONNECTIONS.as_hint()));
     }
 
     #[rstest]
@@ -398,7 +254,7 @@ mod tests {
         let hints = Footer::get_context_hints(&state);
 
         assert_eq!(
-            hints.contains(&global::INSPECTOR_TABS.as_hint()),
+            contains(&hints, global::INSPECTOR_TABS.as_hint()),
             expected_visible
         );
     }
@@ -421,7 +277,7 @@ mod tests {
         let hints = Footer::get_context_hints(&state);
 
         assert_eq!(
-            hints.contains(&global::ER_DIAGRAM.as_hint()),
+            contains(&hints, global::ER_DIAGRAM.as_hint()),
             expected_visible
         );
     }
@@ -482,7 +338,7 @@ mod tests {
 
         let hints = Footer::get_context_hints(&state);
 
-        assert!(!hints.contains(&result_active::ROW_DETAIL.as_hint()));
+        assert!(!contains(&hints, result_active::ROW_DETAIL.as_hint()));
     }
 
     #[test]
@@ -494,7 +350,7 @@ mod tests {
 
         let hints = Footer::get_context_hints(&state);
 
-        assert!(!hints.contains(&result_active::ROW_DETAIL.as_hint()));
+        assert!(!contains(&hints, result_active::ROW_DETAIL.as_hint()));
     }
 
     #[test]
@@ -504,7 +360,7 @@ mod tests {
 
         let hints = Footer::get_context_hints(&state);
 
-        assert!(hints.contains(&result_active::ROW_DETAIL.as_hint()));
+        assert!(contains(&hints, result_active::ROW_DETAIL.as_hint()));
     }
 
     #[test]
@@ -576,14 +432,14 @@ mod tests {
 
         assert_eq!(
             Footer::get_context_hints(&state),
-            Vec::<(&str, &str)>::new()
+            Vec::<(String, &str)>::new()
         );
 
         state.ui.help_mut().enter_filter_editing();
 
         assert_eq!(
             Footer::get_context_hints(&state),
-            Vec::<(&str, &str)>::new()
+            Vec::<(String, &str)>::new()
         );
     }
 

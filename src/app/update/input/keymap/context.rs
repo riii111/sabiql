@@ -78,6 +78,11 @@ enum Scope {
         delete_pending: bool,
         selected_row: bool,
         selected_cell: bool,
+        connected: bool,
+        can_edit_cell: bool,
+        can_write: bool,
+        can_paginate: bool,
+        multiple_inspector_tabs: bool,
     },
     Other,
 }
@@ -312,6 +317,56 @@ impl KeyContext {
             self.scope,
             Scope::Browse {
                 selected_cell: true,
+                ..
+            }
+        )
+    }
+
+    pub(super) fn browse_connected(&self) -> bool {
+        matches!(
+            self.scope,
+            Scope::Browse {
+                connected: true,
+                ..
+            }
+        )
+    }
+
+    pub(super) fn browse_can_edit_cell(&self) -> bool {
+        matches!(
+            self.scope,
+            Scope::Browse {
+                can_edit_cell: true,
+                ..
+            }
+        )
+    }
+
+    pub(super) fn browse_can_write(&self) -> bool {
+        matches!(
+            self.scope,
+            Scope::Browse {
+                can_write: true,
+                ..
+            }
+        )
+    }
+
+    pub(super) fn browse_can_paginate(&self) -> bool {
+        matches!(
+            self.scope,
+            Scope::Browse {
+                can_paginate: true,
+                ..
+            }
+        )
+    }
+
+    pub(super) fn browse_multiple_inspector_tabs(&self) -> bool {
+        matches!(
+            self.scope,
+            Scope::Browse {
+                multiple_inspector_tabs: true,
                 ..
             }
         )
@@ -586,6 +641,16 @@ fn browse_scope(state: &AppState) -> Scope {
         delete_pending: state.result_interaction.is_delete_operator_pending(),
         selected_row: state.result_interaction.selection().row().is_some(),
         selected_cell: state.result_interaction.selection().cell().is_some(),
+        connected: state.session.dsn().is_some(),
+        can_edit_cell: state.can_edit_selected_cell(),
+        can_write: state.can_write_visible_preview(),
+        can_paginate: state.query.can_paginate_visible_result(),
+        multiple_inspector_tabs: state
+            .session
+            .active_engine_feature_profile()
+            .supported_inspector_tabs()
+            .len()
+            > 1,
     }
 }
 
