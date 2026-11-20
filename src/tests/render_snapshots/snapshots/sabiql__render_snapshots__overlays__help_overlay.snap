@@ -12,11 +12,9 @@ expression: output
 │                        │                                                                                                                ┃│                        │
 │                        │▸ Current: Explorer Pane                                                                                        ┃│                        │
 │                        │  1 / 2 / 3                            Switch pane focus                                                        ┃│                        │
-│                        │  Enter                                Select table                                                             ┃│                        │
-│                        │  Esc                                  Cancel                                                                   ┃│                        │
 │                        │  Ctrl+P                               Open Table Picker                                                        ┃│                        │
-│                        │  s                                    Open SQL Editor                                                          ││                        │
-│                        │  e                                    Open ER Diagram                                                          ││                        │
+│                        │  s                                    Open SQL Editor                                                          ┃│                        │
+│                        │  e                                    Open ER Diagram                                                          ┃│                        │
 │                        │  c                                    Open Connection Selector                                                 ││                        │
 │                        │  Ctrl+O                               Open Query History                                                       ││                        │
 │                        │                                                                                                                ││                        │
@@ -26,10 +24,10 @@ expression: output
 │                        │  ,                                    Open Settings                                                            ││                        │
 │                        │  :                                    Enter command line                                                       ││                        │
 │                        │  F1                                   Open Command Palette                                                     ││                        │
-│                        │  f                                    Toggle Focus mode                                                        ││────────────────────────┘
-│                        │  Ctrl+R                               Enable Read-Only mode                                                    ││────────────────────────┐
-│                        │  f                                    Exit Focus mode                                                          ││                        │
-│                        │  Ctrl+R                               Disable Read-Only mode                                                   ││                        │
+│                        │  f                                    Toggle Focus mode                                                        ││                        │
+│                        │  Ctrl+R                               Enable Read-Only mode                                                    ││                        │
+│                        │  f                                    Exit Focus mode                                                          ││────────────────────────┘
+│                        │  Ctrl+R                               Disable Read-Only mode                                                   ││────────────────────────┐
 │                        │  :quit                                Quit application                                                         ││                        │
 │                        │  :help                                Show help                                                                ││                        │
 │                        │                                                                                                                ││                        │
@@ -44,7 +42,9 @@ expression: output
 │                        │  Enter                                Select table                                                             ││                        │
 │                        │  Esc                                  Cancel                                                                   ││                        │
 │                        │  Enter                                Enter cell selection at the current viewport anchor                      ││                        │
-│                        │  ] / [                                Next/Previous page                                                       ▼│                        │
+│                        │  ] / [                                Next/Previous page                                                       ││                        │
+│                        │  ↓ / ↑ / Ctrl+N / Ctrl+P              Navigate                                                                 ││                        │
+│                        │  j / k / ↓ / ↑ / Ctrl+N / Ctrl+P      Navigate                                                                 ▼│                        │
 │                        │─────────────────────────────────────────────────────────────────────────────────────────────────────────────────│                        │
 │                        │ [BROWSE]                                                                                                        │                        │
 │                        ╰ /: Filter │ Esc/?: Close ───────────────────────────────────────────────────────────────────────────────────────╯                        │

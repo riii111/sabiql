@@ -8,28 +8,26 @@ expression: output
 │  ▦ public.posts                       ││(select a table)                                                                                                          │
 │  ▦ public.comments                    ││                                                                                                                          │
 │                        ╭ Help ───────────────────────────────────────────────────────────────────────────────────────────────────────────╮                        │
-│                        │  Ctrl+E                               Export result to CSV                                                     ▲│                        │
-│                        │  y                                    Copy DDL to clipboard                                                    ││                        │
-│                        │  Esc                                  Cancel                                                                   ││                        │
-│                        │  K                                    Open Row Detail                                                          ││                        │
-│                        │  Y                                    Copy the active cell value to clipboard                                  ││                        │
+│                        │  Y                                    Copy the active cell value to clipboard                                  ▲│                        │
 │                        │  Esc                                  Clear all staged row deletions                                           ││                        │
 │                        │  u                                    Unstage the last staged row deletion                                     ││                        │
 │                        │  Enter                                Open active cell detail                                                  ││                        │
 │                        │  yy                                   Copy the active row values to clipboard (TSV)                            ││                        │
 │                        │  dd                                   Stage the active row for deletion                                        ││                        │
 │                        │  y                                    Copy full JSON                                                           ││                        │
-│                        │                                                                                                                ┃│                        │
-│                        │▸ Editing                                                                                                       ┃│                        │
-│                        │  i                                    Edit active cell                                                         ┃│                        │
+│                        │                                                                                                                ││                        │
+│                        │▸ Editing                                                                                                       ││                        │
+│                        │  Esc                                  Exit cell selection                                                      ││                        │
+│                        │  i                                    Edit active cell                                                         ││                        │
+│                        │  Esc                                  Discard pending draft                                                    ┃│                        │
 │                        │  :w                                   Preview and confirm changes                                              ┃│                        │
 │                        │  Ctrl+A                               Move to line start                                                       ┃│                        │
 │                        │  Ctrl+E                               Move to line end                                                         ┃│                        │
-│                        │  Ctrl+B                               Move left                                                                ││                        │
-│                        │  Ctrl+F                               Move right                                                               ││────────────────────────┘
-│                        │  Ctrl+H                               Delete previous character                                                ││────────────────────────┐
-│                        │  Ctrl+D                               Delete next character                                                    ││                        │
-│                        │  Ctrl+K                               Cut to line end                                                          ││                        │
+│                        │  Ctrl+B                               Move left                                                                ┃│                        │
+│                        │  Ctrl+F                               Move right                                                               ┃│                        │
+│                        │  Ctrl+H                               Delete previous character                                                ││                        │
+│                        │  Ctrl+D                               Delete next character                                                    ││────────────────────────┘
+│                        │  Ctrl+K                               Cut to line end                                                          ││────────────────────────┐
 │                        │  Ctrl+U                               Cut to line start                                                        ││                        │
 │                        │  Ctrl+W                               Cut previous word                                                        ││                        │
 │                        │  Ctrl+Y                               Paste cut text                                                           ││                        │
@@ -44,7 +42,9 @@ expression: output
 │                        │  i                                    Edit custom browser                                                      ││                        │
 │                        │  Enter                                Apply setting                                                            ││                        │
 │                        │  Esc                                  Finish editing                                                           ││                        │
-│                        │  type                                 Edit custom browser                                                      ▼│                        │
+│                        │  type                                 Edit custom browser                                                      ││                        │
+│                        │  Alt+Enter / F5                       Execute query                                                            ││                        │
+│                        │  y                                    Copy query to clipboard                                                  ▼│                        │
 │                        │─────────────────────────────────────────────────────────────────────────────────────────────────────────────────│                        │
 │                        │ [BROWSE]                                                                                                        │                        │
 │                        ╰ /: Filter │ Esc/?: Close ───────────────────────────────────────────────────────────────────────────────────────╯                        │

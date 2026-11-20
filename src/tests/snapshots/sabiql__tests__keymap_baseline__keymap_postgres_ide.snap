@@ -37,8 +37,6 @@ ToggleHelp: '?'
 ToggleReadOnly: 'R'
 footer: T:Tables  f:Focus  r:Reload  s:SQL  e:ER Diagram  c:Connections  R:Read-Only  O:History  ?:Help  ,:Settings  P:Palette  q:Quit
 help: 1 / 2 / 3: Switch pane focus
-help: Enter: Select table
-help: Esc: Cancel
 help: T: Open Table Picker
 help: r: Reload metadata
 help: s: Open SQL Editor
@@ -76,8 +74,6 @@ TextMoveCursor { target: CommandLine, direction: ReadlineWordStart }: ⌥'b'
 TextMoveCursor { target: CommandLine, direction: Right }: ^'f', Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
 TextYank { target: CommandLine }: ^'y'
 footer: Enter:Submit  Esc:Exit
-help: :quit: Quit application
-help: :help: Show help
 help: :sql: Open SQL Editor
 help: :erd: Open ER Diagram
 help: :settings: Open Settings
@@ -158,7 +154,6 @@ footer: type:Filter
 border: ╭ Table Picker ───────────────────────────────────────────────────────────────────────────────────╮
 border: ╰ 0 tables │ Enter: Select │ Esc: Close ──────────────────────────────────────────────────────────╯
 help: Enter: Select table
-help: ↓ / ↑ / Ctrl+N / Ctrl+P: Navigate
 help: type: Type to filter
 help: Esc: Close
 palette: q: Quit application => Quit
@@ -181,7 +176,6 @@ footer:
 border: ╭ Command Palette ────────────────────────────────────────────────────────────────╮
 border: ╰ Enter: Execute │ Esc: Close ────────────────────────────────────────────────────╯
 help: Enter: Execute command
-help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Navigate
 help: Esc: Close
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
@@ -487,7 +481,6 @@ footer:
 border: ╭ Query History ──────────────────────────────────────────────────────────────────────────────────────────────────╮
 border: ╰ 0 entries │ type to filter │ Enter: Select │ Esc: Close ────────────────────────────────────────────────────────╯
 help: Enter: Select query
-help: ↓ / ↑ / Ctrl+N / Ctrl+P: Navigate
 help: type: Type to filter
 help: Esc: Close
 palette: q: Quit application => Quit
@@ -688,7 +681,6 @@ ToggleHelp: '?'
 ToggleReadOnly: 'R'
 footer: T:Tables  f:Focus  r:Reload  s:SQL  e:ER Diagram  c:Connections  R:Read-Only  O:History  Tab/⇧Tab:InsTabs  ?:Help  ,:Settings  P:Palette  q:Quit
 help: 1 / 2 / 3: Switch pane focus
-help: Esc: Cancel
 help: Tab / Shift+Tab: Inspector prev/next tab
 help: T: Open Table Picker
 help: r: Reload metadata
@@ -744,9 +736,7 @@ ToggleHelp: '?'
 ToggleReadOnly: 'R'
 footer: Enter:Select  T:Tables  f:Focus  r:Reload  s:SQL  e:ER Diagram  c:Connections  R:Read-Only  O:History  ?:Help  ,:Settings  P:Palette  q:Quit
 help: 1 / 2 / 3: Switch pane focus
-help: Enter: Enter cell selection at the current viewport anchor
 help: Esc: Cancel
-help: ] / [: Next/Previous page
 help: T: Open Table Picker
 help: r: Reload metadata
 help: s: Open SQL Editor
@@ -798,9 +788,7 @@ ToggleHelp: '?'
 ToggleReadOnly: 'R'
 footer: Enter:Select  c:Connections  ?:Help  ,:Settings  f:Exit Focus  q:Quit
 help: 1 / 2 / 3: Switch pane focus
-help: Enter: Enter cell selection at the current viewport anchor
 help: Esc: Cancel
-help: ] / [: Next/Previous page
 help: T: Open Table Picker
 help: r: Reload metadata
 help: s: Open SQL Editor
@@ -853,8 +841,6 @@ ToggleHelp: '?'
 ToggleReadOnly: 'R'
 footer: T:Tables  f:Focus  r:Reload  s:SQL  e:ER Diagram  c:Connections  R:Read-Write  O:History  ?:Help  ,:Settings  P:Palette  q:Quit
 help: 1 / 2 / 3: Switch pane focus
-help: Enter: Select table
-help: Esc: Cancel
 help: T: Open Table Picker
 help: r: Reload metadata
 help: s: Open SQL Editor
@@ -912,7 +898,6 @@ footer: Enter:Error  T:Tables  f:Focus  r:Reload  s:SQL  e:ER Diagram  c:Connect
 help: Enter: Open connection error details
 help: 1 / 2 / 3: Switch pane focus
 help: Esc: Cancel
-help: ] / [: Next/Previous page
 help: T: Open Table Picker
 help: r: Reload metadata
 help: s: Open SQL Editor
@@ -979,7 +964,6 @@ help: yy: Copy the active row values to clipboard (TSV)
 help: dd: Stage the active row for deletion
 help: K: Open Row Detail
 help: Y: Copy the active cell value to clipboard
-help: ] / [: Next/Previous page
 help: T: Open Table Picker
 help: r: Reload metadata
 help: s: Open SQL Editor
@@ -1044,7 +1028,6 @@ footer: i:Edit  :w:Write  c:Connections  ?:Help  Esc:Discard  q:Quit
 help: 1 / 2 / 3: Switch pane focus
 help: Esc: Discard pending draft
 help: i: Edit active cell
-help: ] / [: Next/Previous page
 help: :w: Preview and confirm changes
 help: T: Open Table Picker
 help: r: Reload metadata
@@ -1110,7 +1093,6 @@ help: 1 / 2 / 3: Switch pane focus
 help: Esc: Exit cell selection
 help: dd: Stage the active row for deletion
 help: u: Unstage the last staged row deletion
-help: ] / [: Next/Previous page
 help: :w: Preview and confirm changes
 help: T: Open Table Picker
 help: r: Reload metadata
@@ -1180,7 +1162,6 @@ help: yy: Copy the active row values to clipboard (TSV)
 help: dd: Stage the active row for deletion
 help: K: Open Row Detail
 help: Y: Copy the active cell value to clipboard
-help: ] / [: Next/Previous page
 help: T: Open Table Picker
 help: r: Reload metadata
 help: s: Open SQL Editor
@@ -1249,7 +1230,6 @@ help: yy: Copy the active row values to clipboard (TSV)
 help: dd: Stage the active row for deletion
 help: K: Open Row Detail
 help: Y: Copy the active cell value to clipboard
-help: ] / [: Next/Previous page
 help: T: Open Table Picker
 help: r: Reload metadata
 help: s: Open SQL Editor
@@ -1534,7 +1514,6 @@ border: ╭ SQL Editor ── [SQL] [Plan] [Compare] ─────────
 border: ╰ Esc: Cancel ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 help: Enter: Execute the confirmed statement
 help: Esc: Cancel and return to editor
-help: ↓ / ↑: Scroll confirmation
 help: type: Type confirmation name
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
@@ -1576,7 +1555,6 @@ border: ╭ SQL Editor ── [SQL] [Plan] [Compare] ─────────
 border: ╰ Enter: Execute │ Esc: Cancel ────────────────────────────────────────────────────────────────────────────────────────────────────╯
 help: Enter: Execute the confirmed statement
 help: Esc: Cancel and return to editor
-help: ↓ / ↑: Scroll confirmation
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: T: Open Table Picker => OpenModal(TablePicker)

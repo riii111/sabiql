@@ -342,6 +342,12 @@ pub(super) fn indexed_hints(
         .enumerate()
         .filter(|(_, row)| {
             (row.surfaces.contains(&surface) || row.references.contains(&surface))
+                && !(surface == HintSurface::Current
+                    && [HintSurface::Common, HintSurface::Navigation]
+                        .iter()
+                        .any(|section| {
+                            row.surfaces.contains(section) || row.references.contains(section)
+                        }))
                 && row.visible.is_none_or(|visible| visible(context, surface))
         })
         .filter_map(|(row_index, row)| {

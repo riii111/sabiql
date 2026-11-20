@@ -422,6 +422,84 @@ mod tests {
         assert_eq!(&idle.sections()[1..], &pending.sections()[1..]);
     }
 
+    #[test]
+    fn help_origins_exclude_common_and_navigation_from_current() {
+        use crate::ports::inbound::{InputEvent, Key, KeyCombo};
+        use crate::services::AppServices;
+        use crate::update::input::handle_event;
+        use crate::update::reducer::reduce;
+        use std::time::Instant;
+
+        fn press(state: &mut AppState, key: Key) {
+            let action = handle_event(InputEvent::Key(KeyCombo::plain(key)), state);
+            reduce(state, action, Instant::now(), &AppServices::stub());
+        }
+        fn has_row(document: &HelpDocument, section: &str, key: &str, description: &str) -> bool {
+            document
+                .sections()
+                .iter()
+                .find(|group| group.title().starts_with(section))
+                .is_some_and(|group| {
+                    group
+                        .rows()
+                        .iter()
+                        .any(|row| row.key() == key && row.description() == description)
+                })
+        }
+
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            DatabaseType::PostgreSQL,
+            "postgres://test",
+        );
+        press(&mut state, Key::Char('?'));
+        let document = HelpDocument::from_state(&state);
+        for (key, description) in [("Enter", "Select table"), ("Esc", "Cancel")] {
+            assert!(!has_row(&document, "Current:", key, description));
+            assert!(has_row(&document, "Navigation", key, description));
+        }
+
+        press(&mut state, Key::Esc);
+        press(&mut state, Key::Char(':'));
+        for ch in "help".chars() {
+            press(&mut state, Key::Char(ch));
+        }
+        press(&mut state, Key::Enter);
+        assert_eq!(state.input_mode(), InputMode::Help);
+        let document = HelpDocument::from_state(&state);
+        assert_eq!(document.sections()[0].title(), "Current: Command Line");
+        for (key, description) in [(":quit", "Quit application"), (":help", "Show help")] {
+            assert!(!has_row(&document, "Current:", key, description));
+            assert!(has_row(&document, "Common", key, description));
+        }
+
+        press(&mut state, Key::Esc);
+        state.ui.set_focused_pane(FocusedPane::Result);
+        state.result_interaction.activate_cell(0, 0);
+        state
+            .result_interaction
+            .begin_cell_edit(0, 0, "before".to_string());
+        state
+            .result_interaction
+            .replace_cell_edit_draft("after".to_string());
+        press(&mut state, Key::Char('?'));
+        let document = HelpDocument::from_state(&state);
+        assert!(has_row(
+            &document,
+            "Current:",
+            "Esc",
+            "Discard pending draft"
+        ));
+        assert!(has_row(
+            &document,
+            "Editing",
+            "Esc",
+            "Discard pending draft"
+        ));
+    }
+
     fn result_state_with_selected_column(
         database_type: DatabaseType,
         selected_column: usize,

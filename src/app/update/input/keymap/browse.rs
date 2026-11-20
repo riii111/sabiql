@@ -187,7 +187,7 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
                     )
                 });
                 rows.push(Row {
-                    references: &[HintSurface::Navigation],
+                    references: &[HintSurface::Editing],
                     dynamic_label: Some(|context| {
                         if context.browse_draft() {
                             ("Discard", "Discard pending draft")

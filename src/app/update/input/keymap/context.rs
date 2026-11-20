@@ -666,6 +666,8 @@ fn is_dropdown_field(field: ConnectionField) -> bool {
 }
 
 fn browse_scope(state: &AppState) -> Scope {
+    let connected =
+        state.session.dsn().is_some() && state.session.pending_mysql_connection_probe().is_none();
     let pane = if state.ui.is_focus_mode() || state.ui.focused_pane() == FocusedPane::Result {
         if state.result_interaction.selection().mode() == ResultNavMode::CellActive {
             BrowsePane::ResultCell
@@ -680,9 +682,7 @@ fn browse_scope(state: &AppState) -> Scope {
     Scope::Browse(BrowseScope {
         focused: state.ui.is_focus_mode(),
         read_only: state.session.is_read_only(),
-        csv_available: state.session.dsn().is_some()
-            && state.session.pending_mysql_connection_probe().is_none()
-            && state.can_request_csv_export(),
+        csv_available: connected && state.can_request_csv_export(),
         pane,
         connection_error: state.connection_error.has_error(),
         inspector_ddl: state.ui.inspector_tab() == InspectorTab::Ddl,
@@ -692,8 +692,7 @@ fn browse_scope(state: &AppState) -> Scope {
         delete_pending: state.result_interaction.is_delete_operator_pending(),
         selected_row: state.result_interaction.selection().row().is_some(),
         selected_cell: state.result_interaction.selection().cell().is_some(),
-        connected: state.session.dsn().is_some()
-            && state.session.pending_mysql_connection_probe().is_none(),
+        connected,
         can_edit_cell: state.can_edit_selected_cell(),
         can_write: state.can_write_visible_preview(),
         can_paginate: state.query.can_paginate_visible_result(),
