@@ -1,6 +1,7 @@
 mod adapter_mysql;
 mod adapter_postgres;
 pub mod harness;
+mod keymap_baseline;
 
 use clap::Parser;
 
