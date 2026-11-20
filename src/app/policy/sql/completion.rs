@@ -3656,13 +3656,20 @@ mod tests {
         #[test]
         fn non_empty_prefix_shows_columns_first() {
             let e = engine();
-            let table = create_users_table();
+            // "or" also matches the OR and ORDER keywords, so the column comes first only through the prefix boost.
+            let table = Table {
+                schema: "public".to_string(),
+                name: "items".to_string(),
+                columns: vec![test_support::column::test_nullable_column(
+                    "order_id", "integer", 1,
+                )],
+                ..test_support::table::minimal("", "")
+            };
 
-            // "na" prefix: "name" column should come before keywords
-            let candidates = e.get_candidates("SELECT na", 9, None, Some(&table));
+            let candidates = e.get_candidates("SELECT or", 9, None, Some(&table));
 
-            // First candidate should be the "name" column (boosted score)
-            assert_eq!(candidates[0].text, "name");
+            assert!(candidates.iter().any(|c| c.text == "ORDER"));
+            assert_eq!(candidates[0].text, "order_id");
             assert_eq!(
                 candidates[0].kind,
                 CompletionKind::Column,
