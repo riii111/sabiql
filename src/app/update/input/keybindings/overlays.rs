@@ -299,55 +299,6 @@ pub const JSON_DETAIL_ROWS: &[ModeRow] = &[
 ];
 
 // =============================================================================
-// JSON Search (active search input)
-// =============================================================================
-
-pub mod json_search {
-    use crate::update::action::Action;
-    use crate::update::action::{DetailTarget, SearchStep};
-    use crate::update::input::keybindings::{Key, KeyBinding, KeyCombo};
-
-    pub const TYPE_SEARCH: KeyBinding = KeyBinding {
-        key_short: "type",
-        key: "type",
-        desc_short: "Search",
-        description: "Type to search",
-        action: Action::None,
-        combos: &[],
-    };
-
-    pub const CONFIRM: KeyBinding = KeyBinding {
-        key_short: "Enter",
-        key: "Enter",
-        desc_short: "Confirm",
-        description: "Confirm search",
-        action: Action::DetailSearch {
-            target: DetailTarget::JsonDetail,
-            step: SearchStep::Submit,
-        },
-        combos: &[KeyCombo::plain(Key::Enter)],
-    };
-
-    pub const CANCEL: KeyBinding = KeyBinding {
-        key_short: "Esc",
-        key: "Esc",
-        desc_short: "Cancel",
-        description: "Cancel search",
-        action: Action::DetailSearch {
-            target: DetailTarget::JsonDetail,
-            step: SearchStep::Exit,
-        },
-        combos: &[KeyCombo::plain(Key::Esc)],
-    };
-}
-
-pub const JSON_SEARCH_KEYS: &[KeyBinding] = &[
-    json_search::TYPE_SEARCH,
-    json_search::CONFIRM,
-    json_search::CANCEL,
-];
-
-// =============================================================================
 // JSON Edit
 // =============================================================================
 

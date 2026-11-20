@@ -8,6 +8,7 @@ mod connection_selector;
 mod connection_setup;
 mod context;
 mod help;
+mod json_search;
 mod legacy;
 mod model;
 mod pickers;
@@ -28,6 +29,7 @@ pub use connection_selector::{connection_selector_action, connection_selector_hi
 pub use connection_setup::{connection_setup_action, connection_setup_hints};
 pub use context::KeyContext;
 pub use help::{help_action, help_hints};
+pub use json_search::{json_search_action, json_search_hints};
 pub use legacy::{resolve, resolve_mode, resolve_mode_with_policy, resolve_with_policy};
 pub use pickers::{Picker, picker_action, picker_hints};
 pub use row_detail::{row_detail_action, row_detail_hints};

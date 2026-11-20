@@ -1,6 +1,7 @@
 use unicode_width::UnicodeWidthStr;
 
 use crate::model::app_state::AppState;
+use crate::model::browse::json_detail::JsonDetailMode;
 use crate::model::connection::setup::ConnectionField;
 use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
 use crate::model::shared::focused_pane::FocusedPane;
@@ -16,7 +17,8 @@ use crate::update::input::keybindings::*;
 use crate::update::input::keymap::{
     HintSurface, KeyContext, Picker, cell_detail_hints, cell_edit_hints, command_line_hints,
     confirm_hints, connection_error_hints, connection_selector_hints, connection_setup_hints,
-    help_hints, picker_hints, row_detail_hints, settings_hints, sqlite_diagnostics_hints,
+    help_hints, json_search_hints, picker_hints, row_detail_hints, settings_hints,
+    sqlite_diagnostics_hints,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -380,6 +382,15 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
                 .map(|hint| HelpRow::new(hint.key, hint.description))
                 .collect()
         }
+        HelpOrigin::JsonDetail {
+            mode: JsonHelpMode::Search,
+        } => json_search_hints(
+            HintSurface::Current,
+            &key_context.with_json_mode(JsonDetailMode::Searching),
+        )
+        .into_iter()
+        .map(|hint| HelpRow::new(hint.key, hint.description))
+        .collect(),
         HelpOrigin::JsonDetail { mode } => json_current_rows(mode, feature_policy),
         HelpOrigin::JsonEdit => rows_from_mode_rows_if_visible(JSON_EDIT_ROWS, feature_policy),
         HelpOrigin::CellDetail { searching } => cell_detail_hints(
@@ -459,11 +470,17 @@ fn reference_sections(
             search_filter_rows.insert(1, er_row);
         }
     }
-    if feature_policy.is_enabled(json_search::TYPE_SEARCH.feature_requirement()) {
-        search_filter_rows.extend(rows_from_bindings_if_visible(
-            JSON_SEARCH_KEYS,
-            feature_policy,
-        ));
+    if feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail) {
+        search_filter_rows.extend(
+            json_search_hints(
+                HintSurface::SearchFilter,
+                &key_context
+                    .clone()
+                    .with_json_mode(JsonDetailMode::Searching),
+            )
+            .into_iter()
+            .map(|hint| HelpRow::new(hint.key, hint.description)),
+        );
     }
     search_filter_rows.extend(
         cell_detail_hints(
@@ -693,7 +710,7 @@ fn sql_current_rows(
 fn json_current_rows(mode: JsonHelpMode, feature_policy: &FeaturePolicy) -> Vec<HelpRow> {
     match mode {
         JsonHelpMode::Detail => rows_from_mode_rows_if_visible(JSON_DETAIL_ROWS, feature_policy),
-        JsonHelpMode::Search => rows_from_bindings_if_visible(JSON_SEARCH_KEYS, feature_policy),
+        JsonHelpMode::Search => unreachable!(),
         JsonHelpMode::Edit => rows_from_mode_rows_if_visible(JSON_EDIT_ROWS, feature_policy),
     }
 }

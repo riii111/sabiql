@@ -24,9 +24,9 @@ expression: output
 │                        │                                                                                                                ││                        │
 │                        │▸ Search / Filter                                                                                               ┃│                        │
 │                        │  type                                 Type to filter                                                           ┃│                        │
-│                        │  type                                 Type to search                                                           ┃│                        │
 │                        │  Enter                                Confirm search                                                           ┃│                        │
-│                        │  Esc                                  Cancel search                                                            ┃│────────────────────────┘
+│                        │  Esc                                  Cancel search                                                            ┃│                        │
+│                        │  type                                 Type to search                                                           ┃│────────────────────────┘
 │                        │  j / k / ↓ / ↑ / Ctrl+N / Ctrl+P      Scroll down / up                                                         ┃│────────────────────────┐
 │                        │  h / l / ← / →                        Scroll left / right                                                      ┃│                        │
 │                        │  Ctrl+D / Ctrl+U                      Scroll half page down / up                                               ┃│                        │

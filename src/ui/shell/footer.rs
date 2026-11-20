@@ -13,12 +13,13 @@ use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::policy::{FeaturePolicy, FeatureRequirement};
 use crate::app::update::input::keybindings::{
     cell_edit, command_palette as command_palette_key, csv_export, exit_read_only, footer_nav,
-    global, inspector_ddl, json_detail, json_edit, json_search, overlay, query_history, read_only,
+    global, inspector_ddl, json_detail, json_edit, overlay, query_history, read_only,
     result_active, settings, sql_modal, sqlite_diagnostics, table_picker as table_picker_key,
 };
 use crate::app::update::input::keymap::{
     HintSurface, KeyContext, Picker, cell_detail_hints, cell_edit_hints, command_line_hints,
-    connection_error_hints, picker_hints, settings_hints, sqlite_diagnostics_hints,
+    connection_error_hints, json_search_hints, picker_hints, settings_hints,
+    sqlite_diagnostics_hints,
 };
 use crate::primitives::atoms::key_text;
 use crate::primitives::atoms::spinner_char;
@@ -65,6 +66,9 @@ impl Footer {
                 InputMode::Settings => Some(settings_hints(HintSurface::Footer, &context)),
                 InputMode::CommandLine => Some(command_line_hints(HintSurface::Footer, &context)),
                 InputMode::CellEdit => Some(cell_edit_hints(HintSurface::Footer, &context)),
+                InputMode::JsonDetail if state.json_detail.mode() == JsonDetailMode::Searching => {
+                    Some(json_search_hints(HintSurface::Footer, &context))
+                }
                 _ => None,
             };
             let hints = if let Some(ref derived) = derived {
@@ -265,19 +269,13 @@ impl Footer {
             InputMode::JsonDetail => {
                 let feature_policy =
                     FeaturePolicy::new(&state.session.active_engine_feature_profile());
-                if matches!(state.json_detail.mode(), JsonDetailMode::Searching) {
-                    if feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail) {
-                        vec![json_search::TYPE_SEARCH.as_hint()]
-                    } else {
-                        vec![]
-                    }
-                } else if !feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail) {
-                    vec![]
-                } else {
+                if feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail) {
                     vec![
                         json_detail::NEXT_PREV.as_hint(),
                         json_detail::MOVE.as_hint(),
                     ]
+                } else {
+                    vec![]
                 }
             }
             InputMode::JsonEdit => {

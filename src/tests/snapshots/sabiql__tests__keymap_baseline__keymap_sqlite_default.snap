@@ -1545,21 +1545,8 @@ palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
 palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## JsonDetail search
 DetailSearch { target: JsonDetail, step: Exit }: Esc
-TextBackspace { target: JsonSearch }: ^'h'
-TextDelete { target: JsonSearch }: ^'d'
-TextKill { target: JsonSearch, direction: ReadlinePreviousWhitespace }: ^'w'
-TextKill { target: JsonSearch, direction: ReadlineWordEnd }: ⌥'d'
-TextKill { target: JsonSearch, direction: ToLineEnd }: ^'k'
-TextKill { target: JsonSearch, direction: ToLineStart }: ^'u'
-TextMoveCursor { target: JsonSearch, direction: Left }: ^'b'
-TextMoveCursor { target: JsonSearch, direction: LineEnd }: ^'e'
-TextMoveCursor { target: JsonSearch, direction: LineStart }: ^'a'
-TextMoveCursor { target: JsonSearch, direction: ReadlineWordEnd }: ⌥'f'
-TextMoveCursor { target: JsonSearch, direction: ReadlineWordStart }: ⌥'b'
-TextMoveCursor { target: JsonSearch, direction: Right }: ^'f'
-TextYank { target: JsonSearch }: ^'y'
 footer: 
-help: type: Type to search
+help: Esc: Cancel search
 palette: q: Quit application => Quit
 palette: ?: Toggle help => ToggleHelp
 palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)

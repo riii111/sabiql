@@ -336,6 +336,7 @@ mod tests {
     use crate::update::input::keymap::help::{
         EDITING as HELP_EDIT_ROWS, VIEWING as HELP_VIEW_ROWS,
     };
+    use crate::update::input::keymap::json_search::ROWS as JSON_SEARCH_ROWS;
     use crate::update::input::keymap::pickers::{ER_ROWS, HISTORY_ROWS, PALETTE_ROWS, TABLE_ROWS};
     use crate::update::input::keymap::row_detail::ROWS as ROW_DETAIL_ROWS;
     use crate::update::input::keymap::settings::{
@@ -350,6 +351,7 @@ mod tests {
             (&*HISTORY_ROWS, None),
             (&*ER_ROWS, Some(' ')),
             (&*CELL_SEARCH_ROWS, None),
+            (&*JSON_SEARCH_ROWS, None),
             (&*SETTINGS_EDIT_ROWS, None),
             (&*COMMAND_EDIT_ROWS, None),
             (&*CELL_EDIT_ROWS, Some(':')),
@@ -386,6 +388,7 @@ mod tests {
             (&*ROW_DETAIL_ROWS, EngineFeatureProfile::postgres_like()),
             (&*DIAGNOSTIC_ROWS, EngineFeatureProfile::sqlite_like()),
             (&*CELL_SEARCH_ROWS, EngineFeatureProfile::postgres_like()),
+            (&*JSON_SEARCH_ROWS, EngineFeatureProfile::postgres_like()),
             (&*CELL_VIEW_ROWS, EngineFeatureProfile::postgres_like()),
             (&*HELP_VIEW_ROWS, EngineFeatureProfile::postgres_like()),
             (&*HELP_EDIT_ROWS, EngineFeatureProfile::postgres_like()),

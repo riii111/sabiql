@@ -5,7 +5,7 @@ use crate::update::action::{
     Action, DetailTarget, InputTarget, ModalKind, ScrollTarget, SearchStep,
 };
 
-use super::common::text_field;
+use super::common::detail_search;
 use super::model::{Binding, Row, hints, resolve};
 use super::scroll::{ScrollOptions, scroll_rows};
 use super::{Hint, HintSurface, KeyContext};
@@ -90,57 +90,11 @@ pub(super) static VIEWING: LazyLock<Vec<Row>> = LazyLock::new(|| {
 });
 
 pub(super) static SEARCHING: LazyLock<Vec<Row>> = LazyLock::new(|| {
-    let target = DetailTarget::CellDetail;
-    let input = InputTarget::CellDetailSearch;
-    let mut rows = vec![
-        Row {
-            bindings: vec![Binding::action(
-                Action::DetailSearch {
-                    target,
-                    step: SearchStep::Submit,
-                },
-                &[KeyCombo::plain(Key::Enter)],
-            )],
-            short: "Confirm",
-            description: "Confirm search",
-            visible: None,
-            surfaces: &[
-                HintSurface::Border,
-                HintSurface::Current,
-                HintSurface::SearchFilter,
-            ],
-        },
-        Row {
-            bindings: vec![Binding::action(
-                Action::DetailSearch {
-                    target,
-                    step: SearchStep::Exit,
-                },
-                &[KeyCombo::plain(Key::Esc)],
-            )],
-            short: "Cancel",
-            description: "Cancel search",
-            visible: None,
-            surfaces: &[
-                HintSurface::Border,
-                HintSurface::Current,
-                HintSurface::SearchFilter,
-            ],
-        },
-    ];
-    rows.extend(text_field(input, true));
-    rows.push(Row {
-        bindings: vec![Binding::text(input)],
-        short: "Search",
-        description: "Type to search",
-        visible: None,
-        surfaces: &[
-            HintSurface::Footer,
-            HintSurface::Current,
-            HintSurface::SearchFilter,
-        ],
-    });
-    rows
+    detail_search(
+        DetailTarget::CellDetail,
+        InputTarget::CellDetailSearch,
+        false,
+    )
 });
 
 fn rows(context: &KeyContext) -> &'static [Row] {

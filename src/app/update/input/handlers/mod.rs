@@ -10,11 +10,13 @@ mod row_detail;
 mod sql_modal;
 
 use crate::model::app_state::AppState;
+use crate::model::browse::json_detail::JsonDetailMode;
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::FeaturePolicy;
 use crate::ports::inbound::{InputEvent, KeyCombo};
 use crate::update::action::Action;
 use crate::update::input::keybindings::readline_action_for;
+use crate::update::input::keymap::{KeyContext, json_search_action};
 use interaction::{InputInteraction, resolve_input_interaction};
 
 pub fn handle_event(event: InputEvent, state: &AppState) -> Action {
@@ -57,6 +59,9 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
         InputMode::CellEdit => return editors::handle_cell_edit_keys(combo, state),
         InputMode::ConnectionSetup => {
             return connections::handle_connection_setup_keys(combo, state);
+        }
+        InputMode::JsonDetail if state.json_detail.mode() == JsonDetailMode::Searching => {
+            return json_search_action(combo, &KeyContext::from_state(state));
         }
         _ => {}
     }
@@ -323,6 +328,11 @@ mod tests {
                 InputTarget::SqlModalAnalyzeHighRisk
             }
             FormSurface::JsonSearch => {
+                use crate::update::test_fixtures;
+                test_fixtures::activate_postgres_connection(
+                    &mut state,
+                    "postgres://localhost/test",
+                );
                 state.modal.set_mode(InputMode::JsonDetail);
                 state.json_detail.enter_search();
                 InputTarget::JsonSearch
@@ -364,6 +374,25 @@ mod tests {
                 target: actual_target,
                 direction: CursorMove::LineStart,
             } if actual_target == target
+        ));
+    }
+
+    #[test]
+    fn unavailable_json_search_keeps_only_exit() {
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::JsonDetail);
+        state.json_detail.enter_search();
+
+        assert!(matches!(
+            handle_key_event(KeyCombo::ctrl(Key::Char('a')), &state),
+            Action::None
+        ));
+        assert!(matches!(
+            handle_key_event(KeyCombo::plain(Key::Esc), &state),
+            Action::DetailSearch {
+                target: DetailTarget::JsonDetail,
+                step: SearchStep::Exit,
+            }
         ));
     }
 

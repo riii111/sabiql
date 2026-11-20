@@ -9,7 +9,8 @@ use crate::app::model::browse::json_detail::JsonDetailMode;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::shared::render_output::JsonDetailLayout;
 use crate::app::policy::{FeaturePolicy, FeatureRequirement};
-use crate::app::update::input::keybindings::{json_detail, json_edit, json_search};
+use crate::app::update::input::keybindings::{json_detail, json_edit};
+use crate::app::update::input::keymap::{HintSurface, KeyContext, json_search_hints};
 use crate::features::browse::detail_view::render_detail_search;
 use crate::primitives::atoms::scroll_indicator::{
     VerticalScrollParams, clamp_scroll_offset, render_vertical_scroll_indicator_bar,
@@ -46,13 +47,16 @@ impl JsonDetail {
                 state.json_detail.column_name()
             )
         };
-        let hints = if is_editing {
-            vec![json_edit::ESC_NORMAL.as_hint()]
+        let hints: Vec<(String, &'static str)> = if is_editing {
+            vec![(
+                json_edit::ESC_NORMAL.key_short.to_string(),
+                json_edit::ESC_NORMAL.desc_short,
+            )]
         } else if matches!(state.json_detail.mode(), JsonDetailMode::Searching) {
-            vec![
-                json_search::CONFIRM.as_hint(),
-                json_search::CANCEL.as_hint(),
-            ]
+            json_search_hints(HintSurface::Border, &KeyContext::from_state(state))
+                .into_iter()
+                .map(|hint| (hint.key, hint.short))
+                .collect()
         } else {
             let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
             let mut hints = vec![json_detail::YANK.as_hint()];
@@ -61,6 +65,9 @@ impl JsonDetail {
             }
             hints.extend([json_detail::SEARCH.as_hint(), json_detail::CLOSE.as_hint()]);
             hints
+                .into_iter()
+                .map(|(key, desc)| (key.to_string(), desc))
+                .collect()
         };
 
         let (_area, inner) = render_modal(

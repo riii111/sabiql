@@ -242,6 +242,12 @@ impl KeyContext {
         self.scope = Scope::Help { editing };
         self
     }
+
+    pub(crate) fn with_json_mode(mut self, mode: JsonDetailMode) -> Self {
+        self.mode = InputMode::JsonDetail;
+        self.json_mode = mode;
+        self
+    }
 }
 
 fn is_dropdown_field(field: ConnectionField) -> bool {

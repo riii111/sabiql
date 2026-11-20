@@ -1,10 +1,11 @@
+use crate::model::browse::json_detail::JsonDetailMode;
+use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::Prefix;
+use crate::model::shared::settings::KeymapPreset;
 use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
-use crate::update::input::keybindings::{
-    JSON_DETAIL, JSON_EDIT, JSON_SEARCH_KEYS, Key, KeyCombo, Modifiers,
-};
-use crate::update::input::keymap;
+use crate::update::input::keybindings::{JSON_DETAIL, JSON_EDIT, Key, KeyCombo, Modifiers};
+use crate::update::input::keymap::{KeyContext, json_search_action};
 use crate::update::input::vim::{
     JsonDetailVimContext, VimSurfaceContext, action_for_input, action_for_key,
 };
@@ -27,7 +28,10 @@ pub(super) fn handle_json_detail_keys_with_policy(
         interaction,
         InputInteraction::FormEditing(InputTarget::JsonSearch)
     ) {
-        return handle_search_input(combo, feature_policy);
+        let context =
+            KeyContext::for_scope(InputMode::JsonDetail, KeymapPreset::Default, feature_policy)
+                .with_json_mode(JsonDetailMode::Searching);
+        return json_search_action(combo, &context);
     }
 
     if let Some(prefix) = pending_prefix {
@@ -82,43 +86,6 @@ pub(super) fn handle_json_detail_keys_with_policy(
         return action;
     }
     Action::None
-}
-
-fn handle_search_input(combo: KeyCombo, feature_policy: &FeaturePolicy) -> Action {
-    // Command keys (Enter/Esc) resolved from SSOT keybindings
-    if let Some(action) = keymap::resolve_with_policy(&combo, JSON_SEARCH_KEYS, feature_policy) {
-        return action;
-    }
-    // Text input fallthrough
-    match combo.key {
-        Key::Char(c) => Action::TextInput {
-            target: InputTarget::JsonSearch,
-            ch: c,
-        },
-        Key::Backspace => Action::TextBackspace {
-            target: InputTarget::JsonSearch,
-        },
-        Key::Delete => Action::TextDelete {
-            target: InputTarget::JsonSearch,
-        },
-        Key::Left => Action::TextMoveCursor {
-            target: InputTarget::JsonSearch,
-            direction: CursorMove::Left,
-        },
-        Key::Right => Action::TextMoveCursor {
-            target: InputTarget::JsonSearch,
-            direction: CursorMove::Right,
-        },
-        Key::Home => Action::TextMoveCursor {
-            target: InputTarget::JsonSearch,
-            direction: CursorMove::Home,
-        },
-        Key::End => Action::TextMoveCursor {
-            target: InputTarget::JsonSearch,
-            direction: CursorMove::End,
-        },
-        _ => Action::None,
-    }
 }
 
 pub(super) fn handle_json_edit_keys_with_policy(
@@ -477,37 +444,25 @@ mod tests {
         use super::*;
 
         #[test]
-        fn ctrl_n_still_falls_through_to_search_input() {
+        fn ctrl_n_is_not_inserted_in_search_input() {
             let result = handle_json_detail_keys(
                 combo_ctrl(Key::Char('n')),
                 InputInteraction::FormEditing(InputTarget::JsonSearch),
                 None,
             );
 
-            assert!(matches!(
-                result,
-                Action::TextInput {
-                    target: InputTarget::JsonSearch,
-                    ch: 'n',
-                }
-            ));
+            assert!(matches!(result, Action::None));
         }
 
         #[test]
-        fn ctrl_p_still_falls_through_to_search_input() {
+        fn ctrl_p_is_not_inserted_in_search_input() {
             let result = handle_json_detail_keys(
                 combo_ctrl(Key::Char('p')),
                 InputInteraction::FormEditing(InputTarget::JsonSearch),
                 None,
             );
 
-            assert!(matches!(
-                result,
-                Action::TextInput {
-                    target: InputTarget::JsonSearch,
-                    ch: 'p',
-                }
-            ));
+            assert!(matches!(result, Action::None));
         }
 
         #[test]

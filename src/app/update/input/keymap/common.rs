@@ -6,7 +6,8 @@ use crate::model::shared::settings::KeymapPreset;
 use crate::policy::FeaturePolicy;
 use crate::ports::inbound::{Key, KeyCombo};
 use crate::update::action::{
-    Action, CursorMove, InputTarget, ListMotion, ListTarget, TextKillDirection,
+    Action, CursorMove, DetailTarget, InputTarget, ListMotion, ListTarget, SearchStep,
+    TextKillDirection,
 };
 
 use super::model::{Binding, Row, resolve};
@@ -61,6 +62,66 @@ pub(super) fn text_field(target: InputTarget, shift_keys: bool) -> Vec<Row> {
 
 pub(super) fn text_field_any_modifiers(target: InputTarget) -> Vec<Row> {
     text_field_with(target, KeyModifiers::Any)
+}
+
+pub(super) fn detail_search(
+    target: DetailTarget,
+    input: InputTarget,
+    any_modifiers: bool,
+) -> Vec<Row> {
+    let mut rows = vec![
+        Row {
+            bindings: vec![Binding::action(
+                Action::DetailSearch {
+                    target,
+                    step: SearchStep::Submit,
+                },
+                &[KeyCombo::plain(Key::Enter)],
+            )],
+            short: "Confirm",
+            description: "Confirm search",
+            visible: None,
+            surfaces: &[
+                HintSurface::Border,
+                HintSurface::Current,
+                HintSurface::SearchFilter,
+            ],
+        },
+        Row {
+            bindings: vec![Binding::action(
+                Action::DetailSearch {
+                    target,
+                    step: SearchStep::Exit,
+                },
+                &[KeyCombo::plain(Key::Esc)],
+            )],
+            short: "Cancel",
+            description: "Cancel search",
+            visible: None,
+            surfaces: &[
+                HintSurface::Border,
+                HintSurface::Current,
+                HintSurface::SearchFilter,
+            ],
+        },
+    ];
+    rows.extend(if any_modifiers {
+        text_field_any_modifiers(input)
+    } else {
+        text_field(input, true)
+    });
+    rows.push(Row {
+        bindings: vec![Binding::text(input)],
+        short: "Search",
+        description: "Type to search",
+        visible: None,
+        surfaces: &[
+            HintSurface::Footer,
+            HintSurface::Current,
+            HintSurface::SearchFilter,
+        ],
+    });
+    rows
 }
 
 pub(super) fn conditional_text_field(
