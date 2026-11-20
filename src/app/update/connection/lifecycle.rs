@@ -236,7 +236,6 @@ mod tests {
     use crate::update::action::Action;
     use crate::update::reducer::reduce as reduce_app;
     use crate::update::reducer::route;
-    use crate::update::test_fixtures;
 
     fn reduce(state: &mut AppState, action: &Action) -> Vec<Effect> {
         route(
@@ -2408,19 +2407,6 @@ mod tests {
             reduce(&mut state, &action);
 
             assert!(!state.session.is_read_only());
-        }
-
-        #[test]
-        fn clears_completion_cache_on_switch() {
-            let mut state = AppState::new("test".to_string());
-            let new_id = ConnectionId::new();
-
-            let action = create_postgres_switch_action(&new_id, "any_db");
-            test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
-
-            reduce(&mut state, &action);
-
-            assert!(!state.table_detail_cache.contains("public.cached"));
         }
     }
 }

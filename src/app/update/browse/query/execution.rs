@@ -1581,34 +1581,6 @@ mod tests {
         }
 
         #[test]
-        fn ddl_emits_cache_invalidate_and_fetch_metadata() {
-            let mut state = state_with_table("public", "users");
-            let action = query_completed_action(
-                &mut state,
-                adhoc_result_with_tag(CommandTag::Create("TABLE".to_string())),
-                0,
-                None,
-            );
-
-            update_test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
-
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
-
-            assert!(matches!(effects[0], Effect::CancelMetadataTasks));
-            assert!(!state.table_detail_cache.contains("public.cached"));
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::FetchMetadata { .. }))
-            );
-            assert!(
-                !effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::ExecutePreview { .. }))
-            );
-        }
-
-        #[test]
         fn ddl_metadata_refresh_invalidates_er_run_for_each_database() {
             for (database_type, dsn) in [
                 (DatabaseType::PostgreSQL, "postgres://localhost/test"),
@@ -1814,14 +1786,22 @@ mod tests {
                 0,
                 None,
             );
+            update_test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
 
             let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
+            assert!(matches!(effects[0], Effect::CancelMetadataTasks));
+            assert!(!state.table_detail_cache.contains("public.cached"));
             assert!(state.table_prefetch.active_prefetch_run_id().is_none());
             assert!(
                 effects
                     .iter()
                     .any(|e| matches!(e, Effect::FetchMetadata { .. }))
+            );
+            assert!(
+                !effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ExecutePreview { .. }))
             );
 
             let metadata = make_metadata(vec![("public", "orders"), ("public", "users")]);

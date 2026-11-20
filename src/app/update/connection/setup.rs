@@ -1130,12 +1130,19 @@ mod tests {
                 mysql_lower_case_table_names: None,
                 metadata: None,
             };
+            test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
             let effects = reduce(&mut state, &action, Instant::now());
 
             assert!(state.session.metadata().is_none());
             assert!(state.session.tables().is_empty());
             assert!(state.query.current_result().is_none());
             assert!(state.session.selected_table_key().is_none());
+            assert!(!state.table_detail_cache.contains("public.cached"));
+            assert_eq!(state.session.dsn(), Some("sqlite:///tmp/new.db"));
+            assert_eq!(
+                state.session.active_database_type(),
+                Some(DatabaseType::SQLite)
+            );
             assert!(state.session.connection_state().is_connecting());
             assert_eq!(state.session.metadata_state(), &MetadataState::Loading);
             test_fixtures::assert_connection_save_fetch_effects(&effects, DatabaseType::SQLite);
@@ -1208,40 +1215,6 @@ mod tests {
             reduce(&mut state, &action, Instant::now());
 
             assert!(!state.connection_caches.contains_key(&saved_id));
-        }
-
-        #[test]
-        fn sqlite_save_completed_fetches_metadata() {
-            let mut state = AppState::new("test".to_string());
-
-            let run_id = state.session.begin_connection_save();
-            let action = Action::ConnectionSaveCompleted {
-                target: ConnectionTarget {
-                    id: ConnectionId::new(),
-                    dsn: "sqlite:///tmp/app.db".to_string(),
-                    name: "app.db".to_string(),
-                    database_type: DatabaseType::SQLite,
-                    database: None,
-                },
-                run_id,
-                mysql_lower_case_table_names: None,
-                metadata: None,
-            };
-            test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
-
-            let effects = reduce(&mut state, &action, Instant::now());
-
-            test_fixtures::assert_connection_save_fetch_effects(&effects, DatabaseType::SQLite);
-            assert!(!state.table_detail_cache.contains("public.cached"));
-            assert_eq!(state.session.dsn(), Some("sqlite:///tmp/app.db"));
-            assert_eq!(
-                state.session.active_database_type(),
-                Some(DatabaseType::SQLite)
-            );
-            assert_eq!(
-                state.session.connection_state(),
-                ConnectionState::Connecting
-            );
         }
 
         #[test]
