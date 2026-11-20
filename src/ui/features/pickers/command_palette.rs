@@ -5,7 +5,7 @@ use ratatui::widgets::{List, ListItem};
 
 use crate::app::model::app_state::AppState;
 use crate::app::update::action::{Action, ModalKind};
-use crate::app::update::input::keymap::{HintSurface, Picker, picker_hints};
+use crate::app::update::input::keymap::{HintSurface, KeyContext, Picker, picker_hints};
 use crate::app::update::input::palette::palette_commands;
 use crate::primitives::atoms::Icon;
 use crate::theme::ThemePalette;
@@ -22,9 +22,13 @@ impl CommandPalette {
             Constraint::Percentage(50),
             " Command Palette ",
             FooterHintBar::new(
-                picker_hints(Picker::CommandPalette, HintSurface::Border)
-                    .into_iter()
-                    .map(|hint| (hint.key, hint.short)),
+                picker_hints(
+                    Picker::CommandPalette,
+                    HintSurface::Border,
+                    &KeyContext::from_state(state),
+                )
+                .into_iter()
+                .map(|hint| (hint.key, hint.short)),
             ),
             theme,
         );

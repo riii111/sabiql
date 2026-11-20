@@ -49,6 +49,9 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
 }
 
 fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
+    if state.input_mode() == InputMode::ErTablePicker {
+        return pickers::handle_er_table_picker_keys(combo, state);
+    }
     let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
     let interaction = resolve_input_interaction(state);
     match interaction {
@@ -68,8 +71,8 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
             editors::handle_command_line_mode_with_policy(combo, &feature_policy)
         }
         InputMode::CellEdit => editors::handle_cell_edit_keys(combo),
-        InputMode::TablePicker => pickers::handle_table_picker_keys(combo),
-        InputMode::CommandPalette => pickers::handle_command_palette_keys(combo),
+        InputMode::TablePicker => pickers::handle_table_picker_keys(combo, state),
+        InputMode::CommandPalette => pickers::handle_command_palette_keys(combo, state),
         InputMode::Settings => pickers::handle_settings_keys(combo, state),
         InputMode::Help => {
             overlays::handle_help_keys_with_policy(combo, interaction, &feature_policy)
@@ -98,7 +101,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
         }
         InputMode::ConnectionSelector => connections::handle_connection_selector_keys(combo),
         InputMode::ErTablePicker => pickers::handle_er_table_picker_keys(combo, state),
-        InputMode::QueryHistoryPicker => pickers::handle_query_history_picker_keys(combo),
+        InputMode::QueryHistoryPicker => pickers::handle_query_history_picker_keys(combo, state),
         InputMode::JsonDetail => json::handle_json_detail_keys_with_policy(
             combo,
             interaction,
@@ -271,6 +274,11 @@ mod tests {
                 InputTarget::Filter
             }
             FormSurface::ErFilter => {
+                use crate::update::test_fixtures;
+                test_fixtures::activate_postgres_connection(
+                    &mut state,
+                    "postgres://localhost/test",
+                );
                 state.modal.set_mode(InputMode::ErTablePicker);
                 InputTarget::ErFilter
             }

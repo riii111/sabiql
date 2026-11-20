@@ -725,29 +725,30 @@ impl Action {
     }
 
     pub fn feature_requirement_for_state(&self, state: &AppState) -> FeatureRequirement {
+        self.feature_requirement_for_context(state.input_mode(), state.json_detail.mode())
+    }
+
+    pub(crate) fn feature_requirement_for_context(
+        &self,
+        mode: InputMode,
+        json_mode: JsonDetailMode,
+    ) -> FeatureRequirement {
         match self {
-            Self::JsonExitEdit if state.input_mode() == InputMode::JsonEdit => {
-                FeatureRequirement::None
-            }
+            Self::JsonExitEdit if mode == InputMode::JsonEdit => FeatureRequirement::None,
             Self::DetailSearch {
                 target: DetailTarget::JsonDetail,
                 step: SearchStep::Exit,
-            } if state.input_mode() == InputMode::JsonDetail
-                && state.json_detail.mode() == JsonDetailMode::Searching =>
-            {
+            } if mode == InputMode::JsonDetail && json_mode == JsonDetailMode::Searching => {
                 FeatureRequirement::None
             }
-            Self::Paste(_) => match state.input_mode() {
+            Self::Paste(_) => match mode {
                 InputMode::ErTablePicker => FeatureRequirement::ErDiagram,
                 InputMode::JsonDetail => FeatureRequirement::JsonDocumentDetail,
                 InputMode::JsonEdit => FeatureRequirement::JsonDocumentEdit,
                 _ => FeatureRequirement::None,
             },
             Self::BeginKeySequence(Prefix::G)
-                if matches!(
-                    state.input_mode(),
-                    InputMode::JsonDetail | InputMode::JsonEdit
-                ) =>
+                if matches!(mode, InputMode::JsonDetail | InputMode::JsonEdit) =>
             {
                 FeatureRequirement::JsonDocumentDetail
             }

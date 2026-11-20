@@ -88,9 +88,6 @@ pub const HELP: ModeBindings = ModeBindings { rows: HELP_ROWS };
 pub const CONNECTION_ERROR: ModeBindings = ModeBindings {
     rows: CONNECTION_ERROR_ROWS,
 };
-pub const ER_PICKER: ModeBindings = ModeBindings {
-    rows: ER_PICKER_ROWS,
-};
 pub const SETTINGS: ModeBindings = ModeBindings {
     rows: SETTINGS_ROWS,
 };
@@ -116,7 +113,6 @@ pub const ROW_DETAIL: ModeBindings = ModeBindings {
 pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("HELP", &HELP),
     ("CONNECTION_ERROR", &CONNECTION_ERROR),
-    ("ER_PICKER", &ER_PICKER),
     ("SETTINGS", &SETTINGS),
     ("CONNECTION_SELECTOR", &CONNECTION_SELECTOR),
     ("JSON_DETAIL", &JSON_DETAIL),
@@ -336,7 +332,6 @@ mod tests {
                 for (name, mb) in ALL_MODE_BINDINGS {
                     check_mode_rows_exec_valid(mb.rows, name);
                 }
-                check_mode_rows_exec_valid(ER_PICKER_ROWS_IDE, "ER_PICKER_ROWS_IDE");
             }
 
             fn check_none_action_entries_have_no_combos(bindings: &[KeyBinding], name: &str) {
@@ -452,7 +447,6 @@ mod tests {
                 for (name, mb) in ALL_MODE_BINDINGS {
                     check_no_duplicate_combos_rows(mb.rows, name);
                 }
-                check_no_duplicate_combos_rows(ER_PICKER_ROWS_IDE, "ER_PICKER_ROWS_IDE");
             }
         }
 
@@ -482,40 +476,6 @@ mod tests {
                         }
                     }
                 }
-            }
-
-            fn check_no_plain_char_in_filter_mode_rows(
-                rows: &[ModeRow],
-                name: &str,
-                allowed_chars: &[char],
-            ) {
-                let no_mods = Modifiers::empty();
-                for row in rows {
-                    for eb in row.bindings {
-                        for combo in eb.combos {
-                            if combo.modifiers == no_mods
-                                && let Key::Char(c) = combo.key
-                            {
-                                assert!(
-                                    allowed_chars.contains(&c),
-                                    "{name}: executable entry {:?} has plain Char({c:?}) combo \
-                                 which would shadow filter input",
-                                    eb.action
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-
-            #[test]
-            fn er_picker_has_no_plain_char_combos() {
-                check_no_plain_char_in_filter_mode_rows(ER_PICKER_ROWS, "ER_PICKER_ROWS", &[' ']);
-                check_no_plain_char_in_filter_mode_rows(
-                    ER_PICKER_ROWS_IDE,
-                    "ER_PICKER_ROWS_IDE",
-                    &[' '],
-                );
             }
 
             #[test]

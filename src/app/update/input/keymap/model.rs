@@ -4,7 +4,7 @@ use crate::model::shared::settings::KeymapPreset;
 use crate::ports::inbound::{Key, KeyCombo, Modifiers};
 use crate::update::action::{Action, InputTarget};
 
-use super::{Hint, HintSurface};
+use super::{Hint, HintSurface, KeyContext};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Trigger {
@@ -56,27 +56,38 @@ impl Binding {
             _ => &self.triggers,
         }
     }
+
+    fn enabled(&self, context: &KeyContext) -> bool {
+        match &self.output {
+            Output::Action(action) => context.allows(action),
+            Output::Text(target) => context.allows(&Action::TextInput {
+                target: *target,
+                ch: ' ',
+            }),
+        }
+    }
 }
 
-pub(super) fn resolve(rows: &[Row], combo: KeyCombo, preset: KeymapPreset) -> Option<Action> {
+pub(super) fn resolve(rows: &[Row], combo: KeyCombo, context: &KeyContext) -> Option<Action> {
     rows.iter()
         .flat_map(|row| &row.bindings)
         .find_map(|binding| {
-            binding
-                .triggers(preset)
-                .iter()
-                .any(|trigger| matches_combo(*trigger, combo))
-                .then(|| match binding.output {
-                    Output::Action(ref action) => action.clone(),
-                    Output::Text(target) => match combo.key {
-                        Key::Char(ch) => Action::TextInput { target, ch },
-                        _ => unreachable!(),
-                    },
-                })
+            (binding.enabled(context)
+                && binding
+                    .triggers(context.preset)
+                    .iter()
+                    .any(|trigger| matches_combo(*trigger, combo)))
+            .then(|| match binding.output {
+                Output::Action(ref action) => action.clone(),
+                Output::Text(target) => match combo.key {
+                    Key::Char(ch) => Action::TextInput { target, ch },
+                    _ => unreachable!(),
+                },
+            })
         })
 }
 
-pub(super) fn hints(rows: &[Row], preset: KeymapPreset, surface: HintSurface) -> Vec<Hint> {
+pub(super) fn hints(rows: &[Row], context: &KeyContext, surface: HintSurface) -> Vec<Hint> {
     rows.iter()
         .enumerate()
         .filter(|(_, row)| row.surfaces.contains(&surface))
@@ -85,13 +96,14 @@ pub(super) fn hints(rows: &[Row], preset: KeymapPreset, surface: HintSurface) ->
                 .bindings
                 .iter()
                 .enumerate()
+                .filter(|(_, binding)| binding.enabled(context))
                 .map(|(binding_index, binding)| {
                     binding
-                        .triggers(preset)
+                        .triggers(context.preset)
                         .iter()
                         .copied()
                         .filter(|trigger| {
-                            winner(rows, preset, *trigger) == Some((row_index, binding_index))
+                            winner(rows, context, *trigger) == Some((row_index, binding_index))
                         })
                         .collect()
                 })
@@ -100,7 +112,10 @@ pub(super) fn hints(rows: &[Row], preset: KeymapPreset, surface: HintSurface) ->
             if winning.is_empty() {
                 return None;
             }
-            let key = if matches!(surface, HintSurface::Current | HintSurface::Reference) {
+            let key = if matches!(
+                surface,
+                HintSurface::Current | HintSurface::SearchFilter | HintSurface::Advanced
+            ) {
                 long_name(&winning)
             } else {
                 short_name(&winning)
@@ -114,12 +129,14 @@ pub(super) fn hints(rows: &[Row], preset: KeymapPreset, surface: HintSurface) ->
         .collect()
 }
 
-fn winner(rows: &[Row], preset: KeymapPreset, trigger: Trigger) -> Option<(usize, usize)> {
+fn winner(rows: &[Row], context: &KeyContext, trigger: Trigger) -> Option<(usize, usize)> {
     rows.iter().enumerate().find_map(|(row_index, row)| {
         row.bindings
             .iter()
             .enumerate()
-            .find(|(_, binding)| binding.triggers(preset).contains(&trigger))
+            .find(|(_, binding)| {
+                binding.enabled(context) && binding.triggers(context.preset).contains(&trigger)
+            })
             .map(|(binding_index, _)| (row_index, binding_index))
     })
 }
@@ -206,11 +223,18 @@ fn name(trigger: Trigger, long: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::update::input::keymap::pickers::{HISTORY_ROWS, PALETTE_ROWS, TABLE_ROWS};
+    use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
+    use crate::model::shared::input_mode::InputMode;
+    use crate::policy::FeaturePolicy;
+    use crate::update::input::keymap::pickers::{ER_ROWS, HISTORY_ROWS, PALETTE_ROWS, TABLE_ROWS};
 
     #[test]
     fn text_pickers_have_unique_keys_and_keep_plain_text_unclaimed() {
-        for rows in [&*TABLE_ROWS, &*HISTORY_ROWS] {
+        for (rows, allowed_char) in [
+            (&*TABLE_ROWS, None),
+            (&*HISTORY_ROWS, None),
+            (&*ER_ROWS, Some(' ')),
+        ] {
             for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
                 let mut seen = Vec::new();
                 for row in rows {
@@ -218,13 +242,13 @@ mod tests {
                         for trigger in binding.triggers(preset) {
                             assert!(!seen.contains(trigger));
                             seen.push(*trigger);
-                            assert!(!matches!(
-                                trigger,
-                                Trigger::Key(KeyCombo {
-                                    key: Key::Char(_),
-                                    modifiers: Modifiers::NONE
-                                })
-                            ));
+                            if let Trigger::Key(KeyCombo {
+                                key: Key::Char(ch),
+                                modifiers: Modifiers::NONE,
+                            }) = trigger
+                            {
+                                assert_eq!(Some(*ch), allowed_char);
+                            }
                         }
                     }
                 }
@@ -234,8 +258,13 @@ mod tests {
 
     #[test]
     fn visible_picker_bindings_resolve_to_the_same_actions() {
-        for rows in [&*TABLE_ROWS, &*HISTORY_ROWS, &*PALETTE_ROWS] {
+        for rows in [&*TABLE_ROWS, &*HISTORY_ROWS, &*PALETTE_ROWS, &*ER_ROWS] {
             for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
+                let context = KeyContext::for_scope(
+                    InputMode::TablePicker,
+                    preset,
+                    &FeaturePolicy::new(&EngineFeatureProfile::postgres_like()),
+                );
                 for (row_index, row) in rows
                     .iter()
                     .enumerate()
@@ -244,14 +273,14 @@ mod tests {
                     for (binding_index, binding) in row.bindings.iter().enumerate() {
                         for trigger in binding.triggers(preset) {
                             assert_eq!(
-                                winner(rows, preset, *trigger),
+                                winner(rows, &context, *trigger),
                                 Some((row_index, binding_index))
                             );
                             let combo = match trigger {
                                 Trigger::Key(combo) => *combo,
                                 Trigger::Text => KeyCombo::plain(Key::Char('x')),
                             };
-                            let actual = resolve(rows, combo, preset).unwrap();
+                            let actual = resolve(rows, combo, &context).unwrap();
                             match &binding.output {
                                 Output::Action(expected) => {
                                     assert_eq!(format!("{actual:?}"), format!("{expected:?}"));

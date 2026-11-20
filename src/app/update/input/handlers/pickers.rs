@@ -1,16 +1,18 @@
 use crate::model::app_state::AppState;
-use crate::policy::FeaturePolicy;
 use crate::update::action::{Action, InputTarget};
-use crate::update::input::keybindings::{self, Key, KeyCombo, Modifiers};
-use crate::update::input::keymap::resolve_mode_with_policy;
-use crate::update::input::keymap::{Picker, picker_action};
+use crate::update::input::keybindings::{self, Key, KeyCombo};
+use crate::update::input::keymap::{KeyContext, Picker, picker_action};
 
-pub(super) fn handle_table_picker_keys(combo: KeyCombo) -> Action {
-    picker_action(Picker::Table, combo)
+pub(super) fn handle_table_picker_keys(combo: KeyCombo, state: &AppState) -> Action {
+    picker_action(Picker::Table, combo, &KeyContext::from_state(state))
 }
 
-pub(super) fn handle_command_palette_keys(combo: KeyCombo) -> Action {
-    picker_action(Picker::CommandPalette, combo)
+pub(super) fn handle_command_palette_keys(combo: KeyCombo, state: &AppState) -> Action {
+    picker_action(
+        Picker::CommandPalette,
+        combo,
+        &KeyContext::from_state(state),
+    )
 }
 
 pub(super) fn handle_settings_keys(combo: KeyCombo, state: &AppState) -> Action {
@@ -58,28 +60,12 @@ fn handle_custom_browser_edit_keys(combo: KeyCombo) -> Action {
     }
 }
 
-pub(super) fn handle_query_history_picker_keys(combo: KeyCombo) -> Action {
-    picker_action(Picker::QueryHistory, combo)
+pub(super) fn handle_query_history_picker_keys(combo: KeyCombo, state: &AppState) -> Action {
+    picker_action(Picker::QueryHistory, combo, &KeyContext::from_state(state))
 }
 
 pub(super) fn handle_er_table_picker_keys(combo: KeyCombo, state: &AppState) -> Action {
-    let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
-    if let Some(action) = resolve_mode_with_policy(
-        &combo,
-        keybindings::er_picker_rows(state.settings.saved_keymap_preset()),
-        &feature_policy,
-    ) {
-        return action;
-    }
-    let ctrl = combo.modifiers.contains(Modifiers::CTRL);
-    let alt = combo.modifiers.contains(Modifiers::ALT);
-    match combo.key {
-        Key::Char(c) if !ctrl || alt => Action::TextInput {
-            target: InputTarget::ErFilter,
-            ch: c,
-        },
-        _ => Action::None,
-    }
+    picker_action(Picker::Er, combo, &KeyContext::from_state(state))
 }
 
 #[cfg(test)]
@@ -126,7 +112,7 @@ mod tests {
         #[case(Key::Char('日'), Expected::FilterInput('日'))]
         #[case(Key::Tab, Expected::None)]
         fn handles_table_picker_keys(#[case] code: Key, #[case] expected: Expected) {
-            let result = handle_table_picker_keys(combo(code));
+            let result = handle_table_picker_keys(combo(code), &AppState::new("test".to_string()));
 
             match expected {
                 Expected::Close => {
@@ -170,7 +156,8 @@ mod tests {
         #[case(Key::Char('p'), ListMotion::Previous)]
         #[case(Key::Char('n'), ListMotion::Next)]
         fn ctrl_alias_selects_expected_motion(#[case] key: Key, #[case] motion: ListMotion) {
-            let result = handle_table_picker_keys(combo_ctrl(key));
+            let result =
+                handle_table_picker_keys(combo_ctrl(key), &AppState::new("test".to_string()));
 
             assert!(matches!(
                 result,
@@ -200,7 +187,8 @@ mod tests {
         #[case(Key::Down, Expected::SelectNext)]
         #[case(Key::Char('a'), Expected::None)]
         fn handles_command_palette_keys(#[case] code: Key, #[case] expected: Expected) {
-            let result = handle_command_palette_keys(combo(code));
+            let result =
+                handle_command_palette_keys(combo(code), &AppState::new("test".to_string()));
 
             match expected {
                 Expected::Close => assert!(matches!(
@@ -324,14 +312,18 @@ mod tests {
         #[case(Key::Backspace, Action::TextBackspace { target: InputTarget::QueryHistoryFilter })]
         #[case(Key::Esc, Action::CloseModal(ModalKind::QueryHistoryPicker))]
         fn picker_keys(#[case] key: Key, #[case] expected: Action) {
-            let result = handle_query_history_picker_keys(combo(key));
+            let result =
+                handle_query_history_picker_keys(combo(key), &AppState::new("test".to_string()));
 
             assert_eq!(format!("{result:?}"), format!("{expected:?}"));
         }
 
         #[test]
         fn char_falls_through_to_filter_input() {
-            let result = handle_query_history_picker_keys(combo(Key::Char('a')));
+            let result = handle_query_history_picker_keys(
+                combo(Key::Char('a')),
+                &AppState::new("test".to_string()),
+            );
 
             assert!(matches!(
                 result,
@@ -346,7 +338,10 @@ mod tests {
         #[case(Key::Char('p'), ListMotion::Previous)]
         #[case(Key::Char('n'), ListMotion::Next)]
         fn ctrl_alias_selects_expected_motion(#[case] key: Key, #[case] motion: ListMotion) {
-            let result = handle_query_history_picker_keys(combo_ctrl(key));
+            let result = handle_query_history_picker_keys(
+                combo_ctrl(key),
+                &AppState::new("test".to_string()),
+            );
 
             assert!(matches!(
                 result,

@@ -44,7 +44,7 @@ expression: output
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
-│                                ╰ 2/3 selected │ Space: Select │ ⌥A: All │ Enter: Generate │ Esc: Close ──────────────────────────╯                                │
+│                                ╰ 2/3 selected │ Enter: Generate │ Space: Select │ ⌥A: All │ Esc: Close ──────────────────────────╯                                │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

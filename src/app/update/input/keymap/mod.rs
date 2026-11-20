@@ -1,4 +1,5 @@
 mod common;
+mod context;
 mod legacy;
 mod model;
 mod pickers;
@@ -6,6 +7,7 @@ mod pickers;
 use crate::ports::inbound::KeyCombo;
 use crate::update::action::{Action, InputTarget};
 
+pub use context::KeyContext;
 pub use legacy::{resolve, resolve_mode, resolve_mode_with_policy, resolve_with_policy};
 pub use pickers::{Picker, picker_action, picker_hints};
 
@@ -14,7 +16,8 @@ pub enum HintSurface {
     Footer,
     Border,
     Current,
-    Reference,
+    SearchFilter,
+    Advanced,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

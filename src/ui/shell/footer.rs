@@ -13,11 +13,11 @@ use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::policy::{FeaturePolicy, FeatureRequirement};
 use crate::app::update::input::keybindings::{
     cell_detail, cell_detail_search, cell_edit, command_palette as command_palette_key,
-    connection_error, csv_export, er_picker, exit_read_only, footer_nav, global, inspector_ddl,
-    json_detail, json_edit, json_search, overlay, query_history, read_only, result_active,
-    settings, sql_modal, sqlite_diagnostics, table_picker as table_picker_key,
+    connection_error, csv_export, exit_read_only, footer_nav, global, inspector_ddl, json_detail,
+    json_edit, json_search, overlay, query_history, read_only, result_active, settings, sql_modal,
+    sqlite_diagnostics, table_picker as table_picker_key,
 };
-use crate::app::update::input::keymap::{HintSurface, Picker, picker_hints};
+use crate::app::update::input::keymap::{HintSurface, KeyContext, Picker, picker_hints};
 use crate::primitives::atoms::key_text;
 use crate::primitives::atoms::spinner_char;
 use crate::primitives::atoms::status_message::{MessageType, StatusMessage};
@@ -45,8 +45,15 @@ impl Footer {
             frame.render_widget(Paragraph::new(line).style(base_style), area);
         } else {
             // Show hints with optional inline success message
-            let picker_hints = picker_hints(Picker::Table, HintSurface::Footer);
-            let hints = if state.input_mode() == InputMode::TablePicker {
+            let picker = match state.input_mode() {
+                InputMode::TablePicker => Some(Picker::Table),
+                InputMode::ErTablePicker => Some(Picker::Er),
+                _ => None,
+            };
+            let picker_hints = picker.map_or_else(Vec::new, |picker| {
+                picker_hints(picker, HintSurface::Footer, &KeyContext::from_state(state))
+            });
+            let hints = if picker.is_some() {
                 picker_hints
                     .iter()
                     .map(|hint| (hint.key.as_str(), hint.short))
@@ -238,7 +245,8 @@ impl Footer {
             | InputMode::ConnectionSetup
             | InputMode::RowDetail
             | InputMode::ConnectionSelector
-            | InputMode::QueryHistoryPicker => vec![],
+            | InputMode::QueryHistoryPicker
+            | InputMode::ErTablePicker => vec![],
             InputMode::Settings => {
                 if state.settings.is_editing_custom_er_browser() {
                     vec![]
@@ -271,15 +279,6 @@ impl Footer {
                     FeaturePolicy::new(&state.session.active_engine_feature_profile());
                 if feature_policy.is_enabled(FeatureRequirement::SqliteDiagnostics) {
                     vec![sqlite_diagnostics::HELP.as_hint()]
-                } else {
-                    vec![]
-                }
-            }
-            InputMode::ErTablePicker => {
-                let feature_policy =
-                    FeaturePolicy::new(&state.session.active_engine_feature_profile());
-                if feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
-                    vec![er_picker::TYPE_FILTER.as_hint()]
                 } else {
                     vec![]
                 }
@@ -363,7 +362,7 @@ mod tests {
     use crate::app::model::shared::ui_state::FocusMode;
     use crate::app::ports::outbound::DbOperationError;
     use crate::app::update::input::keybindings::{
-        connection_error, er_picker, global, json_detail, result_active, settings, sql_modal,
+        connection_error, global, json_detail, result_active, settings, sql_modal,
     };
     use rstest::rstest;
 
@@ -563,23 +562,6 @@ mod tests {
 
         state.modal.set_mode(InputMode::QueryHistoryPicker);
         assert!(Footer::get_context_hints(&state).is_empty());
-    }
-
-    #[test]
-    fn er_table_picker_footer_keeps_filter_hint() {
-        let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
-            &ConnectionId::new(),
-            "database",
-            DatabaseType::PostgreSQL,
-            "test://database",
-        );
-        state.modal.set_mode(InputMode::ErTablePicker);
-
-        assert_eq!(
-            Footer::get_context_hints(&state),
-            vec![er_picker::TYPE_FILTER.as_hint()]
-        );
     }
 
     #[rstest]

@@ -44,7 +44,7 @@ expression: output
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
-│                                ╰ 3/3 selected │ Space: Select │ ⌥A: All │ Enter: Generate │ Esc: Close ──────────────────────────╯                                │
+│                                ╰ 3/3 selected │ Enter: Generate │ Space: Select │ ⌥A: All │ Esc: Close ──────────────────────────╯                                │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
