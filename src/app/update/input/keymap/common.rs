@@ -2,6 +2,7 @@ use std::sync::LazyLock;
 
 use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
 use crate::model::shared::input_mode::InputMode;
+use crate::model::shared::key_sequence::Prefix;
 use crate::model::shared::settings::KeymapPreset;
 use crate::policy::FeaturePolicy;
 use crate::ports::inbound::{Key, KeyCombo};
@@ -135,6 +136,103 @@ pub(super) fn detail_search(
         ],
     });
     rows
+}
+
+pub(super) fn document_navigation(target: InputTarget, shifted_prefix: bool) -> Vec<Row> {
+    let movement = |direction, combos: &[KeyCombo]| {
+        Binding::action(Action::TextMoveCursor { target, direction }, combos)
+    };
+    vec![
+        Row {
+            bindings: vec![
+                movement(
+                    CursorMove::Left,
+                    &[KeyCombo::plain(Key::Char('h')), KeyCombo::plain(Key::Left)],
+                ),
+                movement(
+                    CursorMove::Right,
+                    &[KeyCombo::plain(Key::Char('l')), KeyCombo::plain(Key::Right)],
+                ),
+            ],
+            short: "Left/Right",
+            description: "Move cursor left / right",
+            visible: None,
+            surfaces: &[
+                HintSurface::Footer,
+                HintSurface::Current,
+                HintSurface::Advanced,
+            ],
+        },
+        Row {
+            bindings: vec![
+                movement(
+                    CursorMove::Down,
+                    &[
+                        KeyCombo::plain(Key::Char('j')),
+                        KeyCombo::plain(Key::Down),
+                        KeyCombo::ctrl(Key::Char('n')),
+                    ],
+                ),
+                movement(
+                    CursorMove::Up,
+                    &[
+                        KeyCombo::plain(Key::Char('k')),
+                        KeyCombo::plain(Key::Up),
+                        KeyCombo::ctrl(Key::Char('p')),
+                    ],
+                ),
+            ],
+            short: "Down/Up",
+            description: "Move cursor down / up",
+            visible: None,
+            surfaces: &[
+                HintSurface::Footer,
+                HintSurface::Current,
+                HintSurface::Advanced,
+            ],
+        },
+        Row {
+            bindings: vec![
+                movement(CursorMove::LineStart, &[KeyCombo::plain(Key::Char('0'))])
+                    .with_no_ctrl_alt(Key::Home),
+                movement(CursorMove::LineEnd, &[KeyCombo::plain(Key::Char('$'))])
+                    .with_no_ctrl_alt(Key::End),
+                movement(CursorMove::WordForward, &[KeyCombo::plain(Key::Char('w'))]),
+                movement(CursorMove::WordBackward, &[KeyCombo::plain(Key::Char('b'))]),
+            ],
+            short: "Jump",
+            description: "Move by word or line boundary",
+            visible: None,
+            surfaces: &[HintSurface::Current, HintSurface::Advanced],
+        },
+        Row {
+            bindings: vec![
+                Binding::sequence(
+                    Action::TextMoveCursor {
+                        target,
+                        direction: CursorMove::FirstLine,
+                    },
+                    Prefix::G,
+                    KeyCombo::plain(Key::Char('g')),
+                    shifted_prefix,
+                ),
+                movement(CursorMove::LastLine, &[KeyCombo::plain(Key::Char('G'))]),
+                movement(CursorMove::ViewportTop, &[KeyCombo::plain(Key::Char('H'))]),
+                movement(
+                    CursorMove::ViewportMiddle,
+                    &[KeyCombo::plain(Key::Char('M'))],
+                ),
+                movement(
+                    CursorMove::ViewportBottom,
+                    &[KeyCombo::plain(Key::Char('L'))],
+                ),
+            ],
+            short: "View",
+            description: "Jump by buffer or viewport",
+            visible: None,
+            surfaces: &[HintSurface::Current, HintSurface::Advanced],
+        },
+    ]
 }
 
 pub(super) fn conditional_text_field(

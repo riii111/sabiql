@@ -1,5 +1,6 @@
 use std::fmt::Write;
 
+use crate::model::shared::key_sequence::Prefix;
 use crate::model::shared::settings::KeymapPreset;
 use crate::ports::inbound::{Key, KeyCombo, Modifiers};
 use crate::update::action::{Action, InputTarget};
@@ -11,6 +12,12 @@ use super::{Hint, HintSurface, KeyContext};
 pub(super) enum Trigger {
     Key(KeyCombo),
     AnyModifiers(Key),
+    NoCtrlAlt(Key),
+    Sequence {
+        prefix: Prefix,
+        second: KeyCombo,
+        shifted_start: bool,
+    },
     Command {
         name: &'static str,
         aliases: &'static [&'static str],
@@ -86,6 +93,20 @@ impl Binding {
         }
     }
 
+    pub(super) fn no_ctrl_alt(action: Action, key: Key) -> Self {
+        Self {
+            triggers: vec![Trigger::NoCtrlAlt(key)],
+            ide_triggers: None,
+            output: Output::Action(action),
+            condition: None,
+        }
+    }
+
+    pub(super) fn with_no_ctrl_alt(mut self, key: Key) -> Self {
+        self.triggers.push(Trigger::NoCtrlAlt(key));
+        self
+    }
+
     pub(super) fn command(
         command: LineCommand,
         name: &'static str,
@@ -95,6 +116,24 @@ impl Binding {
             triggers: vec![Trigger::Command { name, aliases }],
             ide_triggers: None,
             output: Output::Command(command),
+            condition: None,
+        }
+    }
+
+    pub(super) fn sequence(
+        action: Action,
+        prefix: Prefix,
+        second: KeyCombo,
+        shifted_start: bool,
+    ) -> Self {
+        Self {
+            triggers: vec![Trigger::Sequence {
+                prefix,
+                second,
+                shifted_start,
+            }],
+            ide_triggers: None,
+            output: Output::Action(action),
             condition: None,
         }
     }
@@ -131,6 +170,34 @@ impl Binding {
 }
 
 pub(super) fn resolve(rows: &[Row], combo: KeyCombo, context: &KeyContext) -> Option<Action> {
+    if let Some(pending) = context.pending_prefix()
+        && sequence_bindings(rows, context).next().is_some()
+    {
+        for (binding, trigger) in sequence_bindings(rows, context) {
+            if let Trigger::Sequence { prefix, second, .. } = trigger
+                && prefix == pending
+                && second == combo
+                && let Output::Action(action) = &binding.output
+            {
+                return Some(action.clone());
+            }
+        }
+        return Some(Action::CancelKeySequence);
+    }
+    for (_, trigger) in sequence_bindings(rows, context) {
+        if let Trigger::Sequence {
+            prefix,
+            shifted_start,
+            ..
+        } = trigger
+            && combo.key == Key::Char(prefix_char(prefix))
+            && (combo.modifiers.is_empty()
+                || (shifted_start && combo.modifiers == Modifiers::SHIFT))
+        {
+            let action = Action::BeginKeySequence(prefix);
+            return context.allows(&action).then_some(action);
+        }
+    }
     rows.iter()
         .flat_map(|row| &row.bindings)
         .find_map(|binding| {
@@ -149,6 +216,23 @@ pub(super) fn resolve(rows: &[Row], combo: KeyCombo, context: &KeyContext) -> Op
                 Output::Consume => Action::None,
             })
         })
+}
+
+fn sequence_bindings<'a>(
+    rows: &'a [Row],
+    context: &'a KeyContext,
+) -> impl Iterator<Item = (&'a Binding, Trigger)> {
+    rows.iter()
+        .flat_map(|row| &row.bindings)
+        .filter(|binding| binding.enabled(context))
+        .flat_map(|binding| {
+            binding
+                .triggers(context.preset)
+                .iter()
+                .copied()
+                .map(move |trigger| (binding, trigger))
+        })
+        .filter(|(_, trigger)| matches!(trigger, Trigger::Sequence { .. }))
 }
 
 pub(super) fn resolve_command(rows: &[Row], input: &str) -> Option<LineCommand> {
@@ -206,6 +290,7 @@ pub(super) fn hints(rows: &[Row], context: &KeyContext, surface: HintSurface) ->
                     | HintSurface::ModalBasics
                     | HintSurface::Connections
                     | HintSurface::Editing
+                    | HintSurface::DataActions
             ) {
                 long_name(&winning)
             } else {
@@ -232,13 +317,15 @@ fn winner(rows: &[Row], context: &KeyContext, trigger: Trigger) -> Option<(usize
                         .iter()
                         .any(|candidate| match trigger {
                             Trigger::Key(combo) => matches_combo(*candidate, combo),
-                            Trigger::AnyModifiers(key) => {
+                            Trigger::AnyModifiers(key) | Trigger::NoCtrlAlt(key) => {
                                 matches_combo(*candidate, KeyCombo::plain(key))
                             }
                             Trigger::Text | Trigger::AnyText => {
                                 matches_combo(*candidate, KeyCombo::plain(Key::Char('x')))
                             }
-                            Trigger::Command { .. } => *candidate == trigger,
+                            Trigger::Command { .. } | Trigger::Sequence { .. } => {
+                                *candidate == trigger
+                            }
                         })
             })
             .map(|(binding_index, _)| (row_index, binding_index))
@@ -256,7 +343,10 @@ fn matches_combo(trigger: Trigger, combo: KeyCombo) -> bool {
             key == combo
         }
         Trigger::AnyModifiers(key) => key == combo.key,
-        Trigger::Command { .. } => false,
+        Trigger::NoCtrlAlt(key) => {
+            key == combo.key && !combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT)
+        }
+        Trigger::Sequence { .. } | Trigger::Command { .. } => false,
         Trigger::Text => {
             matches!(combo.key, Key::Char(_))
                 && (!combo.modifiers.contains(Modifiers::CTRL)
@@ -294,7 +384,14 @@ fn long_name(bindings: &[Vec<Trigger>]) -> String {
 fn name(trigger: Trigger, long: bool) -> String {
     let combo = match trigger {
         Trigger::Key(combo) => combo,
-        Trigger::AnyModifiers(key) => KeyCombo::plain(key),
+        Trigger::AnyModifiers(key) | Trigger::NoCtrlAlt(key) => KeyCombo::plain(key),
+        Trigger::Sequence { prefix, second, .. } => {
+            return format!(
+                "{}{}",
+                prefix_char(prefix),
+                name(Trigger::Key(second), long)
+            );
+        }
         Trigger::Command { name, .. } => return format!(":{name}"),
         Trigger::Text | Trigger::AnyText => return "type".to_string(),
     };
@@ -310,7 +407,10 @@ fn name(trigger: Trigger, long: bool) -> String {
     }
     match combo.key {
         Key::Char(' ') => result.push_str("Space"),
-        Key::Char(ch) if !combo.modifiers.is_empty() && ch.is_ascii_lowercase() => {
+        Key::Char(ch)
+            if combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT)
+                && ch.is_ascii_lowercase() =>
+        {
             result.push(ch.to_ascii_uppercase());
         }
         Key::Char(ch) => result.push(ch),
@@ -337,6 +437,13 @@ fn name(trigger: Trigger, long: bool) -> String {
     result
 }
 
+fn prefix_char(prefix: Prefix) -> char {
+    match prefix {
+        Prefix::G => 'g',
+        Prefix::Z => 'z',
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -357,6 +464,7 @@ mod tests {
     };
     use crate::update::input::keymap::json_edit::ROWS as JSON_EDIT_ROWS;
     use crate::update::input::keymap::json_search::ROWS as JSON_SEARCH_ROWS;
+    use crate::update::input::keymap::json_view::ROWS as JSON_VIEW_ROWS;
     use crate::update::input::keymap::pickers::{ER_ROWS, HISTORY_ROWS, PALETTE_ROWS, TABLE_ROWS};
     use crate::update::input::keymap::row_detail::ROWS as ROW_DETAIL_ROWS;
     use crate::update::input::keymap::settings::{
@@ -410,6 +518,7 @@ mod tests {
             (&*CELL_SEARCH_ROWS, EngineFeatureProfile::postgres_like()),
             (&*JSON_SEARCH_ROWS, EngineFeatureProfile::postgres_like()),
             (&*JSON_EDIT_ROWS, EngineFeatureProfile::postgres_like()),
+            (&*JSON_VIEW_ROWS, EngineFeatureProfile::postgres_like()),
             (&*CELL_VIEW_ROWS, EngineFeatureProfile::postgres_like()),
             (&*HELP_VIEW_ROWS, EngineFeatureProfile::postgres_like()),
             (&*HELP_EDIT_ROWS, EngineFeatureProfile::postgres_like()),
@@ -439,14 +548,30 @@ mod tests {
                     .filter(|(_, row)| !row.surfaces.is_empty())
                 {
                     for (binding_index, binding) in row.bindings.iter().enumerate() {
+                        if !binding.enabled(&context) {
+                            continue;
+                        }
                         for trigger in binding.triggers(preset) {
-                            assert_eq!(
-                                winner(rows, &context, *trigger),
-                                Some((row_index, binding_index))
-                            );
+                            if winner(rows, &context, *trigger) != Some((row_index, binding_index))
+                            {
+                                continue;
+                            }
                             let combo = match trigger {
                                 Trigger::Key(combo) => *combo,
-                                Trigger::AnyModifiers(key) => KeyCombo::plain(*key),
+                                Trigger::AnyModifiers(key) | Trigger::NoCtrlAlt(key) => {
+                                    KeyCombo::plain(*key)
+                                }
+                                Trigger::Sequence { prefix, second, .. } => {
+                                    let Output::Action(expected) = &binding.output else {
+                                        unreachable!()
+                                    };
+                                    let pending = context.clone().with_prefix(Some(*prefix));
+                                    assert_eq!(
+                                        format!("{:?}", resolve(rows, *second, &pending)),
+                                        format!("{:?}", Some(expected))
+                                    );
+                                    continue;
+                                }
                                 Trigger::Command { .. } => continue,
                                 Trigger::Text | Trigger::AnyText => KeyCombo::plain(Key::Char('x')),
                             };
@@ -505,8 +630,13 @@ mod tests {
                             }
                             let combo = match trigger {
                                 Trigger::Key(combo) => *combo,
-                                Trigger::AnyModifiers(key) => KeyCombo::plain(*key),
-                                Trigger::Text | Trigger::AnyText | Trigger::Command { .. } => {
+                                Trigger::AnyModifiers(key) | Trigger::NoCtrlAlt(key) => {
+                                    KeyCombo::plain(*key)
+                                }
+                                Trigger::Text
+                                | Trigger::AnyText
+                                | Trigger::Command { .. }
+                                | Trigger::Sequence { .. } => {
                                     continue;
                                 }
                             };

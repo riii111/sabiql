@@ -17,8 +17,8 @@ use crate::update::input::keybindings::*;
 use crate::update::input::keymap::{
     HintSurface, KeyContext, Picker, cell_detail_hints, cell_edit_hints, command_line_hints,
     confirm_hints, connection_error_hints, connection_selector_hints, connection_setup_hints,
-    help_hints, json_edit_hints, json_search_hints, picker_hints, row_detail_hints, settings_hints,
-    sqlite_diagnostics_hints,
+    help_hints, json_edit_hints, json_search_hints, json_view_hints, picker_hints,
+    row_detail_hints, settings_hints, sqlite_diagnostics_hints,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -402,7 +402,13 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
         }
         HelpOrigin::JsonDetail {
             mode: JsonHelpMode::Detail,
-        } => rows_from_mode_rows_if_visible(JSON_DETAIL_ROWS, feature_policy),
+        } => json_view_hints(
+            HintSurface::Current,
+            &key_context.with_json_mode(JsonDetailMode::Viewing),
+        )
+        .into_iter()
+        .map(|hint| HelpRow::new(hint.key, hint.description))
+        .collect(),
         HelpOrigin::CellDetail { searching } => cell_detail_hints(
             HintSurface::Current,
             &key_context.with_cell_detail_searching(searching),
@@ -451,11 +457,15 @@ fn reference_sections(
         &result_active::UNSTAGE_DELETE,
         &inspector_ddl::YANK,
     ]);
-    if feature_policy.is_enabled(json_detail::YANK.feature_requirement()) {
-        data_action_rows.extend(rows_from_mode_row_refs_if_visible(
-            &[&json_detail::YANK],
-            feature_policy,
-        ));
+    if feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail) {
+        data_action_rows.extend(
+            json_view_hints(
+                HintSurface::DataActions,
+                &key_context.clone().with_json_mode(JsonDetailMode::Viewing),
+            )
+            .into_iter()
+            .map(|hint| HelpRow::new(hint.key, hint.description)),
+        );
     }
 
     let mut search_filter_rows =
@@ -546,10 +556,14 @@ fn reference_sections(
         );
     }
     if feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail) {
-        advanced_rows.extend(rows_from_mode_rows_if_visible(
-            JSON_DETAIL_ROWS,
-            feature_policy,
-        ));
+        advanced_rows.extend(
+            json_view_hints(
+                HintSurface::Advanced,
+                &key_context.clone().with_json_mode(JsonDetailMode::Viewing),
+            )
+            .into_iter()
+            .map(|hint| HelpRow::new(hint.key, hint.description)),
+        );
     }
     advanced_rows.extend(
         row_detail_hints(HintSurface::Advanced, &key_context)
@@ -796,30 +810,6 @@ fn paired_binding_row(first: &KeyBinding, second: &KeyBinding) -> Option<HelpRow
         format!("{}{}{}", first.key, separator, second.key),
         description,
     ))
-}
-
-fn rows_from_mode_rows_if_visible(
-    rows: &[ModeRow],
-    feature_policy: &FeaturePolicy,
-) -> Vec<HelpRow> {
-    rows.iter()
-        .filter(|row| feature_policy.is_enabled(row.feature_requirement()))
-        .map(row_from_mode_row)
-        .collect()
-}
-
-fn rows_from_mode_row_refs_if_visible(
-    rows: &[&ModeRow],
-    feature_policy: &FeaturePolicy,
-) -> Vec<HelpRow> {
-    rows.iter()
-        .filter(|row| feature_policy.is_enabled(row.feature_requirement()))
-        .map(|&row| row_from_mode_row(row))
-        .collect()
-}
-
-fn row_from_mode_row(row: &ModeRow) -> HelpRow {
-    HelpRow::new(row.key, row.description)
 }
 
 fn merge_rows(groups: &[Vec<HelpRow>]) -> Vec<HelpRow> {

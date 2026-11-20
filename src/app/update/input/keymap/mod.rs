@@ -10,7 +10,7 @@ mod context;
 mod help;
 mod json_edit;
 mod json_search;
-mod legacy;
+mod json_view;
 mod model;
 mod pickers;
 mod row_detail;
@@ -32,7 +32,7 @@ pub use context::KeyContext;
 pub use help::{help_action, help_hints};
 pub use json_edit::{json_edit_action, json_edit_hints};
 pub use json_search::{json_search_action, json_search_hints};
-pub use legacy::{resolve, resolve_mode, resolve_mode_with_policy, resolve_with_policy};
+pub use json_view::{json_view_action, json_view_hints};
 pub use pickers::{Picker, picker_action, picker_hints};
 pub use row_detail::{row_detail_action, row_detail_hints};
 pub use settings::{settings_action, settings_hints};
@@ -50,6 +50,7 @@ pub enum HintSurface {
     Details,
     Editing,
     Write,
+    DataActions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

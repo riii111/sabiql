@@ -542,12 +542,13 @@ TextMoveCursor { target: JsonEdit, direction: ViewportMiddle }: 'M'
 TextMoveCursor { target: JsonEdit, direction: ViewportTop }: 'H'
 TextMoveCursor { target: JsonEdit, direction: WordBackward }: 'b'
 TextMoveCursor { target: JsonEdit, direction: WordForward }: 'w'
-footer: n/N:Next/Prev  hjkl/↑↓←→:Move
+footer: n/N:Next/Prev  h/l:Left/Right  j/k:Down/Up
 help: y: Copy full JSON
 help: i / A: Enter Insert mode / append at line end
 help: /: Search JSON text
 help: n / N: Jump to next / previous search result
-help: h / j / k / l / ↑↓←→: Move cursor
+help: h / l / ← / →: Move cursor left / right
+help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Move cursor down / up
 help: 0 / $ / w / b / Home / End: Move by word or line boundary
 help: gg / G / H / M / L: Jump by buffer or viewport
 help: Esc / q: Close JSON detail
@@ -576,7 +577,7 @@ TextMoveCursor { target: JsonEdit, direction: Left }: Left, ^Left, ⌥Left, ^⌥
 TextMoveCursor { target: JsonEdit, direction: Right }: Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
 TextMoveCursor { target: JsonEdit, direction: Up }: Up, ^Up, ⌥Up, ^⌥Up, ⇧Up, ^⇧Up
 footer: ←/→/↑/↓:Move  Home/End:Line
-help: Esc / Shift+Esc: Return to Normal mode
+help: Esc: Return to Normal mode
 help: ← / → / ↑ / ↓: Move cursor
 help: Home / End: Line start/end
 palette: q: Quit application => Quit

@@ -15,8 +15,8 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
     let target = InputTarget::JsonEdit;
     let mut rows = vec![Row {
         bindings: vec![
+            Binding::no_ctrl_alt(Action::JsonExitEdit, Key::Esc).when(supported),
             Binding::action(Action::JsonExitEdit, &[KeyCombo::plain(Key::Esc)]),
-            Binding::action(Action::JsonExitEdit, &[KeyCombo::shift(Key::Esc)]).when(supported),
         ],
         short: "Normal",
         description: "Return to Normal mode",

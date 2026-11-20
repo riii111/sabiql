@@ -16,7 +16,9 @@ use crate::policy::FeaturePolicy;
 use crate::ports::inbound::{InputEvent, KeyCombo};
 use crate::update::action::Action;
 use crate::update::input::keybindings::readline_action_for;
-use crate::update::input::keymap::{KeyContext, json_edit_action, json_search_action};
+use crate::update::input::keymap::{
+    KeyContext, json_edit_action, json_search_action, json_view_action,
+};
 use interaction::{InputInteraction, resolve_input_interaction};
 
 pub fn handle_event(event: InputEvent, state: &AppState) -> Action {
@@ -60,8 +62,13 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
         InputMode::ConnectionSetup => {
             return connections::handle_connection_setup_keys(combo, state);
         }
-        InputMode::JsonDetail if state.json_detail.mode() == JsonDetailMode::Searching => {
-            return json_search_action(combo, &KeyContext::from_state(state));
+        InputMode::JsonDetail => {
+            let context = KeyContext::from_state(state);
+            return if state.json_detail.mode() == JsonDetailMode::Searching {
+                json_search_action(combo, &context)
+            } else {
+                json_view_action(combo, &context)
+            };
         }
         InputMode::JsonEdit => return json_edit_action(combo, &KeyContext::from_state(state)),
         _ => {}
@@ -393,6 +400,58 @@ mod tests {
             Action::DetailSearch {
                 target: DetailTarget::JsonDetail,
                 step: SearchStep::Exit,
+            }
+        ));
+    }
+
+    #[test]
+    fn json_prefix_completes_or_cancels_and_search_treats_g_as_text() {
+        use crate::model::browse::json_detail::JsonDetailState;
+        use crate::model::shared::key_sequence::{KeySequenceState, Prefix};
+        use crate::services::AppServices;
+        use crate::update::{reducer::route, test_fixtures};
+        use std::time::Instant;
+
+        let mut state = AppState::new("test".to_string());
+        test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
+        state.json_detail = JsonDetailState::open(0, 0, "json".to_string(), "[1, 2]".to_string());
+        state.modal.set_mode(InputMode::JsonDetail);
+        let services = AppServices::stub();
+
+        let first = handle_key_event(KeyCombo::plain(Key::Char('g')), &state);
+        assert!(matches!(first, Action::BeginKeySequence(Prefix::G)));
+        route(&mut state, first, Instant::now(), &services);
+        assert_eq!(
+            state.ui.key_sequence(),
+            KeySequenceState::WaitingSecondKey(Prefix::G)
+        );
+        let second = handle_key_event(KeyCombo::plain(Key::Char('g')), &state);
+        assert!(matches!(
+            second,
+            Action::TextMoveCursor {
+                target: InputTarget::JsonEdit,
+                direction: CursorMove::FirstLine
+            }
+        ));
+        route(&mut state, second, Instant::now(), &services);
+        assert_eq!(state.ui.key_sequence(), KeySequenceState::Idle);
+
+        let first = handle_key_event(KeyCombo::plain(Key::Char('g')), &state);
+        route(&mut state, first, Instant::now(), &services);
+        let cancel = handle_key_event(KeyCombo::ctrl(Key::Char('g')), &state);
+        assert!(matches!(cancel, Action::CancelKeySequence));
+        route(&mut state, cancel, Instant::now(), &services);
+        assert_eq!(state.ui.key_sequence(), KeySequenceState::Idle);
+
+        state
+            .ui
+            .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::G));
+        state.json_detail.enter_search();
+        assert!(matches!(
+            handle_key_event(KeyCombo::plain(Key::Char('g')), &state),
+            Action::TextInput {
+                target: InputTarget::JsonSearch,
+                ch: 'g'
             }
         ));
     }

@@ -13,13 +13,13 @@ use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::policy::{FeaturePolicy, FeatureRequirement};
 use crate::app::update::input::keybindings::{
     cell_edit, command_palette as command_palette_key, csv_export, exit_read_only, footer_nav,
-    global, inspector_ddl, json_detail, overlay, query_history, read_only, result_active, settings,
-    sql_modal, sqlite_diagnostics, table_picker as table_picker_key,
+    global, inspector_ddl, overlay, query_history, read_only, result_active, settings, sql_modal,
+    sqlite_diagnostics, table_picker as table_picker_key,
 };
 use crate::app::update::input::keymap::{
     HintSurface, KeyContext, Picker, cell_detail_hints, cell_edit_hints, command_line_hints,
-    connection_error_hints, json_edit_hints, json_search_hints, picker_hints, settings_hints,
-    sqlite_diagnostics_hints,
+    connection_error_hints, json_edit_hints, json_search_hints, json_view_hints, picker_hints,
+    settings_hints, sqlite_diagnostics_hints,
 };
 use crate::primitives::atoms::key_text;
 use crate::primitives::atoms::spinner_char;
@@ -66,8 +66,12 @@ impl Footer {
                 InputMode::Settings => Some(settings_hints(HintSurface::Footer, &context)),
                 InputMode::CommandLine => Some(command_line_hints(HintSurface::Footer, &context)),
                 InputMode::CellEdit => Some(cell_edit_hints(HintSurface::Footer, &context)),
-                InputMode::JsonDetail if state.json_detail.mode() == JsonDetailMode::Searching => {
-                    Some(json_search_hints(HintSurface::Footer, &context))
+                InputMode::JsonDetail => {
+                    Some(if state.json_detail.mode() == JsonDetailMode::Searching {
+                        json_search_hints(HintSurface::Footer, &context)
+                    } else {
+                        json_view_hints(HintSurface::Footer, &context)
+                    })
                 }
                 InputMode::JsonEdit => Some(json_edit_hints(HintSurface::Footer, &context)),
                 _ => None,
@@ -257,6 +261,7 @@ impl Footer {
             | InputMode::CommandLine
             | InputMode::CellEdit
             | InputMode::JsonEdit
+            | InputMode::JsonDetail
             | InputMode::QueryHistoryPicker
             | InputMode::ErTablePicker
             | InputMode::SqliteDiagnostics
@@ -264,18 +269,6 @@ impl Footer {
             InputMode::SqlModal => {
                 if matches!(state.sql_modal.status(), SqlModalStatus::Editing) {
                     vec![sql_modal::MOVE.as_hint()]
-                } else {
-                    vec![]
-                }
-            }
-            InputMode::JsonDetail => {
-                let feature_policy =
-                    FeaturePolicy::new(&state.session.active_engine_feature_profile());
-                if feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail) {
-                    vec![
-                        json_detail::NEXT_PREV.as_hint(),
-                        json_detail::MOVE.as_hint(),
-                    ]
                 } else {
                     vec![]
                 }
@@ -321,7 +314,7 @@ mod tests {
     use crate::app::model::shared::settings::KeymapPreset;
     use crate::app::model::shared::ui_state::FocusMode;
     use crate::app::ports::outbound::DbOperationError;
-    use crate::app::update::input::keybindings::{global, json_detail, result_active, sql_modal};
+    use crate::app::update::input::keybindings::{global, result_active, sql_modal};
     use rstest::rstest;
 
     fn inspector_state() -> AppState {
@@ -445,10 +438,22 @@ mod tests {
         );
 
         state.modal.set_mode(InputMode::JsonDetail);
-        assert!(Footer::get_context_hints(&state).is_empty());
+        assert!(
+            super::json_view_hints(
+                super::HintSurface::Footer,
+                &super::KeyContext::from_state(&state)
+            )
+            .is_empty()
+        );
 
         state.modal.set_mode(InputMode::JsonEdit);
-        assert!(Footer::get_context_hints(&state).is_empty());
+        assert!(
+            super::json_edit_hints(
+                super::HintSurface::Footer,
+                &super::KeyContext::from_state(&state)
+            )
+            .is_empty()
+        );
     }
 
     #[test]
@@ -462,14 +467,13 @@ mod tests {
         );
         state.modal.set_mode(InputMode::JsonDetail);
 
-        let hints = Footer::get_context_hints(&state);
-
+        let hints = super::json_view_hints(
+            super::HintSurface::Footer,
+            &super::KeyContext::from_state(&state),
+        );
         assert_eq!(
-            hints,
-            vec![
-                json_detail::NEXT_PREV.as_hint(),
-                json_detail::MOVE.as_hint()
-            ]
+            hints.iter().map(|hint| hint.short).collect::<Vec<_>>(),
+            ["Next/Prev", "Left/Right", "Down/Up"]
         );
     }
 

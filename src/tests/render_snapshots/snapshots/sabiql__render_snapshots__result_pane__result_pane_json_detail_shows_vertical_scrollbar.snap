@@ -22,7 +22,7 @@ expression: output
 │         │  "key_19": "value_19",                                                      ││         │
 │         │  "key_2": "value_2",                                                        ▼│         │
 │         │✓ Valid JSON                                                                  │         │
-│         ╰ y: Copy │ i: Insert │ /: Search │ Esc: Close ────────────────────────────────╯         │
+│         ╰ y: Copy │ i/A: Insert │ /: Search │ Esc/q: Close ────────────────────────────╯         │
 │                       ││ col   0% ◀︎════════════════════════════════════════════════════════════▶︎ │
 └───────────────────────┘└─────────────────────────────────────────────────────────────────────────┘
-n/N:Next/Prev  hjkl/↑↓←→:Move
+n/N:Next/Prev  h/l:Left/Right  j/k:Down/Up

@@ -8,10 +8,8 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::browse::json_detail::JsonDetailMode;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::shared::render_output::JsonDetailLayout;
-use crate::app::policy::{FeaturePolicy, FeatureRequirement};
-use crate::app::update::input::keybindings::json_detail;
 use crate::app::update::input::keymap::{
-    HintSurface, KeyContext, json_edit_hints, json_search_hints,
+    HintSurface, KeyContext, json_edit_hints, json_search_hints, json_view_hints,
 };
 use crate::features::browse::detail_view::render_detail_search;
 use crate::primitives::atoms::scroll_indicator::{
@@ -60,15 +58,9 @@ impl JsonDetail {
                 .map(|hint| (hint.key, hint.short))
                 .collect()
         } else {
-            let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
-            let mut hints = vec![json_detail::YANK.as_hint()];
-            if feature_policy.is_enabled(FeatureRequirement::JsonDocumentEdit) {
-                hints.push(json_detail::INSERT.as_hint());
-            }
-            hints.extend([json_detail::SEARCH.as_hint(), json_detail::CLOSE.as_hint()]);
-            hints
+            json_view_hints(HintSurface::Border, &KeyContext::from_state(state))
                 .into_iter()
-                .map(|(key, desc)| (key.to_string(), desc))
+                .map(|hint| (hint.key, hint.short))
                 .collect()
         };
 

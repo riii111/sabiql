@@ -4,6 +4,7 @@ use crate::model::connection::list::is_service_selected;
 use crate::model::connection::setup::ConnectionField;
 use crate::model::shared::help::HelpMode;
 use crate::model::shared::input_mode::InputMode;
+use crate::model::shared::key_sequence::Prefix;
 use crate::model::shared::settings::{ErBrowserChoice, KeymapPreset, SettingsSection};
 use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::update::action::Action;
@@ -15,6 +16,7 @@ pub struct KeyContext {
     json_mode: JsonDetailMode,
     policy: FeaturePolicy,
     scope: Scope,
+    pending_prefix: Option<Prefix>,
 }
 
 #[derive(Clone, Copy)]
@@ -57,6 +59,7 @@ impl KeyContext {
             mode: state.input_mode(),
             json_mode: state.json_detail.mode(),
             policy: FeaturePolicy::new(&state.session.active_engine_feature_profile()),
+            pending_prefix: state.ui.key_sequence().pending_prefix(),
             scope: match state.input_mode() {
                 InputMode::SqliteDiagnostics => Scope::Diagnostics {
                     can_run: state.sqlite_diagnostics.can_run_quick_check(),
@@ -104,6 +107,7 @@ impl KeyContext {
             mode,
             json_mode: JsonDetailMode::Viewing,
             policy: policy.clone(),
+            pending_prefix: None,
             scope: match mode {
                 InputMode::SqliteDiagnostics => Scope::Diagnostics { can_run: true },
                 InputMode::CellDetail => Scope::CellDetail { searching: false },
@@ -133,6 +137,15 @@ impl KeyContext {
             .is_enabled(action.feature_requirement_for_context(self.mode, self.json_mode))
     }
 
+    pub(super) fn pending_prefix(&self) -> Option<Prefix> {
+        self.pending_prefix
+    }
+
+    pub(crate) fn with_prefix(mut self, prefix: Option<Prefix>) -> Self {
+        self.pending_prefix = prefix;
+        self
+    }
+
     pub(super) fn supports_diagnostics(&self) -> bool {
         self.policy
             .is_enabled(FeatureRequirement::SqliteDiagnostics)
@@ -140,6 +153,11 @@ impl KeyContext {
 
     pub(super) fn supports_json_edit(&self) -> bool {
         self.policy.is_enabled(FeatureRequirement::JsonDocumentEdit)
+    }
+
+    pub(super) fn supports_json_detail(&self) -> bool {
+        self.policy
+            .is_enabled(FeatureRequirement::JsonDocumentDetail)
     }
 
     pub(super) fn can_run_diagnostics(&self) -> bool {

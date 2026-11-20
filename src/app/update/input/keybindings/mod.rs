@@ -7,7 +7,6 @@ use crate::model::shared::settings::KeymapPreset;
 use crate::policy::{FeaturePolicy, FeatureRequirement};
 pub use crate::ports::inbound::{Key, KeyCombo, Modifiers};
 use crate::update::action::{Action, ModalKind};
-use crate::update::input::keymap::{resolve_mode, resolve_mode_with_policy};
 pub use editors::*;
 pub use normal::*;
 pub use overlays::*;
@@ -32,61 +31,6 @@ impl KeyBinding {
         self.action.feature_requirement()
     }
 }
-
-// =============================================================================
-// ModeRow — unified single-definition model for mixed modes
-// =============================================================================
-
-pub struct ExecBinding {
-    pub action: Action,
-    pub combos: &'static [KeyCombo],
-}
-
-pub struct ModeRow {
-    pub key_short: &'static str,
-    pub key: &'static str,
-    pub desc_short: &'static str,
-    pub description: &'static str,
-    pub bindings: &'static [ExecBinding],
-}
-
-impl ModeRow {
-    pub const fn as_hint(&self) -> (&'static str, &'static str) {
-        (self.key_short, self.desc_short)
-    }
-
-    pub fn feature_requirement(&self) -> FeatureRequirement {
-        self.bindings
-            .iter()
-            .map(|binding| binding.action.feature_requirement())
-            .find(|requirement| *requirement != FeatureRequirement::None)
-            .unwrap_or(FeatureRequirement::None)
-    }
-}
-
-pub struct ModeBindings {
-    pub rows: &'static [ModeRow],
-}
-
-impl ModeBindings {
-    pub fn resolve(&self, combo: &KeyCombo) -> Option<Action> {
-        resolve_mode(combo, self.rows)
-    }
-
-    pub fn resolve_with_policy(
-        &self,
-        combo: &KeyCombo,
-        feature_policy: &FeaturePolicy,
-    ) -> Option<Action> {
-        resolve_mode_with_policy(combo, self.rows, feature_policy)
-    }
-}
-
-pub const JSON_DETAIL: ModeBindings = ModeBindings {
-    rows: JSON_DETAIL_ROWS,
-};
-
-pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[("JSON_DETAIL", &JSON_DETAIL)];
 
 pub const HELP_KEY_INDENT_WIDTH: usize = 2;
 pub const HELP_KEY_DESC_GAP: usize = 2;
@@ -238,29 +182,6 @@ mod tests {
                 check_non_none_have_combos(IDE_GLOBAL_KEYS, "IDE_GLOBAL_KEYS");
             }
 
-            fn check_mode_rows_exec_valid(rows: &[ModeRow], name: &str) {
-                for (i, row) in rows.iter().enumerate() {
-                    for (j, eb) in row.bindings.iter().enumerate() {
-                        assert!(
-                            !eb.combos.is_empty(),
-                            "{name}[{i}].bindings[{j}] has action {:?} but no combos",
-                            eb.action
-                        );
-                        assert!(
-                            !matches!(eb.action, Action::None),
-                            "{name}[{i}].bindings[{j}] has Action::None in exec binding",
-                        );
-                    }
-                }
-            }
-
-            #[test]
-            fn all_mode_row_exec_entries_are_valid() {
-                for (name, mb) in ALL_MODE_BINDINGS {
-                    check_mode_rows_exec_valid(mb.rows, name);
-                }
-            }
-
             fn check_none_action_entries_have_no_combos(bindings: &[KeyBinding], name: &str) {
                 for (i, kb) in bindings.iter().enumerate() {
                     assert!(
@@ -320,30 +241,11 @@ mod tests {
                 }
             }
 
-            fn check_no_duplicate_combos_rows(rows: &[ModeRow], name: &str) {
-                let mut seen: Vec<KeyCombo> = Vec::new();
-                for row in rows {
-                    for eb in row.bindings {
-                        for combo in eb.combos {
-                            assert!(
-                                !seen.contains(combo),
-                                "{name}: duplicate combo {combo:?} in binding {:?}",
-                                eb.action
-                            );
-                            seen.push(*combo);
-                        }
-                    }
-                }
-            }
-
             // GLOBAL_KEYS excluded: FOCUS/EXIT_FOCUS share a combo for footer label switching.
             #[test]
             fn no_duplicate_combos_in_simple_modes() {
                 check_no_conflicting_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
                 check_no_conflicting_combos(IDE_GLOBAL_KEYS, "IDE_GLOBAL_KEYS");
-                for (name, mb) in ALL_MODE_BINDINGS {
-                    check_no_duplicate_combos_rows(mb.rows, name);
-                }
             }
         }
     }
@@ -369,10 +271,6 @@ mod tests {
         assert_eq!(
             sql_modal_compare::EDIT_QUERY.feature_requirement(),
             FeatureRequirement::PlanComparison
-        );
-        assert_eq!(
-            JSON_DETAIL_ROWS[0].feature_requirement(),
-            FeatureRequirement::JsonDocumentDetail
         );
     }
 }

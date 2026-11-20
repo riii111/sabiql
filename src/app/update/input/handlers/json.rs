@@ -2,17 +2,14 @@ use crate::model::browse::json_detail::JsonDetailMode;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::Prefix;
 use crate::model::shared::settings::KeymapPreset;
-use crate::policy::{FeaturePolicy, FeatureRequirement};
-use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
-use crate::update::input::keybindings::{JSON_DETAIL, Key, KeyCombo, Modifiers};
-use crate::update::input::keymap::{KeyContext, json_edit_action, json_search_action};
-use crate::update::input::vim::{
-    JsonDetailVimContext, VimSurfaceContext, action_for_input, action_for_key,
+use crate::policy::FeaturePolicy;
+use crate::ports::inbound::KeyCombo;
+use crate::update::action::{Action, InputTarget};
+use crate::update::input::keymap::{
+    KeyContext, json_edit_action, json_search_action, json_view_action,
 };
 
 use super::interaction::InputInteraction;
-use crate::update::action::DetailTarget;
-use crate::update::action::SearchStep;
 
 pub(super) fn handle_json_detail_keys_with_policy(
     combo: KeyCombo,
@@ -20,72 +17,17 @@ pub(super) fn handle_json_detail_keys_with_policy(
     pending_prefix: Option<Prefix>,
     feature_policy: &FeaturePolicy,
 ) -> Action {
-    if !feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail) {
-        return disabled_json_detail_exit_action(combo, interaction);
-    }
-
+    let context =
+        KeyContext::for_scope(InputMode::JsonDetail, KeymapPreset::Default, feature_policy)
+            .with_prefix(pending_prefix);
     if matches!(
         interaction,
         InputInteraction::FormEditing(InputTarget::JsonSearch)
     ) {
-        let context =
-            KeyContext::for_scope(InputMode::JsonDetail, KeymapPreset::Default, feature_policy)
-                .with_json_mode(JsonDetailMode::Searching);
-        return json_search_action(combo, &context);
+        json_search_action(combo, &context.with_json_mode(JsonDetailMode::Searching))
+    } else {
+        json_view_action(combo, &context)
     }
-
-    if let Some(prefix) = pending_prefix {
-        if combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT) {
-            return Action::CancelKeySequence;
-        }
-        return match action_for_input(
-            &combo,
-            Some(prefix),
-            VimSurfaceContext::JsonDetail(JsonDetailVimContext::Viewing),
-        ) {
-            Some(Action::None) | None => Action::CancelKeySequence,
-            Some(action) => action,
-        };
-    }
-
-    if !combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT) && combo.key == Key::Char('g')
-    {
-        return Action::BeginKeySequence(Prefix::G);
-    }
-
-    if !combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT) {
-        match combo.key {
-            Key::Home => {
-                return Action::TextMoveCursor {
-                    target: InputTarget::JsonEdit,
-                    direction: CursorMove::LineStart,
-                };
-            }
-            Key::End => {
-                return Action::TextMoveCursor {
-                    target: InputTarget::JsonEdit,
-                    direction: CursorMove::LineEnd,
-                };
-            }
-            _ => {}
-        }
-    }
-
-    if let Some(action) = action_for_key(
-        &combo,
-        VimSurfaceContext::JsonDetail(JsonDetailVimContext::Viewing),
-    ) {
-        return if feature_policy.is_enabled(action.feature_requirement()) {
-            action
-        } else {
-            Action::None
-        };
-    }
-
-    if let Some(action) = JSON_DETAIL.resolve_with_policy(&combo, feature_policy) {
-        return action;
-    }
-    Action::None
 }
 
 pub(super) fn handle_json_edit_keys_with_policy(
@@ -97,31 +39,11 @@ pub(super) fn handle_json_edit_keys_with_policy(
     json_edit_action(combo, &context)
 }
 
-fn disabled_json_detail_exit_action(combo: KeyCombo, interaction: InputInteraction) -> Action {
-    if !combo.modifiers.is_empty() {
-        return Action::None;
-    }
-
-    match (interaction, combo.key) {
-        (InputInteraction::Viewing, Key::Esc | Key::Char('q')) => {
-            Action::CloseModal(ModalKind::JsonDetail)
-        }
-        (InputInteraction::FormEditing(InputTarget::JsonSearch), Key::Esc) => {
-            Action::DetailSearch {
-                target: DetailTarget::JsonDetail,
-                step: SearchStep::Exit,
-            }
-        }
-        (InputInteraction::VimEditing(InputTarget::JsonEdit), Key::Esc) => Action::JsonExitEdit,
-        _ => Action::None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
-    use crate::update::action::CursorMove;
+    use crate::update::action::{CursorMove, DetailTarget, ModalKind, SearchStep};
     use crate::update::input::keybindings::Key;
 
     fn combo(k: Key) -> KeyCombo {
