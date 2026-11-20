@@ -5,15 +5,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::app::model::app_state::AppState;
-use crate::app::model::browse::json_detail::JsonDetailMode;
 use crate::app::model::er_state::ErStatus;
-use crate::app::model::shared::input_mode::InputMode;
-use crate::app::model::sql_editor::modal::SqlModalStatus;
-use crate::app::update::input::keymap::{
-    HintSurface, KeyContext, Picker, browse_hints, cell_detail_hints, cell_edit_hints,
-    command_line_hints, connection_error_hints, json_edit_hints, json_search_hints,
-    json_view_hints, picker_hints, settings_hints, sql_edit_hints, sqlite_diagnostics_hints,
-};
+use crate::app::update::input::keymap::{KeyContext, footer_hints};
 use crate::primitives::atoms::key_text;
 use crate::primitives::atoms::spinner_char;
 use crate::primitives::atoms::status_message::{MessageType, StatusMessage};
@@ -42,47 +35,11 @@ impl Footer {
         } else {
             // Show hints with optional inline success message
             let context = KeyContext::from_state(state);
-            let derived = match state.input_mode() {
-                InputMode::Normal => Some(browse_hints(HintSurface::Footer, &context)),
-                InputMode::TablePicker => {
-                    Some(picker_hints(Picker::Table, HintSurface::Footer, &context))
-                }
-                InputMode::ErTablePicker => {
-                    Some(picker_hints(Picker::Er, HintSurface::Footer, &context))
-                }
-                InputMode::SqliteDiagnostics => {
-                    Some(sqlite_diagnostics_hints(HintSurface::Footer, &context))
-                }
-                InputMode::CellDetail => Some(cell_detail_hints(HintSurface::Footer, &context)),
-                InputMode::ConnectionError => {
-                    Some(connection_error_hints(HintSurface::Footer, &context))
-                }
-                InputMode::Settings => Some(settings_hints(HintSurface::Footer, &context)),
-                InputMode::CommandLine => Some(command_line_hints(HintSurface::Footer, &context)),
-                InputMode::CellEdit => Some(cell_edit_hints(HintSurface::Footer, &context)),
-                InputMode::JsonDetail => {
-                    Some(if state.json_detail.mode() == JsonDetailMode::Searching {
-                        json_search_hints(HintSurface::Footer, &context)
-                    } else {
-                        json_view_hints(HintSurface::Footer, &context)
-                    })
-                }
-                InputMode::JsonEdit => Some(json_edit_hints(HintSurface::Footer, &context)),
-                InputMode::SqlModal
-                    if matches!(state.sql_modal.status(), SqlModalStatus::Editing) =>
-                {
-                    Some(sql_edit_hints(HintSurface::Footer, &context))
-                }
-                _ => None,
-            };
-            let hints = if let Some(ref derived) = derived {
-                derived
-                    .iter()
-                    .map(|hint| (hint.key.as_str(), hint.short))
-                    .collect()
-            } else {
-                Vec::new()
-            };
+            let derived = footer_hints(&context);
+            let hints: Vec<_> = derived
+                .iter()
+                .map(|hint| (hint.key.as_str(), hint.short))
+                .collect();
             let line =
                 Self::build_hint_line_with_success(&hints, state.messages.last_success(), theme);
             frame.render_widget(Paragraph::new(line).style(base_style), area);
@@ -115,14 +72,10 @@ impl Footer {
 
     #[cfg(test)]
     fn get_context_hints(state: &AppState) -> Vec<(String, &'static str)> {
-        if state.input_mode() == InputMode::Normal {
-            browse_hints(HintSurface::Footer, &KeyContext::from_state(state))
-                .into_iter()
-                .map(|hint| (hint.key, hint.short))
-                .collect()
-        } else {
-            Vec::new()
-        }
+        footer_hints(&KeyContext::from_state(state))
+            .into_iter()
+            .map(|hint| (hint.key, hint.short))
+            .collect()
     }
 
     fn build_hint_line_with_success(
@@ -163,6 +116,10 @@ mod tests {
     use crate::app::model::shared::settings::KeymapPreset;
     use crate::app::model::shared::ui_state::FocusMode;
     use crate::app::ports::outbound::DbOperationError;
+    use crate::app::update::input::keymap::{
+        HintSurface, KeyContext, connection_error_hints, json_edit_hints, json_view_hints,
+        settings_hints, sql_edit_hints,
+    };
     use rstest::rstest;
 
     fn contains(hints: &[(String, &str)], expected: (&str, &str)) -> bool {
@@ -286,22 +243,10 @@ mod tests {
         );
 
         state.modal.set_mode(InputMode::JsonDetail);
-        assert!(
-            super::json_view_hints(
-                super::HintSurface::Footer,
-                &super::KeyContext::from_state(&state)
-            )
-            .is_empty()
-        );
+        assert!(json_view_hints(HintSurface::Footer, &KeyContext::from_state(&state)).is_empty());
 
         state.modal.set_mode(InputMode::JsonEdit);
-        assert!(
-            super::json_edit_hints(
-                super::HintSurface::Footer,
-                &super::KeyContext::from_state(&state)
-            )
-            .is_empty()
-        );
+        assert!(json_edit_hints(HintSurface::Footer, &KeyContext::from_state(&state)).is_empty());
     }
 
     #[test]
@@ -315,10 +260,7 @@ mod tests {
         );
         state.modal.set_mode(InputMode::JsonDetail);
 
-        let hints = super::json_view_hints(
-            super::HintSurface::Footer,
-            &super::KeyContext::from_state(&state),
-        );
+        let hints = json_view_hints(HintSurface::Footer, &KeyContext::from_state(&state));
         assert_eq!(
             hints.iter().map(|hint| hint.short).collect::<Vec<_>>(),
             ["Next/Prev", "Left/Right", "Down/Up"]
@@ -394,10 +336,7 @@ mod tests {
         state.settings.start_custom_browser_edit();
         state.settings.stop_custom_browser_edit();
 
-        let hints = super::settings_hints(
-            super::HintSurface::Footer,
-            &super::KeyContext::from_state(&state),
-        );
+        let hints = settings_hints(HintSurface::Footer, &KeyContext::from_state(&state));
         assert_eq!(hints.len(), 1);
         assert_eq!(hints[0].short, "Select");
     }
@@ -410,10 +349,7 @@ mod tests {
         state.settings.switch_next_section();
         state.settings.start_custom_browser_edit();
 
-        let hints = super::settings_hints(
-            super::HintSurface::Footer,
-            &super::KeyContext::from_state(&state),
-        );
+        let hints = settings_hints(HintSurface::Footer, &KeyContext::from_state(&state));
 
         assert!(hints.is_empty());
     }
@@ -451,10 +387,7 @@ mod tests {
         state.sql_modal.enter_editing();
         state.settings.load_keymap_preset(preset);
 
-        let hints = super::sql_edit_hints(
-            super::HintSurface::Footer,
-            &super::KeyContext::from_state(&state),
-        );
+        let hints = sql_edit_hints(HintSurface::Footer, &KeyContext::from_state(&state));
 
         assert_eq!(hints.len(), 1);
         assert_eq!(hints[0].short, "Move");
@@ -485,10 +418,7 @@ mod tests {
         );
         state.modal.set_mode(InputMode::ConnectionError);
 
-        let hints = super::connection_error_hints(
-            super::HintSurface::Footer,
-            &super::KeyContext::from_state(&state),
-        );
+        let hints = connection_error_hints(HintSurface::Footer, &KeyContext::from_state(&state));
 
         assert_eq!(hints[0].short, "Edit");
         assert!(hints.iter().all(|hint| hint.short != "Close"));

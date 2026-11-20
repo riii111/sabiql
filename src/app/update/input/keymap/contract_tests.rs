@@ -11,7 +11,9 @@ use crate::model::sql_editor::modal::SqlModalTab;
 use crate::policy::write::sql_risk::AcknowledgeReason;
 use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel};
 use crate::ports::inbound::InputEvent;
+use crate::update::action::ModalKind;
 use crate::update::input::handle_event;
+use crate::update::input::keymap::sql_edit_hints;
 use std::sync::Arc;
 
 fn check_state(state: &mut AppState) {
@@ -156,6 +158,54 @@ fn state(engine: DatabaseType, preset: KeymapPreset, mode: InputMode) -> AppStat
     state.settings.load_keymap_preset(preset);
     state.modal.set_mode(mode);
     state
+}
+
+#[test]
+fn sql_history_hint_and_input_follow_availability() {
+    let mut sql = state(
+        DatabaseType::PostgreSQL,
+        KeymapPreset::Default,
+        InputMode::SqlModal,
+    );
+    sql.sql_modal.enter_editing();
+    let key = InputEvent::Key(KeyCombo::ctrl(Key::Char('o')));
+    assert!(
+        sql_edit_hints(HintSurface::Border, &KeyContext::from_state(&sql))
+            .iter()
+            .any(|hint| hint.short == "History")
+    );
+    assert!(matches!(
+        handle_event(key.clone(), &sql),
+        Action::OpenModal(ModalKind::QueryHistoryPicker)
+    ));
+
+    sql.sql_modal.apply_completion_update(
+        &[CompletionCandidate {
+            text: "users".to_string(),
+            kind: CompletionKind::Table,
+            score: 1,
+        }],
+        0,
+        true,
+    );
+    assert!(
+        !sql_edit_hints(HintSurface::Border, &KeyContext::from_state(&sql))
+            .iter()
+            .any(|hint| hint.short == "History")
+    );
+    assert!(matches!(handle_event(key.clone(), &sql), Action::None));
+
+    sql.sql_modal.dismiss_completion();
+    let _ = sql.query.begin_running(std::time::Instant::now());
+    assert!(
+        !sql_edit_hints(HintSurface::Border, &KeyContext::from_state(&sql))
+            .iter()
+            .any(|hint| hint.short == "History")
+    );
+    assert!(matches!(handle_event(key.clone(), &sql), Action::None));
+    sql.query.mark_idle();
+    sql.session.clear_connection();
+    assert!(matches!(handle_event(key, &sql), Action::None));
 }
 
 #[test]

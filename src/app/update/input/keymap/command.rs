@@ -26,6 +26,16 @@ impl LineCommand {
     }
 }
 
+static WRITE: LazyLock<Row> = LazyLock::new(|| {
+    command_row(
+        LineCommand::Write,
+        "w",
+        &["write"],
+        "Write",
+        "Preview and confirm changes",
+    )
+});
+
 static COMMANDS: LazyLock<Vec<Row>> = LazyLock::new(|| {
     [
         (
@@ -64,16 +74,23 @@ static COMMANDS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             "Palette",
             "Open Command Palette",
         ),
-        (
-            LineCommand::Write,
-            "w",
-            &["write"][..],
-            "Write",
-            "Preview and confirm UPDATE",
-        ),
     ]
     .into_iter()
-    .map(|(command, name, aliases, short, description)| Row {
+    .map(|(command, name, aliases, short, description)| {
+        command_row(command, name, aliases, short, description)
+    })
+    .chain(std::iter::once(WRITE.clone()))
+    .collect()
+});
+
+fn command_row(
+    command: LineCommand,
+    name: &'static str,
+    aliases: &'static [&'static str],
+    short: &'static str,
+    description: &'static str,
+) -> Row {
+    Row {
         bindings: vec![Binding::command(command, name, aliases)],
         short,
         description,
@@ -93,20 +110,16 @@ static COMMANDS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             None
         },
         surfaces: if command == LineCommand::Write {
-            &[
-                HintSurface::Current,
-                HintSurface::Write,
-                HintSurface::FooterAction,
-            ]
+            &[HintSurface::Current, HintSurface::FooterAction]
         } else {
             &[HintSurface::Current]
         },
-    })
-    .collect()
-});
+    }
+}
 
 pub(super) static EDITING: LazyLock<Vec<Row>> = LazyLock::new(|| {
-    let mut rows = vec![
+    let mut rows = COMMANDS.clone();
+    rows.extend([
         Row::new(
             vec![Binding::action(
                 Action::CommandLineSubmit,
@@ -114,7 +127,11 @@ pub(super) static EDITING: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             "Submit",
             "Submit command",
-            &[HintSurface::Footer, HintSurface::Current],
+            &[
+                HintSurface::Footer,
+                HintSurface::Current,
+                HintSurface::ModalBasics,
+            ],
         ),
         Row::new(
             vec![Binding::action(
@@ -125,7 +142,7 @@ pub(super) static EDITING: LazyLock<Vec<Row>> = LazyLock::new(|| {
             "Exit command line",
             &[HintSurface::Footer, HintSurface::Current],
         ),
-    ];
+    ]);
     rows.extend(text_field_any_modifiers(InputTarget::CommandLine));
     rows.push(Row::new(
         vec![Binding::text(InputTarget::CommandLine)],
@@ -141,32 +158,22 @@ pub fn command_line_action(combo: KeyCombo, context: &KeyContext) -> Action {
 }
 
 pub fn command_line_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
-    let mut result = if surface == HintSurface::Current {
-        hints(&COMMANDS, context, surface)
-    } else {
-        Vec::new()
-    };
-    result.extend(hints(&EDITING, context, surface));
-    result
+    hints(&EDITING, context, surface)
 }
 
-pub(super) fn write_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
-    if matches!(
-        surface,
-        HintSurface::Footer | HintSurface::Current | HintSurface::Editing
-    ) {
-        hints(&COMMANDS, context, HintSurface::Write)
-    } else {
-        Vec::new()
-    }
+pub(super) fn cell_edit_write_row() -> Row {
+    let mut row = WRITE.clone();
+    row.surfaces = &[
+        HintSurface::Footer,
+        HintSurface::Current,
+        HintSurface::Editing,
+    ];
+    row.references = &[];
+    row
 }
 
 pub(super) fn browse_write_hints(context: &KeyContext) -> Vec<Hint> {
     hints(&COMMANDS, context, HintSurface::FooterAction)
-}
-
-pub(super) fn reference_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
-    hints(&COMMANDS, context, surface)
 }
 
 pub fn parse_command(input: &str) -> Option<LineCommand> {

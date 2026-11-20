@@ -3,21 +3,24 @@ use std::sync::LazyLock;
 use crate::ports::inbound::{Key, KeyCombo};
 use crate::update::action::{Action, InputTarget};
 
-use super::command::write_hints;
+use super::command::cell_edit_write_row;
 use super::common::text_field_with_navigation;
 use super::model::{Binding, Row, hints, resolve};
 use super::{Hint, HintSurface, KeyContext};
 
 pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
-    let mut rows = vec![Row::new(
-        vec![Binding::action(
-            Action::EnterCommandLine,
-            &[KeyCombo::plain(Key::Char(':'))],
-        )],
-        "Cmd",
-        "Open command line",
-        &[HintSurface::Current, HintSurface::Editing],
-    )];
+    let mut rows = vec![
+        cell_edit_write_row(),
+        Row::new(
+            vec![Binding::action(
+                Action::EnterCommandLine,
+                &[KeyCombo::plain(Key::Char(':'))],
+            )],
+            "Cmd",
+            "Open command line",
+            &[HintSurface::Current, HintSurface::Editing],
+        ),
+    ];
     let (editing, navigation) = text_field_with_navigation(InputTarget::ResultCellEdit);
     rows.extend(editing);
     rows.push(Row::new(
@@ -52,7 +55,5 @@ pub fn cell_edit_action(combo: KeyCombo, context: &KeyContext) -> Action {
 }
 
 pub fn cell_edit_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
-    let mut result = write_hints(surface, context);
-    result.extend(hints(&ROWS, context, surface));
-    result
+    hints(&ROWS, context, surface)
 }

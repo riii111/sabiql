@@ -28,6 +28,8 @@ use crate::model::connection::setup::ConnectionField;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::SqlModalTab;
 use crate::policy::FeatureRequirement;
+use crate::ports::inbound::KeyCombo;
+use crate::update::action::Action;
 
 pub use browse::{BrowseShortcut, browse_action, browse_hints, browse_shortcut};
 pub use cell_detail::{cell_detail_action, cell_detail_hints};
@@ -62,7 +64,6 @@ pub enum HintSurface {
     Connections,
     Details,
     Editing,
-    Write,
     DataActions,
     ExplainPlaceholder,
     Navigation,
@@ -199,39 +200,27 @@ pub(crate) fn reference_hints(surface: HintSurface, context: &KeyContext) -> Vec
             result.extend(model::hints(rows, &scope, surface));
         }
     }
-    result.extend(command::reference_hints(surface, context));
     result
 }
 
 pub fn current_hints(context: &KeyContext) -> Vec<Hint> {
-    let surface = HintSurface::Current;
-    match context.mode() {
-        InputMode::Normal => browse_hints(surface, context),
-        InputMode::CommandLine => command_line_hints(surface, context),
-        InputMode::CellEdit => cell_edit_hints(surface, context),
-        InputMode::TablePicker => picker_hints(Picker::Table, surface, context),
-        InputMode::CommandPalette => picker_hints(Picker::CommandPalette, surface, context),
-        InputMode::Settings => settings_hints(surface, context),
-        InputMode::Help => help_hints(surface, context),
-        InputMode::SqlModal if context.is_sql_editing() => sql_edit_hints(surface, context),
-        InputMode::SqlModal if context.sql_confirmation().is_some() => {
-            sql_confirmation_hints(surface, context)
-        }
-        InputMode::SqlModal => sql_view_hints(surface, context),
-        InputMode::ConnectionSetup => connection_setup_hints(surface, context),
-        InputMode::ConnectionError => connection_error_hints(surface, context),
-        InputMode::SqliteDiagnostics => sqlite_diagnostics_hints(surface, context),
-        InputMode::ConfirmDialog => confirm_hints(surface, context),
-        InputMode::ConnectionSelector => connection_selector_hints(surface, context),
-        InputMode::ErTablePicker => picker_hints(Picker::Er, surface, context),
-        InputMode::QueryHistoryPicker => picker_hints(Picker::QueryHistory, surface, context),
-        InputMode::JsonDetail => match context.json_mode() {
-            JsonDetailMode::Viewing => json_view_hints(surface, context),
-            JsonDetailMode::Searching => json_search_hints(surface, context),
-            JsonDetailMode::Editing => json_edit_hints(surface, context),
-        },
-        InputMode::JsonEdit => json_edit_hints(surface, context),
-        InputMode::CellDetail => cell_detail_hints(surface, context),
-        InputMode::RowDetail => row_detail_hints(surface, context),
+    scope_hints(HintSurface::Current, context)
+}
+
+pub fn footer_hints(context: &KeyContext) -> Vec<Hint> {
+    scope_hints(HintSurface::Footer, context)
+}
+
+fn scope_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
+    if context.mode() == InputMode::Normal {
+        browse_hints(surface, context)
+    } else {
+        scope_rows(context).map_or_else(Vec::new, |rows| model::hints(rows, context, surface))
     }
+}
+
+pub(crate) fn key_action(combo: KeyCombo, context: &KeyContext) -> Action {
+    scope_rows(context)
+        .and_then(|rows| model::resolve(rows, combo, context))
+        .unwrap_or(Action::None)
 }

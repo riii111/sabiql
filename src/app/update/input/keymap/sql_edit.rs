@@ -1,5 +1,6 @@
 use std::sync::LazyLock;
 
+use crate::model::shared::settings::KeymapPreset;
 use crate::ports::inbound::{Key, KeyCombo};
 use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
 
@@ -41,7 +42,8 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
                     Action::OpenModal(ModalKind::QueryHistoryPicker),
                     &[KeyCombo::ctrl(Key::Char('o'))],
                 )
-                .ide(&[]),
+                .ide(&[])
+                .when(KeyContext::can_open_history),
             ],
             "History",
             "Open Query History",
@@ -49,9 +51,12 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
         ),
         Row::new(
             vec![
-                Binding::action(Action::None, &[])
+                Binding::action(Action::None, &[KeyCombo::ctrl(Key::Char('o'))])
                     .ide(&[KeyCombo::ctrl(Key::Char('o'))])
-                    .consume(),
+                    .consume()
+                    .when(|context| {
+                        !context.can_open_history() || context.preset == KeymapPreset::Ide
+                    }),
             ],
             "",
             "",

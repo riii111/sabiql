@@ -21,6 +21,7 @@ pub struct KeyContext {
     policy: FeaturePolicy,
     scope: Scope,
     pending_prefix: Option<Prefix>,
+    history_available: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -187,6 +188,7 @@ impl KeyContext {
             json_mode: state.json_detail.mode(),
             policy: FeaturePolicy::new(&state.session.active_engine_feature_profile()),
             pending_prefix: state.ui.key_sequence().pending_prefix(),
+            history_available: state.can_open_query_history(),
             scope: match state.input_mode() {
                 InputMode::Normal => browse_scope(state),
                 InputMode::SqliteDiagnostics => Scope::Diagnostics {
@@ -262,6 +264,7 @@ impl KeyContext {
             json_mode: JsonDetailMode::Viewing,
             policy: policy.clone(),
             pending_prefix: None,
+            history_available: true,
             scope: match mode {
                 InputMode::SqliteDiagnostics => Scope::Diagnostics { can_run: true },
                 InputMode::CellDetail => Scope::CellDetail { searching: false },
@@ -288,6 +291,7 @@ impl KeyContext {
 
     pub(super) fn with_browse_reference(mut self, pane: BrowsePane, staged: bool) -> Self {
         self.mode = InputMode::Normal;
+        self.history_available = true;
         self.scope = Scope::Browse(BrowseScope {
             focused: false,
             read_only: false,
@@ -312,8 +316,10 @@ impl KeyContext {
 
     pub fn for_browse_state(state: &AppState) -> Self {
         let mut context = Self::from_state(state);
-        context.mode = InputMode::Normal;
-        context.scope = browse_scope(state);
+        if context.mode != InputMode::Normal {
+            context.mode = InputMode::Normal;
+            context.scope = browse_scope(state);
+        }
         context
     }
 
@@ -433,6 +439,10 @@ impl KeyContext {
                 completion_visible: true
             }
         )
+    }
+
+    pub(super) fn can_open_history(&self) -> bool {
+        self.history_available && !self.is_sql_completion_visible()
     }
 
     pub(super) fn sql_tab(&self) -> Option<SqlModalTab> {
@@ -659,7 +669,8 @@ fn browse_scope(state: &AppState) -> Scope {
         delete_pending: state.result_interaction.is_delete_operator_pending(),
         selected_row: state.result_interaction.selection().row().is_some(),
         selected_cell: state.result_interaction.selection().cell().is_some(),
-        connected: state.session.dsn().is_some(),
+        connected: state.session.dsn().is_some()
+            && state.session.pending_mysql_connection_probe().is_none(),
         can_edit_cell: state.can_edit_selected_cell(),
         can_write: state.can_write_visible_preview(),
         can_paginate: state.query.can_paginate_visible_result(),

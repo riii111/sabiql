@@ -67,12 +67,8 @@ impl SqliteDiagnosticsOverlay {
         let lines = build_render_lines(
             snapshot,
             theme,
-            quick_check_override.or_else(|| {
-                snapshot
-                    .quick_check
-                    .is_pending()
-                    .then_some("Not run. Press r to run quick check.")
-            }),
+            quick_check_override
+                .or_else(|| snapshot.quick_check.is_pending().then_some("Not run.")),
         );
         render_lines(frame, inner, state, lines, viewport_width, viewport_height)
     }

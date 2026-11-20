@@ -24,7 +24,7 @@ expression: output
 │                │                                                                                                                                  │               │
 │                │   SELECT * FROM users                                                                                                            │               │
 │                │                                                                                                                                  │               │
-│                │  Press Enter to execute  Esc: Cancel                                                                                             │               │
+│                │                                                                                                                                  │               │
 │                │                                                                                                                                  │               │
 │                │                                                                                                                                  │───────────────┘
 │                │                                                                                                                                  │───────────────┐

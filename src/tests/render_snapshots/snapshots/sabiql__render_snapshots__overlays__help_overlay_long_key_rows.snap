@@ -8,7 +8,8 @@ expression: output
 │  ▦ public.posts                       ││(select a table)                                                                                                          │
 │  ▦ public.comments                    ││                                                                                                                          │
 │                        ╭ Help ───────────────────────────────────────────────────────────────────────────────────────────────────────────╮                        │
-│                        │  Ctrl+B                               Move left                                                                ▲│                        │
+│                        │  Ctrl+E                               Move to line end                                                         ▲│                        │
+│                        │  Ctrl+B                               Move left                                                                ││                        │
 │                        │  Ctrl+F                               Move right                                                               ││                        │
 │                        │  Ctrl+H                               Delete previous character                                                ││                        │
 │                        │  Ctrl+D                               Delete next character                                                    ││                        │
@@ -19,15 +20,19 @@ expression: output
 │                        │  Alt+B                                Move to previous word                                                    ││                        │
 │                        │  Alt+F                                Move to next word                                                        ││                        │
 │                        │  Alt+D                                Cut next word                                                            ││                        │
-│                        │  :                                    Open command line                                                        ││                        │
+│                        │  :                                    Open command line                                                        ┃│                        │
 │                        │  type                                 Edit cell value                                                          ┃│                        │
 │                        │  ← / →                                Move cursor                                                              ┃│                        │
 │                        │  Home / End                           Jump to start/end                                                        ┃│                        │
 │                        │  Esc                                  Exit to Cell Active (draft preserved)                                    ┃│                        │
-│                        │  Alt+Enter / F5                       Execute query                                                            ┃│                        │
-│                        │  y                                    Copy query to clipboard                                                  ┃│                        │
-│                        │  i / A                                Enter Insert mode / append at line end                                   ┃│────────────────────────┘
-│                        │  Ctrl+L                               Clear editor                                                             ││────────────────────────┐
+│                        │  i                                    Edit custom browser                                                      ┃│                        │
+│                        │  Enter                                Apply setting                                                            ┃│────────────────────────┘
+│                        │  Esc                                  Finish editing                                                           ││────────────────────────┐
+│                        │  type                                 Edit custom browser                                                      ││                        │
+│                        │  Alt+Enter / F5                       Execute query                                                            ││                        │
+│                        │  y                                    Copy query to clipboard                                                  ││                        │
+│                        │  i / A                                Enter Insert mode / append at line end                                   ││                        │
+│                        │  Ctrl+L                               Clear editor                                                             ││                        │
 │                        │  Ctrl+O                               Open Query History                                                       ││                        │
 │                        │  h / l / ← / →                        Move cursor left / right                                                 ││                        │
 │                        │  j / k / ↓ / ↑ / Ctrl+N / Ctrl+P      Move cursor down / up                                                    ││                        │
@@ -39,12 +44,7 @@ expression: output
 │                        │  ← / → / ↑ / ↓                        Move cursor                                                              ││                        │
 │                        │  Home / End                           Line start/end                                                           ││                        │
 │                        │  Tab                                  Insert tab                                                               ││                        │
-│                        │  Tab / Enter                          Accept completion                                                        ││                        │
-│                        │  Esc                                  Dismiss completion                                                       ││                        │
-│                        │  Enter                                Execute the confirmed statement                                          ││                        │
-│                        │  Esc                                  Cancel and return to editor                                              ││                        │
-│                        │  :w                                   Preview and confirm UPDATE                                               ││                        │
-│                        │                                                                                                                ▼│                        │
+│                        │  Tab / Enter                          Accept completion                                                        ▼│                        │
 │                        │─────────────────────────────────────────────────────────────────────────────────────────────────────────────────│                        │
 │                        │ [BROWSE]                                                                                                        │                        │
 │                        ╰ /: Filter │ Esc/?: Close ───────────────────────────────────────────────────────────────────────────────────────╯                        │

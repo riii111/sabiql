@@ -29,7 +29,10 @@ pub fn translate(event: KeyEvent) -> KeyCombo {
     let raw_shift = event.modifiers.contains(KeyModifiers::SHIFT);
     let shift = match key {
         Key::BackTab => true,
-        Key::Char('D') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+        Key::Char('D')
+            if event.modifiers.contains(KeyModifiers::CONTROL)
+                && !event.modifiers.contains(KeyModifiers::ALT) =>
+        {
             key = Key::Char('d');
             true
         }
@@ -79,6 +82,29 @@ mod tests {
         let upper = KeyEvent::new(KeyCode::Char('D'), KeyModifiers::CONTROL);
         assert_eq!(translate(lower), KeyCombo::ctrl_shift(Key::Char('d')));
         assert_eq!(translate(upper), translate(lower));
+    }
+
+    #[test]
+    fn ctrl_alt_uppercase_d_remains_uppercase_in_text_input() {
+        use crate::app::model::app_state::AppState;
+        use crate::app::model::shared::input_mode::InputMode;
+        use crate::app::ports::inbound::InputEvent;
+        use crate::app::update::action::{Action, InputTarget};
+        use crate::app::update::input::handle_event;
+
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::CommandLine);
+        let combo = translate(KeyEvent::new(
+            KeyCode::Char('D'),
+            KeyModifiers::CONTROL | KeyModifiers::ALT,
+        ));
+        assert!(matches!(
+            handle_event(InputEvent::Key(combo), &state),
+            Action::TextInput {
+                target: InputTarget::CommandLine,
+                ch: 'D'
+            }
+        ));
     }
 
     #[test]

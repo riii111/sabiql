@@ -82,7 +82,7 @@ help: :sql: Open SQL Editor
 help: :erd: Open ER Diagram
 help: :settings: Open Settings
 help: :palette: Open Command Palette
-help: :w: Preview and confirm UPDATE
+help: :w: Preview and confirm changes
 help: Enter: Submit command
 help: Esc: Exit command line
 palette: q: Quit application => Quit
@@ -116,7 +116,7 @@ TextMoveCursor { target: ResultCellEdit, direction: ReadlineWordStart }: ⌥'b'
 TextMoveCursor { target: ResultCellEdit, direction: Right }: ^'f', Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
 TextYank { target: ResultCellEdit }: ^'y'
 footer: :w:Write  type:Edit  ←/→:Move  Esc:Normal
-help: :w: Preview and confirm UPDATE
+help: :w: Preview and confirm changes
 help: :: Open command line
 help: type: Edit cell value
 help: ← / →: Move cursor
@@ -391,7 +391,6 @@ palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: e: Open ER Diagram => OpenModal(ErTablePicker)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## ConnectionSelector
 ConfirmConnectionSelection: Enter
 Escape: Esc
@@ -501,7 +500,6 @@ palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: e: Open ER Diagram => OpenModal(ErTablePicker)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## JsonDetail
 BeginKeySequence(G): 'g', ⇧'g'
 CloseModal(JsonDetail): 'q', Esc, ⇧Esc
@@ -1047,7 +1045,7 @@ help: 1 / 2 / 3: Switch pane focus
 help: Esc: Discard pending draft
 help: i: Edit active cell
 help: ] / [: Next/Previous page
-help: :w: Preview and confirm UPDATE
+help: :w: Preview and confirm changes
 help: Ctrl+P: Open Table Picker
 help: r: Reload metadata
 help: s: Open SQL Editor
@@ -1113,7 +1111,7 @@ help: Esc: Exit cell selection
 help: dd: Stage the active row for deletion
 help: u: Unstage the last staged row deletion
 help: ] / [: Next/Previous page
-help: :w: Preview and confirm UPDATE
+help: :w: Preview and confirm changes
 help: Ctrl+P: Open Table Picker
 help: r: Reload metadata
 help: s: Open SQL Editor
@@ -1389,7 +1387,6 @@ CompletionDismiss: Esc, ^Esc, ⌥Esc, ^⌥Esc, ⇧Esc, ^⇧Esc, Left, ^Left, ⌥
 CompletionNext: ^'n', Down, ^Down, ⌥Down, ^⌥Down, ⇧Down, ^⇧Down
 CompletionPrev: ^'p', Up, ^Up, ⌥Up, ^⌥Up, ⇧Up, ^⇧Up
 ExplainAnalyzeRequest: ⌥'e', ^⌥'e'
-OpenModal(QueryHistoryPicker): ^'o'
 SqlModalClear: ^'l', ^⌥'l', ^⇧'l'
 SqlModalSubmit: ⌥Enter, ^⌥Enter, F(5)
 TextBackspace { target: SqlModal }: Backspace, ^Backspace, ⌥Backspace, ^⌥Backspace, ⇧Backspace, ^⇧Backspace
@@ -1399,10 +1396,9 @@ TextMoveCursor { target: SqlModal, direction: End }: End, ^End, ⌥End, ^⌥End,
 TextMoveCursor { target: SqlModal, direction: Home }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
 footer: 
 border: ╭ SQL Editor ── [SQL] [Plan] [Compare] ────────────────────────────────────────────────────────────────────────────────────────────╮
-border: ╰ ⌥Enter/F5: Run │ ^L: Clear │ ^O: History │ Tab/Enter: Accept │ Esc: Dismiss ─────────────────────────────────────────────────────╯
+border: ╰ ⌥Enter/F5: Run │ ^L: Clear │ Tab/Enter: Accept │ Esc: Dismiss ───────────────────────────────────────────────────────────────────╯
 help: Alt+Enter / F5: Execute query
 help: Ctrl+L: Clear editor
-help: Ctrl+O: Open Query History
 help: Alt+E: Run EXPLAIN ANALYZE on current query
 help: ↑ / Ctrl+P / ↓ / Ctrl+N: Select completion
 help: Tab / Enter: Accept completion
@@ -1418,7 +1414,6 @@ palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: e: Open ER Diagram => OpenModal(ErTablePicker)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
-palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## SqlModal Plan
 CloseModal(SqlModal): Esc, ⇧Esc
 ExplainAnalyzeRequest: ⌥'e', ^⌥'e'

@@ -134,7 +134,7 @@ impl JsonDetail {
             empty_placeholder: if is_editing {
                 " Enter JSON..."
             } else {
-                " Press i to edit..."
+                " No JSON content"
             },
             base_style: Style::default().fg(theme.semantic.text.primary),
             current_line_style: Style::default().bg(theme.component.editor.current_line_bg),

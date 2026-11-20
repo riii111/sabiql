@@ -1,17 +1,9 @@
 use crate::model::app_state::AppState;
-use crate::model::browse::json_detail::JsonDetailMode;
 use crate::model::shared::input_mode::InputMode;
-use crate::model::sql_editor::modal::SqlModalStatus;
 use crate::policy::FeaturePolicy;
 use crate::ports::inbound::{InputEvent, KeyCombo};
 use crate::update::action::Action;
-use crate::update::input::keymap::{
-    KeyContext, Picker, browse_action, cell_detail_action, cell_edit_action, command_line_action,
-    confirm_action, connection_error_action, connection_selector_action, connection_setup_action,
-    help_action, json_edit_action, json_search_action, json_view_action, picker_action,
-    row_detail_action, settings_action, sql_confirmation_action, sql_edit_action, sql_view_action,
-    sqlite_diagnostics_action,
-};
+use crate::update::input::keymap::{KeyContext, key_action};
 
 pub fn handle_event(event: InputEvent, state: &AppState) -> Action {
     match event {
@@ -45,36 +37,7 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
 }
 
 fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
-    let context = KeyContext::from_state(state);
-    match state.input_mode() {
-        InputMode::Normal => browse_action(combo, &context),
-        InputMode::CommandLine => command_line_action(combo, &context),
-        InputMode::CellEdit => cell_edit_action(combo, &context),
-        InputMode::TablePicker => picker_action(Picker::Table, combo, &context),
-        InputMode::CommandPalette => picker_action(Picker::CommandPalette, combo, &context),
-        InputMode::Settings => settings_action(combo, &context),
-        InputMode::Help => help_action(combo, &context),
-        InputMode::SqlModal if matches!(state.sql_modal.status(), SqlModalStatus::Editing) => {
-            sql_edit_action(combo, &context)
-        }
-        InputMode::SqlModal => sql_confirmation_action(combo, &context)
-            .or_else(|| sql_view_action(combo, &context))
-            .unwrap_or(Action::None),
-        InputMode::ConnectionSetup => connection_setup_action(combo, &context),
-        InputMode::ConnectionError => connection_error_action(combo, &context),
-        InputMode::ConfirmDialog => confirm_action(combo, &context),
-        InputMode::SqliteDiagnostics => sqlite_diagnostics_action(combo, &context),
-        InputMode::ConnectionSelector => connection_selector_action(combo, &context),
-        InputMode::ErTablePicker => picker_action(Picker::Er, combo, &context),
-        InputMode::QueryHistoryPicker => picker_action(Picker::QueryHistory, combo, &context),
-        InputMode::JsonDetail if state.json_detail.mode() == JsonDetailMode::Searching => {
-            json_search_action(combo, &context)
-        }
-        InputMode::JsonDetail => json_view_action(combo, &context),
-        InputMode::JsonEdit => json_edit_action(combo, &context),
-        InputMode::CellDetail => cell_detail_action(combo, &context),
-        InputMode::RowDetail => row_detail_action(combo, &context),
-    }
+    key_action(combo, &KeyContext::from_state(state))
 }
 
 #[cfg(test)]

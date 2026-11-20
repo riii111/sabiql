@@ -1,5 +1,3 @@
-use std::sync::LazyLock;
-
 use crate::model::shared::key_sequence::Prefix;
 use crate::ports::inbound::{Key, KeyCombo};
 use crate::update::action::{
@@ -10,27 +8,6 @@ use crate::update::action::{
 use super::model::{Binding, Row};
 use super::{HintSurface, KeyContext};
 
-static READLINE: LazyLock<Vec<(InputTarget, Vec<Row>)>> = LazyLock::new(|| {
-    [
-        InputTarget::SqlModal,
-        InputTarget::SqlModalHighRisk,
-        InputTarget::SqlModalAnalyzeHighRisk,
-        InputTarget::ResultCellEdit,
-        InputTarget::ConnectionSetup,
-        InputTarget::CommandLine,
-        InputTarget::Filter,
-        InputTarget::ErFilter,
-        InputTarget::SettingsErBrowser,
-        InputTarget::QueryHistoryFilter,
-        InputTarget::JsonEdit,
-        InputTarget::JsonSearch,
-        InputTarget::CellDetailSearch,
-        InputTarget::HelpFilter,
-    ]
-    .into_iter()
-    .map(|target| (target, readline_rows(target)))
-    .collect()
-});
 pub(super) fn text_field(target: InputTarget, shift_keys: bool) -> Vec<Row> {
     text_field_with(
         target,
@@ -47,24 +24,14 @@ pub(super) fn text_field_any_modifiers(target: InputTarget) -> Vec<Row> {
 }
 
 pub(super) fn confirmation_text_field(target: InputTarget) -> Vec<Row> {
-    let mut rows = text_field(target, true);
-    let first = rows.len() - 4;
-    for (row, key) in rows[first..]
-        .iter_mut()
-        .zip([Key::Left, Key::Right, Key::Home, Key::End])
-    {
-        for binding in &mut row.bindings {
-            *binding = binding.clone().with_any_modifiers(key);
-        }
-    }
+    let mut rows = readline_rows(target);
+    rows.extend(deletion_rows(target, KeyModifiers::Shift));
+    rows.extend(cursor_rows(target, KeyModifiers::Any));
     rows
 }
 
 pub(super) fn consume_readline(target: InputTarget) -> Vec<Row> {
-    let mut rows = READLINE
-        .iter()
-        .find(|(candidate, _)| *candidate == target)
-        .map_or_default(|(_, rows)| rows.clone());
+    let mut rows = readline_rows(target);
     for row in &mut rows {
         row.references = &[];
         for binding in &mut row.bindings {
@@ -284,44 +251,59 @@ pub(super) fn conditional_text_field(
     editing: fn(&KeyContext) -> bool,
     readline: fn(&KeyContext) -> bool,
 ) -> Vec<Row> {
-    let readline_count = READLINE
-        .iter()
-        .find(|(candidate, _)| *candidate == target)
-        .map_or(0, |(_, rows)| rows.len());
-    let mut rows = text_field_any_modifiers(target);
-    for (index, row) in rows.iter_mut().enumerate() {
-        let condition = if index < readline_count {
-            readline
-        } else {
-            editing
-        };
+    let mut rows = readline_rows(target);
+    let mut other = deletion_rows(target, KeyModifiers::Any);
+    other.extend(cursor_rows(target, KeyModifiers::Any));
+    for (row, condition) in rows
+        .iter_mut()
+        .map(|row| (row, readline))
+        .chain(other.iter_mut().map(|row| (row, editing)))
+    {
         for binding in &mut row.bindings {
             *binding = binding.clone().when(condition);
         }
     }
+    rows.extend(other);
     rows
 }
 
 pub(super) fn text_field_with_navigation(target: InputTarget) -> (Vec<Row>, Vec<Row>) {
-    let mut rows = text_field_any_modifiers(target);
-    let first = rows.len() - 4;
-    let mut left = rows.remove(first);
-    let right = rows.remove(first);
-    let mut home = rows.remove(first);
-    let end = rows.remove(first);
-    left.bindings.extend(right.bindings);
-    left.short = "Move";
-    left.description = "Move cursor";
-    left.surfaces = &[
-        HintSurface::Footer,
-        HintSurface::Current,
-        HintSurface::Editing,
+    let mut rows = readline_rows(target);
+    rows.extend(deletion_rows(target, KeyModifiers::Any));
+    let group = |keys: &[(Key, CursorMove)], short, description, surfaces| {
+        Row::new(
+            keys.iter()
+                .map(|&(key, direction)| {
+                    Binding::any_modifiers(Action::TextMoveCursor { target, direction }, key)
+                })
+                .collect(),
+            short,
+            description,
+            surfaces,
+        )
+    };
+    let navigation = vec![
+        group(
+            &[
+                (Key::Left, CursorMove::Left),
+                (Key::Right, CursorMove::Right),
+            ],
+            "Move",
+            "Move cursor",
+            &[
+                HintSurface::Footer,
+                HintSurface::Current,
+                HintSurface::Editing,
+            ],
+        ),
+        group(
+            &[(Key::Home, CursorMove::Home), (Key::End, CursorMove::End)],
+            "Jump",
+            "Jump to start/end",
+            &[HintSurface::Current, HintSurface::Editing],
+        ),
     ];
-    home.bindings.extend(end.bindings);
-    home.short = "Jump";
-    home.description = "Jump to start/end";
-    home.surfaces = &[HintSurface::Current, HintSurface::Editing];
-    (rows, vec![left, home])
+    (rows, navigation)
 }
 
 #[derive(Clone, Copy)]
@@ -332,13 +314,21 @@ enum KeyModifiers {
 }
 
 fn text_field_with(target: InputTarget, modifiers: KeyModifiers) -> Vec<Row> {
-    let mut rows = READLINE
-        .iter()
-        .find(|(candidate, _)| *candidate == target)
-        .map_or_default(|(_, rows)| rows.clone());
-    rows.extend([
+    let mut rows = readline_rows(target);
+    rows.extend(deletion_rows(target, modifiers));
+    rows.extend(cursor_rows(target, modifiers));
+    rows
+}
+
+fn deletion_rows(target: InputTarget, modifiers: KeyModifiers) -> Vec<Row> {
+    vec![
         hidden(Action::TextBackspace { target }, Key::Backspace, modifiers),
         hidden(Action::TextDelete { target }, Key::Delete, modifiers),
+    ]
+}
+
+fn cursor_rows(target: InputTarget, modifiers: KeyModifiers) -> Vec<Row> {
+    vec![
         hidden(
             Action::TextMoveCursor {
                 target,
@@ -371,8 +361,7 @@ fn text_field_with(target: InputTarget, modifiers: KeyModifiers) -> Vec<Row> {
             Key::End,
             modifiers,
         ),
-    ]);
-    rows
+    ]
 }
 
 pub(super) fn list_navigation(target: ListTarget, vim_keys: bool) -> Row {

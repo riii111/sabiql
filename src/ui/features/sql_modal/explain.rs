@@ -312,12 +312,5 @@ fn build_analyze_acknowledge_lines<'a>(
             Style::default().fg(theme.semantic.text.dim),
         )));
     }
-    lines.push(Line::raw(""));
-
-    lines.push(Line::from(Span::styled(
-        " Press Enter to execute  Esc: Cancel",
-        Style::default().fg(theme.semantic.text.secondary),
-    )));
-
     lines
 }

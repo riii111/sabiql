@@ -95,7 +95,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             ),
             HintSurface::FooterAction,
             Some(|context, surface| {
-                surface != HintSurface::FooterAction
+                !matches!(surface, HintSurface::FooterAction | HintSurface::Palette)
                     || (regular_footer(context, surface) && context.browse_connected())
             }),
         ),
@@ -198,13 +198,23 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             Some(regular_footer),
         ),
         footer(
-            preset_row(
-                Action::OpenModal(ModalKind::QueryHistoryPicker),
-                'o',
-                'O',
-                "History",
-                "Open Query History",
-            ),
+            Row {
+                bindings: vec![
+                    Binding::action(
+                        Action::OpenModal(ModalKind::QueryHistoryPicker),
+                        &[KeyCombo::ctrl(Key::Char('o'))],
+                    )
+                    .ide(&[KeyCombo::plain(Key::Char('O'))])
+                    .when(KeyContext::can_open_history),
+                ],
+                ..preset_row(
+                    Action::OpenModal(ModalKind::QueryHistoryPicker),
+                    'o',
+                    'O',
+                    "History",
+                    "Open Query History",
+                )
+            },
             HintSurface::FooterAction,
             Some(regular_footer),
         ),
@@ -321,7 +331,46 @@ pub fn palette_action(id: usize, context: &KeyContext) -> Option<Action> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::app_state::AppState;
+    use std::time::Instant;
+
+    #[test]
+    fn palette_checks_connection_and_history_availability_again_on_selection() {
+        let mut state = AppState::new("test".to_string());
+        let unavailable = palette_available(&KeyContext::for_browse_state(&state));
+        assert!(!unavailable.iter().any(|entry| matches!(
+            entry.action,
+            Action::ReloadMetadata | Action::OpenModal(ModalKind::QueryHistoryPicker)
+        )));
+
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            DatabaseType::PostgreSQL,
+            "postgres://localhost/test",
+        );
+        let available = palette_available(&KeyContext::for_browse_state(&state));
+        let reload = available
+            .iter()
+            .find(|entry| matches!(entry.action, Action::ReloadMetadata))
+            .unwrap()
+            .id;
+        let history = available
+            .iter()
+            .find(|entry| {
+                matches!(
+                    entry.action,
+                    Action::OpenModal(ModalKind::QueryHistoryPicker)
+                )
+            })
+            .unwrap()
+            .id;
+        let _ = state.query.begin_running(Instant::now());
+        assert!(palette_action(history, &KeyContext::for_browse_state(&state)).is_none());
+        state.session.clear_connection();
+        assert!(palette_action(reload, &KeyContext::for_browse_state(&state)).is_none());
+    }
 
     #[test]
     fn palette_uses_the_current_read_only_label_once() {

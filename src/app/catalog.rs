@@ -265,6 +265,36 @@ mod tests {
             .collect()
     }
 
+    #[test]
+    fn normal_help_finds_settings_and_command_operations() {
+        let mut state = AppState::new("test".to_string());
+        let context = KeyContext::from_state(&state);
+        state.ui.help_mut().open(context);
+        let document = HelpDocument::from_state(&state);
+        for description in [
+            "Select setting",
+            "Switch settings section",
+            "Edit custom browser",
+            "Submit command",
+        ] {
+            assert!(
+                document
+                    .sections()
+                    .iter()
+                    .skip(1)
+                    .flat_map(HelpSection::rows)
+                    .any(|row| row.description() == description),
+                "{description}"
+            );
+            let filtered = HelpDocument::new(
+                KeyContext::from_state(&state),
+                description,
+                description.len(),
+            );
+            assert!(row_descriptions(&filtered).contains(&description));
+        }
+    }
+
     fn result_state_with_selected_column(
         database_type: DatabaseType,
         selected_column: usize,

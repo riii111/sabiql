@@ -16,7 +16,11 @@ pub(super) static SELECTING: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             "Apply",
             "Apply setting",
-            &[HintSurface::Border, HintSurface::Current],
+            &[
+                HintSurface::Border,
+                HintSurface::Current,
+                HintSurface::ModalBasics,
+            ],
         ),
         Row::new(
             vec![
@@ -39,7 +43,11 @@ pub(super) static SELECTING: LazyLock<Vec<Row>> = LazyLock::new(|| {
             ],
             "Select",
             "Select setting",
-            &[HintSurface::Footer, HintSurface::Current],
+            &[
+                HintSurface::Footer,
+                HintSurface::Current,
+                HintSurface::ModalBasics,
+            ],
         ),
         Row {
             bindings: vec![Binding::action(
@@ -48,7 +56,7 @@ pub(super) static SELECTING: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Edit",
             description: "Edit custom browser",
-            references: &[],
+            references: &[HintSurface::Editing],
             dynamic_label: None,
             visible: Some(|context, surface| {
                 surface != HintSurface::Border || context.is_custom_browser_selected()
@@ -65,7 +73,11 @@ pub(super) static SELECTING: LazyLock<Vec<Row>> = LazyLock::new(|| {
             ],
             "Section",
             "Switch settings section",
-            &[HintSurface::Border, HintSurface::Current],
+            &[
+                HintSurface::Border,
+                HintSurface::Current,
+                HintSurface::ModalBasics,
+            ],
         ),
         Row::new(
             vec![Binding::action(
@@ -74,7 +86,11 @@ pub(super) static SELECTING: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             "Cancel",
             "Cancel",
-            &[HintSurface::Border, HintSurface::Current],
+            &[
+                HintSurface::Border,
+                HintSurface::Current,
+                HintSurface::ModalBasics,
+            ],
         ),
     ]
 });
@@ -85,7 +101,11 @@ pub(super) static EDITING: LazyLock<Vec<Row>> = LazyLock::new(|| {
             vec![Binding::any_modifiers(Action::SettingsApply, Key::Enter)],
             "Apply",
             "Apply setting",
-            &[HintSurface::Border, HintSurface::Current],
+            &[
+                HintSurface::Border,
+                HintSurface::Current,
+                HintSurface::Editing,
+            ],
         ),
         Row::new(
             vec![Binding::any_modifiers(
@@ -94,7 +114,11 @@ pub(super) static EDITING: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             "Done",
             "Finish editing",
-            &[HintSurface::Border, HintSurface::Current],
+            &[
+                HintSurface::Border,
+                HintSurface::Current,
+                HintSurface::Editing,
+            ],
         ),
     ];
     rows.extend(text_field_any_modifiers(InputTarget::SettingsErBrowser));
@@ -102,7 +126,11 @@ pub(super) static EDITING: LazyLock<Vec<Row>> = LazyLock::new(|| {
         vec![Binding::text(InputTarget::SettingsErBrowser)],
         "Browser",
         "Edit custom browser",
-        &[HintSurface::Border, HintSurface::Current],
+        &[
+            HintSurface::Border,
+            HintSurface::Current,
+            HintSurface::Editing,
+        ],
     ));
     rows
 });

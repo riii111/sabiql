@@ -150,7 +150,8 @@ fn rows(tab: SqlModalTab) -> Vec<Row> {
                     Action::OpenModal(ModalKind::QueryHistoryPicker),
                     &[KeyCombo::ctrl(Key::Char('o'))],
                 )
-                .ide(&[KeyCombo::plain(Key::Char('O'))]),
+                .ide(&[KeyCombo::plain(Key::Char('O'))])
+                .when(KeyContext::can_open_history),
             ],
             "History",
             "Open Query History",

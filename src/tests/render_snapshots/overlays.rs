@@ -16,6 +16,28 @@ const POSTGRES_SEQ_SCAN_PLAN: &str =
 const POSTGRES_INDEX_SCAN_PLAN: &str = "Index Scan using idx_users_id on users  (cost=0.28..8.30 rows=1 width=36)\n  Index Cond: (id > 10)";
 const POSTGRES_PLAN_QUERY: &str = "SELECT * FROM users WHERE id > 10";
 
+#[test]
+fn empty_sql_editor_does_not_advertise_insert_during_key_sequence() {
+    use sabiql_app::ports::inbound::{InputEvent, Key, KeyCombo};
+    use sabiql_app::update::action::Action;
+    use sabiql_app::update::input::handle_event;
+    use sabiql_app::update::reducer::reduce;
+
+    let mut state = postgres_connected_state();
+    state.modal.set_mode(InputMode::SqlModal);
+    let g = handle_event(InputEvent::Key(KeyCombo::plain(Key::Char('g'))), &state);
+    assert!(matches!(g, Action::BeginKeySequence(_)));
+    reduce(&mut state, g, test_instant(), &AppServices::stub());
+    let mut terminal = create_test_terminal();
+    let output = render_to_string(&mut terminal, &mut state);
+    assert!(!output.contains("Press i"));
+    assert!(!output.contains("i/A:Insert"));
+    assert!(matches!(
+        handle_event(InputEvent::Key(KeyCombo::plain(Key::Char('i'))), &state),
+        Action::CancelKeySequence
+    ));
+}
+
 fn baseline_sqlite_diagnostics_snapshot() -> SqliteDiagnosticsSnapshot {
     SqliteDiagnosticsSnapshot {
         db_file: DiagnosticField::ok("/tmp/app.db"),

@@ -3727,9 +3727,11 @@ mod tests {
 
         #[test]
         fn confirm_selection_with_reload_emits_effects_in_order() {
-            let mut state = state_in_palette_mode(KeymapPreset::Ide);
-            let entry_index = palette_index_of(&state, |a| matches!(a, Action::ReloadMetadata));
+            let mut state = create_test_state();
+            state.settings.load_keymap_preset(KeymapPreset::Ide);
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
+            open_modal_command_palette(&mut state);
+            let entry_index = palette_index_of(&state, |a| matches!(a, Action::ReloadMetadata));
             state.ui.table_picker_mut().set_selection(entry_index);
             let now = Instant::now();
 
@@ -3747,6 +3749,29 @@ mod tests {
                 [Effect::CancelMetadataTasks, Effect::FetchMetadata { .. },]
             ));
             assert!(!state.table_detail_cache.contains("public.cached"));
+        }
+
+        #[test]
+        fn confirm_selection_rechecks_history_after_query_starts() {
+            let mut state = create_test_state();
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
+            open_modal_command_palette(&mut state);
+            let entry_index = palette_index_of(&state, |action| {
+                matches!(action, Action::OpenModal(ModalKind::QueryHistoryPicker))
+            });
+            state.ui.table_picker_mut().set_selection(entry_index);
+            let now = Instant::now();
+            let _ = state.query.begin_running(now);
+
+            let effects = reduce(
+                &mut state,
+                Action::ConfirmSelection,
+                now,
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(effects.is_empty());
         }
 
         #[test]

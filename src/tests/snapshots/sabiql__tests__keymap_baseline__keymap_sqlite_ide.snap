@@ -81,7 +81,7 @@ help: :help: Show help
 help: :sql: Open SQL Editor
 help: :settings: Open Settings
 help: :palette: Open Command Palette
-help: :w: Preview and confirm UPDATE
+help: :w: Preview and confirm changes
 help: Enter: Submit command
 help: Esc: Exit command line
 palette: q: Quit application => Quit
@@ -115,7 +115,7 @@ TextMoveCursor { target: ResultCellEdit, direction: ReadlineWordStart }: ⌥'b'
 TextMoveCursor { target: ResultCellEdit, direction: Right }: ^'f', Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
 TextYank { target: ResultCellEdit }: ^'y'
 footer: :w:Write  type:Edit  ←/→:Move  Esc:Normal
-help: :w: Preview and confirm UPDATE
+help: :w: Preview and confirm changes
 help: :: Open command line
 help: type: Edit cell value
 help: ← / →: Move cursor
@@ -388,7 +388,6 @@ palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
 palette: R: Enable Read-Only mode => ToggleReadOnly
-palette: O: Open Query History => OpenModal(QueryHistoryPicker)
 ## ConnectionSelector
 ConfirmConnectionSelection: Enter
 Escape: Esc
@@ -472,7 +471,6 @@ palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
 palette: R: Enable Read-Only mode => ToggleReadOnly
-palette: O: Open Query History => OpenModal(QueryHistoryPicker)
 ## JsonDetail
 CloseModal(JsonDetail): 'q', Esc
 footer: 
@@ -985,7 +983,7 @@ help: 1 / 2 / 3: Switch pane focus
 help: Esc: Discard pending draft
 help: i: Edit active cell
 help: ] / [: Next/Previous page
-help: :w: Preview and confirm UPDATE
+help: :w: Preview and confirm changes
 help: T: Open Table Picker
 help: r: Reload metadata
 help: s: Open SQL Editor
@@ -1051,7 +1049,7 @@ help: Esc: Exit cell selection
 help: dd: Stage the active row for deletion
 help: u: Unstage the last staged row deletion
 help: ] / [: Next/Previous page
-help: :w: Preview and confirm UPDATE
+help: :w: Preview and confirm changes
 help: T: Open Table Picker
 help: r: Reload metadata
 help: s: Open SQL Editor
@@ -1348,7 +1346,6 @@ palette: s: Open SQL Editor => OpenModal(SqlModal)
 palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
 palette: D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
 palette: R: Enable Read-Only mode => ToggleReadOnly
-palette: O: Open Query History => OpenModal(QueryHistoryPicker)
 ## SqlModal Plan
 CloseModal(SqlModal): Esc, ⇧Esc
 ExplainRequest: 'E'

@@ -607,6 +607,7 @@ pub fn browse_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
         return hints(rows, context, surface);
     }
     let mut result = Vec::new();
+    result.extend(hints(rows, context, HintSurface::Footer));
     for group in [
         HintSurface::FooterAction,
         HintSurface::FooterNavigation,

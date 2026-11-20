@@ -161,11 +161,6 @@ impl Binding {
         self
     }
 
-    pub(super) fn with_any_modifiers(mut self, key: Key) -> Self {
-        self.triggers = vec![Trigger::AnyModifiers(key)];
-        self
-    }
-
     pub(super) fn add_any_modifiers(mut self, key: Key) -> Self {
         self.triggers.insert(1, Trigger::AnyModifiers(key));
         self
