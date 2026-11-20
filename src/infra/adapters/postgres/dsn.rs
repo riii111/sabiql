@@ -9,7 +9,7 @@ impl PostgresAdapter {
             return name.to_string();
         }
         if let Some(db) = find_conninfo_value(dsn, "dbname") {
-            return decode_database_name(&db);
+            return db;
         }
         if let Some(db) = dsn
             .rsplit('/')
@@ -223,10 +223,10 @@ mod tests {
         }
 
         #[test]
-        fn key_value_decodes_percent_encoded_dbname() {
+        fn key_value_keeps_percent_encoded_dbname() {
             assert_eq!(
                 PostgresAdapter::extract_database_name("host=localhost dbname=my%2Fdb"),
-                "my/db"
+                "my%2Fdb"
             );
         }
 
@@ -330,8 +330,8 @@ mod tests {
         }
 
         #[test]
-        fn saved_settings_url_decode_percent_sequences_in_the_database_name() {
-            assert_eq!(database_name_for_settings("a%20b"), "a b");
+        fn saved_settings_keep_percent_sequences_in_the_database_name() {
+            assert_eq!(database_name_for_settings("a%20b"), "a%20b");
         }
 
         #[rstest]
