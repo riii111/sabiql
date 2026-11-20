@@ -1289,4 +1289,73 @@ mod tests {
             );
         }
     }
+
+    #[rstest::rstest]
+    #[case::postgres(
+        DatabaseType::PostgreSQL,
+        &["Name", "Timing", "Event", "Function", "Security"],
+        &["audit_changes", "BEFORE", "UPDATE", "audit_fn", "INVOKER"]
+    )]
+    #[case::sqlite(
+        DatabaseType::SQLite,
+        &["Name", "Timing", "Event", "Definition"],
+        &["audit_changes", "BEFORE", "UPDATE", "audit_fn"]
+    )]
+    fn trigger_table_columns_follow_the_engine(
+        #[case] database_type: DatabaseType,
+        #[case] expected_headers: &[&str],
+        #[case] expected_cells: &[&str],
+    ) {
+        use crate::app::model::shared::theme_id::ThemeId;
+        use crate::theme::palette_for;
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+        use ratatui::layout::Rect;
+
+        let row = InspectorTriggerRow {
+            name: "audit_changes".to_string(),
+            timing: "BEFORE".to_string(),
+            events: "UPDATE".to_string(),
+            action_order: None,
+            definition: "audit_fn".to_string(),
+            security_context: Some("INVOKER".to_string()),
+            creation_context: None,
+        };
+        let mut terminal = Terminal::new(TestBackend::new(100, 6)).unwrap();
+        let theme = palette_for(ThemeId::Default);
+
+        terminal
+            .draw(|frame| {
+                Inspector::render_triggers(
+                    frame,
+                    Rect::new(0, 0, 100, 6),
+                    std::slice::from_ref(&row),
+                    database_type,
+                    0,
+                    0,
+                    theme,
+                );
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let rendered_lines: Vec<String> = (0..buffer.area.height)
+            .map(|y| {
+                (0..buffer.area.width)
+                    .map(|x| buffer.cell((x, y)).unwrap().symbol())
+                    .collect()
+            })
+            .collect();
+        let line_words = |first_word: &str| {
+            rendered_lines
+                .iter()
+                .map(|line| line.split_whitespace().collect::<Vec<_>>())
+                .find(|words| words.first() == Some(&first_word))
+                .unwrap_or_else(|| panic!("missing {first_word:?} row in {rendered_lines:?}"))
+        };
+
+        assert_eq!(line_words("Name"), expected_headers);
+        assert_eq!(line_words("audit_changes"), expected_cells);
+        assert_eq!(trigger_row_cells(&row, database_type), expected_cells);
+    }
 }

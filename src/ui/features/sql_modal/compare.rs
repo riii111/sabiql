@@ -538,4 +538,23 @@ mod tests {
 
         assert!(slot_detail_text(Some(&slot)).contains("Actual: unavailable"));
     }
+
+    #[rstest::rstest]
+    #[case::postgres_analyze(DatabaseType::PostgreSQL, true, " ANALYZE  (0.25s)")]
+    #[case::mysql_explain(DatabaseType::MySQL, false, " EXPLAIN  (0.25s)")]
+    fn slot_summary_omits_actual_metrics_outside_mysql_analyze(
+        #[case] database_type: DatabaseType,
+        #[case] is_analyze: bool,
+        #[case] expected: &str,
+    ) {
+        let mut slot = sample_slot(SlotSource::AutoLatest, "plan");
+        slot.database_type = database_type;
+        slot.plan.is_analyze = is_analyze;
+        slot.plan.actual_start_ms = Some(0.01);
+        slot.plan.actual_end_ms = Some(0.5);
+        slot.plan.actual_rows = Some(95.0);
+        slot.plan.loops = Some(2);
+
+        assert_eq!(slot_detail_text(Some(&slot)), expected);
+    }
 }

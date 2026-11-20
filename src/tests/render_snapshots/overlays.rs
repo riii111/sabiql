@@ -999,6 +999,71 @@ fn sqlite_sql_modal_plan_tab_labels_query_plan() {
     insta::assert_snapshot!(output);
 }
 
+fn render_plan_tab(database_type: DatabaseType, dsn: &str, plan: &str, is_analyze: bool) -> String {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::from_string("plan-test"),
+        "app",
+        database_type,
+        dsn,
+    );
+    state.modal.set_mode(InputMode::SqlModal);
+    state.sql_modal.set_active_tab(SqlModalTab::Plan);
+    state.explain.set_plan(
+        plan.to_string(),
+        database_type,
+        is_analyze,
+        42,
+        "SELECT * FROM users",
+    );
+
+    render_to_string(&mut terminal, &mut state)
+}
+
+const MYSQL_ANALYZE_PLAN: &str =
+    "-> Table scan on users  (cost=1.25 rows=2.5) (actual time=0.010..0.500 rows=95 loops=2)";
+const POSTGRES_ANALYZE_PLAN: &str = "Seq Scan on users  (cost=0.00..35.50 rows=2550 width=36) (actual time=0.010..0.500 rows=95 loops=2)";
+
+#[test]
+fn mysql_sql_modal_plan_tab_shows_actual_metrics_for_analyze() {
+    let output = render_plan_tab(
+        DatabaseType::MySQL,
+        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+        MYSQL_ANALYZE_PLAN,
+        true,
+    );
+
+    assert!(output.contains("EXPLAIN ANALYZE (0.04s)"));
+    assert!(output.contains("Actual: time=0.010..0.500 ms rows=95 loops=2"));
+}
+
+#[test]
+fn mysql_sql_modal_plan_tab_omits_actual_metrics_without_analyze() {
+    let output = render_plan_tab(
+        DatabaseType::MySQL,
+        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+        MYSQL_ANALYZE_PLAN,
+        false,
+    );
+
+    assert!(output.contains("EXPLAIN (0.04s)"));
+    assert!(!output.contains("Actual:"));
+}
+
+#[test]
+fn postgres_sql_modal_plan_tab_omits_actual_metrics_for_analyze() {
+    let output = render_plan_tab(
+        DatabaseType::PostgreSQL,
+        "postgres://localhost:5432/app",
+        POSTGRES_ANALYZE_PLAN,
+        true,
+    );
+
+    assert!(output.contains("EXPLAIN ANALYZE (0.04s)"));
+    assert!(!output.contains("Actual:"));
+}
+
 #[test]
 fn sqlite_diagnostics_overlay_loading() {
     let mut state = sqlite_connected_state();

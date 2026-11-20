@@ -291,6 +291,22 @@ mod tests {
             assert_eq!(info.hint(), "Install sqlite3 and add it to PATH");
         }
 
+        #[test]
+        fn from_db_operation_error_classifies_missing_psql_cli() {
+            let info =
+                ConnectionErrorInfo::from_db_operation_error(&DbOperationError::CommandNotFound {
+                    command: DatabaseCli::Psql,
+                    details: "No such file or directory".to_string(),
+                });
+
+            assert_eq!(info.summary(), "Database CLI not found");
+            assert_eq!(
+                info.hint(),
+                "Install the database CLI (e.g. psql) and add it to PATH"
+            );
+            assert!(!info.is_retryable());
+        }
+
         #[rstest]
         #[case(DatabaseCli::MySql, "mysql not found")]
         fn from_db_operation_error_classifies_missing_mysql_cli(
