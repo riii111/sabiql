@@ -15,10 +15,12 @@ pub(super) enum Trigger {
     NoCtrlAlt(Key),
     WithAlt(Key),
     WithCtrl(Key),
+    Repeat(Key),
     Sequence {
         prefix: Prefix,
         second: KeyCombo,
         shifted_start: bool,
+        any_start: bool,
     },
     Command {
         name: &'static str,
@@ -123,6 +125,15 @@ impl Binding {
         }
     }
 
+    pub(super) fn repeat(action: Action, key: Key) -> Self {
+        Self {
+            triggers: vec![Trigger::Repeat(key)],
+            ide_triggers: None,
+            output: Output::Action(action),
+            condition: None,
+        }
+    }
+
     pub(super) fn with_no_ctrl_alt(mut self, key: Key) -> Self {
         self.triggers.push(Trigger::NoCtrlAlt(key));
         self
@@ -162,11 +173,21 @@ impl Binding {
                 prefix,
                 second,
                 shifted_start,
+                any_start: false,
             }],
             ide_triggers: None,
             output: Output::Action(action),
             condition: None,
         }
+    }
+
+    pub(super) fn with_any_sequence_start(mut self) -> Self {
+        for trigger in &mut self.triggers {
+            if let Trigger::Sequence { any_start, .. } = trigger {
+                *any_start = true;
+            }
+        }
+        self
     }
 
     pub(super) fn when(mut self, condition: fn(&KeyContext) -> bool) -> Self {
@@ -220,10 +241,12 @@ pub(super) fn resolve(rows: &[Row], combo: KeyCombo, context: &KeyContext) -> Op
         if let Trigger::Sequence {
             prefix,
             shifted_start,
+            any_start,
             ..
         } = trigger
             && combo.key == Key::Char(prefix_char(prefix))
-            && (combo.modifiers.is_empty()
+            && (any_start
+                || combo.modifiers.is_empty()
                 || (shifted_start && combo.modifiers == Modifiers::SHIFT))
         {
             let action = Action::BeginKeySequence(prefix);
@@ -364,6 +387,7 @@ fn display_hint(
             | HintSurface::Editing
             | HintSurface::DataActions
             | HintSurface::ExplainPlaceholder
+            | HintSurface::Navigation
             | HintSurface::Palette
     ) {
         long_name(triggers)
@@ -395,6 +419,7 @@ fn winner(rows: &[Row], context: &KeyContext, trigger: Trigger) -> Option<(usize
                             Trigger::AnyModifiers(key) | Trigger::NoCtrlAlt(key) => {
                                 matches_combo(*candidate, KeyCombo::plain(key))
                             }
+                            Trigger::Repeat(key) => matches_combo(*candidate, KeyCombo::plain(key)),
                             Trigger::WithAlt(key) => matches_combo(*candidate, KeyCombo::alt(key)),
                             Trigger::WithCtrl(key) => {
                                 matches_combo(*candidate, KeyCombo::ctrl(key))
@@ -427,6 +452,9 @@ fn matches_combo(trigger: Trigger, combo: KeyCombo) -> bool {
         }
         Trigger::WithAlt(key) => key == combo.key && combo.modifiers.contains(Modifiers::ALT),
         Trigger::WithCtrl(key) => key == combo.key && combo.modifiers.contains(Modifiers::CTRL),
+        Trigger::Repeat(key) => {
+            key == combo.key && !combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT)
+        }
         Trigger::Sequence { .. } | Trigger::Command { .. } => false,
         Trigger::Text => {
             matches!(combo.key, Key::Char(_))
@@ -468,6 +496,10 @@ fn name(trigger: Trigger, long: bool) -> String {
         Trigger::AnyModifiers(key) | Trigger::NoCtrlAlt(key) => KeyCombo::plain(key),
         Trigger::WithAlt(key) => KeyCombo::alt(key),
         Trigger::WithCtrl(key) => KeyCombo::ctrl(key),
+        Trigger::Repeat(key) => {
+            let name = name(Trigger::Key(KeyCombo::plain(key)), long);
+            return format!("{name}{name}");
+        }
         Trigger::Sequence { prefix, second, .. } => {
             return format!(
                 "{}{}",
@@ -644,9 +676,9 @@ mod tests {
                             }
                             let combo = match trigger {
                                 Trigger::Key(combo) => *combo,
-                                Trigger::AnyModifiers(key) | Trigger::NoCtrlAlt(key) => {
-                                    KeyCombo::plain(*key)
-                                }
+                                Trigger::AnyModifiers(key)
+                                | Trigger::NoCtrlAlt(key)
+                                | Trigger::Repeat(key) => KeyCombo::plain(*key),
                                 Trigger::WithAlt(key) => KeyCombo::alt(*key),
                                 Trigger::WithCtrl(key) => KeyCombo::ctrl(*key),
                                 Trigger::Sequence { prefix, second, .. } => {
@@ -718,9 +750,9 @@ mod tests {
                             }
                             let combo = match trigger {
                                 Trigger::Key(combo) => *combo,
-                                Trigger::AnyModifiers(key) | Trigger::NoCtrlAlt(key) => {
-                                    KeyCombo::plain(*key)
-                                }
+                                Trigger::AnyModifiers(key)
+                                | Trigger::NoCtrlAlt(key)
+                                | Trigger::Repeat(key) => KeyCombo::plain(*key),
                                 Trigger::WithAlt(key) => KeyCombo::alt(*key),
                                 Trigger::WithCtrl(key) => KeyCombo::ctrl(*key),
                                 Trigger::Text

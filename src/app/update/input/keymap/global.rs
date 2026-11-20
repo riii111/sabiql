@@ -3,10 +3,10 @@ use std::sync::LazyLock;
 use crate::ports::inbound::{Key, KeyCombo};
 use crate::update::action::{Action, ModalKind};
 
-use super::model::{Binding, Row, indexed_hints, resolve, retained_hint, row_action};
+use super::model::{Binding, Row, indexed_hints, retained_hint, row_action};
 use super::{HintSurface, KeyContext};
 
-static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
+pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
     vec![
         row(Action::Quit, 'q', "Quit", "Quit application"),
         row(Action::ToggleHelp, '?', "Help", "Toggle help"),
@@ -161,10 +161,6 @@ pub struct PaletteEntry {
     pub key: String,
     pub description: &'static str,
     pub action: Action,
-}
-
-pub fn global_action(combo: KeyCombo, context: &KeyContext) -> Option<Action> {
-    resolve(&ROWS, combo, context)
 }
 
 pub fn palette_available(context: &KeyContext) -> Vec<PaletteEntry> {

@@ -1,3 +1,4 @@
+mod browse;
 mod cell_detail;
 mod cell_edit;
 mod command;
@@ -25,6 +26,7 @@ mod sqlite_diagnostics;
 use crate::ports::inbound::KeyCombo;
 use crate::update::action::{Action, InputTarget};
 
+pub use browse::{browse_action, browse_hints};
 pub use cell_detail::{cell_detail_action, cell_detail_hints};
 pub use cell_edit::{cell_edit_action, cell_edit_hints};
 pub use command::{command_line_action, command_line_hints, parse_command};
@@ -33,7 +35,7 @@ pub use connection_error::{connection_error_action, connection_error_hints};
 pub use connection_selector::{connection_selector_action, connection_selector_hints};
 pub use connection_setup::{connection_setup_action, connection_setup_hints};
 pub use context::KeyContext;
-pub use global::{PaletteEntry, global_action, palette_action, palette_available, palette_entry};
+pub use global::{PaletteEntry, palette_action, palette_available, palette_entry};
 pub use help::{help_action, help_hints};
 pub use json_edit::{json_edit_action, json_edit_hints};
 pub use json_search::{json_search_action, json_search_hints};
@@ -60,6 +62,7 @@ pub enum HintSurface {
     Write,
     DataActions,
     ExplainPlaceholder,
+    Navigation,
     Palette,
 }
 

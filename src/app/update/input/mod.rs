@@ -9,6 +9,5 @@ pub mod command;
 mod handlers;
 pub mod keybindings;
 pub mod keymap;
-pub mod vim;
 
 pub use handlers::handle_event;

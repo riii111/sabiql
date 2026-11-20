@@ -1,145 +1,18 @@
 use crate::model::app_state::AppState;
-use crate::model::shared::focused_pane::FocusedPane;
-use crate::model::shared::key_sequence::Prefix;
-use crate::policy::FeaturePolicy;
-use crate::update::action::{Action, ModalKind};
-use crate::update::input::keybindings::{self as kb, Key, KeyCombo, Modifiers};
-use crate::update::input::keymap::{KeyContext, global_action};
-use crate::update::input::vim::{
-    BrowseVimContext, VimSurfaceContext, action_for_input, action_for_key,
-};
+use crate::ports::inbound::KeyCombo;
+use crate::update::action::Action;
+use crate::update::input::keymap::{KeyContext, browse_action};
 
 pub(super) fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
-    let browse_ctx = BrowseVimContext::from(state);
-    let result_navigation = browse_ctx.is_result();
-    let inspector_navigation = browse_ctx.is_inspector();
-    let keymap_preset = state.settings.saved_keymap_preset();
-    let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
-
-    // Key sequence FSM: two-key sequences (zz, zt, zb)
-    // Must be resolved before Ctrl/global actions so that the second key is
-    // never swallowed and the sequence is always cleared.
-    if let Some(prefix) = state.ui.key_sequence().pending_prefix() {
-        if combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT) {
-            return Action::CancelKeySequence;
-        }
-        return match action_for_input(&combo, Some(prefix), VimSurfaceContext::Browse(browse_ctx)) {
-            Some(Action::None) | None => Action::CancelKeySequence,
-            Some(action) => action,
-        };
-    }
-
-    // Ctrl combos
-    if combo.modifiers.contains(Modifiers::CTRL) {
-        match combo.key {
-            Key::Char('r') if kb::read_only(keymap_preset).combos.contains(&combo) => {
-                return Action::ToggleReadOnly;
-            }
-            Key::Char('o') if kb::query_history(keymap_preset).combos.contains(&combo) => {
-                return Action::OpenModal(ModalKind::QueryHistoryPicker);
-            }
-            Key::Char('p') if kb::table_picker(keymap_preset).combos.contains(&combo) => {
-                return Action::OpenModal(ModalKind::TablePicker);
-            }
-            // Ctrl+N/P navigation disabled on main screen; use j/k or arrows.
-            // Modals/pickers handle Ctrl+N/P via their own bindings.
-            // NOTE: vim/classify.rs still maps Ctrl+N/P → MoveDown/MoveUp for modal
-            // contexts (SQL Modal Plan/Compare). This catch-all prevents that
-            // mapping from reaching the main screen.
-            Key::Char('n' | 'p') => {
-                return Action::None;
-            }
-            _ => {
-                if let Some(action) = action_for_key(&combo, VimSurfaceContext::Browse(browse_ctx))
-                {
-                    return action;
-                }
-            }
-        }
-    }
-
-    // Global actions (predicate-based, no modifiers)
-    if let Some(action) = global_action(combo, &KeyContext::from_state(state)) {
-        return action;
-    }
-    if combo.key == Key::Enter && combo.modifiers.is_empty() && state.connection_error.has_error() {
-        return Action::ConfirmSelection;
-    }
-
-    // Shared vim semantics (navigation, mode, operators)
-    if let Some(action) = action_for_key(&combo, VimSurfaceContext::Browse(browse_ctx)) {
-        return action;
-    }
-
-    let staged_delete_in_progress = !state.result_interaction.staged_delete_rows().is_empty();
-
-    if result_navigation
-        && !staged_delete_in_progress
-        && kb::result_active::ROW_DETAIL.combos.contains(&combo)
-        && state.result_interaction.selection().row().is_some()
-    {
-        return kb::result_active::ROW_DETAIL.action.clone();
-    }
-    if result_navigation
-        && !staged_delete_in_progress
-        && kb::result_active::YANK.combos.contains(&combo)
-        && state.result_interaction.selection().cell().is_some()
-    {
-        return kb::result_active::YANK.action.clone();
-    }
-
-    // Non-navigation context keys
-    match combo.key {
-        Key::Char(']') => {
-            if result_navigation {
-                Action::ResultNextPage
-            } else {
-                Action::None
-            }
-        }
-        Key::Char('[') => {
-            if result_navigation {
-                Action::ResultPrevPage
-            } else {
-                Action::None
-            }
-        }
-
-        // Pane switching: exit focus mode first if active
-        Key::Char(c @ '1'..='3') => {
-            if state.ui.is_focus_mode() {
-                Action::ToggleFocus
-            } else {
-                FocusedPane::from_browse_key(c).map_or(Action::None, Action::SetFocusedPane)
-            }
-        }
-
-        // Inspector sub-tab navigation (Tab/Shift+Tab, only when Inspector focused)
-        Key::Tab if inspector_navigation => Action::InspectorNextTab,
-        Key::BackTab if inspector_navigation => Action::InspectorPrevTab,
-
-        Key::Char('u') if result_navigation && staged_delete_in_progress => {
-            Action::UnstageLastStagedRow
-        }
-        _ if kb::global::SQL.combos.contains(&combo) => kb::global::SQL.action.clone(),
-        _ if feature_policy.is_enabled(kb::global::ER_DIAGRAM.feature_requirement())
-            && kb::global::ER_DIAGRAM.combos.contains(&combo) =>
-        {
-            kb::global::ER_DIAGRAM.action.clone()
-        }
-        _ if kb::global::CONNECTIONS.combos.contains(&combo) => {
-            kb::global::CONNECTIONS.action.clone()
-        }
-
-        Key::Char('z') => Action::BeginKeySequence(Prefix::Z),
-
-        _ => Action::None,
-    }
+    browse_action(combo, &KeyContext::from_state(state))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::shared::focused_pane::FocusedPane;
+    use crate::model::shared::key_sequence::Prefix;
+    use crate::update::action::ModalKind;
     use std::sync::Arc;
 
     use crate::domain::{ConnectionId, DatabaseType, QueryResult, QuerySource};
@@ -582,6 +455,7 @@ mod tests {
             #[test]
             fn plain_enter_confirms_connection_error() {
                 let mut state = browse_state();
+                state.ui.set_focused_pane(FocusedPane::Result);
                 state.connection_error.set_error(test_support::from_parts(
                     "Connection failed",
                     "See details for more information",
@@ -589,7 +463,10 @@ mod tests {
                     "boom",
                 ));
 
-                let result = handle_normal_mode(KeyCombo::plain(Key::Enter), &state);
+                let result = crate::update::input::handle_event(
+                    crate::ports::inbound::InputEvent::Key(KeyCombo::plain(Key::Enter)),
+                    &state,
+                );
 
                 assert!(matches!(result, Action::ConfirmSelection));
             }

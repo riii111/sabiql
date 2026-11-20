@@ -2,10 +2,13 @@ use crate::model::app_state::AppState;
 use crate::model::browse::json_detail::JsonDetailMode;
 use crate::model::connection::list::is_service_selected;
 use crate::model::connection::setup::ConnectionField;
+use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::help::HelpMode;
 use crate::model::shared::input_mode::InputMode;
+use crate::model::shared::inspector_tab::InspectorTab;
 use crate::model::shared::key_sequence::Prefix;
 use crate::model::shared::settings::{ErBrowserChoice, KeymapPreset, SettingsSection};
+use crate::model::shared::ui_state::ResultNavMode;
 use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
 use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::update::action::Action;
@@ -66,8 +69,25 @@ enum Scope {
         focused: bool,
         read_only: bool,
         csv_available: bool,
+        pane: BrowsePane,
+        connection_error: bool,
+        inspector_ddl: bool,
+        staged_delete: bool,
+        draft: bool,
+        yank_pending: bool,
+        delete_pending: bool,
+        selected_row: bool,
+        selected_cell: bool,
     },
     Other,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum BrowsePane {
+    Explorer,
+    Inspector,
+    ResultScroll,
+    ResultCell,
 }
 
 #[derive(Clone, Copy)]
@@ -211,6 +231,87 @@ impl KeyContext {
             self.scope,
             Scope::Browse {
                 csv_available: true,
+                ..
+            }
+        )
+    }
+
+    pub(super) fn browse_pane(&self) -> BrowsePane {
+        match self.scope {
+            Scope::Browse { pane, .. } => pane,
+            _ => BrowsePane::Explorer,
+        }
+    }
+
+    pub(super) fn browse_connection_error(&self) -> bool {
+        matches!(
+            self.scope,
+            Scope::Browse {
+                connection_error: true,
+                ..
+            }
+        )
+    }
+
+    pub(super) fn browse_inspector_ddl(&self) -> bool {
+        matches!(
+            self.scope,
+            Scope::Browse {
+                inspector_ddl: true,
+                ..
+            }
+        )
+    }
+
+    pub(super) fn browse_staged_delete(&self) -> bool {
+        matches!(
+            self.scope,
+            Scope::Browse {
+                staged_delete: true,
+                ..
+            }
+        )
+    }
+
+    pub(super) fn browse_draft(&self) -> bool {
+        matches!(self.scope, Scope::Browse { draft: true, .. })
+    }
+
+    pub(super) fn browse_yank_pending(&self) -> bool {
+        matches!(
+            self.scope,
+            Scope::Browse {
+                yank_pending: true,
+                ..
+            }
+        )
+    }
+
+    pub(super) fn browse_delete_pending(&self) -> bool {
+        matches!(
+            self.scope,
+            Scope::Browse {
+                delete_pending: true,
+                ..
+            }
+        )
+    }
+
+    pub(super) fn browse_selected_row(&self) -> bool {
+        matches!(
+            self.scope,
+            Scope::Browse {
+                selected_row: true,
+                ..
+            }
+        )
+    }
+
+    pub(super) fn browse_selected_cell(&self) -> bool {
+        matches!(
+            self.scope,
+            Scope::Browse {
+                selected_cell: true,
                 ..
             }
         )
@@ -461,10 +562,30 @@ fn is_dropdown_field(field: ConnectionField) -> bool {
 }
 
 fn browse_scope(state: &AppState) -> Scope {
+    let pane = if state.ui.is_focus_mode() || state.ui.focused_pane() == FocusedPane::Result {
+        if state.result_interaction.selection().mode() == ResultNavMode::CellActive {
+            BrowsePane::ResultCell
+        } else {
+            BrowsePane::ResultScroll
+        }
+    } else if state.ui.focused_pane() == FocusedPane::Inspector {
+        BrowsePane::Inspector
+    } else {
+        BrowsePane::Explorer
+    };
     Scope::Browse {
         focused: state.ui.is_focus_mode(),
         read_only: state.session.is_read_only(),
         csv_available: state.can_request_csv_export(),
+        pane,
+        connection_error: state.connection_error.has_error(),
+        inspector_ddl: state.ui.inspector_tab() == InspectorTab::Ddl,
+        staged_delete: !state.result_interaction.staged_delete_rows().is_empty(),
+        draft: state.result_interaction.cell_edit().has_pending_draft(),
+        yank_pending: state.result_interaction.is_yank_operator_pending(),
+        delete_pending: state.result_interaction.is_delete_operator_pending(),
+        selected_row: state.result_interaction.selection().row().is_some(),
+        selected_cell: state.result_interaction.selection().cell().is_some(),
     }
 }
 

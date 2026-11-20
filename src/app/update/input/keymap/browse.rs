@@ -1,0 +1,471 @@
+use std::sync::LazyLock;
+
+use crate::model::shared::focused_pane::FocusedPane;
+use crate::model::shared::key_sequence::Prefix;
+use crate::ports::inbound::{Key, KeyCombo};
+use crate::update::action::{
+    Action, CursorPosition, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
+    ScrollToCursorTarget, SelectMotion,
+};
+
+use super::context::BrowsePane;
+use super::global;
+use super::model::{Binding, Row, hints, resolve};
+use super::{Hint, HintSurface, KeyContext};
+
+static EXPLORER: LazyLock<Vec<Row>> = LazyLock::new(|| rows(BrowsePane::Explorer));
+static INSPECTOR: LazyLock<Vec<Row>> = LazyLock::new(|| rows(BrowsePane::Inspector));
+static RESULT_SCROLL: LazyLock<Vec<Row>> = LazyLock::new(|| rows(BrowsePane::ResultScroll));
+static RESULT_CELL: LazyLock<Vec<Row>> = LazyLock::new(|| rows(BrowsePane::ResultCell));
+
+fn rows(pane: BrowsePane) -> Vec<Row> {
+    let mut rows = global::ROWS.clone();
+    rows.push(row(
+        vec![
+            Binding::action(Action::ConfirmSelection, &[KeyCombo::plain(Key::Enter)])
+                .when(KeyContext::browse_connection_error),
+        ],
+        "Error",
+        "Open connection error details",
+        &[HintSurface::Current],
+    ));
+    for (key, target) in [
+        ('1', FocusedPane::Explorer),
+        ('2', FocusedPane::Inspector),
+        ('3', FocusedPane::Result),
+    ] {
+        rows.push(row(
+            vec![
+                Binding::any_modifiers(Action::ToggleFocus, Key::Char(key))
+                    .when(KeyContext::browse_focused),
+                Binding::any_modifiers(Action::SetFocusedPane(target), Key::Char(key))
+                    .when(|context| !context.browse_focused()),
+            ],
+            "Pane",
+            "Switch pane focus",
+            &[HintSurface::Current],
+        ));
+    }
+    for key in ['n', 'p'] {
+        rows.push(row(
+            vec![Binding::with_ctrl(Action::None, Key::Char(key)).consume()],
+            "",
+            "",
+            &[],
+        ));
+    }
+
+    rows.extend(navigation(pane));
+    match pane {
+        BrowsePane::Explorer => {
+            rows.push(row(
+                vec![Binding::no_ctrl_alt(Action::ConfirmSelection, Key::Enter)],
+                "Select",
+                "Select table",
+                &[HintSurface::Current],
+            ));
+            rows.push(row(
+                vec![Binding::no_ctrl_alt(Action::Escape, Key::Esc)],
+                "Back",
+                "Cancel",
+                &[HintSurface::Current],
+            ));
+        }
+        BrowsePane::Inspector => {
+            rows.push(row(
+                vec![Binding::no_ctrl_alt(Action::Escape, Key::Esc)],
+                "Back",
+                "Cancel",
+                &[HintSurface::Current],
+            ));
+            rows.push(row(
+                vec![
+                    Binding::no_ctrl_alt(Action::DdlYank, Key::Char('y'))
+                        .when(KeyContext::browse_inspector_ddl),
+                ],
+                "Yank",
+                "Copy DDL to clipboard",
+                &[HintSurface::Current],
+            ));
+            rows.push(row(
+                vec![
+                    Binding::any_modifiers(Action::InspectorNextTab, Key::Tab),
+                    Binding::any_modifiers(Action::InspectorPrevTab, Key::BackTab),
+                ],
+                "InsTabs",
+                "Inspector prev/next tab",
+                &[HintSurface::Current],
+            ));
+        }
+        BrowsePane::ResultScroll | BrowsePane::ResultCell => {
+            if pane == BrowsePane::ResultScroll {
+                rows.push(row(
+                    vec![Binding::no_ctrl_alt(Action::ResultActivateCell, Key::Enter)],
+                    "Select",
+                    "Enter cell selection at the current viewport anchor",
+                    &[HintSurface::Current],
+                ));
+                rows.push(row(
+                    vec![
+                        Binding::no_ctrl_alt(Action::ClearStagedDeletes, Key::Esc)
+                            .when(KeyContext::browse_staged_delete),
+                        Binding::no_ctrl_alt(Action::Escape, Key::Esc)
+                            .when(|context| !context.browse_staged_delete()),
+                    ],
+                    "Back",
+                    "Cancel",
+                    &[HintSurface::Current],
+                ));
+                rows.push(row(
+                    vec![Binding::no_ctrl_alt(Action::None, Key::Char('y')).consume()],
+                    "",
+                    "",
+                    &[],
+                ));
+            } else {
+                rows.push(row(
+                    vec![Binding::no_ctrl_alt(
+                        Action::ResultOpenCellDetail,
+                        Key::Enter,
+                    )],
+                    "Detail",
+                    "Open active cell detail",
+                    &[HintSurface::Current],
+                ));
+                rows.push(row(
+                    vec![
+                        Binding::no_ctrl_alt(Action::ResultDiscardCellEdit, Key::Esc)
+                            .when(KeyContext::browse_draft),
+                        Binding::no_ctrl_alt(Action::ResultExitToScroll, Key::Esc)
+                            .when(|context| !context.browse_draft()),
+                    ],
+                    "Back",
+                    "Exit cell selection or discard draft",
+                    &[HintSurface::Current],
+                ));
+                rows.push(row(
+                    vec![Binding::no_ctrl_alt(
+                        Action::ResultEnterCellEdit,
+                        Key::Char('i'),
+                    )],
+                    "Edit",
+                    "Edit active cell",
+                    &[HintSurface::Current],
+                ));
+                rows.push(row(
+                    vec![
+                        Binding::repeat(Action::ResultRowYankOperatorPending, Key::Char('y'))
+                            .when(|context| !context.browse_yank_pending()),
+                        Binding::repeat(Action::ResultRowYank, Key::Char('y'))
+                            .when(KeyContext::browse_yank_pending),
+                    ],
+                    "Yank Row",
+                    "Copy the active row values to clipboard (TSV)",
+                    &[HintSurface::Current],
+                ));
+                rows.push(row(
+                    vec![
+                        Binding::repeat(Action::ResultDeleteOperatorPending, Key::Char('d'))
+                            .when(|context| !context.browse_delete_pending()),
+                        Binding::repeat(Action::StageRowForDelete, Key::Char('d'))
+                            .when(KeyContext::browse_delete_pending),
+                    ],
+                    "Stage Del",
+                    "Stage the active row for deletion",
+                    &[HintSurface::Current],
+                ));
+            }
+            rows.push(row(
+                vec![
+                    Binding::action(
+                        Action::OpenModal(ModalKind::RowDetail),
+                        &[KeyCombo::plain(Key::Char('K'))],
+                    )
+                    .when(|context| {
+                        !context.browse_staged_delete() && context.browse_selected_row()
+                    }),
+                ],
+                "Row Detail",
+                "Open Row Detail",
+                &[HintSurface::Current],
+            ));
+            rows.push(row(
+                vec![
+                    Binding::action(Action::ResultCellYank, &[KeyCombo::plain(Key::Char('Y'))])
+                        .when(|context| {
+                            !context.browse_staged_delete() && context.browse_selected_cell()
+                        }),
+                ],
+                "Yank Cell",
+                "Copy the active cell value to clipboard",
+                &[HintSurface::Current],
+            ));
+            rows.push(row(
+                vec![
+                    Binding::any_modifiers(Action::UnstageLastStagedRow, Key::Char('u'))
+                        .when(KeyContext::browse_staged_delete),
+                ],
+                "Unstage",
+                "Unstage the last staged row deletion",
+                &[HintSurface::Current],
+            ));
+            rows.push(row(
+                vec![
+                    Binding::any_modifiers(Action::ResultNextPage, Key::Char(']')),
+                    Binding::any_modifiers(Action::ResultPrevPage, Key::Char('[')),
+                ],
+                "Page",
+                "Next/Previous page",
+                &[HintSurface::Current],
+            ));
+        }
+    }
+    rows
+}
+
+fn row(
+    bindings: Vec<Binding>,
+    short: &'static str,
+    description: &'static str,
+    surfaces: &'static [HintSurface],
+) -> Row {
+    Row {
+        bindings,
+        short,
+        description,
+        dynamic_label: None,
+        visible: None,
+        surfaces,
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Movement {
+    Down,
+    Up,
+    First,
+    Last,
+    Top,
+    Middle,
+    Bottom,
+    Left,
+    Right,
+    HalfDown,
+    HalfUp,
+    PageDown,
+    PageUp,
+    CenterCursor,
+    TopCursor,
+    BottomCursor,
+}
+
+fn navigation(pane: BrowsePane) -> Vec<Row> {
+    use Movement::*;
+    let bind = |movement, combos: &[KeyCombo]| {
+        Binding::action(
+            navigation_action(pane, movement).unwrap_or(Action::None),
+            combos,
+        )
+    };
+    let seq = |movement, key| {
+        Binding::sequence(
+            navigation_action(pane, movement).unwrap_or(Action::CancelKeySequence),
+            Prefix::Z,
+            KeyCombo::plain(Key::Char(key)),
+            false,
+        )
+        .with_any_sequence_start()
+    };
+    let navigation = &[HintSurface::Navigation];
+    vec![
+        row(
+            vec![
+                bind(
+                    Down,
+                    &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
+                ),
+                bind(
+                    Up,
+                    &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+                ),
+            ],
+            "Scroll",
+            "Move down/up",
+            navigation,
+        ),
+        row(
+            vec![
+                bind(
+                    Left,
+                    &[KeyCombo::plain(Key::Char('h')), KeyCombo::plain(Key::Left)],
+                ),
+                bind(
+                    Right,
+                    &[KeyCombo::plain(Key::Char('l')), KeyCombo::plain(Key::Right)],
+                ),
+            ],
+            "Horizontal",
+            "Move left/right",
+            navigation,
+        ),
+        row(
+            vec![
+                bind(
+                    First,
+                    &[KeyCombo::plain(Key::Char('g')), KeyCombo::plain(Key::Home)],
+                ),
+                bind(
+                    Last,
+                    &[KeyCombo::plain(Key::Char('G')), KeyCombo::plain(Key::End)],
+                ),
+            ],
+            "Top/Bottom",
+            "First/last item",
+            navigation,
+        ),
+        row(
+            vec![
+                bind(Top, &[KeyCombo::plain(Key::Char('H'))]),
+                bind(Middle, &[KeyCombo::plain(Key::Char('M'))]),
+                bind(Bottom, &[KeyCombo::plain(Key::Char('L'))]),
+            ],
+            "Viewport",
+            "First/middle/last visible item",
+            if pane == BrowsePane::Inspector {
+                &[]
+            } else {
+                navigation
+            },
+        ),
+        row(
+            vec![
+                bind(HalfDown, &[KeyCombo::ctrl(Key::Char('d'))]),
+                bind(HalfUp, &[KeyCombo::ctrl(Key::Char('u'))]),
+            ],
+            "Half Page",
+            "Scroll half page down/up",
+            navigation,
+        ),
+        row(
+            vec![
+                bind(
+                    PageDown,
+                    &[
+                        KeyCombo::ctrl(Key::Char('f')),
+                        KeyCombo::plain(Key::PageDown),
+                    ],
+                ),
+                bind(
+                    PageUp,
+                    &[KeyCombo::ctrl(Key::Char('b')), KeyCombo::plain(Key::PageUp)],
+                ),
+            ],
+            "Full Page",
+            "Scroll full page down/up",
+            navigation,
+        ),
+        row(
+            vec![
+                seq(CenterCursor, 'z'),
+                seq(TopCursor, 't'),
+                seq(BottomCursor, 'b'),
+            ],
+            "Scroll To",
+            "Scroll cursor to center/top/bottom",
+            if pane == BrowsePane::Inspector {
+                &[]
+            } else {
+                navigation
+            },
+        ),
+    ]
+}
+
+fn navigation_action(pane: BrowsePane, movement: Movement) -> Option<Action> {
+    use Movement::*;
+    if pane == BrowsePane::Explorer {
+        let motion = match movement {
+            Down => Some(SelectMotion::Next),
+            Up => Some(SelectMotion::Previous),
+            First => Some(SelectMotion::First),
+            Last => Some(SelectMotion::Last),
+            Top => Some(SelectMotion::ViewportTop),
+            Middle => Some(SelectMotion::ViewportMiddle),
+            Bottom => Some(SelectMotion::ViewportBottom),
+            HalfDown => Some(SelectMotion::HalfPageDown),
+            HalfUp => Some(SelectMotion::HalfPageUp),
+            PageDown => Some(SelectMotion::FullPageDown),
+            PageUp => Some(SelectMotion::FullPageUp),
+            _ => None,
+        };
+        if let Some(motion) = motion {
+            return Some(Action::Select(motion));
+        }
+    }
+    if pane == BrowsePane::ResultCell {
+        match movement {
+            Left => return Some(Action::ResultCellLeft),
+            Right => return Some(Action::ResultCellRight),
+            _ => {}
+        }
+    }
+    let target = match pane {
+        BrowsePane::Explorer => ScrollTarget::Explorer,
+        BrowsePane::Inspector => ScrollTarget::Inspector,
+        BrowsePane::ResultScroll | BrowsePane::ResultCell => ScrollTarget::Result,
+    };
+    if matches!(movement, CenterCursor | TopCursor | BottomCursor) {
+        let target = match pane {
+            BrowsePane::Explorer => ScrollToCursorTarget::Explorer,
+            BrowsePane::Inspector => return None,
+            BrowsePane::ResultScroll | BrowsePane::ResultCell => ScrollToCursorTarget::Result,
+        };
+        let position = match movement {
+            CenterCursor => CursorPosition::Center,
+            TopCursor => CursorPosition::Top,
+            _ => CursorPosition::Bottom,
+        };
+        return Some(Action::ScrollToCursor { target, position });
+    }
+    if pane == BrowsePane::Inspector && matches!(movement, Top | Middle | Bottom) {
+        return None;
+    }
+    let (direction, amount) = match movement {
+        Down => (ScrollDirection::Down, ScrollAmount::Line),
+        Up => (ScrollDirection::Up, ScrollAmount::Line),
+        Left => (ScrollDirection::Left, ScrollAmount::Line),
+        Right => (ScrollDirection::Right, ScrollAmount::Line),
+        First => (ScrollDirection::Up, ScrollAmount::ToStart),
+        Last => (ScrollDirection::Down, ScrollAmount::ToEnd),
+        Top => (ScrollDirection::Up, ScrollAmount::ViewportTop),
+        Middle => (ScrollDirection::Up, ScrollAmount::ViewportMiddle),
+        Bottom => (ScrollDirection::Down, ScrollAmount::ViewportBottom),
+        HalfDown => (ScrollDirection::Down, ScrollAmount::HalfPage),
+        HalfUp => (ScrollDirection::Up, ScrollAmount::HalfPage),
+        PageDown => (ScrollDirection::Down, ScrollAmount::FullPage),
+        PageUp => (ScrollDirection::Up, ScrollAmount::FullPage),
+        CenterCursor | TopCursor | BottomCursor => unreachable!(),
+    };
+    Some(Action::Scroll {
+        target,
+        direction,
+        amount,
+    })
+}
+
+fn active_rows(context: &KeyContext) -> &'static [Row] {
+    match context.browse_pane() {
+        BrowsePane::Explorer => &EXPLORER,
+        BrowsePane::Inspector => &INSPECTOR,
+        BrowsePane::ResultScroll => &RESULT_SCROLL,
+        BrowsePane::ResultCell => &RESULT_CELL,
+    }
+}
+
+pub fn browse_action(combo: KeyCombo, context: &KeyContext) -> Action {
+    resolve(active_rows(context), combo, context).unwrap_or(Action::None)
+}
+
+pub fn browse_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
+    hints(active_rows(context), context, surface)
+}
