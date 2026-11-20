@@ -19,31 +19,7 @@ pub(super) fn scroll_rows(target: ScrollTarget) -> Vec<Row> {
     };
     let surfaces = &[HintSurface::Current, HintSurface::Advanced];
     vec![
-        Row {
-            bindings: vec![
-                scroll(
-                    Down,
-                    Line,
-                    &[
-                        KeyCombo::plain(Key::Char('j')),
-                        KeyCombo::plain(Key::Down),
-                        KeyCombo::ctrl(Key::Char('n')),
-                    ],
-                ),
-                scroll(
-                    Up,
-                    Line,
-                    &[
-                        KeyCombo::plain(Key::Char('k')),
-                        KeyCombo::plain(Key::Up),
-                        KeyCombo::ctrl(Key::Char('p')),
-                    ],
-                ),
-            ],
-            short: "Scroll",
-            description: "Scroll down / up",
-            surfaces,
-        },
+        line_scroll(target),
         Row {
             bindings: vec![
                 scroll(
@@ -59,6 +35,7 @@ pub(super) fn scroll_rows(target: ScrollTarget) -> Vec<Row> {
             ],
             short: "H-Scroll",
             description: "Scroll left / right",
+            visible: None,
             surfaces,
         },
         Row {
@@ -68,6 +45,7 @@ pub(super) fn scroll_rows(target: ScrollTarget) -> Vec<Row> {
             ],
             short: "Half Page",
             description: "Scroll half page down / up",
+            visible: None,
             surfaces,
         },
         Row {
@@ -88,6 +66,7 @@ pub(super) fn scroll_rows(target: ScrollTarget) -> Vec<Row> {
             ],
             short: "Full Page",
             description: "Scroll full page down / up",
+            visible: None,
             surfaces,
         },
         Row {
@@ -105,7 +84,45 @@ pub(super) fn scroll_rows(target: ScrollTarget) -> Vec<Row> {
             ],
             short: "Top/Btm",
             description: "Jump to top / bottom",
+            visible: None,
             surfaces,
         },
     ]
+}
+
+pub(super) fn line_scroll(target: ScrollTarget) -> Row {
+    let scroll = |direction, keys: &[KeyCombo]| {
+        Binding::action(
+            Action::Scroll {
+                target,
+                direction,
+                amount: ScrollAmount::Line,
+            },
+            keys,
+        )
+    };
+    Row {
+        bindings: vec![
+            scroll(
+                ScrollDirection::Down,
+                &[
+                    KeyCombo::plain(Key::Char('j')),
+                    KeyCombo::plain(Key::Down),
+                    KeyCombo::ctrl(Key::Char('n')),
+                ],
+            ),
+            scroll(
+                ScrollDirection::Up,
+                &[
+                    KeyCombo::plain(Key::Char('k')),
+                    KeyCombo::plain(Key::Up),
+                    KeyCombo::ctrl(Key::Char('p')),
+                ],
+            ),
+        ],
+        short: "Scroll",
+        description: "Scroll down / up",
+        visible: None,
+        surfaces: &[HintSurface::Current, HintSurface::Advanced],
+    }
 }

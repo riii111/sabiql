@@ -637,7 +637,7 @@ CloseModal(SqliteDiagnostics): Esc
 ToggleHelp: '?'
 footer: 
 border: ╭ SQLite Diagnostics ─────────────────────────────────────────────────────────────────────────────────────────────╮
-border: ╰ Esc: Close │ ↑↓: Scroll ────────────────────────────────────────────────────────────────────────────────────────╯
+border: ╰ Esc: Close ─────────────────────────────────────────────────────────────────────────────────────────────────────╯
 help: ?: Toggle help
 help: Esc: Close
 palette: q: Quit application => Quit

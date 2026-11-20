@@ -1,7 +1,10 @@
+use crate::model::shared::input_mode::InputMode;
+use crate::model::shared::settings::KeymapPreset;
 use crate::policy::FeaturePolicy;
 use crate::update::action::{Action, CursorMove, InputTarget};
 use crate::update::input::keybindings::{self, Key, KeyCombo, Modifiers};
 use crate::update::input::keymap;
+use crate::update::input::keymap::KeyContext;
 
 use super::interaction::InputInteraction;
 
@@ -67,9 +70,12 @@ pub(super) fn handle_sqlite_diagnostics_keys_with_policy(
     combo: KeyCombo,
     feature_policy: &FeaturePolicy,
 ) -> Action {
-    keybindings::SQLITE_DIAGNOSTICS
-        .resolve_with_policy(&combo, feature_policy)
-        .unwrap_or(Action::None)
+    let context = KeyContext::for_scope(
+        InputMode::SqliteDiagnostics,
+        KeymapPreset::Default,
+        feature_policy,
+    );
+    keymap::sqlite_diagnostics_action(combo, &context)
 }
 
 #[cfg(test)]

@@ -17,7 +17,9 @@ use crate::app::update::input::keybindings::{
     json_edit, json_search, overlay, query_history, read_only, result_active, settings, sql_modal,
     sqlite_diagnostics, table_picker as table_picker_key,
 };
-use crate::app::update::input::keymap::{HintSurface, KeyContext, Picker, picker_hints};
+use crate::app::update::input::keymap::{
+    HintSurface, KeyContext, Picker, picker_hints, sqlite_diagnostics_hints,
+};
 use crate::primitives::atoms::key_text;
 use crate::primitives::atoms::spinner_char;
 use crate::primitives::atoms::status_message::{MessageType, StatusMessage};
@@ -45,16 +47,21 @@ impl Footer {
             frame.render_widget(Paragraph::new(line).style(base_style), area);
         } else {
             // Show hints with optional inline success message
-            let picker = match state.input_mode() {
-                InputMode::TablePicker => Some(Picker::Table),
-                InputMode::ErTablePicker => Some(Picker::Er),
+            let context = KeyContext::from_state(state);
+            let derived = match state.input_mode() {
+                InputMode::TablePicker => {
+                    Some(picker_hints(Picker::Table, HintSurface::Footer, &context))
+                }
+                InputMode::ErTablePicker => {
+                    Some(picker_hints(Picker::Er, HintSurface::Footer, &context))
+                }
+                InputMode::SqliteDiagnostics => {
+                    Some(sqlite_diagnostics_hints(HintSurface::Footer, &context))
+                }
                 _ => None,
             };
-            let picker_hints = picker.map_or_else(Vec::new, |picker| {
-                picker_hints(picker, HintSurface::Footer, &KeyContext::from_state(state))
-            });
-            let hints = if picker.is_some() {
-                picker_hints
+            let hints = if let Some(ref derived) = derived {
+                derived
                     .iter()
                     .map(|hint| (hint.key.as_str(), hint.short))
                     .collect()
@@ -246,7 +253,8 @@ impl Footer {
             | InputMode::RowDetail
             | InputMode::ConnectionSelector
             | InputMode::QueryHistoryPicker
-            | InputMode::ErTablePicker => vec![],
+            | InputMode::ErTablePicker
+            | InputMode::SqliteDiagnostics => vec![],
             InputMode::Settings => {
                 if state.settings.is_editing_custom_er_browser() {
                     vec![]
@@ -273,15 +281,6 @@ impl Footer {
                     connection_error::DETAILS.as_hint(),
                     connection_error::COPY.as_hint(),
                 ]
-            }
-            InputMode::SqliteDiagnostics => {
-                let feature_policy =
-                    FeaturePolicy::new(&state.session.active_engine_feature_profile());
-                if feature_policy.is_enabled(FeatureRequirement::SqliteDiagnostics) {
-                    vec![sqlite_diagnostics::HELP.as_hint()]
-                } else {
-                    vec![]
-                }
             }
             InputMode::JsonDetail => {
                 let feature_policy =

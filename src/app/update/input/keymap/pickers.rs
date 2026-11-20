@@ -81,6 +81,7 @@ fn rows(picker: Picker) -> Vec<Row> {
         bindings: vec![Binding::action(confirm, &[KeyCombo::plain(Key::Enter)])],
         short,
         description,
+        visible: None,
         surfaces: button_surfaces,
     }];
     if matches!(picker, Picker::Er) {
@@ -92,6 +93,7 @@ fn rows(picker: Picker) -> Vec<Row> {
                 )],
                 short: "Select",
                 description: "Toggle table selection",
+                visible: None,
                 surfaces: button_surfaces,
             },
             Row {
@@ -101,6 +103,7 @@ fn rows(picker: Picker) -> Vec<Row> {
                 )],
                 short: "All",
                 description: "Select/deselect all tables",
+                visible: None,
                 surfaces: button_surfaces,
             },
         ]);
@@ -116,6 +119,7 @@ fn rows(picker: Picker) -> Vec<Row> {
             bindings: vec![Binding::text(input)],
             short: "Filter",
             description: "Type to filter",
+            visible: None,
             surfaces: filter_surfaces,
         });
     }
@@ -126,6 +130,7 @@ fn rows(picker: Picker) -> Vec<Row> {
         )],
         short: "Close",
         description: "Close",
+        visible: None,
         surfaces: button_surfaces,
     });
     rows

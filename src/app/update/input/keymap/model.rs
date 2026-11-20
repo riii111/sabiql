@@ -30,6 +30,7 @@ pub(super) struct Row {
     pub bindings: Vec<Binding>,
     pub short: &'static str,
     pub description: &'static str,
+    pub visible: Option<fn(&KeyContext, HintSurface) -> bool>,
     pub surfaces: &'static [HintSurface],
 }
 
@@ -90,7 +91,10 @@ pub(super) fn resolve(rows: &[Row], combo: KeyCombo, context: &KeyContext) -> Op
 pub(super) fn hints(rows: &[Row], context: &KeyContext, surface: HintSurface) -> Vec<Hint> {
     rows.iter()
         .enumerate()
-        .filter(|(_, row)| row.surfaces.contains(&surface))
+        .filter(|(_, row)| {
+            row.surfaces.contains(&surface)
+                && row.visible.is_none_or(|visible| visible(context, surface))
+        })
         .filter_map(|(row_index, row)| {
             let winning: Vec<Vec<Trigger>> = row
                 .bindings
@@ -228,6 +232,7 @@ mod tests {
     use crate::policy::FeaturePolicy;
     use crate::update::input::keymap::pickers::{ER_ROWS, HISTORY_ROWS, PALETTE_ROWS, TABLE_ROWS};
     use crate::update::input::keymap::row_detail::ROWS as ROW_DETAIL_ROWS;
+    use crate::update::input::keymap::sqlite_diagnostics::ROWS as DIAGNOSTIC_ROWS;
 
     #[test]
     fn text_pickers_have_unique_keys_and_keep_plain_text_unclaimed() {
@@ -259,18 +264,19 @@ mod tests {
 
     #[test]
     fn visible_picker_bindings_resolve_to_the_same_actions() {
-        for rows in [
-            &*TABLE_ROWS,
-            &*HISTORY_ROWS,
-            &*PALETTE_ROWS,
-            &*ER_ROWS,
-            &*ROW_DETAIL_ROWS,
+        for (rows, profile) in [
+            (&*TABLE_ROWS, EngineFeatureProfile::postgres_like()),
+            (&*HISTORY_ROWS, EngineFeatureProfile::postgres_like()),
+            (&*PALETTE_ROWS, EngineFeatureProfile::postgres_like()),
+            (&*ER_ROWS, EngineFeatureProfile::postgres_like()),
+            (&*ROW_DETAIL_ROWS, EngineFeatureProfile::postgres_like()),
+            (&*DIAGNOSTIC_ROWS, EngineFeatureProfile::sqlite_like()),
         ] {
             for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
                 let context = KeyContext::for_scope(
                     InputMode::TablePicker,
                     preset,
-                    &FeaturePolicy::new(&EngineFeatureProfile::postgres_like()),
+                    &FeaturePolicy::new(&profile),
                 );
                 for (row_index, row) in rows
                     .iter()

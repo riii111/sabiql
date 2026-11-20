@@ -14,7 +14,7 @@ use crate::policy::{FeaturePolicy, FeatureRequirement};
 )]
 use crate::update::input::keybindings::*;
 use crate::update::input::keymap::{
-    HintSurface, KeyContext, Picker, picker_hints, row_detail_hints,
+    HintSurface, KeyContext, Picker, picker_hints, row_detail_hints, sqlite_diagnostics_hints,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -333,7 +333,10 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
         } => connection_setup_current_rows(keymap_preset, focused_field),
         HelpOrigin::ConnectionError => rows_from_mode_rows(CONNECTION_ERROR_ROWS),
         HelpOrigin::SqliteDiagnostics => {
-            rows_from_mode_rows_if_visible(SQLITE_DIAGNOSTICS_ROWS, feature_policy)
+            sqlite_diagnostics_hints(HintSurface::Current, &key_context)
+                .into_iter()
+                .map(|hint| HelpRow::new(hint.key, hint.description))
+                .collect()
         }
         HelpOrigin::ConfirmDialog => rows_from_bindings(CONFIRM_DIALOG_KEYS),
         HelpOrigin::ConnectionSelector => rows_from_mode_rows(CONNECTION_SELECTOR_ROWS),
@@ -485,6 +488,13 @@ fn reference_sections(
             .into_iter()
             .map(|hint| HelpRow::new(hint.key, hint.description)),
     );
+    if feature_policy.is_enabled(FeatureRequirement::SqliteDiagnostics) {
+        advanced_rows.extend(
+            sqlite_diagnostics_hints(HintSurface::Advanced, &key_context)
+                .into_iter()
+                .map(|hint| HelpRow::new(hint.key, hint.description)),
+        );
+    }
 
     vec![
         section(

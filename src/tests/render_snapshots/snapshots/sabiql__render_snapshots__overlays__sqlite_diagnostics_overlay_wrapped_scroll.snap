@@ -20,7 +20,7 @@ expression: output
 │       │                                 │      │
 │       │Effective query only: off        │      │
 │       │                                 │      │
-│       ╰ Esc: Close │ ↑↓: Scroll │ r: Run╯      │
+│       ╰ j/k: Scroll │ r: Run check │ Esc╯      │
 │           ││                                   │
 │           ││                                   │
 └───────────┘└───────────────────────────────────┘

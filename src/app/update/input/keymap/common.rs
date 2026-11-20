@@ -114,6 +114,7 @@ pub(super) fn list_navigation(target: ListTarget, vim_keys: bool) -> Row {
         ],
         short: "Navigate",
         description: "Navigate",
+        visible: None,
         surfaces: &[HintSurface::Current],
     }
 }
@@ -127,6 +128,7 @@ fn hidden_combo(action: Action, combo: KeyCombo) -> Row {
         bindings: vec![Binding::action(action, &[combo])],
         short: "",
         description: "",
+        visible: None,
         surfaces: &[],
     }
 }

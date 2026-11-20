@@ -569,13 +569,13 @@ palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
 ## SqliteDiagnostics
 CloseModal(SqliteDiagnostics): Esc
 RunSqliteDiagnosticsQuickCheck: 'r'
-Scroll { target: SqliteDiagnostics, direction: Down, amount: Line }: Down
-Scroll { target: SqliteDiagnostics, direction: Up, amount: Line }: Up
+Scroll { target: SqliteDiagnostics, direction: Down, amount: Line }: 'j', ^'n', Down
+Scroll { target: SqliteDiagnostics, direction: Up, amount: Line }: 'k', ^'p', Up
 ToggleHelp: '?'
 footer: ?:Help
 border: ╭ SQLite Diagnostics ─────────────────────────────────────────────────────────────────────────────────────────────╮
-border: ╰ Esc: Close │ ↑↓: Scroll ────────────────────────────────────────────────────────────────────────────────────────╯
-help: ↑ / ↓: Scroll diagnostics
+border: ╰ j/k: Scroll │ Esc: Close ───────────────────────────────────────────────────────────────────────────────────────╯
+help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Scroll down / up
 help: r: Run quick check
 help: ?: Toggle help
 help: Esc: Close
