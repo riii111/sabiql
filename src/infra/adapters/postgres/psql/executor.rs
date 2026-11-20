@@ -495,6 +495,55 @@ mod tests {
         }
     }
 
+    mod connection_argument {
+        use crate::app::ports::outbound::DsnBuilder;
+        use crate::domain::connection::{ConnectionProfile, ServiceEntry, SslMode};
+
+        use super::super::PostgresAdapter;
+
+        fn first_psql_argument(dsn: &str) -> String {
+            PostgresAdapter::build_psql_command(dsn, &[], &[], false)
+                .as_std()
+                .get_args()
+                .next()
+                .expect("psql receives a connection argument")
+                .to_string_lossy()
+                .into_owned()
+        }
+
+        #[test]
+        fn saved_settings_pass_trimmed_conninfo_as_the_first_argument() {
+            let profile = ConnectionProfile::new_postgres(
+                "Test",
+                " db.example ",
+                5433,
+                " my db ",
+                " app user ",
+                " p'w\\d ",
+                SslMode::Require,
+            )
+            .unwrap();
+            let dsn = PostgresAdapter::new().build_dsn(&profile);
+
+            assert_eq!(
+                first_psql_argument(&dsn),
+                "host='db.example' port='5433' dbname='my db' user='app user' password=' p\\'w\\\\d ' sslmode='require'"
+            );
+        }
+
+        #[test]
+        fn service_connections_pass_the_service_name_as_the_first_argument() {
+            let entry = ServiceEntry {
+                service_name: "my service".to_string(),
+            };
+
+            assert_eq!(
+                first_psql_argument(&entry.to_string()),
+                "service=my service"
+            );
+        }
+    }
+
     mod split_marker_segments {
         use super::super::split_marker_segments;
 

@@ -290,4 +290,60 @@ mod tests {
             assert_eq!(PostgresAdapter::extract_database_name(&dsn), "my/db");
         }
     }
+
+    mod reported_database_name {
+        use super::*;
+        use crate::domain::connection::ServiceEntry;
+        use rstest::rstest;
+
+        fn database_name_for_settings(database: &str) -> String {
+            let profile = ConnectionProfile::new_postgres(
+                "Test",
+                "localhost",
+                5432,
+                database,
+                "user",
+                "secret",
+                SslMode::Prefer,
+            )
+            .unwrap();
+            PostgresAdapter::extract_database_name(&PostgresAdapter::new().build_dsn(&profile))
+        }
+
+        fn database_name_for_service(service_name: &str) -> String {
+            let entry = ServiceEntry {
+                service_name: service_name.to_string(),
+            };
+            PostgresAdapter::extract_database_name(&entry.to_string())
+        }
+
+        #[rstest]
+        #[case::inner_spaces("my db", "my db")]
+        #[case::surrounding_spaces("  padded  ", "padded")]
+        #[case::single_quote("it's", "it's")]
+        #[case::backslash("C:\\db", "C:\\db")]
+        fn saved_settings_report_the_trimmed_database_name(
+            #[case] database: &str,
+            #[case] expected: &str,
+        ) {
+            assert_eq!(database_name_for_settings(database), expected);
+        }
+
+        #[test]
+        fn saved_settings_url_decode_percent_sequences_in_the_database_name() {
+            assert_eq!(database_name_for_settings("a%20b"), "a b");
+        }
+
+        #[rstest]
+        #[case::empty("")]
+        #[case::whitespace("   ")]
+        fn saved_settings_without_a_database_report_unknown(#[case] database: &str) {
+            assert_eq!(database_name_for_settings(database), "unknown");
+        }
+
+        #[test]
+        fn service_connections_report_the_service_name() {
+            assert_eq!(database_name_for_service("my service"), "my service");
+        }
+    }
 }

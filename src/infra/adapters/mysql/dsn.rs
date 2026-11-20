@@ -726,4 +726,492 @@ mod tests {
             );
         }
     }
+
+    mod connection_values {
+        use super::*;
+
+        #[derive(Debug, PartialEq, Eq)]
+        struct NormalizedValues {
+            transport: MySqlTransport,
+            transport_path: Option<String>,
+            host: String,
+            port: u16,
+            database: Option<String>,
+            username: String,
+            password: String,
+            ssl_mode: MySqlSslMode,
+            ssl_ca: Option<String>,
+            ssl_cert: Option<String>,
+            ssl_key: Option<String>,
+            server_public_key_path: Option<String>,
+            enable_cleartext_plugin: bool,
+        }
+
+        fn values_passed_to_cli(
+            config: &MySqlConnectionConfig,
+        ) -> Result<NormalizedValues, String> {
+            match parse_and_validate_mysql_dsn(&build_mysql_dsn(config)) {
+                Ok(target) => Ok(NormalizedValues {
+                    transport: target.transport,
+                    transport_path: target.transport_path,
+                    host: target.host,
+                    port: target.port,
+                    database: target.database,
+                    username: target.username,
+                    password: target.password,
+                    ssl_mode: target.ssl_mode,
+                    ssl_ca: target.ssl_ca,
+                    ssl_cert: target.ssl_cert,
+                    ssl_key: target.ssl_key,
+                    server_public_key_path: target.server_public_key_path,
+                    enable_cleartext_plugin: target.enable_cleartext_plugin,
+                }),
+                Err(DbOperationError::ConnectionFailed(details)) => Err(details),
+                Err(error) => panic!("unexpected MySQL connection value error: {error:?}"),
+            }
+        }
+
+        fn tcp_config() -> MySqlConnectionConfig {
+            MySqlConnectionConfig::new(
+                "db.example",
+                3307,
+                Some("app".to_string()),
+                "user",
+                "secret",
+                MySqlSslMode::Preferred,
+            )
+        }
+
+        fn tcp_values() -> NormalizedValues {
+            NormalizedValues {
+                transport: MySqlTransport::Tcp,
+                transport_path: None,
+                host: "db.example".to_string(),
+                port: 3307,
+                database: Some("app".to_string()),
+                username: "user".to_string(),
+                password: "secret".to_string(),
+                ssl_mode: MySqlSslMode::Preferred,
+                ssl_ca: None,
+                ssl_cert: None,
+                ssl_key: None,
+                server_public_key_path: None,
+                enable_cleartext_plugin: false,
+            }
+        }
+
+        #[test]
+        fn plain_tcp_settings_reach_the_cli_unchanged() {
+            assert_eq!(values_passed_to_cli(&tcp_config()), Ok(tcp_values()));
+        }
+
+        #[test]
+        fn preview_url_keeps_percent_signs_in_credentials_unescaped() {
+            let profile = ConnectionProfile::new_mysql(
+                "Preview",
+                "db.example",
+                3307,
+                Some("app".to_string()),
+                "us er%41",
+                "secret",
+                MySqlSslMode::Preferred,
+            )
+            .unwrap();
+
+            assert_eq!(
+                MySqlAdapter::new().build_dsn(&profile),
+                "mysql://us%20er%41:secret@db.example:3307/app?ssl-mode=PREFERRED"
+            );
+        }
+
+        mod credentials {
+            use super::*;
+
+            #[test]
+            fn percent_sequences_are_url_decoded() {
+                let mut config = tcp_config();
+                config.username = "us er%41".to_string();
+                config.password = "A%2Fb".to_string();
+
+                assert_eq!(
+                    values_passed_to_cli(&config),
+                    Ok(NormalizedValues {
+                        username: "us erA".to_string(),
+                        password: "A/b".to_string(),
+                        ..tcp_values()
+                    })
+                );
+            }
+
+            #[test]
+            fn invalid_utf8_percent_sequences_are_rejected() {
+                let mut username = tcp_config();
+                username.username = "abc%FF".to_string();
+                let mut password = tcp_config();
+                password.password = "abc%FF".to_string();
+
+                for config in [username, password] {
+                    assert_eq!(
+                        values_passed_to_cli(&config),
+                        Err(
+                            "Invalid MySQL DSN: invalid utf-8 sequence of 1 bytes from index 3"
+                                .to_string()
+                        )
+                    );
+                }
+            }
+
+            #[test]
+            fn control_characters_are_rejected() {
+                let mut config = tcp_config();
+                config.password = "pa\nss".to_string();
+
+                assert_eq!(
+                    values_passed_to_cli(&config),
+                    Err("MySQL connection settings contain a control character".to_string())
+                );
+            }
+        }
+
+        mod tcp_host {
+            use super::*;
+            use rstest::rstest;
+
+            fn values_for_host(host: &str) -> Result<NormalizedValues, String> {
+                let mut config = tcp_config();
+                config.host = host.to_string();
+                values_passed_to_cli(&config)
+            }
+
+            #[test]
+            fn non_ascii_host_is_percent_encoded() {
+                assert_eq!(
+                    values_for_host("ホスト"),
+                    Ok(NormalizedValues {
+                        host: "%E3%83%9B%E3%82%B9%E3%83%88".to_string(),
+                        ..tcp_values()
+                    })
+                );
+            }
+
+            #[rstest]
+            #[case::expanded_loopback("0:0:0:0:0:0:0:1", "::1")]
+            #[case::uppercase_link_local("FE80::1", "fe80::1")]
+            fn ipv6_hosts_are_canonicalized(#[case] host: &str, #[case] expected: &str) {
+                assert_eq!(
+                    values_for_host(host),
+                    Ok(NormalizedValues {
+                        host: expected.to_string(),
+                        ..tcp_values()
+                    })
+                );
+            }
+
+            #[test]
+            fn bracketed_ipv6_host_loses_its_brackets() {
+                assert_eq!(
+                    values_for_host("[::1]"),
+                    Ok(NormalizedValues {
+                        host: "::1".to_string(),
+                        ..tcp_values()
+                    })
+                );
+            }
+        }
+
+        mod database {
+            use super::*;
+            use rstest::rstest;
+
+            #[rstest]
+            #[case::current(".")]
+            #[case::parent("..")]
+            fn dot_segment_names_are_dropped(#[case] database: &str) {
+                let mut config = tcp_config();
+                config.database = Some(database.to_string());
+
+                assert_eq!(
+                    values_passed_to_cli(&config),
+                    Ok(NormalizedValues {
+                        database: None,
+                        ..tcp_values()
+                    })
+                );
+            }
+
+            #[test]
+            fn empty_name_is_omitted() {
+                let mut config = tcp_config();
+                config.database = Some(String::new());
+
+                assert_eq!(
+                    values_passed_to_cli(&config),
+                    Ok(NormalizedValues {
+                        database: None,
+                        ..tcp_values()
+                    })
+                );
+            }
+        }
+
+        mod transport {
+            use super::*;
+
+            #[test]
+            fn tcp_drops_a_rewritten_transport_path() {
+                let mut config = tcp_config();
+                config.transport_path = Some("/tmp/mysql.sock".to_string());
+
+                assert_eq!(values_passed_to_cli(&config), Ok(tcp_values()));
+            }
+
+            #[cfg(unix)]
+            #[test]
+            fn unix_socket_replaces_tcp_host_and_port_with_defaults() {
+                let config = MySqlConnectionConfig {
+                    host: "db example".to_string(),
+                    port: 0,
+                    ..tcp_config()
+                }
+                .with_transport(
+                    MySqlTransport::UnixSocket,
+                    Some("/run/mysqld/mysqld.sock".to_string()),
+                );
+
+                assert_eq!(
+                    values_passed_to_cli(&config),
+                    Ok(NormalizedValues {
+                        transport: MySqlTransport::UnixSocket,
+                        transport_path: Some("/run/mysqld/mysqld.sock".to_string()),
+                        host: "localhost".to_string(),
+                        port: 3306,
+                        ..tcp_values()
+                    })
+                );
+            }
+
+            #[cfg(not(unix))]
+            #[test]
+            fn unix_socket_is_unsupported_on_this_platform() {
+                let config = tcp_config().with_transport(
+                    MySqlTransport::UnixSocket,
+                    Some("/run/mysqld/mysqld.sock".to_string()),
+                );
+
+                assert_eq!(
+                    values_passed_to_cli(&config),
+                    Err("MySQL transport is not supported on this platform".to_string())
+                );
+            }
+
+            #[cfg(windows)]
+            #[test]
+            fn named_pipe_replaces_tcp_host_and_port_with_defaults() {
+                let config = MySqlConnectionConfig {
+                    host: "db example".to_string(),
+                    port: 0,
+                    ..tcp_config()
+                }
+                .with_transport(
+                    MySqlTransport::NamedPipe,
+                    Some(r"\\.\pipe\MySQL".to_string()),
+                );
+
+                assert_eq!(
+                    values_passed_to_cli(&config),
+                    Ok(NormalizedValues {
+                        transport: MySqlTransport::NamedPipe,
+                        transport_path: Some(r"\\.\pipe\MySQL".to_string()),
+                        host: "localhost".to_string(),
+                        port: 3306,
+                        ..tcp_values()
+                    })
+                );
+            }
+
+            #[cfg(windows)]
+            #[test]
+            fn named_pipe_rejects_tls_modes_beyond_preferred() {
+                let config = MySqlConnectionConfig {
+                    ssl_mode: MySqlSslMode::Required,
+                    ..tcp_config()
+                }
+                .with_transport(
+                    MySqlTransport::NamedPipe,
+                    Some(r"\\.\pipe\MySQL".to_string()),
+                );
+
+                assert_eq!(
+                    values_passed_to_cli(&config),
+                    Err(
+                        "MySQL named pipe transport does not support the selected TLS mode"
+                            .to_string()
+                    )
+                );
+            }
+
+            #[cfg(not(windows))]
+            #[test]
+            fn named_pipe_is_unsupported_on_this_platform() {
+                let config = tcp_config().with_transport(
+                    MySqlTransport::NamedPipe,
+                    Some(r"\\.\pipe\MySQL".to_string()),
+                );
+
+                assert_eq!(
+                    values_passed_to_cli(&config),
+                    Err("MySQL transport is not supported on this platform".to_string())
+                );
+            }
+        }
+
+        mod tls {
+            use super::*;
+            use rstest::rstest;
+
+            fn config_with_mode(ssl_mode: MySqlSslMode) -> MySqlConnectionConfig {
+                MySqlConnectionConfig {
+                    ssl_mode,
+                    ..tcp_config()
+                }
+            }
+
+            #[rstest]
+            #[case::disabled(MySqlSslMode::Disabled)]
+            #[case::preferred(MySqlSslMode::Preferred)]
+            #[case::required(MySqlSslMode::Required)]
+            fn modes_without_ca_verification_need_no_paths(#[case] ssl_mode: MySqlSslMode) {
+                assert_eq!(
+                    values_passed_to_cli(&config_with_mode(ssl_mode)),
+                    Ok(NormalizedValues {
+                        ssl_mode,
+                        ..tcp_values()
+                    })
+                );
+            }
+
+            #[rstest]
+            #[case::verify_ca(MySqlSslMode::VerifyCa)]
+            #[case::verify_identity(MySqlSslMode::VerifyIdentity)]
+            fn ca_verification_modes_require_a_ca_path(#[case] ssl_mode: MySqlSslMode) {
+                let with_ca = config_with_mode(ssl_mode).with_tls_paths(
+                    Some("/certs/ca.pem".to_string()),
+                    None,
+                    None,
+                );
+
+                assert_eq!(
+                    values_passed_to_cli(&config_with_mode(ssl_mode)),
+                    Err("MySQL CA path is required for certificate verification".to_string())
+                );
+                assert_eq!(
+                    values_passed_to_cli(&with_ca),
+                    Ok(NormalizedValues {
+                        ssl_mode,
+                        ssl_ca: Some("/certs/ca.pem".to_string()),
+                        ..tcp_values()
+                    })
+                );
+            }
+
+            #[test]
+            fn ca_path_left_outside_ca_verification_is_dropped() {
+                let mut config = config_with_mode(MySqlSslMode::Required);
+                config.ssl_ca = Some("/certs/ca.pem".to_string());
+
+                assert_eq!(
+                    values_passed_to_cli(&config),
+                    Ok(NormalizedValues {
+                        ssl_mode: MySqlSslMode::Required,
+                        ..tcp_values()
+                    })
+                );
+            }
+
+            #[test]
+            fn client_certificate_and_key_reach_the_cli_together() {
+                let config = config_with_mode(MySqlSslMode::Required).with_tls_paths(
+                    None,
+                    Some("/certs/client.pem".to_string()),
+                    Some("/certs/client-key.pem".to_string()),
+                );
+
+                assert_eq!(
+                    values_passed_to_cli(&config),
+                    Ok(NormalizedValues {
+                        ssl_mode: MySqlSslMode::Required,
+                        ssl_cert: Some("/certs/client.pem".to_string()),
+                        ssl_key: Some("/certs/client-key.pem".to_string()),
+                        ..tcp_values()
+                    })
+                );
+            }
+
+            #[test]
+            fn client_certificate_without_key_is_rejected() {
+                let config = config_with_mode(MySqlSslMode::Required).with_tls_paths(
+                    None,
+                    Some("/certs/client.pem".to_string()),
+                    None,
+                );
+
+                assert_eq!(
+                    values_passed_to_cli(&config),
+                    Err("MySQL client certificate and key must be specified together".to_string())
+                );
+            }
+
+            #[test]
+            fn client_paths_with_disabled_tls_are_rejected() {
+                let config = config_with_mode(MySqlSslMode::Disabled).with_tls_paths(
+                    None,
+                    Some("/certs/client.pem".to_string()),
+                    Some("/certs/client-key.pem".to_string()),
+                );
+
+                assert_eq!(
+                    values_passed_to_cli(&config),
+                    Err("MySQL TLS paths require an enabled TLS mode".to_string())
+                );
+            }
+
+            #[test]
+            fn cleartext_authentication_requires_tls() {
+                let required =
+                    config_with_mode(MySqlSslMode::Required).with_cleartext_auth_plugin(true);
+                let preferred =
+                    config_with_mode(MySqlSslMode::Preferred).with_cleartext_auth_plugin(true);
+
+                assert_eq!(
+                    values_passed_to_cli(&required),
+                    Ok(NormalizedValues {
+                        ssl_mode: MySqlSslMode::Required,
+                        enable_cleartext_plugin: true,
+                        ..tcp_values()
+                    })
+                );
+                assert_eq!(
+                    values_passed_to_cli(&preferred),
+                    Err(
+                        "MySQL cleartext authentication requires REQUIRED, VERIFY_CA, or VERIFY_IDENTITY TLS mode"
+                            .to_string()
+                    )
+                );
+            }
+
+            #[test]
+            fn server_public_key_path_reaches_the_cli() {
+                let config = tcp_config()
+                    .with_server_public_key_path(Some("/keys/server-public.pem".to_string()));
+
+                assert_eq!(
+                    values_passed_to_cli(&config),
+                    Ok(NormalizedValues {
+                        server_public_key_path: Some("/keys/server-public.pem".to_string()),
+                        ..tcp_values()
+                    })
+                );
+            }
+        }
+    }
 }
