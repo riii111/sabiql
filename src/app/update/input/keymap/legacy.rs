@@ -1,6 +1,6 @@
-use super::keybindings::{KeyBinding, KeyCombo, ModeRow};
 use crate::policy::FeaturePolicy;
 use crate::update::action::Action;
+use crate::update::input::keybindings::{KeyBinding, KeyCombo, ModeRow};
 
 pub fn resolve(combo: &KeyCombo, bindings: &[KeyBinding]) -> Option<Action> {
     bindings
@@ -165,9 +165,7 @@ mod tests {
 
     mod resolve_mode_tests {
         use super::*;
-        use crate::update::input::keybindings::{
-            CONNECTION_ERROR_ROWS, HELP_ROWS, TABLE_PICKER_ROWS,
-        };
+        use crate::update::input::keybindings::{CONNECTION_ERROR_ROWS, HELP_ROWS};
 
         #[test]
         fn empty_rows_returns_none() {
@@ -196,14 +194,6 @@ mod tests {
             let result = resolve_mode(&KeyCombo::plain(Key::Esc), CONNECTION_ERROR_ROWS);
 
             assert!(matches!(result, Some(Action::CloseConnectionError)));
-        }
-
-        // table_picker::TYPE_FILTER has no Enter combo, so it must not shadow ENTER_SELECT
-        #[test]
-        fn unrelated_row_does_not_block_later_match() {
-            let result = resolve_mode(&KeyCombo::plain(Key::Enter), TABLE_PICKER_ROWS);
-
-            assert!(matches!(result, Some(Action::ConfirmSelection)));
         }
     }
 }

@@ -3,19 +3,10 @@ use crate::policy::FeaturePolicy;
 use crate::update::action::{Action, InputTarget};
 use crate::update::input::keybindings::{self, Key, KeyCombo, Modifiers};
 use crate::update::input::keymap::resolve_mode_with_policy;
+use crate::update::input::keymap::table_picker_action;
 
 pub(super) fn handle_table_picker_keys(combo: KeyCombo) -> Action {
-    if let Some(action) = keybindings::TABLE_PICKER.resolve(&combo) {
-        return action;
-    }
-    // Char input falls through to filter (keybindings resolve Backspace/Left/Right/Home/End)
-    match combo.key {
-        Key::Char(c) => Action::TextInput {
-            target: InputTarget::Filter,
-            ch: c,
-        },
-        _ => Action::None,
-    }
+    table_picker_action(combo)
 }
 
 pub(super) fn handle_command_palette_keys(combo: KeyCombo) -> Action {

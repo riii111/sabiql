@@ -1,63 +1,17 @@
-use crate::update::action::{Action, CursorMove, InputTarget, TextKillDirection};
+use crate::update::action::{Action, InputTarget};
 
-use super::{Key, KeyCombo, Modifiers};
+use super::KeyCombo;
+use crate::update::input::keymap;
 
 pub fn readline_action_for(combo: &KeyCombo, target: InputTarget) -> Option<Action> {
-    // InputInteraction owns whether this key set edits a form field or is suppressed for a
-    // Vim document editor, so surface policy does not leak into individual bindings.
-    let action = match (combo.key, combo.modifiers) {
-        (Key::Char('a'), Modifiers::CTRL) => Action::TextMoveCursor {
-            target,
-            direction: CursorMove::LineStart,
-        },
-        (Key::Char('e'), Modifiers::CTRL) => Action::TextMoveCursor {
-            target,
-            direction: CursorMove::LineEnd,
-        },
-        (Key::Char('b'), Modifiers::CTRL) => Action::TextMoveCursor {
-            target,
-            direction: CursorMove::Left,
-        },
-        (Key::Char('f'), Modifiers::CTRL) => Action::TextMoveCursor {
-            target,
-            direction: CursorMove::Right,
-        },
-        (Key::Char('h'), Modifiers::CTRL) => Action::TextBackspace { target },
-        (Key::Char('d'), Modifiers::CTRL) => Action::TextDelete { target },
-        (Key::Char('k'), Modifiers::CTRL) => Action::TextKill {
-            target,
-            direction: TextKillDirection::ToLineEnd,
-        },
-        (Key::Char('u'), Modifiers::CTRL) => Action::TextKill {
-            target,
-            direction: TextKillDirection::ToLineStart,
-        },
-        (Key::Char('w'), Modifiers::CTRL) => Action::TextKill {
-            target,
-            direction: TextKillDirection::ReadlinePreviousWhitespace,
-        },
-        (Key::Char('y'), Modifiers::CTRL) => Action::TextYank { target },
-        (Key::Char('b'), Modifiers::ALT) => Action::TextMoveCursor {
-            target,
-            direction: CursorMove::ReadlineWordStart,
-        },
-        (Key::Char('f'), Modifiers::ALT) => Action::TextMoveCursor {
-            target,
-            direction: CursorMove::ReadlineWordEnd,
-        },
-        (Key::Char('d'), Modifiers::ALT) => Action::TextKill {
-            target,
-            direction: TextKillDirection::ReadlineWordEnd,
-        },
-        _ => return None,
-    };
-
-    Some(action)
+    keymap::readline_action_for(combo, target)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ports::inbound::Key;
+    use crate::update::action::{CursorMove, TextKillDirection};
     use rstest::rstest;
 
     #[rstest]

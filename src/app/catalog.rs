@@ -12,6 +12,7 @@ use crate::policy::{FeaturePolicy, FeatureRequirement};
     reason = "help catalog enumerates nearly every keybindings table; explicit list is churn"
 )]
 use crate::update::input::keybindings::*;
+use crate::update::input::keymap::{HintSurface, table_picker_hints};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HelpDocument {
@@ -305,7 +306,10 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
         ]),
         HelpOrigin::CommandLine => command_line_rows(feature_policy),
         HelpOrigin::CellEdit => rows_from_bindings(CELL_EDIT_KEYS),
-        HelpOrigin::TablePicker => rows_from_mode_rows(TABLE_PICKER_ROWS),
+        HelpOrigin::TablePicker => table_picker_hints(HintSurface::Current)
+            .into_iter()
+            .map(|hint| HelpRow::new(hint.key, hint.description))
+            .collect(),
         HelpOrigin::CommandPalette => rows_from_mode_rows(COMMAND_PALETTE_ROWS),
         HelpOrigin::Settings => rows_from_mode_rows(SETTINGS_ROWS),
         HelpOrigin::Help => rows_from_mode_rows(HELP_ROWS),
@@ -383,10 +387,13 @@ fn reference_sections(
         ));
     }
 
-    let mut search_filter_rows = rows_from_mode_row_refs(&[
-        &table_picker::TYPE_FILTER,
+    let mut search_filter_rows = table_picker_hints(HintSurface::Reference)
+        .into_iter()
+        .map(|hint| HelpRow::new(hint.key, hint.description))
+        .collect::<Vec<_>>();
+    search_filter_rows.extend(rows_from_mode_row_refs(&[
         &query_history_picker::TYPE_FILTER,
-    ]);
+    ]));
     if feature_policy.is_enabled(er_picker::TYPE_FILTER.feature_requirement()) {
         search_filter_rows.insert(1, row_from_mode_row(&er_picker::TYPE_FILTER));
     }

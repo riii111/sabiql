@@ -4,19 +4,28 @@ use ratatui::text::{Line, Span};
 use crate::primitives::atoms::{key_chip, key_text};
 use crate::theme::ThemePalette;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FooterHintItem {
-    key: &'static str,
+    key: String,
     desc: &'static str,
 }
 
 impl FooterHintItem {
-    pub const fn new(key: &'static str, desc: &'static str) -> Self {
-        Self { key, desc }
+    pub fn new(key: impl Into<String>, desc: &'static str) -> Self {
+        Self {
+            key: key.into(),
+            desc,
+        }
     }
 
-    fn width(self) -> usize {
+    fn width(&self) -> usize {
         self.key.chars().count() + ": ".chars().count() + self.desc.chars().count()
+    }
+}
+
+impl From<(String, &'static str)> for FooterHintItem {
+    fn from((key, desc): (String, &'static str)) -> Self {
+        Self::new(key, desc)
     }
 }
 
@@ -78,7 +87,7 @@ impl FooterHintBar {
             if i > 0 {
                 spans.push(Span::styled(" │ ", theme.modal_hint_style()));
             }
-            spans.push(key_text(item.key, theme));
+            spans.push(key_text(&item.key, theme));
             spans.push(Span::styled(
                 format!(": {}", item.desc),
                 theme.modal_hint_style(),

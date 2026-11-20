@@ -88,9 +88,6 @@ pub const HELP: ModeBindings = ModeBindings { rows: HELP_ROWS };
 pub const CONNECTION_ERROR: ModeBindings = ModeBindings {
     rows: CONNECTION_ERROR_ROWS,
 };
-pub const TABLE_PICKER: ModeBindings = ModeBindings {
-    rows: TABLE_PICKER_ROWS,
-};
 pub const ER_PICKER: ModeBindings = ModeBindings {
     rows: ER_PICKER_ROWS,
 };
@@ -125,7 +122,6 @@ pub const ROW_DETAIL: ModeBindings = ModeBindings {
 pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("HELP", &HELP),
     ("CONNECTION_ERROR", &CONNECTION_ERROR),
-    ("TABLE_PICKER", &TABLE_PICKER),
     ("ER_PICKER", &ER_PICKER),
     ("QUERY_HISTORY_PICKER", &QUERY_HISTORY_PICKER),
     ("COMMAND_PALETTE", &COMMAND_PALETTE),
@@ -518,15 +514,6 @@ mod tests {
                         }
                     }
                 }
-            }
-
-            #[test]
-            fn table_picker_has_no_plain_char_combos() {
-                check_no_plain_char_in_filter_mode_rows(
-                    TABLE_PICKER_ROWS,
-                    "TABLE_PICKER_ROWS",
-                    &[],
-                );
             }
 
             #[test]

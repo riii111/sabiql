@@ -15,8 +15,9 @@ use crate::app::update::input::keybindings::{
     cell_detail, cell_detail_search, cell_edit, command_palette as command_palette_key,
     connection_error, csv_export, er_picker, exit_read_only, footer_nav, global, inspector_ddl,
     json_detail, json_edit, json_search, overlay, query_history, read_only, result_active,
-    settings, sql_modal, sqlite_diagnostics, table_picker, table_picker as table_picker_key,
+    settings, sql_modal, sqlite_diagnostics, table_picker as table_picker_key,
 };
+use crate::app::update::input::keymap::{HintSurface, table_picker_hints};
 use crate::primitives::atoms::key_text;
 use crate::primitives::atoms::spinner_char;
 use crate::primitives::atoms::status_message::{MessageType, StatusMessage};
@@ -44,7 +45,15 @@ impl Footer {
             frame.render_widget(Paragraph::new(line).style(base_style), area);
         } else {
             // Show hints with optional inline success message
-            let hints = Self::get_context_hints(state);
+            let picker_hints = table_picker_hints(HintSurface::Footer);
+            let hints = if state.input_mode() == InputMode::TablePicker {
+                picker_hints
+                    .iter()
+                    .map(|hint| (hint.key.as_str(), hint.short))
+                    .collect()
+            } else {
+                Self::get_context_hints(state)
+            };
             let line =
                 Self::build_hint_line_with_success(&hints, state.messages.last_success(), theme);
             frame.render_widget(Paragraph::new(line).style(base_style), area);
@@ -76,7 +85,7 @@ impl Footer {
     }
 
     // Hint ordering: Actions → Navigation → Help → Close/Cancel → Quit
-    fn get_context_hints(state: &AppState) -> Vec<(&'static str, &'static str)> {
+    fn get_context_hints(state: &AppState) -> Vec<(&str, &str)> {
         use crate::app::model::shared::focused_pane::FocusedPane;
 
         match state.input_mode() {
@@ -222,8 +231,8 @@ impl Footer {
                 cell_edit::ESC_CANCEL.as_hint(),
                 global::QUIT.as_hint(),
             ],
-            InputMode::TablePicker => vec![table_picker::TYPE_FILTER.as_hint()],
-            InputMode::CommandPalette
+            InputMode::TablePicker
+            | InputMode::CommandPalette
             | InputMode::Help
             | InputMode::ConfirmDialog
             | InputMode::ConnectionSetup
@@ -355,7 +364,6 @@ mod tests {
     use crate::app::ports::outbound::DbOperationError;
     use crate::app::update::input::keybindings::{
         connection_error, er_picker, global, json_detail, result_active, settings, sql_modal,
-        table_picker,
     };
     use rstest::rstest;
 
@@ -550,14 +558,8 @@ mod tests {
     }
 
     #[test]
-    fn picker_footer_keeps_table_filter_hint() {
+    fn query_history_picker_footer_hides_modal_hints() {
         let mut state = AppState::new("test".to_string());
-
-        state.modal.set_mode(InputMode::TablePicker);
-        assert_eq!(
-            Footer::get_context_hints(&state),
-            vec![table_picker::TYPE_FILTER.as_hint()]
-        );
 
         state.modal.set_mode(InputMode::QueryHistoryPicker);
         assert!(Footer::get_context_hints(&state).is_empty());

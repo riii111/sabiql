@@ -27,26 +27,26 @@ use sabiql_ui::theme::palette_for;
 use super::harness::{create_test_terminal_sized, render_to_string};
 
 fn input_keys() -> Vec<KeyCombo> {
-    let mut keys = (' '..='~').map(Key::Char).collect::<Vec<_>>();
-    keys.extend([
-        Key::Enter,
-        Key::Esc,
-        Key::Tab,
-        Key::BackTab,
-        Key::Up,
-        Key::Down,
-        Key::Left,
-        Key::Right,
-        Key::Home,
-        Key::End,
-        Key::Backspace,
-        Key::Delete,
-        Key::PageUp,
-        Key::PageDown,
-        Key::F(1),
-        Key::F(5),
-    ]);
-    keys.into_iter()
+    (' '..='~')
+        .map(Key::Char)
+        .chain([
+            Key::Enter,
+            Key::Esc,
+            Key::Tab,
+            Key::BackTab,
+            Key::Up,
+            Key::Down,
+            Key::Left,
+            Key::Right,
+            Key::Home,
+            Key::End,
+            Key::Backspace,
+            Key::Delete,
+            Key::PageUp,
+            Key::PageDown,
+            Key::F(1),
+            Key::F(5),
+        ])
         .flat_map(|key| {
             [
                 Modifiers::NONE,
