@@ -351,6 +351,21 @@ mod cache_lifetime {
         driver
     }
 
+    fn assert_completion_columns(driver: &mut CacheFlowDriver, expected: &str, stale: &str) {
+        open_sql_modal(&mut driver.state, "SELECT * FROM public.users WHERE ");
+        driver.dispatch(Action::CompletionRequest);
+        driver.complete_fetch("public.users", table("users", &["id", expected], &[]));
+        let candidates = candidate_texts(&driver.state);
+        assert!(
+            candidates.iter().any(|text| text == expected),
+            "{candidates:?}"
+        );
+        assert!(
+            !candidates.iter().any(|text| text == stale),
+            "{candidates:?}"
+        );
+    }
+
     #[test]
     fn metadata_reload_forgets_cached_tables() {
         let mut driver = driver_with_cached_users();
@@ -371,8 +386,9 @@ mod cache_lifetime {
     }
 
     #[test]
-    fn connection_switch_forgets_cached_tables() {
+    fn completion_refetches_same_named_table_when_switching_away_and_back() {
         let mut driver = driver_with_cached_users();
+        let original = driver.state.session.active_connection_id().unwrap().clone();
 
         driver.dispatch(Action::SwitchConnection(ConnectionTarget {
             id: ConnectionId::new(),
@@ -381,6 +397,20 @@ mod cache_lifetime {
         }));
 
         assert!(!driver.is_cached("public.users"));
+        let run_id = driver.metadata_fetch_run().unwrap();
+        driver.dispatch(Action::MetadataLoaded {
+            run_id,
+            metadata: metadata(&["users"]),
+        });
+
+        assert_completion_columns(&mut driver, "phone", "email");
+
+        driver.dispatch(Action::SwitchConnection(ConnectionTarget {
+            id: original,
+            name: "postgres".to_string(),
+            endpoint: endpoint::postgres(POSTGRES_DSN),
+        }));
+        assert_completion_columns(&mut driver, "email", "phone");
     }
 
     #[test]
