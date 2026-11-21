@@ -296,28 +296,19 @@ mod tests {
         );
     }
 
-    #[test]
-    fn sql_literal_real_accepts_integer_like_draft_and_keeps_real_literal() {
+    #[rstest::rstest]
+    #[case::integer_like("42", "42.0")]
+    #[case::leading_decimal(".5", "0.5")]
+    #[case::negative_leading_decimal("-.5", "-0.5")]
+    fn sqlite_real_draft_preserves_real_literal(#[case] draft: &str, #[case] literal: &str) {
         let value = build_inline_edited_value(
             DatabaseType::SQLite,
             &QueryValue::SqlLiteral("3.14".to_string()),
-            "42",
+            draft,
         )
         .unwrap();
 
-        assert_eq!(value, QueryValue::SqlLiteral("42.0".to_string()));
-    }
-
-    #[test]
-    fn sql_literal_real_accepts_leading_decimal_draft() {
-        let value = build_inline_edited_value(
-            DatabaseType::SQLite,
-            &QueryValue::SqlLiteral("3.14".to_string()),
-            ".5",
-        )
-        .unwrap();
-
-        assert_eq!(value, QueryValue::SqlLiteral("0.5".to_string()));
+        assert_eq!(value, QueryValue::SqlLiteral(literal.to_string()));
     }
 
     #[test]
