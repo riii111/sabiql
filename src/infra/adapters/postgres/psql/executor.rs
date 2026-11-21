@@ -523,7 +523,8 @@ mod tests {
                 SslMode::Require,
             )
             .unwrap();
-            let dsn = PostgresAdapter::new().build_dsn(&profile);
+            let endpoint = PostgresEndpoint::Settings(profile.postgres_config().unwrap().clone());
+            let dsn = postgres_conninfo(&endpoint);
 
             assert_eq!(
                 first_psql_argument(&dsn),

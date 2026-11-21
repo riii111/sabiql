@@ -20,6 +20,5 @@ pub use profile::{ConnectionProfile, ConnectionProfileError};
 pub use service_entry::ServiceEntry;
 pub use sqlite_path::{
     SqlitePathError, classify_sqlite_metadata_error, classify_sqlite_read_error,
-    sqlite_path_from_dsn,
 };
 pub use ssl_mode::SslMode;

@@ -1,3 +1,4 @@
+use crate::domain::connection::SqliteConnectionConfig;
 mod catalog;
 mod kind_info;
 mod preview;
@@ -19,51 +20,41 @@ fn sqlite_table_not_found(table: &str) -> DbOperationError {
 }
 
 impl SqliteAdapter {
-    pub async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
-        let path = Self::path_from_dsn(dsn)?;
+    pub async fn fetch_metadata(
+        &self,
+        config: &SqliteConnectionConfig,
+    ) -> Result<DatabaseMetadata, DbOperationError> {
+        let path = config.path();
         let tables = self.fetch_catalog_rows(path).await?;
         Ok(metadata_from_catalog(path, &tables))
     }
 
     pub async fn fetch_table_detail(
         &self,
-        dsn: &str,
+        config: &SqliteConnectionConfig,
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
         Self::validate_main_schema(schema)?;
-        table_detail::fetch_table_detail(
-            self,
-            Self::path_from_dsn(dsn)?,
-            table,
-            TableDetailMode::Full,
-        )
-        .await
+        table_detail::fetch_table_detail(self, config.path(), table, TableDetailMode::Full).await
     }
 
     pub async fn fetch_table_columns_and_fks(
         &self,
-        dsn: &str,
+        config: &SqliteConnectionConfig,
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
         Self::validate_main_schema(schema)?;
-        table_detail::fetch_table_detail(
-            self,
-            Self::path_from_dsn(dsn)?,
-            table,
-            TableDetailMode::ColumnsAndFks,
-        )
-        .await
+        table_detail::fetch_table_detail(self, config.path(), table, TableDetailMode::ColumnsAndFks)
+            .await
     }
 
     pub async fn fetch_table_signatures(
         &self,
-        dsn: &str,
+        config: &SqliteConnectionConfig,
     ) -> Result<TableSignatureSnapshot, DbOperationError> {
-        let rows = self
-            .fetch_table_signature_rows(Self::path_from_dsn(dsn)?)
-            .await?;
+        let rows = self.fetch_table_signature_rows(config.path()).await?;
         let mut signatures = Vec::with_capacity(rows.len());
         let mut prefetched_table_details = Vec::with_capacity(rows.len());
         for RawNamedTableMetadata { name, metadata } in rows {

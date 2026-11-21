@@ -58,13 +58,17 @@ mod cli_sqlite_startup {
     use sabiql_app::cmd::cli_sqlite::{activate_cli_sqlite_connection, resolve_cli_sqlite_target};
     use sabiql_app::model::app_state::AppState;
     use sabiql_app::ports::outbound::AccessMode;
-    use sabiql_domain::connection::ConnectionEndpoint;
+    use sabiql_domain::connection::{ConnectionEndpoint, SqliteConnectionConfig};
     use sabiql_infra::adapters::{FsSqlitePathValidator, SqliteAdapter};
     use tempfile::tempdir;
 
     fn session_sqlite_dsn(state: &AppState) -> String {
+        format!("sqlite://{}", session_sqlite_config(state).path())
+    }
+
+    fn session_sqlite_config(state: &AppState) -> &SqliteConnectionConfig {
         match state.session.endpoint().map(AsRef::as_ref) {
-            Some(ConnectionEndpoint::SQLite(config)) => format!("sqlite://{}", config.path()),
+            Some(ConnectionEndpoint::SQLite(config)) => config,
             Some(ConnectionEndpoint::PostgreSQL(_) | ConnectionEndpoint::MySQL(_)) | None => {
                 panic!("CLI activation should keep a SQLite endpoint")
             }
@@ -155,7 +159,7 @@ mod cli_sqlite_startup {
 
         let adapter = SqliteAdapter::new();
         for (path, value) in [(&database_a, "A"), (&database_b, "B")] {
-            let dsn = format!("sqlite://{}", path.display());
+            let dsn = SqliteConnectionConfig::new(path.to_str().unwrap()).unwrap();
             adapter
                 .execute_adhoc(
                     &dsn,
@@ -209,15 +213,16 @@ mod cli_sqlite_startup {
         fs::remove_file(&alias).unwrap();
         symlink(&database_b, &alias).unwrap();
 
+        let config = session_sqlite_config(&symlinked.3);
         let preview = adapter
-            .execute_preview(&symlinked.1, "main", "items", 10, 0)
+            .execute_preview(config, "main", "items", 10, 0)
             .await
             .unwrap();
         assert_eq!(preview.display_value_at(0, 1).as_deref(), Some("A"));
 
         let write = adapter
             .execute_write(
-                &symlinked.1,
+                config,
                 "UPDATE items SET value = 'A updated' WHERE id = 1",
                 AccessMode::ReadWrite,
             )
@@ -226,7 +231,7 @@ mod cli_sqlite_startup {
         assert_eq!(write.affected_rows, 1);
 
         let updated_a = adapter
-            .execute_preview(&symlinked.1, "main", "items", 10, 0)
+            .execute_preview(config, "main", "items", 10, 0)
             .await
             .unwrap();
         assert_eq!(
@@ -234,7 +239,7 @@ mod cli_sqlite_startup {
             Some("A updated")
         );
 
-        let database_b_dsn = format!("sqlite://{}", database_b.display());
+        let database_b_dsn = SqliteConnectionConfig::new(database_b.to_str().unwrap()).unwrap();
         let unchanged_b = adapter
             .execute_preview(&database_b_dsn, "main", "items", 10, 0)
             .await

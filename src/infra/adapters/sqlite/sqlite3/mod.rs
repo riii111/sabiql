@@ -14,6 +14,8 @@ mod tests {
 
     use tokio::process::Command;
 
+    use crate::domain::connection::SqliteConnectionConfig;
+
     use super::super::SqliteAdapter;
 
     #[derive(Default)]
@@ -74,17 +76,17 @@ mod tests {
 
     impl SqliteAdapter {
         pub(in crate::adapters::sqlite) fn with_process_counter(
-            dsn: &str,
+            config: &SqliteConnectionConfig,
         ) -> (Self, TestCommandContext) {
-            Self::with_test_command_config(dsn, TestCommandConfig::default())
+            Self::with_test_command_config(config, TestCommandConfig::default())
         }
 
         pub(super) fn with_test_environment(
-            dsn: &str,
+            config: &SqliteConnectionConfig,
             environment: Vec<(OsString, OsString)>,
         ) -> (Self, TestCommandContext) {
             Self::with_test_command_config(
-                dsn,
+                config,
                 TestCommandConfig {
                     environment,
                     process_count: 0,
@@ -93,10 +95,10 @@ mod tests {
         }
 
         fn with_test_command_config(
-            dsn: &str,
+            endpoint: &SqliteConnectionConfig,
             config: TestCommandConfig,
         ) -> (Self, TestCommandContext) {
-            let path = Self::path_from_dsn(dsn).unwrap().to_string();
+            let path = endpoint.path().to_string();
             let previous = command_configs()
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)

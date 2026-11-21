@@ -16,11 +16,6 @@ pub enum SqlitePathError {
     Io(String),
 }
 
-pub fn sqlite_path_from_dsn(dsn: &str) -> Option<&str> {
-    dsn.strip_prefix("sqlite://")
-        .filter(|path| !path.is_empty())
-}
-
 pub fn classify_sqlite_metadata_error(
     display: &str,
     kind: std::io::ErrorKind,
@@ -52,28 +47,6 @@ pub fn classify_sqlite_read_error(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rstest::rstest;
-
-    mod sqlite_path_from_dsn {
-        use super::*;
-
-        #[test]
-        fn extracts_path_from_dsn() {
-            assert_eq!(
-                sqlite_path_from_dsn("sqlite:///tmp/app.db"),
-                Some("/tmp/app.db")
-            );
-        }
-
-        #[rstest]
-        #[case("postgres://localhost/db")]
-        #[case("sqlite://")]
-        #[case("")]
-        fn returns_none_for_non_sqlite_dsn(#[case] dsn: &str) {
-            assert_eq!(sqlite_path_from_dsn(dsn), None);
-        }
-    }
-
     mod classify_errors {
         use super::*;
 

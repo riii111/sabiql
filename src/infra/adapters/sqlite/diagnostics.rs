@@ -1,4 +1,5 @@
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
+use crate::domain::connection::SqliteConnectionConfig;
 use crate::domain::{DiagnosticField, QueryResult, SqliteDiagnosticsSnapshot};
 
 use super::SqliteAdapter;
@@ -6,18 +7,19 @@ use super::SqliteAdapter;
 impl SqliteAdapter {
     pub async fn fetch_core_diagnostics(
         &self,
-        dsn: &str,
+        config: &SqliteConnectionConfig,
     ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {
-        let db_file = DiagnosticField::ok(Self::path_from_dsn(dsn)?);
+        let db_file = DiagnosticField::ok(config.path());
 
-        let sqlite_version = fetch_field(self, dsn, "SELECT sqlite_version();", scalar_field).await;
-        let feature_summary = fetch_feature_summary(self, dsn).await;
-        let foreign_keys = fetch_field(self, dsn, "PRAGMA foreign_keys;", on_off_field).await;
-        let journal_mode = fetch_field(self, dsn, "PRAGMA journal_mode;", scalar_field).await;
-        let query_only = fetch_field(self, dsn, "PRAGMA query_only;", on_off_field).await;
-        let busy_timeout = fetch_field(self, dsn, "PRAGMA busy_timeout;", scalar_field).await;
+        let sqlite_version =
+            fetch_field(self, config, "SELECT sqlite_version();", scalar_field).await;
+        let feature_summary = fetch_feature_summary(self, config).await;
+        let foreign_keys = fetch_field(self, config, "PRAGMA foreign_keys;", on_off_field).await;
+        let journal_mode = fetch_field(self, config, "PRAGMA journal_mode;", scalar_field).await;
+        let query_only = fetch_field(self, config, "PRAGMA query_only;", on_off_field).await;
+        let busy_timeout = fetch_field(self, config, "PRAGMA busy_timeout;", scalar_field).await;
         let database_list =
-            fetch_field(self, dsn, "PRAGMA database_list;", database_list_field).await;
+            fetch_field(self, config, "PRAGMA database_list;", database_list_field).await;
 
         Ok(SqliteDiagnosticsSnapshot {
             db_file,
@@ -32,36 +34,39 @@ impl SqliteAdapter {
         })
     }
 
-    pub async fn fetch_quick_check(&self, dsn: &str) -> DiagnosticField {
-        fetch_field(self, dsn, "PRAGMA quick_check;", quick_check_field).await
+    pub async fn fetch_quick_check(&self, config: &SqliteConnectionConfig) -> DiagnosticField {
+        fetch_field(self, config, "PRAGMA quick_check;", quick_check_field).await
     }
 }
 
 async fn fetch_field(
     adapter: &SqliteAdapter,
-    dsn: &str,
+    config: &SqliteConnectionConfig,
     query: &str,
     map: fn(Result<QueryResult, DbOperationError>) -> DiagnosticField,
 ) -> DiagnosticField {
     map(adapter
-        .execute_adhoc(dsn, query, AccessMode::ReadOnly)
+        .execute_adhoc(config, query, AccessMode::ReadOnly)
         .await)
 }
 
-async fn fetch_feature_summary(adapter: &SqliteAdapter, dsn: &str) -> DiagnosticField {
+async fn fetch_feature_summary(
+    adapter: &SqliteAdapter,
+    config: &SqliteConnectionConfig,
+) -> DiagnosticField {
     let compile_options = feature_probe(
         adapter
-            .execute_adhoc(dsn, "PRAGMA compile_options;", AccessMode::ReadOnly)
+            .execute_adhoc(config, "PRAGMA compile_options;", AccessMode::ReadOnly)
             .await,
     );
     let module_list = feature_probe(
         adapter
-            .execute_adhoc(dsn, "PRAGMA module_list;", AccessMode::ReadOnly)
+            .execute_adhoc(config, "PRAGMA module_list;", AccessMode::ReadOnly)
             .await,
     );
     let function_list = feature_probe(
         adapter
-            .execute_adhoc(dsn, "PRAGMA function_list;", AccessMode::ReadOnly)
+            .execute_adhoc(config, "PRAGMA function_list;", AccessMode::ReadOnly)
             .await,
     );
 

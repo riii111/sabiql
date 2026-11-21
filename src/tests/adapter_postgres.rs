@@ -281,7 +281,7 @@ mod error_paths {
     async fn bad_dsn_returns_connection_or_query_error() {
         let adapter = PostgresAdapter::new();
 
-        let result = adapter.fetch_metadata(postgres_bad_dsn()).await;
+        let result = adapter.fetch_metadata(&postgres_bad_dsn()).await;
 
         assert!(result.is_err(), "Expected error for bad DSN");
     }

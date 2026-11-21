@@ -14,7 +14,7 @@ async fn export_to_csv_writes_rows() {
     adapter
         .cli
         .export_csv(
-            SqliteAdapter::path_from_dsn(&dsn).unwrap(),
+            dsn.path(),
             "SELECT id, name FROM users ORDER BY id",
             &path,
             true,
@@ -35,12 +35,7 @@ async fn export_to_csv_runs_sql_larger_than_the_windows_command_line_limit() {
 
     adapter
         .cli
-        .export_csv(
-            SqliteAdapter::path_from_dsn(&dsn).unwrap(),
-            &sql,
-            &path,
-            true,
-        )
+        .export_csv(dsn.path(), &sql, &path, true)
         .await
         .unwrap();
 
@@ -62,7 +57,7 @@ world'), (2, 'done');
     adapter
         .cli
         .export_csv(
-            SqliteAdapter::path_from_dsn(&dsn).unwrap(),
+            dsn.path(),
             "SELECT id, message FROM logs ORDER BY id",
             &path,
             true,
@@ -140,7 +135,7 @@ async fn read_only_write_fails() {
 async fn missing_database_is_rejected_without_creating_an_empty_file() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("missing.db");
-    let dsn = format!("sqlite://{}", path.display());
+    let dsn = SqliteConnectionConfig::new(path.to_str().unwrap()).unwrap();
     let adapter = SqliteAdapter::new();
 
     let result = adapter

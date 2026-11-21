@@ -1,5 +1,6 @@
 use std::process::Command;
 
+use sabiql_domain::connection::SqliteConnectionConfig;
 use sabiql_domain::{QueryResult, Table, TableKindInfo, TableStorageAttributes};
 
 #[must_use]
@@ -30,7 +31,7 @@ pub(super) fn display_row(result: &QueryResult, row: usize) -> Vec<String> {
 }
 
 #[must_use]
-pub(super) fn make_sqlite_db(sql: &str) -> (tempfile::TempDir, String) {
+pub(super) fn make_sqlite_db(sql: &str) -> (tempfile::TempDir, SqliteConnectionConfig) {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("app.db");
     let output = Command::new("sqlite3")
@@ -50,7 +51,10 @@ pub(super) fn make_sqlite_db(sql: &str) -> (tempfile::TempDir, String) {
         sqlite_setup_context(sql),
         String::from_utf8_lossy(&output.stderr)
     );
-    (dir, format!("sqlite://{}", path.display()))
+    (
+        dir,
+        SqliteConnectionConfig::new(path.to_str().unwrap()).unwrap(),
+    )
 }
 
 fn sqlite_setup_context(sql: &str) -> String {
