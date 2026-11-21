@@ -41,8 +41,6 @@ pub use connection_setup::connection_setup_hints;
 pub use context::KeyContext;
 pub use global::{PaletteEntry, palette_action, palette_available, palette_entry};
 pub use help::help_hints;
-pub use json_edit::json_edit_hints;
-pub use json_view::json_view_hints;
 pub use pickers::{Picker, picker_hints};
 pub use row_detail::row_detail_hints;
 pub use settings::settings_hints;

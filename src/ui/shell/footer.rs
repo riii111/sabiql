@@ -106,7 +106,7 @@ impl Footer {
 
 #[cfg(test)]
 mod tests {
-    use super::Footer;
+    use super::{Footer, footer_hints};
     use crate::app::domain::{ConnectionId, DatabaseType};
     use crate::app::model::app_state::AppState;
     use crate::app::model::connection::error::ConnectionErrorInfo;
@@ -117,8 +117,7 @@ mod tests {
     use crate::app::model::shared::ui_state::FocusMode;
     use crate::app::ports::outbound::DbOperationError;
     use crate::app::update::input::keymap::{
-        HintSurface, KeyContext, connection_error_hints, json_edit_hints, json_view_hints,
-        settings_hints, sql_edit_hints,
+        HintSurface, KeyContext, connection_error_hints, settings_hints, sql_edit_hints,
     };
     use rstest::rstest;
 
@@ -243,10 +242,10 @@ mod tests {
         );
 
         state.modal.set_mode(InputMode::JsonDetail);
-        assert!(json_view_hints(HintSurface::Footer, &KeyContext::from_state(&state)).is_empty());
+        assert!(footer_hints(&KeyContext::from_state(&state)).is_empty());
 
         state.modal.set_mode(InputMode::JsonEdit);
-        assert!(json_edit_hints(HintSurface::Footer, &KeyContext::from_state(&state)).is_empty());
+        assert!(footer_hints(&KeyContext::from_state(&state)).is_empty());
     }
 
     #[test]
@@ -260,7 +259,7 @@ mod tests {
         );
         state.modal.set_mode(InputMode::JsonDetail);
 
-        let hints = json_view_hints(HintSurface::Footer, &KeyContext::from_state(&state));
+        let hints = footer_hints(&KeyContext::from_state(&state));
         assert_eq!(
             hints.iter().map(|hint| hint.short).collect::<Vec<_>>(),
             ["Next/Prev", "Left/Right", "Down/Up"]
