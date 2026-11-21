@@ -187,6 +187,14 @@ mod tests {
             "SELECT \"a\"\"b\"; SELECT 2",
             vec!["SELECT \"a\"\"b\"", "SELECT 2"]
         )]
+        #[case::semicolon_in_line_comment(
+            "SELECT 1 -- ;comment\n; SELECT 2",
+            vec!["SELECT 1 -- ;comment", "SELECT 2"]
+        )]
+        #[case::semicolon_in_block_comment(
+            "SELECT /* ; */ 1; SELECT 2",
+            vec!["SELECT /* ; */ 1", "SELECT 2"]
+        )]
         fn valid_input_returns_split_statements(#[case] sql: &str, #[case] expected: Vec<&str>) {
             assert_eq!(split_statements(sql), expected);
         }
