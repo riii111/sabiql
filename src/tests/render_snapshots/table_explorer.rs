@@ -94,11 +94,10 @@ fn empty_query_result() {
 #[test]
 fn sqlite_explorer_shows_table_names_without_schema_or_kind_suffixes() {
     let mut state = create_test_state();
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("sqlite-test"),
         "app.db",
-        DatabaseType::SQLite,
-        "sqlite:///tmp/app.db",
+        &endpoint::sqlite("sqlite:///tmp/app.db"),
     );
     let metadata = {
         let mut metadata = DatabaseMetadata::new("app.db".to_string());
@@ -136,11 +135,10 @@ fn sqlite_explorer_shows_table_names_without_schema_or_kind_suffixes() {
 #[test]
 fn sqlite_header_shows_table_name_without_schema() {
     let mut state = create_test_state();
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("sqlite-test"),
         "app.db",
-        DatabaseType::SQLite,
-        "sqlite:///tmp/app.db",
+        &endpoint::sqlite("sqlite:///tmp/app.db"),
     );
     let mut metadata = DatabaseMetadata::new("app.db".to_string());
     metadata.schemas = vec![Schema::new("main")];
@@ -164,12 +162,13 @@ fn sqlite_header_shows_table_name_without_schema() {
 #[test]
 fn mysql_header_and_explorer_show_table_names() {
     let mut state = create_test_state();
-    state.session.activate_connection_with_target(
+    state.session.activate_connection(
         &ConnectionId::from_string("mysql-test"),
         "mysql",
-        DatabaseType::MySQL,
-        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
-        Some("app"),
+        &endpoint::mysql(
+            "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+            Some("app"),
+        ),
     );
     let mut metadata = DatabaseMetadata::new("app".to_string());
     metadata.table_summaries = vec![

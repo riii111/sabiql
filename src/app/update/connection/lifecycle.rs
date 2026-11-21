@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::cmd::effect::Effect;
 use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
@@ -24,15 +26,9 @@ pub(in crate::update) fn switch_connection(
 ) -> Vec<Effect> {
     state.session.cancel_connection_save_and_disconnect();
     state.connection_error.clear();
-    let ConnectionTarget {
-        id,
-        dsn,
-        name,
-        database_type,
-        database,
-    } = &target;
+    let ConnectionTarget { id, name, endpoint } = &target;
 
-    if *database_type == DatabaseType::MySQL && database.is_none() {
+    if endpoint.requires_database_selection() {
         state
             .messages
             .set_error("MySQL connection field `database` is required".to_string());
@@ -42,10 +38,10 @@ pub(in crate::update) fn switch_connection(
     save_current_connection_cache(state);
     clear_query_confirmation(state);
 
-    if *database_type == DatabaseType::MySQL {
+    if endpoint.engine() == DatabaseType::MySQL {
         let run_id = state
             .session
-            .begin_mysql_connection_probe(id, name, dsn, database.as_deref());
+            .begin_mysql_connection_probe(id, name, endpoint);
         state.query.reset_for_context_change();
         return termination_effects(
             &state.query,
@@ -65,7 +61,7 @@ pub(in crate::update) fn switch_connection(
         if state.session.effective_user().is_none() {
             let run_id = state.session.begin_effective_user_fetch();
             effects.push(Effect::FetchEffectiveUser {
-                dsn: dsn.clone(),
+                endpoint: Arc::clone(endpoint),
                 run_id,
             });
         }
@@ -73,12 +69,12 @@ pub(in crate::update) fn switch_connection(
     } else {
         // No cache: reset and fetch metadata
         reset_for_new_connection(state, &target);
-        let run_id = state.session.begin_connecting(dsn);
+        let run_id = state.session.begin_connecting();
         state.table_detail_cache.clear();
         termination_effects(
             &state.query,
             vec![Effect::FetchMetadata {
-                dsn: dsn.clone(),
+                endpoint: Arc::clone(endpoint),
                 run_id,
             }],
         )
@@ -91,24 +87,19 @@ pub(in crate::update) fn mysql_connection_probe_completed(
     run_id: u64,
     lower_case_table_names: u8,
 ) -> Vec<Effect> {
-    let ConnectionTarget {
-        id,
-        dsn,
-        database_type,
-        ..
-    } = &target;
-    if *database_type != DatabaseType::MySQL
+    let ConnectionTarget { id, endpoint, .. } = &target;
+    if endpoint.engine() != DatabaseType::MySQL
         || !state.session.is_current_mysql_connection_probe(run_id)
     {
         return vec![];
     }
     let cached = state.connection_caches.get(id).cloned();
-    if let Some(cached) = cached.filter(|cache| cache.is_valid_mysql_snapshot(dsn)) {
+    if let Some(cached) = cached.filter(|cache| cache.is_valid_mysql_snapshot(endpoint)) {
         restore_cache(state, &cached, &target);
         state
             .session
             .set_mysql_lower_case_table_names(lower_case_table_names);
-        let reload_effects = metadata_reload_effects(state, dsn);
+        let reload_effects = metadata_reload_effects(state, endpoint);
         return termination_effects(&state.query, reload_effects);
     }
 
@@ -117,7 +108,7 @@ pub(in crate::update) fn mysql_connection_probe_completed(
     state
         .session
         .set_mysql_lower_case_table_names(lower_case_table_names);
-    mysql_connection_completion_effects(state, dsn)
+    mysql_connection_completion_effects(state, endpoint)
 }
 
 pub(in crate::update) fn mysql_connection_probe_failed(
@@ -126,30 +117,29 @@ pub(in crate::update) fn mysql_connection_probe_failed(
     run_id: u64,
     error: DbOperationError,
 ) -> Vec<Effect> {
-    if target.database_type != DatabaseType::MySQL
+    if target.endpoint.engine() != DatabaseType::MySQL
         || !state.session.is_current_mysql_connection_probe(run_id)
     {
         return vec![];
     }
     let message = error.user_message();
-    let table_detail_retry = if state.session.dsn_matches(&target.dsn) {
+    let table_detail_retry = if state.session.endpoint_matches(&target.endpoint) {
         None
     } else {
-        state
-            .session
-            .retry_table_detail_after_probe_failure()
-            .map(|(dsn, generation, run_id)| Effect::FetchTableDetail {
-                dsn,
+        state.session.retry_table_detail_after_probe_failure().map(
+            |(endpoint, generation, run_id)| Effect::FetchTableDetail {
+                endpoint,
                 schema: state.query.pagination.schema().to_string(),
                 table: state.query.pagination.table().to_string(),
                 generation,
                 run_id,
-            })
+            },
+        )
     };
-    if state.session.dsn_matches(&target.dsn) {
+    if state.session.endpoint_matches(&target.endpoint) {
         state
             .session
-            .mark_table_detail_probe_failed(&target.dsn, message);
+            .mark_table_detail_probe_failed(&target.endpoint, message);
         state.session.mark_connection_failed();
     }
     state
@@ -166,7 +156,7 @@ pub(in crate::update) fn try_connect(state: &mut AppState) -> Vec<Effect> {
     {
         return vec![];
     }
-    let Some(dsn) = state.session.dsn().map(str::to_string) else {
+    let Some(endpoint) = state.session.endpoint().cloned() else {
         return vec![];
     };
 
@@ -183,28 +173,24 @@ pub(in crate::update) fn try_connect(state: &mut AppState) -> Vec<Effect> {
                 .active_connection_id()
                 .cloned()
                 .expect("active MySQL connection"),
-            dsn,
             name: state
                 .session
                 .active_connection_name()
                 .unwrap_or_default()
                 .to_string(),
-            database_type: DatabaseType::MySQL,
-            database: state.session.active_database().map(str::to_string),
+            endpoint,
         };
-        let run_id = state.session.begin_mysql_connection_probe(
-            &target.id,
-            &target.name,
-            &target.dsn,
-            target.database.as_deref(),
-        );
+        let run_id =
+            state
+                .session
+                .begin_mysql_connection_probe(&target.id, &target.name, &target.endpoint);
         clear_query_confirmation(state);
         state.query.reset_for_context_change();
         state.session.mark_connecting();
         return vec![Effect::ProbeMySqlConnection { target, run_id }];
     }
-    let run_id = state.session.begin_connecting(&dsn);
-    vec![Effect::FetchMetadata { dsn, run_id }]
+    let run_id = state.session.begin_connecting();
+    vec![Effect::FetchMetadata { endpoint, run_id }]
 }
 
 #[cfg(test)]
@@ -212,7 +198,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::domain::connection::DatabaseType;
+    use crate::domain::connection::{ConnectionEndpoint, DatabaseType};
     use crate::domain::{
         ConnectionId, DatabaseMetadata, MetadataState, QueryResult, QuerySource, Table,
         TableKindInfo, TableStorageAttributes, TableSummary,
@@ -233,6 +219,7 @@ mod tests {
     use crate::test_support::connection::{
         assert_explain_state_cleared, assert_sqlite_diagnostics_cleared,
     };
+    use crate::test_support::endpoint;
     use crate::update::action::Action;
     use crate::update::reducer::reduce as reduce_app;
     use crate::update::reducer::route;
@@ -249,10 +236,8 @@ mod tests {
     fn create_postgres_switch_action(id: &ConnectionId, name: &str) -> Action {
         Action::SwitchConnection(ConnectionTarget {
             id: id.clone(),
-            dsn: format!("postgres://localhost/{name}"),
             name: name.to_string(),
-            database_type: DatabaseType::PostgreSQL,
-            database: None,
+            endpoint: endpoint::postgres(&format!("postgres://localhost/{name}")),
         })
     }
 
@@ -262,23 +247,20 @@ mod tests {
         fn mysql_target(id: &str, database: &str) -> ConnectionTarget {
             ConnectionTarget {
                 id: ConnectionId::from_string(id),
-                dsn: format!("mysql://user@localhost:3306/{database}"),
                 name: id.to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some(database.to_string()),
+                endpoint: endpoint::mysql(
+                    &format!("mysql://user@localhost:3306/{database}"),
+                    Some(database),
+                ),
             }
         }
 
         fn active_mysql_state() -> AppState {
             let mut state = AppState::new("test".to_string());
             let current = mysql_target("mysql-a", "a");
-            state.session.activate_connection_with_target(
-                &current.id,
-                &current.name,
-                current.database_type,
-                &current.dsn,
-                current.database.as_deref(),
-            );
+            state
+                .session
+                .activate_connection(&current.id, &current.name, &current.endpoint);
             state
                 .session
                 .set_connection_state(ConnectionState::Connected);
@@ -333,7 +315,7 @@ mod tests {
             assert!(state.session.pending_mysql_connection_probe().is_none());
             assert!(completion_effects.iter().any(|effect| matches!(
                 effect,
-                Effect::FetchMetadata { dsn, .. } if dsn == &target.dsn
+                Effect::FetchMetadata { endpoint, .. } if endpoint == &target.endpoint
             )));
 
             let reload_effects = reduce_app(
@@ -344,7 +326,7 @@ mod tests {
             );
             assert!(reload_effects.iter().any(|effect| matches!(
                 effect,
-                Effect::FetchMetadata { dsn, .. } if dsn == &target.dsn
+                Effect::FetchMetadata { endpoint, .. } if endpoint == &target.endpoint
             )));
         }
 
@@ -399,7 +381,7 @@ mod tests {
             assert!(state.session.pending_mysql_connection_probe().is_none());
             assert!(completion_effects.iter().any(|effect| matches!(
                 effect,
-                Effect::FetchMetadata { dsn, .. } if dsn == &target.dsn
+                Effect::FetchMetadata { endpoint, .. } if endpoint == &target.endpoint
             )));
 
             let reload_effects = reduce_app(
@@ -410,7 +392,7 @@ mod tests {
             );
             assert!(reload_effects.iter().any(|effect| matches!(
                 effect,
-                Effect::FetchMetadata { dsn, .. } if dsn == &target.dsn
+                Effect::FetchMetadata { endpoint, .. } if endpoint == &target.endpoint
             )));
         }
 
@@ -466,8 +448,9 @@ mod tests {
                 effect,
                 Effect::ProbeMySqlConnection { target: retry_target, .. }
                     if retry_target.id == target.id
-                        && retry_target.dsn == target.dsn
-                        && retry_target.database == target.database
+                        && retry_target.endpoint == target.endpoint
+                        && retry_target.endpoint.selected_database()
+                            == target.endpoint.selected_database()
             )));
         }
 
@@ -487,7 +470,10 @@ mod tests {
 
             reduce(&mut state, &Action::SwitchConnection(target));
 
-            assert_eq!(state.session.dsn(), Some("mysql://user@localhost:3306/a"));
+            assert_eq!(
+                state.session.endpoint(),
+                Some(&mysql_target("mysql-a", "a").endpoint)
+            );
             assert!(state.session.pending_mysql_connection_probe().is_some());
             assert!(matches!(state.sql_modal.status(), SqlModalStatus::Normal));
             assert!(state.confirm_dialog.intent().is_none());
@@ -518,11 +504,10 @@ mod tests {
             let current_id = ConnectionId::new();
             let new_id = ConnectionId::new();
 
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &current_id,
                 "current",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/current",
+                &endpoint::postgres("postgres://localhost/current"),
             );
             state.ui.set_explorer_selected_raw(5);
             state.ui.set_inspector_tab(InspectorTab::Indexes);
@@ -545,24 +530,22 @@ mod tests {
             let mysql_id = ConnectionId::from_string("mysql");
             let source = ConnectionTarget {
                 id: source_id.clone(),
-                dsn: dsn.to_string(),
                 name: name.to_string(),
-                database_type,
-                database: None,
+                endpoint: endpoint::for_engine(database_type, dsn),
             };
 
-            state
-                .session
-                .activate_connection_with_dsn(&source_id, name, database_type, dsn);
+            state.session.activate_connection(
+                &source_id,
+                name,
+                &endpoint::for_engine(database_type, dsn),
+            );
             state.ui.set_explorer_selected_raw(5);
             state.ui.set_inspector_tab(InspectorTab::Indexes);
 
             let mysql = ConnectionTarget {
                 id: mysql_id,
-                dsn: "mysql://user@localhost:3306/app".to_string(),
                 name: "mysql".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("app".to_string()),
+                endpoint: endpoint::mysql("mysql://user@localhost:3306/app", Some("app")),
             };
             let effects = reduce(&mut state, &Action::SwitchConnection(mysql.clone()));
             let run_id = effects
@@ -610,12 +593,10 @@ mod tests {
         fn saves_current_mysql_cache_before_switching() {
             let mut state = AppState::new("test".to_string());
             let current_id = ConnectionId::from_string("mysql-current");
-            state.session.activate_connection_with_target(
+            state.session.activate_connection(
                 &current_id,
                 "current",
-                DatabaseType::MySQL,
-                "mysql://user@localhost:3306/current",
-                Some("current"),
+                &endpoint::mysql("mysql://user@localhost:3306/current", Some("current")),
             );
             state
                 .session
@@ -641,7 +622,10 @@ mod tests {
             );
 
             let cache = &state.connection_caches[&current_id];
-            assert!(cache.is_valid_mysql_snapshot("mysql://user@localhost:3306/current"));
+            assert!(cache.is_valid_mysql_snapshot(&endpoint::mysql(
+                "mysql://user@localhost:3306/current",
+                Some("current")
+            )));
             assert_eq!(cache.explorer_selected, 5);
             assert_eq!(cache.inspector_tab, InspectorTab::Indexes);
             assert!(cache.query_result.is_some());
@@ -700,10 +684,8 @@ mod tests {
 
             let action = Action::SwitchConnection(ConnectionTarget {
                 id: target_id,
-                dsn: "sqlite:///tmp/app.db".to_string(),
                 name: "app.db".to_string(),
-                database_type: DatabaseType::SQLite,
-                database: None,
+                endpoint: endpoint::sqlite("sqlite:///tmp/app.db"),
             });
             reduce(&mut state, &action);
 
@@ -738,10 +720,8 @@ mod tests {
             };
             Action::SwitchConnection(ConnectionTarget {
                 id,
-                dsn,
                 name: name.to_string(),
-                database_type,
-                database: None,
+                endpoint: endpoint::for_engine(database_type, &dsn),
             })
         }
 
@@ -789,11 +769,10 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let current_id = ConnectionId::new();
             let target_id = ConnectionId::new();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &current_id,
                 "current",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/current",
+                &endpoint::postgres("postgres://localhost/current"),
             );
             state.ui.set_inspector_tab(InspectorTab::Rls);
             state.ui.set_inspector_scroll_offset(17);
@@ -839,11 +818,10 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let current_id = ConnectionId::new();
             let target_id = ConnectionId::new();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &current_id,
                 "current",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/current.db",
+                &endpoint::sqlite("sqlite:///tmp/current.db"),
             );
             seed_sqlite_diagnostics(&mut state);
             seed_explain_state(&mut state);
@@ -881,11 +859,10 @@ mod tests {
         fn preserves_postgres_features_when_switching_to_another_postgres_connection() {
             let mut state = AppState::new("test".to_string());
             let current_id = ConnectionId::new();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &current_id,
                 "current",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/current",
+                &endpoint::postgres("postgres://localhost/current"),
             );
             state.ui.set_inspector_tab(InspectorTab::Rls);
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
@@ -911,11 +888,10 @@ mod tests {
         fn preserves_sqlite_features_when_switching_to_another_sqlite_connection() {
             let mut state = AppState::new("test".to_string());
             let current_id = ConnectionId::new();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &current_id,
                 "current",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/current.db",
+                &endpoint::sqlite("sqlite:///tmp/current.db"),
             );
             state.ui.set_inspector_tab(InspectorTab::Ddl);
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
@@ -955,7 +931,10 @@ mod tests {
                 ConnectionState::Connecting
             );
             assert_eq!(state.session.active_connection_id(), Some(&new_id));
-            assert_eq!(state.session.dsn(), Some("postgres://localhost/fresh_db"));
+            assert_eq!(
+                state.session.endpoint(),
+                Some(&endpoint::postgres("postgres://localhost/fresh_db"))
+            );
             assert_eq!(state.session.active_connection_name(), Some("fresh_db"));
             assert_eq!(
                 state.session.active_database_type(),
@@ -970,10 +949,8 @@ mod tests {
 
             let action = Action::SwitchConnection(ConnectionTarget {
                 id: new_id,
-                dsn: "sqlite:///tmp/app.db".to_string(),
                 name: "app.db".to_string(),
-                database_type: DatabaseType::SQLite,
-                database: None,
+                endpoint: endpoint::sqlite("sqlite:///tmp/app.db"),
             });
             let effects = reduce(&mut state, &action);
 
@@ -996,12 +973,15 @@ mod tests {
     mod cache_restore_tests {
         use super::*;
 
-        fn valid_mysql_cache(dsn: &str, database: &str) -> ConnectionCache {
+        fn valid_mysql_cache(
+            endpoint: &Arc<ConnectionEndpoint>,
+            database: &str,
+        ) -> ConnectionCache {
             let mut pagination = PaginationState::default();
             pagination.reset_for_table("app", "users");
             pagination.set_page_result(2, false);
             ConnectionCache {
-                connection_dsn: Some(dsn.to_string()),
+                endpoint: Some(Arc::clone(endpoint)),
                 metadata: Some(Arc::new(DatabaseMetadata::new(database.to_string()))),
                 effective_user: Some("user@localhost".to_string()),
                 selected_table_key: Some("app.users".to_string()),
@@ -1022,10 +1002,8 @@ mod tests {
         fn mysql_target(id: &ConnectionId, dsn: &str, database: &str) -> ConnectionTarget {
             ConnectionTarget {
                 id: id.clone(),
-                dsn: dsn.to_string(),
                 name: database.to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some(database.to_string()),
+                endpoint: endpoint::mysql(dsn, Some(database)),
             }
         }
 
@@ -1036,7 +1014,10 @@ mod tests {
             let target = mysql_target(&target_id, "mysql://user@localhost:3306/app", "app");
             state.connection_caches.insert(
                 target_id,
-                valid_mysql_cache(&target.dsn, target.database.as_deref().unwrap()),
+                valid_mysql_cache(
+                    &target.endpoint,
+                    target.endpoint.selected_database().unwrap(),
+                ),
             );
 
             let probe_effects = reduce(&mut state, &Action::SwitchConnection(target.clone()));
@@ -1126,9 +1107,10 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let target_id = ConnectionId::from_string("mysql-target");
             let target = mysql_target(&target_id, "mysql://user@localhost:3306/app", "app");
-            state
-                .connection_caches
-                .insert(target_id.clone(), valid_mysql_cache(cached_dsn, "app"));
+            state.connection_caches.insert(
+                target_id.clone(),
+                valid_mysql_cache(&endpoint::mysql(cached_dsn, Some("old")), "app"),
+            );
 
             let probe_effects = reduce(&mut state, &Action::SwitchConnection(target.clone()));
             let probe_run_id = probe_effects
@@ -1163,7 +1145,10 @@ mod tests {
             let target = mysql_target(&target_id, "mysql://user@localhost:3306/app", "app");
             state.connection_caches.insert(
                 target_id,
-                valid_mysql_cache(&target.dsn, target.database.as_deref().unwrap()),
+                valid_mysql_cache(
+                    &target.endpoint,
+                    target.endpoint.selected_database().unwrap(),
+                ),
             );
 
             let probe_run_id = reduce(&mut state, &Action::SwitchConnection(target.clone()))
@@ -1237,7 +1222,10 @@ mod tests {
             let target = mysql_target(&target_id, "mysql://user@localhost:3306/app", "app");
             state.connection_caches.insert(
                 target_id,
-                valid_mysql_cache(&target.dsn, target.database.as_deref().unwrap()),
+                valid_mysql_cache(
+                    &target.endpoint,
+                    target.endpoint.selected_database().unwrap(),
+                ),
             );
 
             let probe_effects = reduce(&mut state, &Action::SwitchConnection(target.clone()));
@@ -1283,10 +1271,8 @@ mod tests {
 
             let action = Action::SwitchConnection(ConnectionTarget {
                 id: target_id.clone(),
-                dsn: "sqlite:///tmp/app.db".to_string(),
                 name: "app.db".to_string(),
-                database_type: DatabaseType::SQLite,
-                database: None,
+                endpoint: endpoint::sqlite("sqlite:///tmp/app.db"),
             });
             let effects = reduce(&mut state, &action);
 
@@ -1316,11 +1302,10 @@ mod tests {
             let dsn_a = "postgres://localhost/connection-a";
             let dsn_b = "postgres://localhost/connection-b";
 
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &connection_a,
                 "connection-a",
-                DatabaseType::PostgreSQL,
-                dsn_a,
+                &endpoint::postgres(dsn_a),
             );
             state
                 .session
@@ -1364,7 +1349,7 @@ mod tests {
                 &create_postgres_switch_action(&connection_b, "connection-b"),
             );
 
-            assert_eq!(state.session.dsn(), Some(dsn_b));
+            assert_eq!(state.session.endpoint(), Some(&endpoint::postgres(dsn_b)));
             assert_eq!(state.session.selected_table_key(), Some("main.orders"));
             assert_eq!(state.query.pagination.current_page(), 5);
             assert_eq!(state.query.pagination.schema(), "main");
@@ -1379,13 +1364,13 @@ mod tests {
             assert!(next_effects.iter().any(|effect| matches!(
                 effect,
                 Effect::ExecutePreview {
-                    dsn,
+                    endpoint,
                     schema,
                     table,
                     offset: 3000,
                     target_page: 6,
                     ..
-                } if dsn == dsn_b && schema == "main" && table == "orders"
+                } if endpoint == &endpoint::postgres(dsn_b) && schema == "main" && table == "orders"
             )));
 
             state.query.mark_idle();
@@ -1398,20 +1383,20 @@ mod tests {
             assert!(previous_effects.iter().any(|effect| matches!(
                 effect,
                 Effect::ExecutePreview {
-                    dsn,
+                    endpoint,
                     schema,
                     table,
                     offset: 2000,
                     target_page: 4,
                     ..
-                } if dsn == dsn_b && schema == "main" && table == "orders"
+                } if endpoint == &endpoint::postgres(dsn_b) && schema == "main" && table == "orders"
             )));
 
             reduce(
                 &mut state,
                 &create_postgres_switch_action(&connection_a, "connection-a"),
             );
-            assert_eq!(state.session.dsn(), Some(dsn_a));
+            assert_eq!(state.session.endpoint(), Some(&endpoint::postgres(dsn_a)));
             assert_eq!(state.session.selected_table_key(), Some("public.users"));
             assert_eq!(state.query.pagination.current_page(), 2);
             assert_eq!(state.query.pagination.schema(), "public");
@@ -1468,11 +1453,10 @@ mod tests {
         #[test]
         fn sqlite_try_connect_fetches_metadata() {
             let mut state = AppState::new("test".to_string());
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::from_string("sqlite-test"),
                 "sqlite",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
+                &endpoint::sqlite("sqlite:///tmp/app.db"),
             );
             state
                 .session
@@ -1496,17 +1480,19 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let target = ConnectionTarget {
                 id: ConnectionId::new(),
-                dsn: "mysql://user@localhost:3306/app?ssl-mode=PREFERRED".to_string(),
                 name: "mysql".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("app".to_string()),
+                endpoint: endpoint::mysql(
+                    "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+                    Some("app"),
+                ),
             };
 
             let effects = reduce(&mut state, &Action::SwitchConnection(target.clone()));
 
             assert!(effects.iter().any(|effect| matches!(
                 effect,
-                Effect::ProbeMySqlConnection { target: actual, .. } if actual.dsn == target.dsn
+                Effect::ProbeMySqlConnection { target: actual, .. }
+                    if actual.endpoint == target.endpoint
             )));
             assert!(
                 !effects
@@ -1520,10 +1506,8 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let target = ConnectionTarget {
                 id: ConnectionId::new(),
-                dsn: "mysql://user@localhost:3306/app".to_string(),
                 name: "mysql".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("app".to_string()),
+                endpoint: endpoint::mysql("mysql://user@localhost:3306/app", Some("app")),
             };
             let probe_effects = reduce(&mut state, &Action::SwitchConnection(target.clone()));
             let probe_run_id = probe_effects
@@ -1545,7 +1529,8 @@ mod tests {
 
             assert!(effects.iter().any(|effect| matches!(
                 effect,
-                Effect::FetchMetadata { dsn, .. } if dsn == "mysql://user@localhost:3306/app"
+                Effect::FetchMetadata { endpoint, .. }
+                    if endpoint == &endpoint::mysql("mysql://user@localhost:3306/app", Some("app"))
             )));
             assert_eq!(
                 state.session.connection_state(),
@@ -1584,10 +1569,8 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let postgres = ConnectionTarget {
                 id: ConnectionId::from_string("postgres-b"),
-                dsn: "postgres://localhost/b".to_string(),
                 name: "postgres-b".to_string(),
-                database_type: DatabaseType::PostgreSQL,
-                database: None,
+                endpoint: endpoint::postgres("postgres://localhost/b"),
             };
             let postgres_effects = reduce(&mut state, &Action::SwitchConnection(postgres));
             let postgres_run_id = postgres_effects
@@ -1600,10 +1583,11 @@ mod tests {
 
             let mysql = ConnectionTarget {
                 id: ConnectionId::from_string("mysql-c"),
-                dsn: "mysql://user@localhost:3306/c?ssl-mode=PREFERRED".to_string(),
                 name: "mysql-c".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("c".to_string()),
+                endpoint: endpoint::mysql(
+                    "mysql://user@localhost:3306/c?ssl-mode=PREFERRED",
+                    Some("c"),
+                ),
             };
             let mysql_effects = reduce(&mut state, &Action::SwitchConnection(mysql.clone()));
             let mysql_run_id = mysql_effects
@@ -1644,19 +1628,18 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let postgres = ConnectionTarget {
                 id: ConnectionId::from_string("postgres-b"),
-                dsn: "postgres://localhost/b".to_string(),
                 name: "postgres-b".to_string(),
-                database_type: DatabaseType::PostgreSQL,
-                database: None,
+                endpoint: endpoint::postgres("postgres://localhost/b"),
             };
             let _ = reduce(&mut state, &Action::SwitchConnection(postgres));
 
             let mysql = ConnectionTarget {
                 id: ConnectionId::from_string("mysql-c"),
-                dsn: "mysql://user@localhost:3306/c?ssl-mode=PREFERRED".to_string(),
                 name: "mysql-c".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("c".to_string()),
+                endpoint: endpoint::mysql(
+                    "mysql://user@localhost:3306/c?ssl-mode=PREFERRED",
+                    Some("c"),
+                ),
             };
             let mysql_effects = reduce(&mut state, &Action::SwitchConnection(mysql.clone()));
             let mysql_run_id = mysql_effects
@@ -1688,11 +1671,10 @@ mod tests {
         fn mysql_probe_failure_finishes_previous_reload() {
             let mut state = AppState::new("test".to_string());
             let postgres_id = ConnectionId::from_string("postgres-b");
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &postgres_id,
                 "postgres-b",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/b",
+                &endpoint::postgres("postgres://localhost/b"),
             );
             state
                 .session
@@ -1702,10 +1684,11 @@ mod tests {
 
             let mysql = ConnectionTarget {
                 id: ConnectionId::from_string("mysql-c"),
-                dsn: "mysql://user@localhost:3306/c?ssl-mode=PREFERRED".to_string(),
                 name: "mysql-c".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("c".to_string()),
+                endpoint: endpoint::mysql(
+                    "mysql://user@localhost:3306/c?ssl-mode=PREFERRED",
+                    Some("c"),
+                ),
             };
             let mysql_effects = reduce(&mut state, &Action::SwitchConnection(mysql.clone()));
             let mysql_run_id = mysql_effects
@@ -1734,18 +1717,15 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let first = ConnectionTarget {
                 id: ConnectionId::from_string("mysql-a"),
-                dsn: "mysql://user@localhost:3306/a?ssl-mode=PREFERRED".to_string(),
                 name: "mysql-a".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("a".to_string()),
+                endpoint: endpoint::mysql(
+                    "mysql://user@localhost:3306/a?ssl-mode=PREFERRED",
+                    Some("a"),
+                ),
             };
-            state.session.activate_connection_with_target(
-                &first.id,
-                &first.name,
-                first.database_type,
-                &first.dsn,
-                first.database.as_deref(),
-            );
+            state
+                .session
+                .activate_connection(&first.id, &first.name, &first.endpoint);
             state
                 .session
                 .set_connection_state(ConnectionState::Connected);
@@ -1756,10 +1736,11 @@ mod tests {
 
             let second = ConnectionTarget {
                 id: ConnectionId::from_string("mysql-b"),
-                dsn: "mysql://user@localhost:3306/b?ssl-mode=PREFERRED".to_string(),
                 name: "mysql-b".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("b".to_string()),
+                endpoint: endpoint::mysql(
+                    "mysql://user@localhost:3306/b?ssl-mode=PREFERRED",
+                    Some("b"),
+                ),
             };
             let effects = reduce(&mut state, &Action::SwitchConnection(second.clone()));
             let probe_run_id = effects
@@ -1792,12 +1773,12 @@ mod tests {
                 .iter()
                 .find_map(|effect| match effect {
                     Effect::FetchTableDetail {
-                        dsn,
+                        endpoint,
                         schema,
                         table,
                         generation: effect_generation,
                         run_id,
-                    } if dsn == &first.dsn
+                    } if endpoint == &first.endpoint
                         && schema == "public"
                         && table == "users"
                         && *effect_generation == generation =>
@@ -1816,18 +1797,15 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let first = ConnectionTarget {
                 id: ConnectionId::from_string("mysql-a"),
-                dsn: "mysql://user@localhost:3306/a?ssl-mode=PREFERRED".to_string(),
                 name: "mysql-a".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("a".to_string()),
+                endpoint: endpoint::mysql(
+                    "mysql://user@localhost:3306/a?ssl-mode=PREFERRED",
+                    Some("a"),
+                ),
             };
-            state.session.activate_connection_with_target(
-                &first.id,
-                &first.name,
-                first.database_type,
-                &first.dsn,
-                first.database.as_deref(),
-            );
+            state
+                .session
+                .activate_connection(&first.id, &first.name, &first.endpoint);
             state.session.mark_probe_connected();
             state.ui.set_explorer_selected_raw(3);
             let generation = state
@@ -1865,10 +1843,11 @@ mod tests {
 
             let second = ConnectionTarget {
                 id: ConnectionId::from_string("mysql-b"),
-                dsn: "mysql://user@localhost:3306/b?ssl-mode=PREFERRED".to_string(),
                 name: "mysql-b".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("b".to_string()),
+                endpoint: endpoint::mysql(
+                    "mysql://user@localhost:3306/b?ssl-mode=PREFERRED",
+                    Some("b"),
+                ),
             };
             let effects = reduce(&mut state, &Action::SwitchConnection(second.clone()));
             let probe_run_id = effects
@@ -1908,17 +1887,19 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let first = ConnectionTarget {
                 id: ConnectionId::from_string("mysql-a"),
-                dsn: "mysql://user@localhost:3306/a?ssl-mode=PREFERRED".to_string(),
                 name: "mysql-a".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("a".to_string()),
+                endpoint: endpoint::mysql(
+                    "mysql://user@localhost:3306/a?ssl-mode=PREFERRED",
+                    Some("a"),
+                ),
             };
             let second = ConnectionTarget {
                 id: ConnectionId::from_string("mysql-b"),
-                dsn: "mysql://user@localhost:3306/b?ssl-mode=PREFERRED".to_string(),
                 name: "mysql-b".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("b".to_string()),
+                endpoint: endpoint::mysql(
+                    "mysql://user@localhost:3306/b?ssl-mode=PREFERRED",
+                    Some("b"),
+                ),
             };
 
             let first_effects = reduce(&mut state, &Action::SwitchConnection(first.clone()));
@@ -1941,7 +1922,7 @@ mod tests {
             );
 
             assert_eq!(state.session.active_connection_id(), None);
-            assert_eq!(state.session.dsn(), None);
+            assert_eq!(state.session.endpoint(), None);
         }
 
         #[test]
@@ -1949,17 +1930,19 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let first = ConnectionTarget {
                 id: ConnectionId::from_string("mysql-a"),
-                dsn: "mysql://user@localhost:3306/a?ssl-mode=PREFERRED".to_string(),
                 name: "mysql-a".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("a".to_string()),
+                endpoint: endpoint::mysql(
+                    "mysql://user@localhost:3306/a?ssl-mode=PREFERRED",
+                    Some("a"),
+                ),
             };
             let second = ConnectionTarget {
                 id: ConnectionId::from_string("mysql-b"),
-                dsn: "mysql://user@localhost:3306/b?ssl-mode=PREFERRED".to_string(),
                 name: "mysql-b".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("b".to_string()),
+                endpoint: endpoint::mysql(
+                    "mysql://user@localhost:3306/b?ssl-mode=PREFERRED",
+                    Some("b"),
+                ),
             };
 
             let first_effects = reduce(&mut state, &Action::SwitchConnection(first.clone()));
@@ -1990,10 +1973,11 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let target = ConnectionTarget {
                 id: ConnectionId::from_string("mysql-b"),
-                dsn: "mysql://user@localhost:3306/b?ssl-mode=PREFERRED".to_string(),
                 name: "mysql-b".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("b".to_string()),
+                endpoint: endpoint::mysql(
+                    "mysql://user@localhost:3306/b?ssl-mode=PREFERRED",
+                    Some("b"),
+                ),
             };
             let effects = reduce(&mut state, &Action::SwitchConnection(target.clone()));
             let first_run_id = effects
@@ -2021,7 +2005,7 @@ mod tests {
                     _ => None,
                 })
                 .unwrap();
-            assert_eq!(retry_target.dsn, target.dsn);
+            assert_eq!(retry_target.endpoint, target.endpoint);
             assert_eq!(retry_target.id, target.id);
             assert_ne!(retry_run_id, first_run_id);
         }
@@ -2030,12 +2014,13 @@ mod tests {
         fn switching_after_mysql_probe_failure_replaces_error_and_retry_target() {
             let mut state = AppState::new("test".to_string());
             let current_id = ConnectionId::from_string("mysql-a");
-            state.session.activate_connection_with_target(
+            state.session.activate_connection(
                 &current_id,
                 "mysql-a",
-                DatabaseType::MySQL,
-                "mysql://user@localhost:3306/a?ssl-mode=PREFERRED",
-                Some("a"),
+                &endpoint::mysql(
+                    "mysql://user@localhost:3306/a?ssl-mode=PREFERRED",
+                    Some("a"),
+                ),
             );
             state
                 .session
@@ -2043,10 +2028,11 @@ mod tests {
 
             let failed_target = ConnectionTarget {
                 id: ConnectionId::from_string("mysql-b"),
-                dsn: "mysql://user@localhost:3306/b?ssl-mode=PREFERRED".to_string(),
                 name: "mysql-b".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("b".to_string()),
+                endpoint: endpoint::mysql(
+                    "mysql://user@localhost:3306/b?ssl-mode=PREFERRED",
+                    Some("b"),
+                ),
             };
             let failed_effects =
                 reduce(&mut state, &Action::SwitchConnection(failed_target.clone()));
@@ -2068,10 +2054,11 @@ mod tests {
 
             let retry_target = ConnectionTarget {
                 id: ConnectionId::from_string("mysql-c"),
-                dsn: "mysql://user@localhost:3306/c?ssl-mode=PREFERRED".to_string(),
                 name: "mysql-c".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("c".to_string()),
+                endpoint: endpoint::mysql(
+                    "mysql://user@localhost:3306/c?ssl-mode=PREFERRED",
+                    Some("c"),
+                ),
             };
             let retry_effects = reduce(&mut state, &Action::SwitchConnection(retry_target.clone()));
             let retry_run_id = retry_effects
@@ -2100,7 +2087,7 @@ mod tests {
                 })
                 .unwrap();
             assert_eq!(actual_target.id, retry_target.id);
-            assert_eq!(actual_target.dsn, retry_target.dsn);
+            assert_eq!(actual_target.endpoint, retry_target.endpoint);
         }
 
         #[test]
@@ -2108,11 +2095,10 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let postgres_id = ConnectionId::from_string("postgres-a");
             let postgres_dsn = "postgres://localhost/a".to_string();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &postgres_id,
                 "postgres-a",
-                DatabaseType::PostgreSQL,
-                &postgres_dsn,
+                &endpoint::postgres(&postgres_dsn),
             );
             state
                 .session
@@ -2124,10 +2110,11 @@ mod tests {
 
             let mysql = ConnectionTarget {
                 id: ConnectionId::from_string("mysql-b"),
-                dsn: "mysql://user@localhost:3306/b?ssl-mode=PREFERRED".to_string(),
                 name: "mysql-b".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("b".to_string()),
+                endpoint: endpoint::mysql(
+                    "mysql://user@localhost:3306/b?ssl-mode=PREFERRED",
+                    Some("b"),
+                ),
             };
             let effects = reduce(&mut state, &Action::SwitchConnection(mysql.clone()));
             let first_run_id = effects
@@ -2166,7 +2153,10 @@ mod tests {
                 },
             );
 
-            assert_eq!(state.session.dsn(), Some(postgres_dsn.as_str()));
+            assert_eq!(
+                state.session.endpoint(),
+                Some(&endpoint::postgres(&postgres_dsn))
+            );
             assert!(state.session.connection_state().is_connected());
             assert_eq!(state.session.metadata_state(), &MetadataState::Loaded);
             assert!(!state.session.is_reloading());
@@ -2177,11 +2167,10 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let postgres_id = ConnectionId::from_string("postgres-a");
             let postgres_dsn = "postgres://localhost/a".to_string();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &postgres_id,
                 "postgres-a",
-                DatabaseType::PostgreSQL,
-                &postgres_dsn,
+                &endpoint::postgres(&postgres_dsn),
             );
             state
                 .session
@@ -2189,10 +2178,11 @@ mod tests {
 
             let mysql = ConnectionTarget {
                 id: ConnectionId::from_string("mysql-b"),
-                dsn: "mysql://user@localhost:3306/b?ssl-mode=PREFERRED".to_string(),
                 name: "mysql-b".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("b".to_string()),
+                endpoint: endpoint::mysql(
+                    "mysql://user@localhost:3306/b?ssl-mode=PREFERRED",
+                    Some("b"),
+                ),
             };
             let effects = reduce(&mut state, &Action::SwitchConnection(mysql.clone()));
             let mysql_run_id = effects
@@ -2237,10 +2227,8 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let current = ConnectionTarget {
                 id: ConnectionId::from_string("postgres-current"),
-                dsn: "postgres://localhost/current".to_string(),
                 name: "current".to_string(),
-                database_type: DatabaseType::PostgreSQL,
-                database: None,
+                endpoint: endpoint::postgres("postgres://localhost/current"),
             };
             reduce(&mut state, &Action::SwitchConnection(current.clone()));
             state.connection_caches.insert(
@@ -2252,10 +2240,8 @@ mod tests {
             );
             let target = ConnectionTarget {
                 id: ConnectionId::from_string("mysql-old"),
-                dsn: "mysql://user@localhost:3306".to_string(),
                 name: "old mysql".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: None,
+                endpoint: endpoint::mysql("mysql://user@localhost:3306", None),
             };
 
             let effects = reduce(&mut state, &Action::SwitchConnection(target));
@@ -2274,28 +2260,21 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let id = ConnectionId::new();
             let dsn = "mysql://user@localhost:3306/app?ssl-mode=PREFERRED".to_string();
-            state.session.activate_connection_with_target(
-                &id,
-                "mysql",
-                DatabaseType::MySQL,
-                &dsn,
-                Some("app"),
-            );
+            state
+                .session
+                .activate_connection(&id, "mysql", &endpoint::mysql(&dsn, Some("app")));
             state
                 .session
                 .set_connection_state(ConnectionState::Connecting);
             let target = ConnectionTarget {
                 id,
-                dsn,
                 name: "mysql".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("app".to_string()),
+                endpoint: endpoint::mysql(&dsn, Some("app")),
             };
             let run_id = state.session.begin_mysql_connection_probe(
                 &target.id,
                 &target.name,
-                &target.dsn,
-                target.database.as_deref(),
+                &target.endpoint,
             );
 
             reduce(

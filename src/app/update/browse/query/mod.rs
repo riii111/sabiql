@@ -26,10 +26,10 @@ pub(super) fn preview_effect_for_current_table(
     if reject_pending_mysql_connection_probe(state) {
         return None;
     }
-    let dsn = state.session.dsn().map(String::from)?;
+    let endpoint = state.session.endpoint().cloned()?;
     let run_id = state.query.begin_running(now);
     Some(Effect::ExecutePreview {
-        dsn,
+        endpoint,
         schema: state.query.pagination.schema().to_string(),
         table: state.query.pagination.table().to_string(),
         generation,
@@ -45,6 +45,7 @@ pub(super) mod tests {
     use crate::test_support;
 
     use crate::domain::Column;
+    use crate::domain::connection::ConnectionEndpoint;
     use std::sync::Arc;
     use std::time::Instant;
 
@@ -62,12 +63,12 @@ pub(super) mod tests {
         state
     }
 
-    pub fn active_dsn(state: &AppState) -> String {
+    pub fn active_endpoint(state: &AppState) -> Arc<ConnectionEndpoint> {
         state
             .session
-            .dsn()
+            .endpoint()
+            .cloned()
             .expect("query test state must have an active connection")
-            .to_string()
     }
 
     pub fn begin_query_run(state: &mut AppState) -> u64 {

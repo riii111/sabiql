@@ -36,13 +36,13 @@ pub(in crate::cmd) async fn run(
     task_owner: &SqliteDiagnosticsTaskOwner,
 ) {
     match effect {
-        Effect::FetchSqliteDiagnosticsCore { dsn, run_id } => {
+        Effect::FetchSqliteDiagnosticsCore { endpoint, run_id } => {
             let action_tx = action_tx.clone();
             let provider = Arc::clone(provider);
             task_owner
                 .core
                 .replace(async move {
-                    let action = match provider.fetch_core_diagnostics(&dsn).await {
+                    let action = match provider.fetch_core_diagnostics(&endpoint).await {
                         Ok(snapshot) => Action::SqliteDiagnosticsCoreLoaded {
                             run_id,
                             snapshot: Box::new(snapshot),
@@ -58,13 +58,13 @@ pub(in crate::cmd) async fn run(
                 })
                 .await;
         }
-        Effect::FetchSqliteDiagnosticsQuickCheck { dsn, run_id } => {
+        Effect::FetchSqliteDiagnosticsQuickCheck { endpoint, run_id } => {
             let action_tx = action_tx.clone();
             let provider = Arc::clone(provider);
             task_owner
                 .quick_check
                 .replace(async move {
-                    let quick_check = provider.fetch_quick_check(&dsn).await;
+                    let quick_check = provider.fetch_quick_check(&endpoint).await;
                     let _ = action_tx
                         .send(Action::SqliteDiagnosticsQuickCheckLoaded {
                             run_id,
@@ -81,8 +81,10 @@ pub(in crate::cmd) async fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::connection::ConnectionEndpoint;
     use crate::ports::outbound::DbOperationError;
     use crate::ports::outbound::sqlite_diagnostics::MockSqliteDiagnosticsProvider;
+    use crate::test_support::endpoint;
 
     #[tokio::test]
     async fn dispatches_core_snapshot_on_success() {
@@ -99,7 +101,7 @@ mod tests {
         let owner = SqliteDiagnosticsTaskOwner::default();
         run(
             Effect::FetchSqliteDiagnosticsCore {
-                dsn: "sqlite:///tmp/app.db".to_string(),
+                endpoint: endpoint::sqlite("sqlite:///tmp/app.db"),
                 run_id: 1,
             },
             &tx,
@@ -130,7 +132,7 @@ mod tests {
         let owner = SqliteDiagnosticsTaskOwner::default();
         run(
             Effect::FetchSqliteDiagnosticsQuickCheck {
-                dsn: "sqlite:///tmp/app.db".to_string(),
+                endpoint: endpoint::sqlite("sqlite:///tmp/app.db"),
                 run_id: 1,
             },
             &tx,
@@ -166,7 +168,7 @@ mod tests {
         let owner = SqliteDiagnosticsTaskOwner::default();
         run(
             Effect::FetchSqliteDiagnosticsCore {
-                dsn: "sqlite:///tmp/app.db".to_string(),
+                endpoint: endpoint::sqlite("sqlite:///tmp/app.db"),
                 run_id: 1,
             },
             &tx,
@@ -176,7 +178,7 @@ mod tests {
         .await;
         run(
             Effect::FetchSqliteDiagnosticsQuickCheck {
-                dsn: "sqlite:///tmp/app.db".to_string(),
+                endpoint: endpoint::sqlite("sqlite:///tmp/app.db"),
                 run_id: 1,
             },
             &tx,
@@ -217,7 +219,7 @@ mod tests {
         let owner = SqliteDiagnosticsTaskOwner::default();
         run(
             Effect::FetchSqliteDiagnosticsCore {
-                dsn: "sqlite:///tmp/app.db".to_string(),
+                endpoint: endpoint::sqlite("sqlite:///tmp/app.db"),
                 run_id: 1,
             },
             &tx,
@@ -252,13 +254,13 @@ mod tests {
     impl SqliteDiagnosticsProvider for BlockingProvider {
         async fn fetch_core_diagnostics(
             &self,
-            _dsn: &str,
+            _endpoint: &ConnectionEndpoint,
         ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {
             self.started.notify_one();
             std::future::pending().await
         }
 
-        async fn fetch_quick_check(&self, _dsn: &str) -> DiagnosticField {
+        async fn fetch_quick_check(&self, _endpoint: &ConnectionEndpoint) -> DiagnosticField {
             self.started.notify_one();
             std::future::pending().await
         }
@@ -280,7 +282,7 @@ mod tests {
 
         run(
             Effect::FetchSqliteDiagnosticsCore {
-                dsn: "sqlite:///tmp/app.db".to_string(),
+                endpoint: endpoint::sqlite("sqlite:///tmp/app.db"),
                 run_id: 1,
             },
             &tx,

@@ -106,7 +106,13 @@ impl Footer {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::{Footer, footer_hints};
+    use crate::app::domain::connection::{
+        ConnectionEndpoint, MySqlConnectionConfig, MySqlSslMode, PostgresConnectionConfig,
+        PostgresEndpoint, SqliteConnectionConfig, SslMode,
+    };
     use crate::app::domain::{ConnectionId, DatabaseType};
     use crate::app::model::app_state::AppState;
     use crate::app::model::connection::error::ConnectionErrorInfo;
@@ -125,6 +131,25 @@ mod tests {
         hints
             .iter()
             .any(|(key, label)| (key.as_str(), *label) == expected)
+    }
+
+    fn test_endpoint(database_type: DatabaseType, label: &str) -> Arc<ConnectionEndpoint> {
+        Arc::new(match database_type {
+            DatabaseType::PostgreSQL => ConnectionEndpoint::PostgreSQL(PostgresEndpoint::Settings(
+                PostgresConnectionConfig::new(label, 5432, "app", "user", "", SslMode::Prefer),
+            )),
+            DatabaseType::SQLite => ConnectionEndpoint::SQLite(
+                SqliteConnectionConfig::new(label).expect("test SQLite path is valid"),
+            ),
+            DatabaseType::MySQL => ConnectionEndpoint::MySQL(MySqlConnectionConfig::new(
+                label,
+                3306,
+                None,
+                "user",
+                "",
+                MySqlSslMode::Preferred,
+            )),
+        })
     }
 
     fn inspector_state() -> AppState {
@@ -198,11 +223,10 @@ mod tests {
     ) {
         let mut state = inspector_state();
         if let Some(database_type) = database_type {
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "database",
-                database_type,
-                "sqlite://test.db",
+                &test_endpoint(database_type, "sqlite://test.db"),
             );
         }
 
@@ -219,11 +243,10 @@ mod tests {
         #[case] expected_visible: bool,
     ) {
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "database",
-            database_type,
-            "test://database",
+            &test_endpoint(database_type, "test://database"),
         );
 
         let hints = Footer::get_context_hints(&state);
@@ -234,11 +257,10 @@ mod tests {
     #[test]
     fn unsupported_json_modes_hide_modal_hints() {
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "database",
-            DatabaseType::SQLite,
-            "sqlite://test.db",
+            &test_endpoint(DatabaseType::SQLite, "sqlite://test.db"),
         );
 
         state.modal.set_mode(InputMode::JsonDetail);
@@ -251,11 +273,10 @@ mod tests {
     #[test]
     fn mysql_json_detail_footer_keeps_non_modal_hints() {
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "database",
-            DatabaseType::MySQL,
-            "mysql://test",
+            &test_endpoint(DatabaseType::MySQL, "mysql://test"),
         );
         state.modal.set_mode(InputMode::JsonDetail);
 
@@ -376,11 +397,10 @@ mod tests {
     #[case(KeymapPreset::Ide)]
     fn sql_editing_footer_omits_explain_hint(#[case] preset: KeymapPreset) {
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "database",
-            DatabaseType::PostgreSQL,
-            "postgres://localhost/test",
+            &test_endpoint(DatabaseType::PostgreSQL, "postgres://localhost/test"),
         );
         state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.enter_editing();
@@ -404,11 +424,13 @@ mod tests {
     #[test]
     fn connection_error_footer_hides_retry_for_save_and_connect_failure() {
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "mysql",
-            DatabaseType::MySQL,
-            "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+            &test_endpoint(
+                DatabaseType::MySQL,
+                "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+            ),
         );
         state.connection_error.set_save_and_connect_error(
             ConnectionErrorInfo::from_db_operation_error(&DbOperationError::Timeout(

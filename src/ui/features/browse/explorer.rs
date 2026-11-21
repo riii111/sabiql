@@ -81,7 +81,7 @@ impl Explorer {
                 }
                 MetadataState::Error => {
                     let context = KeyContext::for_browse_state(state);
-                    let action_hint = if state.session.dsn().is_some() {
+                    let action_hint = if state.session.endpoint().is_some() {
                         let mut hints = Vec::new();
                         if let Some(key) = browse_shortcut(BrowseShortcut::ReloadMetadata, &context)
                         {
@@ -109,7 +109,7 @@ impl Explorer {
                 }
                 MetadataState::NotLoaded => {
                     let context = KeyContext::for_browse_state(state);
-                    let (shortcut, action) = if state.session.dsn().is_some() {
+                    let (shortcut, action) = if state.session.endpoint().is_some() {
                         (BrowseShortcut::ReloadMetadata, "load metadata")
                     } else {
                         (BrowseShortcut::SelectConnection, "select a connection")

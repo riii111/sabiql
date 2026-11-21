@@ -312,7 +312,6 @@ impl Runtime {
         let effect_runner = EffectRunner::new(
             Arc::clone(&adapter_registry) as _,
             ConnectionDeps {
-                dsn_builder: Arc::clone(&adapter_registry) as _,
                 mysql_connection_probe: Arc::clone(&adapter_registry) as _,
                 connection_store: Arc::clone(&infrastructure.connection_store) as _,
                 pg_service_entry_reader: Arc::clone(&infrastructure.pg_service_entry_reader),
@@ -357,7 +356,7 @@ impl Runtime {
         self.state.ui.set_terminal_width(initial_size.width);
         self.state.ui.set_terminal_height(initial_size.height);
 
-        if self.state.session.dsn().is_some() && self.state.input_mode() == InputMode::Normal {
+        if self.state.session.endpoint().is_some() && self.state.input_mode() == InputMode::Normal {
             self.process_action(Action::TryConnect).await?;
         }
 

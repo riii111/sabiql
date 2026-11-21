@@ -130,11 +130,12 @@ fn selected_column_data_type(state: &AppState, col_idx: usize) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use crate::test_support;
+    use crate::test_support::endpoint;
 
     use super::*;
     use crate::domain::Column;
     use crate::domain::connection::ConnectionId;
-    use crate::domain::{ColumnAttributes, DatabaseType, QueryResult, QuerySource, Table};
+    use crate::domain::{ColumnAttributes, QueryResult, QuerySource, Table};
     use crate::services::AppServices;
     use crate::update::action::InputTarget;
     use crate::update::action::SearchStep;
@@ -145,11 +146,10 @@ mod tests {
 
     fn state_with_cell(data_type: &str, cell_value: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "database",
-            DatabaseType::PostgreSQL,
-            "postgres://localhost/test",
+            &endpoint::postgres("postgres://localhost/test"),
         );
         state
             .query
@@ -232,11 +232,10 @@ mod tests {
     #[test]
     fn sqlite_json_declared_type_shows_raw_detail() {
         let mut state = state_with_cell("json", r#"{"b":2,"a":1}"#);
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::from_string("sqlite-test"),
             "sqlite",
-            DatabaseType::SQLite,
-            "sqlite:///tmp/app.db",
+            &endpoint::sqlite("sqlite:///tmp/app.db"),
         );
 
         route(
@@ -254,11 +253,10 @@ mod tests {
     #[test]
     fn sqlite_text_json_container_opens_pretty_detail() {
         let mut state = state_with_cell("TEXT", r#"{"items":["admin","writer"]}"#);
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::from_string("sqlite-test"),
             "sqlite",
-            DatabaseType::SQLite,
-            "sqlite:///tmp/app.db",
+            &endpoint::sqlite("sqlite:///tmp/app.db"),
         );
 
         route(
@@ -286,11 +284,10 @@ mod tests {
     #[test]
     fn sqlite_text_non_json_stays_raw_detail() {
         let mut state = state_with_cell("TEXT", "hello");
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::from_string("sqlite-test"),
             "sqlite",
-            DatabaseType::SQLite,
-            "sqlite:///tmp/app.db",
+            &endpoint::sqlite("sqlite:///tmp/app.db"),
         );
 
         route(
@@ -308,11 +305,10 @@ mod tests {
     #[test]
     fn sqlite_text_json_scalar_marks_formatted_detail() {
         let mut state = state_with_cell("TEXT", "42");
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::from_string("sqlite-test"),
             "sqlite",
-            DatabaseType::SQLite,
-            "sqlite:///tmp/app.db",
+            &endpoint::sqlite("sqlite:///tmp/app.db"),
         );
 
         route(
@@ -334,11 +330,10 @@ mod tests {
     #[test]
     fn sqlite_text_affinity_declared_type_opens_pretty_detail() {
         let mut state = state_with_cell("varchar(255)", r#"{"a":1}"#);
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::from_string("sqlite-test"),
             "sqlite",
-            DatabaseType::SQLite,
-            "sqlite:///tmp/app.db",
+            &endpoint::sqlite("sqlite:///tmp/app.db"),
         );
 
         route(
@@ -409,11 +404,10 @@ mod tests {
     #[test]
     fn sqlite_json_cell_opens_raw_cell_detail() {
         let mut state = state_with_cell("jsonb", r#"{"a":1}"#);
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::from_string("sqlite-test"),
             "sqlite",
-            DatabaseType::SQLite,
-            "sqlite:///tmp/app.db",
+            &endpoint::sqlite("sqlite:///tmp/app.db"),
         );
 
         route(
@@ -471,11 +465,10 @@ mod tests {
     #[test]
     fn mysql_json_sql_null_opens_read_only_cell_detail() {
         let mut state = state_with_cell("json", "");
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::from_string("mysql-test"),
             "mysql",
-            DatabaseType::MySQL,
-            "mysql://localhost/test",
+            &endpoint::mysql("mysql://localhost/test", None),
         );
         state
             .query
@@ -506,11 +499,10 @@ mod tests {
         let mut state = state_with_cell("jsonb", r#"{"a":1}"#);
         let mut table = state.session.table_detail().expect("table detail").clone();
         table.columns[1].data_type = "json".to_string();
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::from_string("mysql-test"),
             "mysql",
-            DatabaseType::MySQL,
-            "mysql://localhost/test",
+            &endpoint::mysql("mysql://localhost/test", None),
         );
         state.session.set_table_detail_raw(Some(table));
         state

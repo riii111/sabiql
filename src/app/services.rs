@@ -12,7 +12,8 @@ pub mod test_support {
     use std::sync::Arc;
 
     use super::{AppServices, DdlGenerator, DsnBuilder};
-    use crate::domain::{ConnectionProfile, DatabaseType, Table};
+    use crate::domain::connection::ConnectionEndpoint;
+    use crate::domain::{DatabaseType, Table};
 
     impl AppServices {
         #[doc(hidden)]
@@ -26,7 +27,7 @@ pub mod test_support {
 
             struct StubDsnBuilder;
             impl DsnBuilder for StubDsnBuilder {
-                fn build_dsn(&self, _profile: &ConnectionProfile) -> String {
+                fn build_dsn(&self, _endpoint: &ConnectionEndpoint) -> String {
                     "stub-dsn".to_string()
                 }
             }

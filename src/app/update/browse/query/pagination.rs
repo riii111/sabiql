@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::connection::ConnectionEndpoint;
 use crate::domain::{DatabaseType, QuerySource, QueryValue, mysql_sql::mysql_export_plan};
 use crate::model::app_state::AppState;
 use crate::model::shared::confirm_dialog::{ConfirmIntent, CsvExportCacheSnapshot};
@@ -35,7 +36,7 @@ fn csv_export_file_name(state: &AppState, source: QuerySource) -> String {
 
 fn dispatch_cached_csv_export(
     state: &mut AppState,
-    dsn: String,
+    endpoint: Arc<ConnectionEndpoint>,
     run_id: u64,
     file_name: String,
     columns: Vec<String>,
@@ -49,7 +50,7 @@ fn dispatch_cached_csv_export(
             "Confirm CSV Export",
             msg,
             ConfirmIntent::CsvExportCached {
-                dsn,
+                endpoint,
                 run_id,
                 file_name,
                 row_count: Some(row_count),
@@ -60,7 +61,6 @@ fn dispatch_cached_csv_export(
         vec![]
     } else {
         vec![Effect::ExportCsvFromCache {
-            dsn,
             run_id,
             file_name,
             columns,
@@ -72,7 +72,7 @@ fn dispatch_cached_csv_export(
 
 fn dispatch_rerunnable_csv_export(
     state: &mut AppState,
-    dsn: String,
+    endpoint: Arc<ConnectionEndpoint>,
     run_id: u64,
     export_query: String,
     file_name: String,
@@ -81,7 +81,7 @@ fn dispatch_rerunnable_csv_export(
         "Confirm CSV Export",
         "Row count unknown. Export to CSV?",
         ConfirmIntent::CsvExportRerunnable {
-            dsn,
+            endpoint,
             run_id,
             export_query,
             file_name,
@@ -101,7 +101,7 @@ pub(in crate::update) fn request_csv_export(state: &mut AppState, now: Instant) 
     let Some(result) = state.query.visible_result() else {
         return vec![];
     };
-    let Some(dsn) = state.session.dsn().map(String::from) else {
+    let Some(endpoint) = state.session.endpoint().cloned() else {
         return vec![];
     };
 
@@ -117,14 +117,14 @@ pub(in crate::update) fn request_csv_export(state: &mut AppState, now: Instant) 
                 }
                 SqliteExportPlan::RerunnableQuery { query } => {
                     let run_id = state.query.begin_non_preview_running(now);
-                    dispatch_rerunnable_csv_export(state, dsn, run_id, query, file_name)
+                    dispatch_rerunnable_csv_export(state, endpoint, run_id, query, file_name)
                 }
                 SqliteExportPlan::CachedResult { row_count } => {
                     let columns = result.columns.clone();
                     let values = result.values().to_vec();
                     let run_id = state.query.begin_non_preview_running(now);
                     dispatch_cached_csv_export(
-                        state, dsn, run_id, file_name, columns, values, row_count,
+                        state, endpoint, run_id, file_name, columns, values, row_count,
                     )
                 }
             }
@@ -135,7 +135,7 @@ pub(in crate::update) fn request_csv_export(state: &mut AppState, now: Instant) 
                 let values = result.values().to_vec();
                 let run_id = state.query.begin_non_preview_running(now);
                 return dispatch_cached_csv_export(
-                    state, dsn, run_id, file_name, columns, values, row_count,
+                    state, endpoint, run_id, file_name, columns, values, row_count,
                 );
             }
 
@@ -144,12 +144,12 @@ pub(in crate::update) fn request_csv_export(state: &mut AppState, now: Instant) 
             }
             let export_query = result.query.clone();
             let run_id = state.query.begin_non_preview_running(now);
-            dispatch_rerunnable_csv_export(state, dsn, run_id, export_query, file_name)
+            dispatch_rerunnable_csv_export(state, endpoint, run_id, export_query, file_name)
         }
         Some(DatabaseType::PostgreSQL) | None => {
             let export_query = result.query.clone();
             let run_id = state.query.begin_non_preview_running(now);
-            dispatch_rerunnable_csv_export(state, dsn, run_id, export_query, file_name)
+            dispatch_rerunnable_csv_export(state, endpoint, run_id, export_query, file_name)
         }
     }
 }

@@ -16,16 +16,15 @@ use crate::cmd::sqlite_diagnostics;
 use crate::cmd::utility as cmd_utility;
 use crate::model::app_state::AppState;
 use crate::ports::outbound::{
-    CachedResultExporter, ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder,
-    ErDiagramExporter, ErLogWriter, FolderOpener, MetadataProvider, MySqlConnectionProbe,
-    PgServiceEntryReader, QueryExecutor, QueryHistoryStore, Renderer, SettingsStore,
-    SqliteDiagnosticsProvider, SqlitePathValidator,
+    CachedResultExporter, ClipboardWriter, ConfigWriter, ConnectionStore, ErDiagramExporter,
+    ErLogWriter, FolderOpener, MetadataProvider, MySqlConnectionProbe, PgServiceEntryReader,
+    QueryExecutor, QueryHistoryStore, Renderer, SettingsStore, SqliteDiagnosticsProvider,
+    SqlitePathValidator,
 };
 use crate::services::AppServices;
 use crate::update::action::Action;
 
 pub struct ConnectionDeps {
-    pub dsn_builder: Arc<dyn DsnBuilder>,
     pub mysql_connection_probe: Arc<dyn MySqlConnectionProbe>,
     pub connection_store: Arc<dyn ConnectionStore>,
     pub pg_service_entry_reader: Arc<dyn PgServiceEntryReader>,
@@ -253,12 +252,12 @@ impl EffectRunner {
                 Ok(vec![])
             }
 
-            Effect::SmartErRefresh { dsn, run_id } => {
+            Effect::SmartErRefresh { endpoint, run_id } => {
                 self.smart_er_refresh_task
                     .replace(cmd_er::smart_refresh_task(
                         self.action_tx.clone(),
                         Arc::clone(&self.metadata_provider),
-                        dsn,
+                        endpoint,
                         run_id,
                     ))
                     .await;
@@ -325,6 +324,7 @@ impl EffectRunner {
 mod tests {
     use super::*;
     use crate::cmd::test_fixtures::{self, NoopRenderer};
+    use crate::domain::connection::ConnectionEndpoint;
     use crate::domain::{DatabaseMetadata, TableSignatureSnapshot, TableSummary};
     use crate::model::shared::render_output::{
         BrowseLayout, DetailLayout, ExplorerLayout, JsonDetailLayout,
@@ -334,6 +334,7 @@ mod tests {
     use crate::ports::outbound::query_executor::MockQueryExecutor;
     use crate::ports::outbound::{MySqlConnectionProbeResult, RenderOutput, RenderResult};
     use crate::services::AppServices;
+    use crate::test_support::endpoint;
     use tokio::sync::mpsc;
 
     mod render {
@@ -574,14 +575,14 @@ mod tests {
         impl SqliteDiagnosticsProvider for BlockingDiagnosticsProvider {
             async fn fetch_core_diagnostics(
                 &self,
-                _dsn: &str,
+                _endpoint: &ConnectionEndpoint,
             ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {
                 let _drop_signal = BlockingDrop(Arc::clone(&self.drop_state));
                 self.started.notify_one();
                 pending().await
             }
 
-            async fn fetch_quick_check(&self, _dsn: &str) -> DiagnosticField {
+            async fn fetch_quick_check(&self, _endpoint: &ConnectionEndpoint) -> DiagnosticField {
                 let _drop_signal = BlockingDrop(Arc::clone(&self.drop_state));
                 self.started.notify_one();
                 pending().await
@@ -662,7 +663,7 @@ mod tests {
             }) as Arc<dyn SqliteDiagnosticsProvider>;
             sqlite_diagnostics::run(
                 Effect::FetchSqliteDiagnosticsCore {
-                    dsn: "sqlite:///tmp/app.db".to_string(),
+                    endpoint: endpoint::sqlite("sqlite:///tmp/app.db"),
                     run_id: 1,
                 },
                 &runner.action_tx,
@@ -790,7 +791,7 @@ mod tests {
         use tokio::time::{Duration, timeout};
 
         use super::*;
-        use crate::domain::connection::{ConnectionId, DatabaseType};
+        use crate::domain::connection::ConnectionId;
         use crate::domain::{QueryResult, Table, WriteExecutionResult};
         use crate::model::connection::cache::ConnectionCache;
         use crate::ports::outbound::{AccessMode, DbOperationError};
@@ -814,7 +815,7 @@ mod tests {
         impl QueryExecutor for PendingQueryExecutor {
             async fn execute_preview(
                 &self,
-                _dsn: &str,
+                _endpoint: &ConnectionEndpoint,
                 _schema: &str,
                 _table: &str,
                 _limit: usize,
@@ -833,7 +834,7 @@ mod tests {
 
             async fn execute_adhoc(
                 &self,
-                _dsn: &str,
+                _endpoint: &ConnectionEndpoint,
                 _query: &str,
                 _access_mode: AccessMode,
             ) -> Result<QueryResult, DbOperationError> {
@@ -842,7 +843,7 @@ mod tests {
 
             async fn execute_write(
                 &self,
-                _dsn: &str,
+                _endpoint: &ConnectionEndpoint,
                 _query: &str,
                 _access_mode: AccessMode,
             ) -> Result<WriteExecutionResult, DbOperationError> {
@@ -851,7 +852,7 @@ mod tests {
 
             async fn export_to_csv(
                 &self,
-                _dsn: &str,
+                _endpoint: &ConnectionEndpoint,
                 _query: &str,
                 _file_name: &str,
             ) -> Result<PathBuf, DbOperationError> {
@@ -868,14 +869,14 @@ mod tests {
         impl MetadataProvider for PendingTableDetailProvider {
             async fn fetch_metadata(
                 &self,
-                _dsn: &str,
+                _endpoint: &ConnectionEndpoint,
             ) -> Result<DatabaseMetadata, DbOperationError> {
                 unreachable!("test only starts table detail")
             }
 
             async fn fetch_table_detail(
                 &self,
-                _dsn: &str,
+                _endpoint: &ConnectionEndpoint,
                 _schema: &str,
                 _table: &str,
             ) -> Result<Table, DbOperationError> {
@@ -892,7 +893,7 @@ mod tests {
 
             async fn fetch_table_columns_and_fks(
                 &self,
-                _dsn: &str,
+                _endpoint: &ConnectionEndpoint,
                 _schema: &str,
                 _table: &str,
             ) -> Result<Table, DbOperationError> {
@@ -901,7 +902,7 @@ mod tests {
 
             async fn fetch_table_signatures(
                 &self,
-                _dsn: &str,
+                _endpoint: &ConnectionEndpoint,
             ) -> Result<TableSignatureSnapshot, DbOperationError> {
                 unreachable!("test only starts table detail")
             }
@@ -924,11 +925,10 @@ mod tests {
             );
             let mut state = AppState::new("test".to_string());
             let current_id = ConnectionId::new();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &current_id,
                 "current",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/current",
+                &endpoint::postgres("postgres://localhost/current"),
             );
             let target_id = ConnectionId::new();
             state
@@ -940,7 +940,7 @@ mod tests {
             runner
                 .execute_effects(
                     vec![Effect::ExecutePreview {
-                        dsn: "postgres://localhost/current".to_string(),
+                        endpoint: endpoint::postgres("postgres://localhost/current"),
                         schema: "public".to_string(),
                         table: "users".to_string(),
                         generation: 1,
@@ -964,10 +964,8 @@ mod tests {
                 &mut state,
                 Action::SwitchConnection(ConnectionTarget {
                     id: target_id,
-                    dsn: "sqlite:///tmp/target.db".to_string(),
                     name: "target".to_string(),
-                    database_type: DatabaseType::SQLite,
-                    database: None,
+                    endpoint: endpoint::sqlite("sqlite:///tmp/target.db"),
                 }),
                 Instant::now(),
                 &AppServices::stub(),
@@ -1008,7 +1006,7 @@ mod tests {
             runner
                 .execute_effects(
                     vec![Effect::FetchTableDetail {
-                        dsn: "postgres://localhost/current".to_string(),
+                        endpoint: endpoint::postgres("postgres://localhost/current"),
                         schema: "public".to_string(),
                         table: "users".to_string(),
                         generation: 1,
@@ -1062,7 +1060,7 @@ mod tests {
 
         use super::*;
         use crate::domain::Table;
-        use crate::domain::connection::{ConnectionId, DatabaseType};
+        use crate::domain::connection::ConnectionId;
         use crate::ports::outbound::DbOperationError;
         use crate::update::action::ConnectionTarget;
         use crate::update::reducer::reduce;
@@ -1086,7 +1084,7 @@ mod tests {
         impl MetadataProvider for PendingMetadataProvider {
             async fn fetch_metadata(
                 &self,
-                _dsn: &str,
+                _endpoint: &ConnectionEndpoint,
             ) -> Result<DatabaseMetadata, DbOperationError> {
                 let _guard = DropSignal(Arc::clone(&self.dropped));
                 self.metadata_started
@@ -1101,7 +1099,7 @@ mod tests {
 
             async fn fetch_effective_user(
                 &self,
-                _dsn: &str,
+                _endpoint: &ConnectionEndpoint,
             ) -> Result<Option<String>, DbOperationError> {
                 let _guard = DropSignal(Arc::clone(&self.dropped));
                 self.effective_user_started
@@ -1120,7 +1118,7 @@ mod tests {
 
             async fn fetch_table_detail(
                 &self,
-                _dsn: &str,
+                _endpoint: &ConnectionEndpoint,
                 _schema: &str,
                 _table: &str,
             ) -> Result<Table, DbOperationError> {
@@ -1129,7 +1127,7 @@ mod tests {
 
             async fn fetch_table_columns_and_fks(
                 &self,
-                _dsn: &str,
+                _endpoint: &ConnectionEndpoint,
                 _schema: &str,
                 _table: &str,
             ) -> Result<Table, DbOperationError> {
@@ -1138,7 +1136,7 @@ mod tests {
 
             async fn fetch_table_signatures(
                 &self,
-                _dsn: &str,
+                _endpoint: &ConnectionEndpoint,
             ) -> Result<TableSignatureSnapshot, DbOperationError> {
                 unreachable!("test only starts metadata tasks")
             }
@@ -1153,7 +1151,7 @@ mod tests {
         impl MySqlConnectionProbe for ProbeThatObservesDrop {
             async fn probe(
                 &self,
-                _dsn: &str,
+                _endpoint: &ConnectionEndpoint,
             ) -> Result<MySqlConnectionProbeResult, DbOperationError> {
                 self.started
                     .lock()
@@ -1184,12 +1182,11 @@ mod tests {
                 started: Mutex::new(Some(probe_started_tx)),
             };
             let (action_tx, _action_rx) = mpsc::channel(8);
-            let runner = test_fixtures::make_runner_with_dsn_and_probe(
+            let runner = test_fixtures::make_runner_with_probe(
                 Arc::new(metadata_provider),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
                 action_tx,
-                Arc::new(test_fixtures::NoopDsnBuilder),
                 Arc::new(probe),
             );
             let mut state = AppState::new("test".to_string());
@@ -1198,7 +1195,7 @@ mod tests {
             runner
                 .execute_effects(
                     vec![Effect::FetchMetadata {
-                        dsn: "postgres://localhost/old".to_string(),
+                        endpoint: endpoint::postgres("postgres://localhost/old"),
                         run_id: 1,
                     }],
                     &mut renderer,
@@ -1214,10 +1211,8 @@ mod tests {
                     vec![Effect::ProbeMySqlConnection {
                         target: ConnectionTarget {
                             id: ConnectionId::new(),
-                            dsn: "mysql://localhost/new".to_string(),
                             name: "new".to_string(),
-                            database_type: DatabaseType::MySQL,
-                            database: Some("new".to_string()),
+                            endpoint: endpoint::mysql("mysql://localhost/new", Some("new")),
                         },
                         run_id: 2,
                     }],
@@ -1268,11 +1263,10 @@ mod tests {
                 .await;
             old_started_rx.await.unwrap();
             let mut state = AppState::new("test".to_string());
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "test",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/test",
+                &endpoint::postgres("postgres://localhost/test"),
             );
             let _ = state
                 .session
@@ -1334,7 +1328,7 @@ mod tests {
                 .execute_effects(
                     vec![
                         Effect::FetchEffectiveUser {
-                            dsn: "postgres://localhost/current".to_string(),
+                            endpoint: endpoint::postgres("postgres://localhost/current"),
                             run_id: 1,
                         },
                         Effect::DelayedProcessPrefetchQueue {
@@ -1389,7 +1383,7 @@ mod tests {
         use super::*;
         use crate::domain::Table;
         use crate::domain::connection::{
-            ConnectionConfig, ConnectionId, DatabaseType, MySqlConnectionConfig, MySqlSslMode,
+            ConnectionConfig, ConnectionId, MySqlConnectionConfig, MySqlSslMode,
             PostgresConnectionConfig, SqliteConnectionConfig, SslMode,
         };
         use crate::ports::outbound::DbOperationError;
@@ -1405,12 +1399,12 @@ mod tests {
         }
 
         struct PendingMySqlConnectionProbe {
-            started: UnboundedSender<String>,
+            started: UnboundedSender<Arc<ConnectionEndpoint>>,
             dropped: Arc<AtomicUsize>,
         }
 
         struct PendingMetadataProvider {
-            started: UnboundedSender<String>,
+            started: UnboundedSender<Arc<ConnectionEndpoint>>,
             dropped: Arc<AtomicUsize>,
         }
 
@@ -1418,11 +1412,11 @@ mod tests {
         impl MySqlConnectionProbe for PendingMySqlConnectionProbe {
             async fn probe(
                 &self,
-                dsn: &str,
+                endpoint: &ConnectionEndpoint,
             ) -> Result<MySqlConnectionProbeResult, DbOperationError> {
                 let _drop_signal = DropSignal(Arc::clone(&self.dropped));
                 self.started
-                    .send(dsn.to_string())
+                    .send(Arc::new(endpoint.clone()))
                     .expect("probe receiver should stay alive");
                 pending().await
             }
@@ -1432,18 +1426,18 @@ mod tests {
         impl MetadataProvider for PendingMetadataProvider {
             async fn fetch_metadata(
                 &self,
-                dsn: &str,
+                endpoint: &ConnectionEndpoint,
             ) -> Result<DatabaseMetadata, DbOperationError> {
                 let _drop_signal = DropSignal(Arc::clone(&self.dropped));
                 self.started
-                    .send(dsn.to_string())
+                    .send(Arc::new(endpoint.clone()))
                     .expect("metadata receiver should stay alive");
                 pending().await
             }
 
             async fn fetch_table_detail(
                 &self,
-                _dsn: &str,
+                _endpoint: &ConnectionEndpoint,
                 _schema: &str,
                 _table: &str,
             ) -> Result<Table, DbOperationError> {
@@ -1452,7 +1446,7 @@ mod tests {
 
             async fn fetch_table_columns_and_fks(
                 &self,
-                _dsn: &str,
+                _endpoint: &ConnectionEndpoint,
                 _schema: &str,
                 _table: &str,
             ) -> Result<Table, DbOperationError> {
@@ -1461,7 +1455,7 @@ mod tests {
 
             async fn fetch_table_signatures(
                 &self,
-                _dsn: &str,
+                _endpoint: &ConnectionEndpoint,
             ) -> Result<TableSignatureSnapshot, DbOperationError> {
                 pending().await
             }
@@ -1470,10 +1464,8 @@ mod tests {
         fn mysql_target(dsn: &str) -> ConnectionTarget {
             ConnectionTarget {
                 id: ConnectionId::new(),
-                dsn: dsn.to_string(),
                 name: dsn.to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("app".to_string()),
+                endpoint: endpoint::mysql(dsn, Some("app")),
             }
         }
 
@@ -1508,12 +1500,11 @@ mod tests {
                 dropped: Arc::clone(&dropped),
             };
             let (action_tx, _action_rx) = mpsc::channel(8);
-            let runner = test_fixtures::make_runner_with_dsn_and_probe(
+            let runner = test_fixtures::make_runner_with_probe(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
                 action_tx,
-                Arc::new(test_fixtures::NoopDsnBuilder),
                 Arc::new(probe),
             );
             let mut state = AppState::new("test".to_string());
@@ -1532,8 +1523,8 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(
-                started_rx.recv().await.as_deref(),
-                Some("mysql://localhost/old")
+                started_rx.recv().await,
+                Some(endpoint::mysql("mysql://localhost/old", Some("app")))
             );
 
             runner
@@ -1551,8 +1542,8 @@ mod tests {
 
             assert_eq!(dropped.load(Ordering::SeqCst), 1);
             assert_eq!(
-                started_rx.recv().await.as_deref(),
-                Some("mysql://localhost/new")
+                started_rx.recv().await,
+                Some(endpoint::mysql("mysql://localhost/new", Some("app")))
             );
 
             runner
@@ -1576,12 +1567,11 @@ mod tests {
                 dropped: Arc::clone(&dropped),
             };
             let (action_tx, _action_rx) = mpsc::channel(8);
-            let runner = test_fixtures::make_runner_with_dsn_and_probe(
+            let runner = test_fixtures::make_runner_with_probe(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
                 action_tx,
-                Arc::new(test_fixtures::NoopDsnBuilder),
                 Arc::new(probe),
             );
             let mut state = AppState::new("test".to_string());
@@ -1602,7 +1592,10 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            assert_eq!(started_rx.recv().await.as_deref(), Some(""));
+            assert_eq!(
+                started_rx.recv().await,
+                Some(Arc::new(ConnectionEndpoint::from(&mysql_config())))
+            );
 
             runner
                 .execute_effects(
@@ -1619,8 +1612,8 @@ mod tests {
 
             assert_eq!(dropped.load(Ordering::SeqCst), 1);
             assert_eq!(
-                started_rx.recv().await.as_deref(),
-                Some("mysql://localhost/new")
+                started_rx.recv().await,
+                Some(endpoint::mysql("mysql://localhost/new", Some("app")))
             );
 
             runner
@@ -1644,12 +1637,11 @@ mod tests {
                 dropped: Arc::clone(&dropped),
             };
             let (action_tx, _action_rx) = mpsc::channel(8);
-            let runner = test_fixtures::make_runner_with_dsn_and_probe(
+            let runner = test_fixtures::make_runner_with_probe(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
                 action_tx,
-                Arc::new(test_fixtures::NoopDsnBuilder),
                 Arc::new(probe),
             );
             let mut state = AppState::new("test".to_string());
@@ -1701,12 +1693,11 @@ mod tests {
             let (action_tx, mut action_rx) = mpsc::channel(8);
             let mut store = MockConnectionStore::new();
             store.expect_save().never();
-            let runner = test_fixtures::make_runner_with_dsn(
+            let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(store),
                 action_tx,
-                Arc::new(test_fixtures::NoopDsnBuilder),
             );
             let mut state = AppState::new("test".to_string());
             let run_id = state.session.begin_connection_save();
@@ -1790,7 +1781,10 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            assert_eq!(started_rx.recv().await.as_deref(), Some(""));
+            assert_eq!(
+                started_rx.recv().await,
+                Some(Arc::new(ConnectionEndpoint::from(&postgres_config())))
+            );
 
             runner
                 .execute_effects(
@@ -1832,7 +1826,7 @@ mod tests {
         }
 
         struct PendingSmartErProvider {
-            started: UnboundedSender<String>,
+            started: UnboundedSender<Arc<ConnectionEndpoint>>,
             dropped: Arc<AtomicUsize>,
         }
 
@@ -1840,16 +1834,16 @@ mod tests {
         impl MetadataProvider for PendingSmartErProvider {
             async fn fetch_metadata(
                 &self,
-                dsn: &str,
+                endpoint: &ConnectionEndpoint,
             ) -> Result<DatabaseMetadata, DbOperationError> {
                 let _guard = DropSignal(Arc::clone(&self.dropped));
-                self.started.send(dsn.to_string()).ok();
+                self.started.send(Arc::new(endpoint.clone())).ok();
                 pending().await
             }
 
             async fn fetch_table_detail(
                 &self,
-                _dsn: &str,
+                _endpoint: &ConnectionEndpoint,
                 _schema: &str,
                 _table: &str,
             ) -> Result<Table, DbOperationError> {
@@ -1858,7 +1852,7 @@ mod tests {
 
             async fn fetch_table_columns_and_fks(
                 &self,
-                _dsn: &str,
+                _endpoint: &ConnectionEndpoint,
                 _schema: &str,
                 _table: &str,
             ) -> Result<Table, DbOperationError> {
@@ -1867,7 +1861,7 @@ mod tests {
 
             async fn fetch_table_signatures(
                 &self,
-                _dsn: &str,
+                _endpoint: &ConnectionEndpoint,
             ) -> Result<TableSignatureSnapshot, DbOperationError> {
                 unreachable!("test only starts smart ER refresh")
             }
@@ -1882,7 +1876,7 @@ mod tests {
         }
 
         fn runner_with_pending_provider(
-            started: UnboundedSender<String>,
+            started: UnboundedSender<Arc<ConnectionEndpoint>>,
             dropped: Arc<AtomicUsize>,
             action_tx: mpsc::Sender<Action>,
         ) -> EffectRunner {
@@ -1906,7 +1900,7 @@ mod tests {
             runner
                 .execute_effects(
                     vec![Effect::SmartErRefresh {
-                        dsn: "postgres://localhost/old".to_string(),
+                        endpoint: endpoint::postgres("postgres://localhost/old"),
                         run_id: 1,
                     }],
                     &mut renderer,
@@ -1916,14 +1910,14 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(
-                started_rx.recv().await.as_deref(),
-                Some("postgres://localhost/old")
+                started_rx.recv().await,
+                Some(endpoint::postgres("postgres://localhost/old"))
             );
 
             runner
                 .execute_effects(
                     vec![Effect::SmartErRefresh {
-                        dsn: "postgres://localhost/new".to_string(),
+                        endpoint: endpoint::postgres("postgres://localhost/new"),
                         run_id: 2,
                     }],
                     &mut renderer,
@@ -1935,8 +1929,8 @@ mod tests {
 
             assert_eq!(dropped.load(Ordering::SeqCst), 1);
             assert_eq!(
-                started_rx.recv().await.as_deref(),
-                Some("postgres://localhost/new")
+                started_rx.recv().await,
+                Some(endpoint::postgres("postgres://localhost/new"))
             );
             wait_for_no_action(&mut action_rx).await;
         }
@@ -1953,7 +1947,7 @@ mod tests {
             runner
                 .execute_effects(
                     vec![Effect::SmartErRefresh {
-                        dsn: "postgres://localhost/current".to_string(),
+                        endpoint: endpoint::postgres("postgres://localhost/current"),
                         run_id: 1,
                     }],
                     &mut renderer,
@@ -1963,8 +1957,8 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(
-                started_rx.recv().await.as_deref(),
-                Some("postgres://localhost/current")
+                started_rx.recv().await,
+                Some(endpoint::postgres("postgres://localhost/current"))
             );
 
             runner
@@ -1995,7 +1989,7 @@ mod tests {
             runner
                 .execute_effects(
                     vec![Effect::SmartErRefresh {
-                        dsn: "postgres://localhost/current".to_string(),
+                        endpoint: endpoint::postgres("postgres://localhost/current"),
                         run_id: 1,
                     }],
                     &mut renderer,
@@ -2005,14 +1999,14 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(
-                started_rx.recv().await.as_deref(),
-                Some("postgres://localhost/current")
+                started_rx.recv().await,
+                Some(endpoint::postgres("postgres://localhost/current"))
             );
 
             runner
                 .execute_effects(
                     vec![Effect::FetchMetadata {
-                        dsn: "postgres://localhost/current".to_string(),
+                        endpoint: endpoint::postgres("postgres://localhost/current"),
                         run_id: 2,
                     }],
                     &mut renderer,
@@ -2038,7 +2032,7 @@ mod tests {
             runner
                 .execute_effects(
                     vec![Effect::SmartErRefresh {
-                        dsn: "postgres://localhost/current".to_string(),
+                        endpoint: endpoint::postgres("postgres://localhost/current"),
                         run_id: 1,
                     }],
                     &mut renderer,
@@ -2048,8 +2042,8 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(
-                started_rx.recv().await.as_deref(),
-                Some("postgres://localhost/current")
+                started_rx.recv().await,
+                Some(endpoint::postgres("postgres://localhost/current"))
             );
 
             let shutdown_effects = reduce(

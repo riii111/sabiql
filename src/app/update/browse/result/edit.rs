@@ -123,8 +123,9 @@ mod tests {
 
     use super::*;
     use crate::domain::connection::ConnectionId;
-    use crate::domain::{DatabaseType, QueryResult, QuerySource, QueryValue, Table};
+    use crate::domain::{QueryResult, QuerySource, QueryValue, Table};
     use crate::services::AppServices;
+    use crate::test_support::endpoint;
     use crate::update::action::InputTarget;
     use crate::update::action::{CursorMove, TextKillDirection};
     use crate::update::reducer::route;
@@ -254,11 +255,10 @@ mod tests {
         #[test]
         fn sqlite_numeric_literal_enters_inline_edit() {
             let mut state = AppState::new("test".to_string());
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "sqlite",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
+                &endpoint::sqlite("sqlite:///tmp/app.db"),
             );
             state
                 .query
@@ -456,11 +456,10 @@ mod tests {
 
         fn state_with_json_column() -> AppState {
             let mut state = cell_edit_entry_guardrails::preview_state_with_selection();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "database",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/test",
+                &endpoint::postgres("postgres://localhost/test"),
             );
             let mut table = cell_edit_entry_guardrails::minimal_users_table();
             table.columns = vec![
@@ -476,11 +475,10 @@ mod tests {
 
         fn state_with_hidden_primary_key_json_column() -> AppState {
             let mut state = AppState::new("test".to_string());
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "database",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/test",
+                &endpoint::postgres("postgres://localhost/test"),
             );
             state.query.set_current_result(Arc::new(
                 QueryResult::success(
@@ -553,11 +551,10 @@ mod tests {
         #[test]
         fn mysql_json_sql_null_uses_null_edit_reason() {
             let mut state = state_with_json_column();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::from_string("mysql-test"),
                 "mysql",
-                DatabaseType::MySQL,
-                "mysql://localhost/test",
+                &endpoint::mysql("mysql://localhost/test", None),
             );
             let mut table = state.session.table_detail().expect("table detail").clone();
             table.columns[1].data_type = "json".to_string();
@@ -590,11 +587,10 @@ mod tests {
         #[test]
         fn sqlite_json_cell_opens_inline_edit() {
             let mut state = state_with_json_column();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::from_string("sqlite-test"),
                 "sqlite",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
+                &endpoint::sqlite("sqlite:///tmp/app.db"),
             );
 
             let effects = route(
@@ -612,11 +608,10 @@ mod tests {
         #[test]
         fn sqlite_text_json_cell_edits_raw_value() {
             let mut state = cell_edit_entry_guardrails::preview_state_with_selection();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::from_string("sqlite-test"),
                 "sqlite",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
+                &endpoint::sqlite("sqlite:///tmp/app.db"),
             );
             state
                 .query

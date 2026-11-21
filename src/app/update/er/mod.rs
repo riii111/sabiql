@@ -10,12 +10,12 @@ mod tests {
     use super::smart_refresh_fetched::{RefreshDiff, apply_refresh_diff};
     use crate::cmd::effect::Effect;
     use crate::domain::{
-        ConnectionId, DatabaseMetadata, DatabaseType, TableSignature, TableSignatureSnapshot,
-        TableSummary,
+        ConnectionId, DatabaseMetadata, TableSignature, TableSignatureSnapshot, TableSummary,
     };
     use crate::model::app_state::AppState;
     use crate::model::er_state::ErStatus;
     use crate::services::AppServices;
+    use crate::test_support::endpoint;
     use crate::test_support::table::minimal as minimal_table;
     use crate::update::action::{
         Action, ErDiagramInfo, SmartErRefreshError, SmartErRefreshFetched,
@@ -30,23 +30,20 @@ mod tests {
 
     fn state_with_dsn(dsn: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "postgres",
-            DatabaseType::PostgreSQL,
-            dsn,
+            &endpoint::postgres(dsn),
         );
         state
     }
 
     fn state_with_mysql_connection() -> AppState {
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_target(
+        state.session.activate_connection(
             &ConnectionId::from_string("mysql-current"),
             "mysql-current",
-            DatabaseType::MySQL,
-            "mysql://localhost/current",
-            Some("current"),
+            &endpoint::mysql("mysql://localhost/current", Some("current")),
         );
         state
     }
@@ -56,8 +53,7 @@ mod tests {
         let _ = state.session.begin_mysql_connection_probe(
             &ConnectionId::from_string("mysql-target"),
             "mysql-target",
-            "mysql://localhost/target",
-            Some("target"),
+            &endpoint::mysql("mysql://localhost/target", Some("target")),
         );
         state
     }
@@ -166,13 +162,12 @@ mod tests {
             let _ = state.session.begin_mysql_connection_probe(
                 &ConnectionId::from_string("mysql-target"),
                 "mysql-target",
-                "mysql://localhost/target",
-                Some("target"),
+                &endpoint::mysql("mysql://localhost/target", Some("target")),
             );
 
             let actions = vec![
                 Action::SmartErRefreshFetched(SmartErRefreshFetched {
-                    dsn: "mysql://localhost/current".to_string(),
+                    endpoint: endpoint::mysql("mysql://localhost/current", Some("current")),
                     run_id,
                     new_metadata: make_metadata(1),
                     signature_snapshot: Arc::new(TableSignatureSnapshot {
@@ -181,7 +176,7 @@ mod tests {
                     }),
                 }),
                 Action::SmartErRefreshFailed(SmartErRefreshError {
-                    dsn: "mysql://localhost/current".to_string(),
+                    endpoint: endpoint::mysql("mysql://localhost/current", Some("current")),
                     run_id,
                     error: DbOperationError::Timeout("timed out".to_string()),
                     new_metadata: None,
@@ -220,8 +215,7 @@ mod tests {
             let _ = state.session.begin_mysql_connection_probe(
                 &ConnectionId::from_string("mysql-target"),
                 "mysql-target",
-                "mysql://localhost/target",
-                Some("target"),
+                &endpoint::mysql("mysql://localhost/target", Some("target")),
             );
 
             let effects = reduce_er(
@@ -248,9 +242,7 @@ mod tests {
                     target: ConnectionTarget {
                         id: ConnectionId::from_string("mysql-target"),
                         name: "mysql-target".to_string(),
-                        dsn: "mysql://localhost/target".to_string(),
-                        database_type: DatabaseType::MySQL,
-                        database: Some("target".to_string()),
+                        endpoint: endpoint::mysql("mysql://localhost/target", Some("target")),
                     },
                     run_id: probe_run_id,
                     error: DbOperationError::Timeout("timed out".to_string()),
@@ -555,7 +547,7 @@ mod tests {
 
         fn action(dsn: &str, run_id: u64) -> Action {
             Action::SmartErRefreshFetched(SmartErRefreshFetched {
-                dsn: dsn.to_string(),
+                endpoint: endpoint::postgres(dsn),
                 run_id,
                 new_metadata: make_metadata(1),
                 signature_snapshot: Arc::new(TableSignatureSnapshot {
@@ -567,7 +559,7 @@ mod tests {
 
         fn fetched(names: &[&str], prefetched: &[&str]) -> Action {
             Action::SmartErRefreshFetched(SmartErRefreshFetched {
-                dsn: "postgres://localhost/test".to_string(),
+                endpoint: endpoint::postgres("postgres://localhost/test"),
                 run_id: 1,
                 new_metadata: make_metadata(names.len()),
                 signature_snapshot: Arc::new(TableSignatureSnapshot {
@@ -647,7 +639,7 @@ mod tests {
             reduce_er(
                 &mut state,
                 &Action::SmartErRefreshFetched(SmartErRefreshFetched {
-                    dsn: "mysql://localhost/current".to_string(),
+                    endpoint: endpoint::mysql("mysql://localhost/current", Some("current")),
                     run_id,
                     new_metadata: make_metadata(1),
                     signature_snapshot: Arc::new(TableSignatureSnapshot {
@@ -705,7 +697,7 @@ mod tests {
             let effects = reduce_er(
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id: 1,
                     error: DbOperationError::Timeout("timed out".to_string()),
                     new_metadata: None,
@@ -739,7 +731,7 @@ mod tests {
             let effects = reduce_er(
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id: 3,
                     error: DbOperationError::Timeout("timed out".to_string()),
                     new_metadata: None,
@@ -780,7 +772,7 @@ mod tests {
             let effects = reduce_er(
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
-                    dsn: "postgres://other/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://other/test"),
                     run_id: 1,
                     error: DbOperationError::Timeout("timed out".to_string()),
                     new_metadata: None,
@@ -802,7 +794,7 @@ mod tests {
             let effects = reduce_er(
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id: 1,
                     error: DbOperationError::Timeout("timed out".to_string()),
                     new_metadata: None,
@@ -826,7 +818,7 @@ mod tests {
             let effects = reduce_er(
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id: 1,
                     error: DbOperationError::QueryFailed("sig fetch failed".to_string()),
                     new_metadata: Some(make_metadata(20)),

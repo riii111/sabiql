@@ -1,7 +1,9 @@
 use std::collections::HashSet;
+use std::sync::Arc;
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::connection::ConnectionEndpoint;
 use crate::domain::{Table, TableSummary};
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
@@ -126,7 +128,7 @@ fn prefetch_table_detail_step(
         }
     }
 
-    let Some(dsn) = state.session.dsn().map(String::from) else {
+    let Some(endpoint) = state.session.endpoint().cloned() else {
         state.table_prefetch.defer_table_prefetch(qualified_name);
         return PrefetchStep::effects(vec![]);
     };
@@ -144,7 +146,7 @@ fn prefetch_table_detail_step(
     state.table_prefetch.start_table_prefetch(qualified_name);
 
     PrefetchStep::effects(vec![Effect::PrefetchTableColumnsAndFks {
-        dsn,
+        endpoint,
         run_id,
         schema: schema.to_string(),
         table: table.to_string(),
@@ -290,7 +292,7 @@ pub(in crate::update) fn prefetch_table_detail(
 
 pub(in crate::update) fn table_detail_cached(
     state: &mut AppState,
-    dsn: String,
+    endpoint: Arc<ConnectionEndpoint>,
     run_id: u64,
     schema: String,
     table: String,
@@ -299,7 +301,9 @@ pub(in crate::update) fn table_detail_cached(
     if reject_pending_mysql_connection_probe(state) {
         return vec![];
     }
-    if !state.session.dsn_matches(&dsn) || !state.table_prefetch.is_current_prefetch_run(run_id) {
+    if !state.session.endpoint_matches(&endpoint)
+        || !state.table_prefetch.is_current_prefetch_run(run_id)
+    {
         return vec![];
     }
     let qualified_name = format!("{schema}.{table}");
@@ -323,7 +327,7 @@ pub(in crate::update) fn table_detail_cached(
 
 pub(in crate::update) fn table_detail_cache_failed(
     state: &mut AppState,
-    dsn: String,
+    endpoint: Arc<ConnectionEndpoint>,
     run_id: u64,
     schema: String,
     table: String,
@@ -333,7 +337,9 @@ pub(in crate::update) fn table_detail_cache_failed(
     if reject_pending_mysql_connection_probe(state) {
         return vec![];
     }
-    if !state.session.dsn_matches(&dsn) || !state.table_prefetch.is_current_prefetch_run(run_id) {
+    if !state.session.endpoint_matches(&endpoint)
+        || !state.table_prefetch.is_current_prefetch_run(run_id)
+    {
         return vec![];
     }
     let qualified_name = format!("{schema}.{table}");

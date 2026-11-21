@@ -2,6 +2,7 @@ use crate::cmd::effect::Effect;
 use std::sync::Arc;
 
 use crate::domain::DatabaseMetadata;
+use crate::domain::connection::ConnectionEndpoint;
 use crate::model::app_state::AppState;
 use crate::model::connection::cache::ConnectionCache;
 use crate::model::shared::inspector_tab::InspectorTab;
@@ -35,19 +36,15 @@ pub(super) fn reset_for_new_connection(state: &mut AppState, target: &Connection
     reset_state_before_connection_reconciliation(state);
     state.ui.set_inspector_tab(inspector_tab);
     state.sql_modal.set_active_tab(sql_modal_tab);
-    state.session.activate_connection_with_target(
-        &target.id,
-        &target.name,
-        target.database_type,
-        &target.dsn,
-        target.database.as_deref(),
-    );
+    state
+        .session
+        .activate_connection(&target.id, &target.name, &target.endpoint);
     reconcile_connection_state(state, inspector_tab);
 }
 
 pub(super) fn connection_save_fetch_effects(
     state: &mut AppState,
-    dsn: &str,
+    endpoint: &Arc<ConnectionEndpoint>,
     run_id: u64,
     metadata: Option<Arc<DatabaseMetadata>>,
 ) -> Vec<Effect> {
@@ -55,7 +52,7 @@ pub(super) fn connection_save_fetch_effects(
         Effect::DispatchActions(vec![Action::MetadataLoaded { run_id, metadata }])
     } else {
         Effect::FetchMetadata {
-            dsn: dsn.to_string(),
+            endpoint: Arc::clone(endpoint),
             run_id,
         }
     };
@@ -64,12 +61,15 @@ pub(super) fn connection_save_fetch_effects(
     termination_effects(&state.query, vec![metadata_effect])
 }
 
-pub(super) fn mysql_connection_completion_effects(state: &mut AppState, dsn: &str) -> Vec<Effect> {
+pub(super) fn mysql_connection_completion_effects(
+    state: &mut AppState,
+    endpoint: &Arc<ConnectionEndpoint>,
+) -> Vec<Effect> {
     state.session.mark_connecting();
     let run_id = state.session.begin_metadata_refresh();
     state.table_detail_cache.clear();
     let effects = vec![Effect::FetchMetadata {
-        dsn: dsn.to_string(),
+        endpoint: Arc::clone(endpoint),
         run_id,
     }];
     termination_effects(&state.query, effects)
@@ -91,17 +91,15 @@ pub(super) fn save_current_connection_cache(state: &mut AppState) {
 
 pub(super) fn cancel_connection_task_effects(state: &mut AppState) -> Vec<Effect> {
     let had_pending_probe = state.session.pending_mysql_connection_probe().is_some();
-    let table_detail_retry =
-        state
-            .session
-            .retry_table_detail_after_probe_failure()
-            .map(|(dsn, generation, run_id)| Effect::FetchTableDetail {
-                dsn,
-                schema: state.query.pagination.schema().to_string(),
-                table: state.query.pagination.table().to_string(),
-                generation,
-                run_id,
-            });
+    let table_detail_retry = state.session.retry_table_detail_after_probe_failure().map(
+        |(endpoint, generation, run_id)| Effect::FetchTableDetail {
+            endpoint,
+            schema: state.query.pagination.schema().to_string(),
+            table: state.query.pagination.table().to_string(),
+            generation,
+            run_id,
+        },
+    );
     state.session.clear_mysql_connection_probe();
     if had_pending_probe {
         state.table_prefetch.reset_prefetch();
@@ -138,9 +136,7 @@ pub(super) fn restore_cache(
         &mut state.query,
         &target.id,
         &target.name,
-        target.database_type,
-        &target.dsn,
-        target.database.as_deref(),
+        &target.endpoint,
     );
     reconcile_connection_state(state, cache.inspector_tab);
     state

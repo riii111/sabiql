@@ -9,7 +9,7 @@ pub(super) fn start_adhoc_if_connected(
     query: String,
     now: Instant,
 ) -> Vec<Effect> {
-    let Some(dsn) = state.session.dsn().map(String::from) else {
+    let Some(endpoint) = state.session.endpoint().cloned() else {
         state
             .sql_modal
             .finish_adhoc_error("No active connection".to_string());
@@ -19,7 +19,7 @@ pub(super) fn start_adhoc_if_connected(
     let run_id = state.query.begin_non_preview_running(now);
     state.sql_modal.begin_adhoc_running();
     vec![Effect::ExecuteAdhoc {
-        dsn,
+        endpoint,
         run_id,
         query,
         access_mode: AccessMode::from_read_only(state.session.is_read_only()),

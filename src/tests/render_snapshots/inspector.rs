@@ -99,11 +99,10 @@ fn inspector_columns_shows_mysql_column_metadata() {
     table.columns[2].generation_expression = Some("(`id` * 2)".to_string());
     table.columns[2].generation_kind = Some(ColumnGenerationKind::Stored);
     let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("mysql-test"),
         "app",
-        DatabaseType::MySQL,
-        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+        &endpoint::mysql("mysql://user@localhost:3306/app?ssl-mode=PREFERRED", None),
     );
     state.ui.set_inspector_tab(InspectorTab::Columns);
     state.ui.set_focused_pane(FocusedPane::Inspector);
@@ -142,11 +141,10 @@ fn inspector_indexes_tab_for_mysql_hides_unsupported_partial_column() {
         ),
     }];
     let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("mysql-test"),
         "app",
-        DatabaseType::MySQL,
-        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+        &endpoint::mysql("mysql://user@localhost:3306/app?ssl-mode=PREFERRED", None),
     );
     state.ui.set_inspector_tab(InspectorTab::Indexes);
     state.ui.set_focused_pane(FocusedPane::Inspector);
@@ -166,11 +164,10 @@ fn inspector_indexes_tab_for_sqlite_hides_unknown_type() {
         index.index_type = IndexType::Unknown;
     }
     let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("sqlite-test"),
         "app.db",
-        DatabaseType::SQLite,
-        "sqlite:///tmp/app.db",
+        &endpoint::sqlite("sqlite:///tmp/app.db"),
     );
     state.ui.set_inspector_tab(InspectorTab::Indexes);
     state.ui.set_focused_pane(FocusedPane::Inspector);
@@ -197,11 +194,10 @@ fn inspector_indexes_tab_shows_sqlite_partial_index_definition() {
         ),
     }];
     let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("sqlite-test"),
         "app.db",
-        DatabaseType::SQLite,
-        "sqlite:///tmp/app.db",
+        &endpoint::sqlite("sqlite:///tmp/app.db"),
     );
     state.ui.set_inspector_tab(InspectorTab::Indexes);
     state.ui.set_focused_pane(FocusedPane::Inspector);
@@ -225,11 +221,10 @@ fn inspector_indexes_tab_shows_sqlite_descending_index_definition() {
         definition: Some("CREATE INDEX idx_users_name_desc ON users(name DESC)".to_string()),
     }];
     let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("sqlite-test"),
         "app.db",
-        DatabaseType::SQLite,
-        "sqlite:///tmp/app.db",
+        &endpoint::sqlite("sqlite:///tmp/app.db"),
     );
     state.ui.set_inspector_tab(InspectorTab::Indexes);
     state.ui.set_focused_pane(FocusedPane::Inspector);
@@ -255,11 +250,10 @@ fn inspector_indexes_tab_shows_sqlite_collation_index_definition() {
         ),
     }];
     let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("sqlite-test"),
         "app.db",
-        DatabaseType::SQLite,
-        "sqlite:///tmp/app.db",
+        &endpoint::sqlite("sqlite:///tmp/app.db"),
     );
     state.ui.set_inspector_tab(InspectorTab::Indexes);
     state.ui.set_focused_pane(FocusedPane::Inspector);
@@ -288,11 +282,10 @@ fn inspector_indexes_tab_shows_sqlite_partial_expression_details() {
         ),
     }];
     let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("sqlite-test"),
         "app.db",
-        DatabaseType::SQLite,
-        "sqlite:///tmp/app.db",
+        &endpoint::sqlite("sqlite:///tmp/app.db"),
     );
     state.ui.set_inspector_tab(InspectorTab::Indexes);
     state.ui.set_focused_pane(FocusedPane::Inspector);
@@ -413,11 +406,10 @@ fn inspector_info_tab_for_sqlite_hides_postgres_only_fields() {
     table.rls = None;
     table.triggers = vec![];
     let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("sqlite-test"),
         "app.db",
-        DatabaseType::SQLite,
-        "sqlite:///tmp/app.db",
+        &endpoint::sqlite("sqlite:///tmp/app.db"),
     );
     state.ui.set_inspector_tab(InspectorTab::Info);
     state.ui.set_focused_pane(FocusedPane::Inspector);
@@ -435,11 +427,10 @@ fn inspector_info_tab_for_mysql_hides_schema_field() {
     let _ = state
         .session
         .set_table_detail(fixtures::sample_postgres_table_detail(), 0);
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("mysql-test"),
         "app",
-        DatabaseType::MySQL,
-        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+        &endpoint::mysql("mysql://user@localhost:3306/app?ssl-mode=PREFERRED", None),
     );
     state.ui.set_inspector_tab(InspectorTab::Info);
     state.ui.set_focused_pane(FocusedPane::Inspector);
@@ -462,11 +453,10 @@ fn inspector_info_tab_for_mysql_shows_storage_attributes() {
         create_options: Some("partitioned".to_string()),
     };
     let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("mysql-test"),
         "app",
-        DatabaseType::MySQL,
-        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+        &endpoint::mysql("mysql://user@localhost:3306/app?ssl-mode=PREFERRED", None),
     );
     state.ui.set_inspector_tab(InspectorTab::Info);
     state.ui.set_focused_pane(FocusedPane::Inspector);
@@ -526,11 +516,10 @@ fn inspector_info_tab_for_sqlite_shows_table_kind_fields() {
         virtual_module: Some("fts5".to_string()),
     };
     let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("sqlite-test"),
         "app.db",
-        DatabaseType::SQLite,
-        "sqlite:///tmp/app.db",
+        &endpoint::sqlite("sqlite:///tmp/app.db"),
     );
     state.ui.set_inspector_tab(InspectorTab::Info);
     state.ui.set_focused_pane(FocusedPane::Inspector);
@@ -553,11 +542,10 @@ fn inspector_info_tab_for_sqlite_shows_view_kind() {
     table.row_count_estimate = Some(2);
     table.kind_info = fixtures::view_kind_info();
     let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("sqlite-test"),
         "app.db",
-        DatabaseType::SQLite,
-        "sqlite:///tmp/app.db",
+        &endpoint::sqlite("sqlite:///tmp/app.db"),
     );
     state.ui.set_inspector_tab(InspectorTab::Info);
     state.ui.set_focused_pane(FocusedPane::Inspector);

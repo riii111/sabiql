@@ -641,12 +641,13 @@ fn table_picker_overlay() {
 #[test]
 fn mysql_table_picker_shows_table_names_without_database() {
     let mut state = create_test_state();
-    state.session.activate_connection_with_target(
+    state.session.activate_connection(
         &ConnectionId::from_string("mysql-test"),
         "mysql",
-        DatabaseType::MySQL,
-        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
-        Some("app"),
+        &endpoint::mysql(
+            "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+            Some("app"),
+        ),
     );
     state
         .session
@@ -955,11 +956,10 @@ fn sql_modal_normal_initial() {
 
 fn sqlite_connected_state() -> AppState {
     let mut state = create_test_state();
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::new(),
         "local",
-        DatabaseType::SQLite,
-        "sqlite:///tmp/app.db",
+        &endpoint::sqlite("sqlite:///tmp/app.db"),
     );
     state
         .session
@@ -1002,11 +1002,10 @@ fn sqlite_sql_modal_plan_tab_labels_query_plan() {
 fn render_plan_tab(database_type: DatabaseType, dsn: &str, plan: &str, is_analyze: bool) -> String {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("plan-test"),
         "app",
-        database_type,
-        dsn,
+        &endpoint::for_engine(database_type, dsn),
     );
     state.modal.set_mode(InputMode::SqlModal);
     state.sql_modal.set_active_tab(SqlModalTab::Plan);

@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use crate::domain::connection::ConnectionEndpoint;
 use crate::domain::{ConnectionId, QueryValue};
 use crate::update::action::ScrollDirection;
 
@@ -16,13 +19,13 @@ pub enum ConfirmIntent {
         blocked: bool,
     },
     CsvExportRerunnable {
-        dsn: String,
+        endpoint: Arc<ConnectionEndpoint>,
         run_id: u64,
         export_query: String,
         file_name: String,
     },
     CsvExportCached {
-        dsn: String,
+        endpoint: Arc<ConnectionEndpoint>,
         run_id: u64,
         file_name: String,
         row_count: Option<usize>,

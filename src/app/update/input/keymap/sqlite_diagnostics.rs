@@ -78,15 +78,15 @@ mod tests {
     use crate::domain::{ConnectionId, DatabaseType, DiagnosticField, SqliteDiagnosticsSnapshot};
     use crate::model::app_state::AppState;
     use crate::model::shared::input_mode::InputMode;
+    use crate::test_support::endpoint;
 
     #[test]
     fn quick_check_hint_follows_loading_without_changing_key_resolution() {
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "database",
-            DatabaseType::SQLite,
-            "sqlite://test.db",
+            &endpoint::for_engine(DatabaseType::SQLite, "sqlite://test.db"),
         );
         state.modal.set_mode(InputMode::SqliteDiagnostics);
         let run_id = state.sqlite_diagnostics.begin_core_fetch();

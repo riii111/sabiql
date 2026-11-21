@@ -206,7 +206,7 @@ pub(in crate::update) fn execute_preview(
     if reject_pending_mysql_connection_probe(state) {
         return vec![];
     }
-    if state.session.dsn().is_none() {
+    if state.session.endpoint().is_none() {
         return vec![];
     }
 
@@ -229,7 +229,7 @@ pub(super) fn refresh_effects_for_scope(
     if refresh_scope == RefreshScope::None {
         return vec![];
     }
-    let Some(dsn) = state.session.dsn().map(String::from) else {
+    let Some(endpoint) = state.session.endpoint().cloned() else {
         return vec![];
     };
 
@@ -244,7 +244,7 @@ pub(super) fn refresh_effects_for_scope(
         state.table_detail_cache.clear();
 
         effects.push(Effect::CancelMetadataTasks);
-        effects.push(Effect::FetchMetadata { dsn, run_id });
+        effects.push(Effect::FetchMetadata { endpoint, run_id });
     } else if !state.query.pagination.table().is_empty() {
         let page = state.query.pagination.current_page();
         let generation = state.session.selection_generation();
@@ -355,6 +355,7 @@ mod tests {
     use crate::ports::outbound::query_executor::MockQueryExecutor;
     use crate::ports::outbound::{DbOperationError, RenderOutput, RenderResult, Renderer};
     use crate::services::AppServices;
+    use crate::test_support::endpoint;
     use crate::update::action::{ModalKind, SmartErRefreshFetched};
     use crate::update::browse::query::tests::*;
     use crate::update::reducer::{reduce, route};
@@ -444,7 +445,7 @@ mod tests {
 
         let inspector_action = if inspector_failed {
             Action::TableDetailLoaded {
-                dsn: active_dsn(&state),
+                endpoint: active_endpoint(&state),
                 run_id: detail_run_id,
                 outcome: Err(DbOperationError::QueryFailed(
                     "inspector failed".to_string(),
@@ -453,7 +454,7 @@ mod tests {
             }
         } else {
             Action::TableDetailLoaded {
-                dsn: active_dsn(&state),
+                endpoint: active_endpoint(&state),
                 run_id: detail_run_id,
                 outcome: Ok(Box::new(users_table_detail())),
                 generation,
@@ -519,11 +520,10 @@ mod tests {
             DatabaseType::MySQL => "mysql://localhost/test",
             DatabaseType::SQLite => "sqlite:///tmp/test.db",
         };
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "test",
-            database_type,
-            dsn,
+            &endpoint::for_engine(database_type, dsn),
         );
         let generation = state
             .session
@@ -545,8 +545,7 @@ mod tests {
             let _ = state.session.begin_mysql_connection_probe(
                 &probe_id,
                 "mysql",
-                "mysql://localhost/app",
-                Some("app"),
+                &endpoint::mysql("mysql://localhost/app", Some("app")),
             );
 
             let effects = route(
@@ -753,8 +752,7 @@ mod tests {
             let _ = state.session.begin_mysql_connection_probe(
                 &ConnectionId::new(),
                 "target",
-                "mysql://target",
-                Some("app"),
+                &endpoint::mysql("mysql://target", Some("app")),
             );
 
             let preview_effects = route(
@@ -937,12 +935,12 @@ mod tests {
         ) {
             let (mut state, generation, detail_run_id) = state_with_selected_table(database_type);
             let now = Instant::now();
-            let dsn = active_dsn(&state);
+            let endpoint = active_endpoint(&state);
 
             let inspector_effects = route(
                 &mut state,
                 Action::TableDetailLoaded {
-                    dsn,
+                    endpoint,
                     run_id: detail_run_id,
                     outcome: Ok(Box::new(users_table_detail())),
                     generation,
@@ -1014,7 +1012,7 @@ mod tests {
             let effects = route(
                 &mut state,
                 Action::TableDetailLoaded {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id: detail_run_id,
                     outcome: Ok(Box::new(users_table_detail())),
                     generation,
@@ -1064,7 +1062,7 @@ mod tests {
             let stale_inspector_effects = route(
                 &mut state,
                 Action::TableDetailLoaded {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id: old_detail_run_id,
                     outcome: Ok(Box::new(users_table_detail())),
                     generation: old_generation,
@@ -1100,7 +1098,7 @@ mod tests {
             let effects = route(
                 &mut state,
                 Action::TableDetailLoaded {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id: new_detail_run_id,
                     outcome: Ok(Box::new(users_table_detail())),
                     generation: new_generation,
@@ -1247,11 +1245,10 @@ mod tests {
             let stale_run_id = begin_query_run(&mut state);
 
             state.session.reset(&mut state.query);
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "postgres",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/test",
+                &endpoint::postgres("postgres://localhost/test"),
             );
             let current_run_id = begin_query_run(&mut state);
 
@@ -1401,7 +1398,7 @@ mod tests {
             let effects = route(
                 &mut state,
                 Action::TableDetailLoaded {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id: detail_run_id,
                     outcome: Err(DbOperationError::QueryFailed(
                         "inspector failed".to_string(),
@@ -1590,11 +1587,10 @@ mod tests {
                 (DatabaseType::SQLite, "sqlite:///tmp/test.db"),
             ] {
                 let mut state = AppState::new("test_project".to_string());
-                state.session.activate_connection_with_dsn(
+                state.session.activate_connection(
                     &ConnectionId::new(),
                     "test",
-                    database_type,
-                    dsn,
+                    &endpoint::for_engine(database_type, dsn),
                 );
                 state.query.pagination.reset_for_table("public", "users");
                 let er_run_id = state.er_preparation.start_waiting_run();
@@ -1610,7 +1606,8 @@ mod tests {
                 assert!(!state.er_preparation.is_current_run(er_run_id));
                 assert!(effects.iter().any(|effect| matches!(
                     effect,
-                    Effect::FetchMetadata { dsn: effect_dsn, .. } if effect_dsn == dsn
+                    Effect::FetchMetadata { endpoint, .. }
+                        if endpoint == &endpoint::for_engine(database_type, dsn)
                 )));
             }
         }
@@ -1654,11 +1651,11 @@ mod tests {
 
             route(&mut state, action, Instant::now(), &AppServices::stub());
 
-            let dsn = active_dsn(&state);
+            let endpoint = active_endpoint(&state);
             let effects = route(
                 &mut state,
                 Action::SmartErRefreshFetched(SmartErRefreshFetched {
-                    dsn,
+                    endpoint,
                     run_id: old_er_run_id,
                     new_metadata: Arc::new(DatabaseMetadata::new("new".to_string())),
                     signature_snapshot: Arc::new(TableSignatureSnapshot {

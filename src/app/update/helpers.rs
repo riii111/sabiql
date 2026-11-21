@@ -1,9 +1,11 @@
+use std::sync::Arc;
+
 use unicode_casefold::UnicodeCaseFold;
 
 use crate::cmd::effect::Effect;
 use crate::domain::DatabaseType;
 use crate::domain::connection::{
-    MySqlConnectionConfig, MySqlSslMode, MySqlTransport, SqliteConnectionConfig,
+    ConnectionEndpoint, MySqlConnectionConfig, MySqlSslMode, MySqlTransport, SqliteConnectionConfig,
 };
 use crate::domain::{QueryResult, QueryValue};
 use crate::model::app_state::AppState;
@@ -32,14 +34,17 @@ pub(in crate::update) fn clipboard_unavailable() -> Action {
     Action::CopyFailed(ClipboardError::Unavailable("Clipboard unavailable".into()))
 }
 
-pub(in crate::update) fn metadata_reload_effects(state: &mut AppState, dsn: &str) -> Vec<Effect> {
+pub(in crate::update) fn metadata_reload_effects(
+    state: &mut AppState,
+    endpoint: &Arc<ConnectionEndpoint>,
+) -> Vec<Effect> {
     let run_id = state.session.begin_reload();
     state.table_detail_cache.clear();
 
     vec![
         Effect::CancelMetadataTasks,
         Effect::FetchMetadata {
-            dsn: dsn.to_string(),
+            endpoint: Arc::clone(endpoint),
             run_id,
         },
     ]
@@ -195,7 +200,7 @@ pub(in crate::update) fn build_bulk_delete_preview(
     if state.result_interaction.staged_delete_rows().is_empty() {
         return Err(EditGuardrailError::NoRowsStagedForDeletion);
     }
-    if state.session.dsn().is_none() {
+    if state.session.endpoint().is_none() {
         return Err(EditGuardrailError::NoActiveConnection);
     }
     if state.query.is_running() {
@@ -574,6 +579,7 @@ mod tests {
 
     use crate::domain::connection::ConnectionId;
     use crate::domain::{ColumnAttributes, DatabaseType, QuerySource, Table};
+    use crate::test_support::endpoint;
     use rstest::rstest;
 
     mod validate_field_name {
@@ -1217,11 +1223,10 @@ mod tests {
 
         fn sqlite_editable_state() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::from_string("test-connection"),
                 "test",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
+                &endpoint::sqlite("sqlite:///tmp/app.db"),
             );
             state
                 .query

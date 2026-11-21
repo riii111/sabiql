@@ -61,9 +61,10 @@ pub(in crate::update) fn inspector_prev_tab(state: &mut AppState) -> Vec<Effect>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{ConnectionId, DatabaseType};
+    use crate::domain::ConnectionId;
     use crate::model::shared::inspector_tab::InspectorTab;
     use crate::services::AppServices;
+    use crate::test_support::endpoint;
     use crate::update::action::Action;
     use crate::update::reducer::route;
     use std::time::Instant;
@@ -112,11 +113,10 @@ mod tests {
         use super::*;
 
         fn activate_sqlite_connection(state: &mut AppState) {
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "sqlite",
-                DatabaseType::SQLite,
-                "sqlite://test.db",
+                &endpoint::sqlite("sqlite://test.db"),
             );
         }
 

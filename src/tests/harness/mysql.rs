@@ -1,5 +1,7 @@
 use sabiql_app::ports::outbound::DbOperationError;
-use sabiql_domain::connection::{ConnectionProfile, MySqlConnectionConfig, MySqlSslMode};
+use sabiql_domain::connection::{
+    ConnectionEndpoint, ConnectionProfile, MySqlConnectionConfig, MySqlSslMode,
+};
 use sabiql_infra::adapters::mysql::MySqlAdapter;
 use sabiql_infra::adapters::mysql::test_support::run_mysql_cli_query_for_test;
 #[cfg(unix)]
@@ -12,6 +14,7 @@ type MySqlFixtureTest<'db> = std::pin::Pin<Box<dyn Future<Output = Result<(), St
 pub struct MySqlTestDb {
     adapter: MySqlAdapter,
     dsn: String,
+    endpoint: ConnectionEndpoint,
 }
 
 impl MySqlTestDb {
@@ -29,7 +32,12 @@ impl MySqlTestDb {
         .map_err(|error| DbOperationError::ConnectionFailed(error.to_string()))?;
         let adapter = MySqlAdapter::new();
         let dsn = adapter.build_dsn(&profile);
-        Ok(Self { adapter, dsn })
+        let endpoint = ConnectionEndpoint::from(&profile.config);
+        Ok(Self {
+            adapter,
+            dsn,
+            endpoint,
+        })
     }
 
     pub fn adapter(&self) -> &MySqlAdapter {
@@ -38,6 +46,10 @@ impl MySqlTestDb {
 
     pub fn dsn(&self) -> &str {
         &self.dsn
+    }
+
+    pub fn endpoint(&self) -> &ConnectionEndpoint {
+        &self.endpoint
     }
 
     pub async fn global_sql_mode(&self) -> Result<String, String> {

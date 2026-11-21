@@ -1,5 +1,6 @@
 use super::*;
 use sabiql_domain::ConnectionId;
+use sabiql_domain::connection::{ConnectionEndpoint, MySqlConnectionConfig, MySqlSslMode};
 
 #[test]
 fn initial_state_no_metadata() {
@@ -36,11 +37,10 @@ fn explorer_shows_not_connected_when_no_active_connection() {
 #[test]
 fn header_shows_effective_user_at_normal_width() {
     let mut state = postgres_connected_state();
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::new(),
         "test",
-        DatabaseType::PostgreSQL,
-        "postgresql://localhost/test",
+        &endpoint::postgres("postgresql://localhost/test"),
     );
     state
         .session
@@ -55,11 +55,17 @@ fn header_shows_effective_user_at_normal_width() {
 #[test]
 fn mysql_header_shows_effective_user_without_dsn_password() {
     let mut state = postgres_connected_state();
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::new(),
         "test",
-        DatabaseType::MySQL,
-        "mysql://app:header-secret@localhost/app",
+        &Arc::new(ConnectionEndpoint::MySQL(MySqlConnectionConfig::new(
+            "localhost",
+            3306,
+            None,
+            "app",
+            "header-secret",
+            MySqlSslMode::Preferred,
+        ))),
     );
     state
         .session
@@ -75,11 +81,10 @@ fn mysql_header_shows_effective_user_without_dsn_password() {
 #[test]
 fn header_truncates_connection_name_at_narrow_width() {
     let mut state = postgres_connected_state();
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::new(),
         "very-long-connection-name-that-must-yield-space-to-the-user",
-        DatabaseType::PostgreSQL,
-        "postgresql://localhost/test",
+        &endpoint::postgres("postgresql://localhost/test"),
     );
     state
         .session
@@ -94,11 +99,10 @@ fn header_truncates_connection_name_at_narrow_width() {
 #[test]
 fn header_shows_read_only_badge_at_narrow_width() {
     let mut state = postgres_connected_state();
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::new(),
         "test",
-        DatabaseType::PostgreSQL,
-        "postgresql://localhost/test",
+        &endpoint::postgres("postgresql://localhost/test"),
     );
     state.session.enable_read_only();
     state

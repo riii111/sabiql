@@ -21,7 +21,7 @@ pub(in crate::update) fn explain_request(state: &mut AppState, now: Instant) -> 
     if content.is_empty() {
         return vec![];
     }
-    let Some(dsn) = state.session.dsn().map(String::from) else {
+    let Some(endpoint) = state.session.endpoint().cloned() else {
         return vec![];
     };
     if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
@@ -56,8 +56,7 @@ pub(in crate::update) fn explain_request(state: &mut AppState, now: Instant) -> 
     let database_generation = state.session.database_generation();
 
     vec![Effect::ExecuteExplain {
-        dsn,
-        database_type,
+        endpoint,
         database_generation,
         run_id,
         query,

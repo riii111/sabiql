@@ -51,10 +51,10 @@ pub(in crate::update) fn confirm_dialog_confirm(state: &mut AppState, now: Insta
                 state.query.clear_delete_refresh_target();
                 return vec![];
             }
-            if let Some(dsn) = state.session.dsn().map(String::from) {
+            if let Some(endpoint) = state.session.endpoint().cloned() {
                 let run_id = state.query.begin_non_preview_running(now);
                 vec![Effect::ExecuteWrite {
-                    dsn,
+                    endpoint,
                     run_id,
                     query: sql,
                     access_mode: AccessMode::from_read_only(state.session.is_read_only()),
@@ -71,7 +71,7 @@ pub(in crate::update) fn confirm_dialog_confirm(state: &mut AppState, now: Insta
             vec![]
         }
         Some(ConfirmIntent::CsvExportRerunnable {
-            dsn,
+            endpoint,
             run_id,
             export_query,
             file_name,
@@ -79,11 +79,11 @@ pub(in crate::update) fn confirm_dialog_confirm(state: &mut AppState, now: Insta
             if reject_pending_mysql_connection_probe(state) {
                 return vec![];
             }
-            if state.is_stale_query_run(&dsn, run_id) {
+            if state.is_stale_query_run(&endpoint, run_id) {
                 vec![]
             } else {
                 vec![Effect::ExportCsv {
-                    dsn,
+                    endpoint,
                     run_id,
                     query: export_query,
                     file_name,
@@ -91,7 +91,7 @@ pub(in crate::update) fn confirm_dialog_confirm(state: &mut AppState, now: Insta
             }
         }
         Some(ConfirmIntent::CsvExportCached {
-            dsn,
+            endpoint,
             run_id,
             file_name,
             row_count,
@@ -100,11 +100,10 @@ pub(in crate::update) fn confirm_dialog_confirm(state: &mut AppState, now: Insta
             if reject_pending_mysql_connection_probe(state) {
                 return vec![];
             }
-            if state.is_stale_query_run(&dsn, run_id) {
+            if state.is_stale_query_run(&endpoint, run_id) {
                 vec![]
             } else {
                 vec![Effect::ExportCsvFromCache {
-                    dsn,
                     run_id,
                     file_name,
                     columns: snapshot.columns,
@@ -121,9 +120,13 @@ pub(in crate::update) fn confirm_dialog_cancel(state: &mut AppState) -> Vec<Effe
     let intent = state.confirm_dialog.take_intent();
     let canceling_current_csv_export = match &intent {
         Some(
-            ConfirmIntent::CsvExportRerunnable { dsn, run_id, .. }
-            | ConfirmIntent::CsvExportCached { dsn, run_id, .. },
-        ) => !state.is_stale_query_run(dsn, *run_id),
+            ConfirmIntent::CsvExportRerunnable {
+                endpoint, run_id, ..
+            }
+            | ConfirmIntent::CsvExportCached {
+                endpoint, run_id, ..
+            },
+        ) => !state.is_stale_query_run(endpoint, *run_id),
         _ => false,
     };
     state.result_interaction.clear_write_preview();
@@ -134,7 +137,7 @@ pub(in crate::update) fn confirm_dialog_cancel(state: &mut AppState) -> Vec<Effe
 
     if matches!(intent, Some(ConfirmIntent::QuitNoConnection)) {
         state.connection_setup.reset();
-        if !state.connections().is_empty() || state.session.dsn().is_some() {
+        if !state.connections().is_empty() || state.session.endpoint().is_some() {
             state.connection_setup.set_first_run(false);
         }
         state.modal.pop_mode_override(InputMode::ConnectionSetup);

@@ -46,7 +46,7 @@ impl fmt::Debug for MySqlDsn {
     }
 }
 
-fn build_mysql_dsn(config: &MySqlConnectionConfig) -> String {
+pub(in crate::adapters) fn build_mysql_dsn(config: &MySqlConnectionConfig) -> String {
     let mut url = Url::parse("mysql://localhost").expect("static MySQL URL is valid");
     url.set_username(&config.username)
         .expect("MySQL username is valid URL data");

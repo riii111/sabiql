@@ -289,7 +289,7 @@ mod metadata_fetch {
             Box::pin(async move {
                 let registry = DbAdapterRegistry::new();
                 let effective_user = registry
-                    .fetch_effective_user(db.dsn())
+                    .fetch_effective_user(db.endpoint())
                     .await
                     .map_err(|error| format!("{error:?}"))?
                     .ok_or_else(|| "MySQL effective user was empty".to_string())?;

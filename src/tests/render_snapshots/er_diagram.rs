@@ -99,12 +99,13 @@ fn er_table_picker_all_selected() {
 #[test]
 fn mysql_er_table_picker_shows_table_names_without_database() {
     let mut state = super::harness::create_test_state();
-    state.session.activate_connection_with_target(
+    state.session.activate_connection(
         &sabiql_domain::ConnectionId::from_string("mysql-test"),
         "mysql",
-        sabiql_domain::DatabaseType::MySQL,
-        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
-        Some("app"),
+        &endpoint::mysql(
+            "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+            Some("app"),
+        ),
     );
     state.session.mark_connected(std::sync::Arc::new(
         super::harness::fixtures::sample_metadata(),
@@ -121,12 +122,13 @@ fn mysql_er_table_picker_shows_table_names_without_database() {
 #[test]
 fn mysql_er_table_picker_single_select_shows_table_name_without_database() {
     let mut state = super::harness::create_test_state();
-    state.session.activate_connection_with_target(
+    state.session.activate_connection(
         &sabiql_domain::ConnectionId::from_string("mysql-test"),
         "mysql",
-        sabiql_domain::DatabaseType::MySQL,
-        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
-        Some("app"),
+        &endpoint::mysql(
+            "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+            Some("app"),
+        ),
     );
     let mut metadata = super::harness::fixtures::sample_metadata();
     for table in &mut metadata.table_summaries {

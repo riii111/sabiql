@@ -10,7 +10,8 @@ use crate::app::policy::mask_password;
 use crate::app::services::AppServices;
 use crate::app::update::input::keymap::{HintSurface, KeyContext, connection_setup_hints};
 use crate::domain::connection::{
-    ConnectionId, ConnectionProfile, DatabaseType, MySqlSslMode, MySqlTransport, SslMode,
+    ConnectionEndpoint, ConnectionId, ConnectionProfile, DatabaseType, MySqlSslMode,
+    MySqlTransport, SslMode,
 };
 use crate::primitives::atoms::text_cursor_spans;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
@@ -555,7 +556,8 @@ fn preview_text(form_state: &ConnectionSetupState, services: &AppServices) -> Op
         DatabaseType::SQLite => None,
         DatabaseType::PostgreSQL | DatabaseType::MySQL => {
             let profile = preview_profile(form_state)?;
-            Some(mask_password(&services.dsn_builder.build_dsn(&profile)))
+            let endpoint = ConnectionEndpoint::from(&profile.config);
+            Some(mask_password(&services.dsn_builder.build_dsn(&endpoint)))
         }
     }
 }

@@ -1,10 +1,11 @@
-use std::fmt;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use crate::domain::connection::ConnectionEndpoint;
 use crate::domain::query_history::QueryHistoryScope;
 use crate::domain::{
-    ConnectionId, DatabaseMetadata, DatabaseType, MetadataState, QueryResult, Table, TableSummary,
+    ConnectionId, DatabaseMetadata, DatabaseType, MetadataState, QueryResult,
+    SqliteConnectionConfig, Table, TableSummary,
 };
 use crate::model::browse::query_execution::{PaginationState, QueryExecution};
 use crate::model::connection::cache::ConnectionCache;
@@ -13,7 +14,6 @@ use crate::model::connection::state::ConnectionState;
 use crate::model::shared::async_run::AsyncRun;
 use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
 use crate::model::shared::inspector_tab::InspectorTab;
-use crate::policy::mask_password;
 
 #[derive(Debug, Default)]
 pub struct ConnectionSaveGuard {
@@ -59,9 +59,8 @@ impl ConnectionSaveGuard {
 struct ActiveConnection {
     id: ConnectionId,
     name: String,
-    database_type: DatabaseType,
     origin: ConnectionOrigin,
-    database: Option<String>,
+    endpoint: Arc<ConnectionEndpoint>,
 }
 
 #[derive(Debug, Clone)]
@@ -72,46 +71,20 @@ pub enum TableDetailState {
     Error(String),
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct InterruptedTableDetail {
-    dsn: String,
+    endpoint: Arc<ConnectionEndpoint>,
     run_id: u64,
     generation: u64,
 }
 
-impl fmt::Debug for InterruptedTableDetail {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("InterruptedTableDetail")
-            .field("dsn", &mask_password(&self.dsn))
-            .field("run_id", &self.run_id)
-            .field("generation", &self.generation)
-            .finish()
-    }
-}
-
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingMySqlConnectionProbe {
     pub id: ConnectionId,
     pub name: String,
-    pub dsn: String,
-    pub database: Option<String>,
+    pub endpoint: Arc<ConnectionEndpoint>,
     pub run_id: u64,
     table_detail: Option<InterruptedTableDetail>,
-}
-
-impl fmt::Debug for PendingMySqlConnectionProbe {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("PendingMySqlConnectionProbe")
-            .field("id", &self.id)
-            .field("name", &self.name)
-            .field("dsn", &mask_password(&self.dsn))
-            .field("database", &self.database)
-            .field("run_id", &self.run_id)
-            .field("table_detail", &self.table_detail)
-            .finish()
-    }
 }
 
 // # Invariants
@@ -151,7 +124,6 @@ pub struct BrowseSession {
     connection_save_guard: Arc<ConnectionSaveGuard>,
 
     // -- co-dependent: connection identity / lifecycle --
-    dsn: Option<String>,
     active_connection: Option<ActiveConnection>,
     mysql_connection_probe_run: AsyncRun,
     pending_mysql_connection_probe: Option<PendingMySqlConnectionProbe>,
@@ -177,7 +149,6 @@ impl Default for BrowseSession {
             table_detail_run: AsyncRun::default(),
             connection_save_run: AsyncRun::default(),
             connection_save_guard: Arc::new(ConnectionSaveGuard::default()),
-            dsn: None,
             active_connection: None,
             mysql_connection_probe_run: AsyncRun::default(),
             pending_mysql_connection_probe: None,
@@ -258,17 +229,21 @@ impl BrowseSession {
         self.mark_table_detail_failed(self.selection_generation, error)
     }
 
-    pub fn mark_table_detail_probe_failed(&mut self, dsn: &str, error: String) -> bool {
+    pub fn mark_table_detail_probe_failed(
+        &mut self,
+        endpoint: &ConnectionEndpoint,
+        error: String,
+    ) -> bool {
         if self
             .pending_mysql_connection_probe
             .as_ref()
             .and_then(|pending| pending.table_detail.as_ref())
             .is_some_and(|table_detail| {
-                table_detail.dsn == dsn
+                *table_detail.endpoint == *endpoint
                     && table_detail.run_id == self.table_detail_run.last_id()
                     && table_detail.generation == self.selection_generation
             })
-            && self.dsn_matches(dsn)
+            && self.endpoint_matches(endpoint)
             && self.selected_table_key.is_some()
             && matches!(&self.table_detail_state, TableDetailState::Loading)
         {
@@ -279,9 +254,11 @@ impl BrowseSession {
         }
     }
 
-    pub fn retry_table_detail_after_probe_failure(&mut self) -> Option<(String, u64, u64)> {
+    pub fn retry_table_detail_after_probe_failure(
+        &mut self,
+    ) -> Option<(Arc<ConnectionEndpoint>, u64, u64)> {
         let InterruptedTableDetail {
-            dsn,
+            endpoint,
             run_id,
             generation,
         } = self
@@ -291,7 +268,7 @@ impl BrowseSession {
             .clone()?;
         if run_id != self.table_detail_run.last_id()
             || generation != self.selection_generation
-            || !self.dsn_matches(&dsn)
+            || !self.endpoint_matches(&endpoint)
             || self.selected_table_key.is_none()
             || !matches!(&self.table_detail_state, TableDetailState::Loading)
         {
@@ -299,7 +276,7 @@ impl BrowseSession {
         }
 
         let retry_run_id = self.begin_table_detail_run();
-        Some((dsn, generation, retry_run_id))
+        Some((endpoint, generation, retry_run_id))
     }
 
     // ── Connection lifecycle ─────────────────────────────────────────
@@ -343,25 +320,23 @@ impl BrowseSession {
         &mut self,
         id: &ConnectionId,
         name: &str,
-        dsn: &str,
-        database: Option<&str>,
+        endpoint: &Arc<ConnectionEndpoint>,
     ) -> u64 {
-        let table_detail =
-            self.dsn
-                .clone()
-                .zip(self.table_detail_run.active_id())
-                .map(|(dsn, run_id)| InterruptedTableDetail {
-                    dsn,
-                    run_id,
-                    generation: self.selection_generation,
-                });
+        let table_detail = self
+            .endpoint()
+            .cloned()
+            .zip(self.table_detail_run.active_id())
+            .map(|(endpoint, run_id)| InterruptedTableDetail {
+                endpoint,
+                run_id,
+                generation: self.selection_generation,
+            });
         self.invalidate_inflight_state_for_mysql_probe();
         let run_id = self.mysql_connection_probe_run.begin();
         self.pending_mysql_connection_probe = Some(PendingMySqlConnectionProbe {
             id: id.clone(),
             name: name.to_string(),
-            dsn: dsn.to_string(),
-            database: database.map(str::to_string),
+            endpoint: Arc::clone(endpoint),
             run_id,
             table_detail,
         });
@@ -404,7 +379,9 @@ impl BrowseSession {
 
         self.active_connection_id()
             .is_some_and(|id| id != &pending.id)
-            || self.dsn().is_some_and(|dsn| dsn != pending.dsn)
+            || self
+                .endpoint()
+                .is_some_and(|endpoint| **endpoint != *pending.endpoint)
     }
 
     pub fn clear_mysql_connection_probe(&mut self) {
@@ -413,61 +390,48 @@ impl BrowseSession {
     }
 
     #[must_use]
-    pub fn begin_connecting(&mut self, dsn: &str) -> u64 {
+    pub fn begin_connecting(&mut self) -> u64 {
         self.clear_mysql_connection_probe();
-        self.dsn = Some(dsn.to_string());
         self.mark_connecting();
         self.begin_metadata_run()
     }
 
-    pub fn activate_connection_with_dsn(
+    pub fn activate_connection(
         &mut self,
         id: &ConnectionId,
         name: &str,
-        database_type: DatabaseType,
-        dsn: &str,
-    ) {
-        self.activate_connection_with_target(id, name, database_type, dsn, None);
-    }
-
-    pub fn activate_connection_with_target(
-        &mut self,
-        id: &ConnectionId,
-        name: &str,
-        database_type: DatabaseType,
-        dsn: &str,
-        database: Option<&str>,
+        endpoint: &Arc<ConnectionEndpoint>,
     ) {
         self.database_generation = self.database_generation.wrapping_add(1);
         self.active_connection = Some(ActiveConnection {
             id: id.clone(),
             name: name.to_string(),
-            database_type,
             origin: ConnectionOrigin::Profile,
-            database: database.map(str::to_string),
+            endpoint: Arc::clone(endpoint),
         });
-        self.dsn = Some(dsn.to_string());
         self.mysql_lower_case_table_names = 0;
         self.read_only = false;
         self.clear_mysql_connection_probe();
     }
 
-    pub fn activate_cli_ephemeral_connection(&mut self, id: &ConnectionId, name: &str, dsn: &str) {
+    pub fn activate_cli_ephemeral_connection(
+        &mut self,
+        id: &ConnectionId,
+        name: &str,
+        config: SqliteConnectionConfig,
+    ) {
         self.active_connection = Some(ActiveConnection {
             id: id.clone(),
             name: name.to_string(),
-            database_type: DatabaseType::SQLite,
             origin: ConnectionOrigin::CliEphemeral,
-            database: None,
+            endpoint: Arc::new(ConnectionEndpoint::SQLite(config)),
         });
-        self.dsn = Some(dsn.to_string());
         self.mysql_lower_case_table_names = 0;
         self.read_only = false;
         self.clear_mysql_connection_probe();
     }
 
     pub fn clear_connection(&mut self) {
-        self.dsn = None;
         self.active_connection = None;
         self.mysql_lower_case_table_names = 0;
         self.cancel_connection_save_and_disconnect();
@@ -588,7 +552,7 @@ impl BrowseSession {
         pagination: PaginationState,
     ) -> ConnectionCache {
         ConnectionCache {
-            connection_dsn: self.dsn.clone(),
+            endpoint: self.endpoint().cloned(),
             metadata: self.metadata.clone(),
             effective_user: self.effective_user.clone(),
             table_detail: self.table_detail().cloned(),
@@ -632,12 +596,10 @@ impl BrowseSession {
         query: &mut QueryExecution,
         id: &ConnectionId,
         name: &str,
-        database_type: DatabaseType,
-        dsn: &str,
-        database: Option<&str>,
+        endpoint: &Arc<ConnectionEndpoint>,
     ) {
         self.restore_from_cache(cache, query);
-        self.activate_connection_with_target(id, name, database_type, dsn, database);
+        self.activate_connection(id, name, endpoint);
     }
 
     // Caller must also call `result_interaction.reset_view()` and restore UI state.
@@ -713,14 +675,17 @@ impl BrowseSession {
         self.selection_generation
     }
 
-    pub fn dsn(&self) -> Option<&str> {
-        self.dsn.as_deref()
+    pub fn endpoint(&self) -> Option<&Arc<ConnectionEndpoint>> {
+        self.active_connection
+            .as_ref()
+            .map(|connection| &connection.endpoint)
     }
 
     // Async completion reducers use this guard with run ids to reject stale
     // effects from a previous connection.
-    pub fn dsn_matches(&self, expected: &str) -> bool {
-        self.dsn() == Some(expected)
+    pub fn endpoint_matches(&self, expected: &ConnectionEndpoint) -> bool {
+        self.endpoint()
+            .is_some_and(|endpoint| **endpoint == *expected)
     }
 
     pub fn database_generation(&self) -> u64 {
@@ -740,9 +705,7 @@ impl BrowseSession {
     }
 
     pub fn active_database_type(&self) -> Option<DatabaseType> {
-        self.active_connection
-            .as_ref()
-            .map(|connection| connection.database_type)
+        self.endpoint().map(|endpoint| endpoint.engine())
     }
 
     pub fn active_database_type_or_default(&self) -> DatabaseType {
@@ -750,9 +713,8 @@ impl BrowseSession {
     }
 
     pub fn active_database(&self) -> Option<&str> {
-        self.active_connection
-            .as_ref()
-            .and_then(|connection| connection.database.as_deref())
+        self.endpoint()
+            .and_then(|endpoint| endpoint.selected_database())
     }
 
     pub fn mysql_lower_case_table_names(&self) -> u8 {
@@ -794,7 +756,8 @@ impl BrowseSession {
     }
 
     pub fn is_service_connection(&self) -> bool {
-        self.dsn.as_ref().is_some_and(|d| d.starts_with("service="))
+        self.endpoint()
+            .is_some_and(|endpoint| endpoint.is_postgres_service())
     }
 
     pub fn is_ephemeral_connection(&self) -> bool {
@@ -847,9 +810,11 @@ mod test_support {
 #[cfg(test)]
 mod tests {
     use crate::test_support;
+    use crate::test_support::endpoint;
 
     use super::*;
     use crate::domain::QuerySource;
+    use crate::domain::connection::{MySqlConnectionConfig, MySqlSslMode};
 
     fn make_metadata(db_name: &str) -> Arc<DatabaseMetadata> {
         Arc::new({
@@ -1084,12 +1049,10 @@ mod tests {
             let mut session = BrowseSession::default();
             let id = ConnectionId::from_string("mysql-current");
             let current_dsn = "mysql://current";
-            session.activate_connection_with_target(
+            session.activate_connection(
                 &id,
                 "mysql-current",
-                DatabaseType::MySQL,
-                current_dsn,
-                Some("app"),
+                &endpoint::mysql(current_dsn, Some("app")),
             );
             let mut query = QueryExecution::default();
             let generation = session.select_table("public", "users", &mut query);
@@ -1097,8 +1060,7 @@ mod tests {
             let _ = session.begin_mysql_connection_probe(
                 &id,
                 "mysql-target",
-                "mysql://target",
-                Some("app"),
+                &endpoint::mysql("mysql://target", Some("app")),
             );
             (session, generation, table_detail_run_id)
         }
@@ -1109,11 +1071,11 @@ mod tests {
                 session_with_interrupted_table_detail();
 
             assert!(!session.is_current_table_detail_run(table_detail_run_id));
-            let (dsn, retry_generation, retry_run_id) = session
+            let (endpoint, retry_generation, retry_run_id) = session
                 .retry_table_detail_after_probe_failure()
                 .expect("matching interrupted detail should be retryable");
 
-            assert_eq!(dsn, "mysql://current");
+            assert_eq!(endpoint, endpoint::mysql("mysql://current", Some("app")));
             assert_eq!(retry_generation, generation);
             assert_ne!(retry_run_id, table_detail_run_id);
             assert!(session.is_current_table_detail_run(retry_run_id));
@@ -1124,7 +1086,7 @@ mod tests {
             let (mut session, _, _) = session_with_interrupted_table_detail();
 
             assert!(session.mark_table_detail_probe_failed(
-                "mysql://current",
+                &endpoint::mysql("mysql://current", Some("app")),
                 "connection refused".to_string()
             ));
             assert!(matches!(
@@ -1138,12 +1100,10 @@ mod tests {
             let mut session = BrowseSession::default();
             let id = ConnectionId::from_string("mysql-current");
             let current_dsn = "mysql://current";
-            session.activate_connection_with_target(
+            session.activate_connection(
                 &id,
                 "mysql-current",
-                DatabaseType::MySQL,
-                current_dsn,
-                Some("app"),
+                &endpoint::mysql(current_dsn, Some("app")),
             );
             let mut query = QueryExecution::default();
             let generation = session.select_table("public", "users", &mut query);
@@ -1153,8 +1113,7 @@ mod tests {
             let _ = session.begin_mysql_connection_probe(
                 &id,
                 "mysql-target",
-                "mysql://target",
-                Some("app"),
+                &endpoint::mysql("mysql://target", Some("app")),
             );
 
             assert!(!session.is_current_table_detail_run(run_id));
@@ -1178,8 +1137,7 @@ mod tests {
             let _ = without_dsn.begin_mysql_connection_probe(
                 &ConnectionId::new(),
                 "mysql-target",
-                "mysql://target",
-                Some("app"),
+                &endpoint::mysql("mysql://target", Some("app")),
             );
             assert!(
                 without_dsn
@@ -1195,19 +1153,16 @@ mod tests {
 
             let mut without_run = BrowseSession::default();
             let id = ConnectionId::from_string("mysql-current");
-            without_run.activate_connection_with_target(
+            without_run.activate_connection(
                 &id,
                 "mysql-current",
-                DatabaseType::MySQL,
-                "mysql://current",
-                Some("app"),
+                &endpoint::mysql("mysql://current", Some("app")),
             );
             let _ = without_run.select_table("public", "users", &mut query);
             let _ = without_run.begin_mysql_connection_probe(
                 &id,
                 "mysql-target",
-                "mysql://target",
-                Some("app"),
+                &endpoint::mysql("mysql://target", Some("app")),
             );
             assert!(
                 without_run
@@ -1225,7 +1180,11 @@ mod tests {
         #[test]
         fn stale_detail_context_is_not_retried() {
             let (mut stale_dsn, _, _) = session_with_interrupted_table_detail();
-            stale_dsn.dsn = Some("mysql://other".to_string());
+            stale_dsn
+                .active_connection
+                .as_mut()
+                .expect("interrupted detail keeps the active connection")
+                .endpoint = endpoint::mysql("mysql://other", Some("app"));
             assert!(stale_dsn.retry_table_detail_after_probe_failure().is_none());
 
             let (mut stale_run, _, _) = session_with_interrupted_table_detail();
@@ -1262,12 +1221,10 @@ mod tests {
         fn successful_probe_clears_interrupted_detail() {
             let (mut session, _, _) = session_with_interrupted_table_detail();
             let id = ConnectionId::from_string("mysql-target");
-            session.activate_connection_with_target(
+            session.activate_connection(
                 &id,
                 "mysql-target",
-                DatabaseType::MySQL,
-                "mysql://target",
-                Some("app"),
+                &endpoint::mysql("mysql://target", Some("app")),
             );
 
             assert!(session.pending_mysql_connection_probe().is_none());
@@ -1335,22 +1292,23 @@ mod tests {
         #[test]
         fn begin_connecting_sets_pair() {
             let mut session = BrowseSession::default();
+            let endpoint = endpoint::postgres("postgres://localhost/test");
+            session.activate_connection(&ConnectionId::new(), "postgres", &endpoint);
 
-            let _ = session.begin_connecting("postgres://localhost/test");
+            let _ = session.begin_connecting();
 
             assert!(session.connection_state().is_connecting());
             assert_eq!(session.metadata_state(), &MetadataState::Loading);
-            assert_eq!(session.dsn(), Some("postgres://localhost/test"));
+            assert_eq!(session.endpoint(), Some(&endpoint));
         }
 
         #[test]
         fn mark_connecting_sets_pair_without_changing_dsn() {
             let mut session = BrowseSession::default();
-            session.activate_connection_with_dsn(
+            session.activate_connection(
                 &ConnectionId::new(),
                 "postgres",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/test",
+                &endpoint::postgres("postgres://localhost/test"),
             );
             session.mark_effective_user_loaded(Some("old_user".to_string()));
 
@@ -1358,7 +1316,10 @@ mod tests {
 
             assert!(session.connection_state().is_connecting());
             assert_eq!(session.metadata_state(), &MetadataState::Loading);
-            assert_eq!(session.dsn(), Some("postgres://localhost/test"));
+            assert_eq!(
+                session.endpoint(),
+                Some(&endpoint::postgres("postgres://localhost/test"))
+            );
             assert!(session.effective_user().is_none());
         }
 
@@ -1368,15 +1329,17 @@ mod tests {
             let id = ConnectionId::new();
             session.enable_read_only();
 
-            session.activate_connection_with_dsn(
+            session.activate_connection(
                 &id,
                 "postgres",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/test",
+                &endpoint::postgres("postgres://localhost/test"),
             );
 
             assert!(!session.is_read_only());
-            assert_eq!(session.dsn(), Some("postgres://localhost/test"));
+            assert_eq!(
+                session.endpoint(),
+                Some(&endpoint::postgres("postgres://localhost/test"))
+            );
             assert_eq!(session.active_connection_id(), Some(&id));
             assert_eq!(session.active_connection_name(), Some("postgres"));
             assert_eq!(
@@ -1451,7 +1414,7 @@ mod tests {
         #[test]
         fn mark_disconnected_resets_connection_pair() {
             let mut session = BrowseSession::default();
-            let _ = session.begin_connecting("postgres://localhost/test");
+            let _ = session.begin_connecting();
             let _ = session.begin_reload();
 
             session.mark_disconnected();
@@ -1477,15 +1440,13 @@ mod tests {
             let mut session = BrowseSession::default();
             let id = ConnectionId::from_string("mysql-a");
             let dsn = "mysql://user@localhost:3306/a";
-            session.activate_connection_with_target(
+            session.activate_connection(&id, "mysql-a", &endpoint::mysql(dsn, Some("a")));
+            session.set_connection_state(ConnectionState::Connected);
+            let probe_run_id = session.begin_mysql_connection_probe(
                 &id,
                 "mysql-a",
-                DatabaseType::MySQL,
-                dsn,
-                Some("a"),
+                &endpoint::mysql(dsn, Some("a")),
             );
-            session.set_connection_state(ConnectionState::Connected);
-            let probe_run_id = session.begin_mysql_connection_probe(&id, "mysql-a", dsn, Some("a"));
 
             let reload_run_id = session.begin_reload();
 
@@ -1623,11 +1584,10 @@ mod tests {
         fn clears_session_and_query_state() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("db"));
-            session.activate_connection_with_dsn(
+            session.activate_connection(
                 &ConnectionId::new(),
                 "mydb",
-                DatabaseType::PostgreSQL,
-                "postgres://host/db",
+                &endpoint::postgres("postgres://host/db"),
             );
             session.enable_read_only();
             let _ = session.begin_reload();
@@ -1645,7 +1605,7 @@ mod tests {
             assert!(session.selected_table_key().is_none());
             assert!(session.table_detail().is_none());
             assert_eq!(session.selection_generation(), 0);
-            assert!(session.dsn().is_none());
+            assert!(session.endpoint().is_none());
             assert!(session.active_connection_id().is_none());
             assert!(session.active_connection_name().is_none());
             assert!(session.active_database_type().is_none());
@@ -1665,13 +1625,13 @@ mod tests {
         #[test]
         fn preserves_metadata_run_counter_after_reset() {
             let mut session = BrowseSession::default();
-            let first_run_id = session.begin_connecting("postgres://localhost/test");
+            let first_run_id = session.begin_connecting();
             assert_eq!(first_run_id, 1);
 
             let mut query = QueryExecution::default();
             session.reset(&mut query);
 
-            let second_run_id = session.begin_connecting("postgres://localhost/test");
+            let second_run_id = session.begin_connecting();
             assert_eq!(second_run_id, 2);
             assert!(!session.is_current_metadata_run(first_run_id));
             assert!(session.is_current_metadata_run(second_run_id));
@@ -1742,12 +1702,10 @@ mod tests {
         #[test]
         fn mysql_scope_includes_selected_database() {
             let mut session = BrowseSession::default();
-            session.activate_connection_with_target(
+            session.activate_connection(
                 &ConnectionId::from_string("mysql"),
                 "mysql",
-                DatabaseType::MySQL,
-                "mysql://localhost/app",
-                Some("app"),
+                &endpoint::mysql("mysql://localhost/app", Some("app")),
             );
 
             let scope = session.query_history_scope().unwrap();
@@ -1759,12 +1717,10 @@ mod tests {
         fn postgres_and_sqlite_scopes_omit_database() {
             for database_type in [DatabaseType::PostgreSQL, DatabaseType::SQLite] {
                 let mut session = BrowseSession::default();
-                session.activate_connection_with_target(
+                session.activate_connection(
                     &ConnectionId::from_string("connection"),
                     "connection",
-                    database_type,
-                    "dsn://connection",
-                    Some("database"),
+                    &endpoint::for_engine(database_type, "dsn://connection"),
                 );
 
                 assert_eq!(session.query_history_scope().unwrap().database, None);
@@ -1792,19 +1748,23 @@ mod tests {
 
         #[test]
         fn is_service_connection_detects_service_dsn() {
-            let session = BrowseSession {
-                dsn: Some("service=myservice".to_string()),
-                ..Default::default()
-            };
+            let mut session = BrowseSession::default();
+            session.activate_connection(
+                &ConnectionId::new(),
+                "myservice",
+                &endpoint::service("myservice"),
+            );
             assert!(session.is_service_connection());
         }
 
         #[test]
         fn is_service_connection_false_for_normal_dsn() {
-            let session = BrowseSession {
-                dsn: Some("postgres://localhost/db".to_string()),
-                ..Default::default()
-            };
+            let mut session = BrowseSession::default();
+            session.activate_connection(
+                &ConnectionId::new(),
+                "db",
+                &endpoint::postgres("postgres://localhost/db"),
+            );
             assert!(!session.is_service_connection());
         }
 
@@ -1814,7 +1774,7 @@ mod tests {
             session.activate_cli_ephemeral_connection(
                 &ConnectionId::from_string("cli-sqlite-test"),
                 "app.db",
-                "sqlite:///tmp/app.db",
+                SqliteConnectionConfig::new("/tmp/app.db").unwrap(),
             );
 
             assert!(session.is_ephemeral_connection());
@@ -1828,11 +1788,10 @@ mod tests {
         #[test]
         fn can_reenter_connection_setup_for_saved_profile() {
             let mut session = BrowseSession::default();
-            session.activate_connection_with_dsn(
+            session.activate_connection(
                 &ConnectionId::new(),
                 "Local",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
+                &endpoint::sqlite("sqlite:///tmp/app.db"),
             );
 
             assert!(!session.is_ephemeral_connection());
@@ -1843,16 +1802,19 @@ mod tests {
         fn pending_probe_debug_masks_password() {
             let mut session = BrowseSession::default();
             let id = ConnectionId::new();
-            let _ = session.begin_mysql_connection_probe(
-                &id,
-                "mysql",
-                "mysql://user:secret@localhost:3306/app",
-                Some("app"),
-            );
+            let endpoint = Arc::new(ConnectionEndpoint::MySQL(MySqlConnectionConfig::new(
+                "localhost",
+                3306,
+                Some("app".to_string()),
+                "user",
+                "secret",
+                MySqlSslMode::Preferred,
+            )));
+            let _ = session.begin_mysql_connection_probe(&id, "mysql", &endpoint);
 
             let debug = format!("{session:?}");
             assert!(!debug.contains("secret"));
-            assert!(debug.contains("mysql://user:****@localhost:3306/app"));
+            assert!(debug.contains(r#"password: "****""#));
             assert!(!debug.contains("database_type"));
         }
 
@@ -1878,11 +1840,10 @@ mod tests {
                 (DatabaseType::MySQL, EngineFeatureProfile::mysql_like()),
             ] {
                 let mut session = BrowseSession::default();
-                session.activate_connection_with_dsn(
+                session.activate_connection(
                     &ConnectionId::new(),
                     "connection",
-                    database_type,
-                    "dsn",
+                    &endpoint::for_engine(database_type, "dsn"),
                 );
 
                 assert_eq!(session.active_engine_feature_profile(), expected);

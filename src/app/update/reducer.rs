@@ -239,12 +239,12 @@ pub(in crate::update) fn route(
             effective_user,
         } => browse::metadata::loading::effective_user_loaded(state, run_id, effective_user),
         Action::TableDetailLoaded {
-            dsn,
+            endpoint,
             run_id,
             outcome,
             generation,
         } => browse::metadata::table_detail::table_detail_loaded(
-            state, dsn, run_id, outcome, generation,
+            state, endpoint, run_id, outcome, generation,
         ),
         Action::PrefetchTableDetail {
             run_id,
@@ -252,22 +252,22 @@ pub(in crate::update) fn route(
             table,
         } => browse::metadata::prefetch::prefetch_table_detail(state, run_id, schema, table, now),
         Action::TableDetailCached {
-            dsn,
+            endpoint,
             run_id,
             schema,
             table,
             detail,
         } => browse::metadata::prefetch::table_detail_cached(
-            state, dsn, run_id, schema, table, detail,
+            state, endpoint, run_id, schema, table, detail,
         ),
         Action::TableDetailCacheFailed {
-            dsn,
+            endpoint,
             run_id,
             schema,
             table,
             error,
         } => browse::metadata::prefetch::table_detail_cache_failed(
-            state, dsn, run_id, schema, table, error, now,
+            state, endpoint, run_id, schema, table, error, now,
         ),
         Action::StartErPrefetchAll => browse::metadata::prefetch::start_er_prefetch_all(state),
         Action::StartErPrefetchScoped { tables } => {
@@ -516,10 +516,10 @@ fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
     let table_name = table.name.clone();
 
     let mut effects = termination_effects(&state.query, vec![]);
-    if let Some(dsn) = state.session.dsn().map(String::from) {
+    if let Some(endpoint) = state.session.endpoint().cloned() {
         let run_id = state.session.begin_table_detail_run();
         effects.push(Effect::FetchTableDetail {
-            dsn,
+            endpoint,
             schema: schema.clone(),
             table: table_name.clone(),
             generation,
@@ -551,6 +551,7 @@ mod tests {
     use crate::model::browse::session::TableDetailState;
     use crate::model::shared::ui_state::UiState;
     use crate::ports::outbound::DbOperationError;
+    use crate::test_support::endpoint;
     use crate::update::action::CopyTarget;
     use crate::update::action::ModalKind;
     use crate::update::action::QueryCompletionContext;
@@ -691,8 +692,7 @@ mod tests {
             let _ = state.session.begin_mysql_connection_probe(
                 &ConnectionId::from_string("mysql-target"),
                 "mysql-target",
-                "mysql://localhost/target",
-                Some("target"),
+                &endpoint::mysql("mysql://localhost/target", Some("target")),
             );
             state.modal.set_mode(InputMode::TablePicker);
 
@@ -1981,11 +1981,10 @@ mod tests {
         #[test]
         fn reload_then_metadata_loaded_shows_reloaded_message() {
             let mut state = create_test_state();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::from_string("test-connection"),
                 "test",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/test",
+                &endpoint::postgres("postgres://localhost/test"),
             );
             let now = Instant::now();
 
@@ -2167,7 +2166,7 @@ mod tests {
             reduce(
                 &mut state,
                 Action::TableDetailCached {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
@@ -2194,7 +2193,7 @@ mod tests {
             let effects = reduce(
                 &mut state,
                 Action::TableDetailCached {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
@@ -2358,10 +2357,8 @@ mod tests {
                 Action::ConnectionSaveCompleted {
                     target: ConnectionTarget {
                         id: ConnectionId::new(),
-                        dsn: "postgres://db.example.com/mydb".to_string(),
                         name: "Test Connection".to_string(),
-                        database_type: DatabaseType::PostgreSQL,
-                        database: None,
+                        endpoint: endpoint::postgres("postgres://db.example.com/mydb"),
                     },
                     run_id,
                     mysql_lower_case_table_names: None,
@@ -2372,7 +2369,10 @@ mod tests {
             );
 
             assert!(!state.connection_setup.is_first_run());
-            assert_eq!(state.session.dsn(), Some("postgres://db.example.com/mydb"));
+            assert_eq!(
+                state.session.endpoint(),
+                Some(&endpoint::postgres("postgres://db.example.com/mydb"))
+            );
             assert_eq!(
                 state.session.active_connection_name(),
                 Some("Test Connection")
@@ -2785,11 +2785,10 @@ mod tests {
             // When already connected, metadata failure should preserve connection state
             // (metadata-only failure, e.g., permission denied on schema)
             let mut state = create_test_state();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::from_string("test-connection"),
                 "test",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/test",
+                &endpoint::postgres("postgres://localhost/test"),
             );
             state
                 .session
@@ -2889,10 +2888,8 @@ mod tests {
                 Action::ConnectionSaveCompleted {
                     target: ConnectionTarget {
                         id: ConnectionId::new(),
-                        dsn: "postgres://localhost/test".to_string(),
                         name: "Test".to_string(),
-                        database_type: DatabaseType::PostgreSQL,
-                        database: None,
+                        endpoint: endpoint::postgres("postgres://localhost/test"),
                     },
                     run_id,
                     mysql_lower_case_table_names: None,
@@ -2916,11 +2913,10 @@ mod tests {
             let conn_a = ConnectionId::new();
             let conn_b = ConnectionId::new();
 
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &conn_a,
                 "conn-a",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/a",
+                &endpoint::postgres("postgres://localhost/a"),
             );
             state
                 .session
@@ -2934,10 +2930,8 @@ mod tests {
                 &mut state,
                 Action::SwitchConnection(ConnectionTarget {
                     id: conn_b.clone(),
-                    dsn: "postgres://localhost/other".to_string(),
                     name: "Other".to_string(),
-                    database_type: DatabaseType::PostgreSQL,
-                    database: None,
+                    endpoint: endpoint::postgres("postgres://localhost/other"),
                 }),
                 now,
                 &AppServices::stub(),
@@ -2965,11 +2959,10 @@ mod tests {
             let conn_a = ConnectionId::new();
             let conn_b = ConnectionId::new();
 
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &conn_a,
                 "conn-a",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/a",
+                &endpoint::postgres("postgres://localhost/a"),
             );
             state
                 .session
@@ -2991,10 +2984,8 @@ mod tests {
                 &mut state,
                 Action::SwitchConnection(ConnectionTarget {
                     id: conn_b.clone(),
-                    dsn: "postgres://localhost/cached".to_string(),
                     name: "Cached".to_string(),
-                    database_type: DatabaseType::PostgreSQL,
-                    database: None,
+                    endpoint: endpoint::postgres("postgres://localhost/cached"),
                 }),
                 now,
                 &AppServices::stub(),
@@ -3028,21 +3019,18 @@ mod tests {
             let mut state = create_test_state();
             let conn_a = ConnectionId::new();
 
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &conn_a,
                 "conn-a",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/a",
+                &endpoint::postgres("postgres://localhost/a"),
             );
             state
                 .session
                 .set_connection_state(ConnectionState::Connected);
             let target = ConnectionTarget {
                 id: ConnectionId::new(),
-                dsn: "mysql://localhost/other".to_string(),
                 name: "Other".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("other".to_string()),
+                endpoint: endpoint::mysql("mysql://localhost/other", Some("other")),
             };
 
             let effects = reduce(
@@ -3073,12 +3061,9 @@ mod tests {
             let conn_b = ConnectionId::new();
             let dsn_a = "postgres://localhost/a".to_string();
 
-            state.session.activate_connection_with_dsn(
-                &conn_a,
-                "A",
-                DatabaseType::PostgreSQL,
-                &dsn_a,
-            );
+            state
+                .session
+                .activate_connection(&conn_a, "A", &endpoint::postgres(&dsn_a));
             state
                 .session
                 .mark_connected(Arc::new(DatabaseMetadata::new("a".to_string())));
@@ -3088,10 +3073,8 @@ mod tests {
                 &mut state,
                 Action::SwitchConnection(ConnectionTarget {
                     id: conn_b,
-                    dsn: "postgres://localhost/b".to_string(),
                     name: "B".to_string(),
-                    database_type: DatabaseType::PostgreSQL,
-                    database: None,
+                    endpoint: endpoint::postgres("postgres://localhost/b"),
                 }),
                 Instant::now(),
                 &AppServices::stub(),
@@ -3101,10 +3084,8 @@ mod tests {
                 &mut state,
                 Action::SwitchConnection(ConnectionTarget {
                     id: conn_a,
-                    dsn: dsn_a.clone(),
                     name: "A".to_string(),
-                    database_type: DatabaseType::PostgreSQL,
-                    database: None,
+                    endpoint: endpoint::postgres(&dsn_a),
                 }),
                 Instant::now(),
                 &AppServices::stub(),
@@ -3113,8 +3094,8 @@ mod tests {
             let new_a_run_id = effects
                 .iter()
                 .find_map(|effect| match effect {
-                    Effect::FetchEffectiveUser { dsn, run_id }
-                        if dsn.as_str() == dsn_a.as_str() =>
+                    Effect::FetchEffectiveUser { endpoint, run_id }
+                        if endpoint == &endpoint::postgres(&dsn_a) =>
                     {
                         Some(run_id.to_owned())
                     }
@@ -3374,7 +3355,7 @@ mod tests {
             let effects = reduce(
                 &mut state,
                 Action::SmartErRefreshFailed(SmartErRefreshError {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id,
                     error: DbOperationError::Timeout("timed out".to_string()),
                     new_metadata: None,
@@ -3416,7 +3397,7 @@ mod tests {
             let effects = reduce(
                 &mut state,
                 Action::TableDetailCached {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
@@ -3456,7 +3437,7 @@ mod tests {
             let effects = reduce(
                 &mut state,
                 Action::TableDetailCached {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
@@ -3537,7 +3518,7 @@ mod tests {
             reduce(
                 &mut state,
                 Action::TableDetailLoaded {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id: detail_run_id,
                     outcome: Ok(Box::new(test_support::table::minimal("public", "users"))),
                     generation,
@@ -3836,11 +3817,10 @@ mod tests {
             use crate::update::input::keymap::{palette_action, palette_available};
 
             let mut state = create_test_state();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "mysql-a",
-                DatabaseType::MySQL,
-                "mysql://localhost/a",
+                &endpoint::for_engine(DatabaseType::MySQL, "mysql://localhost/a"),
             );
             state
                 .query
@@ -3863,9 +3843,7 @@ mod tests {
                 Action::SwitchConnection(ConnectionTarget {
                     id: ConnectionId::new(),
                     name: "mysql-b".to_string(),
-                    database_type: DatabaseType::MySQL,
-                    dsn: "mysql://localhost/b".to_string(),
-                    database: Some("b".to_string()),
+                    endpoint: endpoint::mysql("mysql://localhost/b", Some("b")),
                 }),
                 now,
                 &AppServices::stub(),

@@ -1,7 +1,9 @@
+use std::sync::Arc;
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
 use crate::domain::DatabaseType;
+use crate::domain::connection::ConnectionEndpoint;
 use crate::model::app_state::AppState;
 use crate::model::sql_editor::modal::SqlModalStatus;
 use crate::policy::sql::statement_classifier;
@@ -27,7 +29,7 @@ pub(in crate::update) fn explain_analyze_request(
     if content.is_empty() {
         return vec![];
     }
-    let Some(dsn) = state.session.dsn().map(String::from) else {
+    let Some(endpoint) = state.session.endpoint().cloned() else {
         return vec![];
     };
     if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
@@ -81,7 +83,7 @@ pub(in crate::update) fn explain_analyze_request(
                 finish_explain_unsupported_analyze(state);
                 return vec![];
             };
-            return start_analyze_execution(state, now, dsn, explain_query, content);
+            return start_analyze_execution(state, now, endpoint, explain_query, content);
         }
     }
 
@@ -106,7 +108,7 @@ pub(in crate::update) fn explain_analyze_confirm(
         _ => None,
     };
     if let Some(query) = query
-        && let Some(dsn) = state.session.dsn().map(String::from)
+        && let Some(endpoint) = state.session.endpoint().cloned()
     {
         let database_type = state.session.active_database_type_or_default();
         if database_type == DatabaseType::MySQL
@@ -119,7 +121,7 @@ pub(in crate::update) fn explain_analyze_confirm(
             finish_explain_unsupported_analyze(state);
             return vec![];
         };
-        return start_analyze_execution(state, now, dsn, explain_query, query);
+        return start_analyze_execution(state, now, endpoint, explain_query, query);
     }
     vec![]
 }
@@ -137,7 +139,7 @@ pub(in crate::update) fn explain_analyze_cancel(state: &mut AppState) -> Vec<Eff
 fn start_analyze_execution(
     state: &mut AppState,
     now: Instant,
-    dsn: String,
+    endpoint: Arc<ConnectionEndpoint>,
     query: String,
     source_query: String,
 ) -> Vec<Effect> {
@@ -145,8 +147,7 @@ fn start_analyze_execution(
     let run_id = begin_explain_running(state, now);
     let database_generation = state.session.database_generation();
     vec![Effect::ExecuteExplain {
-        dsn,
-        database_type,
+        endpoint,
         database_generation,
         run_id,
         query,

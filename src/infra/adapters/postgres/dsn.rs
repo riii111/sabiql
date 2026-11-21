@@ -1,4 +1,4 @@
-use crate::domain::connection::ConnectionProfile;
+use crate::domain::connection::{ConnectionProfile, PostgresConnectionConfig, PostgresEndpoint};
 
 use super::PostgresAdapter;
 
@@ -31,15 +31,26 @@ impl PostgresAdapter {
         let config = profile
             .postgres_config()
             .expect("PostgresAdapter requires a PostgreSQL profile");
-        let mut parts = Vec::new();
-        push_conninfo_part(&mut parts, "host", config.host.trim());
-        push_conninfo_part(&mut parts, "port", &config.port.to_string());
-        push_conninfo_part(&mut parts, "dbname", config.database.trim());
-        push_conninfo_part(&mut parts, "user", config.username.trim());
-        push_conninfo_part(&mut parts, "password", config.password.as_str());
-        push_conninfo_part(&mut parts, "sslmode", &config.ssl_mode.to_string());
-        parts.join(" ")
+        settings_conninfo(config)
     }
+}
+
+pub(in crate::adapters) fn postgres_conninfo(endpoint: &PostgresEndpoint) -> String {
+    match endpoint {
+        PostgresEndpoint::Settings(config) => settings_conninfo(config),
+        PostgresEndpoint::Service(service_name) => format!("service={service_name}"),
+    }
+}
+
+fn settings_conninfo(config: &PostgresConnectionConfig) -> String {
+    let mut parts = Vec::new();
+    push_conninfo_part(&mut parts, "host", config.host.trim());
+    push_conninfo_part(&mut parts, "port", &config.port.to_string());
+    push_conninfo_part(&mut parts, "dbname", config.database.trim());
+    push_conninfo_part(&mut parts, "user", config.username.trim());
+    push_conninfo_part(&mut parts, "password", config.password.as_str());
+    push_conninfo_part(&mut parts, "sslmode", &config.ssl_mode.to_string());
+    parts.join(" ")
 }
 
 fn push_conninfo_part(parts: &mut Vec<String>, key: &str, value: &str) {
@@ -196,6 +207,14 @@ mod tests {
                 "port='5432' dbname='mydb' password='secret' sslmode='prefer'"
             );
         }
+
+        #[test]
+        fn formats_service_dsn_correctly() {
+            assert_eq!(
+                postgres_conninfo(&PostgresEndpoint::Service("mydb".to_string())),
+                "service=mydb"
+            );
+        }
     }
 
     mod extract_database_name {
@@ -292,7 +311,6 @@ mod tests {
 
     mod reported_database_name {
         use super::*;
-        use crate::domain::connection::ServiceEntry;
         use rstest::rstest;
 
         fn database_name_for_settings(database: &str) -> String {
@@ -310,10 +328,8 @@ mod tests {
         }
 
         fn database_name_for_service(service_name: &str) -> String {
-            let entry = ServiceEntry {
-                service_name: service_name.to_string(),
-            };
-            PostgresAdapter::extract_database_name(&entry.to_string())
+            let endpoint = PostgresEndpoint::Service(service_name.to_string());
+            PostgresAdapter::extract_database_name(&postgres_conninfo(&endpoint))
         }
 
         #[rstest]

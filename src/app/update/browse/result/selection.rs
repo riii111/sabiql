@@ -116,7 +116,7 @@ mod tests {
             current_page: usize,
         ) -> AppState {
             let mut state = AppState::new("test".to_string());
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            let _ = state.session.begin_connecting();
             state.session.set_selection_generation(7);
             state.query.pagination.reset_for_table("public", "users");
             state

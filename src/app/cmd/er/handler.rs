@@ -7,6 +7,7 @@ use tokio::sync::mpsc;
 use super::task::spawn_er_diagram_task;
 use crate::cmd::effect::Effect;
 use crate::domain::ErTableInfo;
+use crate::domain::connection::ConnectionEndpoint;
 use crate::model::app_state::AppState;
 use crate::ports::outbound::{ConfigWriter, ErDiagramExporter, ErLogWriter, MetadataProvider};
 use crate::update::action::{Action, SmartErRefreshError, SmartErRefreshFetched};
@@ -66,17 +67,17 @@ pub(in crate::cmd) async fn run(
 pub(in crate::cmd) fn smart_refresh_task(
     action_tx: mpsc::Sender<Action>,
     metadata_provider: Arc<dyn MetadataProvider>,
-    dsn: String,
+    endpoint: Arc<ConnectionEndpoint>,
     run_id: u64,
 ) -> impl Future<Output = ()> + Send + 'static {
     let tx = action_tx;
 
     async move {
-        let new_metadata = match metadata_provider.fetch_metadata(&dsn).await {
+        let new_metadata = match metadata_provider.fetch_metadata(&endpoint).await {
             Ok(m) => m,
             Err(e) => {
                 tx.send(Action::SmartErRefreshFailed(SmartErRefreshError {
-                    dsn,
+                    endpoint,
                     run_id,
                     error: e,
                     new_metadata: None,
@@ -87,12 +88,12 @@ pub(in crate::cmd) fn smart_refresh_task(
             }
         };
 
-        let signature_snapshot = match metadata_provider.fetch_table_signatures(&dsn).await {
+        let signature_snapshot = match metadata_provider.fetch_table_signatures(&endpoint).await {
             Ok(s) => s,
             Err(e) => {
                 let new_metadata = Arc::new(new_metadata);
                 tx.send(Action::SmartErRefreshFailed(SmartErRefreshError {
-                    dsn,
+                    endpoint,
                     run_id,
                     error: e,
                     new_metadata: Some(Arc::clone(&new_metadata)),
@@ -104,7 +105,7 @@ pub(in crate::cmd) fn smart_refresh_task(
         };
 
         tx.send(Action::SmartErRefreshFetched(SmartErRefreshFetched {
-            dsn,
+            endpoint,
             run_id,
             new_metadata: Arc::new(new_metadata),
             signature_snapshot: Arc::new(signature_snapshot),

@@ -1,17 +1,22 @@
+use std::sync::Arc;
+
 use crate::cmd::effect::Effect;
 use crate::domain::Table;
+use crate::domain::connection::ConnectionEndpoint;
 use crate::model::app_state::AppState;
 use crate::ports::outbound::DbOperationError;
 use crate::update::action::Action;
 
 pub(in crate::update) fn table_detail_loaded(
     state: &mut AppState,
-    dsn: String,
+    endpoint: Arc<ConnectionEndpoint>,
     run_id: u64,
     outcome: Result<Box<Table>, DbOperationError>,
     generation: u64,
 ) -> Vec<Effect> {
-    if !state.session.dsn_matches(&dsn) || !state.session.is_current_table_detail_run(run_id) {
+    if !state.session.endpoint_matches(&endpoint)
+        || !state.session.is_current_table_detail_run(run_id)
+    {
         return vec![];
     }
 

@@ -63,7 +63,7 @@ pub(in crate::update) fn er_open_diagram(state: &mut AppState, now: Instant) -> 
         return vec![];
     }
 
-    let Some(dsn) = state.session.dsn().map(String::from) else {
+    let Some(endpoint) = state.session.endpoint().cloned() else {
         state.messages.set_error("No active connection".to_string());
         return vec![];
     };
@@ -80,7 +80,7 @@ pub(in crate::update) fn er_open_diagram(state: &mut AppState, now: Instant) -> 
         .messages
         .set_success_at("Checking for schema changes...".to_string(), now);
 
-    vec![Effect::SmartErRefresh { dsn, run_id }]
+    vec![Effect::SmartErRefresh { endpoint, run_id }]
 }
 
 pub(in crate::update) fn er_generate_from_cache(state: &mut AppState) -> Vec<Effect> {

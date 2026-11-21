@@ -37,7 +37,7 @@ impl Header {
         let sep_style = Style::default().fg(theme.semantic.text.muted);
         let item_style = Style::default().fg(theme.semantic.text.secondary);
 
-        let (status_text, status_color) = if state.session.dsn().is_none() {
+        let (status_text, status_color) = if state.session.endpoint().is_none() {
             ("no dsn", theme.semantic.status.error)
         } else {
             match &state.session.metadata_state() {

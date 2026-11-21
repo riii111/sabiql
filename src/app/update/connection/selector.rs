@@ -126,6 +126,7 @@ mod tests {
     use crate::model::connection::list::build_connection_list;
     use crate::model::shared::ui_state::ResultNavMode;
     use crate::services::AppServices;
+    use crate::test_support::endpoint;
     use crate::update::action::{Action, ModalKind};
     use crate::update::reducer::route;
 
@@ -215,11 +216,10 @@ mod tests {
             let profile_id = profile.id.clone();
             state.set_connections(vec![profile]);
             state.ui.set_connection_list_selected_raw(0);
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &profile_id,
                 "Production",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/db",
+                &endpoint::postgres("postgres://localhost/db"),
             );
 
             route(
@@ -343,24 +343,23 @@ mod tests {
             let deleted = create_profile("MySQL");
             let deleted_id = deleted.id.clone();
             state.set_connections(vec![deleted, create_profile("Other")]);
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &current_id,
                 "postgres-a",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/a",
+                &endpoint::postgres("postgres://localhost/a"),
             );
             let target = ConnectionTarget {
                 id: deleted_id.clone(),
-                dsn: "mysql://user@localhost:3306/b?ssl-mode=PREFERRED".to_string(),
                 name: "MySQL".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("b".to_string()),
+                endpoint: endpoint::mysql(
+                    "mysql://user@localhost:3306/b?ssl-mode=PREFERRED",
+                    Some("b"),
+                ),
             };
             let probe_run_id = state.session.begin_mysql_connection_probe(
                 &target.id,
                 &target.name,
-                &target.dsn,
-                target.database.as_deref(),
+                &target.endpoint,
             );
 
             route(
@@ -391,24 +390,23 @@ mod tests {
             let deleted = create_profile("MySQL");
             let deleted_id = deleted.id.clone();
             state.set_connections(vec![deleted, create_profile("Other")]);
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &current_id,
                 "postgres-a",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/a",
+                &endpoint::postgres("postgres://localhost/a"),
             );
             let target = ConnectionTarget {
                 id: deleted_id.clone(),
-                dsn: "mysql://user@localhost:3306/b?ssl-mode=PREFERRED".to_string(),
                 name: "MySQL".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("b".to_string()),
+                endpoint: endpoint::mysql(
+                    "mysql://user@localhost:3306/b?ssl-mode=PREFERRED",
+                    Some("b"),
+                ),
             };
             let probe_run_id = state.session.begin_mysql_connection_probe(
                 &target.id,
                 &target.name,
-                &target.dsn,
-                target.database.as_deref(),
+                &target.endpoint,
             );
 
             route(
@@ -445,11 +443,10 @@ mod tests {
             let profile = create_profile("Production");
             let profile_id = profile.id.clone();
             state.set_connections(vec![profile]);
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &profile_id,
                 "Production",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/db",
+                &endpoint::postgres("postgres://localhost/db"),
             );
             state
                 .session
@@ -463,7 +460,7 @@ mod tests {
             );
 
             assert!(state.session.active_connection_id().is_none());
-            assert!(state.session.dsn().is_none());
+            assert!(state.session.endpoint().is_none());
             assert!(state.session.connection_state().is_not_connected());
         }
 
@@ -473,11 +470,10 @@ mod tests {
             let profile = create_profile("Production");
             let profile_id = profile.id.clone();
             state.set_connections(vec![profile]);
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &profile_id,
                 "Production",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/db",
+                &endpoint::postgres("postgres://localhost/db"),
             );
             state
                 .session
@@ -547,11 +543,10 @@ mod tests {
             let profile = create_sqlite_profile("Production");
             let profile_id = profile.id.clone();
             state.set_connections(vec![profile]);
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &profile_id,
                 "Production",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/Production.db",
+                &endpoint::sqlite("sqlite:///tmp/Production.db"),
             );
             state
                 .session

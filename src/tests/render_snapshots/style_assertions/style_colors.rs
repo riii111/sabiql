@@ -176,9 +176,7 @@ fn header_status_uses_success_warning_and_error_colors() {
 
     let now = test_instant();
     let mut connected = create_test_state();
-    let _ = connected
-        .session
-        .begin_connecting("postgres://localhost/test");
+    let _ = connected.session.begin_connecting();
     connected
         .session
         .mark_connected(Arc::new(fixtures::sample_metadata()));
@@ -190,9 +188,7 @@ fn header_status_uses_success_warning_and_error_colors() {
     );
 
     let mut loading = create_test_state();
-    let _ = loading
-        .session
-        .begin_connecting("postgres://localhost/test");
+    let _ = loading.session.begin_connecting();
     let loading_buffer = render_and_get_buffer_at(&mut terminal, &mut loading, now);
     assert_header_status_color(
         &loading_buffer,
@@ -213,11 +209,10 @@ fn header_status_uses_success_warning_and_error_colors() {
 #[test]
 fn read_only_header_uses_warning_badge_style() {
     let mut state = postgres_connected_state();
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::new(),
         "test",
-        DatabaseType::PostgreSQL,
-        "postgresql://localhost/test",
+        &endpoint::postgres("postgresql://localhost/test"),
     );
     state.session.enable_read_only();
     let mut terminal = create_test_terminal();

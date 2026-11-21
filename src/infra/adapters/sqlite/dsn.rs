@@ -15,12 +15,12 @@ mod tests {
     use super::*;
     use crate::adapters::DbAdapterRegistry;
     use crate::app::ports::outbound::DsnBuilder;
-    use crate::domain::connection::ConnectionProfile;
+    use crate::domain::connection::{ConnectionEndpoint, ConnectionProfile};
     use rstest::rstest;
 
     fn path_passed_to_adapter(path: &str) -> String {
         let profile = ConnectionProfile::new_sqlite("Local", path).unwrap();
-        let dsn = DbAdapterRegistry::new().build_dsn(&profile);
+        let dsn = DbAdapterRegistry::new().build_dsn(&ConnectionEndpoint::from(&profile.config));
         SqliteAdapter::path_from_dsn(&dsn).unwrap().to_string()
     }
 

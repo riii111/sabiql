@@ -27,12 +27,12 @@ pub(in crate::update) fn smart_er_refresh_fetched(
         return vec![];
     }
     let SmartErRefreshFetched {
-        dsn,
+        endpoint,
         run_id,
         new_metadata,
         signature_snapshot,
     } = fetched;
-    if !state.session.dsn_matches(&dsn) || !state.er_preparation.is_current_run(run_id) {
+    if !state.session.endpoint_matches(&endpoint) || !state.er_preparation.is_current_run(run_id) {
         return vec![];
     }
 

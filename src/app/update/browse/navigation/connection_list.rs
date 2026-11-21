@@ -97,6 +97,7 @@ mod tests {
     use super::*;
     use crate::domain::connection::{ConnectionId, ConnectionProfile, SslMode};
     use crate::services::AppServices;
+    use crate::test_support::endpoint;
     use crate::update::action::{Action, ListTarget};
     use crate::update::reducer::route;
     use std::time::Instant;
@@ -295,7 +296,6 @@ mod tests {
 
     mod confirm_connection_selection {
         use super::*;
-        use crate::domain::DatabaseType;
 
         fn create_test_profile_with_id(name: &str, id: ConnectionId) -> ConnectionProfile {
             ConnectionProfile::with_id_postgres(
@@ -321,11 +321,10 @@ mod tests {
                 create_test_profile_with_id("active", active_id.clone()),
                 create_test_profile_with_id("other", other_id),
             ]);
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &active_id,
                 "active",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/test",
+                &endpoint::postgres("postgres://localhost/test"),
             );
             state.ui.set_connection_list_selection(Some(1));
 
@@ -354,11 +353,10 @@ mod tests {
                 "active",
                 active_id.clone(),
             )]);
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &active_id,
                 "active",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/test",
+                &endpoint::postgres("postgres://localhost/test"),
             );
             state.ui.set_connection_list_selection(Some(0));
 
@@ -396,11 +394,10 @@ mod tests {
                 create_test_profile_with_id("active", active_id.clone()),
                 create_test_profile_with_id("other", other_id),
             ]);
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &active_id,
                 "active",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/test",
+                &endpoint::postgres("postgres://localhost/test"),
             );
             state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(1));
@@ -427,11 +424,10 @@ mod tests {
                 "active",
                 active_id.clone(),
             )]);
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &active_id,
                 "active",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/test",
+                &endpoint::postgres("postgres://localhost/test"),
             );
             state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(0));

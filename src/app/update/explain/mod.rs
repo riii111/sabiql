@@ -16,6 +16,7 @@ mod tests {
     use crate::policy::write::sql_risk::AcknowledgeReason;
     use crate::ports::outbound::AccessMode;
     use crate::services::AppServices;
+    use crate::test_support::endpoint;
     use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
     use crate::update::reducer::{reduce, route};
     use crate::update::test_fixtures;
@@ -167,12 +168,13 @@ mod tests {
             assert!(matches!(
                 &effects[0],
                 Effect::ExecuteExplain {
+                    endpoint,
                     query,
-                    database_type: DatabaseType::MySQL,
                     is_analyze: false,
                     access_mode: AccessMode::ReadOnly,
                     ..
-                } if query == "EXPLAIN FORMAT=TREE SELECT 1"
+                } if endpoint.engine() == DatabaseType::MySQL
+                    && query == "EXPLAIN FORMAT=TREE SELECT 1"
             ));
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
             assert!(
@@ -208,12 +210,13 @@ mod tests {
             assert!(matches!(
                 &effects[0],
                 Effect::ExecuteExplain {
+                    endpoint,
                     query,
-                    database_type: DatabaseType::MySQL,
                     is_analyze: false,
                     access_mode: AccessMode::ReadOnly,
                     ..
-                } if query == "EXPLAIN FORMAT=TREE UPDATE users SET active = TRUE"
+                } if endpoint.engine() == DatabaseType::MySQL
+                    && query == "EXPLAIN FORMAT=TREE UPDATE users SET active = TRUE"
             ));
         }
 
@@ -236,12 +239,13 @@ mod tests {
             assert!(matches!(
                 &effects[0],
                 Effect::ExecuteExplain {
+                    endpoint,
                     query,
-                    database_type: DatabaseType::MySQL,
                     is_analyze: false,
                     access_mode: AccessMode::ReadOnly,
                     ..
-                } if query == "EXPLAIN FORMAT=TREE REPLACE INTO users (id, active) VALUES (1, TRUE)"
+                } if endpoint.engine() == DatabaseType::MySQL
+                    && query == "EXPLAIN FORMAT=TREE REPLACE INTO users (id, active) VALUES (1, TRUE)"
             ));
         }
 
@@ -264,12 +268,13 @@ mod tests {
             assert!(matches!(
                 &effects[0],
                 Effect::ExecuteExplain {
+                    endpoint,
                     query,
-                    database_type: DatabaseType::MySQL,
                     is_analyze: false,
                     access_mode: AccessMode::ReadOnly,
                     ..
-                } if query == "EXPLAIN FORMAT=TREE SELECT * FROM users FOR UPDATE"
+                } if endpoint.engine() == DatabaseType::MySQL
+                    && query == "EXPLAIN FORMAT=TREE SELECT * FROM users FOR UPDATE"
             ));
         }
 
@@ -655,12 +660,13 @@ mod tests {
             assert!(matches!(
                 &effects[0],
                 Effect::ExecuteExplain {
+                    endpoint,
                     query,
-                    database_type: DatabaseType::MySQL,
                     is_analyze: true,
                     access_mode: AccessMode::ReadOnly,
                     ..
-                } if query == "EXPLAIN ANALYZE FORMAT=TREE SELECT 1"
+                } if endpoint.engine() == DatabaseType::MySQL
+                    && query == "EXPLAIN ANALYZE FORMAT=TREE SELECT 1"
             ));
         }
 
@@ -1170,12 +1176,10 @@ mod tests {
 
             let id = state.session.active_connection_id().cloned().unwrap();
             let name = state.session.active_connection_name().unwrap().to_string();
-            state.session.activate_connection_with_target(
+            state.session.activate_connection(
                 &id,
                 &name,
-                DatabaseType::MySQL,
-                "mysql://test",
-                Some("analytics"),
+                &endpoint::mysql("mysql://test", Some("analytics")),
             );
 
             reduce_explain(
@@ -1287,12 +1291,10 @@ mod tests {
 
             let id = state.session.active_connection_id().cloned().unwrap();
             let name = state.session.active_connection_name().unwrap().to_string();
-            state.session.activate_connection_with_target(
+            state.session.activate_connection(
                 &id,
                 &name,
-                DatabaseType::MySQL,
-                "mysql://test",
-                Some("analytics"),
+                &endpoint::mysql("mysql://test", Some("analytics")),
             );
 
             reduce_explain(

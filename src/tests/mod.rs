@@ -58,8 +58,18 @@ mod cli_sqlite_startup {
     use sabiql_app::cmd::cli_sqlite::{activate_cli_sqlite_connection, resolve_cli_sqlite_target};
     use sabiql_app::model::app_state::AppState;
     use sabiql_app::ports::outbound::AccessMode;
+    use sabiql_domain::connection::ConnectionEndpoint;
     use sabiql_infra::adapters::{FsSqlitePathValidator, SqliteAdapter};
     use tempfile::tempdir;
+
+    fn session_sqlite_dsn(state: &AppState) -> String {
+        match state.session.endpoint().map(AsRef::as_ref) {
+            Some(ConnectionEndpoint::SQLite(config)) => format!("sqlite://{}", config.path()),
+            Some(ConnectionEndpoint::PostgreSQL(_) | ConnectionEndpoint::MySQL(_)) | None => {
+                panic!("CLI activation should keep a SQLite endpoint")
+            }
+        }
+    }
 
     #[test]
     fn resolves_existing_sqlite_file() {
@@ -123,7 +133,7 @@ mod cli_sqlite_startup {
             error.to_string(),
             "Cannot use the canonical SQLite database path: SQLite database path contains unsupported characters"
         );
-        assert_eq!(state.session.dsn(), None);
+        assert_eq!(state.session.endpoint(), None);
     }
 
     #[cfg(unix)]
@@ -177,7 +187,7 @@ mod cli_sqlite_startup {
             activate_cli_sqlite_connection(&mut state, &target, &FsSqlitePathValidator).unwrap();
             (
                 state.session.active_connection_id().cloned().unwrap(),
-                state.session.dsn().unwrap().to_owned(),
+                session_sqlite_dsn(&state),
                 state.session.active_connection_name().unwrap().to_owned(),
                 state,
             )
@@ -231,7 +241,7 @@ mod cli_sqlite_startup {
             .unwrap();
         assert_eq!(unchanged_b.display_value_at(0, 1).as_deref(), Some("B"));
 
-        assert_eq!(symlinked.3.session.dsn(), Some(expected_dsn.as_str()));
+        assert_eq!(session_sqlite_dsn(&symlinked.3), expected_dsn);
     }
 }
 

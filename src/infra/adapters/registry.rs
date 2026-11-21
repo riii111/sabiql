@@ -2,7 +2,10 @@ use crate::app::ports::outbound::{
     AccessMode, DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, MySqlConnectionProbe,
     MySqlConnectionProbeResult, QueryExecutor, SqliteDiagnosticsProvider,
 };
-use crate::domain::connection::{ConnectionProfile, DatabaseType};
+use crate::domain::connection::{
+    ConnectionEndpoint, DatabaseType, MySqlConnectionConfig, PostgresEndpoint,
+    SqliteConnectionConfig,
+};
 use crate::domain::{
     DatabaseMetadata, DiagnosticField, QueryResult, SqliteDiagnosticsSnapshot, Table,
     TableSignatureSnapshot, WriteExecutionResult,
@@ -10,8 +13,8 @@ use crate::domain::{
 use async_trait::async_trait;
 use std::path::PathBuf;
 
-use super::mysql::MySqlAdapter;
-use super::postgres::PostgresAdapter;
+use super::mysql::{MySqlAdapter, build_mysql_dsn};
+use super::postgres::{PostgresAdapter, postgres_conninfo};
 use super::sqlite::SqliteAdapter;
 
 pub struct DbAdapterRegistry {
@@ -35,78 +38,96 @@ impl DbAdapterRegistry {
 }
 
 impl DsnBuilder for DbAdapterRegistry {
-    fn build_dsn(&self, profile: &ConnectionProfile) -> String {
-        match profile.database_type() {
-            DatabaseType::PostgreSQL => self.postgres.build_dsn(profile),
-            DatabaseType::SQLite => {
-                let path = &profile
-                    .sqlite_config()
-                    .expect("SQLite profile requires SQLite config")
-                    .path();
-                format!("sqlite://{path}")
-            }
-            DatabaseType::MySQL => self.mysql.build_dsn(profile),
+    fn build_dsn(&self, endpoint: &ConnectionEndpoint) -> String {
+        match self.route(endpoint) {
+            AdapterRoute::PostgreSQL(_, endpoint) => postgres_conninfo(endpoint),
+            AdapterRoute::SQLite(_, config) => sqlite_dsn(config),
+            AdapterRoute::MySQL(_, config) => build_mysql_dsn(config),
         }
     }
 }
 
 #[async_trait]
 impl MetadataProvider for DbAdapterRegistry {
-    async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
-        match self.route(dsn)? {
-            AdapterRoute::PostgreSQL(adapter, dsn) => adapter.fetch_metadata(dsn).await,
-            AdapterRoute::SQLite(adapter, dsn) => adapter.fetch_metadata(dsn).await,
-            AdapterRoute::MySQL(adapter, dsn) => adapter.fetch_metadata(dsn).await,
+    async fn fetch_metadata(
+        &self,
+        endpoint: &ConnectionEndpoint,
+    ) -> Result<DatabaseMetadata, DbOperationError> {
+        match self.route(endpoint) {
+            AdapterRoute::PostgreSQL(adapter, endpoint) => {
+                adapter.fetch_metadata(&postgres_conninfo(endpoint)).await
+            }
+            AdapterRoute::SQLite(adapter, config) => {
+                adapter.fetch_metadata(&sqlite_dsn(config)).await
+            }
+            AdapterRoute::MySQL(adapter, config) => {
+                adapter.fetch_metadata(&build_mysql_dsn(config)).await
+            }
         }
     }
 
-    async fn fetch_effective_user(&self, dsn: &str) -> Result<Option<String>, DbOperationError> {
-        match self.route(dsn)? {
-            AdapterRoute::PostgreSQL(adapter, dsn) => adapter.fetch_effective_user(dsn).await,
+    async fn fetch_effective_user(
+        &self,
+        endpoint: &ConnectionEndpoint,
+    ) -> Result<Option<String>, DbOperationError> {
+        match self.route(endpoint) {
+            AdapterRoute::PostgreSQL(adapter, endpoint) => {
+                adapter
+                    .fetch_effective_user(&postgres_conninfo(endpoint))
+                    .await
+            }
             AdapterRoute::SQLite(..) => Ok(None),
-            AdapterRoute::MySQL(adapter, dsn) => adapter.fetch_effective_user(dsn).await,
+            AdapterRoute::MySQL(adapter, config) => {
+                adapter.fetch_effective_user(&build_mysql_dsn(config)).await
+            }
         }
     }
 
     async fn fetch_table_detail(
         &self,
-        dsn: &str,
+        endpoint: &ConnectionEndpoint,
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
-        match self.route(dsn)? {
-            AdapterRoute::PostgreSQL(adapter, dsn) => {
-                adapter.fetch_table_detail(dsn, schema, table).await
+        match self.route(endpoint) {
+            AdapterRoute::PostgreSQL(adapter, endpoint) => {
+                adapter
+                    .fetch_table_detail(&postgres_conninfo(endpoint), schema, table)
+                    .await
             }
-            AdapterRoute::SQLite(adapter, dsn) => {
-                adapter.fetch_table_detail(dsn, schema, table).await
+            AdapterRoute::SQLite(adapter, config) => {
+                adapter
+                    .fetch_table_detail(&sqlite_dsn(config), schema, table)
+                    .await
             }
-            AdapterRoute::MySQL(adapter, dsn) => {
-                adapter.fetch_table_detail(dsn, schema, table).await
+            AdapterRoute::MySQL(adapter, config) => {
+                adapter
+                    .fetch_table_detail(&build_mysql_dsn(config), schema, table)
+                    .await
             }
         }
     }
 
     async fn fetch_table_columns_and_fks(
         &self,
-        dsn: &str,
+        endpoint: &ConnectionEndpoint,
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
-        match self.route(dsn)? {
-            AdapterRoute::PostgreSQL(adapter, dsn) => {
+        match self.route(endpoint) {
+            AdapterRoute::PostgreSQL(adapter, endpoint) => {
                 adapter
-                    .fetch_table_columns_and_fks(dsn, schema, table)
+                    .fetch_table_columns_and_fks(&postgres_conninfo(endpoint), schema, table)
                     .await
             }
-            AdapterRoute::SQLite(adapter, dsn) => {
+            AdapterRoute::SQLite(adapter, config) => {
                 adapter
-                    .fetch_table_columns_and_fks(dsn, schema, table)
+                    .fetch_table_columns_and_fks(&sqlite_dsn(config), schema, table)
                     .await
             }
-            AdapterRoute::MySQL(adapter, dsn) => {
+            AdapterRoute::MySQL(adapter, config) => {
                 adapter
-                    .fetch_table_columns_and_fks(dsn, schema, table)
+                    .fetch_table_columns_and_fks(&build_mysql_dsn(config), schema, table)
                     .await
             }
         }
@@ -114,12 +135,22 @@ impl MetadataProvider for DbAdapterRegistry {
 
     async fn fetch_table_signatures(
         &self,
-        dsn: &str,
+        endpoint: &ConnectionEndpoint,
     ) -> Result<TableSignatureSnapshot, DbOperationError> {
-        match self.route(dsn)? {
-            AdapterRoute::PostgreSQL(adapter, dsn) => adapter.fetch_table_signatures(dsn).await,
-            AdapterRoute::SQLite(adapter, dsn) => adapter.fetch_table_signatures(dsn).await,
-            AdapterRoute::MySQL(adapter, dsn) => adapter.fetch_table_signatures(dsn).await,
+        match self.route(endpoint) {
+            AdapterRoute::PostgreSQL(adapter, endpoint) => {
+                adapter
+                    .fetch_table_signatures(&postgres_conninfo(endpoint))
+                    .await
+            }
+            AdapterRoute::SQLite(adapter, config) => {
+                adapter.fetch_table_signatures(&sqlite_dsn(config)).await
+            }
+            AdapterRoute::MySQL(adapter, config) => {
+                adapter
+                    .fetch_table_signatures(&build_mysql_dsn(config))
+                    .await
+            }
         }
     }
 }
@@ -128,26 +159,26 @@ impl MetadataProvider for DbAdapterRegistry {
 impl QueryExecutor for DbAdapterRegistry {
     async fn execute_preview(
         &self,
-        dsn: &str,
+        endpoint: &ConnectionEndpoint,
         schema: &str,
         table: &str,
         limit: usize,
         offset: usize,
     ) -> Result<QueryResult, DbOperationError> {
-        match self.route(dsn)? {
-            AdapterRoute::PostgreSQL(adapter, dsn) => {
+        match self.route(endpoint) {
+            AdapterRoute::PostgreSQL(adapter, endpoint) => {
                 adapter
-                    .execute_preview(dsn, schema, table, limit, offset)
+                    .execute_preview(&postgres_conninfo(endpoint), schema, table, limit, offset)
                     .await
             }
-            AdapterRoute::SQLite(adapter, dsn) => {
+            AdapterRoute::SQLite(adapter, config) => {
                 adapter
-                    .execute_preview(dsn, schema, table, limit, offset)
+                    .execute_preview(&sqlite_dsn(config), schema, table, limit, offset)
                     .await
             }
-            AdapterRoute::MySQL(adapter, dsn) => {
+            AdapterRoute::MySQL(adapter, config) => {
                 adapter
-                    .execute_preview(dsn, schema, table, limit, offset)
+                    .execute_preview(&build_mysql_dsn(config), schema, table, limit, offset)
                     .await
             }
         }
@@ -155,65 +186,88 @@ impl QueryExecutor for DbAdapterRegistry {
 
     async fn execute_adhoc(
         &self,
-        dsn: &str,
+        endpoint: &ConnectionEndpoint,
         query: &str,
         access_mode: AccessMode,
     ) -> Result<QueryResult, DbOperationError> {
-        match self.route(dsn)? {
-            AdapterRoute::PostgreSQL(adapter, dsn) => {
-                adapter.execute_adhoc(dsn, query, access_mode).await
+        match self.route(endpoint) {
+            AdapterRoute::PostgreSQL(adapter, endpoint) => {
+                adapter
+                    .execute_adhoc(&postgres_conninfo(endpoint), query, access_mode)
+                    .await
             }
-            AdapterRoute::SQLite(adapter, dsn) => {
-                adapter.execute_adhoc(dsn, query, access_mode).await
+            AdapterRoute::SQLite(adapter, config) => {
+                adapter
+                    .execute_adhoc(&sqlite_dsn(config), query, access_mode)
+                    .await
             }
-            AdapterRoute::MySQL(adapter, dsn) => {
-                adapter.execute_adhoc(dsn, query, access_mode).await
+            AdapterRoute::MySQL(adapter, config) => {
+                adapter
+                    .execute_adhoc(&build_mysql_dsn(config), query, access_mode)
+                    .await
             }
         }
     }
 
     async fn execute_write(
         &self,
-        dsn: &str,
+        endpoint: &ConnectionEndpoint,
         query: &str,
         access_mode: AccessMode,
     ) -> Result<WriteExecutionResult, DbOperationError> {
-        match self.route(dsn)? {
-            AdapterRoute::PostgreSQL(adapter, dsn) => {
-                adapter.execute_write(dsn, query, access_mode).await
+        match self.route(endpoint) {
+            AdapterRoute::PostgreSQL(adapter, endpoint) => {
+                adapter
+                    .execute_write(&postgres_conninfo(endpoint), query, access_mode)
+                    .await
             }
-            AdapterRoute::SQLite(adapter, dsn) => {
-                adapter.execute_write(dsn, query, access_mode).await
+            AdapterRoute::SQLite(adapter, config) => {
+                adapter
+                    .execute_write(&sqlite_dsn(config), query, access_mode)
+                    .await
             }
-            AdapterRoute::MySQL(adapter, dsn) => {
-                adapter.execute_write(dsn, query, access_mode).await
+            AdapterRoute::MySQL(adapter, config) => {
+                adapter
+                    .execute_write(&build_mysql_dsn(config), query, access_mode)
+                    .await
             }
         }
     }
 
     async fn export_to_csv(
         &self,
-        dsn: &str,
+        endpoint: &ConnectionEndpoint,
         query: &str,
         file_name: &str,
     ) -> Result<PathBuf, DbOperationError> {
-        match self.route(dsn)? {
-            AdapterRoute::PostgreSQL(adapter, dsn) => {
-                adapter.export_to_csv(dsn, query, file_name).await
+        match self.route(endpoint) {
+            AdapterRoute::PostgreSQL(adapter, endpoint) => {
+                adapter
+                    .export_to_csv(&postgres_conninfo(endpoint), query, file_name)
+                    .await
             }
-            AdapterRoute::SQLite(adapter, dsn) => {
-                adapter.export_to_csv(dsn, query, file_name).await
+            AdapterRoute::SQLite(adapter, config) => {
+                adapter
+                    .export_to_csv(&sqlite_dsn(config), query, file_name)
+                    .await
             }
-            AdapterRoute::MySQL(adapter, dsn) => adapter.export_to_csv(dsn, query, file_name).await,
+            AdapterRoute::MySQL(adapter, config) => {
+                adapter
+                    .export_to_csv(&build_mysql_dsn(config), query, file_name)
+                    .await
+            }
         }
     }
 }
 
 #[async_trait]
 impl MySqlConnectionProbe for DbAdapterRegistry {
-    async fn probe(&self, dsn: &str) -> Result<MySqlConnectionProbeResult, DbOperationError> {
-        match self.route(dsn)? {
-            AdapterRoute::MySQL(adapter, dsn) => adapter.probe(dsn).await,
+    async fn probe(
+        &self,
+        endpoint: &ConnectionEndpoint,
+    ) -> Result<MySqlConnectionProbeResult, DbOperationError> {
+        match self.route(endpoint) {
+            AdapterRoute::MySQL(adapter, config) => adapter.probe(&build_mysql_dsn(config)).await,
             AdapterRoute::PostgreSQL(..) | AdapterRoute::SQLite(..) => {
                 Err(DbOperationError::UnsupportedOperation(
                     "MySQL connection probe requires a MySQL connection".to_string(),
@@ -227,10 +281,12 @@ impl MySqlConnectionProbe for DbAdapterRegistry {
 impl SqliteDiagnosticsProvider for DbAdapterRegistry {
     async fn fetch_core_diagnostics(
         &self,
-        dsn: &str,
+        endpoint: &ConnectionEndpoint,
     ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {
-        match self.route(dsn)? {
-            AdapterRoute::SQLite(adapter, dsn) => adapter.fetch_core_diagnostics(dsn).await,
+        match self.route(endpoint) {
+            AdapterRoute::SQLite(adapter, config) => {
+                adapter.fetch_core_diagnostics(&sqlite_dsn(config)).await
+            }
             AdapterRoute::PostgreSQL(..) | AdapterRoute::MySQL(..) => {
                 Err(DbOperationError::UnsupportedOperation(
                     "SQLite diagnostics require a SQLite connection".to_string(),
@@ -239,13 +295,12 @@ impl SqliteDiagnosticsProvider for DbAdapterRegistry {
         }
     }
 
-    async fn fetch_quick_check(&self, dsn: &str) -> DiagnosticField {
-        match self.route(dsn) {
-            Ok(AdapterRoute::SQLite(adapter, dsn)) => adapter.fetch_quick_check(dsn).await,
-            Ok(AdapterRoute::PostgreSQL(..) | AdapterRoute::MySQL(..)) => {
-                DiagnosticField::Unavailable
+    async fn fetch_quick_check(&self, endpoint: &ConnectionEndpoint) -> DiagnosticField {
+        match self.route(endpoint) {
+            AdapterRoute::SQLite(adapter, config) => {
+                adapter.fetch_quick_check(&sqlite_dsn(config)).await
             }
-            Err(error) => DiagnosticField::err(error.masked_details()),
+            AdapterRoute::PostgreSQL(..) | AdapterRoute::MySQL(..) => DiagnosticField::Unavailable,
         }
     }
 }
@@ -261,9 +316,9 @@ impl DdlGenerator for DbAdapterRegistry {
 }
 
 enum AdapterRoute<'a> {
-    PostgreSQL(&'a PostgresAdapter, &'a str),
-    SQLite(&'a SqliteAdapter, &'a str),
-    MySQL(&'a MySqlAdapter, &'a str),
+    PostgreSQL(&'a PostgresAdapter, &'a PostgresEndpoint),
+    SQLite(&'a SqliteAdapter, &'a SqliteConnectionConfig),
+    MySQL(&'a MySqlAdapter, &'a MySqlConnectionConfig),
 }
 
 impl DbAdapterRegistry {
@@ -272,38 +327,19 @@ impl DbAdapterRegistry {
         clippy::match_wildcard_for_single_variants,
         reason = "Every engine must name its adapter so a new engine fails to compile instead of silently reaching another engine's adapter."
     )]
-    fn route<'a>(&'a self, dsn: &'a str) -> Result<AdapterRoute<'a>, DbOperationError> {
-        match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::PostgreSQL => Ok(AdapterRoute::PostgreSQL(&self.postgres, dsn)),
-            DatabaseType::SQLite => Ok(AdapterRoute::SQLite(&self.sqlite, dsn)),
-            DatabaseType::MySQL => Ok(AdapterRoute::MySQL(&self.mysql, dsn)),
+    fn route<'a>(&'a self, endpoint: &'a ConnectionEndpoint) -> AdapterRoute<'a> {
+        match endpoint {
+            ConnectionEndpoint::PostgreSQL(endpoint) => {
+                AdapterRoute::PostgreSQL(&self.postgres, endpoint)
+            }
+            ConnectionEndpoint::SQLite(config) => AdapterRoute::SQLite(&self.sqlite, config),
+            ConnectionEndpoint::MySQL(config) => AdapterRoute::MySQL(&self.mysql, config),
         }
-    }
-
-    fn db_type_from_dsn(dsn: &str) -> Result<DatabaseType, DbOperationError> {
-        if dsn.starts_with("sqlite://") {
-            return Ok(DatabaseType::SQLite);
-        }
-        if dsn.starts_with("mysql://") {
-            return Ok(DatabaseType::MySQL);
-        }
-        if dsn.starts_with("postgres://") || is_postgres_conninfo_dsn(dsn) {
-            return Ok(DatabaseType::PostgreSQL);
-        }
-        Err(DbOperationError::ConnectionFailed(format!(
-            "Unsupported database DSN scheme: {dsn}"
-        )))
     }
 }
 
-fn is_postgres_conninfo_dsn(dsn: &str) -> bool {
-    let Some((key, _)) = dsn.trim_start().split_once('=') else {
-        return false;
-    };
-    matches!(
-        key.trim(),
-        "host" | "hostaddr" | "port" | "dbname" | "user" | "password" | "sslmode" | "service"
-    )
+fn sqlite_dsn(config: &SqliteConnectionConfig) -> String {
+    format!("sqlite://{}", config.path())
 }
 
 #[cfg(test)]
@@ -313,7 +349,9 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
-    use crate::domain::connection::SslMode;
+    use crate::domain::connection::{
+        ConnectionProfile, MySqlSslMode, PostgresConnectionConfig, SslMode,
+    };
     use crate::domain::{Column, ColumnAttributes, SqlitePathError};
 
     fn make_table() -> Table {
@@ -337,6 +375,44 @@ mod tests {
         }
     }
 
+    fn sqlite_endpoint(path: &str) -> ConnectionEndpoint {
+        ConnectionEndpoint::SQLite(SqliteConnectionConfig::new(path).unwrap())
+    }
+
+    fn make_sqlite_endpoint(sql: &str) -> (tempfile::TempDir, ConnectionEndpoint) {
+        let (dir, dsn) = test_support::make_sqlite_db(sql);
+        let path = dsn
+            .strip_prefix("sqlite://")
+            .expect("SQLite fixture DSN uses the sqlite scheme");
+        (dir, sqlite_endpoint(path))
+    }
+
+    fn postgres_endpoint() -> ConnectionEndpoint {
+        ConnectionEndpoint::PostgreSQL(PostgresEndpoint::Settings(PostgresConnectionConfig::new(
+            "localhost",
+            5432,
+            "app",
+            "",
+            "",
+            SslMode::Prefer,
+        )))
+    }
+
+    fn mysql_endpoint(
+        database: Option<&str>,
+        username: &str,
+        password: &str,
+    ) -> ConnectionEndpoint {
+        ConnectionEndpoint::MySQL(MySqlConnectionConfig::new(
+            "localhost",
+            3306,
+            database.map(str::to_string),
+            username,
+            password,
+            MySqlSslMode::Preferred,
+        ))
+    }
+
     #[test]
     fn builds_postgres_dsn_from_postgres_profile() {
         let registry = DbAdapterRegistry::new();
@@ -351,7 +427,7 @@ mod tests {
         )
         .unwrap();
 
-        let dsn = registry.build_dsn(&profile);
+        let dsn = registry.build_dsn(&ConnectionEndpoint::from(&profile.config));
 
         assert!(dsn.starts_with("host='localhost'"));
     }
@@ -361,7 +437,7 @@ mod tests {
         let registry = DbAdapterRegistry::new();
         let profile = ConnectionProfile::new_sqlite("Local", "/tmp/app.db").unwrap();
 
-        let dsn = registry.build_dsn(&profile);
+        let dsn = registry.build_dsn(&ConnectionEndpoint::from(&profile.config));
 
         assert_eq!(dsn, "sqlite:///tmp/app.db");
     }
@@ -383,7 +459,7 @@ mod tests {
     async fn mysql_dsn_requires_a_selected_database_for_metadata() {
         let registry = DbAdapterRegistry::new();
 
-        let result = registry.fetch_metadata("mysql://localhost").await;
+        let result = registry.fetch_metadata(&mysql_endpoint(None, "", "")).await;
 
         assert!(matches!(
             result,
@@ -391,23 +467,12 @@ mod tests {
         ));
     }
 
-    #[rstest]
-    #[case::sqlite_url("sqlite:///tmp/app.db", Some(DatabaseType::SQLite))]
-    #[case::mysql_url("mysql://localhost/db", Some(DatabaseType::MySQL))]
-    #[case::postgres_url("postgres://localhost/db", Some(DatabaseType::PostgreSQL))]
-    #[case::postgres_conninfo("host='localhost' dbname='db'", Some(DatabaseType::PostgreSQL))]
-    #[case::unsupported_scheme("redis://localhost", None)]
-    fn classifies_named_dsn_inputs(#[case] dsn: &str, #[case] expected: Option<DatabaseType>) {
-        assert_eq!(DbAdapterRegistry::db_type_from_dsn(dsn).ok(), expected);
-    }
-
     #[tokio::test]
     async fn sqlite_metadata_is_dispatched_to_sqlite_adapter() {
-        let (_dir, dsn) =
-            test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let (_dir, endpoint) = make_sqlite_endpoint("CREATE TABLE users(id INTEGER PRIMARY KEY);");
         let registry = DbAdapterRegistry::new();
 
-        let metadata = registry.fetch_metadata(&dsn).await.unwrap();
+        let metadata = registry.fetch_metadata(&endpoint).await.unwrap();
 
         assert_eq!(metadata.table_summaries[0].qualified_name(), "main.users");
     }
@@ -416,10 +481,10 @@ mod tests {
     async fn sqlite_metadata_for_missing_file_fails_without_creating_the_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("missing.db");
-        let dsn = format!("sqlite://{}", path.display());
+        let endpoint = sqlite_endpoint(path.to_str().unwrap());
         let registry = DbAdapterRegistry::new();
 
-        let result = registry.fetch_metadata(&dsn).await;
+        let result = registry.fetch_metadata(&endpoint).await;
 
         assert!(matches!(
             result,
@@ -431,11 +496,10 @@ mod tests {
 
     #[tokio::test]
     async fn sqlite_effective_user_dispatch_preserves_unknown_user() {
-        let (_dir, dsn) =
-            test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let (_dir, endpoint) = make_sqlite_endpoint("CREATE TABLE users(id INTEGER PRIMARY KEY);");
         let registry = DbAdapterRegistry::new();
 
-        let effective_user = registry.fetch_effective_user(&dsn).await.unwrap();
+        let effective_user = registry.fetch_effective_user(&endpoint).await.unwrap();
 
         assert_eq!(effective_user, None);
     }
@@ -445,7 +509,7 @@ mod tests {
         let registry = DbAdapterRegistry::new();
 
         let error = registry
-            .fetch_effective_user("mysql://app:header-secret%01@localhost/app")
+            .fetch_effective_user(&mysql_endpoint(Some("app"), "app", "header-secret\u{1}"))
             .await
             .unwrap_err();
 
@@ -456,23 +520,21 @@ mod tests {
 
     #[tokio::test]
     async fn sqlite_table_signatures_are_dispatched_to_sqlite_adapter() {
-        let (_dir, dsn) =
-            test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let (_dir, endpoint) = make_sqlite_endpoint("CREATE TABLE users(id INTEGER PRIMARY KEY);");
         let registry = DbAdapterRegistry::new();
 
-        let signatures = registry.fetch_table_signatures(&dsn).await.unwrap();
+        let signatures = registry.fetch_table_signatures(&endpoint).await.unwrap();
 
         assert_eq!(signatures.signatures[0].qualified_name(), "main.users");
     }
 
     #[tokio::test]
     async fn sqlite_table_detail_is_dispatched_to_sqlite_adapter() {
-        let (_dir, dsn) =
-            test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let (_dir, endpoint) = make_sqlite_endpoint("CREATE TABLE users(id INTEGER PRIMARY KEY);");
         let registry = DbAdapterRegistry::new();
 
         let detail = registry
-            .fetch_table_detail(&dsn, "main", "users")
+            .fetch_table_detail(&endpoint, "main", "users")
             .await
             .unwrap();
 
@@ -482,12 +544,11 @@ mod tests {
 
     #[tokio::test]
     async fn sqlite_query_execution_is_dispatched_to_sqlite_adapter() {
-        let (_dir, dsn) =
-            test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let (_dir, endpoint) = make_sqlite_endpoint("CREATE TABLE users(id INTEGER PRIMARY KEY);");
         let registry = DbAdapterRegistry::new();
 
         let result = registry
-            .execute_adhoc(&dsn, "SELECT 1 AS value", AccessMode::ReadOnly)
+            .execute_adhoc(&endpoint, "SELECT 1 AS value", AccessMode::ReadOnly)
             .await
             .unwrap();
 
@@ -497,12 +558,11 @@ mod tests {
 
     #[tokio::test]
     async fn sqlite_columns_request_is_dispatched_to_sqlite_adapter() {
-        let (_dir, dsn) =
-            test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let (_dir, endpoint) = make_sqlite_endpoint("CREATE TABLE users(id INTEGER PRIMARY KEY);");
         let registry = DbAdapterRegistry::new();
 
         let detail = registry
-            .fetch_table_columns_and_fks(&dsn, "main", "users")
+            .fetch_table_columns_and_fks(&endpoint, "main", "users")
             .await
             .unwrap();
 
@@ -512,12 +572,11 @@ mod tests {
 
     #[tokio::test]
     async fn sqlite_diagnostics_are_dispatched_to_sqlite_adapter() {
-        let (_dir, dsn) =
-            test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let (_dir, endpoint) = make_sqlite_endpoint("CREATE TABLE users(id INTEGER PRIMARY KEY);");
         let registry = DbAdapterRegistry::new();
 
-        let snapshot = registry.fetch_core_diagnostics(&dsn).await.unwrap();
-        let quick_check = registry.fetch_quick_check(&dsn).await;
+        let snapshot = registry.fetch_core_diagnostics(&endpoint).await.unwrap();
+        let quick_check = registry.fetch_quick_check(&endpoint).await;
 
         assert!(snapshot.sqlite_version.is_ok());
         assert!(
@@ -528,13 +587,13 @@ mod tests {
     }
 
     #[rstest]
-    #[case::postgres("host='localhost' dbname='app'")]
-    #[case::mysql("mysql://localhost/app")]
+    #[case::postgres(postgres_endpoint())]
+    #[case::mysql(mysql_endpoint(Some("app"), "", ""))]
     #[tokio::test]
-    async fn sqlite_core_diagnostics_reject_other_engines(#[case] dsn: &str) {
+    async fn sqlite_core_diagnostics_reject_other_engines(#[case] endpoint: ConnectionEndpoint) {
         let registry = DbAdapterRegistry::new();
 
-        let result = registry.fetch_core_diagnostics(dsn).await;
+        let result = registry.fetch_core_diagnostics(&endpoint).await;
 
         assert!(matches!(
             result,
@@ -543,13 +602,15 @@ mod tests {
     }
 
     #[rstest]
-    #[case::postgres("host='localhost' dbname='app'")]
-    #[case::mysql("mysql://localhost/app")]
+    #[case::postgres(postgres_endpoint())]
+    #[case::mysql(mysql_endpoint(Some("app"), "", ""))]
     #[tokio::test]
-    async fn sqlite_quick_check_is_unavailable_for_other_engines(#[case] dsn: &str) {
+    async fn sqlite_quick_check_is_unavailable_for_other_engines(
+        #[case] endpoint: ConnectionEndpoint,
+    ) {
         let registry = DbAdapterRegistry::new();
 
-        let quick_check = registry.fetch_quick_check(dsn).await;
+        let quick_check = registry.fetch_quick_check(&endpoint).await;
 
         assert_eq!(quick_check, DiagnosticField::Unavailable);
     }
@@ -559,7 +620,7 @@ mod tests {
         let registry = DbAdapterRegistry::new();
 
         let error = registry
-            .probe("mysql://app:probe-secret%01@localhost/app")
+            .probe(&mysql_endpoint(Some("app"), "app", "probe-secret\u{1}"))
             .await
             .unwrap_err();
 
@@ -569,13 +630,13 @@ mod tests {
     }
 
     #[rstest]
-    #[case::postgres("host='localhost' dbname='app'")]
-    #[case::sqlite("sqlite:///tmp/app.db")]
+    #[case::postgres(postgres_endpoint())]
+    #[case::sqlite(sqlite_endpoint("/tmp/app.db"))]
     #[tokio::test]
-    async fn mysql_probe_rejects_other_engines(#[case] dsn: &str) {
+    async fn mysql_probe_rejects_other_engines(#[case] endpoint: ConnectionEndpoint) {
         let registry = DbAdapterRegistry::new();
 
-        let result = registry.probe(dsn).await;
+        let result = registry.probe(&endpoint).await;
 
         assert!(matches!(
             result,

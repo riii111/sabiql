@@ -496,7 +496,8 @@ mod tests {
     }
 
     mod connection_argument {
-        use crate::domain::connection::{ConnectionProfile, ServiceEntry, SslMode};
+        use crate::adapters::postgres::postgres_conninfo;
+        use crate::domain::connection::{ConnectionProfile, PostgresEndpoint, SslMode};
 
         use super::super::PostgresAdapter;
 
@@ -532,12 +533,10 @@ mod tests {
 
         #[test]
         fn service_connections_pass_the_service_name_as_the_first_argument() {
-            let entry = ServiceEntry {
-                service_name: "my service".to_string(),
-            };
+            let endpoint = PostgresEndpoint::Service("my service".to_string());
 
             assert_eq!(
-                first_psql_argument(&entry.to_string()),
+                first_psql_argument(&postgres_conninfo(&endpoint)),
                 "service=my service"
             );
         }

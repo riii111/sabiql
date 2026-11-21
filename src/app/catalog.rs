@@ -254,6 +254,7 @@ mod tests {
     use crate::model::sql_editor::modal::SqlModalTab;
     use crate::policy::FeatureRequirement;
     use crate::test_support;
+    use crate::test_support::endpoint;
     use std::sync::Arc;
 
     fn row_descriptions(document: &HelpDocument) -> Vec<&str> {
@@ -299,11 +300,10 @@ mod tests {
     fn normal_help_references_commands_and_conditional_navigation() {
         for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
             let mut state = AppState::new("test".to_string());
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "database",
-                DatabaseType::PostgreSQL,
-                "postgres://test",
+                &endpoint::for_engine(DatabaseType::PostgreSQL, "postgres://test"),
             );
             state.settings.load_keymap_preset(preset);
             let context = KeyContext::from_state(&state);
@@ -354,11 +354,10 @@ mod tests {
         }
 
         let mut sqlite = AppState::new("test".to_string());
-        sqlite.session.activate_connection_with_dsn(
+        sqlite.session.activate_connection(
             &ConnectionId::new(),
             "sqlite",
-            DatabaseType::SQLite,
-            "sqlite:///tmp/test.db",
+            &endpoint::for_engine(DatabaseType::SQLite, "sqlite:///tmp/test.db"),
         );
         let document = HelpDocument::new(KeyContext::from_state(&sqlite), "", 0);
         assert!(
@@ -394,11 +393,10 @@ mod tests {
                 .any(|row| row.description() == "Reload metadata")
         );
 
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "database",
-            DatabaseType::PostgreSQL,
-            "postgres://test",
+            &endpoint::for_engine(DatabaseType::PostgreSQL, "postgres://test"),
         );
         let document = HelpDocument::new(KeyContext::from_state(&state), "", 0);
         assert!(
@@ -448,11 +446,10 @@ mod tests {
         }
 
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "database",
-            DatabaseType::PostgreSQL,
-            "postgres://test",
+            &endpoint::for_engine(DatabaseType::PostgreSQL, "postgres://test"),
         );
         press(&mut state, Key::Char('?'));
         let document = HelpDocument::from_state(&state);
@@ -513,11 +510,10 @@ mod tests {
             DatabaseType::PostgreSQL => ("public", "users", "postgres://localhost/test"),
         };
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "database",
-            database_type,
-            dsn,
+            &endpoint::for_engine(database_type, dsn),
         );
         state
             .query
@@ -682,11 +678,10 @@ mod tests {
     #[test]
     fn origin_from_state_maps_sql_plan_and_json_search() {
         let mut sql_state = AppState::new("test".to_string());
-        sql_state.session.activate_connection_with_dsn(
+        sql_state.session.activate_connection(
             &ConnectionId::new(),
             "database",
-            DatabaseType::PostgreSQL,
-            "postgres://localhost/test",
+            &endpoint::postgres("postgres://localhost/test"),
         );
         sql_state.modal.set_mode(InputMode::SqlModal);
         sql_state.sql_modal.set_active_tab(SqlModalTab::Plan);
@@ -708,11 +703,10 @@ mod tests {
     #[test]
     fn from_state_omits_postgresql_only_reference_rows_for_sqlite() {
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "database",
-            DatabaseType::SQLite,
-            "sqlite://test.db",
+            &endpoint::sqlite("sqlite://test.db"),
         );
         let origin = KeyContext::from_state(&state);
         state.ui.help_mut().open(origin);
@@ -755,11 +749,10 @@ mod tests {
             DatabaseType::SQLite,
         ] {
             let mut state = AppState::new("test".to_string());
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "database",
-                database_type,
-                "database",
+                &endpoint::for_engine(database_type, "database"),
             );
             let origin = KeyContext::from_state(&state);
             state.ui.help_mut().open(origin);
@@ -786,11 +779,10 @@ mod tests {
     #[test]
     fn sqlite_sql_help_origin_includes_plan_tab() {
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "database",
-            DatabaseType::SQLite,
-            "sqlite://test.db",
+            &endpoint::sqlite("sqlite://test.db"),
         );
         state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.set_active_tab(SqlModalTab::Plan);
@@ -803,11 +795,10 @@ mod tests {
     #[test]
     fn sqlite_command_line_help_omits_erd_command() {
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "database",
-            DatabaseType::SQLite,
-            "sqlite://test.db",
+            &endpoint::sqlite("sqlite://test.db"),
         );
         state.modal.set_mode(InputMode::CommandLine);
         let origin = KeyContext::from_state(&state);
@@ -827,11 +818,10 @@ mod tests {
     #[test]
     fn reference_sections_and_filter_use_derived_rows() {
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "database",
-            DatabaseType::PostgreSQL,
-            "postgres://test",
+            &endpoint::for_engine(DatabaseType::PostgreSQL, "postgres://test"),
         );
         let context = KeyContext::from_state(&state);
         let document = HelpDocument::new(context.clone(), "", 0);

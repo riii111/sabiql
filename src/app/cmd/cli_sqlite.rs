@@ -100,7 +100,7 @@ pub fn activate_cli_sqlite_connection(
     state.session.activate_cli_ephemeral_connection(
         &connection_id,
         &target.display_name(),
-        &format!("sqlite://{}", canonical_config.path()),
+        canonical_config,
     );
     state.modal.set_mode(InputMode::Normal);
     Ok(())
