@@ -1,6 +1,6 @@
 use std::fmt::Write as _;
 
-use super::{Dialect, StatementSplitError};
+use super::{Dialect, LexicalFamily, StatementSplitError};
 use crate::sql_lex::is_comment_only;
 use crate::sqlite_sql::{build_sqlite_explain_query_plan_sql, split_sqlite_statements};
 
@@ -48,5 +48,9 @@ impl Dialect for Sqlite {
             .filter(|statement| !is_comment_only(statement))
             .map(|statement| (*statement).to_string())
             .collect())
+    }
+
+    fn lexical_family(&self) -> LexicalFamily {
+        LexicalFamily::PostgreSql
     }
 }

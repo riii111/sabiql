@@ -689,6 +689,38 @@ mod split_statements_tests {
     }
 }
 
+mod lexical_family {
+    use super::*;
+
+    fn completion_keywords(engine: DatabaseType) -> Vec<&'static str> {
+        engine
+            .dialect()
+            .lexical_family()
+            .completion_keywords()
+            .collect()
+    }
+
+    #[test]
+    fn keyword_inventory_preserves_each_database_set() {
+        let expected_postgresql = "SELECT FROM WHERE JOIN LEFT RIGHT INNER OUTER CROSS ON AND OR NOT IN IS NULL TRUE FALSE LIKE ILIKE BETWEEN EXISTS CASE WHEN THEN ELSE END AS DISTINCT ORDER BY ASC DESC NULLS FIRST LAST GROUP HAVING LIMIT OFFSET UNION INTERSECT EXCEPT ALL INSERT INTO VALUES UPDATE SET DELETE CREATE DROP ALTER TABLE INDEX VIEW RETURNING WITH RECURSIVE COALESCE NULLIF CAST USING";
+        let expected_mysql = "SELECT FROM WHERE JOIN LEFT RIGHT INNER OUTER CROSS ON AND OR NOT IN IS NULL TRUE FALSE LIKE BETWEEN EXISTS CASE WHEN THEN ELSE END AS DISTINCT ORDER BY ASC DESC GROUP HAVING LIMIT OFFSET UNION INTERSECT EXCEPT ALL INSERT INTO VALUES UPDATE SET DELETE TRUNCATE CREATE DROP ALTER TABLE INDEX VIEW WITH RECURSIVE COALESCE NULLIF CAST USING NATURAL WINDOW OVER PARTITION ROWS RANGE UNBOUNDED PRECEDING FOLLOWING CURRENT ROW EXPLAIN ANALYZE SHOW DESCRIBE DATABASE DATABASES PRIMARY KEY FOREIGN REFERENCES UNIQUE DEFAULT CONSTRAINT CHECK IF CASCADE RENAME MODIFY COLUMN ENGINE CHARACTER CHARSET COLLATE AUTO_INCREMENT FOR LOCK SHARE START TRANSACTION COMMIT ROLLBACK";
+
+        let postgresql = completion_keywords(DatabaseType::PostgreSQL);
+        let sqlite = completion_keywords(DatabaseType::SQLite);
+        let mut mysql = completion_keywords(DatabaseType::MySQL);
+        let mut expected_mysql = expected_mysql.split_whitespace().collect::<Vec<_>>();
+
+        assert_eq!(
+            postgresql,
+            expected_postgresql.split_whitespace().collect::<Vec<_>>()
+        );
+        assert_eq!(sqlite, postgresql);
+        mysql.sort_unstable();
+        expected_mysql.sort_unstable();
+        assert_eq!(mysql, expected_mysql);
+    }
+}
+
 mod postgres {
     use crate::{DatabaseType, QueryValue};
 

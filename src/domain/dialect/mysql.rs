@@ -1,6 +1,6 @@
 use std::fmt::Write as _;
 
-use super::{Dialect, StatementSplitError};
+use super::{Dialect, LexicalFamily, StatementSplitError};
 use crate::mysql_sql::{mysql_explain_rejection_message, split_mysql_statements};
 
 pub struct MySql;
@@ -57,5 +57,9 @@ impl Dialect for MySql {
 
     fn split_statements(&self, sql: &str) -> Result<Vec<String>, StatementSplitError> {
         split_mysql_statements(sql).map_err(|error| StatementSplitError(error.0))
+    }
+
+    fn lexical_family(&self) -> LexicalFamily {
+        LexicalFamily::MySql
     }
 }

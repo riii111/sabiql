@@ -1,9 +1,11 @@
+mod lexical_family;
 mod mysql;
 mod postgres;
 mod sqlite;
 
 use crate::{DatabaseType, QueryValue};
 
+pub use lexical_family::LexicalFamily;
 pub use mysql::MySql;
 pub use postgres::Postgres;
 pub use sqlite::Sqlite;
@@ -16,6 +18,7 @@ pub trait Dialect: Sync {
     fn explain_sql(&self, query: &str) -> Option<String>;
     fn explain_analyze_sql(&self, query: &str) -> Option<String>;
     fn split_statements(&self, sql: &str) -> Result<Vec<String>, StatementSplitError>;
+    fn lexical_family(&self) -> LexicalFamily;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

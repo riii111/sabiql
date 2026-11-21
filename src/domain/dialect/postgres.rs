@@ -1,6 +1,6 @@
 use std::fmt::Write as _;
 
-use super::{Dialect, StatementSplitError};
+use super::{Dialect, LexicalFamily, StatementSplitError};
 use crate::postgres_sql;
 
 pub struct Postgres;
@@ -48,5 +48,9 @@ impl Dialect for Postgres {
             .into_iter()
             .map(str::to_owned)
             .collect())
+    }
+
+    fn lexical_family(&self) -> LexicalFamily {
+        LexicalFamily::PostgreSql
     }
 }

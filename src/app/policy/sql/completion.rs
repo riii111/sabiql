@@ -1,12 +1,11 @@
 use std::collections::HashSet;
 
+use crate::domain::dialect::LexicalFamily;
 use crate::domain::{DatabaseMetadata, DatabaseType, Table, TableSummary};
 use crate::model::shared::text_input::char_to_byte_index;
 use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
 use crate::model::table_detail_cache::TableDetailCache;
-use crate::policy::sql::lexer::{
-    MYSQL_KEYWORDS, POSTGRESQL_KEYWORDS, SqlContext, SqlLexer, TableReference, Token, TokenKind,
-};
+use crate::policy::sql::lexer::{SqlContext, SqlLexer, TableReference, Token, TokenKind};
 
 const COMPLETION_MAX_CANDIDATES: usize = 30;
 
@@ -331,21 +330,24 @@ impl<'cache> CompletionEngine<'cache> {
             return self.keyword_candidates_for_database(&current_token, scope.database_type);
         }
 
-        let mysql_database_names: HashSet<String> = if scope.database_type == DatabaseType::MySQL {
-            candidates
+        let family = scope.database_type.dialect().lexical_family();
+        let mysql_database_names: HashSet<String> = match family {
+            LexicalFamily::PostgreSql => HashSet::new(),
+            LexicalFamily::MySql => candidates
                 .iter()
                 .filter(|candidate| candidate.kind == CompletionKind::Database)
                 .map(|candidate| candidate.text.clone())
-                .collect()
-        } else {
-            HashSet::new()
+                .collect(),
         };
         let mut seen = HashSet::new();
         candidates.retain(|c| {
-            let key = if scope.database_type == DatabaseType::MySQL
-                && c.kind == CompletionKind::Table
-                && !mysql_database_names.contains(&c.text)
-            {
+            let keeps_case = match family {
+                LexicalFamily::PostgreSql => false,
+                LexicalFamily::MySql => {
+                    c.kind == CompletionKind::Table && !mysql_database_names.contains(&c.text)
+                }
+            };
+            let key = if keeps_case {
                 c.text.clone()
             } else {
                 c.text.to_uppercase()
@@ -707,7 +709,10 @@ impl<'cache> CompletionEngine<'cache> {
         database_type: DatabaseType,
     ) -> Vec<CompletionCandidate> {
         let prefix_upper = prefix.to_uppercase();
-        let mut candidates: Vec<_> = completion_keywords_for_database(database_type)
+        let mut candidates: Vec<_> = database_type
+            .dialect()
+            .lexical_family()
+            .completion_keywords()
             .filter(|kw| prefix.is_empty() || kw.starts_with(&prefix_upper))
             .map(|kw| {
                 let is_prefix_match = kw.starts_with(&prefix_upper);
@@ -783,10 +788,10 @@ impl<'cache> CompletionEngine<'cache> {
         prefix: &str,
         scope: CompletionDatabaseScope<'_>,
     ) -> Vec<CompletionCandidate> {
-        let mut candidates = if scope.database_type == DatabaseType::MySQL {
-            self.database_candidates(scope.active_database, prefix)
-        } else {
-            Vec::new()
+        let family = scope.database_type.dialect().lexical_family();
+        let mut candidates = match family {
+            LexicalFamily::PostgreSql => Vec::new(),
+            LexicalFamily::MySql => self.database_candidates(scope.active_database, prefix),
         };
 
         let Some(metadata) = metadata else {
@@ -819,10 +824,9 @@ impl<'cache> CompletionEngine<'cache> {
                         10
                     };
                     CompletionCandidate {
-                        text: if scope.database_type == DatabaseType::MySQL {
-                            t.name.clone()
-                        } else {
-                            t.qualified_name()
+                        text: match family {
+                            LexicalFamily::PostgreSql => t.qualified_name(),
+                            LexicalFamily::MySql => t.name.clone(),
                         },
                         kind: CompletionKind::Table,
                         score,
@@ -1010,44 +1014,48 @@ impl<'cache> CompletionEngine<'cache> {
         sql_context: &'a SqlContext,
         database_type: DatabaseType,
     ) -> Option<&'a TableReference> {
-        if database_type != DatabaseType::MySQL {
-            let qualifier_lower = qualifier.to_lowercase();
-            return sql_context.tables.iter().find(|table_ref| {
-                table_ref
-                    .alias
-                    .as_ref()
-                    .is_some_and(|alias| alias.to_lowercase() == qualifier_lower)
-                    || table_ref.table.to_lowercase() == qualifier_lower
-            });
-        }
+        match database_type.dialect().lexical_family() {
+            LexicalFamily::PostgreSql => {
+                let qualifier_lower = qualifier.to_lowercase();
+                sql_context.tables.iter().find(|table_ref| {
+                    table_ref
+                        .alias
+                        .as_ref()
+                        .is_some_and(|alias| alias.to_lowercase() == qualifier_lower)
+                        || table_ref.table.to_lowercase() == qualifier_lower
+                })
+            }
+            LexicalFamily::MySql => {
+                let qualifier_lower = qualifier.to_lowercase();
+                let matches: Vec<_> = sql_context
+                    .tables
+                    .iter()
+                    .filter(|table_ref| {
+                        table_ref
+                            .alias
+                            .as_ref()
+                            .is_some_and(|alias| alias.to_lowercase() == qualifier_lower)
+                            || table_ref.table.to_lowercase() == qualifier_lower
+                    })
+                    .collect();
+                let exact_matches: Vec<_> = matches
+                    .iter()
+                    .copied()
+                    .filter(|table_ref| {
+                        table_ref.alias.as_deref() == Some(qualifier)
+                            || table_ref.table == qualifier
+                    })
+                    .collect();
 
-        let qualifier_lower = qualifier.to_lowercase();
-        let matches: Vec<_> = sql_context
-            .tables
-            .iter()
-            .filter(|table_ref| {
-                table_ref
-                    .alias
-                    .as_ref()
-                    .is_some_and(|alias| alias.to_lowercase() == qualifier_lower)
-                    || table_ref.table.to_lowercase() == qualifier_lower
-            })
-            .collect();
-        let exact_matches: Vec<_> = matches
-            .iter()
-            .copied()
-            .filter(|table_ref| {
-                table_ref.alias.as_deref() == Some(qualifier) || table_ref.table == qualifier
-            })
-            .collect();
-
-        match exact_matches.as_slice() {
-            [table_ref] => Some(*table_ref),
-            [] => match matches.as_slice() {
-                [table_ref] => Some(*table_ref),
-                _ => None,
-            },
-            _ => None,
+                match exact_matches.as_slice() {
+                    [table_ref] => Some(*table_ref),
+                    [] => match matches.as_slice() {
+                        [table_ref] => Some(*table_ref),
+                        _ => None,
+                    },
+                    _ => None,
+                }
+            }
         }
     }
 
@@ -1059,10 +1067,10 @@ impl<'cache> CompletionEngine<'cache> {
         scope: CompletionDatabaseScope<'_>,
     ) -> Vec<CompletionCandidate> {
         let prefix_lower = prefix.to_lowercase();
-        let mut candidates = if scope.database_type == DatabaseType::MySQL {
-            self.database_candidates(scope.active_database, prefix)
-        } else {
-            Vec::new()
+        let family = scope.database_type.dialect().lexical_family();
+        let mut candidates = match family {
+            LexicalFamily::PostgreSql => Vec::new(),
+            LexicalFamily::MySql => self.database_candidates(scope.active_database, prefix),
         };
 
         // Add CTE names first (higher priority)
@@ -1085,10 +1093,9 @@ impl<'cache> CompletionEngine<'cache> {
                 {
                     let is_name_prefix = t.name.to_lowercase().starts_with(&prefix_lower);
                     candidates.push(CompletionCandidate {
-                        text: if scope.database_type == DatabaseType::MySQL {
-                            t.name.clone()
-                        } else {
-                            t.qualified_name()
+                        text: match family {
+                            LexicalFamily::PostgreSql => t.qualified_name(),
+                            LexicalFamily::MySql => t.name.clone(),
                         },
                         kind: CompletionKind::Table,
                         score: if is_name_prefix { 100 } else { 50 },
@@ -1111,138 +1118,87 @@ impl<'cache> CompletionEngine<'cache> {
         metadata: Option<&DatabaseMetadata>,
         database_type: DatabaseType,
     ) -> Option<String> {
+        let family = database_type.dialect().lexical_family();
         if let Some(ref schema) = table_ref.schema {
-            if database_type != DatabaseType::MySQL {
-                return Some(format!("{}.{}", schema, table_ref.table));
-            }
+            return match family {
+                LexicalFamily::PostgreSql => Some(format!("{}.{}", schema, table_ref.table)),
+                LexicalFamily::MySql => {
+                    let Some(metadata) = metadata else {
+                        return Some(format!("{}.{}", schema, table_ref.table));
+                    };
 
-            let Some(metadata) = metadata else {
-                return Some(format!("{}.{}", schema, table_ref.table));
+                    if let Some(table) = metadata
+                        .table_summaries
+                        .iter()
+                        .find(|t| t.schema == *schema && t.name == table_ref.table)
+                    {
+                        return Some(table.qualified_name());
+                    }
+
+                    let schema_lower = schema.to_lowercase();
+                    let table_lower = table_ref.table.to_lowercase();
+                    let mut case_insensitive = metadata.table_summaries.iter().filter(|t| {
+                        t.schema.to_lowercase() == schema_lower
+                            && t.name.to_lowercase() == table_lower
+                    });
+                    let table = case_insensitive.next()?;
+                    case_insensitive
+                        .next()
+                        .is_none()
+                        .then(|| table.qualified_name())
+                }
             };
-
-            if let Some(table) = metadata
-                .table_summaries
-                .iter()
-                .find(|t| t.schema == *schema && t.name == table_ref.table)
-            {
-                return Some(table.qualified_name());
-            }
-
-            let schema_lower = schema.to_lowercase();
-            let table_lower = table_ref.table.to_lowercase();
-            let mut case_insensitive = metadata.table_summaries.iter().filter(|t| {
-                t.schema.to_lowercase() == schema_lower && t.name.to_lowercase() == table_lower
-            });
-            let table = case_insensitive.next()?;
-            return case_insensitive
-                .next()
-                .is_none()
-                .then(|| table.qualified_name());
         }
 
         let Some(metadata) = metadata else {
             return Some(table_ref.table.clone());
         };
 
-        if database_type == DatabaseType::MySQL {
-            if let Some(table) = metadata
-                .table_summaries
-                .iter()
-                .find(|t| t.name == table_ref.table)
-            {
-                return Some(table.qualified_name());
+        match family {
+            LexicalFamily::PostgreSql => Some(
+                metadata
+                    .table_summaries
+                    .iter()
+                    .find(|t| t.name.to_lowercase() == table_ref.table.to_lowercase())
+                    .map_or_else(|| table_ref.table.clone(), TableSummary::qualified_name),
+            ),
+            LexicalFamily::MySql => {
+                if let Some(table) = metadata
+                    .table_summaries
+                    .iter()
+                    .find(|t| t.name == table_ref.table)
+                {
+                    return Some(table.qualified_name());
+                }
+
+                let table_lower = table_ref.table.to_lowercase();
+                let mut case_insensitive = metadata
+                    .table_summaries
+                    .iter()
+                    .filter(|t| t.name.to_lowercase() == table_lower);
+                let table = case_insensitive.next()?;
+                case_insensitive
+                    .next()
+                    .is_none()
+                    .then(|| table.qualified_name())
             }
-
-            let table_lower = table_ref.table.to_lowercase();
-            let mut case_insensitive = metadata
-                .table_summaries
-                .iter()
-                .filter(|t| t.name.to_lowercase() == table_lower);
-            let table = case_insensitive.next()?;
-            return case_insensitive
-                .next()
-                .is_none()
-                .then(|| table.qualified_name());
         }
-
-        Some(
-            metadata
-                .table_summaries
-                .iter()
-                .find(|t| t.name.to_lowercase() == table_ref.table.to_lowercase())
-                .map_or_else(|| table_ref.table.clone(), TableSummary::qualified_name),
-        )
-    }
-}
-
-fn completion_keywords_for_database(
-    database_type: DatabaseType,
-) -> impl Iterator<Item = &'static str> {
-    let keywords = if database_type == DatabaseType::MySQL {
-        MYSQL_KEYWORDS
-    } else {
-        POSTGRESQL_KEYWORDS
-    };
-    keywords
-        .iter()
-        .copied()
-        .filter(move |keyword| is_completion_keyword_for_database(database_type, keyword))
-}
-
-fn is_completion_keyword_for_database(database_type: DatabaseType, keyword: &str) -> bool {
-    match database_type {
-        DatabaseType::MySQL => !matches!(
-            keyword,
-            "STRAIGHT_JOIN" | "REPLACE" | "CALL" | "FULL" | "SAVEPOINT" | "RELEASE" | "USE"
-        ),
-        DatabaseType::PostgreSQL | DatabaseType::SQLite => !matches!(
-            keyword,
-            "ONLY"
-                | "FULL"
-                | "LATERAL"
-                | "DO"
-                | "GRANT"
-                | "REVOKE"
-                | "COPY"
-                | "CALL"
-                | "MERGE"
-                | "TRUNCATE"
-                | "BEGIN"
-                | "COMMIT"
-                | "ROLLBACK"
-                | "EXPLAIN"
-                | "ANALYZE"
-                | "SHOW"
-                | "SAVEPOINT"
-                | "START"
-                | "TRANSACTION"
-                | "RELEASE"
-                | "NATURAL"
-                | "WINDOW"
-                | "OVER"
-                | "PARTITION"
-                | "ROWS"
-                | "RANGE"
-                | "UNBOUNDED"
-                | "PRECEDING"
-                | "FOLLOWING"
-                | "CURRENT"
-                | "ROW"
-        ),
     }
 }
 
 fn quote_mysql_identifiers(candidates: &mut [CompletionCandidate], database_type: DatabaseType) {
-    if database_type != DatabaseType::MySQL {
-        return;
-    }
-
-    for candidate in candidates {
-        if matches!(
-            candidate.kind,
-            CompletionKind::Database | CompletionKind::Table | CompletionKind::Column
-        ) {
-            candidate.text = database_type.dialect().quote_identifier(&candidate.text);
+    let dialect = database_type.dialect();
+    match dialect.lexical_family() {
+        LexicalFamily::PostgreSql => {}
+        LexicalFamily::MySql => {
+            for candidate in candidates {
+                if matches!(
+                    candidate.kind,
+                    CompletionKind::Database | CompletionKind::Table | CompletionKind::Column
+                ) {
+                    candidate.text = dialect.quote_identifier(&candidate.text);
+                }
+            }
         }
     }
 }
@@ -1562,28 +1518,6 @@ mod tests {
 
             assert_eq!(candidates.len(), 1);
             assert_eq!(candidates[0].text, "SELECT");
-        }
-
-        #[test]
-        fn keyword_inventory_preserves_each_database_set() {
-            let expected_postgresql = "SELECT FROM WHERE JOIN LEFT RIGHT INNER OUTER CROSS ON AND OR NOT IN IS NULL TRUE FALSE LIKE ILIKE BETWEEN EXISTS CASE WHEN THEN ELSE END AS DISTINCT ORDER BY ASC DESC NULLS FIRST LAST GROUP HAVING LIMIT OFFSET UNION INTERSECT EXCEPT ALL INSERT INTO VALUES UPDATE SET DELETE CREATE DROP ALTER TABLE INDEX VIEW RETURNING WITH RECURSIVE COALESCE NULLIF CAST USING";
-            let expected_mysql = "SELECT FROM WHERE JOIN LEFT RIGHT INNER OUTER CROSS ON AND OR NOT IN IS NULL TRUE FALSE LIKE BETWEEN EXISTS CASE WHEN THEN ELSE END AS DISTINCT ORDER BY ASC DESC GROUP HAVING LIMIT OFFSET UNION INTERSECT EXCEPT ALL INSERT INTO VALUES UPDATE SET DELETE TRUNCATE CREATE DROP ALTER TABLE INDEX VIEW WITH RECURSIVE COALESCE NULLIF CAST USING NATURAL WINDOW OVER PARTITION ROWS RANGE UNBOUNDED PRECEDING FOLLOWING CURRENT ROW EXPLAIN ANALYZE SHOW DESCRIBE DATABASE DATABASES PRIMARY KEY FOREIGN REFERENCES UNIQUE DEFAULT CONSTRAINT CHECK IF CASCADE RENAME MODIFY COLUMN ENGINE CHARACTER CHARSET COLLATE AUTO_INCREMENT FOR LOCK SHARE START TRANSACTION COMMIT ROLLBACK";
-
-            let postgresql =
-                completion_keywords_for_database(DatabaseType::PostgreSQL).collect::<Vec<_>>();
-            let sqlite = completion_keywords_for_database(DatabaseType::SQLite).collect::<Vec<_>>();
-            let mut mysql =
-                completion_keywords_for_database(DatabaseType::MySQL).collect::<Vec<_>>();
-            let mut expected_mysql = expected_mysql.split_whitespace().collect::<Vec<_>>();
-
-            assert_eq!(
-                postgresql,
-                expected_postgresql.split_whitespace().collect::<Vec<_>>()
-            );
-            assert_eq!(sqlite, postgresql);
-            mysql.sort_unstable();
-            expected_mysql.sort_unstable();
-            assert_eq!(mysql, expected_mysql);
         }
     }
 
