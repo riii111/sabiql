@@ -5,17 +5,13 @@ use tokio::sync::mpsc;
 use crate::cmd::effect::Effect;
 use crate::cmd::metadata_task::MetadataTaskRegistry;
 use crate::cmd::single_task_owner::SingleTaskOwner;
-use crate::cmd::sqlite_path_validate::validate_sqlite_database_path;
-use crate::domain::sqlite_path_from_dsn;
-use crate::policy::sqlite_path::to_db_operation_error;
-use crate::ports::outbound::{DbOperationError, MetadataProvider, SqlitePathValidator};
+use crate::ports::outbound::{DbOperationError, MetadataProvider};
 use crate::update::action::Action;
 
 pub(in crate::cmd) async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
-    sqlite_path_validator: &Arc<dyn SqlitePathValidator>,
     table_detail_tasks: &SingleTaskOwner,
     metadata_tasks: &Arc<MetadataTaskRegistry>,
 ) {
@@ -24,15 +20,7 @@ pub(in crate::cmd) async fn run(
             metadata_tasks.cancel().await;
         }
         Effect::FetchMetadata { dsn, run_id } => {
-            fetch_metadata(
-                action_tx,
-                metadata_provider,
-                sqlite_path_validator,
-                metadata_tasks,
-                dsn,
-                run_id,
-            )
-            .await;
+            fetch_metadata(action_tx, metadata_provider, metadata_tasks, dsn, run_id);
         }
         Effect::FetchEffectiveUser { dsn, run_id } => {
             fetch_effective_user(action_tx, metadata_provider, metadata_tasks, dsn, run_id);
@@ -89,28 +77,13 @@ pub(in crate::cmd) async fn run(
     }
 }
 
-async fn fetch_metadata(
+fn fetch_metadata(
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
-    sqlite_path_validator: &Arc<dyn SqlitePathValidator>,
     metadata_tasks: &Arc<MetadataTaskRegistry>,
     dsn: String,
     run_id: u64,
 ) {
-    if let Some(path) = sqlite_path_from_dsn(&dsn)
-        && let Err(error) =
-            validate_sqlite_database_path(sqlite_path_validator, path.to_string()).await
-    {
-        action_tx
-            .send(Action::MetadataFailed {
-                run_id,
-                error: to_db_operation_error(&error),
-            })
-            .await
-            .ok();
-        return;
-    }
-
     let provider = Arc::clone(metadata_provider);
     let tx = action_tx.clone();
 
@@ -248,7 +221,6 @@ mod tests {
     use crate::cmd::effect::Effect;
     use crate::cmd::test_fixtures;
 
-    use crate::domain::SqlitePathError;
     use crate::model::app_state::AppState;
     use crate::ports::outbound::DbOperationError;
     use crate::ports::outbound::connection_store::MockConnectionStore;
@@ -258,96 +230,6 @@ mod tests {
 
     mod fetch_metadata {
         use super::*;
-
-        #[tokio::test]
-        async fn sqlite_missing_file_fails_before_provider_call() {
-            use tempfile::tempdir;
-
-            let dir = tempdir().unwrap();
-            let path = dir.path().join("missing.db");
-            let dsn = format!("sqlite://{}", path.display());
-            let mut mock_provider = MockMetadataProvider::new();
-            mock_provider.expect_fetch_metadata().never();
-
-            let (tx, mut rx) = mpsc::channel(8);
-            let runner = test_fixtures::make_runner(
-                Arc::new(mock_provider),
-                Arc::new(MockQueryExecutor::new()),
-                Arc::new(MockConnectionStore::new()),
-                tx,
-            );
-
-            let run = test_fixtures::run_one_effect(
-                &runner,
-                Effect::FetchMetadata {
-                    dsn: dsn.clone(),
-                    run_id: 7,
-                },
-                AppState::new("test".to_string()),
-                &mut rx,
-                Some(std::time::Duration::from_millis(200)),
-            )
-            .await
-            .unwrap();
-
-            let action = run.actions.into_iter().next().expect("action dispatched");
-            assert!(
-                matches!(
-                    action,
-                    Action::MetadataFailed {
-                        run_id: 7,
-                        error: DbOperationError::SqlitePath(SqlitePathError::FileNotFound(
-                            ref file_path,
-                        )),
-                    } if file_path == &path.display().to_string()
-                ),
-                "expected MetadataFailed, got {action:?}"
-            );
-            assert!(!path.exists());
-        }
-
-        #[tokio::test]
-        async fn sqlite_existing_file_reaches_provider() {
-            use std::fs;
-            use tempfile::tempdir;
-
-            let dir = tempdir().unwrap();
-            let path = dir.path().join("app.db");
-            fs::write(&path, b"").unwrap();
-            let dsn = format!("sqlite://{}", path.display());
-            let mut mock_provider = MockMetadataProvider::new();
-            mock_provider
-                .expect_fetch_metadata()
-                .once()
-                .returning(|_| Ok(test_fixtures::sample_metadata()));
-
-            let (tx, mut rx) = mpsc::channel(8);
-            let runner = test_fixtures::make_runner(
-                Arc::new(mock_provider),
-                Arc::new(MockQueryExecutor::new()),
-                Arc::new(MockConnectionStore::new()),
-                tx,
-            );
-
-            let run = test_fixtures::run_one_effect(
-                &runner,
-                Effect::FetchMetadata {
-                    dsn: dsn.clone(),
-                    run_id: 7,
-                },
-                AppState::new("test".to_string()),
-                &mut rx,
-                Some(std::time::Duration::from_millis(500)),
-            )
-            .await
-            .unwrap();
-
-            let action = run.actions.into_iter().next().expect("action dispatched");
-            assert!(
-                matches!(action, Action::MetadataLoaded { run_id: 7, .. }),
-                "expected MetadataLoaded, got {action:?}"
-            );
-        }
 
         #[tokio::test]
         async fn fetches_metadata_and_returns_metadata_loaded() {

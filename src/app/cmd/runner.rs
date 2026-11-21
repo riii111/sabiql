@@ -199,7 +199,6 @@ impl EffectRunner {
                     e,
                     &self.action_tx,
                     &self.metadata_provider,
-                    &self.connection.sqlite_path_validator,
                     &self.table_detail_tasks,
                     &self.metadata_tasks,
                 )

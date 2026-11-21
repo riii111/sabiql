@@ -205,7 +205,7 @@ mod tests {
 
     use super::*;
     use crate::domain::connection::SslMode;
-    use crate::domain::{Column, ColumnAttributes};
+    use crate::domain::{Column, ColumnAttributes, SqlitePathError};
 
     fn make_table() -> Table {
         Table {
@@ -301,6 +301,23 @@ mod tests {
         let metadata = registry.fetch_metadata(&dsn).await.unwrap();
 
         assert_eq!(metadata.table_summaries[0].qualified_name(), "main.users");
+    }
+
+    #[tokio::test]
+    async fn sqlite_metadata_for_missing_file_fails_without_creating_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing.db");
+        let dsn = format!("sqlite://{}", path.display());
+        let registry = DbAdapterRegistry::new();
+
+        let result = registry.fetch_metadata(&dsn).await;
+
+        assert!(matches!(
+            result,
+            Err(DbOperationError::SqlitePath(SqlitePathError::FileNotFound(file_path)))
+                if file_path == path.display().to_string()
+        ));
+        assert!(!path.exists());
     }
 
     #[tokio::test]
