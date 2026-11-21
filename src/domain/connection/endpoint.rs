@@ -212,6 +212,7 @@ mod tests {
                 ConnectionEndpoint::PostgreSQL(PostgresEndpoint::Service("my service".to_string()))
             );
             assert_eq!(endpoint.engine(), DatabaseType::PostgreSQL);
+            assert!(endpoint.is_postgres_service());
         }
     }
 
@@ -250,11 +251,6 @@ mod tests {
 
     mod postgres_service {
         use super::*;
-
-        #[test]
-        fn service_entry_is_a_postgres_service() {
-            assert!(ConnectionEndpoint::from(&service_entry()).is_postgres_service());
-        }
 
         #[rstest]
         #[case::postgres_settings(ConnectionEndpoint::PostgreSQL(PostgresEndpoint::Settings(
