@@ -56,9 +56,7 @@ impl MetadataProvider for DbAdapterRegistry {
         match self.route(endpoint) {
             AdapterRoute::PostgreSQL(adapter, endpoint) => adapter.fetch_metadata(endpoint).await,
             AdapterRoute::SQLite(adapter, config) => adapter.fetch_metadata(config).await,
-            AdapterRoute::MySQL(adapter, config) => {
-                adapter.fetch_metadata(&build_mysql_dsn(config)).await
-            }
+            AdapterRoute::MySQL(adapter, config) => adapter.fetch_metadata(config).await,
         }
     }
 
@@ -71,9 +69,7 @@ impl MetadataProvider for DbAdapterRegistry {
                 adapter.fetch_effective_user(endpoint).await
             }
             AdapterRoute::SQLite(..) => Ok(None),
-            AdapterRoute::MySQL(adapter, config) => {
-                adapter.fetch_effective_user(&build_mysql_dsn(config)).await
-            }
+            AdapterRoute::MySQL(adapter, config) => adapter.fetch_effective_user(config).await,
         }
     }
 
@@ -91,9 +87,7 @@ impl MetadataProvider for DbAdapterRegistry {
                 adapter.fetch_table_detail(config, schema, table).await
             }
             AdapterRoute::MySQL(adapter, config) => {
-                adapter
-                    .fetch_table_detail(&build_mysql_dsn(config), schema, table)
-                    .await
+                adapter.fetch_table_detail(config, schema, table).await
             }
         }
     }
@@ -117,7 +111,7 @@ impl MetadataProvider for DbAdapterRegistry {
             }
             AdapterRoute::MySQL(adapter, config) => {
                 adapter
-                    .fetch_table_columns_and_fks(&build_mysql_dsn(config), schema, table)
+                    .fetch_table_columns_and_fks(config, schema, table)
                     .await
             }
         }
@@ -132,11 +126,7 @@ impl MetadataProvider for DbAdapterRegistry {
                 adapter.fetch_table_signatures(endpoint).await
             }
             AdapterRoute::SQLite(adapter, config) => adapter.fetch_table_signatures(config).await,
-            AdapterRoute::MySQL(adapter, config) => {
-                adapter
-                    .fetch_table_signatures(&build_mysql_dsn(config))
-                    .await
-            }
+            AdapterRoute::MySQL(adapter, config) => adapter.fetch_table_signatures(config).await,
         }
     }
 }
@@ -164,7 +154,7 @@ impl QueryExecutor for DbAdapterRegistry {
             }
             AdapterRoute::MySQL(adapter, config) => {
                 adapter
-                    .execute_preview(&build_mysql_dsn(config), schema, table, limit, offset)
+                    .execute_preview(config, schema, table, limit, offset)
                     .await
             }
         }
@@ -184,9 +174,7 @@ impl QueryExecutor for DbAdapterRegistry {
                 adapter.execute_adhoc(config, query, access_mode).await
             }
             AdapterRoute::MySQL(adapter, config) => {
-                adapter
-                    .execute_adhoc(&build_mysql_dsn(config), query, access_mode)
-                    .await
+                adapter.execute_adhoc(config, query, access_mode).await
             }
         }
     }
@@ -205,9 +193,7 @@ impl QueryExecutor for DbAdapterRegistry {
                 adapter.execute_write(config, query, access_mode).await
             }
             AdapterRoute::MySQL(adapter, config) => {
-                adapter
-                    .execute_write(&build_mysql_dsn(config), query, access_mode)
-                    .await
+                adapter.execute_write(config, query, access_mode).await
             }
         }
     }
@@ -226,9 +212,7 @@ impl QueryExecutor for DbAdapterRegistry {
                 adapter.export_to_csv(config, query, file_name).await
             }
             AdapterRoute::MySQL(adapter, config) => {
-                adapter
-                    .export_to_csv(&build_mysql_dsn(config), query, file_name)
-                    .await
+                adapter.export_to_csv(config, query, file_name).await
             }
         }
     }
@@ -241,7 +225,7 @@ impl MySqlConnectionProbe for DbAdapterRegistry {
         endpoint: &ConnectionEndpoint,
     ) -> Result<MySqlConnectionProbeResult, DbOperationError> {
         match self.route(endpoint) {
-            AdapterRoute::MySQL(adapter, config) => adapter.probe(&build_mysql_dsn(config)).await,
+            AdapterRoute::MySQL(adapter, config) => adapter.probe(config).await,
             AdapterRoute::PostgreSQL(..) | AdapterRoute::SQLite(..) => {
                 Err(DbOperationError::UnsupportedOperation(
                     "MySQL connection probe requires a MySQL connection".to_string(),

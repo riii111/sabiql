@@ -1,3 +1,4 @@
+use crate::domain::connection::MySqlConnectionConfig;
 use std::ffi::OsStr;
 use std::time::Duration;
 
@@ -9,7 +10,7 @@ use super::super::{
         MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, MySqlResultSet,
         validate_mysql_multi_query_with_lower_case_table_names,
     },
-    dsn::{map_mysql_tls_failure, parse_and_validate_mysql_dsn},
+    dsn::{NormalizedMySqlConfig, map_mysql_tls_failure},
     option_file::MySqlOptionFile,
     sql::{
         PREVIEW_COLUMN_METADATA_RESULT_COLUMNS, build_preview_query, preview_columns_query,
@@ -41,14 +42,14 @@ pub(in crate::adapters::mysql) struct PreviewExecution {
 }
 
 pub(in crate::adapters::mysql) async fn execute_preview(
-    dsn: &str,
+    config: &MySqlConnectionConfig,
     schema: &str,
     table: &str,
     limit: usize,
     offset: usize,
 ) -> Result<PreviewExecution, DbOperationError> {
     execute_preview_with_program(
-        dsn,
+        config,
         schema,
         table,
         limit,
@@ -60,7 +61,7 @@ pub(in crate::adapters::mysql) async fn execute_preview(
 }
 
 async fn execute_preview_with_program(
-    dsn: &str,
+    config: &MySqlConnectionConfig,
     schema: &str,
     table: &str,
     limit: usize,
@@ -68,7 +69,7 @@ async fn execute_preview_with_program(
     program: &OsStr,
     timeout: Duration,
 ) -> Result<PreviewExecution, DbOperationError> {
-    let target = parse_and_validate_mysql_dsn(dsn)?;
+    let target = NormalizedMySqlConfig::new(config)?;
     let database = selected_database(&target)?;
     let option_file = MySqlOptionFile::create(&target)?;
     let mut session = MySqlMetadataSession::spawn_with_program(program, option_file)?;
@@ -392,6 +393,8 @@ mod tests {
     use std::path::PathBuf;
 
     use super::super::super::metadata_test_support::column;
+    #[cfg(unix)]
+    use super::super::test_support::connection_config;
     use super::super::test_support::result;
     use super::*;
 
@@ -497,7 +500,7 @@ done
     async fn preview_metadata_and_rows_share_one_mysql_session() {
         let (_directory, program, log_path) = fake_preview_mysql(false, false);
         let execution = execute_preview_with_program(
-            "mysql://preview:secret@localhost:3306/sabiql_test",
+            &connection_config("preview", "secret", "sabiql_test"),
             "sabiql_test",
             "items",
             2,
@@ -578,7 +581,7 @@ done
     async fn preview_metadata_failure_never_sends_user_select() {
         let (_directory, program, log_path) = fake_preview_mysql(true, false);
         let result = execute_preview_with_program(
-            "mysql://preview:secret@localhost:3306/sabiql_test",
+            &connection_config("preview", "secret", "sabiql_test"),
             "sabiql_test",
             "items",
             2,
@@ -603,7 +606,7 @@ done
     async fn delayed_error_between_preview_and_completion_frames_is_classified() {
         let (_directory, program, log_path) = fake_preview_mysql(false, true);
         let result = execute_preview_with_program(
-            "mysql://preview:secret@localhost:3306/sabiql_test",
+            &connection_config("preview", "secret", "sabiql_test"),
             "sabiql_test",
             "items",
             2,

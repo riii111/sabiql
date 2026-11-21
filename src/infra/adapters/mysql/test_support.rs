@@ -1,3 +1,4 @@
+use crate::domain::connection::MySqlConnectionConfig;
 #[cfg(unix)]
 use std::ffi::OsStr;
 use std::io;
@@ -15,7 +16,7 @@ use super::cli::{
     export_mysql_csv_to_file, run_mysql_adhoc, sanitize_mysql_command_environment,
     validate_mysql_multi_query,
 };
-use super::dsn::parse_and_validate_mysql_dsn;
+use super::dsn::NormalizedMySqlConfig;
 use super::option_file::MySqlOptionFile;
 
 #[cfg(unix)]
@@ -26,10 +27,10 @@ use super::cli::test_support::run_mysql_cli_script_with_program;
 #[doc(hidden)]
 /// Runs a one-shot MySQL CLI query while owning the secure option file lifecycle.
 pub async fn run_mysql_cli_query_for_test(
-    dsn: &str,
+    config: &MySqlConnectionConfig,
     query: &str,
 ) -> Result<String, DbOperationError> {
-    let target = parse_and_validate_mysql_dsn(dsn)?;
+    let target = NormalizedMySqlConfig::new(config)?;
     let option_file = MySqlOptionFile::create(&target)?;
     let args = [
         format!("--defaults-file={}", option_file.path.display()),
@@ -81,10 +82,10 @@ pub async fn run_mysql_cli_query_for_test(
 /// Runs an adhoc query with a read-only MySQL session so integration tests can verify server-side
 /// rejection of a side effect without the app-side policy gate.
 pub async fn execute_mysql_adhoc_with_read_only_session_for_test(
-    dsn: &str,
+    config: &MySqlConnectionConfig,
     query: &str,
 ) -> Result<(), DbOperationError> {
-    let target = parse_and_validate_mysql_dsn(dsn)?;
+    let target = NormalizedMySqlConfig::new(config)?;
     let statements =
         validate_mysql_multi_query(query, target.database.as_deref(), AccessMode::ReadWrite)?;
     let option_file = MySqlOptionFile::create(&target)?;
@@ -95,11 +96,11 @@ pub async fn execute_mysql_adhoc_with_read_only_session_for_test(
 
 #[doc(hidden)]
 pub async fn execute_mysql_adhoc_with_timeout_for_test(
-    dsn: &str,
+    config: &MySqlConnectionConfig,
     query: &str,
     execution_timeout: Duration,
 ) -> Result<(), DbOperationError> {
-    let target = parse_and_validate_mysql_dsn(dsn)?;
+    let target = NormalizedMySqlConfig::new(config)?;
     let statements =
         validate_mysql_multi_query(query, target.database.as_deref(), AccessMode::ReadWrite)?;
     let option_file = MySqlOptionFile::create(&target)?;
@@ -109,10 +110,10 @@ pub async fn execute_mysql_adhoc_with_timeout_for_test(
 #[cfg(unix)]
 #[doc(hidden)]
 pub async fn run_mysql_cli_script_for_test(
-    dsn: &str,
+    config: &MySqlConnectionConfig,
     script: &str,
 ) -> Result<Vec<u8>, DbOperationError> {
-    let target = parse_and_validate_mysql_dsn(dsn)?;
+    let target = NormalizedMySqlConfig::new(config)?;
     let option_file = MySqlOptionFile::create(&target)?;
     run_mysql_cli_script_with_program(
         OsStr::new("mysql"),
@@ -127,11 +128,11 @@ pub async fn run_mysql_cli_script_for_test(
 /// Runs CSV export without client-side query policy validation so integration tests can verify
 /// the MySQL read-only session at the server boundary.
 pub async fn export_mysql_csv_to_path_for_test(
-    dsn: &str,
+    config: &MySqlConnectionConfig,
     query: &str,
     path: PathBuf,
 ) -> Result<PathBuf, DbOperationError> {
-    let target = parse_and_validate_mysql_dsn(dsn)?;
+    let target = NormalizedMySqlConfig::new(config)?;
     let query = query.to_string();
     export_to_path(path, move |temporary_path| async move {
         export_mysql_csv_to_file(target, &query, temporary_path).await

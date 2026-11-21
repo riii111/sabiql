@@ -284,7 +284,9 @@ fn required_mysql_host(value: Option<&String>) -> Result<String, ConnectionProfi
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::mysql::MySqlAdapter;
+    use crate::adapters::DbAdapterRegistry;
+    use crate::app::ports::outbound::DsnBuilder;
+    use crate::domain::connection::ConnectionEndpoint;
 
     #[test]
     fn supported_versions_are_accepted() {
@@ -508,7 +510,8 @@ mod tests {
         assert_eq!(serialized.mysql_transport_path, entry.mysql_transport_path);
 
         let round_tripped = ConnectionProfile::try_from(&serialized).unwrap();
-        let dsn = MySqlAdapter::new().build_dsn(&round_tripped);
+        let dsn =
+            DbAdapterRegistry::new().build_dsn(&ConnectionEndpoint::from(&round_tripped.config));
         assert!(dsn.contains("transport=UNIX_SOCKET"));
         assert!(dsn.contains("transport-path=%2Frun%2Fmysqld%2Fmysqld.sock"));
     }

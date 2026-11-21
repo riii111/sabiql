@@ -1,9 +1,10 @@
 use crate::app::ports::outbound::DbOperationError;
+use crate::domain::connection::MySqlConnectionConfig;
 use crate::domain::{DatabaseMetadata, Schema, Table, TableSignatureSnapshot};
 
 use super::adapter::MySqlAdapter;
 use super::cli::MySqlResultSet;
-use super::dsn::parse_and_validate_mysql_dsn;
+use super::dsn::NormalizedMySqlConfig;
 use super::sql::{EFFECTIVE_USER_QUERY, EFFECTIVE_USER_RESULT_COLUMNS};
 
 mod catalog;
@@ -14,8 +15,26 @@ mod table_detail;
 #[cfg(test)]
 mod test_support {
     use crate::domain::QueryValue;
+    #[cfg(unix)]
+    use crate::domain::connection::{MySqlConnectionConfig, MySqlSslMode};
 
     use super::MySqlResultSet;
+
+    #[cfg(unix)]
+    pub(super) fn connection_config(
+        user: &str,
+        password: &str,
+        database: &str,
+    ) -> MySqlConnectionConfig {
+        MySqlConnectionConfig::new(
+            "localhost",
+            3306,
+            Some(database.to_string()),
+            user,
+            password,
+            MySqlSslMode::Preferred,
+        )
+    }
 
     #[cfg(unix)]
     pub(super) fn assert_process_stopped(transcript: &std::path::Path) {
@@ -48,8 +67,11 @@ mod test_support {
 pub(super) use preview::{convert_preview_values_with_binary_charset, execute_preview};
 
 impl MySqlAdapter {
-    pub async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
-        let target = parse_and_validate_mysql_dsn(dsn)?;
+    pub async fn fetch_metadata(
+        &self,
+        config: &MySqlConnectionConfig,
+    ) -> Result<DatabaseMetadata, DbOperationError> {
+        let target = NormalizedMySqlConfig::new(config)?;
         let database = catalog::selected_database(&target)?;
         let tables = catalog::fetch_metadata_snapshot(&target, database).await?;
         let mut metadata = DatabaseMetadata::new(database.to_string());
@@ -60,9 +82,9 @@ impl MySqlAdapter {
 
     pub async fn fetch_effective_user(
         &self,
-        dsn: &str,
+        config: &MySqlConnectionConfig,
     ) -> Result<Option<String>, DbOperationError> {
-        let target = parse_and_validate_mysql_dsn(dsn)?;
+        let target = NormalizedMySqlConfig::new(config)?;
         let (_, result) = catalog::execute_metadata_query(
             &target,
             EFFECTIVE_USER_QUERY,
@@ -74,27 +96,27 @@ impl MySqlAdapter {
 
     pub async fn fetch_table_detail(
         &self,
-        dsn: &str,
+        config: &MySqlConnectionConfig,
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
-        table_detail::fetch_table_detail(dsn, schema, table).await
+        table_detail::fetch_table_detail(config, schema, table).await
     }
 
     pub async fn fetch_table_columns_and_fks(
         &self,
-        dsn: &str,
+        config: &MySqlConnectionConfig,
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
-        table_detail::fetch_table_columns_and_fks(dsn, schema, table).await
+        table_detail::fetch_table_columns_and_fks(config, schema, table).await
     }
 
     pub async fn fetch_table_signatures(
         &self,
-        dsn: &str,
+        config: &MySqlConnectionConfig,
     ) -> Result<TableSignatureSnapshot, DbOperationError> {
-        signature::fetch_table_signatures(dsn).await
+        signature::fetch_table_signatures(config).await
     }
 }
 

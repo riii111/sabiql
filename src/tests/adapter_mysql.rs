@@ -113,10 +113,10 @@ mod connection {
         assert_eq!(trusted_config.ssl_mode, MySqlSslMode::Disabled);
         assert!(trusted_config.server_public_key_path.is_some());
         let no_key_config = trusted_config.clone().with_server_public_key_path(None);
-        let no_key_dsn = adapter.build_dsn(&mysql_profile(
-            "mysql-caching-sha2-public-key-without-key",
-            no_key_config,
-        ));
+        let no_key_dsn = mysql_profile("mysql-caching-sha2-public-key-without-key", no_key_config)
+            .mysql_config()
+            .unwrap()
+            .clone();
         let error = adapter
             .probe(&no_key_dsn)
             .await
@@ -133,7 +133,7 @@ mod connection {
         }
 
         let trusted_profile = mysql_profile("mysql-caching-sha2-public-key", trusted_config);
-        let dsn = adapter.build_dsn(&trusted_profile);
+        let dsn = trusted_profile.mysql_config().unwrap().clone();
 
         adapter.probe(&dsn).await.unwrap();
         let result = adapter
@@ -153,7 +153,7 @@ mod connection {
         let config = mysql_tls_test_config();
         let profile = mysql_profile("mysql-tls-integration", config);
         let adapter = MySqlAdapter::new();
-        let dsn = adapter.build_dsn(&profile);
+        let dsn = profile.mysql_config().unwrap().clone();
 
         adapter.probe(&dsn).await.unwrap();
         let result = adapter
@@ -175,7 +175,7 @@ mod connection {
         config.ssl_key = None;
         let profile = mysql_profile("mysql-tls-missing-client-certificate", config);
         let adapter = MySqlAdapter::new();
-        let dsn = adapter.build_dsn(&profile);
+        let dsn = profile.mysql_config().unwrap().clone();
         let error = adapter.probe(&dsn).await.unwrap_err();
         let error_info = ConnectionErrorInfo::from_db_operation_error(&error);
         assert_eq!(
@@ -198,7 +198,7 @@ mod connection {
         config.ssl_ca = config.ssl_cert.clone();
         let profile = mysql_profile("mysql-tls-wrong-ca", config);
         let adapter = MySqlAdapter::new();
-        let dsn = adapter.build_dsn(&profile);
+        let dsn = profile.mysql_config().unwrap().clone();
         let error = adapter.probe(&dsn).await.unwrap_err();
         assert_eq!(
             ConnectionErrorInfo::from_db_operation_error(&error).summary(),
@@ -214,7 +214,7 @@ mod connection {
         config.ssl_mode = MySqlSslMode::VerifyIdentity;
         let profile = mysql_profile("mysql-tls-wrong-host", config);
         let adapter = MySqlAdapter::new();
-        let dsn = adapter.build_dsn(&profile);
+        let dsn = profile.mysql_config().unwrap().clone();
         let error = adapter.probe(&dsn).await.unwrap_err();
         let error_info = ConnectionErrorInfo::from_db_operation_error(&error);
         assert_eq!(
@@ -234,7 +234,7 @@ mod connection {
         let mut permission_config = base_config.clone();
         permission_config.database = Some("mysql".to_string());
         let permission_profile = mysql_profile("mysql-permission", permission_config);
-        let permission_dsn = adapter.build_dsn(&permission_profile);
+        let permission_dsn = permission_profile.mysql_config().unwrap().clone();
         let permission_error = adapter.probe(&permission_dsn).await.unwrap_err();
         assert_eq!(
             ConnectionErrorInfo::from_db_operation_error(&permission_error).summary(),
@@ -246,7 +246,7 @@ mod connection {
         missing_config.username = "root".to_string();
         missing_config.password = "root".to_string();
         let missing_profile = mysql_profile("mysql-missing-database", missing_config);
-        let missing_dsn = adapter.build_dsn(&missing_profile);
+        let missing_dsn = missing_profile.mysql_config().unwrap().clone();
         let missing_error = adapter.probe(&missing_dsn).await.unwrap_err();
         assert_eq!(
             ConnectionErrorInfo::from_db_operation_error(&missing_error).summary(),
@@ -256,7 +256,7 @@ mod connection {
         let mut auth_config = mysql_tls_config();
         auth_config.password = "wrong-password".to_string();
         let auth_profile = mysql_profile("mysql-authentication", auth_config);
-        let auth_dsn = adapter.build_dsn(&auth_profile);
+        let auth_dsn = auth_profile.mysql_config().unwrap().clone();
         let auth_error = adapter.probe(&auth_dsn).await.unwrap_err();
         let auth_info = ConnectionErrorInfo::from_db_operation_error(&auth_error);
         assert_eq!(
@@ -314,7 +314,7 @@ mod metadata_fetch {
             Box::pin(async move {
                 let metadata = db
                     .adapter()
-                    .fetch_metadata(db.dsn())
+                    .fetch_metadata(db.config())
                     .await
                     .map_err(|error| format!("{error:?}"))?;
                 if metadata
@@ -350,7 +350,7 @@ mod metadata_fetch {
             Box::pin(async move {
                 let detail = db
                     .adapter()
-                    .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_FIXTURE_TABLE)
+                    .fetch_table_detail(db.config(), "sabiql_test", MYSQL_FIXTURE_TABLE)
                     .await
                     .map_err(|error| format!("{error:?}"))?;
                 let names = detail
@@ -450,7 +450,7 @@ mod metadata_fetch {
 
                 let composite = db
                     .adapter()
-                    .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_COMPOSITE_TABLE)
+                    .fetch_table_detail(db.config(), "sabiql_test", MYSQL_COMPOSITE_TABLE)
                     .await
                     .map_err(|error| format!("{error:?}"))?;
                 if composite.primary_key
@@ -484,7 +484,7 @@ mod metadata_fetch {
 
                 let parent = db
                     .adapter()
-                    .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_FK_PARENT)
+                    .fetch_table_detail(db.config(), "sabiql_test", MYSQL_FK_PARENT)
                     .await
                     .map_err(|error| format!("{error:?}"))?;
                 let parent_unique_index = parent
@@ -512,7 +512,7 @@ mod metadata_fetch {
 
                 let child = db
                     .adapter()
-                    .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_FK_CHILD)
+                    .fetch_table_detail(db.config(), "sabiql_test", MYSQL_FK_CHILD)
                     .await
                     .map_err(|error| format!("{error:?}"))?;
                 if child.foreign_keys.len() != 1 {
@@ -535,7 +535,7 @@ mod metadata_fetch {
 
                 let columns_and_fks = db
                     .adapter()
-                    .fetch_table_columns_and_fks(db.dsn(), "sabiql_test", MYSQL_FK_CHILD)
+                    .fetch_table_columns_and_fks(db.config(), "sabiql_test", MYSQL_FK_CHILD)
                     .await
                     .map_err(|error| format!("{error:?}"))?;
                 if columns_and_fks.foreign_keys != child.foreign_keys
@@ -548,7 +548,7 @@ mod metadata_fetch {
 
                 let signatures = db
                     .adapter()
-                    .fetch_table_signatures(db.dsn())
+                    .fetch_table_signatures(db.config())
                     .await
                     .map_err(|error| format!("{error:?}"))?;
                 let child_signature = signatures
@@ -577,7 +577,7 @@ mod metadata_fetch {
             Box::pin(async move {
                 let view_detail = db
                     .adapter()
-                    .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_VIEW)
+                    .fetch_table_detail(db.config(), "sabiql_test", MYSQL_VIEW)
                     .await
                     .map_err(|error| format!("{error:?}"))?;
                 if view_detail.source_ddl().is_none()
@@ -612,13 +612,13 @@ mod metadata_fetch {
                 );
                 let result = async {
                     db.adapter()
-                        .execute_adhoc(db.dsn(), &create, AccessMode::ReadWrite)
+                        .execute_adhoc(db.config(), &create, AccessMode::ReadWrite)
                         .await
                         .map_err(|error| format!("failed to create C17 fixture: {error:?}"))?;
 
                     let detail = db
                         .adapter()
-                        .fetch_table_detail(db.dsn(), "sabiql_test", &table)
+                        .fetch_table_detail(db.config(), "sabiql_test", &table)
                         .await
                         .map_err(|error| format!("failed to fetch C17 metadata: {error:?}"))?;
                     let storage = &detail.storage_attributes;
@@ -673,13 +673,13 @@ mod metadata_fetch {
                 );
                 let result = async {
                     db.adapter()
-                        .execute_adhoc(db.dsn(), &create, AccessMode::ReadWrite)
+                        .execute_adhoc(db.config(), &create, AccessMode::ReadWrite)
                         .await
                         .map_err(|error| format!("failed to create C07 fixture: {error:?}"))?;
 
                     let detail = db
                         .adapter()
-                        .fetch_table_detail(db.dsn(), "sabiql_test", &table)
+                        .fetch_table_detail(db.config(), "sabiql_test", &table)
                         .await
                         .map_err(|error| format!("failed to fetch C07 metadata: {error:?}"))?;
                     let ddl = detail
@@ -762,7 +762,7 @@ mod metadata_fetch {
                 let single_index = "uq_mysql_metadata_child_parent_first";
                 db.adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         &format!(
                             "ALTER TABLE {MYSQL_FK_CHILD} ADD UNIQUE KEY {composite_index} (payload(10), parent_first)"
                         ),
@@ -773,7 +773,7 @@ mod metadata_fetch {
 
                 let composite = db
                     .adapter()
-                    .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_FK_CHILD)
+                    .fetch_table_detail(db.config(), "sabiql_test", MYSQL_FK_CHILD)
                     .await
                     .map_err(|error| format!("failed to fetch composite unique metadata: {error:?}"))?;
                 if composite
@@ -799,7 +799,7 @@ mod metadata_fetch {
                 }
                 db.adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         &format!("ALTER TABLE {MYSQL_FK_CHILD} DROP INDEX {composite_index}"),
                         AccessMode::ReadWrite,
                     )
@@ -808,12 +808,12 @@ mod metadata_fetch {
 
                 let before = db
                     .adapter()
-                    .fetch_table_signatures(db.dsn())
+                    .fetch_table_signatures(db.config())
                     .await
                     .map_err(|error| format!("failed to fetch baseline signatures: {error:?}"))?;
                 db.adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         &format!(
                             "ALTER TABLE {MYSQL_FK_CHILD} ADD UNIQUE KEY {single_index} (parent_first)"
                         ),
@@ -824,7 +824,7 @@ mod metadata_fetch {
 
                 let detail = db
                     .adapter()
-                    .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_FK_CHILD)
+                    .fetch_table_detail(db.config(), "sabiql_test", MYSQL_FK_CHILD)
                     .await
                     .map_err(|error| format!("failed to fetch single unique metadata: {error:?}"))?;
                 let parent_first = detail
@@ -840,7 +840,7 @@ mod metadata_fetch {
 
                 let light = db
                     .adapter()
-                    .fetch_table_columns_and_fks(db.dsn(), "sabiql_test", MYSQL_FK_CHILD)
+                    .fetch_table_columns_and_fks(db.config(), "sabiql_test", MYSQL_FK_CHILD)
                     .await
                     .map_err(|error| format!("failed to fetch light metadata: {error:?}"))?;
                 let light_parent_first = light
@@ -854,7 +854,7 @@ mod metadata_fetch {
 
                 let after_add = db
                     .adapter()
-                    .fetch_table_signatures(db.dsn())
+                    .fetch_table_signatures(db.config())
                     .await
                     .map_err(|error| format!("failed to fetch changed signatures: {error:?}"))?;
                 if before.signatures == after_add.signatures {
@@ -863,7 +863,7 @@ mod metadata_fetch {
 
                 db.adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         &format!("ALTER TABLE {MYSQL_FK_CHILD} DROP INDEX {single_index}"),
                         AccessMode::ReadWrite,
                     )
@@ -871,7 +871,7 @@ mod metadata_fetch {
                     .map_err(|error| format!("failed to drop single-column unique index: {error:?}"))?;
                 let after_drop = db
                     .adapter()
-                    .fetch_table_signatures(db.dsn())
+                    .fetch_table_signatures(db.config())
                     .await
                     .map_err(|error| format!("failed to fetch restored signatures: {error:?}"))?;
                 if before.signatures != after_drop.signatures {
@@ -890,7 +890,7 @@ mod metadata_fetch {
             Box::pin(async move {
                 db.adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         &format!(
                             "CREATE TABLE {MYSQL_INDEX_METADATA} (email VARCHAR(255) NOT NULL, created_at DATETIME NOT NULL, status VARCHAR(32) NOT NULL, KEY idx_normal_status (status), KEY idx_email_prefix_desc (email(8) DESC, created_at), KEY idx_invisible_created_at (created_at) INVISIBLE, KEY idx_functional_email ((LOWER(email))) INVISIBLE) ENGINE=InnoDB"
                         ),
@@ -901,7 +901,7 @@ mod metadata_fetch {
 
                 let detail = db
                     .adapter()
-                    .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_INDEX_METADATA)
+                    .fetch_table_detail(db.config(), "sabiql_test", MYSQL_INDEX_METADATA)
                     .await
                     .map_err(|error| format!("failed to fetch index metadata fixture: {error:?}"))?;
 
@@ -949,7 +949,7 @@ mod metadata_fetch {
 
                 db.adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         &format!("DROP TABLE {MYSQL_INDEX_METADATA}"),
                         AccessMode::ReadWrite,
                     )
@@ -993,7 +993,7 @@ mod query_preview {
             Box::pin(async move {
                 let result = db
                     .adapter()
-                    .execute_preview(db.dsn(), "sabiql_test", MYSQL_FIXTURE_TABLE, 10, 0)
+                    .execute_preview(db.config(), "sabiql_test", MYSQL_FIXTURE_TABLE, 10, 0)
                     .await
                     .map_err(|error| format!("{error:?}"))?;
                 if result
@@ -1042,7 +1042,7 @@ mod query_preview {
 
                 let page = db
                     .adapter()
-                    .execute_preview(db.dsn(), "sabiql_test", MYSQL_NO_PK_TABLE, 1, 1)
+                    .execute_preview(db.config(), "sabiql_test", MYSQL_NO_PK_TABLE, 1, 1)
                     .await
                     .map_err(|error| format!("{error:?}"))?;
                 if page.query
@@ -1060,7 +1060,7 @@ mod query_preview {
 
                 let composite = db
                     .adapter()
-                    .execute_preview(db.dsn(), "sabiql_test", MYSQL_COMPOSITE_TABLE, 1, 0)
+                    .execute_preview(db.config(), "sabiql_test", MYSQL_COMPOSITE_TABLE, 1, 0)
                     .await
                     .map_err(|error| format!("{error:?}"))?;
                 if !composite
@@ -1075,7 +1075,7 @@ mod query_preview {
 
                 let view = db
                     .adapter()
-                    .execute_preview(db.dsn(), "sabiql_test", MYSQL_VIEW, 10, 0)
+                    .execute_preview(db.config(), "sabiql_test", MYSQL_VIEW, 10, 0)
                     .await
                     .map_err(|error| format!("{error:?}"))?;
                 if view.columns != ["id", "unicode_text"] {
@@ -1098,7 +1098,7 @@ mod query_preview {
                 let preview = db
                     .adapter()
                     .execute_preview(
-                        db.dsn(),
+                        db.config(),
                         "sabiql_test",
                         MYSQL_BINARY_CHARSET_TABLE,
                         1,
@@ -1149,7 +1149,7 @@ mod query_preview {
                         &[("id".to_string(), QueryValue::SqlLiteral("1".to_string()))],
                     );
                     db.adapter()
-                        .execute_write(db.dsn(), &update_sql, AccessMode::ReadWrite)
+                        .execute_write(db.config(), &update_sql, AccessMode::ReadWrite)
                         .await
                         .map_err(|error| {
                             format!("failed to write binary charset column {column}: {error:?}")
@@ -1159,7 +1159,7 @@ mod query_preview {
                 let hex = db
                     .adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         "SELECT HEX(binary_char), HEX(binary_varchar), HEX(binary_varbinary), HEX(binary_blob), HEX(binary_bit) FROM mysql_preview_binary_charset WHERE id = 1",
                         AccessMode::ReadOnly,
                     )
@@ -1190,7 +1190,7 @@ mod query_preview {
                 let hex_result = db
                     .adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         "SELECT HEX(location) FROM demo_warehouses WHERE code = 'TYO001'",
                         AccessMode::ReadOnly,
                     )
@@ -1204,7 +1204,7 @@ mod query_preview {
 
                 let preview = db
                     .adapter()
-                    .execute_preview(db.dsn(), "sabiql_test", MYSQL_SPATIAL_TABLE, 1, 0)
+                    .execute_preview(db.config(), "sabiql_test", MYSQL_SPATIAL_TABLE, 1, 0)
                     .await
                     .map_err(|error| format!("failed to preview spatial table: {error:?}"))?;
                 let location_index = preview
@@ -1233,7 +1233,7 @@ mod query_preview {
             Box::pin(async move {
                 let result = db
                     .adapter()
-                    .execute_preview(db.dsn(), "sabiql_test", MYSQL_EMPTY_TABLE, 10, 0)
+                    .execute_preview(db.config(), "sabiql_test", MYSQL_EMPTY_TABLE, 10, 0)
                     .await
                     .map_err(|error| format!("{error:?}"))?;
                 if result.columns != ["id", "payload"] || !result.values().is_empty() {
@@ -1301,7 +1301,7 @@ mod write_operations {
                 ] {
                     let result = db
                         .adapter()
-                        .execute_adhoc(db.dsn(), &query, AccessMode::ReadWrite)
+                        .execute_adhoc(db.config(), &query, AccessMode::ReadWrite)
                         .await;
                     if !matches!(
                         &result,
@@ -1317,7 +1317,7 @@ mod write_operations {
                 let qualified_same_database = db
                     .adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         &format!(
                             "INSERT INTO sabiql_test.{MYSQL_CASE_SCOPE_CHILD} (parent_id, payload) VALUES (1, 'temporary'); UPDATE sabiql_test.{MYSQL_CASE_SCOPE_CHILD} SET payload = 'temporary updated' WHERE parent_id = 1 AND payload = 'temporary'; DELETE FROM sabiql_test.{MYSQL_CASE_SCOPE_CHILD} WHERE parent_id = 1 AND payload = 'temporary updated'"
                         ),
@@ -1337,7 +1337,7 @@ mod write_operations {
 
                 let child = db
                     .adapter()
-                    .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_CASE_SCOPE_CHILD)
+                    .fetch_table_detail(db.config(), "sabiql_test", MYSQL_CASE_SCOPE_CHILD)
                     .await
                     .map_err(|error| format!("failed to fetch case-sensitive FK metadata: {error:?}"))?;
                 if child.foreign_keys.len() != 1
@@ -1352,7 +1352,7 @@ mod write_operations {
 
                 let wrong_schema = db
                     .adapter()
-                    .fetch_table_detail(db.dsn(), "SABIQL_TEST", MYSQL_CASE_SCOPE_PARENT)
+                    .fetch_table_detail(db.config(), "SABIQL_TEST", MYSQL_CASE_SCOPE_PARENT)
                     .await;
                 if !matches!(
                     &wrong_schema,
@@ -1388,7 +1388,7 @@ mod write_operations {
                     let create = db
                         .adapter()
                         .execute_adhoc(
-                            db.dsn(),
+                            db.config(),
                             &format!(
                                 "CREATE TABLE {table} (id INT PRIMARY KEY, body TEXT NOT NULL) /*!40100 DEFAULT CHARSET=utf8mb4 */"
                             ),
@@ -1403,7 +1403,7 @@ mod write_operations {
                     let rename = db
                         .adapter()
                         .execute_adhoc(
-                            db.dsn(),
+                            db.config(),
                             &format!("RENAME TABLE {table} TO {renamed_table}"),
                             AccessMode::ReadWrite,
                         )
@@ -1416,7 +1416,7 @@ mod write_operations {
                     let alter_rename = db
                         .adapter()
                         .execute_adhoc(
-                            db.dsn(),
+                            db.config(),
                             &format!(
                                 "ALTER TABLE {renamed_table} RENAME TO {alter_renamed_table}"
                             ),
@@ -1435,7 +1435,7 @@ mod write_operations {
                     let alter_as_rename = db
                         .adapter()
                         .execute_adhoc(
-                            db.dsn(),
+                            db.config(),
                             &format!(
                                 "ALTER TABLE {alter_renamed_table} RENAME AS {alter_as_renamed_table}"
                             ),
@@ -1454,7 +1454,7 @@ mod write_operations {
                     let create_view = db
                         .adapter()
                         .execute_adhoc(
-                            db.dsn(),
+                            db.config(),
                             &format!(
                                 "CREATE OR REPLACE ALGORITHM=MERGE DEFINER=CURRENT_USER SQL SECURITY INVOKER VIEW {view} AS SELECT id, body FROM {alter_as_renamed_table}"
                             ),
@@ -1471,7 +1471,7 @@ mod write_operations {
                     let alter_view = db
                         .adapter()
                         .execute_adhoc(
-                            db.dsn(),
+                            db.config(),
                             &format!(
                                 "ALTER ALGORITHM=MERGE DEFINER=CURRENT_USER SQL SECURITY INVOKER VIEW {view} AS SELECT id, body FROM {alter_as_renamed_table}"
                             ),
@@ -1486,7 +1486,7 @@ mod write_operations {
                     let create_fulltext = db
                         .adapter()
                         .execute_adhoc(
-                            db.dsn(),
+                            db.config(),
                             &format!(
                                 "CREATE FULLTEXT INDEX {view}_body ON {alter_as_renamed_table} (body)"
                             ),
@@ -1503,7 +1503,7 @@ mod write_operations {
                     let view_result = db
                         .adapter()
                         .execute_adhoc(
-                            db.dsn(),
+                            db.config(),
                             &format!("SELECT id, body FROM {view}"),
                             AccessMode::ReadWrite,
                         )
@@ -1516,7 +1516,7 @@ mod write_operations {
                     let drop = db
                         .adapter()
                         .execute_adhoc(
-                            db.dsn(),
+                            db.config(),
                             &format!("DROP TABLE {alter_as_renamed_table} /*!80000 RESTRICT */"),
                             AccessMode::ReadWrite,
                         )
@@ -1554,7 +1554,7 @@ mod write_operations {
             Box::pin(async move {
                 let detail = db
                     .adapter()
-                    .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_FUNCTIONAL_INDEX)
+                    .fetch_table_detail(db.config(), "sabiql_test", MYSQL_FUNCTIONAL_INDEX)
                     .await
                     .map_err(|error| {
                         format!("failed to fetch functional index metadata: {error:?}")
@@ -1588,7 +1588,7 @@ mod write_operations {
 
                 let preview = db
                     .adapter()
-                    .execute_preview(db.dsn(), "sabiql_test", MYSQL_FUNCTIONAL_INDEX, 10, 0)
+                    .execute_preview(db.config(), "sabiql_test", MYSQL_FUNCTIONAL_INDEX, 10, 0)
                     .await
                     .map_err(|error| {
                         format!("failed to preview functional index table: {error:?}")
@@ -1613,7 +1613,7 @@ mod write_operations {
                 );
                 let update = db
                     .adapter()
-                    .execute_write(db.dsn(), &update_sql, AccessMode::ReadWrite)
+                    .execute_write(db.config(), &update_sql, AccessMode::ReadWrite)
                     .await
                     .map_err(|error| {
                         format!("failed to update functional index table: {error:?}")
@@ -1647,7 +1647,7 @@ mod write_operations {
 
                     let invisible = db
                     .adapter()
-                    .execute_preview(db.dsn(), "sabiql_test", MYSQL_INVISIBLE_PK_TABLE, 10, 0)
+                    .execute_preview(db.config(), "sabiql_test", MYSQL_INVISIBLE_PK_TABLE, 10, 0)
                     .await
                     .map_err(|error| format!("failed to preview invisible primary key: {error:?}"))?;
                     if invisible.columns != ["payload"]
@@ -1673,7 +1673,7 @@ mod write_operations {
                     let composite = db
                     .adapter()
                     .execute_preview(
-                        db.dsn(),
+                        db.config(),
                         "sabiql_test",
                         MYSQL_INVISIBLE_COMPOSITE_TABLE,
                         10,
@@ -1700,7 +1700,7 @@ mod write_operations {
 
                     let gipk_detail = db
                     .adapter()
-                    .fetch_table_detail(db.dsn(), "sabiql_test", &gipk_table)
+                    .fetch_table_detail(db.config(), "sabiql_test", &gipk_table)
                     .await
                     .map_err(|error| format!("failed to fetch GIPK metadata: {error:?}"))?;
                     if gipk_detail.primary_key != Some(vec!["my_row_id".to_string()]) {
@@ -1711,7 +1711,7 @@ mod write_operations {
                     }
                     let gipk = db
                     .adapter()
-                    .execute_preview(db.dsn(), "sabiql_test", &gipk_table, 10, 0)
+                    .execute_preview(db.config(), "sabiql_test", &gipk_table, 10, 0)
                     .await
                     .map_err(|error| format!("failed to preview GIPK: {error:?}"))?;
                     if gipk.columns != ["payload"]
@@ -1744,7 +1744,7 @@ mod write_operations {
                     }
                     let update = db
                         .adapter()
-                        .execute_write(db.dsn(), &update_sql, AccessMode::ReadWrite)
+                        .execute_write(db.config(), &update_sql, AccessMode::ReadWrite)
                         .await
                         .map_err(|error| format!("failed to update through GIPK: {error:?}"))?;
                     if update.affected_rows != 1 {
@@ -1753,7 +1753,7 @@ mod write_operations {
                     let changed = db
                         .adapter()
                         .execute_adhoc(
-                            db.dsn(),
+                            db.config(),
                             &format!("SELECT my_row_id, payload FROM {gipk_table}"),
                             AccessMode::ReadWrite,
                         )
@@ -1778,7 +1778,7 @@ mod write_operations {
                     );
                     let delete = db
                         .adapter()
-                        .execute_write(db.dsn(), &delete_sql, AccessMode::ReadWrite)
+                        .execute_write(db.config(), &delete_sql, AccessMode::ReadWrite)
                         .await
                         .map_err(|error| {
                             format!("failed to delete through invisible primary key: {error:?}")
@@ -1800,7 +1800,7 @@ mod write_operations {
                     let restore_invisible = db
                         .adapter()
                         .execute_adhoc(
-                            db.dsn(),
+                            db.config(),
                             "INSERT INTO mysql_edit_invisible_pk (id, payload) VALUES (1, 'invisible single primary key')",
                             AccessMode::ReadWrite,
                         )
@@ -1845,14 +1845,14 @@ mod write_operations {
                 );
                 let result = async {
                     db.adapter()
-                        .execute_adhoc(db.dsn(), &create, AccessMode::ReadWrite)
+                        .execute_adhoc(db.config(), &create, AccessMode::ReadWrite)
                         .await
                         .map_err(|error| format!("failed to create write fixture: {error:?}"))?;
                     let insert = format!(
                         "INSERT INTO {table} (first_key, second_key, payload) VALUES (18446744073709551615, 7, 'before'), (42, 8, 'second')"
                     );
                     db.adapter()
-                        .execute_adhoc(db.dsn(), &insert, AccessMode::ReadWrite)
+                        .execute_adhoc(db.config(), &insert, AccessMode::ReadWrite)
                         .await
                         .map_err(|error| format!("failed to seed write fixture: {error:?}"))?;
 
@@ -1874,7 +1874,7 @@ mod write_operations {
                     );
                     let update = db
                         .adapter()
-                        .execute_write(db.dsn(), &update_sql, AccessMode::ReadWrite)
+                        .execute_write(db.config(), &update_sql, AccessMode::ReadWrite)
                         .await
                         .map_err(|error| format!("failed to update MySQL row: {error:?}"))?;
                     if update.affected_rows != 1 {
@@ -1884,7 +1884,7 @@ mod write_operations {
                     let changed = db
                         .adapter()
                         .execute_adhoc(
-                            db.dsn(),
+                            db.config(),
                             &format!(
                                 "SELECT payload FROM {table} WHERE first_key = 18446744073709551615 AND second_key = 7"
                             ),
@@ -1924,7 +1924,7 @@ mod write_operations {
                     );
                     let delete = db
                         .adapter()
-                        .execute_write(db.dsn(), &delete_sql, AccessMode::ReadWrite)
+                        .execute_write(db.config(), &delete_sql, AccessMode::ReadWrite)
                         .await
                         .map_err(|error| format!("failed to delete MySQL rows: {error:?}"))?;
                     if delete.affected_rows != 2 {
@@ -1937,7 +1937,7 @@ mod write_operations {
                 let drop = format!("DROP TABLE IF EXISTS {table}");
                 let cleanup = db
                     .adapter()
-                    .execute_adhoc(db.dsn(), &drop, AccessMode::ReadWrite)
+                    .execute_adhoc(db.config(), &drop, AccessMode::ReadWrite)
                     .await
                     .map_err(|error| format!("failed to clean up write fixture: {error:?}"));
                 match result {
@@ -1964,12 +1964,12 @@ mod write_operations {
                 );
                 let result = async {
                     db.adapter()
-                        .execute_adhoc(db.dsn(), &create, AccessMode::ReadWrite)
+                        .execute_adhoc(db.config(), &create, AccessMode::ReadWrite)
                         .await
                         .map_err(|error| format!("failed to create JSON fixture: {error:?}"))?;
                     db.adapter()
                         .execute_adhoc(
-                            db.dsn(),
+                            db.config(),
                             &format!("INSERT INTO {table} VALUES (1, '{{\"a\":1}}')"),
                             AccessMode::ReadWrite,
                         )
@@ -1987,14 +1987,14 @@ mod write_operations {
                         return Err("JSON update unexpectedly used JSON_SET".to_string());
                     }
                     db.adapter()
-                        .execute_write(db.dsn(), &update_json, AccessMode::ReadWrite)
+                        .execute_write(db.config(), &update_json, AccessMode::ReadWrite)
                         .await
                         .map_err(|error| format!("failed to update JSON document: {error:?}"))?;
 
                     let reordered = db
                         .adapter()
                         .execute_adhoc(
-                            db.dsn(),
+                            db.config(),
                             &format!("SELECT JSON_EXTRACT(payload, '$.b'), JSON_EXTRACT(payload, '$.a') FROM {table} WHERE id = 1"),
                             AccessMode::ReadWrite,
                         )
@@ -2015,13 +2015,13 @@ mod write_operations {
                             &[("id".to_string(), QueryValue::SqlLiteral("1".to_string()))],
                         );
                         db.adapter()
-                            .execute_write(db.dsn(), &update, AccessMode::ReadWrite)
+                            .execute_write(db.config(), &update, AccessMode::ReadWrite)
                             .await
                             .map_err(|error| format!("failed to update JSON null value: {error:?}"))?;
                         let value = db
                             .adapter()
                             .execute_adhoc(
-                                db.dsn(),
+                                db.config(),
                                 &format!("SELECT JSON_TYPE(payload) FROM {table} WHERE id = 1"),
                                 AccessMode::ReadWrite,
                             )
@@ -2038,7 +2038,7 @@ mod write_operations {
                 let drop = format!("DROP TABLE IF EXISTS {table}");
                 let cleanup = db
                     .adapter()
-                    .execute_adhoc(db.dsn(), &drop, AccessMode::ReadWrite)
+                    .execute_adhoc(db.config(), &drop, AccessMode::ReadWrite)
                     .await
                     .map_err(|error| format!("failed to clean up JSON fixture: {error:?}"));
                 match result {
@@ -2070,7 +2070,7 @@ mod query_execution {
             let result = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     "INSERT IGNORE INTO mysql_preview_composite (first_key, second_key, payload) VALUES (3, 30, 'first'); CREATE TABLE IF NOT EXISTS mysql_preview_composite (id INT); SELECT 2",
                     AccessMode::ReadWrite,
                 )
@@ -2106,7 +2106,7 @@ mod query_execution {
                 let result = db
                     .adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         "EXPLAIN FORMAT=TREE SELECT * FROM mysql_preview_composite WHERE first_key = \"x\"",
                         AccessMode::ReadWrite,
                     )
@@ -2139,7 +2139,7 @@ mod query_execution {
             let result = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &format!(
                         "SELECT nullable_text, empty_text, unicode_text, JSON_EXTRACT(json_value, '$.array'), JSON_EXTRACT(json_value, '$.text'), blob_value, CONVERT(CONCAT('line one', CHAR(10), 'ERROR 1146 (42S02): not a CLI error') USING utf8mb4), 'x|y', 'first\\nmiddle\\nlast', 'tail\\t ', CAST(NULL AS CHAR(8)), 'NULL' FROM {MYSQL_FIXTURE_TABLE}"
                     ),
@@ -2177,7 +2177,7 @@ mod query_execution {
                 let select = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     "SELECT 1 AS first_alias, '' AS empty_alias, '日本語' AS unicode_alias WHERE FALSE",
                     AccessMode::ReadWrite,
                 )
@@ -2192,7 +2192,7 @@ mod query_execution {
                 let cte = db
                     .adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         "WITH cte_rows AS (SELECT 1 AS first_alias) SELECT first_alias FROM cte_rows WHERE FALSE",
                         AccessMode::ReadWrite,
                     )
@@ -2205,7 +2205,7 @@ mod query_execution {
                 let cte_with_columns = db
                     .adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         "WITH cte_rows(first_alias) AS (SELECT 1) SELECT first_alias FROM cte_rows WHERE FALSE",
                         AccessMode::ReadWrite,
                     )
@@ -2222,7 +2222,7 @@ mod query_execution {
                 let trailing_comment = db
                     .adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         "SELECT 1 AS value WHERE FALSE -- trailing comment;",
                         AccessMode::ReadWrite,
                     )
@@ -2237,7 +2237,7 @@ mod query_execution {
                 let hash_comment = db
                     .adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         "SELECT 1 AS value WHERE FALSE # trailing comment",
                         AccessMode::ReadWrite,
                     )
@@ -2252,7 +2252,7 @@ mod query_execution {
                 let case_expression = db
                     .adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         "SELECT CASE (1) WHEN 1 THEN 'x' ELSE 'y' END AS value WHERE FALSE",
                         AccessMode::ReadWrite,
                     )
@@ -2271,7 +2271,7 @@ mod query_execution {
                 ] {
                     let result = db
                         .adapter()
-                        .execute_adhoc(db.dsn(), query, AccessMode::ReadWrite)
+                        .execute_adhoc(db.config(), query, AccessMode::ReadWrite)
                         .await
                         .map_err(|error| format!("empty SELECT metadata fallback failed: {error:?}"))?;
                     if result.columns != [expected_column] || !result.values().is_empty() {
@@ -2282,7 +2282,7 @@ mod query_execution {
                 let non_evaluated = tokio::time::timeout(
                     Duration::from_secs(5),
                     db.adapter().execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         "SELECT SLEEP(10) AS sleep_value WHERE FALSE",
                         AccessMode::ReadWrite,
                     ),
@@ -2310,7 +2310,7 @@ mod query_execution {
                 let show = db
                     .adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         "SHOW TABLES LIKE 'sabiql_empty_metadata_missing'",
                         AccessMode::ReadWrite,
                     )
@@ -2335,7 +2335,7 @@ mod query_execution {
                 let describe = db
                     .adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         &format!("DESCRIBE {MYSQL_EMPTY_TABLE} 'missing_column'"),
                         AccessMode::ReadWrite,
                     )
@@ -2360,7 +2360,7 @@ mod query_execution {
                 let table = db
                     .adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         &format!("TABLE {MYSQL_EMPTY_TABLE}"),
                         AccessMode::ReadWrite,
                     )
@@ -2383,7 +2383,7 @@ mod query_execution {
                 let result = db
                     .adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         &format!(
                             "UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = 'multi statement' WHERE id = 1; SELECT empty_text FROM {MYSQL_FIXTURE_TABLE} WHERE id = 1"
                         ),
@@ -2404,7 +2404,7 @@ mod query_execution {
             let cleanup = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &format!("UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = '' WHERE id = 1"),
                     AccessMode::ReadWrite,
                 )
@@ -2425,7 +2425,7 @@ mod query_execution {
             let result = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &format!(
                         "SELECT id INTO @picked FROM {MYSQL_FIXTURE_TABLE} WHERE id = 1; SELECT @picked"
                     ),
@@ -2452,7 +2452,7 @@ mod query_execution {
                 let result = db
                     .adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         &format!(
                             "UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = 'session state' WHERE id = 1; SELECT ROW_COUNT()"
                         ),
@@ -2473,7 +2473,7 @@ mod query_execution {
             let cleanup = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &format!("UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = '' WHERE id = 1"),
                     AccessMode::ReadWrite,
                 )
@@ -2494,7 +2494,7 @@ mod query_execution {
             let warnings = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     "INSERT IGNORE INTO mysql_preview_composite (first_key, second_key, payload) VALUES (3, 30, 'first'); SHOW WARNINGS",
                     AccessMode::ReadWrite,
                 )
@@ -2516,7 +2516,7 @@ mod query_execution {
             let found_rows = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     "SELECT SQL_CALC_FOUND_ROWS first_key FROM mysql_preview_composite; SELECT FOUND_ROWS()",
                     AccessMode::ReadWrite,
                 )
@@ -2532,7 +2532,7 @@ mod query_execution {
             let empty_found_rows = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     "SELECT SQL_CALC_FOUND_ROWS first_key FROM mysql_preview_composite WHERE first_key = 999; SELECT FOUND_ROWS()",
                     AccessMode::ReadWrite,
                 )
@@ -2550,7 +2550,7 @@ mod query_execution {
             let dml_found_rows = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &format!(
                         "SELECT /*!80000 SQL_CALC_FOUND_ROWS */ first_key FROM mysql_preview_composite WHERE first_key = 999; UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = FOUND_ROWS() WHERE id = 1"
                     ),
@@ -2561,7 +2561,7 @@ mod query_execution {
             let stored_found_rows = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &format!("SELECT empty_text FROM {MYSQL_FIXTURE_TABLE} WHERE id = 1"),
                     AccessMode::ReadWrite,
                 )
@@ -2578,7 +2578,7 @@ mod query_execution {
             }
             db.adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &format!("UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = '' WHERE id = 1"),
                     AccessMode::ReadWrite,
                 )
@@ -2597,7 +2597,7 @@ mod query_execution {
                 let result = db
                     .adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         &format!(
                             "UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = 'changed before failure' WHERE id = 1; SELECT missing_column FROM {MYSQL_FIXTURE_TABLE}"
                         ),
@@ -2619,7 +2619,7 @@ mod query_execution {
             let cleanup = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &format!("UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = '' WHERE id = 1"),
                     AccessMode::ReadWrite,
                 )
@@ -2640,7 +2640,7 @@ mod query_execution {
             let result = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &format!(
                         "BEGIN; UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = 'rolled back' WHERE id = 1; ROLLBACK; SELECT empty_text FROM {MYSQL_FIXTURE_TABLE} WHERE id = 1"
                     ),
@@ -2683,7 +2683,7 @@ mod query_execution {
             let result = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &format!(
                         "UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = 'normalized defaults' WHERE id = 1; SELECT @@SESSION.autocommit = 1 AS autocommit_normalized, @@SESSION.completion_type = 'NO_CHAIN' AS completion_type_normalized, empty_text FROM {MYSQL_FIXTURE_TABLE} WHERE id = 1"
                     ),
@@ -2741,7 +2741,7 @@ mod query_execution {
             );
             let validation = db
                 .adapter()
-                .execute_adhoc(db.dsn(), &query, AccessMode::ReadWrite)
+                .execute_adhoc(db.config(), &query, AccessMode::ReadWrite)
                 .await;
             if !matches!(
                 validation,
@@ -2761,7 +2761,7 @@ mod query_execution {
                 let updated = db
                     .adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         &format!("SELECT empty_text FROM {MYSQL_FIXTURE_TABLE} WHERE id = 1"),
                         AccessMode::ReadWrite,
                     )
@@ -2770,7 +2770,7 @@ mod query_execution {
                 let table_exists = db
                     .adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         &format!(
                             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = '{table}'"
                         ),
@@ -2791,7 +2791,7 @@ mod query_execution {
             let cleanup = async {
                 db.adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         &format!("DROP TABLE IF EXISTS {table}"),
                         AccessMode::ReadWrite,
                     )
@@ -2799,7 +2799,7 @@ mod query_execution {
                     .map_err(|error| format!("failed to clean up implicit-commit table: {error:?}"))?;
                 db.adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         &format!(
                             "UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = '' WHERE id = 1"
                         ),
@@ -2832,7 +2832,7 @@ mod query_execution {
             let result = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &format!(
                         "CREATE TEMPORARY TABLE {table} (id INT); INSERT INTO {table} VALUES (1), (2); SELECT id FROM {table} ORDER BY id; DROP TEMPORARY TABLE {table}"
                     ),
@@ -2852,7 +2852,7 @@ mod query_execution {
             let ddl_only_result = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &format!(
                         "CREATE TEMPORARY TABLE {ddl_only_table} (id INT); DROP TEMPORARY TABLE {ddl_only_table}"
                     ),
@@ -2873,7 +2873,7 @@ mod query_execution {
             let empty_result = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &format!(
                         "CREATE TEMPORARY TABLE {empty_table} (id INT); SELECT id FROM {empty_table} WHERE FALSE; DROP TEMPORARY TABLE {empty_table}"
                     ),
@@ -2889,7 +2889,7 @@ mod query_execution {
             let transactional_empty_result = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &format!(
                         "START TRANSACTION; CREATE TEMPORARY TABLE {transactional_empty_table} (id INT); SELECT id FROM {transactional_empty_table} WHERE FALSE; DROP TEMPORARY TABLE {transactional_empty_table}; COMMIT"
                     ),
@@ -2910,7 +2910,7 @@ mod query_execution {
             let persistent_ddl_tail_result = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &format!(
                         "CREATE TABLE {persistent_ddl_tail_table} (id INT, retained INT); SELECT id FROM {persistent_ddl_tail_table} WHERE FALSE; ALTER TABLE {persistent_ddl_tail_table} DROP COLUMN id; DROP TABLE {persistent_ddl_tail_table}"
                     ),
@@ -2931,7 +2931,7 @@ mod query_execution {
             let temporary_ddl_tail_result = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &format!(
                         "CREATE TEMPORARY TABLE {temporary_ddl_tail_table} (id INT, retained INT); SELECT id FROM {temporary_ddl_tail_table} WHERE FALSE; ALTER TABLE {temporary_ddl_tail_table} DROP COLUMN id; DROP TEMPORARY TABLE {temporary_ddl_tail_table}"
                     ),
@@ -2952,7 +2952,7 @@ mod query_execution {
             let found_rows_result = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &format!(
                         "SELECT SQL_CALC_FOUND_ROWS id FROM {MYSQL_FIXTURE_TABLE} LIMIT 1000, 1; CREATE TABLE {found_rows_capture_table} AS SELECT FOUND_ROWS() AS n"
                     ),
@@ -2971,7 +2971,7 @@ mod query_execution {
             let captured_found_rows = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &format!("SELECT n FROM {found_rows_capture_table}"),
                     AccessMode::ReadWrite,
                 )
@@ -2984,7 +2984,7 @@ mod query_execution {
             }
             db.adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &format!("DROP TABLE {found_rows_capture_table}"),
                     AccessMode::ReadWrite,
                 )
@@ -2995,7 +2995,7 @@ mod query_execution {
             let diagnostic_count_result = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &format!(
                         "SELECT SQL_CALC_FOUND_ROWS id FROM {MYSQL_FIXTURE_TABLE} LIMIT 1000, 1; CREATE TABLE {diagnostic_count_capture_table} AS SELECT @@warning_count AS warning_count, @@error_count AS error_count"
                     ),
@@ -3014,7 +3014,7 @@ mod query_execution {
             let captured_diagnostic_counts = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &format!(
                         "SELECT warning_count, error_count FROM {diagnostic_count_capture_table}"
                     ),
@@ -3034,7 +3034,7 @@ mod query_execution {
             }
             db.adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &format!("DROP TABLE {diagnostic_count_capture_table}"),
                     AccessMode::ReadWrite,
                 )
@@ -3058,7 +3058,7 @@ mod query_execution {
                 let result = db
                     .adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         &format!("CREATE TABLE {table} (id INT); CREATE TABLE {table} (id INT)"),
                         AccessMode::ReadWrite,
                     )
@@ -3077,7 +3077,7 @@ mod query_execution {
                 let cleanup = db
                     .adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         &format!("DROP TABLE IF EXISTS {table}"),
                         AccessMode::ReadWrite,
                     )
@@ -3099,7 +3099,7 @@ mod query_execution {
             let result = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &format!("SELECT missing_column FROM {MYSQL_FIXTURE_TABLE}"),
                     AccessMode::ReadWrite,
                 )
@@ -3126,7 +3126,7 @@ mod query_execution {
                 let missing = db
                     .adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         &format!("SELECT id FROM {missing_table}"),
                         AccessMode::ReadWrite,
                     )
@@ -3138,7 +3138,7 @@ mod query_execution {
                 let duplicate = db
                     .adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         "CREATE TEMPORARY TABLE sabiql_mrf2_05_duplicate (id INT PRIMARY KEY); INSERT INTO sabiql_mrf2_05_duplicate VALUES (1); INSERT INTO sabiql_mrf2_05_duplicate VALUES (1)",
                         AccessMode::ReadWrite,
                     )
@@ -3153,7 +3153,7 @@ mod query_execution {
 
                 db.adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         &format!(
                             "CREATE TABLE {lock_table} (id INT PRIMARY KEY, value INT NOT NULL); INSERT INTO {lock_table} VALUES (1, 0), (2, 0)"
                         ),
@@ -3169,12 +3169,12 @@ mod query_execution {
                     "BEGIN; UPDATE {lock_table} SET value = value + 1 WHERE id = 2; SELECT SLEEP(1); UPDATE {lock_table} SET value = value + 1 WHERE id = 1; COMMIT"
                 );
                 let first = db.adapter().execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &first_query,
                     AccessMode::ReadWrite,
                 );
                 let second = db.adapter().execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &second_query,
                     AccessMode::ReadWrite,
                 );
@@ -3198,7 +3198,7 @@ mod query_execution {
             let cleanup = db
                 .adapter()
                 .execute_adhoc(
-                    db.dsn(),
+                    db.config(),
                     &format!("DROP TABLE IF EXISTS {lock_table}"),
                     AccessMode::ReadWrite,
                 )
@@ -3223,7 +3223,7 @@ mod query_execution {
                 let result = tokio::time::timeout(
                     Duration::from_secs(5),
                     execute_mysql_adhoc_with_timeout_for_test(
-                        db.dsn(),
+                        db.config(),
                         "SELECT SLEEP(10), 'discarded'",
                         Duration::from_secs(1),
                     ),
@@ -3247,7 +3247,7 @@ mod query_execution {
                 let result = db
                     .adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         &format!(
                             "SELECT @@SESSION.transaction_read_only AS transaction_read_only, id, empty_text FROM {MYSQL_FIXTURE_TABLE}"
                         ),
@@ -3267,7 +3267,7 @@ mod query_execution {
                 }
 
                 let write = execute_mysql_adhoc_with_read_only_session_for_test(
-                    db.dsn(),
+                    db.config(),
                     &format!(
                         "UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = 'read-only mutation' WHERE id = 1"
                     ),
@@ -3287,7 +3287,7 @@ mod query_execution {
                 let fixture = db
                     .adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         &format!("SELECT id, empty_text FROM {MYSQL_FIXTURE_TABLE}"),
                         AccessMode::ReadWrite,
                     )
@@ -3312,7 +3312,7 @@ mod query_execution {
                 let acquired = db
                     .adapter()
                     .execute_adhoc(
-                        db.dsn(),
+                        db.config(),
                         "SELECT `GET_LOCK`('sabiql_sab_469', 0) AS acquired",
                         AccessMode::ReadWrite,
                     )
@@ -3329,7 +3329,7 @@ mod query_execution {
                 ] {
                     let result = db
                         .adapter()
-                        .execute_adhoc(db.dsn(), query, AccessMode::ReadOnly)
+                        .execute_adhoc(db.config(), query, AccessMode::ReadOnly)
                         .await;
                     if !matches!(result, Err(DbOperationError::PermissionDenied(_))) {
                         return Err(format!(
@@ -3358,7 +3358,7 @@ mod query_execution {
                     db.set_global_sql_mode(&unsupported).await?;
                     let result = db
                         .adapter()
-                        .execute_adhoc(db.dsn(), "SELECT SLEEP(32)", AccessMode::ReadWrite)
+                        .execute_adhoc(db.config(), "SELECT SLEEP(32)", AccessMode::ReadWrite)
                         .await;
                     if !matches!(
                         result,
@@ -3407,7 +3407,7 @@ mod csv_export {
                 let output_directory = tempdir().map_err(|error| error.to_string())?;
                 let path = output_directory.path().join("read_only.csv");
                 let path = export_mysql_csv_to_path_for_test(
-                    db.dsn(),
+                    db.config(),
                     "SELECT @@SESSION.transaction_read_only AS transaction_read_only",
                     path,
                 )
@@ -3421,7 +3421,7 @@ mod csv_export {
 
                 let write_path = output_directory.path().join("write.csv");
                 let result = export_mysql_csv_to_path_for_test(
-                    db.dsn(),
+                    db.config(),
                     &format!("INSERT INTO {MYSQL_FIXTURE_TABLE} (id) VALUES (2)"),
                     write_path.clone(),
                 )
@@ -3455,7 +3455,7 @@ mod csv_export {
                     ("describe", format!("DESCRIBE {MYSQL_FIXTURE_TABLE}")),
                 ] {
                     let path = export_mysql_csv_to_path_for_test(
-                        db.dsn(),
+                        db.config(),
                         &query,
                         output_directory.path().join(format!("{name}.csv")),
                     )
@@ -3481,7 +3481,7 @@ mod csv_export {
             Box::pin(async move {
                 let output_directory = tempdir().map_err(|error| error.to_string())?;
                 let path = export_mysql_csv_to_path_for_test(
-                    db.dsn(),
+                    db.config(),
                     "SELECT CONVERT(CONCAT('line 1', CHAR(10), 'ERROR 1146 (42S02): this is a cell value') USING utf8mb4) AS message",
                     output_directory.path().join("field-error.csv"),
                 )
@@ -3513,7 +3513,7 @@ mod csv_export {
                 );
                 let within_path = output_directory.path().join("row-within-limit.csv");
                 let within_path = export_mysql_csv_to_path_for_test(
-                    db.dsn(),
+                    db.config(),
                     &row_within_limit,
                     within_path,
                 )
@@ -3537,7 +3537,7 @@ mod csv_export {
                 );
                 let packet_path = output_directory.path().join("packet-over-limit.csv");
                 let packet_error = export_mysql_csv_to_path_for_test(
-                    db.dsn(),
+                    db.config(),
                     &packet_over_limit,
                     packet_path.clone(),
                 )
@@ -3564,7 +3564,7 @@ mod csv_export {
                 );
                 let field_path = output_directory.path().join("field-over-limit.csv");
                 let field_error = export_mysql_csv_to_path_for_test(
-                    db.dsn(),
+                    db.config(),
                     &field_over_limit,
                     field_path.clone(),
                 )
@@ -3589,7 +3589,7 @@ mod csv_export {
                 );
                 let row_path = output_directory.path().join("row-over-limit.csv");
                 let row_error = export_mysql_csv_to_path_for_test(
-                    db.dsn(),
+                    db.config(),
                     &row_over_limit,
                     row_path.clone(),
                 )
@@ -3620,7 +3620,7 @@ mod csv_export {
             Box::pin(async move {
                 let output_directory = tempdir().map_err(|error| error.to_string())?;
                 let path = export_mysql_csv_to_path_for_test(
-                    db.dsn(),
+                    db.config(),
                     "SELECT 1 AS first_alias, '' AS empty_alias WHERE FALSE",
                     output_directory.path().join("empty.csv"),
                 )
@@ -3633,7 +3633,7 @@ mod csv_export {
                 }
 
                 let table_path = export_mysql_csv_to_path_for_test(
-                    db.dsn(),
+                    db.config(),
                     &format!("TABLE {MYSQL_EMPTY_TABLE}"),
                     output_directory.path().join("empty-table.csv"),
                 )

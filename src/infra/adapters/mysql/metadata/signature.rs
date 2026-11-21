@@ -1,3 +1,4 @@
+use crate::domain::connection::MySqlConnectionConfig;
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::time::Duration;
@@ -8,7 +9,7 @@ use crate::domain::{
 };
 
 use super::super::cli::{MYSQL_QUERY_TIMEOUT, MySqlResultSet};
-use super::super::dsn::parse_and_validate_mysql_dsn;
+use super::super::dsn::NormalizedMySqlConfig;
 use super::super::sql::{
     FOREIGN_KEY_RESULT_COLUMNS, SIGNATURE_COLUMNS_QUERY, SIGNATURE_COLUMNS_RESULT_COLUMNS,
     SIGNATURE_FOREIGN_KEYS_QUERY, SIGNATURE_UNIQUE_COLUMNS_QUERY,
@@ -30,17 +31,17 @@ struct MySqlSignatureColumnMetadata {
 }
 
 pub(super) async fn fetch_table_signatures(
-    dsn: &str,
+    config: &MySqlConnectionConfig,
 ) -> Result<TableSignatureSnapshot, DbOperationError> {
-    fetch_table_signatures_with_program(dsn, OsStr::new("mysql"), MYSQL_QUERY_TIMEOUT).await
+    fetch_table_signatures_with_program(config, OsStr::new("mysql"), MYSQL_QUERY_TIMEOUT).await
 }
 
 async fn fetch_table_signatures_with_program(
-    dsn: &str,
+    config: &MySqlConnectionConfig,
     program: &OsStr,
     timeout: Duration,
 ) -> Result<TableSignatureSnapshot, DbOperationError> {
-    let target = parse_and_validate_mysql_dsn(dsn)?;
+    let target = NormalizedMySqlConfig::new(config)?;
     let database = selected_database(&target)?;
     let (capabilities, results) = execute_metadata_queries_in_session_with_program(
         &target,
@@ -688,7 +689,7 @@ mod session_tests {
 
     use tempfile::TempDir;
 
-    use super::super::test_support::assert_process_stopped;
+    use super::super::test_support::{assert_process_stopped, connection_config};
     use super::*;
 
     fn fake_signature_cli() -> (TempDir, std::path::PathBuf, std::path::PathBuf) {
@@ -746,7 +747,7 @@ done
     async fn signature_metadata_uses_one_process_and_four_metadata_queries() {
         let (_directory, program, transcript) = fake_signature_cli();
         let snapshot = fetch_table_signatures_with_program(
-            "mysql://user:password@localhost:3306/app",
+            &connection_config("user", "password", "app"),
             OsStr::new(&program),
             Duration::from_secs(5),
         )

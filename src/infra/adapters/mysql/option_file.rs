@@ -10,7 +10,8 @@ use crate::app::ports::outbound::DbOperationError;
 use crate::domain::connection::MySqlTransport;
 
 use super::dsn::{
-    MySqlDsn, validate_mysql_tls_config, validate_mysql_transport, validate_mysql_values,
+    NormalizedMySqlConfig, validate_mysql_tls_config, validate_mysql_transport,
+    validate_mysql_values,
 };
 
 pub(super) struct MySqlOptionFile {
@@ -19,7 +20,7 @@ pub(super) struct MySqlOptionFile {
 }
 
 impl MySqlOptionFile {
-    pub(super) fn create(target: &MySqlDsn) -> Result<Self, DbOperationError> {
+    pub(super) fn create(target: &NormalizedMySqlConfig) -> Result<Self, DbOperationError> {
         validate_mysql_values(target)?;
         validate_mysql_transport(target)?;
         validate_mysql_tls_files(target)?;
@@ -79,7 +80,7 @@ fn write_option_file(file: &mut File, contents: &str) -> io::Result<()> {
     file.write_all(contents.as_bytes())
 }
 
-fn validate_mysql_tls_files(target: &MySqlDsn) -> Result<(), DbOperationError> {
+fn validate_mysql_tls_files(target: &NormalizedMySqlConfig) -> Result<(), DbOperationError> {
     validate_mysql_tls_config(target)?;
 
     let ca_path = target
@@ -139,7 +140,9 @@ fn validate_mysql_tls_files(target: &MySqlDsn) -> Result<(), DbOperationError> {
     Ok(())
 }
 
-fn validate_mysql_server_public_key(target: &MySqlDsn) -> Result<(), DbOperationError> {
+fn validate_mysql_server_public_key(
+    target: &NormalizedMySqlConfig,
+) -> Result<(), DbOperationError> {
     let Some(path) = target.server_public_key_path.as_deref() else {
         return Ok(());
     };
@@ -477,7 +480,7 @@ impl Drop for MySqlOptionFile {
     }
 }
 
-fn serialize_option_file(target: &MySqlDsn) -> String {
+fn serialize_option_file(target: &NormalizedMySqlConfig) -> String {
     let mut contents = String::from("[client]\n");
     match target.transport {
         MySqlTransport::Tcp => {
@@ -544,7 +547,7 @@ mod tests {
     use std::path::Path;
     use std::sync::{Arc, Barrier};
 
-    use crate::domain::connection::MySqlSslMode;
+    use crate::domain::connection::{MySqlConnectionConfig, MySqlSslMode};
 
     use super::*;
 
@@ -602,8 +605,8 @@ mod tests {
         }
     }
 
-    fn target() -> MySqlDsn {
-        MySqlDsn {
+    fn target() -> NormalizedMySqlConfig {
+        NormalizedMySqlConfig {
             transport: MySqlTransport::Tcp,
             transport_path: None,
             host: "localhost".to_string(),
@@ -622,7 +625,7 @@ mod tests {
 
     #[test]
     fn option_file_quotes_syntax_characters_and_windows_paths() {
-        let target = MySqlDsn {
+        let target = NormalizedMySqlConfig {
             password: "p a#ss;=\"\\word".to_string(),
             database: Some("app".to_string()),
             ..target()
@@ -641,7 +644,7 @@ mod tests {
 
     #[test]
     fn ipv6_host_serializes_without_url_brackets() {
-        let target = MySqlDsn {
+        let target = NormalizedMySqlConfig {
             host: "::1".to_string(),
             ..target()
         };
@@ -651,8 +654,15 @@ mod tests {
 
     #[test]
     fn server_database_listing_option_file_omits_selected_database() {
-        let mut target =
-            super::super::dsn::parse_mysql_dsn("mysql://user:password@localhost:3306/app").unwrap();
+        let config = MySqlConnectionConfig::new(
+            "localhost",
+            3306,
+            Some("app".to_string()),
+            "user",
+            "password",
+            MySqlSslMode::Preferred,
+        );
+        let mut target = NormalizedMySqlConfig::new(&config).unwrap();
         target.database = None;
 
         let contents = serialize_option_file(&target);
@@ -663,7 +673,7 @@ mod tests {
     #[test]
     fn option_file_serializes_tls_paths_without_option_syntax_confusion() {
         let ca_path = r#" C:\certs\ca #1;= "quoted".pem "#;
-        let target = MySqlDsn {
+        let target = NormalizedMySqlConfig {
             ssl_mode: MySqlSslMode::VerifyCa,
             ssl_ca: Some(ca_path.to_string()),
             ssl_cert: Some(r"C:\certs\client.pem".to_string()),
@@ -684,7 +694,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let key = directory.path().join("server-key.pem");
         fs::write(&key, format!("{VALID_PUBLIC_KEY_PEM}\0")).unwrap();
-        let target = MySqlDsn {
+        let target = NormalizedMySqlConfig {
             server_public_key_path: Some(key.display().to_string()),
             ..target()
         };
@@ -700,7 +710,7 @@ mod tests {
 
     #[test]
     fn option_file_serializes_cleartext_auth_plugin() {
-        let target = MySqlDsn {
+        let target = NormalizedMySqlConfig {
             ssl_mode: MySqlSslMode::Required,
             enable_cleartext_plugin: true,
             ..target()
@@ -716,7 +726,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn option_file_serializes_unix_socket_without_tcp_fields() {
-        let target = MySqlDsn {
+        let target = NormalizedMySqlConfig {
             transport: MySqlTransport::UnixSocket,
             transport_path: Some("/run/mysqld/mysqld.sock".to_string()),
             ..target()
@@ -743,7 +753,7 @@ ssl-mode = \"DISABLED\"\n"
         let directory = tempfile::tempdir().unwrap();
         let key = directory.path().join("server-key.pem");
         fs::write(&key, VALID_RSA_PUBLIC_KEY_PEM).unwrap();
-        let target = MySqlDsn {
+        let target = NormalizedMySqlConfig {
             server_public_key_path: Some(key.display().to_string()),
             ..target()
         };
@@ -761,7 +771,7 @@ ssl-mode = \"DISABLED\"\n"
             "-----BEGIN PUBLIC KEY-----\nAQID\n-----END PUBLIC KEY-----\n",
         )
         .unwrap();
-        let target = MySqlDsn {
+        let target = NormalizedMySqlConfig {
             server_public_key_path: Some(key.display().to_string()),
             ..target()
         };
@@ -775,7 +785,7 @@ ssl-mode = \"DISABLED\"\n"
 
     #[test]
     fn rejects_missing_server_public_key_before_connecting() {
-        let target = MySqlDsn {
+        let target = NormalizedMySqlConfig {
             server_public_key_path: Some("/missing/server-key.pem".to_string()),
             ..target()
         };
@@ -789,7 +799,7 @@ ssl-mode = \"DISABLED\"\n"
 
     #[test]
     fn option_file_omits_non_verification_ca_without_validating_its_path() {
-        let target = MySqlDsn {
+        let target = NormalizedMySqlConfig {
             ssl_mode: MySqlSslMode::Required,
             ssl_ca: Some("/missing/ca.pem".to_string()),
             ..target()
@@ -819,7 +829,7 @@ ssl-mode = \"REQUIRED\"\n"
         fs::write(&ca, "-----BEGIN CERTIFICATE-----\nca\n").unwrap();
         fs::write(&cert, "-----BEGIN CERTIFICATE-----\ncert\n").unwrap();
         fs::write(&key, "-----BEGIN ENCRYPTED PRIVATE KEY-----\nsecret\n").unwrap();
-        let target = MySqlDsn {
+        let target = NormalizedMySqlConfig {
             ssl_mode: MySqlSslMode::VerifyCa,
             ssl_ca: Some(ca.display().to_string()),
             ssl_cert: Some(cert.display().to_string()),
@@ -839,7 +849,7 @@ ssl-mode = \"REQUIRED\"\n"
         let directory = tempfile::tempdir().unwrap();
         let ca = directory.path().join("ca.pem");
         fs::write(&ca, "not a certificate").unwrap();
-        let target = MySqlDsn {
+        let target = NormalizedMySqlConfig {
             ssl_mode: MySqlSslMode::VerifyCa,
             ssl_ca: Some(ca.display().to_string()),
             ..target()
@@ -854,7 +864,7 @@ ssl-mode = \"REQUIRED\"\n"
 
     #[test]
     fn rejects_missing_files_at_option_file_creation() {
-        let target = MySqlDsn {
+        let target = NormalizedMySqlConfig {
             ssl_mode: MySqlSslMode::VerifyCa,
             ssl_ca: Some("/missing/ca.pem".to_string()),
             ..target()
@@ -876,7 +886,7 @@ ssl-mode = \"REQUIRED\"\n"
         fs::write(&ca, "-----BEGIN CERTIFICATE-----\nca\n").unwrap();
         fs::write(&cert, "-----BEGIN CERTIFICATE-----\ncert\n").unwrap();
         fs::write(&key, "Proc-Type: 4,ENCRYPTED\nDEK-Info: AES-256-CBC,x\n").unwrap();
-        let target = MySqlDsn {
+        let target = NormalizedMySqlConfig {
             ssl_mode: MySqlSslMode::VerifyCa,
             ssl_ca: Some(ca.display().to_string()),
             ssl_cert: Some(cert.display().to_string()),

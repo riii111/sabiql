@@ -13,7 +13,7 @@ type MySqlFixtureTest<'db> = std::pin::Pin<Box<dyn Future<Output = Result<(), St
 
 pub struct MySqlTestDb {
     adapter: MySqlAdapter,
-    dsn: String,
+    config: MySqlConnectionConfig,
     endpoint: ConnectionEndpoint,
 }
 
@@ -31,11 +31,11 @@ impl MySqlTestDb {
         )
         .map_err(|error| DbOperationError::ConnectionFailed(error.to_string()))?;
         let adapter = MySqlAdapter::new();
-        let dsn = adapter.build_dsn(&profile);
+        let config = profile.mysql_config().unwrap().clone();
         let endpoint = ConnectionEndpoint::from(&profile.config);
         Ok(Self {
             adapter,
-            dsn,
+            config,
             endpoint,
         })
     }
@@ -44,8 +44,8 @@ impl MySqlTestDb {
         &self.adapter
     }
 
-    pub fn dsn(&self) -> &str {
-        &self.dsn
+    pub fn config(&self) -> &MySqlConnectionConfig {
+        &self.config
     }
 
     pub fn endpoint(&self) -> &ConnectionEndpoint {
@@ -66,14 +66,14 @@ impl MySqlTestDb {
     }
 
     async fn run_cli(&self, query: &str) -> Result<String, String> {
-        run_mysql_cli_query_for_test(&self.dsn, query)
+        run_mysql_cli_query_for_test(&self.config, query)
             .await
             .map_err(|error| error.to_string())
     }
 
     #[cfg(unix)]
     pub async fn run_pty_script(&self, script: &str) -> Result<Vec<u8>, String> {
-        run_mysql_cli_script_for_test(self.dsn(), script)
+        run_mysql_cli_script_for_test(self.config(), script)
             .await
             .map_err(|error| error.to_string())
     }
