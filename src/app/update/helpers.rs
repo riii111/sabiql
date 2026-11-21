@@ -586,35 +586,6 @@ mod tests {
         use super::*;
         use crate::model::shared::text_input::TextInputState;
 
-        #[test]
-        fn empty_name_sets_error() {
-            let mut state = ConnectionSetupState::default();
-
-            validate_field(&mut state, ConnectionField::Name);
-
-            assert_eq!(
-                state.validation_error(ConnectionField::Name),
-                Some("Name is required")
-            );
-        }
-
-        #[test]
-        #[allow(
-            clippy::field_reassign_with_default,
-            reason = "intentional partial override of Default for clarity"
-        )]
-        fn whitespace_only_name_sets_error() {
-            let mut state = ConnectionSetupState::default();
-            *state.input_mut(ConnectionField::Name).unwrap() = TextInputState::new("   ", 3);
-
-            validate_field(&mut state, ConnectionField::Name);
-
-            assert_eq!(
-                state.validation_error(ConnectionField::Name),
-                Some("Name is required")
-            );
-        }
-
         #[rstest]
         #[case("a".repeat(50), false)]
         #[case("a".repeat(51), true)]
@@ -649,44 +620,10 @@ mod tests {
 
             assert!(!state.has_validation_error(ConnectionField::Name));
         }
-
-        #[test]
-        fn zero_port_sets_error() {
-            let mut state = ConnectionSetupState::default();
-            state.set_database_type(DatabaseType::MySQL);
-            state
-                .input_mut(ConnectionField::Port)
-                .unwrap()
-                .set_content("0".to_string());
-
-            validate_field(&mut state, ConnectionField::Port);
-
-            assert_eq!(
-                state.validation_error(ConnectionField::Port),
-                Some("Port must be > 0")
-            );
-        }
     }
 
     mod validate_sqlite_path {
         use super::*;
-
-        #[test]
-        fn empty_path_sets_required_error() {
-            let mut state = ConnectionSetupState::default();
-            state.set_database_type(DatabaseType::SQLite);
-            state
-                .input_mut(ConnectionField::SqlitePath)
-                .unwrap()
-                .set_content("   ".to_string());
-
-            validate_field(&mut state, ConnectionField::SqlitePath);
-
-            assert_eq!(
-                state.validation_error(ConnectionField::SqlitePath),
-                Some("Required")
-            );
-        }
 
         #[test]
         fn unsupported_path_characters_set_error() {
@@ -798,92 +735,6 @@ mod tests {
                 assert!(!state.validation_errors.contains_key(&field));
             }
         }
-    }
-
-    #[test]
-    fn mysql_validation_requires_host_user_and_database() {
-        let mut state = ConnectionSetupState::default();
-        state.set_database_type(DatabaseType::MySQL);
-        state
-            .input_mut(ConnectionField::Host)
-            .unwrap()
-            .set_content(" ".to_string());
-        state
-            .input_mut(ConnectionField::User)
-            .unwrap()
-            .set_content(" ".to_string());
-
-        validate_all(&mut state);
-
-        assert_eq!(
-            state.validation_error(ConnectionField::Host),
-            Some("Required")
-        );
-        assert_eq!(
-            state.validation_error(ConnectionField::User),
-            Some("Required")
-        );
-        assert_eq!(
-            state.validation_error(ConnectionField::Database),
-            Some("Required")
-        );
-    }
-
-    #[test]
-    fn mysql_validation_rejects_url_syntax_in_host() {
-        let mut state = ConnectionSetupState::default();
-        state.set_database_type(DatabaseType::MySQL);
-        state
-            .input_mut(ConnectionField::Host)
-            .unwrap()
-            .set_content("db example".to_string());
-
-        validate_field(&mut state, ConnectionField::Host);
-
-        assert_eq!(
-            state.validation_error(ConnectionField::Host),
-            Some("Invalid host")
-        );
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn mysql_unix_socket_validation_uses_path_instead_of_host_and_port() {
-        let mut state = ConnectionSetupState::default();
-        state.set_database_type(DatabaseType::MySQL);
-        state.mysql_transport = MySqlTransport::UnixSocket;
-        state
-            .input_mut(ConnectionField::Host)
-            .unwrap()
-            .set_content(" ".to_string());
-        state
-            .input_mut(ConnectionField::Port)
-            .unwrap()
-            .set_content("not-a-port".to_string());
-        state
-            .input_mut(ConnectionField::TransportPath)
-            .unwrap()
-            .set_content("/run/mysqld/mysqld.sock".to_string());
-
-        validate_field(&mut state, ConnectionField::TransportPath);
-
-        assert_eq!(state.validation_error(ConnectionField::TransportPath), None);
-        assert_eq!(state.validation_error(ConnectionField::Host), None);
-        assert_eq!(state.validation_error(ConnectionField::Port), None);
-    }
-
-    #[test]
-    fn mysql_verification_requires_ca_path() {
-        let mut state = ConnectionSetupState::default();
-        state.set_database_type(DatabaseType::MySQL);
-        state.mysql_ssl_mode = MySqlSslMode::VerifyCa;
-
-        validate_all(&mut state);
-
-        assert_eq!(
-            state.validation_error(ConnectionField::SslCa),
-            Some("Required for this TLS mode")
-        );
     }
 
     #[test]
@@ -1016,7 +867,15 @@ mod tests {
 
         #[test]
         fn mysql_tcp_requires_name_host_port_database_and_user() {
-            let state = form(DatabaseType::MySQL, EMPTY_HOST_AND_PORT);
+            let state = form(
+                DatabaseType::MySQL,
+                &[
+                    (ConnectionField::Name, " "),
+                    (ConnectionField::Host, " "),
+                    (ConnectionField::Port, ""),
+                    (ConnectionField::User, " "),
+                ],
+            );
 
             assert_eq!(
                 errors_after_validate_all(state),
@@ -1059,8 +918,10 @@ mod tests {
             );
         }
 
-        #[test]
-        fn mysql_ca_verification_requires_a_valid_ca_path() {
+        #[rstest]
+        #[case::verify_ca(MySqlSslMode::VerifyCa)]
+        #[case::verify_identity(MySqlSslMode::VerifyIdentity)]
+        fn mysql_ca_verification_requires_a_valid_ca_path(#[case] ssl_mode: MySqlSslMode) {
             let mut missing = form(
                 DatabaseType::MySQL,
                 &[
@@ -1069,7 +930,7 @@ mod tests {
                     (ConnectionField::User, "root"),
                 ],
             );
-            missing.mysql_ssl_mode = MySqlSslMode::VerifyIdentity;
+            missing.mysql_ssl_mode = ssl_mode;
             let mut invalid = missing.clone();
             invalid
                 .input_mut(ConnectionField::SslCa)
@@ -1096,6 +957,18 @@ mod tests {
                 .input_mut(ConnectionField::TransportPath)
                 .unwrap()
                 .set_content("/tmp/mysql\n.sock".to_string());
+            let mut valid = form(
+                DatabaseType::MySQL,
+                &[
+                    (ConnectionField::Name, "mysql"),
+                    (ConnectionField::Host, " "),
+                    (ConnectionField::Port, "not-a-port"),
+                    (ConnectionField::Database, "app"),
+                    (ConnectionField::User, "root"),
+                    (ConnectionField::TransportPath, "/run/mysqld/mysqld.sock"),
+                ],
+            );
+            valid.mysql_transport = MySqlTransport::UnixSocket;
 
             assert_eq!(
                 errors_after_validate_all(missing),
@@ -1115,6 +988,7 @@ mod tests {
                     (ConnectionField::User, "Required"),
                 ])
             );
+            assert_eq!(errors_after_validate_all(valid), errors(&[]));
         }
 
         #[cfg(windows)]
@@ -1143,6 +1017,7 @@ mod tests {
                 &[
                     (ConnectionField::Host, "db example"),
                     (ConnectionField::Port, "abc"),
+                    (ConnectionField::SqlitePath, "   "),
                 ],
             );
 
