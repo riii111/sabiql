@@ -1345,6 +1345,27 @@ mod tests {
         }
 
         #[test]
+        fn size_failure_from_previous_table_preserves_current_preview_run() {
+            let (mut state, generation, _) = state_with_selected_table(DatabaseType::MySQL);
+            let failure = query_failed_action(
+                &mut state,
+                DbOperationError::PreviewSizeExceeded("field exceeded".into()),
+                generation,
+                QuerySource::Preview,
+            );
+            let _ = state
+                .session
+                .select_table("public", "orders", &mut state.query);
+            let current_run = begin_query_run(&mut state);
+
+            let effects = route(&mut state, failure, Instant::now(), &AppServices::stub());
+
+            assert!(effects.is_empty());
+            assert!(state.messages.last_error().is_none());
+            assert!(state.query.is_current_run(current_run));
+        }
+
+        #[test]
         fn preview_size_failure_keeps_the_current_result_and_sets_an_error_message() {
             let mut state = state_with_table("public", "users");
             let current_result = preview_result(1);
