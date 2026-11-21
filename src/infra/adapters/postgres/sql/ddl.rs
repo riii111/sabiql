@@ -1,13 +1,12 @@
 use std::fmt::Write as _;
 
-use crate::app::ports::outbound::DdlGenerator;
+use crate::domain::Table;
 use crate::domain::dialect::{Dialect as _, Postgres};
-use crate::domain::{DatabaseType, Table};
 
 use super::super::PostgresAdapter;
 
-impl DdlGenerator for PostgresAdapter {
-    fn generate_ddl(&self, _database_type: DatabaseType, table: &Table) -> String {
+impl PostgresAdapter {
+    pub fn generate_ddl(&self, table: &Table) -> String {
         let qualified = format!(
             "{}.{}",
             Postgres.quote_identifier(&table.schema),
@@ -74,8 +73,7 @@ mod tests {
     use crate::adapters::test_support;
 
     use crate::adapters::postgres::PostgresAdapter;
-    use crate::app::ports::outbound::DdlGenerator;
-    use crate::domain::{Column, ColumnAttributes, DatabaseType, Table};
+    use crate::domain::{Column, ColumnAttributes, Table};
 
     fn make_column(name: &str, data_type: &str, nullable: bool) -> Column {
         Column {
@@ -116,7 +114,7 @@ mod tests {
                 Some(vec!["id".to_string()]),
             );
 
-            let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
+            let ddl = adapter.generate_ddl(&table);
 
             assert_eq!(
                 ddl,
@@ -135,7 +133,7 @@ mod tests {
                 Some(vec!["tenant_id".to_string(), "id".to_string()]),
             );
 
-            let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
+            let ddl = adapter.generate_ddl(&table);
 
             assert_eq!(
                 ddl,
@@ -154,7 +152,7 @@ mod tests {
                 None,
             );
 
-            let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
+            let ddl = adapter.generate_ddl(&table);
 
             assert_eq!(
                 ddl,
@@ -167,7 +165,7 @@ mod tests {
             let adapter = PostgresAdapter::new();
             let table = make_table(Vec::new(), None);
 
-            let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
+            let ddl = adapter.generate_ddl(&table);
 
             assert_eq!(ddl, "CREATE TABLE \"public\".\"test_table\" (\n);");
         }
@@ -178,7 +176,7 @@ mod tests {
             let mut table = make_table(vec![make_column("id", "integer", false)], None);
             table.comment = Some("User accounts".to_string());
 
-            let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
+            let ddl = adapter.generate_ddl(&table);
 
             assert!(ddl.contains("COMMENT ON TABLE \"public\".\"test_table\" IS 'User accounts';"));
         }
@@ -190,7 +188,7 @@ mod tests {
             col.comment = Some("Primary key".to_string());
             let table = make_table(vec![col], None);
 
-            let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
+            let ddl = adapter.generate_ddl(&table);
 
             assert!(
                 ddl.contains(
@@ -205,7 +203,7 @@ mod tests {
             let mut table = make_table(vec![make_column("id", "integer", false)], None);
             table.comment = Some("It's a test".to_string());
 
-            let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
+            let ddl = adapter.generate_ddl(&table);
 
             assert!(ddl.contains("IS 'It''s a test';"));
         }
@@ -215,7 +213,7 @@ mod tests {
             let adapter = PostgresAdapter::new();
             let table = make_table(vec![make_column("id", "integer", false)], None);
 
-            let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
+            let ddl = adapter.generate_ddl(&table);
 
             assert!(!ddl.contains("COMMENT ON"));
         }
@@ -228,7 +226,7 @@ mod tests {
             let mut table = make_table(vec![col], None);
             table.comment = Some("C:\\temp".to_string());
 
-            let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
+            let ddl = adapter.generate_ddl(&table);
 
             assert!(ddl.contains("COMMENT ON TABLE \"public\".\"test_table\" IS E'C:\\\\temp';"));
             assert!(

@@ -1,12 +1,11 @@
 use std::time::Instant;
 
 use crate::adapters::csv_export::export_to_downloads;
-use crate::app::ports::outbound::{AccessMode, DbOperationError, QueryExecutor};
+use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{
     CommandTag, QueryResult, QuerySource, WriteExecutionResult,
     mysql_sql::mysql_tree_explain_query_kind,
 };
-use async_trait::async_trait;
 
 use super::adapter::MySqlAdapter;
 use super::cli::{
@@ -123,9 +122,8 @@ fn with_mysql_command_tag(
     Ok(result.with_command_tag(tag))
 }
 
-#[async_trait]
-impl QueryExecutor for MySqlAdapter {
-    async fn execute_preview(
+impl MySqlAdapter {
+    pub async fn execute_preview(
         &self,
         dsn: &str,
         schema: &str,
@@ -171,7 +169,7 @@ impl QueryExecutor for MySqlAdapter {
         Ok(query_result)
     }
 
-    async fn execute_adhoc(
+    pub async fn execute_adhoc(
         &self,
         dsn: &str,
         query: &str,
@@ -181,7 +179,7 @@ impl QueryExecutor for MySqlAdapter {
         execute_adhoc_with_target(&target, query, access_mode).await
     }
 
-    async fn execute_write(
+    pub async fn execute_write(
         &self,
         dsn: &str,
         query: &str,
@@ -215,7 +213,7 @@ impl QueryExecutor for MySqlAdapter {
         })
     }
 
-    async fn export_to_csv(
+    pub async fn export_to_csv(
         &self,
         dsn: &str,
         query: &str,

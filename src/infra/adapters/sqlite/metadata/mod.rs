@@ -5,9 +5,7 @@ mod signature;
 mod table_detail;
 mod trigger;
 
-use async_trait::async_trait;
-
-use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
+use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{DatabaseMetadata, Table, TableSignatureSnapshot};
 
 use super::sqlite3::metadata::RawNamedTableMetadata;
@@ -20,15 +18,14 @@ fn sqlite_table_not_found(table: &str) -> DbOperationError {
     DbOperationError::ObjectMissing(format!("SQLite table not found: {table}"))
 }
 
-#[async_trait]
-impl MetadataProvider for SqliteAdapter {
-    async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
+impl SqliteAdapter {
+    pub async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
         let path = Self::path_from_dsn(dsn)?;
         let tables = self.fetch_catalog_rows(path).await?;
         Ok(metadata_from_catalog(path, &tables))
     }
 
-    async fn fetch_table_detail(
+    pub async fn fetch_table_detail(
         &self,
         dsn: &str,
         schema: &str,
@@ -44,7 +41,7 @@ impl MetadataProvider for SqliteAdapter {
         .await
     }
 
-    async fn fetch_table_columns_and_fks(
+    pub async fn fetch_table_columns_and_fks(
         &self,
         dsn: &str,
         schema: &str,
@@ -60,7 +57,7 @@ impl MetadataProvider for SqliteAdapter {
         .await
     }
 
-    async fn fetch_table_signatures(
+    pub async fn fetch_table_signatures(
         &self,
         dsn: &str,
     ) -> Result<TableSignatureSnapshot, DbOperationError> {

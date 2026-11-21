@@ -2,7 +2,7 @@ use std::{fmt, sync::Arc};
 
 use url::Url;
 
-use crate::app::ports::outbound::{ConnectionFailureKind, DbOperationError, DsnBuilder};
+use crate::app::ports::outbound::{ConnectionFailureKind, DbOperationError};
 use crate::domain::connection::{
     ConnectionProfile, MySqlConnectionConfig, MySqlSslMode, MySqlTransport,
 };
@@ -100,8 +100,8 @@ fn build_mysql_dsn(config: &MySqlConnectionConfig) -> String {
     url.to_string()
 }
 
-impl DsnBuilder for MySqlAdapter {
-    fn build_dsn(&self, profile: &ConnectionProfile) -> String {
+impl MySqlAdapter {
+    pub fn build_dsn(&self, profile: &ConnectionProfile) -> String {
         let config = profile
             .mysql_config()
             .expect("MySQL profile requires MySQL config");

@@ -1,16 +1,12 @@
-use crate::app::ports::outbound::{
-    DbOperationError, MySqlConnectionProbe, MySqlConnectionProbeResult,
-};
-use async_trait::async_trait;
+use crate::app::ports::outbound::{DbOperationError, MySqlConnectionProbeResult};
 
 use super::adapter::MySqlAdapter;
 use super::cli::check_mysql_cli_version;
 use super::dsn::{map_mysql_tls_failure, parse_and_validate_mysql_dsn};
 use super::option_file::MySqlOptionFile;
 
-#[async_trait]
-impl MySqlConnectionProbe for MySqlAdapter {
-    async fn probe(&self, dsn: &str) -> Result<MySqlConnectionProbeResult, DbOperationError> {
+impl MySqlAdapter {
+    pub async fn probe(&self, dsn: &str) -> Result<MySqlConnectionProbeResult, DbOperationError> {
         let target = parse_and_validate_mysql_dsn(dsn)?;
         check_mysql_cli_version().await?;
 

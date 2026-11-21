@@ -1,4 +1,3 @@
-use crate::app::ports::outbound::DsnBuilder;
 use crate::domain::connection::ConnectionProfile;
 
 use super::PostgresAdapter;
@@ -27,8 +26,8 @@ fn decode_database_name(name: &str) -> String {
     urlencoding::decode(name).map_or_else(|_| name.to_string(), std::borrow::Cow::into_owned)
 }
 
-impl DsnBuilder for PostgresAdapter {
-    fn build_dsn(&self, profile: &ConnectionProfile) -> String {
+impl PostgresAdapter {
+    pub fn build_dsn(&self, profile: &ConnectionProfile) -> String {
         let config = profile
             .postgres_config()
             .expect("PostgresAdapter requires a PostgreSQL profile");

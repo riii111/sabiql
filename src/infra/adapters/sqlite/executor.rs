@@ -1,10 +1,8 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use async_trait::async_trait;
-
 use crate::adapters::csv_export::export_to_downloads;
-use crate::app::ports::outbound::{AccessMode, DbOperationError, QueryExecutor};
+use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{
     CommandTag, QueryResult, QuerySource, RefreshScope, TableKind, TableKindInfo,
     WriteExecutionResult,
@@ -20,9 +18,8 @@ use super::sqlite3::parser::{
 };
 use super::{SqliteAdapter, sql};
 
-#[async_trait]
-impl QueryExecutor for SqliteAdapter {
-    async fn execute_preview(
+impl SqliteAdapter {
+    pub async fn execute_preview(
         &self,
         dsn: &str,
         schema: &str,
@@ -49,7 +46,7 @@ impl QueryExecutor for SqliteAdapter {
         Ok(result.with_columns_if_empty(columns))
     }
 
-    async fn execute_adhoc(
+    pub async fn execute_adhoc(
         &self,
         dsn: &str,
         query: &str,
@@ -116,7 +113,7 @@ impl QueryExecutor for SqliteAdapter {
         Ok(result)
     }
 
-    async fn execute_write(
+    pub async fn execute_write(
         &self,
         dsn: &str,
         query: &str,
@@ -133,7 +130,7 @@ impl QueryExecutor for SqliteAdapter {
         })
     }
 
-    async fn export_to_csv(
+    pub async fn export_to_csv(
         &self,
         dsn: &str,
         query: &str,

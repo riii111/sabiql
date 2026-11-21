@@ -1,6 +1,5 @@
 use crate::adapters::test_support;
 use crate::app::policy::column::column_read_only_reason;
-use crate::app::ports::outbound::MetadataProvider;
 
 use super::SqliteAdapter;
 

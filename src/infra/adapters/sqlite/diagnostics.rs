@@ -1,15 +1,10 @@
-use async_trait::async_trait;
-
-use crate::app::ports::outbound::{
-    AccessMode, DbOperationError, QueryExecutor, SqliteDiagnosticsProvider,
-};
+use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{DiagnosticField, QueryResult, SqliteDiagnosticsSnapshot};
 
 use super::SqliteAdapter;
 
-#[async_trait]
-impl SqliteDiagnosticsProvider for SqliteAdapter {
-    async fn fetch_core_diagnostics(
+impl SqliteAdapter {
+    pub async fn fetch_core_diagnostics(
         &self,
         dsn: &str,
     ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {
@@ -37,7 +32,7 @@ impl SqliteDiagnosticsProvider for SqliteAdapter {
         })
     }
 
-    async fn fetch_quick_check(&self, dsn: &str) -> DiagnosticField {
+    pub async fn fetch_quick_check(&self, dsn: &str) -> DiagnosticField {
         fetch_field(self, dsn, "PRAGMA quick_check;", quick_check_field).await
     }
 }
@@ -48,25 +43,25 @@ async fn fetch_field(
     query: &str,
     map: fn(Result<QueryResult, DbOperationError>) -> DiagnosticField,
 ) -> DiagnosticField {
-    map(QueryExecutor::execute_adhoc(adapter, dsn, query, AccessMode::ReadOnly).await)
+    map(adapter
+        .execute_adhoc(dsn, query, AccessMode::ReadOnly)
+        .await)
 }
 
 async fn fetch_feature_summary(adapter: &SqliteAdapter, dsn: &str) -> DiagnosticField {
     let compile_options = feature_probe(
-        QueryExecutor::execute_adhoc(
-            adapter,
-            dsn,
-            "PRAGMA compile_options;",
-            AccessMode::ReadOnly,
-        )
-        .await,
+        adapter
+            .execute_adhoc(dsn, "PRAGMA compile_options;", AccessMode::ReadOnly)
+            .await,
     );
     let module_list = feature_probe(
-        QueryExecutor::execute_adhoc(adapter, dsn, "PRAGMA module_list;", AccessMode::ReadOnly)
+        adapter
+            .execute_adhoc(dsn, "PRAGMA module_list;", AccessMode::ReadOnly)
             .await,
     );
     let function_list = feature_probe(
-        QueryExecutor::execute_adhoc(adapter, dsn, "PRAGMA function_list;", AccessMode::ReadOnly)
+        adapter
+            .execute_adhoc(dsn, "PRAGMA function_list;", AccessMode::ReadOnly)
             .await,
     );
 

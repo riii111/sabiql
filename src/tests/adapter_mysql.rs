@@ -16,9 +16,7 @@ mod connection {
         with_mysql_test_db,
     };
     use sabiql_app::model::connection::error::ConnectionErrorInfo;
-    use sabiql_app::ports::outbound::{
-        AccessMode, DbOperationError, DsnBuilder, MySqlConnectionProbe, QueryExecutor,
-    };
+    use sabiql_app::ports::outbound::{AccessMode, DbOperationError};
     use sabiql_domain::QueryValue;
     use sabiql_domain::connection::{
         ConnectionConfig, ConnectionId, ConnectionProfile, MySqlConnectionConfig, MySqlSslMode,
@@ -276,7 +274,7 @@ mod metadata_fetch {
     use crate::tests::harness::mysql::{
         MYSQL_FIXTURE_TABLE, mysql_integration_config, with_mysql_test_db,
     };
-    use sabiql_app::ports::outbound::{AccessMode, DdlGenerator, MetadataProvider, QueryExecutor};
+    use sabiql_app::ports::outbound::{AccessMode, MetadataProvider};
     use sabiql_domain::{FkAction, IndexType, TableKind, TriggerEvent, TriggerTiming};
     use sabiql_infra::adapters::DbAdapterRegistry;
 
@@ -412,10 +410,7 @@ mod metadata_fetch {
                     ));
                 }
                 if detail.source_ddl().is_none()
-                    || db
-                        .adapter()
-                        .generate_ddl(sabiql_domain::DatabaseType::MySQL, &detail)
-                        != detail.source_ddl().unwrap()
+                    || db.adapter().generate_ddl(&detail) != detail.source_ddl().unwrap()
                 {
                     return Err(format!(
                         "unexpected MySQL table DDL: {:?}",
@@ -589,10 +584,7 @@ mod metadata_fetch {
                     || !view_detail
                         .source_ddl()
                         .is_some_and(|ddl| ddl.contains("CREATE") && ddl.contains(MYSQL_VIEW))
-                    || db
-                        .adapter()
-                        .generate_ddl(sabiql_domain::DatabaseType::MySQL, &view_detail)
-                        != view_detail.source_ddl().unwrap()
+                    || db.adapter().generate_ddl(&view_detail) != view_detail.source_ddl().unwrap()
                 {
                     return Err(format!(
                         "unexpected MySQL view DDL: {:?}",
@@ -974,7 +966,7 @@ mod query_preview {
 
     use super::shared::{MYSQL_COMPOSITE_TABLE, MYSQL_EMPTY_TABLE, MYSQL_VIEW};
     use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, with_mysql_test_db};
-    use sabiql_app::ports::outbound::{AccessMode, QueryExecutor};
+    use sabiql_app::ports::outbound::AccessMode;
     use sabiql_domain::{DatabaseType, QueryValue};
 
     const MYSQL_NO_PK_TABLE: &str = "mysql_preview_no_pk";
@@ -1257,9 +1249,7 @@ mod query_preview {
 mod write_operations {
 
     use crate::tests::harness::mysql::with_mysql_test_db;
-    use sabiql_app::ports::outbound::{
-        AccessMode, DbOperationError, MetadataProvider, QueryExecutor,
-    };
+    use sabiql_app::ports::outbound::{AccessMode, DbOperationError};
     use sabiql_domain::{CommandTag, DatabaseType, QueryValue};
 
     const MYSQL_CASE_SCOPE_CHILD: &str = "mysql_case_scope_child";
@@ -2065,9 +2055,7 @@ mod query_execution {
 
     use super::shared::MYSQL_EMPTY_TABLE;
     use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, with_mysql_test_db};
-    use sabiql_app::ports::outbound::{
-        AccessMode, DbOperationError, QueryExecutor, UnsupportedOperationKind,
-    };
+    use sabiql_app::ports::outbound::{AccessMode, DbOperationError, UnsupportedOperationKind};
     use sabiql_domain::{QueryValue, RefreshScope};
     use sabiql_infra::adapters::mysql::test_support::{
         execute_mysql_adhoc_with_read_only_session_for_test,
@@ -3134,7 +3122,7 @@ mod query_execution {
                 .as_nanos();
             let lock_table = format!("sabiql_mrf2_05_lock_{suffix}");
             let missing_table = format!("sabiql_mrf2_05_missing_{suffix}");
-            let result = async {
+            let result = Box::pin(async {
                 let missing = db
                     .adapter()
                     .execute_adhoc(
@@ -3205,7 +3193,7 @@ mod query_execution {
                 }
 
                 Ok::<(), String>(())
-            }
+            })
             .await;
             let cleanup = db
                 .adapter()

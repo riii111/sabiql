@@ -496,7 +496,6 @@ mod tests {
     }
 
     mod connection_argument {
-        use crate::app::ports::outbound::DsnBuilder;
         use crate::domain::connection::{ConnectionProfile, ServiceEntry, SslMode};
 
         use super::super::PostgresAdapter;

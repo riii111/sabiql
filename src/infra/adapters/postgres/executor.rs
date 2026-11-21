@@ -1,14 +1,11 @@
-use async_trait::async_trait;
-
 use crate::adapters::csv_export::export_to_downloads;
-use crate::app::ports::outbound::{AccessMode, DbOperationError, QueryExecutor};
+use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{QueryResult, QuerySource, WriteExecutionResult};
 
 use super::PostgresAdapter;
 
-#[async_trait]
-impl QueryExecutor for PostgresAdapter {
-    async fn execute_preview(
+impl PostgresAdapter {
+    pub async fn execute_preview(
         &self,
         dsn: &str,
         schema: &str,
@@ -28,7 +25,7 @@ impl QueryExecutor for PostgresAdapter {
             .await
     }
 
-    async fn execute_adhoc(
+    pub async fn execute_adhoc(
         &self,
         dsn: &str,
         query: &str,
@@ -38,7 +35,7 @@ impl QueryExecutor for PostgresAdapter {
             .await
     }
 
-    async fn execute_write(
+    pub async fn execute_write(
         &self,
         dsn: &str,
         query: &str,
@@ -48,7 +45,7 @@ impl QueryExecutor for PostgresAdapter {
             .await
     }
 
-    async fn export_to_csv(
+    pub async fn export_to_csv(
         &self,
         dsn: &str,
         query: &str,

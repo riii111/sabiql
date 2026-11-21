@@ -1,6 +1,4 @@
-use async_trait::async_trait;
-
-use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
+use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{
     Column, DatabaseMetadata, Table, TableKindInfo, TableSignatureSnapshot, TableStorageAttributes,
 };
@@ -24,9 +22,8 @@ fn postgres_table_not_found(schema: &str, table: &str) -> DbOperationError {
     DbOperationError::ObjectMissing(format!("PostgreSQL table not found: {schema}.{table}"))
 }
 
-#[async_trait]
-impl MetadataProvider for PostgresAdapter {
-    async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
+impl PostgresAdapter {
+    pub async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
         let schemas_json = self.execute_raw_output(dsn, Self::schemas_query()).await?;
         let tables_json = self.execute_raw_output(dsn, Self::tables_query()).await?;
 
@@ -41,7 +38,10 @@ impl MetadataProvider for PostgresAdapter {
         Ok(metadata)
     }
 
-    async fn fetch_effective_user(&self, dsn: &str) -> Result<Option<String>, DbOperationError> {
+    pub async fn fetch_effective_user(
+        &self,
+        dsn: &str,
+    ) -> Result<Option<String>, DbOperationError> {
         let raw_user = self
             .execute_raw_output(dsn, Self::effective_user_query())
             .await?;
@@ -49,7 +49,7 @@ impl MetadataProvider for PostgresAdapter {
         Ok((!user.is_empty()).then(|| user.to_string()))
     }
 
-    async fn fetch_table_signatures(
+    pub async fn fetch_table_signatures(
         &self,
         dsn: &str,
     ) -> Result<TableSignatureSnapshot, DbOperationError> {
@@ -62,7 +62,7 @@ impl MetadataProvider for PostgresAdapter {
         })
     }
 
-    async fn fetch_table_detail(
+    pub async fn fetch_table_detail(
         &self,
         dsn: &str,
         schema: &str,
@@ -95,7 +95,7 @@ impl MetadataProvider for PostgresAdapter {
         })
     }
 
-    async fn fetch_table_columns_and_fks(
+    pub async fn fetch_table_columns_and_fks(
         &self,
         dsn: &str,
         schema: &str,
@@ -131,7 +131,7 @@ impl MetadataProvider for PostgresAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::ports::outbound::{AccessMode, QueryExecutor};
+    use crate::app::ports::outbound::AccessMode;
 
     const DEFAULT_TEST_DSN: &str = "postgres://dev:dev@localhost:5433/testdb";
 

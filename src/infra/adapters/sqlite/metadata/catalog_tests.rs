@@ -1,4 +1,4 @@
-use crate::app::ports::outbound::{DbOperationError, MetadataProvider, SqliteCompatibilityKind};
+use crate::app::ports::outbound::{DbOperationError, SqliteCompatibilityKind};
 use crate::domain::{Schema, SqlitePathError, TableKind, TableKindInfo};
 
 use super::super::SqliteAdapter;

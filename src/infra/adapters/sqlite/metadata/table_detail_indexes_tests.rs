@@ -1,5 +1,4 @@
 use crate::adapters::test_support;
-use crate::app::ports::outbound::MetadataProvider;
 
 use super::super::super::super::sqlite3::metadata::RawIndexColumn;
 use super::super::index_key_column_names;

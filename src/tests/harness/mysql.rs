@@ -1,4 +1,4 @@
-use sabiql_app::ports::outbound::{DbOperationError, DsnBuilder};
+use sabiql_app::ports::outbound::DbOperationError;
 use sabiql_domain::connection::{ConnectionProfile, MySqlConnectionConfig, MySqlSslMode};
 use sabiql_infra::adapters::mysql::MySqlAdapter;
 use sabiql_infra::adapters::mysql::test_support::run_mysql_cli_query_for_test;

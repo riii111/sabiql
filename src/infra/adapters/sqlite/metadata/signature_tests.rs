@@ -1,4 +1,4 @@
-use crate::app::ports::outbound::{AccessMode, MetadataProvider, QueryExecutor};
+use crate::app::ports::outbound::AccessMode;
 
 use super::super::SqliteAdapter;
 

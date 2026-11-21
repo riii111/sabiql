@@ -8,7 +8,7 @@
 //! Default: `postgres://dev:dev@localhost:5433/testdb` (matches compose.yml)
 //! The database user must be able to create and drop schemas.
 
-use sabiql_app::ports::outbound::{AccessMode, DbOperationError, MetadataProvider, QueryExecutor};
+use sabiql_app::ports::outbound::{AccessMode, DbOperationError};
 use sabiql_infra::adapters::PostgresAdapter;
 
 use crate::tests::harness::postgres::{

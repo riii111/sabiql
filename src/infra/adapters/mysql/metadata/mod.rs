@@ -1,6 +1,4 @@
-use async_trait::async_trait;
-
-use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
+use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{DatabaseMetadata, Schema, Table, TableSignatureSnapshot};
 
 use super::adapter::MySqlAdapter;
@@ -49,9 +47,8 @@ mod test_support {
 
 pub(super) use preview::{convert_preview_values_with_binary_charset, execute_preview};
 
-#[async_trait]
-impl MetadataProvider for MySqlAdapter {
-    async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
+impl MySqlAdapter {
+    pub async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
         let target = parse_and_validate_mysql_dsn(dsn)?;
         let database = catalog::selected_database(&target)?;
         let tables = catalog::fetch_metadata_snapshot(&target, database).await?;
@@ -61,7 +58,10 @@ impl MetadataProvider for MySqlAdapter {
         Ok(metadata)
     }
 
-    async fn fetch_effective_user(&self, dsn: &str) -> Result<Option<String>, DbOperationError> {
+    pub async fn fetch_effective_user(
+        &self,
+        dsn: &str,
+    ) -> Result<Option<String>, DbOperationError> {
         let target = parse_and_validate_mysql_dsn(dsn)?;
         let (_, result) = catalog::execute_metadata_query(
             &target,
@@ -72,7 +72,7 @@ impl MetadataProvider for MySqlAdapter {
         Ok(effective_user_from_result(&result))
     }
 
-    async fn fetch_table_detail(
+    pub async fn fetch_table_detail(
         &self,
         dsn: &str,
         schema: &str,
@@ -81,7 +81,7 @@ impl MetadataProvider for MySqlAdapter {
         table_detail::fetch_table_detail(dsn, schema, table).await
     }
 
-    async fn fetch_table_columns_and_fks(
+    pub async fn fetch_table_columns_and_fks(
         &self,
         dsn: &str,
         schema: &str,
@@ -90,7 +90,7 @@ impl MetadataProvider for MySqlAdapter {
         table_detail::fetch_table_columns_and_fks(dsn, schema, table).await
     }
 
-    async fn fetch_table_signatures(
+    pub async fn fetch_table_signatures(
         &self,
         dsn: &str,
     ) -> Result<TableSignatureSnapshot, DbOperationError> {

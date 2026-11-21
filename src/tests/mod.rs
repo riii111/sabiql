@@ -57,7 +57,7 @@ mod cli_sqlite_startup {
 
     use sabiql_app::cmd::cli_sqlite::{activate_cli_sqlite_connection, resolve_cli_sqlite_target};
     use sabiql_app::model::app_state::AppState;
-    use sabiql_app::ports::outbound::{AccessMode, QueryExecutor};
+    use sabiql_app::ports::outbound::AccessMode;
     use sabiql_infra::adapters::{FsSqlitePathValidator, SqliteAdapter};
     use tempfile::tempdir;
 

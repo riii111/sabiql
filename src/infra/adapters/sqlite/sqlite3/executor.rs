@@ -446,7 +446,7 @@ mod tests {
     use crate::adapters::csv_export::export_to_path;
     use crate::adapters::sqlite::SqliteAdapter;
     use crate::adapters::test_support;
-    use crate::app::ports::outbound::{AccessMode, QueryExecutor};
+    use crate::app::ports::outbound::AccessMode;
 
     use super::*;
 
@@ -840,7 +840,6 @@ esac
         #[cfg(not(windows))]
         mod initialization_isolation {
             use crate::adapters::sqlite::sqlite3::tests::TestCommandContext;
-            use crate::app::ports::outbound::{MetadataProvider, SqliteDiagnosticsProvider};
 
             use super::*;
 

@@ -285,7 +285,6 @@ fn required_mysql_host(value: Option<&String>) -> Result<String, ConnectionProfi
 mod tests {
     use super::*;
     use crate::adapters::mysql::MySqlAdapter;
-    use crate::app::ports::outbound::DsnBuilder;
 
     #[test]
     fn supported_versions_are_accepted() {
