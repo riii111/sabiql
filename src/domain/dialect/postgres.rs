@@ -1,6 +1,6 @@
 use std::fmt::Write as _;
 
-use super::{Dialect, LexicalFamily, StatementSplitError};
+use super::{Dialect, EngineCapabilities, LexicalFamily, StatementSplitError};
 use crate::postgres_sql;
 
 pub struct Postgres;
@@ -52,5 +52,12 @@ impl Dialect for Postgres {
 
     fn lexical_family(&self) -> LexicalFamily {
         LexicalFamily::PostgreSql
+    }
+
+    fn capabilities(&self) -> EngineCapabilities {
+        EngineCapabilities {
+            explain_analyze: true,
+            row_level_security: true,
+        }
     }
 }

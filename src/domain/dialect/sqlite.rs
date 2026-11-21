@@ -1,6 +1,6 @@
 use std::fmt::Write as _;
 
-use super::{Dialect, LexicalFamily, StatementSplitError};
+use super::{Dialect, EngineCapabilities, LexicalFamily, StatementSplitError};
 use crate::sql_lex::is_comment_only;
 use crate::sqlite_sql::{build_sqlite_explain_query_plan_sql, split_sqlite_statements};
 
@@ -52,5 +52,12 @@ impl Dialect for Sqlite {
 
     fn lexical_family(&self) -> LexicalFamily {
         LexicalFamily::PostgreSql
+    }
+
+    fn capabilities(&self) -> EngineCapabilities {
+        EngineCapabilities {
+            explain_analyze: false,
+            row_level_security: false,
+        }
     }
 }

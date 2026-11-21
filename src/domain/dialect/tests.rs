@@ -490,6 +490,19 @@ mod explain {
     }
 
     #[test]
+    fn analyze_capability_matches_analyze_sql_availability() {
+        for engine in DatabaseType::all() {
+            let dialect = engine.dialect();
+
+            assert_eq!(
+                dialect.capabilities().explain_analyze,
+                dialect.explain_analyze_sql("SELECT 1").is_some(),
+                "{engine}"
+            );
+        }
+    }
+
+    #[test]
     fn sqlite_analyze_is_unavailable() {
         assert_eq!(explain_analyze_sql(DatabaseType::SQLite, "SELECT 1"), None);
     }

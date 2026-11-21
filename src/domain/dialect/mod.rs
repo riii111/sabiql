@@ -19,6 +19,14 @@ pub trait Dialect: Sync {
     fn explain_analyze_sql(&self, query: &str) -> Option<String>;
     fn split_statements(&self, sql: &str) -> Result<Vec<String>, StatementSplitError>;
     fn lexical_family(&self) -> LexicalFamily;
+    fn capabilities(&self) -> EngineCapabilities;
+}
+
+/// Every engine is assumed to run plain EXPLAIN, so an engine without it needs a new capability here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EngineCapabilities {
+    pub explain_analyze: bool,
+    pub row_level_security: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
