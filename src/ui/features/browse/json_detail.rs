@@ -8,9 +8,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::browse::json_detail::JsonDetailMode;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::shared::render_output::JsonDetailLayout;
-use crate::app::update::input::keymap::{
-    HintSurface, KeyContext, json_edit_hints, json_search_hints, json_view_hints,
-};
+use crate::app::update::input::keymap::{KeyContext, border_hints};
 use crate::features::browse::detail_view::render_detail_search;
 use crate::primitives::atoms::scroll_indicator::{
     VerticalScrollParams, clamp_scroll_offset, render_vertical_scroll_indicator_bar,
@@ -47,22 +45,9 @@ impl JsonDetail {
                 state.json_detail.column_name()
             )
         };
-        let hints: Vec<(String, &'static str)> = if is_editing {
-            json_edit_hints(HintSurface::Border, &KeyContext::from_state(state))
-                .into_iter()
-                .map(|hint| (hint.key, hint.short))
-                .collect()
-        } else if matches!(state.json_detail.mode(), JsonDetailMode::Searching) {
-            json_search_hints(HintSurface::Border, &KeyContext::from_state(state))
-                .into_iter()
-                .map(|hint| (hint.key, hint.short))
-                .collect()
-        } else {
-            json_view_hints(HintSurface::Border, &KeyContext::from_state(state))
-                .into_iter()
-                .map(|hint| (hint.key, hint.short))
-                .collect()
-        };
+        let hints = border_hints(&KeyContext::from_state(state))
+            .into_iter()
+            .map(|hint| (hint.key, hint.short));
 
         let (_area, inner) = render_modal(
             frame,

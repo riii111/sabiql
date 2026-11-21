@@ -1,7 +1,11 @@
 use super::*;
 use harness::{table_detail_loaded_state, with_current_result};
 use sabiql_app::model::app_state::AppState;
-use sabiql_app::update::action::{Action, CursorMove, InputTarget, ModalKind};
+use sabiql_app::ports::inbound::{InputEvent, Key, KeyCombo};
+use sabiql_app::update::action::{
+    Action, CursorMove, DetailTarget, InputTarget, ModalKind, SearchStep,
+};
+use sabiql_app::update::input::handle_event;
 use sabiql_app::update::reducer::reduce;
 use sabiql_domain::{Column, ConnectionId, DatabaseMetadata, QueryResult, TableSummary};
 
@@ -453,6 +457,54 @@ fn result_pane_json_detail_mode() {
     let output = render_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
+}
+
+#[test]
+fn json_detail_border_tracks_input_during_mode_transitions() {
+    let (mut state, now) = json_detail_state();
+    let mut terminal = create_test_terminal();
+    reduce(
+        &mut state,
+        Action::OpenModal(ModalKind::JsonDetail),
+        now,
+        &AppServices::stub(),
+    );
+
+    let view = render_to_string(&mut terminal, &mut state);
+    assert!(view.contains("i/A: Insert") && view.contains("/: Search"));
+    let search = handle_event(InputEvent::Key(KeyCombo::plain(Key::Char('/'))), &state);
+    assert!(matches!(
+        search,
+        Action::DetailSearch {
+            target: DetailTarget::JsonDetail,
+            step: SearchStep::Enter
+        }
+    ));
+    reduce(&mut state, search, now, &AppServices::stub());
+
+    let search_view = render_to_string(&mut terminal, &mut state);
+    assert!(search_view.contains("Enter: Confirm") && search_view.contains("Esc: Cancel"));
+    assert!(!search_view.contains("i/A: Insert"));
+    let cancel = handle_event(InputEvent::Key(KeyCombo::plain(Key::Esc)), &state);
+    assert!(matches!(
+        cancel,
+        Action::DetailSearch {
+            target: DetailTarget::JsonDetail,
+            step: SearchStep::Exit
+        }
+    ));
+    reduce(&mut state, cancel, now, &AppServices::stub());
+
+    let edit = handle_event(InputEvent::Key(KeyCombo::plain(Key::Char('i'))), &state);
+    assert!(matches!(edit, Action::JsonEnterEdit));
+    reduce(&mut state, edit, now, &AppServices::stub());
+    let edit_view = render_to_string(&mut terminal, &mut state);
+    assert!(edit_view.contains("Esc: Normal"));
+    assert!(!edit_view.contains("i/A: Insert"));
+    assert!(matches!(
+        handle_event(InputEvent::Key(KeyCombo::plain(Key::Esc)), &state),
+        Action::JsonExitEdit
+    ));
 }
 
 #[test]

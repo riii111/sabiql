@@ -161,19 +161,17 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
         ),
         footer(
             Row {
-                references: &[HintSurface::Current, HintSurface::DataActions],
                 bindings: vec![
                     Binding::action(Action::RequestCsvExport, &[KeyCombo::ctrl(Key::Char('e'))])
                         .ide(&[KeyCombo::plain(Key::Char('E'))])
                         .when(KeyContext::browse_csv_available),
                 ],
-                ..preset_row(
-                    Action::RequestCsvExport,
-                    'e',
-                    'E',
-                    "Export",
-                    "Export result to CSV",
-                )
+                short: "Export",
+                description: "Export result to CSV",
+                references: &[HintSurface::Current, HintSurface::DataActions],
+                dynamic_label: None,
+                visible: None,
+                surfaces: &[HintSurface::Palette],
             },
             HintSurface::FooterAction,
             Some(non_cell_footer),
@@ -209,13 +207,12 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
                     .ide(&[KeyCombo::plain(Key::Char('O'))])
                     .when(KeyContext::can_open_history),
                 ],
-                ..preset_row(
-                    Action::OpenModal(ModalKind::QueryHistoryPicker),
-                    'o',
-                    'O',
-                    "History",
-                    "Open Query History",
-                )
+                short: "History",
+                description: "Open Query History",
+                references: &[HintSurface::Current, HintSurface::OpenSwitch],
+                dynamic_label: None,
+                visible: None,
+                surfaces: &[HintSurface::Palette],
             },
             HintSurface::FooterAction,
             Some(regular_footer),

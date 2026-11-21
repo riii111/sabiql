@@ -157,10 +157,6 @@ pub(super) static EDITING: LazyLock<Vec<Row>> = LazyLock::new(|| {
     rows
 });
 
-pub fn command_line_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
-    hints(&EDITING, context, surface)
-}
-
 pub(super) fn cell_edit_write_row() -> Row {
     let mut row = WRITE.clone();
     row.surfaces = &[

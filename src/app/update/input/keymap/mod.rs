@@ -33,8 +33,7 @@ use crate::update::action::Action;
 
 pub use browse::{BrowseShortcut, browse_hints, browse_shortcut};
 pub use cell_detail::cell_detail_hints;
-pub use cell_edit::cell_edit_hints;
-pub use command::{LineCommand, command_line_hints, parse_command};
+pub use command::{LineCommand, parse_command};
 pub use confirm::confirm_hints;
 pub use connection_error::connection_error_hints;
 pub use connection_selector::connection_selector_hints;
@@ -43,7 +42,6 @@ pub use context::KeyContext;
 pub use global::{PaletteEntry, palette_action, palette_available, palette_entry};
 pub use help::help_hints;
 pub use json_edit::json_edit_hints;
-pub use json_search::json_search_hints;
 pub use json_view::json_view_hints;
 pub use pickers::{Picker, picker_hints};
 pub use row_detail::row_detail_hints;
@@ -237,6 +235,10 @@ pub fn current_hints(context: &KeyContext) -> Vec<Hint> {
 
 pub fn footer_hints(context: &KeyContext) -> Vec<Hint> {
     scope_hints(HintSurface::Footer, context)
+}
+
+pub fn border_hints(context: &KeyContext) -> Vec<Hint> {
+    scope_hints(HintSurface::Border, context)
 }
 
 fn scope_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {

@@ -3,10 +3,10 @@ use std::sync::LazyLock;
 use crate::ports::inbound::{Key, KeyCombo};
 use crate::update::action::{Action, InputTarget};
 
+use super::HintSurface;
 use super::command::cell_edit_write_row;
 use super::common::text_field_with_navigation;
-use super::model::{Binding, Row, hints};
-use super::{Hint, HintSurface, KeyContext};
+use super::model::{Binding, Row};
 
 pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
     let mut rows = vec![
@@ -49,7 +49,3 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
     ));
     rows
 });
-
-pub fn cell_edit_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
-    hints(&ROWS, context, surface)
-}
