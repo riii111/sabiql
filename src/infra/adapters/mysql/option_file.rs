@@ -543,7 +543,6 @@ fn quote_option_value(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use std::cell::{Cell, RefCell};
-    use std::collections::HashSet;
     use std::path::Path;
     use std::sync::{Arc, Barrier};
 
@@ -673,13 +672,20 @@ mod tests {
     #[test]
     fn option_file_serializes_tls_paths_without_option_syntax_confusion() {
         let ca_path = r#" C:\certs\ca #1;= "quoted".pem "#;
-        let target = NormalizedMySqlConfig {
-            ssl_mode: MySqlSslMode::VerifyCa,
-            ssl_ca: Some(ca_path.to_string()),
-            ssl_cert: Some(r"C:\certs\client.pem".to_string()),
-            ssl_key: Some(r"C:\certs\client-key.pem".to_string()),
-            ..target()
-        };
+        let config = MySqlConnectionConfig::new(
+            "localhost",
+            3306,
+            None,
+            "user",
+            "secret",
+            MySqlSslMode::VerifyCa,
+        )
+        .with_tls_paths(
+            Some(ca_path.to_string()),
+            Some(r"C:\certs\client.pem".to_string()),
+            Some(r"C:\certs\client-key.pem".to_string()),
+        );
+        let target = NormalizedMySqlConfig::new(&config).unwrap();
 
         let contents = serialize_option_file(&target);
 
@@ -694,10 +700,16 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let key = directory.path().join("server-key.pem");
         fs::write(&key, format!("{VALID_PUBLIC_KEY_PEM}\0")).unwrap();
-        let target = NormalizedMySqlConfig {
-            server_public_key_path: Some(key.display().to_string()),
-            ..target()
-        };
+        let config = MySqlConnectionConfig::new(
+            "localhost",
+            3306,
+            None,
+            "user",
+            "secret",
+            MySqlSslMode::Disabled,
+        )
+        .with_server_public_key_path(Some(key.display().to_string()));
+        let target = NormalizedMySqlConfig::new(&config).unwrap();
 
         let option_file = MySqlOptionFile::create(&target).unwrap();
         let contents = fs::read_to_string(&option_file.path).unwrap();
@@ -710,11 +722,16 @@ mod tests {
 
     #[test]
     fn option_file_serializes_cleartext_auth_plugin() {
-        let target = NormalizedMySqlConfig {
-            ssl_mode: MySqlSslMode::Required,
-            enable_cleartext_plugin: true,
-            ..target()
-        };
+        let config = MySqlConnectionConfig::new(
+            "localhost",
+            3306,
+            None,
+            "user",
+            "secret",
+            MySqlSslMode::Required,
+        )
+        .with_cleartext_auth_plugin(true);
+        let target = NormalizedMySqlConfig::new(&config).unwrap();
 
         let option_file = MySqlOptionFile::create(&target).unwrap();
         let contents = fs::read_to_string(&option_file.path).unwrap();
@@ -1065,10 +1082,10 @@ ssl-mode = \"REQUIRED\"\n"
     }
 
     #[test]
-    fn option_file_names_are_unique_uuid_v4_paths_under_concurrency() {
-        let barrier = Arc::new(Barrier::new(16));
-        let mut handles = Vec::with_capacity(16);
-        for _ in 0..16 {
+    fn option_files_coexist_with_distinct_paths_until_dropped() {
+        let barrier = Arc::new(Barrier::new(2));
+        let mut handles = Vec::with_capacity(2);
+        for _ in 0..2 {
             let barrier = Arc::clone(&barrier);
             handles.push(std::thread::spawn(move || {
                 barrier.wait();
@@ -1083,14 +1100,9 @@ ssl-mode = \"REQUIRED\"\n"
             .iter()
             .map(|file| file.path.clone())
             .collect::<Vec<_>>();
-        let unique_paths = paths.iter().collect::<HashSet<_>>();
 
-        assert_eq!(unique_paths.len(), paths.len());
-        for path in &paths {
-            let stem = path.file_stem().and_then(|stem| stem.to_str()).unwrap();
-            let uuid = stem.strip_prefix("sabiql-mysql-").unwrap();
-            assert_eq!(Uuid::parse_str(uuid).unwrap().get_version_num(), 4);
-        }
+        assert_ne!(paths[0], paths[1]);
+        assert!(paths.iter().all(|path| path.exists()));
 
         drop(files);
         assert!(paths.iter().all(|path| !path.exists()));

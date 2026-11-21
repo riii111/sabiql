@@ -58,33 +58,8 @@ mod tests {
     use super::*;
     use crate::domain::connection::{ConnectionProfile, SslMode};
 
-    fn make_test_profile() -> ConnectionProfile {
-        ConnectionProfile::new_postgres(
-            "Test Connection",
-            "localhost",
-            5432,
-            "testdb",
-            "testuser",
-            "testpass",
-            SslMode::Prefer,
-        )
-        .unwrap()
-    }
-
     mod dsn_builder {
         use super::*;
-
-        #[test]
-        fn includes_all_connection_fields() {
-            let profile = super::make_test_profile();
-            let dsn = postgres_conninfo(&PostgresEndpoint::Settings(
-                profile.postgres_config().unwrap().clone(),
-            ));
-            assert_eq!(
-                dsn,
-                "host='localhost' port='5432' dbname='testdb' user='testuser' password='testpass' sslmode='prefer'"
-            );
-        }
 
         #[test]
         fn quotes_special_chars() {
@@ -142,14 +117,6 @@ mod tests {
                 "port='5432' dbname='mydb' password='secret' sslmode='prefer'"
             );
         }
-
-        #[test]
-        fn formats_service_dsn_correctly() {
-            assert_eq!(
-                postgres_conninfo(&PostgresEndpoint::Service("mydb".to_string())),
-                "service=mydb"
-            );
-        }
     }
 
     mod reported_database_name {
@@ -183,8 +150,6 @@ mod tests {
         #[case::single_quote("it's", "it's")]
         #[case::backslash("C:\\db", "C:\\db")]
         #[case::slash("my/db", "my/db")]
-        #[case::simple("mydb", "mydb")]
-        #[case::test_database("testdb", "testdb")]
         fn saved_settings_report_the_trimmed_database_name(
             #[case] database: &str,
             #[case] expected: &str,

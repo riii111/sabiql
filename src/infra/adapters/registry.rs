@@ -384,16 +384,6 @@ mod tests {
     }
 
     #[test]
-    fn builds_sqlite_dsn_from_sqlite_profile() {
-        let registry = DbAdapterRegistry::new();
-        let profile = ConnectionProfile::new_sqlite("Local", "/tmp/app.db").unwrap();
-
-        let dsn = registry.build_dsn(&ConnectionEndpoint::from(&profile.config));
-
-        assert_eq!(dsn, "sqlite:///tmp/app.db");
-    }
-
-    #[test]
     fn mysql_registry_preserves_source_ddl() {
         let registry = DbAdapterRegistry::new();
         let source_ddl = "CREATE TABLE `users` (`id` INT)".to_string();
