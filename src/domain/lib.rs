@@ -4,6 +4,7 @@ pub mod column;
 pub mod command_tag;
 pub mod connection;
 pub mod diagnostic;
+pub mod dialect;
 pub mod er;
 pub mod explain_plan;
 pub mod foreign_key;

@@ -1,5 +1,5 @@
 use super::*;
-use crate::domain::sqlite_sql::build_bulk_delete_sql;
+use crate::domain::DatabaseType;
 
 #[tokio::test]
 async fn metadata_and_rows_use_at_most_two_sqlite_processes() {
@@ -96,7 +96,8 @@ async fn preserves_nul_text_primary_key_for_preview_and_delete() {
     );
     assert_eq!(preview.display_value_at(0, 0).as_deref(), Some("a\\0bc"));
 
-    let delete_sql = build_bulk_delete_sql(
+    let delete_sql = DatabaseType::SQLite.dialect().bulk_delete_sql(
+        "main",
         "users",
         &[vec![(
             "id".to_string(),

@@ -17,7 +17,6 @@ use crate::policy::write::write_guardrails::{
 };
 use crate::policy::write::write_update::escape_preview_value;
 use crate::ports::outbound::DbOperationError;
-use crate::sql_builder::build_update_sql;
 use crate::update::browse::query::{
     execution::refresh_effects_for_scope, preview_effect_for_current_table,
 };
@@ -111,14 +110,17 @@ fn build_update_preview(state: &AppState) -> Result<WritePreview, EditGuardrailE
         return Err(EditGuardrailError::GuardrailBlocked(reason));
     }
 
-    let sql = build_update_sql(
-        state.session.active_database_type_or_default(),
-        &target.schema,
-        &target.table,
-        &column_name,
-        &new_value,
-        &identity_pairs.unwrap_or_default(),
-    );
+    let sql = state
+        .session
+        .active_database_type_or_default()
+        .dialect()
+        .update_sql(
+            &target.schema,
+            &target.table,
+            &column_name,
+            &new_value,
+            &identity_pairs.unwrap_or_default(),
+        );
     let preview = WritePreview {
         operation: WriteOperation::Update,
         sql,

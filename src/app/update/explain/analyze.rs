@@ -9,7 +9,6 @@ use crate::policy::write::sql_risk::{
     ConfirmationType, evaluate_mysql_explain_analyze_target, evaluate_sql_risk_for_database,
 };
 use crate::ports::outbound::AccessMode;
-use crate::sql_builder::build_explain_analyze_sql;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 use super::helpers::{
@@ -78,7 +77,7 @@ pub(in crate::update) fn explain_analyze_request(
                 .begin_confirming_analyze_risk(content, reason);
         }
         ConfirmationType::Immediate => {
-            let Some(explain_query) = build_explain_analyze_sql(database_type, &content) else {
+            let Some(explain_query) = database_type.dialect().explain_analyze_sql(&content) else {
                 finish_explain_unsupported_analyze(state);
                 return vec![];
             };
@@ -116,7 +115,7 @@ pub(in crate::update) fn explain_analyze_confirm(
             finish_explain_unsupported_analyze(state);
             return vec![];
         }
-        let Some(explain_query) = build_explain_analyze_sql(database_type, &query) else {
+        let Some(explain_query) = database_type.dialect().explain_analyze_sql(&query) else {
             finish_explain_unsupported_analyze(state);
             return vec![];
         };

@@ -2,14 +2,10 @@ mod classifier;
 mod export;
 mod lexer;
 mod side_effect;
-mod sql;
 mod target;
 mod transaction;
 
 pub use export::{MySqlExportPlan, mysql_export_plan};
-pub use sql::{
-    build_bulk_delete_sql, build_explain_analyze_sql, build_explain_sql, build_update_sql,
-};
 
 use lexer::TokenKind;
 

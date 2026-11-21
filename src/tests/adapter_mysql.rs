@@ -975,7 +975,6 @@ mod query_preview {
     use super::shared::{MYSQL_COMPOSITE_TABLE, MYSQL_EMPTY_TABLE, MYSQL_VIEW};
     use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, with_mysql_test_db};
     use sabiql_app::ports::outbound::{AccessMode, QueryExecutor};
-    use sabiql_app::sql_builder::build_update_sql;
     use sabiql_domain::{DatabaseType, QueryValue};
 
     const MYSQL_NO_PK_TABLE: &str = "mysql_preview_no_pk";
@@ -1150,8 +1149,7 @@ mod query_preview {
                     ("binary_blob", expected[4].clone()),
                     ("binary_bit", expected[5].clone()),
                 ] {
-                    let update_sql = build_update_sql(
-                        DatabaseType::MySQL,
+                    let update_sql = DatabaseType::MySQL.dialect().update_sql(
                         "sabiql_test",
                         MYSQL_BINARY_CHARSET_TABLE,
                         column,
@@ -1262,7 +1260,6 @@ mod write_operations {
     use sabiql_app::ports::outbound::{
         AccessMode, DbOperationError, MetadataProvider, QueryExecutor,
     };
-    use sabiql_app::sql_builder::{build_bulk_delete_sql, build_update_sql};
     use sabiql_domain::{CommandTag, DatabaseType, QueryValue};
 
     const MYSQL_CASE_SCOPE_CHILD: &str = "mysql_case_scope_child";
@@ -1617,8 +1614,7 @@ mod write_operations {
                     return Err(format!("unexpected functional index preview: {preview:?}"));
                 }
 
-                let update_sql = build_update_sql(
-                    DatabaseType::MySQL,
+                let update_sql = DatabaseType::MySQL.dialect().update_sql(
                     "sabiql_test",
                     MYSQL_FUNCTIONAL_INDEX,
                     "sort_key",
@@ -1744,8 +1740,7 @@ mod write_operations {
                         .and_then(|values| values.first())
                         .cloned()
                         .ok_or_else(|| "GIPK row identity value was not returned".to_string())?;
-                    let update_sql = build_update_sql(
-                        DatabaseType::MySQL,
+                    let update_sql = DatabaseType::MySQL.dialect().update_sql(
                         "sabiql_test",
                         &gipk_table,
                         "payload",
@@ -1783,8 +1778,7 @@ mod write_operations {
                         return Err(format!("unexpected updated GIPK row: {changed:?}"));
                     }
 
-                    let delete_sql = build_bulk_delete_sql(
-                        DatabaseType::MySQL,
+                    let delete_sql = DatabaseType::MySQL.dialect().bulk_delete_sql(
                         "sabiql_test",
                         MYSQL_INVISIBLE_PK_TABLE,
                         &[vec![(
@@ -1872,8 +1866,7 @@ mod write_operations {
                         .await
                         .map_err(|error| format!("failed to seed write fixture: {error:?}"))?;
 
-                    let update_sql = build_update_sql(
-                        DatabaseType::MySQL,
+                    let update_sql = DatabaseType::MySQL.dialect().update_sql(
                         "sabiql_test",
                         &table,
                         "payload",
@@ -1913,8 +1906,7 @@ mod write_operations {
                         return Err(format!("unexpected updated row: {changed:?}"));
                     }
 
-                    let delete_sql = build_bulk_delete_sql(
-                        DatabaseType::MySQL,
+                    let delete_sql = DatabaseType::MySQL.dialect().bulk_delete_sql(
                         "sabiql_test",
                         &table,
                         &[
@@ -1994,8 +1986,7 @@ mod write_operations {
                         .await
                         .map_err(|error| format!("failed to seed JSON fixture: {error:?}"))?;
 
-                    let update_json = build_update_sql(
-                        DatabaseType::MySQL,
+                    let update_json = DatabaseType::MySQL.dialect().update_sql(
                         "sabiql_test",
                         &table,
                         "payload",
@@ -2026,8 +2017,7 @@ mod write_operations {
                     }
 
                     for (json, expected_type) in [("null", "NULL"), (r#""null""#, "STRING")] {
-                        let update = build_update_sql(
-                            DatabaseType::MySQL,
+                        let update = DatabaseType::MySQL.dialect().update_sql(
                             "sabiql_test",
                             &table,
                             "payload",

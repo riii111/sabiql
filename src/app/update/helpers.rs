@@ -15,7 +15,6 @@ use crate::policy::write::write_guardrails::{
     evaluate_guardrails, preview_writeability_for_result, stable_row_identity_for_preview,
 };
 use crate::ports::outbound::ClipboardError;
-use crate::sql_builder::build_bulk_delete_sql;
 use crate::update::action::Action;
 
 pub(in crate::update) fn reject_pending_mysql_connection_probe(state: &mut AppState) -> bool {
@@ -227,12 +226,15 @@ pub(in crate::update) fn build_bulk_delete_preview(
         predicate_pairs_per_row.push(identity_pairs);
     }
 
-    let sql = build_bulk_delete_sql(
-        state.session.active_database_type_or_default(),
-        state.query.pagination.schema(),
-        state.query.pagination.table(),
-        &predicate_pairs_per_row,
-    );
+    let sql = state
+        .session
+        .active_database_type_or_default()
+        .dialect()
+        .bulk_delete_sql(
+            state.query.pagination.schema(),
+            state.query.pagination.table(),
+            &predicate_pairs_per_row,
+        );
 
     let staged_count = state.result_interaction.staged_delete_rows().len();
     let first_deleted_idx = *state

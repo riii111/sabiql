@@ -6,7 +6,6 @@ use crate::model::app_state::AppState;
 use crate::model::sql_editor::modal::SqlModalStatus;
 use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::ports::outbound::AccessMode;
-use crate::sql_builder::build_explain_sql;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 use super::helpers::{
@@ -38,7 +37,7 @@ pub(in crate::update) fn explain_request(state: &mut AppState, now: Instant) -> 
         show_explain_error_on_plan(state, "EXPLAIN does not support multiple statements");
         return vec![];
     }
-    let query = match build_explain_sql(database_type, &content) {
+    let query = match database_type.dialect().explain_sql(&content) {
         Some(query) => query,
         None if FeaturePolicy::new(&state.session.active_engine_feature_profile())
             .is_enabled(FeatureRequirement::Explain) =>
