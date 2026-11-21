@@ -1,7 +1,6 @@
 use crate::domain::dialect::{Dialect as _, Postgres};
 
 use super::super::PostgresAdapter;
-use super::quote_literal;
 
 impl PostgresAdapter {
     pub(in crate::adapters::postgres) fn tables_query() -> &'static str {
@@ -137,8 +136,8 @@ impl PostgresAdapter {
                   AND NOT a.attisdropped
             ) c
             ",
-            quote_literal(schema),
-            quote_literal(table)
+            Postgres.quote_text(schema),
+            Postgres.quote_text(table)
         )
     }
 
@@ -157,8 +156,8 @@ impl PostgresAdapter {
               AND n.nspname = {}
               AND c.relname = {}
             ",
-            quote_literal(schema),
-            quote_literal(table)
+            Postgres.quote_text(schema),
+            Postgres.quote_text(table)
         )
     }
 
@@ -226,8 +225,8 @@ impl PostgresAdapter {
                 ORDER BY idx.relname
             ) i
             ",
-            quote_literal(schema),
-            quote_literal(table)
+            Postgres.quote_text(schema),
+            Postgres.quote_text(table)
         )
     }
 
@@ -259,8 +258,8 @@ impl PostgresAdapter {
                 GROUP BY con.conname, n1.nspname, c1.relname, n2.nspname, c2.relname, con.confdeltype, con.confupdtype
             ) fk
             ",
-            quote_literal(schema),
-            quote_literal(table)
+            Postgres.quote_text(schema),
+            Postgres.quote_text(table)
         )
     }
 
@@ -292,8 +291,8 @@ impl PostgresAdapter {
             WHERE n.nspname = {}
               AND c.relname = {}
             ",
-            quote_literal(schema),
-            quote_literal(table)
+            Postgres.quote_text(schema),
+            Postgres.quote_text(table)
         )
     }
 
@@ -326,8 +325,8 @@ impl PostgresAdapter {
                   AND c.relname = {}
             ) t
             ",
-            quote_literal(schema),
-            quote_literal(table)
+            Postgres.quote_text(schema),
+            Postgres.quote_text(table)
         )
     }
 
@@ -346,8 +345,8 @@ impl PostgresAdapter {
                   AND c.relname = {}
             ) t
             ",
-            quote_literal(schema),
-            quote_literal(table)
+            Postgres.quote_text(schema),
+            Postgres.quote_text(table)
         )
     }
 
@@ -369,8 +368,8 @@ impl PostgresAdapter {
                 'foreign_keys', ({fks})
             )
             ",
-            schema = quote_literal(schema),
-            table = quote_literal(table),
+            schema = Postgres.quote_text(schema),
+            table = Postgres.quote_text(table),
             columns = Self::columns_query(schema, table).trim(),
             fks = Self::foreign_keys_query(schema, table).trim(),
         )
@@ -395,8 +394,8 @@ impl PostgresAdapter {
                 'table_info', ({table_info})
             )
             ",
-            schema = quote_literal(schema),
-            table = quote_literal(table),
+            schema = Postgres.quote_text(schema),
+            table = Postgres.quote_text(table),
             columns = Self::columns_query(schema, table).trim(),
             indexes = Self::indexes_query(schema, table).trim(),
             fks = Self::foreign_keys_query(schema, table).trim(),
@@ -660,10 +659,10 @@ mod tests {
         use rstest::rstest;
 
         #[rstest]
-        #[case::path_like("C:\\temp", "'C:\\temp'")]
-        #[case::backslash_before_quote("a\\'b", "'a\\''b'")]
-        #[case::lone_backslash("\\", "'\\'")]
-        fn preview_and_detail_queries_keep_backslashes_in_standard_string_literals(
+        #[case::path_like("C:\\temp", "E'C:\\\\temp'")]
+        #[case::backslash_before_quote("a\\'b", "E'a\\\\''b'")]
+        #[case::lone_backslash("\\", "E'\\\\'")]
+        fn preview_and_detail_queries_use_escape_string_literals_for_backslashes(
             #[case] name: &str,
             #[case] literal: &str,
         ) {

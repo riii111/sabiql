@@ -5,7 +5,6 @@ use crate::domain::dialect::{Dialect as _, Postgres};
 use crate::domain::{DatabaseType, Table};
 
 use super::super::PostgresAdapter;
-use super::quote_literal;
 
 impl DdlGenerator for PostgresAdapter {
     fn generate_ddl(&self, _database_type: DatabaseType, table: &Table) -> String {
@@ -50,7 +49,7 @@ impl DdlGenerator for PostgresAdapter {
                 ddl,
                 "\n\nCOMMENT ON TABLE {} IS {};",
                 qualified,
-                quote_literal(comment)
+                Postgres.quote_text(comment)
             );
         }
 
@@ -61,7 +60,7 @@ impl DdlGenerator for PostgresAdapter {
                     "\n\nCOMMENT ON COLUMN {}.{} IS {};",
                     qualified,
                     Postgres.quote_identifier(&col.name),
-                    quote_literal(comment)
+                    Postgres.quote_text(comment)
                 );
             }
         }
@@ -222,7 +221,7 @@ mod tests {
         }
 
         #[test]
-        fn backslashes_in_comments_stay_in_standard_string_literals() {
+        fn backslashes_in_comments_use_escape_string_literals() {
             let adapter = PostgresAdapter::new();
             let mut col = make_column("id", "integer", false);
             col.comment = Some("a\\'b".to_string());
@@ -231,9 +230,9 @@ mod tests {
 
             let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
 
-            assert!(ddl.contains("COMMENT ON TABLE \"public\".\"test_table\" IS 'C:\\temp';"));
+            assert!(ddl.contains("COMMENT ON TABLE \"public\".\"test_table\" IS E'C:\\\\temp';"));
             assert!(
-                ddl.contains("COMMENT ON COLUMN \"public\".\"test_table\".\"id\" IS 'a\\''b';")
+                ddl.contains("COMMENT ON COLUMN \"public\".\"test_table\".\"id\" IS E'a\\\\''b';")
             );
         }
     }
