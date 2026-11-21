@@ -23,7 +23,38 @@ pub(super) struct NormalizedMySqlConfig {
 
 impl NormalizedMySqlConfig {
     pub(super) fn new(config: &MySqlConnectionConfig) -> Result<Self, DbOperationError> {
-        parse_and_validate_mysql_dsn(&build_mysql_dsn(config))
+        let (host, port, transport_path) = match config.transport {
+            MySqlTransport::Tcp => (normalize_mysql_host(&config.host), config.port, None),
+            MySqlTransport::UnixSocket | MySqlTransport::NamedPipe => {
+                ("localhost".to_string(), 3306, config.transport_path.clone())
+            }
+        };
+        let target = Self {
+            transport: config.transport,
+            transport_path,
+            host,
+            port,
+            database: config
+                .database
+                .clone()
+                .filter(|database| !database.is_empty()),
+            username: config.username.clone(),
+            password: config.password.clone(),
+            ssl_mode: config.ssl_mode,
+            ssl_ca: if config.ssl_mode.uses_ca() {
+                config.ssl_ca.clone()
+            } else {
+                None
+            },
+            ssl_cert: config.ssl_cert.clone(),
+            ssl_key: config.ssl_key.clone(),
+            server_public_key_path: config.server_public_key_path.clone(),
+            enable_cleartext_plugin: config.enable_cleartext_plugin,
+        };
+        validate_mysql_values(&target)?;
+        validate_mysql_transport(&target)?;
+        validate_mysql_tls_config(&target)?;
+        Ok(target)
     }
 }
 
@@ -50,9 +81,9 @@ impl fmt::Debug for NormalizedMySqlConfig {
 
 pub(in crate::adapters) fn build_mysql_dsn(config: &MySqlConnectionConfig) -> String {
     let mut url = Url::parse("mysql://localhost").expect("static MySQL URL is valid");
-    url.set_username(&config.username)
+    url.set_username(&config.username.replace('%', "%25"))
         .expect("MySQL username is valid URL data");
-    url.set_password(Some(&config.password))
+    url.set_password(Some(&config.password.replace('%', "%25")))
         .expect("MySQL password is valid URL data");
     if config.transport == MySqlTransport::Tcp {
         let host = normalize_mysql_host(&config.host);
@@ -100,97 +131,6 @@ pub(in crate::adapters) fn build_mysql_dsn(config: &MySqlConnectionConfig) -> St
         }
     }
     url.to_string()
-}
-
-pub(super) fn parse_mysql_dsn(dsn: &str) -> Result<NormalizedMySqlConfig, DbOperationError> {
-    let url = Url::parse(dsn).map_err(|error| {
-        DbOperationError::ConnectionFailed(format!("Invalid MySQL DSN: {error}"))
-    })?;
-    if url.scheme() != "mysql" {
-        return Err(DbOperationError::ConnectionFailed(
-            "Invalid MySQL DSN scheme".to_string(),
-        ));
-    }
-    let host = url.host_str().ok_or_else(|| {
-        DbOperationError::ConnectionFailed("MySQL DSN is missing a host".to_string())
-    })?;
-    let host = normalize_mysql_host(host);
-    let username = decode_url_component(url.username())?;
-    let password = decode_url_component(url.password().unwrap_or_default())?;
-    let database = url
-        .path_segments()
-        .and_then(|mut segments| segments.next())
-        .filter(|segment| !segment.is_empty())
-        .map(decode_url_component)
-        .transpose()?;
-    let ssl_mode = url
-        .query_pairs()
-        .find_map(|(key, value)| (key == "ssl-mode").then(|| parse_ssl_mode(&value)))
-        .transpose()?
-        .unwrap_or_default();
-    let ssl_ca = ssl_mode.uses_ca().then(|| {
-        url.query_pairs()
-            .find_map(|(key, value)| (key == "ssl-ca").then(|| value.into_owned()))
-    });
-    let ssl_ca = ssl_ca.flatten();
-    let ssl_cert = url
-        .query_pairs()
-        .find_map(|(key, value)| (key == "ssl-cert").then(|| value.into_owned()));
-    let ssl_key = url
-        .query_pairs()
-        .find_map(|(key, value)| (key == "ssl-key").then(|| value.into_owned()));
-    let server_public_key_path = url
-        .query_pairs()
-        .find_map(|(key, value)| (key == "server-public-key-path").then(|| value.into_owned()));
-    let enable_cleartext_plugin = url
-        .query_pairs()
-        .find_map(|(key, value)| (key == "enable-cleartext-plugin").then(|| value.into_owned()))
-        .map(|value| match value.as_str() {
-            "true" => Ok(true),
-            "false" => Ok(false),
-            _ => Err(DbOperationError::ConnectionFailed(
-                "Invalid MySQL cleartext authentication setting".to_string(),
-            )),
-        })
-        .transpose()?
-        .unwrap_or(false);
-    let transport = url
-        .query_pairs()
-        .find_map(|(key, value)| (key == "transport").then(|| value.parse()))
-        .transpose()
-        .map_err(|error: String| {
-            DbOperationError::ConnectionFailed(format!("Invalid MySQL transport: {error}"))
-        })?
-        .unwrap_or_default();
-    let transport_path = url
-        .query_pairs()
-        .find_map(|(key, value)| (key == "transport-path").then(|| value.into_owned()));
-
-    Ok(NormalizedMySqlConfig {
-        transport,
-        transport_path,
-        host,
-        port: url.port().unwrap_or(3306),
-        database,
-        username,
-        password,
-        ssl_mode,
-        ssl_ca,
-        ssl_cert,
-        ssl_key,
-        server_public_key_path,
-        enable_cleartext_plugin,
-    })
-}
-
-pub(super) fn parse_and_validate_mysql_dsn(
-    dsn: &str,
-) -> Result<NormalizedMySqlConfig, DbOperationError> {
-    let target = parse_mysql_dsn(dsn)?;
-    validate_mysql_values(&target)?;
-    validate_mysql_transport(&target)?;
-    validate_mysql_tls_config(&target)?;
-    Ok(target)
 }
 
 pub(super) fn map_mysql_tls_failure(
@@ -331,18 +271,6 @@ fn normalize_mysql_host(host: &str) -> String {
         .to_string()
 }
 
-fn parse_ssl_mode(value: &str) -> Result<MySqlSslMode, DbOperationError> {
-    value
-        .parse()
-        .map_err(|_| DbOperationError::ConnectionFailed("Invalid MySQL TLS mode".to_string()))
-}
-
-fn decode_url_component(value: &str) -> Result<String, DbOperationError> {
-    urlencoding::decode(value)
-        .map(std::borrow::Cow::into_owned)
-        .map_err(|error| DbOperationError::ConnectionFailed(format!("Invalid MySQL DSN: {error}")))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -367,18 +295,6 @@ mod tests {
         assert_eq!(parsed.username, "user name");
         assert_eq!(parsed.password, "p@ss#word");
         assert_eq!(parsed.ssl_mode, MySqlSslMode::Required);
-    }
-
-    #[test]
-    fn rejects_unknown_ssl_mode_without_exposing_dsn_credentials() {
-        let error =
-            parse_mysql_dsn("mysql://user:secret@localhost:3306/app?ssl-mode=UNKNOWN").unwrap_err();
-
-        assert!(matches!(
-            error,
-            DbOperationError::ConnectionFailed(details)
-                if details == "Invalid MySQL TLS mode" && !details.contains("secret")
-        ));
     }
 
     #[test]
@@ -819,21 +735,21 @@ mod tests {
         }
 
         #[test]
-        fn preview_url_keeps_percent_signs_in_credentials_unescaped() {
+        fn preview_url_encodes_percent_signs_in_credentials() {
             let profile = ConnectionProfile::new_mysql(
                 "Preview",
                 "db.example",
                 3307,
                 Some("app".to_string()),
                 "us er%41",
-                "secret",
+                "sec%2Fret",
                 MySqlSslMode::Preferred,
             )
             .unwrap();
 
             assert_eq!(
                 build_mysql_dsn(profile.mysql_config().unwrap()),
-                "mysql://us%20er%41:secret@db.example:3307/app?ssl-mode=PREFERRED"
+                "mysql://us%20er%2541:sec%252Fret@db.example:3307/app?ssl-mode=PREFERRED"
             );
         }
 
@@ -841,7 +757,7 @@ mod tests {
             use super::*;
 
             #[test]
-            fn percent_sequences_are_url_decoded() {
+            fn percent_sequences_are_preserved() {
                 let mut config = tcp_config();
                 config.username = "us er%41".to_string();
                 config.password = "A%2Fb".to_string();
@@ -849,29 +765,34 @@ mod tests {
                 assert_eq!(
                     values_passed_to_cli(&config),
                     Ok(NormalizedValues {
-                        username: "us erA".to_string(),
-                        password: "A/b".to_string(),
+                        username: "us er%41".to_string(),
+                        password: "A%2Fb".to_string(),
                         ..tcp_values()
                     })
                 );
             }
 
             #[test]
-            fn invalid_utf8_percent_sequences_are_rejected() {
+            fn invalid_utf8_percent_sequences_are_preserved() {
                 let mut username = tcp_config();
                 username.username = "abc%FF".to_string();
                 let mut password = tcp_config();
                 password.password = "abc%FF".to_string();
 
-                for config in [username, password] {
-                    assert_eq!(
-                        values_passed_to_cli(&config),
-                        Err(
-                            "Invalid MySQL DSN: invalid utf-8 sequence of 1 bytes from index 3"
-                                .to_string()
-                        )
-                    );
-                }
+                assert_eq!(
+                    values_passed_to_cli(&username),
+                    Ok(NormalizedValues {
+                        username: "abc%FF".to_string(),
+                        ..tcp_values()
+                    })
+                );
+                assert_eq!(
+                    values_passed_to_cli(&password),
+                    Ok(NormalizedValues {
+                        password: "abc%FF".to_string(),
+                        ..tcp_values()
+                    })
+                );
             }
 
             #[test]
@@ -897,20 +818,20 @@ mod tests {
             }
 
             #[test]
-            fn non_ascii_host_is_percent_encoded() {
+            fn non_ascii_host_is_preserved() {
                 assert_eq!(
                     values_for_host("ホスト"),
                     Ok(NormalizedValues {
-                        host: "%E3%83%9B%E3%82%B9%E3%83%88".to_string(),
+                        host: "ホスト".to_string(),
                         ..tcp_values()
                     })
                 );
             }
 
             #[rstest]
-            #[case::expanded_loopback("0:0:0:0:0:0:0:1", "::1")]
-            #[case::uppercase_link_local("FE80::1", "fe80::1")]
-            fn ipv6_hosts_are_canonicalized(#[case] host: &str, #[case] expected: &str) {
+            #[case::expanded_loopback("0:0:0:0:0:0:0:1", "0:0:0:0:0:0:0:1")]
+            #[case::uppercase_link_local("FE80::1", "FE80::1")]
+            fn ipv6_hosts_are_preserved(#[case] host: &str, #[case] expected: &str) {
                 assert_eq!(
                     values_for_host(host),
                     Ok(NormalizedValues {
@@ -939,14 +860,14 @@ mod tests {
             #[rstest]
             #[case::current(".")]
             #[case::parent("..")]
-            fn dot_segment_names_are_dropped(#[case] database: &str) {
+            fn dot_segment_names_are_preserved(#[case] database: &str) {
                 let mut config = tcp_config();
                 config.database = Some(database.to_string());
 
                 assert_eq!(
                     values_passed_to_cli(&config),
                     Ok(NormalizedValues {
-                        database: None,
+                        database: Some(database.to_string()),
                         ..tcp_values()
                     })
                 );
