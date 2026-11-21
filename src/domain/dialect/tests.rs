@@ -534,6 +534,10 @@ mod postgres {
         DatabaseType::PostgreSQL.dialect().value_literal(value)
     }
 
+    fn quote_ident(value: &str) -> String {
+        DatabaseType::PostgreSQL.dialect().quote_identifier(value)
+    }
+
     mod update {
         use super::*;
 
@@ -810,6 +814,29 @@ mod postgres {
             assert_eq!(sql_literal(&QueryValue::SqlLiteral("42".to_string())), "42");
         }
     }
+
+    mod quoting {
+        use super::*;
+        use rstest::rstest;
+
+        #[test]
+        fn quote_ident_escapes_embedded_quotes() {
+            assert_eq!(quote_ident(r#"user"name"#), r#""user""name""#);
+        }
+
+        #[test]
+        fn quote_ident_supports_empty_string() {
+            assert_eq!(quote_ident(""), "\"\"");
+        }
+
+        #[rstest]
+        #[case::backtick("a`b", "\"a`b\"")]
+        #[case::backslash("a\\b", "\"a\\b\"")]
+        #[case::non_ascii("日本語", "\"日本語\"")]
+        fn quote_ident_keeps_other_characters_verbatim(#[case] name: &str, #[case] expected: &str) {
+            assert_eq!(quote_ident(name), expected);
+        }
+    }
 }
 
 mod mysql {
@@ -843,6 +870,14 @@ mod mysql {
         DatabaseType::MySQL
             .dialect()
             .bulk_delete_sql(schema, table, pk_pairs_per_row)
+    }
+
+    fn quote_identifier(value: &str) -> String {
+        DatabaseType::MySQL.dialect().quote_identifier(value)
+    }
+
+    fn quote_string(value: &str) -> String {
+        DatabaseType::MySQL.dialect().quote_text(value)
     }
 
     mod explain {
@@ -1010,6 +1045,45 @@ mod mysql {
             assert_eq!(sql, "DELETE FROM `sabiql_test`.`items`\nWHERE `id` = 1;");
         }
     }
+
+    mod quoting {
+        use super::{quote_identifier, quote_string};
+        use rstest::rstest;
+
+        #[rstest]
+        #[case::plain("users", "`users`")]
+        #[case::double_quote("a\"b", "`a\"b`")]
+        #[case::backtick("a`b", "`a``b`")]
+        #[case::empty("", "``")]
+        fn identifiers_double_embedded_backticks(#[case] name: &str, #[case] expected: &str) {
+            assert_eq!(quote_identifier(name), expected);
+        }
+
+        #[rstest]
+        #[case::single_quote("O'Reilly", "'O\\'Reilly'")]
+        #[case::backslash("C:\\temp", "'C:\\\\temp'")]
+        #[case::non_ascii("日本語", "'日本語'")]
+        fn strings_backslash_escape_quotes_and_backslashes(
+            #[case] value: &str,
+            #[case] expected: &str,
+        ) {
+            assert_eq!(quote_string(value), expected);
+        }
+
+        #[rstest]
+        #[case::nul("a\0b", "'a\\0b'")]
+        #[case::newline("a\nb", "'a\\nb'")]
+        #[case::carriage_return("a\rb", "'a\\rb'")]
+        #[case::tab("a\tb", "'a\\tb'")]
+        #[case::backspace("a\u{8}b", "'a\\bb'")]
+        #[case::substitute("a\u{1a}b", "'a\\Zb'")]
+        fn strings_backslash_escape_control_characters(
+            #[case] value: &str,
+            #[case] expected: &str,
+        ) {
+            assert_eq!(quote_string(value), expected);
+        }
+    }
 }
 
 mod sqlite {
@@ -1033,6 +1107,14 @@ mod sqlite {
         DatabaseType::SQLite
             .dialect()
             .bulk_delete_sql("main", table, pk_pairs_per_row)
+    }
+
+    fn quote_ident(value: &str) -> String {
+        DatabaseType::SQLite.dialect().quote_identifier(value)
+    }
+
+    fn quote_literal(value: &str) -> String {
+        DatabaseType::SQLite.dialect().quote_text(value)
     }
 
     mod update_sql {
@@ -1217,6 +1299,42 @@ mod sqlite {
                 sql,
                 "DELETE FROM \"users\"\nWHERE \"id\" = CAST(X'61006263' AS TEXT);"
             );
+        }
+    }
+
+    mod quoting {
+        use super::*;
+        use rstest::rstest;
+
+        #[test]
+        fn identifier_escapes_embedded_quotes() {
+            assert_eq!(quote_ident(r#"my"table"#), r#""my""table""#);
+        }
+
+        #[test]
+        fn literal_escapes_embedded_quotes() {
+            assert_eq!(quote_literal("O'Reilly"), "'O''Reilly'");
+        }
+
+        #[rstest]
+        #[case::backtick("a`b", "\"a`b\"")]
+        #[case::empty("", "\"\"")]
+        #[case::non_ascii("日本語", "\"日本語\"")]
+        fn identifier_keeps_other_characters_verbatim(#[case] name: &str, #[case] expected: &str) {
+            assert_eq!(quote_ident(name), expected);
+        }
+
+        #[rstest]
+        #[case::backslash("C:\\temp", "'C:\\temp'")]
+        #[case::newline("a\nb", "'a\nb'")]
+        #[case::tab("a\tb", "'a\tb'")]
+        #[case::substitute("a\u{1a}b", "'a\u{1a}b'")]
+        #[case::non_ascii("日本語", "'日本語'")]
+        fn literal_keeps_characters_other_than_quotes_verbatim(
+            #[case] value: &str,
+            #[case] expected: &str,
+        ) {
+            assert_eq!(quote_literal(value), expected);
         }
     }
 }

@@ -1,7 +1,3 @@
-fn quote_ident(value: &str) -> String {
-    format!("\"{}\"", value.replace('"', "\"\""))
-}
-
 fn quote_literal(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
@@ -11,26 +7,8 @@ pub(in crate::adapters::postgres) mod query;
 
 #[cfg(test)]
 mod tests {
-    use super::{quote_ident, quote_literal};
+    use super::quote_literal;
     use rstest::rstest;
-
-    #[test]
-    fn quote_ident_escapes_embedded_quotes() {
-        assert_eq!(quote_ident(r#"user"name"#), r#""user""name""#);
-    }
-
-    #[test]
-    fn quote_ident_supports_empty_string() {
-        assert_eq!(quote_ident(""), "\"\"");
-    }
-
-    #[rstest]
-    #[case::backtick("a`b", "\"a`b\"")]
-    #[case::backslash("a\\b", "\"a\\b\"")]
-    #[case::non_ascii("日本語", "\"日本語\"")]
-    fn quote_ident_keeps_other_characters_verbatim(#[case] name: &str, #[case] expected: &str) {
-        assert_eq!(quote_ident(name), expected);
-    }
 
     #[rstest]
     #[case::nul("a\0b", "'a\0b'")]

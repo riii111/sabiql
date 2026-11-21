@@ -2,7 +2,7 @@ use std::fmt::Write as _;
 
 use super::Dialect;
 
-pub(super) struct Postgres;
+pub struct Postgres;
 
 impl Dialect for Postgres {
     fn quote_identifier(&self, name: &str) -> String {

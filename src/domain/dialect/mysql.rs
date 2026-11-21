@@ -3,7 +3,7 @@ use std::fmt::Write as _;
 use super::Dialect;
 use crate::mysql_sql::mysql_explain_rejection_message;
 
-pub(super) struct MySql;
+pub struct MySql;
 
 impl Dialect for MySql {
     fn quote_identifier(&self, name: &str) -> String {

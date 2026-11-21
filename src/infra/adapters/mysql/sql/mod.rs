@@ -1,5 +1,4 @@
 mod ddl;
-mod literal;
 mod metadata;
 
 pub(super) use metadata::{

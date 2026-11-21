@@ -1,17 +1,18 @@
 use std::fmt::Write as _;
 
 use crate::app::ports::outbound::DdlGenerator;
+use crate::domain::dialect::{Dialect as _, Postgres};
 use crate::domain::{DatabaseType, Table};
 
 use super::super::PostgresAdapter;
-use super::{quote_ident, quote_literal};
+use super::quote_literal;
 
 impl DdlGenerator for PostgresAdapter {
     fn generate_ddl(&self, _database_type: DatabaseType, table: &Table) -> String {
         let qualified = format!(
             "{}.{}",
-            quote_ident(&table.schema),
-            quote_ident(&table.name)
+            Postgres.quote_identifier(&table.schema),
+            Postgres.quote_identifier(&table.name)
         );
         let mut ddl = format!("CREATE TABLE {qualified} (\n");
 
@@ -25,7 +26,7 @@ impl DdlGenerator for PostgresAdapter {
 
             elements.push(format!(
                 "  {} {}{}{}",
-                quote_ident(&col.name),
+                Postgres.quote_identifier(&col.name),
                 col.data_type,
                 nullable,
                 default
@@ -33,7 +34,8 @@ impl DdlGenerator for PostgresAdapter {
         }
 
         if let Some(pk) = &table.primary_key {
-            let quoted_cols: Vec<String> = pk.iter().map(|c| quote_ident(c)).collect();
+            let quoted_cols: Vec<String> =
+                pk.iter().map(|c| Postgres.quote_identifier(c)).collect();
             elements.push(format!("  PRIMARY KEY ({})", quoted_cols.join(", ")));
         }
 
@@ -58,7 +60,7 @@ impl DdlGenerator for PostgresAdapter {
                     ddl,
                     "\n\nCOMMENT ON COLUMN {}.{} IS {};",
                     qualified,
-                    quote_ident(&col.name),
+                    Postgres.quote_identifier(&col.name),
                     quote_literal(comment)
                 );
             }

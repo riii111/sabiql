@@ -3,7 +3,7 @@ use std::fmt::Write as _;
 use super::Dialect;
 use crate::sqlite_sql::build_sqlite_explain_query_plan_sql;
 
-pub(super) struct Sqlite;
+pub struct Sqlite;
 
 impl Dialect for Sqlite {
     fn quote_identifier(&self, name: &str) -> String {

@@ -1,5 +1,7 @@
+use crate::domain::dialect::{Dialect as _, Postgres};
+
 use super::super::PostgresAdapter;
-use super::{quote_ident, quote_literal};
+use super::quote_literal;
 
 impl PostgresAdapter {
     pub(in crate::adapters::postgres) fn tables_query() -> &'static str {
@@ -172,7 +174,7 @@ impl PostgresAdapter {
         } else {
             let cols = order_columns
                 .iter()
-                .map(|col| quote_ident(col))
+                .map(|col| Postgres.quote_identifier(col))
                 .collect::<Vec<_>>()
                 .join(", ");
             format!(" ORDER BY {cols}")
@@ -180,8 +182,8 @@ impl PostgresAdapter {
 
         format!(
             "SELECT * FROM {}.{}{} LIMIT {} OFFSET {}",
-            quote_ident(schema),
-            quote_ident(table),
+            Postgres.quote_identifier(schema),
+            Postgres.quote_identifier(table),
             order_clause,
             limit,
             offset

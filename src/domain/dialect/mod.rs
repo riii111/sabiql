@@ -4,9 +4,9 @@ mod sqlite;
 
 use crate::{DatabaseType, QueryValue};
 
-use mysql::MySql;
-use postgres::Postgres;
-use sqlite::Sqlite;
+pub use mysql::MySql;
+pub use postgres::Postgres;
+pub use sqlite::Sqlite;
 
 pub trait Dialect: Sync {
     fn quote_identifier(&self, name: &str) -> String;

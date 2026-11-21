@@ -1242,7 +1242,7 @@ fn quote_mysql_identifiers(candidates: &mut [CompletionCandidate], database_type
             candidate.kind,
             CompletionKind::Database | CompletionKind::Table | CompletionKind::Column
         ) {
-            candidate.text = format!("`{}`", candidate.text.replace('`', "``"));
+            candidate.text = database_type.dialect().quote_identifier(&candidate.text);
         }
     }
 }
@@ -2900,6 +2900,47 @@ mod tests {
 
             assert_eq!(exact_columns, ["id"]);
             assert!(other_case_columns.is_empty());
+        }
+
+        #[rstest]
+        #[case::postgres(DatabaseType::PostgreSQL, "public")]
+        #[case::sqlite(DatabaseType::SQLite, "main")]
+        fn table_and_column_names_with_quote_characters_stay_unquoted(
+            #[case] database_type: DatabaseType,
+            #[case] schema: &str,
+        ) {
+            let mut cache = TableDetailCache::default();
+            cache.insert(
+                format!("{schema}.users"),
+                create_table(schema, "users", &["a\"b", "c`d"]),
+            );
+            let e = CompletionEngine::new(&cache);
+            let metadata = metadata(schema, &["users", "x\"y`z"]);
+            let table_sql = "SELECT * FROM ";
+            let column_sql = "SELECT u. FROM users u";
+
+            let tables = candidate_texts(
+                &e,
+                database_type,
+                table_sql,
+                table_sql.len(),
+                &metadata,
+                CompletionKind::Table,
+            );
+            let columns = candidate_texts(
+                &e,
+                database_type,
+                column_sql,
+                "SELECT u.".len(),
+                &metadata,
+                CompletionKind::Column,
+            );
+
+            assert_eq!(
+                tables,
+                [format!("{schema}.users"), format!("{schema}.x\"y`z")]
+            );
+            assert_eq!(columns, ["a\"b", "c`d"]);
         }
     }
 

@@ -1,4 +1,4 @@
-use super::literal::{quote_ident, quote_literal};
+use crate::domain::dialect::{Dialect as _, Sqlite};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::adapters::sqlite) enum TableMetadataQueryMode {
@@ -58,7 +58,7 @@ pub(in crate::adapters::sqlite) fn user_tables_query() -> &'static str {
 }
 
 pub(in crate::adapters::sqlite) fn preview_metadata_query(table: &str) -> String {
-    let table = quote_literal(table);
+    let table = Sqlite.quote_text(table);
     let columns = metadata_columns_json(&table);
     let table_kind = table_kind_json(&table);
     format!(
@@ -75,9 +75,9 @@ pub(in crate::adapters::sqlite) fn table_metadata_query(
     table: &str,
     mode: TableMetadataQueryMode,
 ) -> String {
-    let table_literal = quote_literal(table);
+    let table_literal = Sqlite.quote_text(table);
     let row_count = if mode.include_row_count() {
-        format!("(SELECT COUNT(*) FROM {})", quote_ident(table))
+        format!("(SELECT COUNT(*) FROM {})", Sqlite.quote_identifier(table))
     } else {
         "NULL".to_string()
     };
