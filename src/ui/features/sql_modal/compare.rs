@@ -383,7 +383,11 @@ fn slot_detail_text(slot: Option<&CompareSlot>) -> String {
         Some(s) => {
             let time_secs = s.plan.execution_secs();
             let summary = format!(" {}  ({:.2}s)", mode_label(s.plan.is_analyze), time_secs);
-            if s.database_type == DatabaseType::MySQL && s.plan.is_analyze {
+            let shows_actual_metrics = match s.database_type {
+                DatabaseType::MySQL => s.plan.is_analyze,
+                DatabaseType::PostgreSQL | DatabaseType::SQLite => false,
+            };
+            if shows_actual_metrics {
                 format!(
                     "{summary}  {}",
                     super::explain::format_actual_metrics(Some(&s.plan))

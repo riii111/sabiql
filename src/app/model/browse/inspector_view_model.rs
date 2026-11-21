@@ -231,10 +231,10 @@ impl InspectorViewModel {
                 )
             }
             InspectorTab::Indexes => {
-                let show_partial = matches!(
-                    database_type,
-                    DatabaseType::PostgreSQL | DatabaseType::SQLite
-                );
+                let show_partial = match database_type {
+                    DatabaseType::PostgreSQL | DatabaseType::SQLite => true,
+                    DatabaseType::MySQL => false,
+                };
                 let rows: Vec<InspectorIndexRow> = table
                     .indexes
                     .iter()
@@ -335,8 +335,10 @@ impl InspectorViewModel {
             section: Some(section),
             empty_state,
             unavailable_reason,
-            mysql_trigger_details: database_type == DatabaseType::MySQL
-                && active_tab == InspectorTab::Triggers,
+            mysql_trigger_details: match database_type {
+                DatabaseType::MySQL => active_tab == InspectorTab::Triggers,
+                DatabaseType::PostgreSQL | DatabaseType::SQLite => false,
+            },
         }
     }
 

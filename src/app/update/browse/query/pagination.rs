@@ -108,17 +108,29 @@ pub(in crate::update) fn request_csv_export(state: &mut AppState, now: Instant) 
     let file_name = csv_export_file_name(state, result.source);
     let row_count = result.row_count();
 
-    if state.session.active_database_type() == Some(DatabaseType::SQLite) {
-        match sqlite_export_plan(result.source, &result.query, &result.columns, row_count) {
-            SqliteExportPlan::NotExportable { reason } => {
-                state.messages.set_error(reason);
-                return vec![];
+    match state.session.active_database_type() {
+        Some(DatabaseType::SQLite) => {
+            match sqlite_export_plan(result.source, &result.query, &result.columns, row_count) {
+                SqliteExportPlan::NotExportable { reason } => {
+                    state.messages.set_error(reason);
+                    vec![]
+                }
+                SqliteExportPlan::RerunnableQuery { query } => {
+                    let run_id = state.query.begin_non_preview_running(now);
+                    dispatch_rerunnable_csv_export(state, dsn, run_id, query, file_name)
+                }
+                SqliteExportPlan::CachedResult { row_count } => {
+                    let columns = result.columns.clone();
+                    let values = result.values().to_vec();
+                    let run_id = state.query.begin_non_preview_running(now);
+                    dispatch_cached_csv_export(
+                        state, dsn, run_id, file_name, columns, values, row_count,
+                    )
+                }
             }
-            SqliteExportPlan::RerunnableQuery { query } => {
-                let run_id = state.query.begin_non_preview_running(now);
-                return dispatch_rerunnable_csv_export(state, dsn, run_id, query, file_name);
-            }
-            SqliteExportPlan::CachedResult { row_count } => {
+        }
+        Some(DatabaseType::MySQL) => {
+            if result.source == QuerySource::Preview {
                 let columns = result.columns.clone();
                 let values = result.values().to_vec();
                 let run_id = state.query.begin_non_preview_running(now);
@@ -126,30 +138,20 @@ pub(in crate::update) fn request_csv_export(state: &mut AppState, now: Instant) 
                     state, dsn, run_id, file_name, columns, values, row_count,
                 );
             }
-        }
-    }
 
-    if state.session.active_database_type() == Some(DatabaseType::MySQL) {
-        if result.source == QuerySource::Preview {
-            let columns = result.columns.clone();
-            let values = result.values().to_vec();
+            if mysql_export_plan(&result.query).is_none() {
+                return vec![];
+            }
+            let export_query = result.query.clone();
             let run_id = state.query.begin_non_preview_running(now);
-            return dispatch_cached_csv_export(
-                state, dsn, run_id, file_name, columns, values, row_count,
-            );
+            dispatch_rerunnable_csv_export(state, dsn, run_id, export_query, file_name)
         }
-
-        if mysql_export_plan(&result.query).is_none() {
-            return vec![];
+        Some(DatabaseType::PostgreSQL) | None => {
+            let export_query = result.query.clone();
+            let run_id = state.query.begin_non_preview_running(now);
+            dispatch_rerunnable_csv_export(state, dsn, run_id, export_query, file_name)
         }
-        let export_query = result.query.clone();
-        let run_id = state.query.begin_non_preview_running(now);
-        return dispatch_rerunnable_csv_export(state, dsn, run_id, export_query, file_name);
     }
-
-    let export_query = result.query.clone();
-    let run_id = state.query.begin_non_preview_running(now);
-    dispatch_rerunnable_csv_export(state, dsn, run_id, export_query, file_name)
 }
 
 pub(in crate::update) fn csv_export_succeeded(

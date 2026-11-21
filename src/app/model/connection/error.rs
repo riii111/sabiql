@@ -32,7 +32,10 @@ impl ConnectionErrorInfo {
                 DatabaseCli::MySql.not_found_hint(),
                 false,
             ),
-            DbOperationError::CommandNotFound { .. } => (
+            DbOperationError::CommandNotFound {
+                command: DatabaseCli::Psql,
+                ..
+            } => (
                 "Database CLI not found",
                 "Install the database CLI (e.g. psql) and add it to PATH",
                 false,

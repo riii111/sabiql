@@ -395,7 +395,7 @@ impl AppState {
             match database {
                 Some(DatabaseType::SQLite) => true,
                 Some(DatabaseType::MySQL) => mysql_export_plan(&result.query).is_some(),
-                _ => is_rerunnable_select(&result.query),
+                Some(DatabaseType::PostgreSQL) | None => is_rerunnable_select(&result.query),
             }
         })
     }

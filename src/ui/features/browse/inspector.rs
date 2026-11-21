@@ -905,8 +905,11 @@ fn trigger_row_cells(row: &InspectorTriggerRow, database_type: DatabaseType) -> 
         row.events.clone(),
         row.definition.clone(),
     ]);
-    if database_type != DatabaseType::SQLite {
-        cells.push(row.security_context.clone().unwrap_or_default());
+    match database_type {
+        DatabaseType::PostgreSQL | DatabaseType::MySQL => {
+            cells.push(row.security_context.clone().unwrap_or_default());
+        }
+        DatabaseType::SQLite => {}
     }
     cells
 }

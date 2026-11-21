@@ -25,7 +25,9 @@ impl CellPresentationPolicy {
             (DatabaseType::PostgreSQL, "jsonb") | (DatabaseType::MySQL, "json") => {
                 PreviewCellTextDiffHandling::StructuredJson
             }
-            _ => PreviewCellTextDiffHandling::RawText,
+            (DatabaseType::PostgreSQL | DatabaseType::SQLite | DatabaseType::MySQL, _) => {
+                PreviewCellTextDiffHandling::RawText
+            }
         };
         let display_handling = match database_type {
             DatabaseType::SQLite if has_sqlite_text_affinity(column_data_type) => {

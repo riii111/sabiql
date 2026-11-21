@@ -111,11 +111,13 @@ pub(in crate::update) fn reject_sqlite_null_pk(
     database_type: DatabaseType,
     pk_pairs: &[(String, QueryValue)],
 ) -> Result<(), EditGuardrailError> {
-    if database_type == DatabaseType::SQLite
-        && pk_pairs
+    let rejects_null_identity = match database_type {
+        DatabaseType::SQLite => pk_pairs
             .iter()
-            .any(|(_, value)| matches!(value, QueryValue::Null))
-    {
+            .any(|(_, value)| matches!(value, QueryValue::Null)),
+        DatabaseType::PostgreSQL | DatabaseType::MySQL => false,
+    };
+    if rejects_null_identity {
         return Err(EditGuardrailError::SqliteNullPrimaryKey);
     }
     Ok(())
