@@ -194,77 +194,87 @@ fn inspector_indexes_tab_for_sqlite_hides_unknown_type() {
 }
 
 #[test]
-fn inspector_indexes_tab_shows_sqlite_partial_index_definition() {
-    let mut state = sqlite_indexes_state(Index {
-        name: "idx_users_email_active".to_string(),
-        columns: vec!["email".to_string()],
-        attributes: IndexAttributes::PARTIAL,
-        index_type: IndexType::Unknown,
-        definition: Some(
-            "CREATE INDEX idx_users_email_active ON users(email) WHERE email IS NOT NULL"
-                .to_string(),
+fn inspector_indexes_tab_shows_sqlite_index_definitions() {
+    let cases = [
+        (
+            "idx_users_email_active",
+            "email",
+            IndexAttributes::PARTIAL,
+            "CREATE INDEX idx_users_email_active ON users(email) WHERE email IS NOT NULL",
+            true,
         ),
-    });
-    let mut terminal = create_test_terminal();
-
-    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
-fn inspector_indexes_tab_shows_sqlite_descending_index_definition() {
-    let mut state = sqlite_indexes_state(Index {
-        name: "idx_users_name_desc".to_string(),
-        columns: vec!["name".to_string()],
-        attributes: IndexAttributes::DESCENDING,
-        index_type: IndexType::Unknown,
-        definition: Some("CREATE INDEX idx_users_name_desc ON users(name DESC)".to_string()),
-    });
-    let mut terminal = create_test_terminal();
-
-    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
-fn inspector_indexes_tab_shows_sqlite_collation_index_definition() {
-    let mut state = sqlite_indexes_state(Index {
-        name: "idx_users_name_nocase".to_string(),
-        columns: vec!["name".to_string()],
-        attributes: IndexAttributes::NON_BINARY_COLLATION,
-        index_type: IndexType::Unknown,
-        definition: Some(
-            "CREATE INDEX idx_users_name_nocase ON users(name COLLATE NOCASE)".to_string(),
+        (
+            "idx_users_name_desc",
+            "name",
+            IndexAttributes::DESCENDING,
+            "CREATE INDEX idx_users_name_desc ON users(name DESC)",
+            false,
         ),
-    });
-    let mut terminal = create_test_terminal();
-
-    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
-fn inspector_indexes_tab_shows_sqlite_partial_expression_details() {
-    let mut state = sqlite_indexes_state(Index {
-        name: "idx_users_email_lower".to_string(),
-        columns: vec!["<expression>".to_string()],
-        attributes: IndexAttributes::PARTIAL
-            | IndexAttributes::EXPRESSION
-            | IndexAttributes::HAS_AUXILIARY_COLUMNS,
-        index_type: IndexType::Unknown,
-        definition: Some(
-            "CREATE INDEX idx_users_email_lower ON users(lower(email)) WHERE email IS NOT NULL"
-                .to_string(),
+        (
+            "idx_users_name_nocase",
+            "name",
+            IndexAttributes::NON_BINARY_COLLATION,
+            "CREATE INDEX idx_users_name_nocase ON users(name COLLATE NOCASE)",
+            false,
         ),
-    });
+        (
+            "idx_users_email_lower",
+            "<expression>",
+            IndexAttributes::PARTIAL
+                | IndexAttributes::EXPRESSION
+                | IndexAttributes::HAS_AUXILIARY_COLUMNS,
+            "CREATE INDEX idx_users_email_lower ON users(lower(email)) WHERE email IS NOT NULL",
+            true,
+        ),
+    ];
+    let mut table = fixtures::sample_postgres_table_detail();
+    table.indexes = cases
+        .iter()
+        .map(|(name, column, attributes, definition, _)| Index {
+            name: (*name).to_string(),
+            columns: vec![(*column).to_string()],
+            attributes: *attributes,
+            index_type: IndexType::Unknown,
+            definition: Some((*definition).to_string()),
+        })
+        .collect();
+    let mut state = sqlite_indexes_state(table.indexes[0].clone());
     let mut terminal = create_test_terminal();
-
     let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
+    insta::assert_snapshot!(
+        "inspector_indexes_tab_shows_sqlite_partial_index_definition",
+        output
+    );
 
-    insta::assert_snapshot!(output);
+    let _ = state.session.set_table_detail(table, 0);
+    let mut terminal = create_test_terminal_sized(240, 40);
+    let output = render_to_string(&mut terminal, &mut state);
+
+    let header = output
+        .lines()
+        .find(|line| line.contains("Name") && line.contains("Partial") && line.contains("Detail"))
+        .expect("SQLite index headers");
+    assert!(!header.contains("Type"), "{header}");
+    for (name, column, _, definition, partial) in cases {
+        let row = output
+            .lines()
+            .find(|line| line.contains(definition))
+            .unwrap_or_else(|| panic!("missing definition: {definition}"));
+        let cells = row
+            .split_once("CREATE INDEX")
+            .unwrap()
+            .0
+            .rsplit_once("││")
+            .unwrap()
+            .1
+            .split_whitespace()
+            .collect::<Vec<_>>();
+        if partial {
+            assert_eq!(cells, [name, column, "✓"], "{row}");
+        } else {
+            assert_eq!(cells, [name, column], "{row}");
+        }
+    }
 }
 
 #[test]
