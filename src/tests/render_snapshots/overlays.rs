@@ -4,7 +4,7 @@ use ratatui::backend::TestBackend;
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::settings::KeymapPreset;
 use sabiql_app::policy::write::sql_risk::AcknowledgeReason;
-use sabiql_app::update::input::keymap::{KeyContext, palette_available};
+use sabiql_app::update::input::keymap::KeyContext;
 use sabiql_domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 use sabiql_domain::{
     ConnectionId, DatabaseDiagnostic, DiagnosticField, DiagnosticLevel, QueryResult,
@@ -558,13 +558,7 @@ fn command_palette_overlay() {
     let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
-    state.ui.set_palette_commands(
-        palette_available(&KeyContext::for_browse_state(&state))
-            .into_iter()
-            .map(|entry| entry.id)
-            .collect(),
-    );
-    state.modal.set_mode(InputMode::CommandPalette);
+    harness::open_command_palette(&mut state);
 
     let output = render_to_string(&mut terminal, &mut state);
 

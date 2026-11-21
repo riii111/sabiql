@@ -1,5 +1,4 @@
 use super::*;
-use sabiql_app::update::input::keymap::{KeyContext, palette_available};
 use sabiql_ui::theme::{StatusTokens, TableTokens};
 
 fn contrast_theme() -> ThemePalette {
@@ -70,13 +69,7 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
         "Expected shared modal hint to use injected hint color"
     );
 
-    state.ui.set_palette_commands(
-        palette_available(&KeyContext::for_browse_state(&state))
-            .into_iter()
-            .map(|entry| entry.id)
-            .collect(),
-    );
-    state.modal.set_mode(InputMode::CommandPalette);
+    harness::open_command_palette(&mut state);
     let picker_buffer = render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &theme);
     let has_custom_picker_selection = has_cell(&picker_buffer, |cell| {
         cell.bg == theme.component.editor.completion_selected_bg

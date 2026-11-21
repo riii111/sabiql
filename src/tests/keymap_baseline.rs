@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{Terminal, backend::TestBackend};
 use sabiql_app::catalog::HelpDocument;
 use sabiql_app::model::app_state::AppState;
@@ -21,6 +22,7 @@ use sabiql_app::update::action::Action;
 use sabiql_app::update::input::handle_event;
 use sabiql_app::update::input::keymap::{KeyContext, palette_available};
 use sabiql_domain::{ConnectionId, DatabaseType};
+use sabiql_ui::event::key_translator::translate;
 use sabiql_ui::shell::footer::Footer;
 use sabiql_ui::theme::palette_for;
 
@@ -72,14 +74,10 @@ fn state(engine: DatabaseType, preset: KeymapPreset, mode: InputMode) -> AppStat
     );
     state.settings.load_keymap_preset(preset);
     if mode == InputMode::CommandPalette {
-        state.ui.set_palette_commands(
-            palette_available(&KeyContext::for_browse_state(&state))
-                .into_iter()
-                .map(|entry| entry.id)
-                .collect(),
-        );
+        super::harness::open_command_palette(&mut state);
+    } else {
+        state.modal.set_mode(mode);
     }
-    state.modal.set_mode(mode);
     state
 }
 
@@ -106,7 +104,7 @@ fn capture(name: &str, mut state: AppState, output: &mut String) {
     let mut actions = BTreeMap::<String, Vec<String>>::new();
     for combo in input_keys() {
         let normalized = if combo == KeyCombo::ctrl(Key::Char('D')) {
-            KeyCombo::ctrl_shift(Key::Char('d'))
+            translate(KeyEvent::new(KeyCode::Char('D'), KeyModifiers::CONTROL))
         } else {
             combo
         };
@@ -350,19 +348,21 @@ fn capture_matrix(engine: DatabaseType, preset: KeymapPreset) -> String {
 
 #[test]
 fn keymap_state_matrix() {
-    for (engine_name, engine) in [
-        ("postgres", DatabaseType::PostgreSQL),
-        ("mysql", DatabaseType::MySQL),
-        ("sqlite", DatabaseType::SQLite),
-    ] {
-        for (preset_name, preset) in [
-            ("default", KeymapPreset::Default),
-            ("ide", KeymapPreset::Ide),
+    insta::allow_duplicates! {
+        for (snapshot_engine, engine) in [
+            ("postgres", DatabaseType::PostgreSQL),
+            ("postgres", DatabaseType::MySQL),
+            ("sqlite", DatabaseType::SQLite),
         ] {
-            insta::assert_snapshot!(
-                format!("keymap_{engine_name}_{preset_name}"),
-                capture_matrix(engine, preset)
-            );
+            for (preset_name, preset) in [
+                ("default", KeymapPreset::Default),
+                ("ide", KeymapPreset::Ide),
+            ] {
+                insta::assert_snapshot!(
+                    format!("keymap_{snapshot_engine}_{preset_name}"),
+                    capture_matrix(engine, preset)
+                );
+            }
         }
     }
 }

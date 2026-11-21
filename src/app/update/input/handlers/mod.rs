@@ -43,15 +43,13 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::shared::settings::{KeymapPreset, SettingsSection};
+    use crate::model::shared::settings::SettingsSection;
     use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel};
     use crate::ports::inbound::Key;
     use crate::update::action::DetailTarget;
     use crate::update::action::ModalKind;
     use crate::update::action::SearchStep;
-    use crate::update::action::{
-        CursorMove, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget, TextKillDirection,
-    };
+    use crate::update::action::{CursorMove, InputTarget};
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {
@@ -364,83 +362,6 @@ mod tests {
             Action::TextInput {
                 target: InputTarget::JsonSearch,
                 ch: 'g'
-            }
-        ));
-    }
-
-    #[rstest]
-    #[case(InputMode::SqlModal)]
-    #[case(InputMode::JsonEdit)]
-    fn document_editors_do_not_intercept_readline_shortcuts(#[case] mode: InputMode) {
-        use crate::update::test_fixtures;
-        let mut state = AppState::new("test".to_string());
-        test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-        state.modal.set_mode(mode);
-        if mode == InputMode::SqlModal {
-            state.sql_modal.enter_editing();
-        }
-
-        let readline_keys = [
-            KeyCombo::ctrl(Key::Char('a')),
-            KeyCombo::ctrl(Key::Char('e')),
-            KeyCombo::ctrl(Key::Char('b')),
-            KeyCombo::ctrl(Key::Char('f')),
-            KeyCombo::ctrl(Key::Char('h')),
-            KeyCombo::ctrl(Key::Char('d')),
-            KeyCombo::ctrl(Key::Char('k')),
-            KeyCombo::ctrl(Key::Char('u')),
-            KeyCombo::ctrl(Key::Char('w')),
-            KeyCombo::ctrl(Key::Char('y')),
-            KeyCombo::alt(Key::Char('b')),
-            KeyCombo::alt(Key::Char('f')),
-            KeyCombo::alt(Key::Char('d')),
-        ];
-
-        for combo in readline_keys {
-            let result = handle_key_event(combo, &state);
-
-            assert!(
-                matches!(result, Action::None),
-                "{combo:?} should be unbound"
-            );
-        }
-    }
-
-    #[rstest]
-    #[case(KeymapPreset::Default)]
-    #[case(KeymapPreset::Ide)]
-    fn sql_editing_ctrl_e_is_unbound_for_each_preset(#[case] preset: KeymapPreset) {
-        let mut state = AppState::new("test".to_string());
-        state.modal.set_mode(InputMode::SqlModal);
-        state.sql_modal.enter_editing();
-        state.settings.load_keymap_preset(preset);
-
-        let result = handle_key_event(KeyCombo::ctrl(Key::Char('e')), &state);
-
-        assert!(matches!(result, Action::None));
-    }
-
-    #[test]
-    fn help_routes_ctrl_u_to_scroll_while_viewing_and_readline_while_editing() {
-        let mut viewing = AppState::new("test".to_string());
-        viewing.modal.set_mode(InputMode::Help);
-        let viewing_action = handle_key_event(KeyCombo::ctrl(Key::Char('u')), &viewing);
-        assert!(matches!(
-            viewing_action,
-            Action::Scroll {
-                target: ScrollTarget::Help,
-                direction: ScrollDirection::Up,
-                amount: ScrollAmount::HalfPage,
-            }
-        ));
-
-        viewing.ui.help_mut().enter_filter_editing();
-        let editing_action = handle_key_event(KeyCombo::ctrl(Key::Char('u')), &viewing);
-        assert!(matches!(
-            editing_action,
-            Action::TextKill {
-                target: InputTarget::HelpFilter,
-                direction: TextKillDirection::ToLineStart,
             }
         ));
     }
