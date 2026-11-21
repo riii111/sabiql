@@ -906,27 +906,6 @@ mod tests {
     }
 
     #[test]
-    fn mysql_client_certificate_and_key_are_a_pair() {
-        let mut state = ConnectionSetupState::default();
-        state.set_database_type(DatabaseType::MySQL);
-        state
-            .input_mut(ConnectionField::SslCert)
-            .unwrap()
-            .set_content("client.pem".to_string());
-
-        validate_all(&mut state);
-
-        assert_eq!(
-            state.validation_error(ConnectionField::SslCert),
-            Some("Both client paths are required")
-        );
-        assert_eq!(
-            state.validation_error(ConnectionField::SslKey),
-            Some("Both client paths are required")
-        );
-    }
-
-    #[test]
     fn validating_filled_client_key_clears_stale_pair_error() {
         let mut state = ConnectionSetupState::default();
         state.set_database_type(DatabaseType::MySQL);

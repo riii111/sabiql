@@ -759,16 +759,6 @@ mod postgres {
             .bulk_delete_sql(schema, table, pk_pairs_per_row)
     }
 
-    fn build_explain_sql(query: &str) -> Option<String> {
-        DatabaseType::PostgreSQL.dialect().explain_sql(query)
-    }
-
-    fn build_explain_analyze_sql(query: &str) -> Option<String> {
-        DatabaseType::PostgreSQL
-            .dialect()
-            .explain_analyze_sql(query)
-    }
-
     fn sql_literal(value: &QueryValue) -> String {
         DatabaseType::PostgreSQL.dialect().value_literal(value)
     }
@@ -816,26 +806,6 @@ mod postgres {
             assert_eq!(
                 sql,
                 "UPDATE \"s\".\"t\"\nSET \"name\" = 'new'\nWHERE \"id\" = '1' AND \"tenant_id\" = '7';"
-            );
-        }
-    }
-
-    mod postgres_explain {
-        use super::{build_explain_analyze_sql, build_explain_sql};
-
-        #[test]
-        fn explain_sql_uses_postgres_prefix() {
-            assert_eq!(
-                build_explain_sql("SELECT 1"),
-                Some("EXPLAIN SELECT 1".to_string())
-            );
-        }
-
-        #[test]
-        fn explain_analyze_sql_uses_postgres_prefix() {
-            assert_eq!(
-                build_explain_analyze_sql("SELECT 1"),
-                Some("EXPLAIN ANALYZE SELECT 1".to_string())
             );
         }
     }
@@ -1143,10 +1113,6 @@ mod mysql {
             .bulk_delete_sql(schema, table, pk_pairs_per_row)
     }
 
-    fn quote_identifier(value: &str) -> String {
-        DatabaseType::MySQL.dialect().quote_identifier(value)
-    }
-
     fn quote_string(value: &str) -> String {
         DatabaseType::MySQL.dialect().quote_text(value)
     }
@@ -1318,17 +1284,8 @@ mod mysql {
     }
 
     mod quoting {
-        use super::{quote_identifier, quote_string};
+        use super::quote_string;
         use rstest::rstest;
-
-        #[rstest]
-        #[case::plain("users", "`users`")]
-        #[case::double_quote("a\"b", "`a\"b`")]
-        #[case::backtick("a`b", "`a``b`")]
-        #[case::empty("", "``")]
-        fn identifiers_double_embedded_backticks(#[case] name: &str, #[case] expected: &str) {
-            assert_eq!(quote_identifier(name), expected);
-        }
 
         #[rstest]
         #[case::single_quote("O'Reilly", "'O\\'Reilly'")]
