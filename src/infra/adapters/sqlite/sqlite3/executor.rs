@@ -446,7 +446,8 @@ mod tests {
     use crate::adapters::csv_export::export_to_path;
     use crate::adapters::sqlite::SqliteAdapter;
     use crate::adapters::test_support;
-    use crate::app::ports::outbound::{AccessMode, QueryExecutor};
+    use crate::app::ports::outbound::AccessMode;
+    use crate::domain::connection::SqliteConnectionConfig;
 
     use super::*;
 
@@ -505,7 +506,7 @@ mod tests {
                     .cli
                     .export_csv_with_command(
                         "sabiql-missing-sqlite3",
-                        SqliteAdapter::path_from_dsn(&dsn)?,
+                        dsn.path(),
                         "SELECT id FROM users",
                         &temporary_path,
                         true,
@@ -621,14 +622,7 @@ esac
                 );
                 adapter.cli.timeout_secs = if mode == "timeout" { 1 } else { 30 };
 
-                let result = adapter
-                    .cli
-                    .execute_csv(
-                        SqliteAdapter::path_from_dsn(&dsn).unwrap(),
-                        "SELECT 1",
-                        true,
-                    )
-                    .await;
+                let result = adapter.cli.execute_csv(dsn.path(), "SELECT 1", true).await;
 
                 match mode {
                     "normal" => assert_eq!(result.unwrap(), "value\n1\n"),
@@ -658,7 +652,7 @@ esac
                 );
                 let output_dir = tempfile::tempdir().unwrap();
                 let final_path = output_dir.path().join("export.csv");
-                let database_path = SqliteAdapter::path_from_dsn(&dsn).unwrap().to_string();
+                let database_path = dsn.path().to_string();
                 let program = program.to_str().unwrap().to_string();
                 let timeout_duration = if mode == "timeout" {
                     Duration::from_secs(1)
@@ -826,7 +820,7 @@ esac
             let path = format!("-sabiql-{unique}.db");
             let _cleanup = CleanupPath(path.clone());
             std::fs::write(&path, b"").unwrap();
-            let dsn = format!("sqlite://{path}");
+            let dsn = SqliteConnectionConfig::new(path).unwrap();
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -840,7 +834,6 @@ esac
         #[cfg(not(windows))]
         mod initialization_isolation {
             use crate::adapters::sqlite::sqlite3::tests::TestCommandContext;
-            use crate::app::ports::outbound::{MetadataProvider, SqliteDiagnosticsProvider};
 
             use super::*;
 
@@ -852,7 +845,7 @@ esac
 
             fn adapter_with_malicious_initialization(
                 dir: &tempfile::TempDir,
-                dsn: &str,
+                dsn: &SqliteConnectionConfig,
             ) -> (SqliteAdapter, InitializationArtifacts) {
                 let home = dir.path().join("home");
                 let xdg_config_home = dir.path().join("xdg-config");
@@ -955,12 +948,7 @@ esac
 
                 adapter
                     .cli
-                    .export_csv(
-                        SqliteAdapter::path_from_dsn(&dsn).unwrap(),
-                        "SELECT id, name FROM users",
-                        &export_path,
-                        true,
-                    )
+                    .export_csv(dsn.path(), "SELECT id, name FROM users", &export_path, true)
                     .await
                     .unwrap();
 

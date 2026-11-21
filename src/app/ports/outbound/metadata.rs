@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 
+use crate::domain::connection::ConnectionEndpoint;
 use crate::domain::{DatabaseMetadata, Table, TableSignatureSnapshot};
 
 use super::DbOperationError;
@@ -7,28 +8,34 @@ use super::DbOperationError;
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait MetadataProvider: Send + Sync {
-    async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError>;
+    async fn fetch_metadata(
+        &self,
+        endpoint: &ConnectionEndpoint,
+    ) -> Result<DatabaseMetadata, DbOperationError>;
 
-    async fn fetch_effective_user(&self, _dsn: &str) -> Result<Option<String>, DbOperationError> {
+    async fn fetch_effective_user(
+        &self,
+        _endpoint: &ConnectionEndpoint,
+    ) -> Result<Option<String>, DbOperationError> {
         Ok(None)
     }
 
     async fn fetch_table_detail(
         &self,
-        dsn: &str,
+        endpoint: &ConnectionEndpoint,
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError>;
 
     async fn fetch_table_columns_and_fks(
         &self,
-        dsn: &str,
+        endpoint: &ConnectionEndpoint,
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError>;
 
     async fn fetch_table_signatures(
         &self,
-        dsn: &str,
+        endpoint: &ConnectionEndpoint,
     ) -> Result<TableSignatureSnapshot, DbOperationError>;
 }

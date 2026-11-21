@@ -153,11 +153,10 @@ fn sqlite_json_text_cell_detail_state() -> (AppState, std::time::Instant) {
     table.primary_key = Some(vec!["id".to_string()]);
     let _ = state.session.set_table_detail(table, 0);
     state.ui.set_explorer_selection(Some(0));
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("sqlite-test"),
         "sqlite",
-        DatabaseType::SQLite,
-        "sqlite:///tmp/app.db",
+        &endpoint::sqlite("sqlite:///tmp/app.db"),
     );
     state
         .query

@@ -231,10 +231,10 @@ impl InspectorViewModel {
                 )
             }
             InspectorTab::Indexes => {
-                let show_partial = matches!(
-                    database_type,
-                    DatabaseType::PostgreSQL | DatabaseType::SQLite
-                );
+                let show_partial = match database_type {
+                    DatabaseType::PostgreSQL | DatabaseType::SQLite => true,
+                    DatabaseType::MySQL => false,
+                };
                 let rows: Vec<InspectorIndexRow> = table
                     .indexes
                     .iter()
@@ -335,8 +335,10 @@ impl InspectorViewModel {
             section: Some(section),
             empty_state,
             unavailable_reason,
-            mysql_trigger_details: database_type == DatabaseType::MySQL
-                && active_tab == InspectorTab::Triggers,
+            mysql_trigger_details: match database_type {
+                DatabaseType::MySQL => active_tab == InspectorTab::Triggers,
+                DatabaseType::PostgreSQL | DatabaseType::SQLite => false,
+            },
         }
     }
 
@@ -879,6 +881,52 @@ mod tests {
         assert_eq!(model.row_count(), MYSQL_TRIGGER_DETAIL_LINES_PER_ROW);
         assert_eq!(model.visible_rows(8), 5);
         assert_eq!(model.max_scroll(8), 7);
+    }
+
+    #[rstest::rstest]
+    #[case::postgres(DatabaseType::PostgreSQL, true)]
+    #[case::mysql(DatabaseType::MySQL, false)]
+    #[case::sqlite(DatabaseType::SQLite, true)]
+    fn index_partial_column_is_shown_except_for_mysql(
+        #[case] database_type: DatabaseType,
+        #[case] expected: bool,
+    ) {
+        let model = build_loaded(
+            &EngineFeatureProfile::for_database_type(database_type),
+            InspectorTab::Indexes,
+            &table(),
+            database_type,
+            &TestDdlGenerator,
+        );
+
+        match model.section() {
+            Some(InspectorSection::Indexes { show_partial, .. }) => {
+                assert_eq!(*show_partial, expected);
+            }
+            section => panic!("expected index section, got {section:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    #[case::postgres(DatabaseType::PostgreSQL, 1, 3)]
+    #[case::mysql(DatabaseType::MySQL, MYSQL_TRIGGER_DETAIL_LINES_PER_ROW, 5)]
+    #[case::sqlite(DatabaseType::SQLite, 1, 3)]
+    fn trigger_rows_scroll_by_detail_lines_only_for_mysql(
+        #[case] database_type: DatabaseType,
+        #[case] expected_rows: usize,
+        #[case] expected_visible_rows: usize,
+    ) {
+        let model = build_loaded(
+            &EngineFeatureProfile::for_database_type(database_type),
+            InspectorTab::Triggers,
+            &table(),
+            database_type,
+            &TestDdlGenerator,
+        );
+
+        assert_eq!(model.active_tab(), InspectorTab::Triggers);
+        assert_eq!(model.row_count(), expected_rows);
+        assert_eq!(model.visible_rows(8), expected_visible_rows);
     }
 
     #[test]

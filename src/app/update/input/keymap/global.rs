@@ -332,6 +332,7 @@ mod tests {
     use super::*;
     use crate::domain::{ConnectionId, DatabaseType, QueryResult, QuerySource};
     use crate::model::app_state::AppState;
+    use crate::test_support::endpoint;
     use std::sync::Arc;
     use std::time::Instant;
 
@@ -358,11 +359,10 @@ mod tests {
                 .any(|entry| matches!(entry.action, Action::RequestCsvExport))
         );
 
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "database",
-            DatabaseType::PostgreSQL,
-            "postgres://localhost/test",
+            &endpoint::for_engine(DatabaseType::PostgreSQL, "postgres://localhost/test"),
         );
         let available = palette_available(&KeyContext::for_browse_state(&state));
         let reload = available

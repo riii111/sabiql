@@ -22,7 +22,7 @@ pub(in crate::update) fn metadata_loaded(
     if !state.session.is_current_metadata_run(run_id) {
         return vec![];
     }
-    let Some(dsn) = state.session.dsn().map(String::from) else {
+    let Some(endpoint) = state.session.endpoint().cloned() else {
         return vec![];
     };
 
@@ -31,7 +31,7 @@ pub(in crate::update) fn metadata_loaded(
     let effective_user_run_id = state.session.begin_effective_user_fetch();
 
     let mut effects = vec![Effect::FetchEffectiveUser {
-        dsn: dsn.clone(),
+        endpoint: Arc::clone(&endpoint),
         run_id: effective_user_run_id,
     }];
 
@@ -57,7 +57,7 @@ pub(in crate::update) fn metadata_loaded(
             ));
             let detail_run_id = state.session.begin_table_detail_run();
             effects.push(Effect::FetchTableDetail {
-                dsn,
+                endpoint,
                 schema: state.query.pagination.schema().to_string(),
                 table: state.query.pagination.table().to_string(),
                 generation,
@@ -144,13 +144,13 @@ pub(in crate::update) fn reload_metadata(state: &mut AppState) -> Vec<Effect> {
     if reject_pending_mysql_connection_probe(state) {
         return vec![];
     }
-    if let Some(dsn) = state.session.dsn().map(String::from) {
+    if let Some(endpoint) = state.session.endpoint().cloned() {
         state.table_prefetch.reset_prefetch();
         state.er_preparation.reset();
         state.ui.reset_er_picker_request();
         state.messages.clear();
 
-        metadata_reload_effects(state, &dsn)
+        metadata_reload_effects(state, &endpoint)
     } else {
         vec![]
     }
@@ -162,6 +162,7 @@ mod tests {
     use crate::domain::{ConnectionId, DatabaseType, QueryResult, QuerySource};
     use crate::model::browse::session::TableDetailState;
     use crate::services::AppServices;
+    use crate::test_support::endpoint;
     use crate::test_support::table;
     use crate::update::reducer::route;
 
@@ -172,9 +173,11 @@ mod tests {
             DatabaseType::MySQL => ("mysql", "mysql://localhost/test"),
         };
         let mut state = AppState::new("test".to_string());
-        state
-            .session
-            .activate_connection_with_dsn(&ConnectionId::new(), name, database_type, dsn);
+        state.session.activate_connection(
+            &ConnectionId::new(),
+            name,
+            &endpoint::for_engine(database_type, dsn),
+        );
         state
             .session
             .mark_connected(Arc::new(DatabaseMetadata::new("test".to_string())));
@@ -219,8 +222,7 @@ mod tests {
     #[test]
     fn initial_metadata_failure_clears_result_once() {
         let mut state = AppState::new("test".to_string());
-        let dsn = "postgres://localhost/test";
-        let run_id = state.session.begin_connecting(dsn);
+        let run_id = state.session.begin_connecting();
         let _ = state
             .session
             .select_table("public", "users", &mut state.query);

@@ -8,7 +8,7 @@
 //! Default: `postgres://dev:dev@localhost:5433/testdb` (matches compose.yml)
 //! The database user must be able to create and drop schemas.
 
-use sabiql_app::ports::outbound::{AccessMode, DbOperationError, MetadataProvider, QueryExecutor};
+use sabiql_app::ports::outbound::{AccessMode, DbOperationError};
 use sabiql_infra::adapters::PostgresAdapter;
 
 use crate::tests::harness::postgres::{
@@ -281,7 +281,7 @@ mod error_paths {
     async fn bad_dsn_returns_connection_or_query_error() {
         let adapter = PostgresAdapter::new();
 
-        let result = adapter.fetch_metadata(postgres_bad_dsn()).await;
+        let result = adapter.fetch_metadata(&postgres_bad_dsn()).await;
 
         assert!(result.is_err(), "Expected error for bad DSN");
     }

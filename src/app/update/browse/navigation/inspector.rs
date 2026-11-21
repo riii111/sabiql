@@ -81,8 +81,9 @@ pub(in crate::update) fn scroll_inspector(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{Column, ColumnAttributes, ConnectionId, DatabaseType, Table};
+    use crate::domain::{Column, ColumnAttributes, ConnectionId, Table};
     use crate::model::shared::inspector_tab::InspectorTab;
+    use crate::test_support::endpoint;
     use crate::update::action::{Action, ScrollTarget};
     use crate::update::reducer::route;
     use std::time::Instant;
@@ -96,11 +97,10 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.ui.set_inspector_pane_height(10);
             state.ui.set_inspector_tab(InspectorTab::Columns);
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "postgres",
-                DatabaseType::PostgreSQL,
-                "postgres://test",
+                &endpoint::postgres("postgres://test"),
             );
             let cols: Vec<Column> = (0..columns)
                 .map(|i| Column {
@@ -240,11 +240,10 @@ mod tests {
         }
 
         fn use_sqlite_tabs(state: &mut AppState) {
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "sqlite",
-                DatabaseType::SQLite,
-                "sqlite://test.db",
+                &endpoint::sqlite("sqlite://test.db"),
             );
         }
 

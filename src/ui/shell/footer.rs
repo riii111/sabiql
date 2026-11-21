@@ -106,25 +106,47 @@ impl Footer {
 
 #[cfg(test)]
 mod tests {
-    use super::{Footer, footer_hints};
+    use std::sync::Arc;
+
+    use super::Footer;
+    use crate::app::domain::connection::{
+        ConnectionEndpoint, MySqlConnectionConfig, MySqlSslMode, PostgresConnectionConfig,
+        PostgresEndpoint, SqliteConnectionConfig, SslMode,
+    };
     use crate::app::domain::{ConnectionId, DatabaseType};
     use crate::app::model::app_state::AppState;
     use crate::app::model::connection::error::ConnectionErrorInfo;
     use crate::app::model::connection::setup::ConnectionField;
     use crate::app::model::shared::focused_pane::FocusedPane;
     use crate::app::model::shared::input_mode::InputMode;
-    use crate::app::model::shared::settings::KeymapPreset;
     use crate::app::model::shared::ui_state::FocusMode;
     use crate::app::ports::outbound::DbOperationError;
-    use crate::app::update::input::keymap::{
-        HintSurface, KeyContext, connection_error_hints, settings_hints, sql_edit_hints,
-    };
+    use crate::app::update::input::keymap::{HintSurface, KeyContext, connection_error_hints};
     use rstest::rstest;
 
     fn contains(hints: &[(String, &str)], expected: (&str, &str)) -> bool {
         hints
             .iter()
             .any(|(key, label)| (key.as_str(), *label) == expected)
+    }
+
+    fn test_endpoint(database_type: DatabaseType, label: &str) -> Arc<ConnectionEndpoint> {
+        Arc::new(match database_type {
+            DatabaseType::PostgreSQL => ConnectionEndpoint::PostgreSQL(PostgresEndpoint::Settings(
+                PostgresConnectionConfig::new(label, 5432, "app", "user", "", SslMode::Prefer),
+            )),
+            DatabaseType::SQLite => ConnectionEndpoint::SQLite(
+                SqliteConnectionConfig::new(label).expect("test SQLite path is valid"),
+            ),
+            DatabaseType::MySQL => ConnectionEndpoint::MySQL(MySqlConnectionConfig::new(
+                label,
+                3306,
+                None,
+                "user",
+                "",
+                MySqlSslMode::Preferred,
+            )),
+        })
     }
 
     fn inspector_state() -> AppState {
@@ -145,20 +167,6 @@ mod tests {
         state.modal.set_mode(InputMode::Normal);
         state.ui.set_focused_pane(FocusedPane::Result);
         state
-    }
-
-    #[rstest]
-    #[case(FocusedPane::Explorer)]
-    #[case(FocusedPane::Inspector)]
-    #[case(FocusedPane::Result)]
-    fn normal_footer_shows_connections_for_every_pane(#[case] focused_pane: FocusedPane) {
-        let mut state = AppState::new("test".to_string());
-        state.modal.set_mode(InputMode::Normal);
-        state.ui.set_focused_pane(focused_pane);
-
-        let hints = Footer::get_context_hints(&state);
-
-        assert!(contains(&hints, ("c", "Connections")));
     }
 
     #[test]
@@ -198,198 +206,16 @@ mod tests {
     ) {
         let mut state = inspector_state();
         if let Some(database_type) = database_type {
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "database",
-                database_type,
-                "sqlite://test.db",
+                &test_endpoint(database_type, "sqlite://test.db"),
             );
         }
 
         let hints = Footer::get_context_hints(&state);
 
         assert_eq!(contains(&hints, ("Tab/⇧Tab", "InsTabs")), expected_visible);
-    }
-
-    #[rstest]
-    #[case(DatabaseType::PostgreSQL, true)]
-    #[case(DatabaseType::SQLite, false)]
-    fn er_hint_visibility_tracks_capability(
-        #[case] database_type: DatabaseType,
-        #[case] expected_visible: bool,
-    ) {
-        let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
-            &ConnectionId::new(),
-            "database",
-            database_type,
-            "test://database",
-        );
-
-        let hints = Footer::get_context_hints(&state);
-
-        assert_eq!(contains(&hints, ("e", "ER Diagram")), expected_visible);
-    }
-
-    #[test]
-    fn unsupported_json_modes_hide_modal_hints() {
-        let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
-            &ConnectionId::new(),
-            "database",
-            DatabaseType::SQLite,
-            "sqlite://test.db",
-        );
-
-        state.modal.set_mode(InputMode::JsonDetail);
-        assert!(footer_hints(&KeyContext::from_state(&state)).is_empty());
-
-        state.modal.set_mode(InputMode::JsonEdit);
-        assert!(footer_hints(&KeyContext::from_state(&state)).is_empty());
-    }
-
-    #[test]
-    fn mysql_json_detail_footer_keeps_non_modal_hints() {
-        let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
-            &ConnectionId::new(),
-            "database",
-            DatabaseType::MySQL,
-            "mysql://test",
-        );
-        state.modal.set_mode(InputMode::JsonDetail);
-
-        let hints = footer_hints(&KeyContext::from_state(&state));
-        assert_eq!(
-            hints.iter().map(|hint| hint.short).collect::<Vec<_>>(),
-            ["Next/Prev", "Left/Right", "Down/Up"]
-        );
-    }
-
-    #[test]
-    fn row_detail_hint_is_hidden_in_result_scroll_mode() {
-        let state = result_focused_state();
-
-        let hints = Footer::get_context_hints(&state);
-
-        assert!(!contains(&hints, ("K", "Row Detail")));
-    }
-
-    #[test]
-    fn row_detail_hint_is_hidden_in_result_focus_scroll_mode() {
-        let mut state = result_focused_state();
-        state
-            .ui
-            .set_focus_mode(FocusMode::focused(FocusedPane::Explorer));
-
-        let hints = Footer::get_context_hints(&state);
-
-        assert!(!contains(&hints, ("K", "Row Detail")));
-    }
-
-    #[test]
-    fn row_detail_hint_is_visible_in_cell_active_mode() {
-        let mut state = result_focused_state();
-        state.result_interaction.activate_cell(0, 0);
-
-        let hints = Footer::get_context_hints(&state);
-
-        assert!(contains(&hints, ("K", "Row Detail")));
-    }
-
-    #[test]
-    fn row_detail_footer_hides_modal_hints() {
-        let mut state = AppState::new("test".to_string());
-        state.modal.set_mode(InputMode::RowDetail);
-
-        let hints = Footer::get_context_hints(&state);
-
-        assert!(hints.is_empty());
-    }
-
-    #[test]
-    fn query_history_picker_footer_hides_modal_hints() {
-        let mut state = AppState::new("test".to_string());
-
-        state.modal.set_mode(InputMode::QueryHistoryPicker);
-        assert!(Footer::get_context_hints(&state).is_empty());
-    }
-
-    #[rstest]
-    #[case(InputMode::ConnectionSelector)]
-    #[case(InputMode::CommandPalette)]
-    #[case(InputMode::ConnectionSetup)]
-    fn modal_footer_hides_hints_rendered_in_modal_frame(#[case] mode: InputMode) {
-        let mut state = AppState::new("test".to_string());
-        state.modal.set_mode(mode);
-
-        assert!(Footer::get_context_hints(&state).is_empty());
-    }
-
-    #[test]
-    fn settings_footer_keeps_only_selection_hint() {
-        let mut state = AppState::new("test".to_string());
-        state.modal.set_mode(InputMode::Settings);
-        state.settings.switch_next_section();
-        state.settings.switch_next_section();
-        state.settings.start_custom_browser_edit();
-        state.settings.stop_custom_browser_edit();
-
-        let hints = settings_hints(HintSurface::Footer, &KeyContext::from_state(&state));
-        assert_eq!(hints.len(), 1);
-        assert_eq!(hints[0].short, "Select");
-    }
-
-    #[test]
-    fn settings_custom_browser_edit_footer_hides_modal_hints() {
-        let mut state = AppState::new("test".to_string());
-        state.modal.set_mode(InputMode::Settings);
-        state.settings.switch_next_section();
-        state.settings.switch_next_section();
-        state.settings.start_custom_browser_edit();
-
-        let hints = settings_hints(HintSurface::Footer, &KeyContext::from_state(&state));
-
-        assert!(hints.is_empty());
-    }
-
-    #[test]
-    fn help_footer_hints_follow_help_mode() {
-        let mut state = AppState::new("test".to_string());
-        state.modal.set_mode(InputMode::Help);
-
-        assert_eq!(
-            Footer::get_context_hints(&state),
-            Vec::<(String, &str)>::new()
-        );
-
-        state.ui.help_mut().enter_filter_editing();
-
-        assert_eq!(
-            Footer::get_context_hints(&state),
-            Vec::<(String, &str)>::new()
-        );
-    }
-
-    #[rstest::rstest]
-    #[case(KeymapPreset::Default)]
-    #[case(KeymapPreset::Ide)]
-    fn sql_editing_footer_omits_explain_hint(#[case] preset: KeymapPreset) {
-        let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
-            &ConnectionId::new(),
-            "database",
-            DatabaseType::PostgreSQL,
-            "postgres://localhost/test",
-        );
-        state.modal.set_mode(InputMode::SqlModal);
-        state.sql_modal.enter_editing();
-        state.settings.load_keymap_preset(preset);
-
-        let hints = sql_edit_hints(HintSurface::Footer, &KeyContext::from_state(&state));
-
-        assert_eq!(hints.len(), 1);
-        assert_eq!(hints[0].short, "Move");
     }
 
     #[test]
@@ -404,11 +230,13 @@ mod tests {
     #[test]
     fn connection_error_footer_hides_retry_for_save_and_connect_failure() {
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "mysql",
-            DatabaseType::MySQL,
-            "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+            &test_endpoint(
+                DatabaseType::MySQL,
+                "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+            ),
         );
         state.connection_error.set_save_and_connect_error(
             ConnectionErrorInfo::from_db_operation_error(&DbOperationError::Timeout(

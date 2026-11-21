@@ -1,5 +1,5 @@
 use super::super::capability::MySqlServerCapabilities;
-use super::literal::{quote_identifier, quote_string};
+use crate::domain::dialect::{Dialect as _, MySql};
 use crate::domain::{Column, TableKind};
 
 pub(in crate::adapters::mysql) const EFFECTIVE_USER_QUERY: &str = "SELECT CURRENT_USER()";
@@ -79,8 +79,8 @@ pub(in crate::adapters::mysql) const FOREIGN_KEY_RESULT_COLUMNS: &[&str] = &[
 pub(in crate::adapters::mysql) fn table_query(schema: &str, table: &str) -> String {
     format!(
         "SELECT t.TABLE_SCHEMA, t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_ROWS, t.TABLE_COMMENT, t.ENGINE, t.ROW_FORMAT, t.TABLE_COLLATION, t.CREATE_OPTIONS FROM INFORMATION_SCHEMA.TABLES AS t WHERE t.TABLE_SCHEMA = {} AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW') AND t.TABLE_NAME = {} ORDER BY TABLE_SCHEMA, TABLE_NAME",
-        quote_string(schema),
-        quote_string(table),
+        MySql.quote_text(schema),
+        MySql.quote_text(table),
     )
 }
 
@@ -106,33 +106,33 @@ pub(in crate::adapters::mysql) fn columns_query_for_capabilities(
     };
     format!(
         "SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION, c.CHARACTER_SET_NAME, c.COLLATION_NAME{generation_expression} FROM INFORMATION_SCHEMA.COLUMNS AS c LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = c.TABLE_SCHEMA AND tc.TABLE_NAME = c.TABLE_NAME AND tc.CONSTRAINT_NAME = 'PRIMARY' AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.COLUMN_NAME = c.COLUMN_NAME WHERE c.TABLE_SCHEMA = {} AND c.TABLE_NAME = {} ORDER BY ORDINAL_POSITION",
-        quote_string(schema),
-        quote_string(table),
+        MySql.quote_text(schema),
+        MySql.quote_text(table),
     )
 }
 
 pub(in crate::adapters::mysql) fn preview_columns_query(schema: &str, table: &str) -> String {
     format!(
         "SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION, c.CHARACTER_SET_NAME FROM INFORMATION_SCHEMA.COLUMNS AS c LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = c.TABLE_SCHEMA AND tc.TABLE_NAME = c.TABLE_NAME AND tc.CONSTRAINT_NAME = 'PRIMARY' AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.COLUMN_NAME = c.COLUMN_NAME WHERE c.TABLE_SCHEMA = {} AND c.TABLE_NAME = {} ORDER BY ORDINAL_POSITION",
-        quote_string(schema),
-        quote_string(table),
+        MySql.quote_text(schema),
+        MySql.quote_text(table),
     )
 }
 
 pub(in crate::adapters::mysql) fn unique_columns_query(schema: &str, table: &str) -> String {
     format!(
         "SELECT MIN(s.COLUMN_NAME) AS COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS AS s WHERE s.TABLE_SCHEMA = {} AND s.TABLE_NAME = {} AND s.NON_UNIQUE = 0 AND s.INDEX_NAME <> 'PRIMARY' GROUP BY s.INDEX_NAME HAVING COUNT(*) = 1 AND COUNT(s.COLUMN_NAME) = 1 AND COUNT(s.SUB_PART) = 0 ORDER BY s.INDEX_NAME",
-        quote_string(schema),
-        quote_string(table),
+        MySql.quote_text(schema),
+        MySql.quote_text(table),
     )
 }
 
 pub(in crate::adapters::mysql) fn foreign_keys_query(schema: &str, table: &str) -> String {
     format!(
         "SELECT kcu.CONSTRAINT_NAME, kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, kcu.ORDINAL_POSITION, rc.UPDATE_RULE, rc.DELETE_RULE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME INNER JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc ON rc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND rc.TABLE_NAME = tc.TABLE_NAME AND rc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME WHERE tc.CONSTRAINT_SCHEMA = {} AND tc.TABLE_SCHEMA = {} AND tc.TABLE_NAME = {} AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION",
-        quote_string(schema),
-        quote_string(schema),
-        quote_string(table),
+        MySql.quote_text(schema),
+        MySql.quote_text(schema),
+        MySql.quote_text(table),
     )
 }
 
@@ -230,17 +230,17 @@ pub(in crate::adapters::mysql) fn indexes_query_for_capabilities(
     };
     format!(
         "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.SUB_PART{expression}, s.COLLATION{visibility} FROM INFORMATION_SCHEMA.STATISTICS AS s WHERE s.TABLE_SCHEMA = {} AND s.TABLE_NAME = {} ORDER BY INDEX_NAME, SEQ_IN_INDEX",
-        quote_string(schema),
-        quote_string(table),
+        MySql.quote_text(schema),
+        MySql.quote_text(table),
     )
 }
 
 pub(in crate::adapters::mysql) fn triggers_query(schema: &str, table: &str) -> String {
     format!(
         "SELECT TRIGGER_NAME, ACTION_ORDER, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT, DEFINER, SQL_MODE, CHARACTER_SET_CLIENT, COLLATION_CONNECTION, DATABASE_COLLATION, CREATED FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = {} AND EVENT_OBJECT_SCHEMA = {} AND EVENT_OBJECT_TABLE = {} ORDER BY EVENT_MANIPULATION, ACTION_TIMING, ACTION_ORDER",
-        quote_string(schema),
-        quote_string(schema),
-        quote_string(table),
+        MySql.quote_text(schema),
+        MySql.quote_text(schema),
+        MySql.quote_text(table),
     )
 }
 
@@ -250,7 +250,10 @@ pub(in crate::adapters::mysql) fn show_create_query(table: &str, kind: TableKind
     } else {
         "TABLE"
     };
-    format!("SHOW CREATE {object_type} {}", quote_identifier(table))
+    format!(
+        "SHOW CREATE {object_type} {}",
+        MySql.quote_identifier(table)
+    )
 }
 
 pub(in crate::adapters::mysql) fn show_create_result_columns(
@@ -276,7 +279,7 @@ pub(in crate::adapters::mysql) fn build_preview_query(
 ) -> String {
     let visible_select = visible_columns
         .iter()
-        .map(|column| quote_identifier(&column.name))
+        .map(|column| MySql.quote_identifier(&column.name))
         .collect::<Vec<_>>()
         .join(", ");
     let identity_select = identity_columns
@@ -285,8 +288,8 @@ pub(in crate::adapters::mysql) fn build_preview_query(
         .map(|(index, column)| {
             format!(
                 "{} AS {}",
-                quote_identifier(&column.name),
-                quote_identifier(&preview_identity_alias(index)),
+                MySql.quote_identifier(&column.name),
+                MySql.quote_identifier(&preview_identity_alias(index)),
             )
         })
         .collect::<Vec<_>>();
@@ -297,7 +300,7 @@ pub(in crate::adapters::mysql) fn build_preview_query(
         .join(", ");
     let order_by = order_columns
         .iter()
-        .map(|column| quote_identifier(column))
+        .map(|column| MySql.quote_identifier(column))
         .collect::<Vec<_>>()
         .join(", ");
     let order_clause = if order_by.is_empty() {
@@ -307,8 +310,8 @@ pub(in crate::adapters::mysql) fn build_preview_query(
     };
     format!(
         "SELECT {columns} FROM {}.{}{order_clause} LIMIT {limit} OFFSET {offset}",
-        quote_identifier(schema),
-        quote_identifier(table),
+        MySql.quote_identifier(schema),
+        MySql.quote_identifier(table),
     )
 }
 
@@ -350,22 +353,22 @@ mod tests {
         assert_eq!(EFFECTIVE_USER_RESULT_COLUMNS, &["CURRENT_USER()"][..]);
 
         assert_eq!(
-            quote_string(schema),
+            MySql.quote_text(schema),
             format!(
                 "'app{}{}{}{}{}{}{}'",
                 r"\\", r"\n", r"\r", r"\t", r"\b", r"\Z", r"\'",
             )
         );
         assert_eq!(
-            quote_string(table),
+            MySql.quote_text(table),
             format!(
                 "'items{}{}{}{}{}{}{}'",
                 r"\\", r"\n", r"\r", r"\t", r"\b", r"\Z", r"\'",
             )
         );
 
-        let quoted_schema = quote_string(schema);
-        let quoted_table = quote_string(table);
+        let quoted_schema = MySql.quote_text(schema);
+        let quoted_table = MySql.quote_text(table);
 
         let table_sql = table_query(schema, table);
         assert_eq!(

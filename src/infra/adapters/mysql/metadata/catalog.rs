@@ -11,7 +11,7 @@ use crate::domain::{
 use super::super::{
     capability::MySqlServerCapabilities,
     cli::{MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, MySqlResultSet},
-    dsn::{MySqlDsn, map_mysql_tls_failure},
+    dsn::{NormalizedMySqlConfig, map_mysql_tls_failure},
     option_file::MySqlOptionFile,
     sql::{
         COLUMN_METADATA_BASE_RESULT_COLUMNS, FOREIGN_KEY_RESULT_COLUMNS,
@@ -81,7 +81,7 @@ impl MySqlTableMetadata {
 }
 
 pub(super) async fn fetch_metadata_snapshot(
-    target: &MySqlDsn,
+    target: &NormalizedMySqlConfig,
     database: &str,
 ) -> Result<Vec<MySqlTableMetadata>, DbOperationError> {
     let (lower_case_table_names, result) =
@@ -153,7 +153,7 @@ pub(super) fn parse_preview_columns_for_table(
 }
 
 pub(super) async fn execute_metadata_query(
-    target: &MySqlDsn,
+    target: &NormalizedMySqlConfig,
     query: &str,
     expected_columns: &[&str],
 ) -> Result<(u8, MySqlResultSet), DbOperationError> {
@@ -168,7 +168,7 @@ pub(super) async fn execute_metadata_query(
 }
 
 pub(super) async fn execute_metadata_queries_in_session(
-    target: &MySqlDsn,
+    target: &NormalizedMySqlConfig,
     queries: &[(&str, &[&str])],
 ) -> Result<(MySqlServerCapabilities, Vec<MySqlResultSet>), DbOperationError> {
     execute_metadata_queries_in_session_with_program(
@@ -181,7 +181,7 @@ pub(super) async fn execute_metadata_queries_in_session(
 }
 
 pub(super) async fn execute_metadata_queries_in_session_with_program(
-    target: &MySqlDsn,
+    target: &NormalizedMySqlConfig,
     queries: &[(&str, &[&str])],
     program: &OsStr,
     timeout: Duration,
@@ -208,7 +208,7 @@ pub(super) async fn execute_metadata_queries_in_session_with_program(
         .map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))
 }
 
-pub(super) fn selected_database(target: &MySqlDsn) -> Result<&str, DbOperationError> {
+pub(super) fn selected_database(target: &NormalizedMySqlConfig) -> Result<&str, DbOperationError> {
     target.database.as_deref().ok_or_else(|| {
         DbOperationError::UnsupportedOperation(
             "MySQL metadata requires a selected database".to_string(),

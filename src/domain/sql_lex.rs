@@ -1,3 +1,27 @@
+pub fn is_comment_only(sql: &str) -> bool {
+    let chars: Vec<(usize, char)> = sql.char_indices().collect();
+    let mut i = 0;
+
+    while i < chars.len() {
+        let (_byte_pos, ch) = chars[i];
+
+        if ch.is_whitespace() {
+            i += 1;
+            continue;
+        }
+        if let Some(next_i) = skip_line_comment(&chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_block_comment(&chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        return false;
+    }
+    true
+}
+
 pub fn skip_line_comment(chars: &[(usize, char)], i: usize, ch: char) -> Option<usize> {
     if ch != '-' || !next_char_is(chars, i, '-') {
         return None;

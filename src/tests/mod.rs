@@ -57,9 +57,23 @@ mod cli_sqlite_startup {
 
     use sabiql_app::cmd::cli_sqlite::{activate_cli_sqlite_connection, resolve_cli_sqlite_target};
     use sabiql_app::model::app_state::AppState;
-    use sabiql_app::ports::outbound::{AccessMode, QueryExecutor};
+    use sabiql_app::ports::outbound::AccessMode;
+    use sabiql_domain::connection::{ConnectionEndpoint, SqliteConnectionConfig};
     use sabiql_infra::adapters::{FsSqlitePathValidator, SqliteAdapter};
     use tempfile::tempdir;
+
+    fn session_sqlite_dsn(state: &AppState) -> String {
+        format!("sqlite://{}", session_sqlite_config(state).path())
+    }
+
+    fn session_sqlite_config(state: &AppState) -> &SqliteConnectionConfig {
+        match state.session.endpoint().map(AsRef::as_ref) {
+            Some(ConnectionEndpoint::SQLite(config)) => config,
+            Some(ConnectionEndpoint::PostgreSQL(_) | ConnectionEndpoint::MySQL(_)) | None => {
+                panic!("CLI activation should keep a SQLite endpoint")
+            }
+        }
+    }
 
     #[test]
     fn resolves_existing_sqlite_file() {
@@ -103,6 +117,30 @@ mod cli_sqlite_startup {
     }
 
     #[cfg(unix)]
+    #[test]
+    fn activation_rejects_symlink_to_path_with_control_characters() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tempdir().unwrap();
+        let database = dir.path().join("app\n.db");
+        let alias = dir.path().join("current.db");
+        fs::write(&database, b"").unwrap();
+        symlink(&database, &alias).unwrap();
+        let target =
+            resolve_cli_sqlite_target(alias.to_str().unwrap(), &FsSqlitePathValidator).unwrap();
+        let mut state = AppState::new("test".to_string());
+
+        let error = activate_cli_sqlite_connection(&mut state, &target, &FsSqlitePathValidator)
+            .unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "Cannot use the canonical SQLite database path: SQLite database path contains unsupported characters"
+        );
+        assert_eq!(state.session.endpoint(), None);
+    }
+
+    #[cfg(unix)]
     #[tokio::test]
     async fn activation_pins_canonical_target_for_identity_preview_and_write() {
         use std::os::unix::fs::symlink;
@@ -121,7 +159,7 @@ mod cli_sqlite_startup {
 
         let adapter = SqliteAdapter::new();
         for (path, value) in [(&database_a, "A"), (&database_b, "B")] {
-            let dsn = format!("sqlite://{}", path.display());
+            let dsn = SqliteConnectionConfig::new(path.to_str().unwrap()).unwrap();
             adapter
                 .execute_adhoc(
                     &dsn,
@@ -153,7 +191,7 @@ mod cli_sqlite_startup {
             activate_cli_sqlite_connection(&mut state, &target, &FsSqlitePathValidator).unwrap();
             (
                 state.session.active_connection_id().cloned().unwrap(),
-                state.session.dsn().unwrap().to_owned(),
+                session_sqlite_dsn(&state),
                 state.session.active_connection_name().unwrap().to_owned(),
                 state,
             )
@@ -175,15 +213,16 @@ mod cli_sqlite_startup {
         fs::remove_file(&alias).unwrap();
         symlink(&database_b, &alias).unwrap();
 
+        let config = session_sqlite_config(&symlinked.3);
         let preview = adapter
-            .execute_preview(&symlinked.1, "main", "items", 10, 0)
+            .execute_preview(config, "main", "items", 10, 0)
             .await
             .unwrap();
         assert_eq!(preview.display_value_at(0, 1).as_deref(), Some("A"));
 
         let write = adapter
             .execute_write(
-                &symlinked.1,
+                config,
                 "UPDATE items SET value = 'A updated' WHERE id = 1",
                 AccessMode::ReadWrite,
             )
@@ -192,7 +231,7 @@ mod cli_sqlite_startup {
         assert_eq!(write.affected_rows, 1);
 
         let updated_a = adapter
-            .execute_preview(&symlinked.1, "main", "items", 10, 0)
+            .execute_preview(config, "main", "items", 10, 0)
             .await
             .unwrap();
         assert_eq!(
@@ -200,14 +239,14 @@ mod cli_sqlite_startup {
             Some("A updated")
         );
 
-        let database_b_dsn = format!("sqlite://{}", database_b.display());
+        let database_b_dsn = SqliteConnectionConfig::new(database_b.to_str().unwrap()).unwrap();
         let unchanged_b = adapter
             .execute_preview(&database_b_dsn, "main", "items", 10, 0)
             .await
             .unwrap();
         assert_eq!(unchanged_b.display_value_at(0, 1).as_deref(), Some("B"));
 
-        assert_eq!(symlinked.3.session.dsn(), Some(expected_dsn.as_str()));
+        assert_eq!(session_sqlite_dsn(&symlinked.3), expected_dsn);
     }
 }
 

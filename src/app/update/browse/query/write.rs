@@ -17,7 +17,6 @@ use crate::policy::write::write_guardrails::{
 };
 use crate::policy::write::write_update::escape_preview_value;
 use crate::ports::outbound::DbOperationError;
-use crate::sql_builder::build_update_sql;
 use crate::update::browse::query::{
     execution::refresh_effects_for_scope, preview_effect_for_current_table,
 };
@@ -111,14 +110,17 @@ fn build_update_preview(state: &AppState) -> Result<WritePreview, EditGuardrailE
         return Err(EditGuardrailError::GuardrailBlocked(reason));
     }
 
-    let sql = build_update_sql(
-        state.session.active_database_type_or_default(),
-        &target.schema,
-        &target.table,
-        &column_name,
-        &new_value,
-        &identity_pairs.unwrap_or_default(),
-    );
+    let sql = state
+        .session
+        .active_database_type_or_default()
+        .dialect()
+        .update_sql(
+            &target.schema,
+            &target.table,
+            &column_name,
+            &new_value,
+            &identity_pairs.unwrap_or_default(),
+        );
     let preview = WritePreview {
         operation: WriteOperation::Update,
         sql,
@@ -402,12 +404,11 @@ mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
     use crate::test_support;
+    use crate::test_support::endpoint;
     use crate::update::test_fixtures;
 
     use crate::domain::connection::ConnectionId;
-    use crate::domain::{
-        ColumnAttributes, DatabaseType, DiagnosticLevel, QueryResult, QuerySource, QueryValue,
-    };
+    use crate::domain::{ColumnAttributes, DiagnosticLevel, QueryResult, QuerySource, QueryValue};
     use crate::model::browse::query_execution::{
         DeleteRefreshTarget, PREVIEW_PAGE_SIZE, PostDeleteRowSelection,
     };
@@ -528,11 +529,10 @@ mod tests {
         #[test]
         fn sqlite_table_without_primary_key_cannot_open_update_preview() {
             let mut state = editable_state();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::from_string("sqlite-test"),
                 "sqlite",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
+                &endpoint::sqlite("sqlite:///tmp/app.db"),
             );
             let mut detail = state.session.table_detail().cloned().expect("table detail");
             detail.primary_key = None;
@@ -733,11 +733,10 @@ mod tests {
         #[test]
         fn sqlite_active_database_type_uses_sqlite_update_preview() {
             let mut state = editable_state();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::from_string("sqlite-test"),
                 "sqlite",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
+                &endpoint::sqlite("sqlite:///tmp/app.db"),
             );
             let mut detail = users_table_detail();
             detail.schema = "main".to_string();
@@ -755,11 +754,10 @@ mod tests {
         #[test]
         fn sqlite_without_rowid_table_uses_primary_key_for_update_preview() {
             let mut state = editable_state();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::from_string("sqlite-test"),
                 "sqlite",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
+                &endpoint::sqlite("sqlite:///tmp/app.db"),
             );
             let mut detail = users_table_detail();
             detail.schema = "main".to_string();
@@ -778,11 +776,10 @@ mod tests {
         #[test]
         fn sqlite_integer_cell_update_preview_uses_numeric_literal() {
             let mut state = AppState::new("test_project".to_string());
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::from_string("sqlite-test"),
                 "sqlite",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
+                &endpoint::sqlite("sqlite:///tmp/app.db"),
             );
             state
                 .query
@@ -818,11 +815,10 @@ mod tests {
         #[test]
         fn sqlite_text_cell_with_nul_keeps_raw_values_into_write_preview() {
             let mut state = AppState::new("test_project".to_string());
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::from_string("sqlite-test"),
                 "sqlite",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
+                &endpoint::sqlite("sqlite:///tmp/app.db"),
             );
             state
                 .query
@@ -858,11 +854,10 @@ mod tests {
         #[test]
         fn sqlite_real_cell_integer_like_draft_keeps_real_literal() {
             let mut state = AppState::new("test_project".to_string());
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::from_string("sqlite-test"),
                 "sqlite",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
+                &endpoint::sqlite("sqlite:///tmp/app.db"),
             );
             state
                 .query
@@ -897,11 +892,10 @@ mod tests {
         #[test]
         fn sqlite_real_cell_rejects_non_finite_draft() {
             let mut state = AppState::new("test_project".to_string());
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::from_string("sqlite-test"),
                 "sqlite",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
+                &endpoint::sqlite("sqlite:///tmp/app.db"),
             );
             state
                 .query
@@ -945,11 +939,10 @@ mod tests {
         #[test]
         fn sqlite_update_rejects_null_primary_key_value() {
             let mut state = editable_state();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::from_string("sqlite-test"),
                 "sqlite",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
+                &endpoint::sqlite("sqlite:///tmp/app.db"),
             );
             let mut detail = users_table_detail();
             detail.schema = "main".to_string();
@@ -1133,11 +1126,10 @@ mod tests {
         #[test]
         fn sqlite_json_declared_type_preserves_string_diff_in_write_preview() {
             let mut state = editable_state_with_json();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::from_string("sqlite-test"),
                 "sqlite",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
+                &endpoint::sqlite("sqlite:///tmp/app.db"),
             );
             let mut detail = json_table_detail();
             detail.schema = "main".to_string();
@@ -1182,11 +1174,10 @@ mod tests {
         #[test]
         fn sqlite_text_json_column_preserves_string_diff() {
             let mut state = editable_state();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::from_string("sqlite-test"),
                 "sqlite",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
+                &endpoint::sqlite("sqlite:///tmp/app.db"),
             );
             let mut detail = users_table_detail();
             detail.schema = "main".to_string();

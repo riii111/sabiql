@@ -10,7 +10,8 @@ use crate::app::policy::mask_password;
 use crate::app::services::AppServices;
 use crate::app::update::input::keymap::{HintSurface, KeyContext, connection_setup_hints};
 use crate::domain::connection::{
-    ConnectionId, ConnectionProfile, DatabaseType, MySqlSslMode, MySqlTransport, SslMode,
+    ConnectionEndpoint, ConnectionId, ConnectionProfile, DatabaseType, MySqlSslMode,
+    MySqlTransport, SslMode,
 };
 use crate::primitives::atoms::text_cursor_spans;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
@@ -213,34 +214,37 @@ impl ConnectionSetup {
                 },
             )
         {
-            if form_state.database_type() == DatabaseType::MySQL {
-                if form_state.focused_field() == ConnectionField::CleartextAuth {
+            match form_state.database_type() {
+                DatabaseType::MySQL => {
+                    if form_state.focused_field() == ConnectionField::CleartextAuth {
+                        Self::render_dropdown_list(
+                            frame,
+                            field_area,
+                            CLEARTEXT_AUTH_OPTIONS.iter().copied(),
+                            form_state.ssl_dropdown().selected_index(),
+                            theme,
+                        );
+                    } else {
+                        Self::render_dropdown_list(
+                            frame,
+                            field_area,
+                            MySqlSslMode::all_variants()
+                                .iter()
+                                .map(MySqlSslMode::as_str),
+                            form_state.ssl_dropdown().selected_index(),
+                            theme,
+                        );
+                    }
+                }
+                DatabaseType::PostgreSQL | DatabaseType::SQLite => {
                     Self::render_dropdown_list(
                         frame,
                         field_area,
-                        CLEARTEXT_AUTH_OPTIONS.iter().copied(),
-                        form_state.ssl_dropdown().selected_index(),
-                        theme,
-                    );
-                } else {
-                    Self::render_dropdown_list(
-                        frame,
-                        field_area,
-                        MySqlSslMode::all_variants()
-                            .iter()
-                            .map(MySqlSslMode::as_str),
+                        SslMode::all_variants().iter().map(SslMode::as_str),
                         form_state.ssl_dropdown().selected_index(),
                         theme,
                     );
                 }
-            } else {
-                Self::render_dropdown_list(
-                    frame,
-                    field_area,
-                    SslMode::all_variants().iter().map(SslMode::as_str),
-                    form_state.ssl_dropdown().selected_index(),
-                    theme,
-                );
             }
         }
     }
@@ -531,8 +535,10 @@ fn focused_placeholder_spans(
 }
 
 fn preview_profile(state: &ConnectionSetupState) -> Option<ConnectionProfile> {
-    let uses_hidden_tcp_values = state.database_type() == DatabaseType::MySQL
-        && state.mysql_transport() != MySqlTransport::Tcp;
+    let uses_hidden_tcp_values = match state.database_type() {
+        DatabaseType::MySQL => state.mysql_transport() != MySqlTransport::Tcp,
+        DatabaseType::PostgreSQL | DatabaseType::SQLite => false,
+    };
     if !uses_hidden_tcp_values {
         state
             .field_value(ConnectionField::Port)
@@ -546,12 +552,14 @@ fn preview_profile(state: &ConnectionSetupState) -> Option<ConnectionProfile> {
 }
 
 fn preview_text(form_state: &ConnectionSetupState, services: &AppServices) -> Option<String> {
-    if form_state.database_type() == DatabaseType::SQLite {
-        return None;
+    match form_state.database_type() {
+        DatabaseType::SQLite => None,
+        DatabaseType::PostgreSQL | DatabaseType::MySQL => {
+            let profile = preview_profile(form_state)?;
+            let endpoint = ConnectionEndpoint::from(&profile.config);
+            Some(mask_password(&services.dsn_builder.build_dsn(&endpoint)))
+        }
     }
-
-    let profile = preview_profile(form_state)?;
-    Some(mask_password(&services.dsn_builder.build_dsn(&profile)))
 }
 
 fn preview_lines(dsn: &str, width: usize, max_lines: usize) -> Vec<String> {

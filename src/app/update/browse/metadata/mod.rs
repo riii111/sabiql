@@ -39,10 +39,11 @@ pub(super) fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
 #[cfg(test)]
 mod tests {
     use crate::test_support;
+    use crate::test_support::endpoint;
 
     use super::*;
     use crate::cmd::effect::Effect;
-    use crate::domain::{ConnectionId, DatabaseType, Table};
+    use crate::domain::{ConnectionId, Table};
     use crate::model::app_state::AppState;
     use crate::model::browse::session::TableDetailState;
     use crate::model::shared::input_mode::InputMode;
@@ -56,40 +57,33 @@ mod tests {
 
     fn state_with_dsn(dsn: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "postgres",
-            DatabaseType::PostgreSQL,
-            dsn,
+            &endpoint::postgres(dsn),
         );
         state
     }
 
     fn sqlite_state_with_dsn(dsn: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
-            &ConnectionId::new(),
-            "sqlite",
-            DatabaseType::SQLite,
-            dsn,
-        );
+        state
+            .session
+            .activate_connection(&ConnectionId::new(), "sqlite", &endpoint::sqlite(dsn));
         state
     }
 
     fn state_with_pending_mysql_probe() -> AppState {
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_target(
+        state.session.activate_connection(
             &ConnectionId::from_string("mysql-current"),
             "mysql-current",
-            DatabaseType::MySQL,
-            "mysql://localhost/current",
-            Some("current"),
+            &endpoint::mysql("mysql://localhost/current", Some("current")),
         );
         let _ = state.session.begin_mysql_connection_probe(
             &ConnectionId::from_string("mysql-target"),
             "mysql-target",
-            "mysql://localhost/target",
-            Some("target"),
+            &endpoint::mysql("mysql://localhost/target", Some("target")),
         );
         state
     }
@@ -155,7 +149,7 @@ mod tests {
             route(
                 &mut state,
                 Action::TableDetailLoaded {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id,
                     outcome: Ok(empty_table("public", "users")),
                     generation: current_generation,
@@ -178,7 +172,7 @@ mod tests {
             route(
                 &mut state,
                 Action::TableDetailLoaded {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id,
                     outcome: Err(DbOperationError::PermissionDenied("denied".to_string())),
                     generation,
@@ -224,7 +218,7 @@ mod tests {
             route(
                 &mut state,
                 Action::TableDetailLoaded {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id: detail_run_id,
                     outcome: Ok(empty_table("public", "users")),
                     generation,
@@ -255,7 +249,7 @@ mod tests {
             route(
                 &mut state,
                 Action::TableDetailLoaded {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id: current_run_id,
                     outcome: Err(DbOperationError::PermissionDenied("denied".to_string())),
                     generation: stale_generation,
@@ -297,12 +291,13 @@ mod tests {
         #[test]
         fn mysql_reload_metadata_starts_fetch() {
             let mut state = AppState::new("test".to_string());
-            state.session.activate_connection_with_target(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "mysql",
-                DatabaseType::MySQL,
-                "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
-                Some("app"),
+                &endpoint::mysql(
+                    "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+                    Some("app"),
+                ),
             );
             state
                 .session
@@ -328,12 +323,10 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let current_id = ConnectionId::from_string("mysql-a");
             let target_id = ConnectionId::from_string("mysql-b");
-            state.session.activate_connection_with_target(
+            state.session.activate_connection(
                 &current_id,
                 "mysql-a",
-                DatabaseType::MySQL,
-                "mysql://user@localhost:3306/a",
-                Some("a"),
+                &endpoint::mysql("mysql://user@localhost:3306/a", Some("a")),
             );
             state
                 .session
@@ -341,8 +334,7 @@ mod tests {
             let probe_run_id = state.session.begin_mysql_connection_probe(
                 &target_id,
                 "mysql-b",
-                "mysql://user@localhost:3306/b",
-                Some("b"),
+                &endpoint::mysql("mysql://user@localhost:3306/b", Some("b")),
             );
 
             let effects = route(
@@ -371,20 +363,17 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let id = ConnectionId::from_string("mysql-a");
             let dsn = "mysql://user@localhost:3306/a";
-            state.session.activate_connection_with_target(
-                &id,
-                "mysql-a",
-                DatabaseType::MySQL,
-                dsn,
-                Some("a"),
-            );
+            state
+                .session
+                .activate_connection(&id, "mysql-a", &endpoint::mysql(dsn, Some("a")));
             state
                 .session
                 .set_connection_state(ConnectionState::Connected);
-            let probe_run_id =
-                state
-                    .session
-                    .begin_mysql_connection_probe(&id, "mysql-a", dsn, Some("a"));
+            let probe_run_id = state.session.begin_mysql_connection_probe(
+                &id,
+                "mysql-a",
+                &endpoint::mysql(dsn, Some("a")),
+            );
 
             let effects = route(
                 &mut state,
@@ -574,7 +563,7 @@ mod tests {
             let effects = route(
                 &mut state,
                 Action::TableDetailCached {
-                    dsn: "mysql://localhost/current".to_string(),
+                    endpoint: endpoint::mysql("mysql://localhost/current", Some("current")),
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
@@ -998,7 +987,7 @@ mod tests {
             route(
                 &mut state,
                 Action::TableDetailCacheFailed {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
@@ -1028,7 +1017,7 @@ mod tests {
             route(
                 &mut state,
                 Action::TableDetailCacheFailed {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
@@ -1052,7 +1041,7 @@ mod tests {
             let effects = route(
                 &mut state,
                 Action::TableDetailCacheFailed {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
@@ -1089,7 +1078,7 @@ mod tests {
             let effects = route(
                 &mut state,
                 Action::TableDetailCacheFailed {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
@@ -1123,7 +1112,7 @@ mod tests {
             route(
                 &mut state,
                 Action::TableDetailCacheFailed {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
@@ -1138,7 +1127,7 @@ mod tests {
             let effects = route(
                 &mut state,
                 Action::TableDetailCached {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
@@ -1578,7 +1567,7 @@ mod tests {
             let effects = route(
                 &mut state,
                 Action::TableDetailCached {
-                    dsn: "postgres://localhost/test".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),

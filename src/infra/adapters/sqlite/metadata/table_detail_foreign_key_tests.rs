@@ -1,5 +1,4 @@
 use crate::adapters::test_support;
-use crate::app::ports::outbound::MetadataProvider;
 use crate::domain::UNRESOLVED_FK_COLUMN;
 
 use super::SqliteAdapter;

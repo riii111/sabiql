@@ -1,5 +1,4 @@
 use crate::adapters::test_support;
-use crate::app::ports::outbound::MetadataProvider;
 use crate::domain::{TriggerEvent, TriggerTiming};
 
 use super::SqliteAdapter;

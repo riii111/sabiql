@@ -16,6 +16,7 @@ mod tests {
     use crate::policy::write::sql_risk::AcknowledgeReason;
     use crate::ports::outbound::AccessMode;
     use crate::services::AppServices;
+    use crate::test_support::endpoint;
     use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
     use crate::update::reducer::{reduce, route};
     use crate::update::test_fixtures;
@@ -167,12 +168,13 @@ mod tests {
             assert!(matches!(
                 &effects[0],
                 Effect::ExecuteExplain {
+                    endpoint,
                     query,
-                    database_type: DatabaseType::MySQL,
                     is_analyze: false,
                     access_mode: AccessMode::ReadOnly,
                     ..
-                } if query == "EXPLAIN FORMAT=TREE SELECT 1"
+                } if endpoint.engine() == DatabaseType::MySQL
+                    && query == "EXPLAIN FORMAT=TREE SELECT 1"
             ));
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
             assert!(
@@ -208,12 +210,13 @@ mod tests {
             assert!(matches!(
                 &effects[0],
                 Effect::ExecuteExplain {
+                    endpoint,
                     query,
-                    database_type: DatabaseType::MySQL,
                     is_analyze: false,
                     access_mode: AccessMode::ReadOnly,
                     ..
-                } if query == "EXPLAIN FORMAT=TREE UPDATE users SET active = TRUE"
+                } if endpoint.engine() == DatabaseType::MySQL
+                    && query == "EXPLAIN FORMAT=TREE UPDATE users SET active = TRUE"
             ));
         }
 
@@ -236,12 +239,13 @@ mod tests {
             assert!(matches!(
                 &effects[0],
                 Effect::ExecuteExplain {
+                    endpoint,
                     query,
-                    database_type: DatabaseType::MySQL,
                     is_analyze: false,
                     access_mode: AccessMode::ReadOnly,
                     ..
-                } if query == "EXPLAIN FORMAT=TREE REPLACE INTO users (id, active) VALUES (1, TRUE)"
+                } if endpoint.engine() == DatabaseType::MySQL
+                    && query == "EXPLAIN FORMAT=TREE REPLACE INTO users (id, active) VALUES (1, TRUE)"
             ));
         }
 
@@ -264,12 +268,13 @@ mod tests {
             assert!(matches!(
                 &effects[0],
                 Effect::ExecuteExplain {
+                    endpoint,
                     query,
-                    database_type: DatabaseType::MySQL,
                     is_analyze: false,
                     access_mode: AccessMode::ReadOnly,
                     ..
-                } if query == "EXPLAIN FORMAT=TREE SELECT * FROM users FOR UPDATE"
+                } if endpoint.engine() == DatabaseType::MySQL
+                    && query == "EXPLAIN FORMAT=TREE SELECT * FROM users FOR UPDATE"
             ));
         }
 
@@ -341,6 +346,79 @@ mod tests {
             assert_eq!(
                 state.explain.error(),
                 Some("MySQL EXPLAIN does not support multiple statements")
+            );
+        }
+
+        #[test]
+        fn mysql_unlexable_statement_reports_validity_boundary() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .editor
+                .set_content("SELECT 'unterminated".to_string());
+            test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
+
+            let effects = route(
+                &mut state,
+                Action::ExplainRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.explain.error(),
+                Some("MySQL EXPLAIN requires one valid statement")
+            );
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
+        }
+
+        #[test]
+        fn sqlite_multiple_statements_sets_error_on_plan_tab() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .editor
+                .set_content("SELECT 1; SELECT 2".to_string());
+            activate_sqlite_connection(&mut state);
+
+            let effects = route(
+                &mut state,
+                Action::ExplainRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.explain.error(),
+                Some("EXPLAIN does not support multiple statements")
+            );
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
+        }
+
+        #[test]
+        fn sqlite_trailing_comment_fragment_reports_query_plan_boundary() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .editor
+                .set_content("SELECT 1; -- note".to_string());
+            activate_sqlite_connection(&mut state);
+
+            let effects = route(
+                &mut state,
+                Action::ExplainRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.explain.error(),
+                Some(
+                    "EXPLAIN QUERY PLAN supports SELECT, INSERT, UPDATE, DELETE, or REPLACE statements"
+                )
             );
         }
 
@@ -582,12 +660,13 @@ mod tests {
             assert!(matches!(
                 &effects[0],
                 Effect::ExecuteExplain {
+                    endpoint,
                     query,
-                    database_type: DatabaseType::MySQL,
                     is_analyze: true,
                     access_mode: AccessMode::ReadOnly,
                     ..
-                } if query == "EXPLAIN ANALYZE FORMAT=TREE SELECT 1"
+                } if endpoint.engine() == DatabaseType::MySQL
+                    && query == "EXPLAIN ANALYZE FORMAT=TREE SELECT 1"
             ));
         }
 
@@ -1097,12 +1176,10 @@ mod tests {
 
             let id = state.session.active_connection_id().cloned().unwrap();
             let name = state.session.active_connection_name().unwrap().to_string();
-            state.session.activate_connection_with_target(
+            state.session.activate_connection(
                 &id,
                 &name,
-                DatabaseType::MySQL,
-                "mysql://test",
-                Some("analytics"),
+                &endpoint::mysql("mysql://test", Some("analytics")),
             );
 
             reduce_explain(
@@ -1214,12 +1291,10 @@ mod tests {
 
             let id = state.session.active_connection_id().cloned().unwrap();
             let name = state.session.active_connection_name().unwrap().to_string();
-            state.session.activate_connection_with_target(
+            state.session.activate_connection(
                 &id,
                 &name,
-                DatabaseType::MySQL,
-                "mysql://test",
-                Some("analytics"),
+                &endpoint::mysql("mysql://test", Some("analytics")),
             );
 
             reduce_explain(

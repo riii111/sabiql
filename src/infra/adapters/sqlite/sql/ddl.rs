@@ -1,20 +1,19 @@
 use std::fmt::Write as _;
 
-use crate::app::ports::outbound::DdlGenerator;
-use crate::domain::{DatabaseType, Table, Trigger};
+use crate::domain::dialect::{Dialect as _, Sqlite};
+use crate::domain::{Table, Trigger};
 
 use super::super::SqliteAdapter;
-use super::literal::quote_ident;
 
-impl DdlGenerator for SqliteAdapter {
-    fn generate_ddl(&self, _database_type: DatabaseType, table: &Table) -> String {
+impl SqliteAdapter {
+    pub fn generate_ddl(&self, table: &Table) -> String {
         if let Some(source_ddl) = table.source_ddl() {
             let mut ddl = source_ddl.to_string();
             append_trigger_ddls(&mut ddl, &table.triggers);
             return ddl;
         }
 
-        let mut ddl = format!("CREATE TABLE {} (\n", quote_ident(&table.name));
+        let mut ddl = format!("CREATE TABLE {} (\n", Sqlite.quote_identifier(&table.name));
         let has_primary_key = table.primary_key.as_ref().is_some_and(|pk| !pk.is_empty());
 
         for (i, col) in table.columns.iter().enumerate() {
@@ -27,7 +26,7 @@ impl DdlGenerator for SqliteAdapter {
             let _ = write!(
                 ddl,
                 "  {} {}{}{}",
-                quote_ident(&col.name),
+                Sqlite.quote_identifier(&col.name),
                 col.data_type,
                 nullable,
                 default
@@ -42,7 +41,7 @@ impl DdlGenerator for SqliteAdapter {
         if let Some(pk) = &table.primary_key
             && !pk.is_empty()
         {
-            let quoted_cols: Vec<String> = pk.iter().map(|c| quote_ident(c)).collect();
+            let quoted_cols: Vec<String> = pk.iter().map(|c| Sqlite.quote_identifier(c)).collect();
             let _ = writeln!(ddl, "  PRIMARY KEY ({})", quoted_cols.join(", "));
         }
 
@@ -125,7 +124,7 @@ mod tests {
                 Some(vec!["id".to_string()]),
             );
 
-            let ddl = adapter.generate_ddl(DatabaseType::SQLite, &table);
+            let ddl = adapter.generate_ddl(&table);
 
             assert!(ddl.contains("CREATE TABLE \"test_table\""));
             assert!(ddl.contains("\"id\" INTEGER NOT NULL"));
@@ -145,7 +144,7 @@ mod tests {
                 Some(vec!["tenant_id".to_string(), "id".to_string()]),
             );
 
-            let ddl = adapter.generate_ddl(DatabaseType::SQLite, &table);
+            let ddl = adapter.generate_ddl(&table);
 
             assert!(ddl.contains("PRIMARY KEY (\"tenant_id\", \"id\")"));
         }
@@ -159,7 +158,7 @@ mod tests {
             let mut table = make_table(vec![column], None);
             table.comment = Some("events".to_string());
 
-            let ddl = adapter.generate_ddl(DatabaseType::SQLite, &table);
+            let ddl = adapter.generate_ddl(&table);
 
             assert!(ddl.contains("\"created_at\" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"));
             assert!(!ddl.contains("COMMENT ON"));
@@ -182,7 +181,7 @@ mod tests {
                 creation_context: None,
             });
 
-            let ddl = adapter.generate_ddl(DatabaseType::SQLite, &table);
+            let ddl = adapter.generate_ddl(&table);
 
             assert_eq!(
                 ddl,

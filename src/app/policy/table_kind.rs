@@ -67,17 +67,16 @@ fn explorer_kind_suffix(kind_info: &TableKindInfo) -> Option<String> {
 }
 
 pub fn explorer_table_label(summary: &TableSummary, database_type: DatabaseType) -> String {
-    let mut label = if database_type == DatabaseType::SQLite {
-        summary.name.clone()
-    } else {
-        table_display_name(database_type, &summary.schema, &summary.name)
-    };
-    if database_type != DatabaseType::SQLite
-        && let Some(suffix) = explorer_kind_suffix(&summary.kind_info)
-    {
-        label.push_str(&suffix);
+    match database_type {
+        DatabaseType::SQLite => summary.name.clone(),
+        DatabaseType::PostgreSQL | DatabaseType::MySQL => {
+            let mut label = table_display_name(database_type, &summary.schema, &summary.name);
+            if let Some(suffix) = explorer_kind_suffix(&summary.kind_info) {
+                label.push_str(&suffix);
+            }
+            label
+        }
     }
-    label
 }
 
 pub fn explorer_table_label_width(summary: &TableSummary, database_type: DatabaseType) -> usize {

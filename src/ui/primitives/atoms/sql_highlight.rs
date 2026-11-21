@@ -440,12 +440,17 @@ mod tests {
     }
 
     #[test]
-    fn highlight_sql_keeps_sqlite_display_compatible_with_postgresql() {
-        let text = r#"SELECT "user" FROM users -- comment"#;
+    fn highlight_sql_keeps_sqlite_display_postgresql_compatible_where_mysql_differs() {
+        let text = "SELECT `select` FROM users # note";
+        let sqlite = highlight_sql_spans(text, DatabaseType::SQLite, &DEFAULT_THEME);
 
         assert_eq!(
-            highlight_sql_spans(text, DatabaseType::SQLite, &DEFAULT_THEME),
+            sqlite,
             highlight_sql_spans(text, DatabaseType::PostgreSQL, &DEFAULT_THEME)
+        );
+        assert_ne!(
+            sqlite,
+            highlight_sql_spans(text, DatabaseType::MySQL, &DEFAULT_THEME)
         );
     }
 }

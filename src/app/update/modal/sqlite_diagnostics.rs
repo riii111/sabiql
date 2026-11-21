@@ -5,22 +5,22 @@ use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{ScrollAmount, ScrollDirection};
 
 pub(in crate::update) fn open_modal_sqlite_diagnostics(state: &mut AppState) -> Vec<Effect> {
-    let Some(dsn) = state.session.dsn().map(String::from) else {
+    let Some(endpoint) = state.session.endpoint().cloned() else {
         return vec![];
     };
     let run_id = state.sqlite_diagnostics.begin_core_fetch();
     state.modal.set_mode(InputMode::SqliteDiagnostics);
-    vec![Effect::FetchSqliteDiagnosticsCore { dsn, run_id }]
+    vec![Effect::FetchSqliteDiagnosticsCore { endpoint, run_id }]
 }
 
 pub(in crate::update) fn run_sqlite_diagnostics_quick_check(state: &mut AppState) -> Vec<Effect> {
-    let Some(dsn) = state.session.dsn().map(String::from) else {
+    let Some(endpoint) = state.session.endpoint().cloned() else {
         return vec![];
     };
     let Some(run_id) = state.sqlite_diagnostics.begin_quick_check() else {
         return vec![];
     };
-    vec![Effect::FetchSqliteDiagnosticsQuickCheck { dsn, run_id }]
+    vec![Effect::FetchSqliteDiagnosticsQuickCheck { endpoint, run_id }]
 }
 
 pub(in crate::update) fn close_modal_sqlite_diagnostics(state: &mut AppState) -> Vec<Effect> {
@@ -83,8 +83,9 @@ mod tests {
 
     use super::*;
     use crate::domain::ConnectionId;
-    use crate::domain::connection::DatabaseType;
+
     use crate::services::AppServices;
+    use crate::test_support::endpoint;
     use crate::update::action::{Action, ModalKind, ScrollTarget};
     use crate::update::reducer::{reduce, route};
     use crate::update::test_fixtures;
@@ -134,11 +135,10 @@ mod tests {
     #[test]
     fn open_is_a_noop_for_postgres_connection() {
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "database",
-            DatabaseType::PostgreSQL,
-            "postgres://localhost/db",
+            &endpoint::postgres("postgres://localhost/db"),
         );
 
         let effects =
@@ -152,11 +152,10 @@ mod tests {
     #[test]
     fn quick_check_is_a_noop_for_postgres_connection() {
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "database",
-            DatabaseType::PostgreSQL,
-            "postgres://localhost/db",
+            &endpoint::postgres("postgres://localhost/db"),
         );
         let run_id = state.sqlite_diagnostics.begin_core_fetch();
         state.sqlite_diagnostics.set_core_loaded(
@@ -177,11 +176,10 @@ mod tests {
     #[test]
     fn quick_check_is_ignored_for_postgres_connection() {
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "database",
-            DatabaseType::PostgreSQL,
-            "postgres://localhost/db",
+            &endpoint::postgres("postgres://localhost/db"),
         );
 
         let effects = route(

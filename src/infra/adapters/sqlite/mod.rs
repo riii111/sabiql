@@ -1,5 +1,6 @@
 mod adapter;
 mod diagnostics;
+#[cfg(test)]
 mod dsn;
 mod executor;
 mod metadata;

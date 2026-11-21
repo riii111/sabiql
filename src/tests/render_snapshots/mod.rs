@@ -1,5 +1,6 @@
 use crate::tests::harness;
 
+use harness::endpoint;
 use harness::fixtures;
 use harness::{
     create_test_state, create_test_terminal, create_test_terminal_sized, postgres_connected_state,

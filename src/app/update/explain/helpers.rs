@@ -4,7 +4,6 @@ use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
 use crate::policy::sql::statement_classifier;
-use crate::policy::write::sql_risk::split_statements_for_database;
 use crate::policy::{FeaturePolicy, FeatureRequirement};
 
 pub(super) fn explain_unsupported_query_message(database_type: DatabaseType) -> &'static str {
@@ -75,7 +74,9 @@ pub(super) fn finish_explain_unsupported_analyze(state: &mut AppState) {
 }
 
 pub(super) fn is_multi_statement(database_type: DatabaseType, content: &str) -> bool {
-    split_statements_for_database(database_type, content)
+    database_type
+        .dialect()
+        .split_statements(content)
         .is_ok_and(|statements| statements.len() > 1)
 }
 

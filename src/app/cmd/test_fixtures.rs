@@ -9,7 +9,7 @@ use tokio::sync::mpsc;
 use crate::cmd::effect::Effect;
 use crate::cmd::runner::{ConnectionDeps, EffectRunner, ErDeps, QueryDeps, UtilityDeps};
 use crate::domain::SqliteDiagnosticsSnapshot;
-use crate::domain::connection::{ConnectionProfile, ServiceEntry};
+use crate::domain::connection::{ConnectionEndpoint, ServiceEntry};
 use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
 use crate::domain::{
     DatabaseMetadata, DiagnosticField, ErTableInfo, QueryResult, QuerySource, QueryValue,
@@ -20,7 +20,7 @@ use crate::model::browse::session::ConnectionSaveGuard;
 use crate::ports::outbound::DbOperationError;
 use crate::ports::outbound::{
     AppSettings, CachedResultExporter, ClipboardError, ClipboardWriter, ConfigWriter,
-    ConfigWriterError, ConnectionStore, DsnBuilder, ErDiagramExporter, ErExportResult, ErLogWriter,
+    ConfigWriterError, ConnectionStore, ErDiagramExporter, ErExportResult, ErLogWriter,
     FolderOpener, MetadataProvider, MySqlConnectionProbe, MySqlConnectionProbeResult,
     PgServiceEntryReader, QueryExecutor, QueryHistoryError, QueryHistoryStore, RenderOutput,
     RenderResult, Renderer, ServiceFileError, SettingsStore, SettingsStoreError,
@@ -121,17 +121,13 @@ impl ErLogWriter for NoopErLogWriter {
     }
 }
 
-pub struct NoopDsnBuilder;
-impl DsnBuilder for NoopDsnBuilder {
-    fn build_dsn(&self, _profile: &ConnectionProfile) -> String {
-        String::new()
-    }
-}
-
 pub struct NoopMySqlConnectionProbe;
 #[async_trait::async_trait]
 impl MySqlConnectionProbe for NoopMySqlConnectionProbe {
-    async fn probe(&self, _dsn: &str) -> Result<MySqlConnectionProbeResult, DbOperationError> {
+    async fn probe(
+        &self,
+        _endpoint: &ConnectionEndpoint,
+    ) -> Result<MySqlConnectionProbeResult, DbOperationError> {
         Ok(MySqlConnectionProbeResult {
             lower_case_table_names: 0,
         })
@@ -250,12 +246,12 @@ pub struct NoopSqliteDiagnosticsProvider;
 impl SqliteDiagnosticsProvider for NoopSqliteDiagnosticsProvider {
     async fn fetch_core_diagnostics(
         &self,
-        _dsn: &str,
+        _endpoint: &ConnectionEndpoint,
     ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {
         Ok(SqliteDiagnosticsSnapshot::default())
     }
 
-    async fn fetch_quick_check(&self, _dsn: &str) -> DiagnosticField {
+    async fn fetch_quick_check(&self, _endpoint: &ConnectionEndpoint) -> DiagnosticField {
         DiagnosticField::default()
     }
 }
@@ -266,12 +262,11 @@ pub fn make_runner(
     connection_store: Arc<dyn ConnectionStore>,
     action_tx: mpsc::Sender<Action>,
 ) -> EffectRunner {
-    make_runner_with_dsn_and_cached_result_exporter_and_probe(
+    make_runner_with_cached_result_exporter_and_probe(
         metadata_provider,
         query_executor,
         connection_store,
         action_tx,
-        Arc::new(NoopDsnBuilder),
         Arc::new(NoopMySqlConnectionProbe),
         Arc::new(TestCachedResultExporter),
     )
@@ -284,66 +279,44 @@ pub fn make_runner_with_cached_result_exporter(
     action_tx: mpsc::Sender<Action>,
     cached_result_exporter: Arc<dyn CachedResultExporter>,
 ) -> EffectRunner {
-    make_runner_with_dsn_and_cached_result_exporter_and_probe(
+    make_runner_with_cached_result_exporter_and_probe(
         metadata_provider,
         query_executor,
         connection_store,
         action_tx,
-        Arc::new(NoopDsnBuilder),
         Arc::new(NoopMySqlConnectionProbe),
         cached_result_exporter,
     )
 }
 
-pub fn make_runner_with_dsn(
+pub fn make_runner_with_probe(
     metadata_provider: Arc<dyn MetadataProvider>,
     query_executor: Arc<dyn QueryExecutor>,
     connection_store: Arc<dyn ConnectionStore>,
     action_tx: mpsc::Sender<Action>,
-    dsn_builder: Arc<dyn DsnBuilder>,
-) -> EffectRunner {
-    make_runner_with_dsn_and_probe(
-        metadata_provider,
-        query_executor,
-        connection_store,
-        action_tx,
-        dsn_builder,
-        Arc::new(NoopMySqlConnectionProbe),
-    )
-}
-
-pub fn make_runner_with_dsn_and_probe(
-    metadata_provider: Arc<dyn MetadataProvider>,
-    query_executor: Arc<dyn QueryExecutor>,
-    connection_store: Arc<dyn ConnectionStore>,
-    action_tx: mpsc::Sender<Action>,
-    dsn_builder: Arc<dyn DsnBuilder>,
     mysql_connection_probe: Arc<dyn MySqlConnectionProbe>,
 ) -> EffectRunner {
-    make_runner_with_dsn_and_cached_result_exporter_and_probe(
+    make_runner_with_cached_result_exporter_and_probe(
         metadata_provider,
         query_executor,
         connection_store,
         action_tx,
-        dsn_builder,
         mysql_connection_probe,
         Arc::new(TestCachedResultExporter),
     )
 }
 
-fn make_runner_with_dsn_and_cached_result_exporter_and_probe(
+fn make_runner_with_cached_result_exporter_and_probe(
     metadata_provider: Arc<dyn MetadataProvider>,
     query_executor: Arc<dyn QueryExecutor>,
     connection_store: Arc<dyn ConnectionStore>,
     action_tx: mpsc::Sender<Action>,
-    dsn_builder: Arc<dyn DsnBuilder>,
     mysql_connection_probe: Arc<dyn MySqlConnectionProbe>,
     cached_result_exporter: Arc<dyn CachedResultExporter>,
 ) -> EffectRunner {
     EffectRunner::new(
         metadata_provider,
         ConnectionDeps {
-            dsn_builder,
             mysql_connection_probe,
             connection_store,
             pg_service_entry_reader: Arc::new(NoopPgServiceEntryReader),

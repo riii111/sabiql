@@ -1,11 +1,11 @@
-use async_trait::async_trait;
-
-use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
+use crate::app::ports::outbound::DbOperationError;
+use crate::domain::connection::PostgresEndpoint;
 use crate::domain::{
     Column, DatabaseMetadata, Table, TableKindInfo, TableSignatureSnapshot, TableStorageAttributes,
 };
 
 use super::PostgresAdapter;
+use super::dsn::{database_name, postgres_conninfo};
 
 fn extract_primary_key(columns: &[Column]) -> Option<Vec<String>> {
     let pk_cols: Vec<String> = columns
@@ -24,16 +24,19 @@ fn postgres_table_not_found(schema: &str, table: &str) -> DbOperationError {
     DbOperationError::ObjectMissing(format!("PostgreSQL table not found: {schema}.{table}"))
 }
 
-#[async_trait]
-impl MetadataProvider for PostgresAdapter {
-    async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
-        let schemas_json = self.execute_raw_output(dsn, Self::schemas_query()).await?;
-        let tables_json = self.execute_raw_output(dsn, Self::tables_query()).await?;
+impl PostgresAdapter {
+    pub async fn fetch_metadata(
+        &self,
+        endpoint: &PostgresEndpoint,
+    ) -> Result<DatabaseMetadata, DbOperationError> {
+        let dsn = postgres_conninfo(endpoint);
+        let schemas_json = self.execute_raw_output(&dsn, Self::schemas_query()).await?;
+        let tables_json = self.execute_raw_output(&dsn, Self::tables_query()).await?;
 
         let schemas = Self::parse_schemas(&schemas_json)?;
         let tables = Self::parse_tables(&tables_json)?;
 
-        let db_name = Self::extract_database_name(dsn);
+        let db_name = database_name(endpoint);
         let mut metadata = DatabaseMetadata::new(db_name);
         metadata.schemas = schemas;
         metadata.table_summaries = tables;
@@ -41,20 +44,23 @@ impl MetadataProvider for PostgresAdapter {
         Ok(metadata)
     }
 
-    async fn fetch_effective_user(&self, dsn: &str) -> Result<Option<String>, DbOperationError> {
+    pub async fn fetch_effective_user(
+        &self,
+        endpoint: &PostgresEndpoint,
+    ) -> Result<Option<String>, DbOperationError> {
         let raw_user = self
-            .execute_raw_output(dsn, Self::effective_user_query())
+            .execute_raw_output(&postgres_conninfo(endpoint), Self::effective_user_query())
             .await?;
         let user = raw_user.trim();
         Ok((!user.is_empty()).then(|| user.to_string()))
     }
 
-    async fn fetch_table_signatures(
+    pub async fn fetch_table_signatures(
         &self,
-        dsn: &str,
+        endpoint: &PostgresEndpoint,
     ) -> Result<TableSignatureSnapshot, DbOperationError> {
         let json = self
-            .execute_raw_output(dsn, Self::table_signatures_query())
+            .execute_raw_output(&postgres_conninfo(endpoint), Self::table_signatures_query())
             .await?;
         Ok(TableSignatureSnapshot {
             signatures: Self::parse_table_signatures(&json)?,
@@ -62,14 +68,16 @@ impl MetadataProvider for PostgresAdapter {
         })
     }
 
-    async fn fetch_table_detail(
+    pub async fn fetch_table_detail(
         &self,
-        dsn: &str,
+        endpoint: &PostgresEndpoint,
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
         let query = Self::table_detail_query(schema, table);
-        let json = self.execute_raw_output(dsn, &query).await?;
+        let json = self
+            .execute_raw_output(&postgres_conninfo(endpoint), &query)
+            .await?;
         let (exists, columns, indexes, foreign_keys, rls, triggers, table_info) =
             Self::parse_table_detail_combined(&json)?;
         if !exists {
@@ -95,14 +103,16 @@ impl MetadataProvider for PostgresAdapter {
         })
     }
 
-    async fn fetch_table_columns_and_fks(
+    pub async fn fetch_table_columns_and_fks(
         &self,
-        dsn: &str,
+        endpoint: &PostgresEndpoint,
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
         let query = Self::table_columns_and_fks_query(schema, table);
-        let json = self.execute_raw_output(dsn, &query).await?;
+        let json = self
+            .execute_raw_output(&postgres_conninfo(endpoint), &query)
+            .await?;
         let (exists, columns, foreign_keys) = Self::parse_table_columns_and_fks(&json)?;
         if !exists {
             return Err(postgres_table_not_found(schema, table));
@@ -131,12 +141,39 @@ impl MetadataProvider for PostgresAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::ports::outbound::{AccessMode, QueryExecutor};
+    use crate::app::ports::outbound::AccessMode;
+    use crate::domain::connection::{PostgresConnectionConfig, SslMode};
+    use url::Url;
 
     const DEFAULT_TEST_DSN: &str = "postgres://dev:dev@localhost:5433/testdb";
 
-    fn postgres_test_dsn() -> String {
-        std::env::var("SABIQL_TEST_DSN").unwrap_or_else(|_| DEFAULT_TEST_DSN.to_string())
+    fn postgres_test_dsn() -> PostgresEndpoint {
+        let dsn = std::env::var("SABIQL_TEST_DSN").unwrap_or_else(|_| DEFAULT_TEST_DSN.to_string());
+        let url = Url::parse(&dsn).expect("SABIQL_TEST_DSN must be a PostgreSQL URL");
+        let decode = |value: &str| urlencoding::decode(value).unwrap().into_owned();
+        let host = url.host_str().unwrap_or_default();
+        let host = host
+            .strip_prefix('[')
+            .and_then(|value| value.strip_suffix(']'))
+            .unwrap_or(host);
+        let ssl_mode = url.query_pairs().find(|(key, _)| key == "sslmode").map_or(
+            SslMode::Prefer,
+            |(_, value)| {
+                SslMode::all_variants()
+                    .iter()
+                    .copied()
+                    .find(|mode| mode.as_str() == value)
+                    .expect("SABIQL_TEST_DSN has an unsupported sslmode")
+            },
+        );
+        PostgresEndpoint::Settings(PostgresConnectionConfig::new(
+            decode(host),
+            url.port().unwrap_or(5432),
+            decode(url.path().strip_prefix('/').unwrap_or_default()),
+            decode(url.username()),
+            decode(url.password().unwrap_or_default()),
+            ssl_mode,
+        ))
     }
 
     fn unique_schema_name() -> String {
@@ -167,18 +204,21 @@ mod tests {
     }
 
     fn dsn_with_credentials(
-        dsn: &str,
+        dsn: &PostgresEndpoint,
         username: &str,
         password: &str,
         database: &str,
-    ) -> Result<String, String> {
-        let mut url = url::Url::parse(dsn).map_err(|error| error.to_string())?;
-        url.set_username(username)
-            .map_err(|()| "failed to set PostgreSQL test username".to_string())?;
-        url.set_password(Some(password))
-            .map_err(|()| "failed to set PostgreSQL test password".to_string())?;
-        url.set_path(&format!("/{database}"));
-        Ok(url.to_string())
+    ) -> Result<PostgresEndpoint, String> {
+        match dsn {
+            PostgresEndpoint::Settings(config) => {
+                let mut config = config.clone();
+                config.username = username.to_string();
+                config.password = password.to_string();
+                config.database = database.to_string();
+                Ok(PostgresEndpoint::Settings(config))
+            }
+            PostgresEndpoint::Service(_) => Err("expected PostgreSQL test settings".to_string()),
+        }
     }
 
     #[tokio::test]

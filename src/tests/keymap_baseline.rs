@@ -66,11 +66,10 @@ fn input_keys() -> Vec<KeyCombo> {
 
 fn state(engine: DatabaseType, preset: KeymapPreset, mode: InputMode) -> AppState {
     let mut state = AppState::new("keymap".to_string());
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("keymap-baseline"),
         "keymap",
-        engine,
-        "test://keymap",
+        &super::harness::endpoint::for_engine(engine, "test://keymap"),
     );
     state.settings.load_keymap_preset(preset);
     if mode == InputMode::CommandPalette {

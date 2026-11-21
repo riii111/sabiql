@@ -234,6 +234,8 @@ mod tests {
     }
 
     mod sqlite_diagnostics_binding {
+        use std::sync::Arc;
+
         use super::*;
         use crate::app::model::app_state::AppState;
         use crate::app::model::shared::focused_pane::FocusedPane;
@@ -242,15 +244,17 @@ mod tests {
             Action, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
         };
         use crate::app::update::input::handle_event;
-        use crate::domain::{ConnectionId, DatabaseType};
+        use crate::domain::connection::ConnectionEndpoint;
+        use crate::domain::{ConnectionId, SqliteConnectionConfig};
 
         fn sqlite_connected_state() -> AppState {
             let mut state = AppState::new("test".to_string());
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "sqlite",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
+                &Arc::new(ConnectionEndpoint::SQLite(
+                    SqliteConnectionConfig::new("sqlite:///tmp/app.db").unwrap(),
+                )),
             );
             state
         }

@@ -1,7 +1,8 @@
+use crate::test_support::endpoint;
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType};
+use crate::domain::{ConnectionId, DatabaseMetadata};
 use crate::model::app_state::AppState;
 use crate::model::browse::json_detail::JsonDetailState;
 use crate::model::connection::setup::ConnectionField;
@@ -172,11 +173,10 @@ fn type_text(state: &mut AppState, target: InputTarget, text: &str) {
 
 fn connected_state() -> AppState {
     let mut state = AppState::new("test".to_string());
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::new(),
         "postgres",
-        DatabaseType::PostgreSQL,
-        "postgres://localhost/app",
+        &endpoint::postgres("postgres://localhost/app"),
     );
     state
         .session

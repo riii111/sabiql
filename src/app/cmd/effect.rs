@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::domain::connection::{ConnectionConfig, ConnectionId, DatabaseType};
+use crate::domain::connection::{ConnectionConfig, ConnectionEndpoint, ConnectionId};
 use crate::domain::query_history::QueryHistoryScope;
 use crate::domain::{ErTableInfo, QueryValue};
 use crate::model::browse::session::ConnectionSaveGuard;
@@ -31,16 +31,16 @@ pub enum Effect {
     },
 
     FetchMetadata {
-        dsn: String,
+        endpoint: Arc<ConnectionEndpoint>,
         run_id: u64,
     },
     FetchEffectiveUser {
-        dsn: String,
+        endpoint: Arc<ConnectionEndpoint>,
         run_id: u64,
     },
     // Updates state.table_detail on completion
     FetchTableDetail {
-        dsn: String,
+        endpoint: Arc<ConnectionEndpoint>,
         schema: String,
         table: String,
         generation: u64,
@@ -48,7 +48,7 @@ pub enum Effect {
     },
     // Only fills the table detail cache, does NOT update state.table_detail
     PrefetchTableColumnsAndFks {
-        dsn: String,
+        endpoint: Arc<ConnectionEndpoint>,
         run_id: u64,
         schema: String,
         table: String,
@@ -62,7 +62,7 @@ pub enum Effect {
     },
 
     ExecutePreview {
-        dsn: String,
+        endpoint: Arc<ConnectionEndpoint>,
         schema: String,
         table: String,
         generation: u64,
@@ -72,14 +72,13 @@ pub enum Effect {
         target_page: usize,
     },
     ExecuteAdhoc {
-        dsn: String,
+        endpoint: Arc<ConnectionEndpoint>,
         run_id: u64,
         query: String,
         access_mode: AccessMode,
     },
     ExecuteExplain {
-        dsn: String,
-        database_type: DatabaseType,
+        endpoint: Arc<ConnectionEndpoint>,
         database_generation: u64,
         run_id: u64,
         query: String,
@@ -88,7 +87,7 @@ pub enum Effect {
         access_mode: AccessMode,
     },
     ExecuteWrite {
-        dsn: String,
+        endpoint: Arc<ConnectionEndpoint>,
         run_id: u64,
         query: String,
         access_mode: AccessMode,
@@ -98,13 +97,12 @@ pub enum Effect {
     CancelSqliteDiagnostics,
     CancelTrackedTasks,
     ExportCsv {
-        dsn: String,
+        endpoint: Arc<ConnectionEndpoint>,
         run_id: u64,
         query: String,
         file_name: String,
     },
     ExportCsvFromCache {
-        dsn: String,
         run_id: u64,
         file_name: String,
         columns: Vec<String>,
@@ -123,7 +121,7 @@ pub enum Effect {
         failed_tables: Vec<(String, String)>,
     },
     SmartErRefresh {
-        dsn: String,
+        endpoint: Arc<ConnectionEndpoint>,
         run_id: u64,
     },
 
@@ -146,12 +144,12 @@ pub enum Effect {
     },
 
     FetchSqliteDiagnosticsCore {
-        dsn: String,
+        endpoint: Arc<ConnectionEndpoint>,
         run_id: u64,
     },
 
     FetchSqliteDiagnosticsQuickCheck {
-        dsn: String,
+        endpoint: Arc<ConnectionEndpoint>,
         run_id: u64,
     },
 

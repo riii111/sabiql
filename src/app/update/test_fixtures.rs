@@ -8,37 +8,29 @@ use crate::policy::write::write_guardrails::{
     GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
 };
 use crate::services::AppServices;
+use crate::test_support::endpoint;
 use crate::test_support::table::minimal as minimal_table;
 use crate::update::action::{Action, QueryCompletionContext, TableTarget};
 use crate::update::reducer::{reduce, route};
 use std::sync::Arc;
 use std::time::Instant;
 
-pub fn activate_postgres_connection(state: &mut AppState, dsn: &str) {
-    state.session.activate_connection_with_dsn(
-        &ConnectionId::new(),
-        "postgres",
-        DatabaseType::PostgreSQL,
-        dsn,
-    );
+pub fn activate_postgres_connection(state: &mut AppState, label: &str) {
+    state
+        .session
+        .activate_connection(&ConnectionId::new(), "postgres", &endpoint::postgres(label));
 }
 
-pub fn activate_sqlite_connection(state: &mut AppState, dsn: &str) {
-    state.session.activate_connection_with_dsn(
-        &ConnectionId::new(),
-        "sqlite",
-        DatabaseType::SQLite,
-        dsn,
-    );
+pub fn activate_sqlite_connection(state: &mut AppState, path: &str) {
+    state
+        .session
+        .activate_connection(&ConnectionId::new(), "sqlite", &endpoint::sqlite(path));
 }
 
-pub fn activate_mysql_connection(state: &mut AppState, dsn: &str) {
-    state.session.activate_connection_with_dsn(
-        &ConnectionId::new(),
-        "mysql",
-        DatabaseType::MySQL,
-        dsn,
-    );
+pub fn activate_mysql_connection(state: &mut AppState, label: &str) {
+    state
+        .session
+        .activate_connection(&ConnectionId::new(), "mysql", &endpoint::mysql(label, None));
 }
 
 pub fn state_after_delete_success() -> AppState {

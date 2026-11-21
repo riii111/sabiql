@@ -6,7 +6,6 @@ use crate::model::app_state::AppState;
 use crate::model::sql_editor::modal::SqlModalStatus;
 use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::ports::outbound::AccessMode;
-use crate::sql_builder::build_explain_sql;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 use super::helpers::{
@@ -22,23 +21,25 @@ pub(in crate::update) fn explain_request(state: &mut AppState, now: Instant) -> 
     if content.is_empty() {
         return vec![];
     }
-    let Some(dsn) = state.session.dsn().map(String::from) else {
+    let Some(endpoint) = state.session.endpoint().cloned() else {
         return vec![];
     };
     if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
         return vec![];
     }
     let database_type = state.session.active_database_type_or_default();
-    if database_type == DatabaseType::MySQL {
-        if let Some(message) = mysql_explain_rejection_message(&content) {
-            show_explain_error_on_plan(state, message);
-            return vec![];
+    let rejection = match database_type {
+        DatabaseType::MySQL => mysql_explain_rejection_message(&content),
+        DatabaseType::PostgreSQL | DatabaseType::SQLite => {
+            is_multi_statement(database_type, &content)
+                .then_some("EXPLAIN does not support multiple statements")
         }
-    } else if is_multi_statement(database_type, &content) {
-        show_explain_error_on_plan(state, "EXPLAIN does not support multiple statements");
+    };
+    if let Some(message) = rejection {
+        show_explain_error_on_plan(state, message);
         return vec![];
     }
-    let query = match build_explain_sql(database_type, &content) {
+    let query = match database_type.dialect().explain_sql(&content) {
         Some(query) => query,
         None if FeaturePolicy::new(&state.session.active_engine_feature_profile())
             .is_enabled(FeatureRequirement::Explain) =>
@@ -55,8 +56,7 @@ pub(in crate::update) fn explain_request(state: &mut AppState, now: Instant) -> 
     let database_generation = state.session.database_generation();
 
     vec![Effect::ExecuteExplain {
-        dsn,
-        database_type,
+        endpoint,
         database_generation,
         run_id,
         query,

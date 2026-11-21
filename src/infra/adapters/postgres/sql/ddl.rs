@@ -1,17 +1,16 @@
 use std::fmt::Write as _;
 
-use crate::app::ports::outbound::DdlGenerator;
-use crate::domain::{DatabaseType, Table};
+use crate::domain::Table;
+use crate::domain::dialect::{Dialect as _, Postgres};
 
 use super::super::PostgresAdapter;
-use super::{quote_ident, quote_literal};
 
-impl DdlGenerator for PostgresAdapter {
-    fn generate_ddl(&self, _database_type: DatabaseType, table: &Table) -> String {
+impl PostgresAdapter {
+    pub fn generate_ddl(&self, table: &Table) -> String {
         let qualified = format!(
             "{}.{}",
-            quote_ident(&table.schema),
-            quote_ident(&table.name)
+            Postgres.quote_identifier(&table.schema),
+            Postgres.quote_identifier(&table.name)
         );
         let mut ddl = format!("CREATE TABLE {qualified} (\n");
 
@@ -25,7 +24,7 @@ impl DdlGenerator for PostgresAdapter {
 
             elements.push(format!(
                 "  {} {}{}{}",
-                quote_ident(&col.name),
+                Postgres.quote_identifier(&col.name),
                 col.data_type,
                 nullable,
                 default
@@ -33,7 +32,8 @@ impl DdlGenerator for PostgresAdapter {
         }
 
         if let Some(pk) = &table.primary_key {
-            let quoted_cols: Vec<String> = pk.iter().map(|c| quote_ident(c)).collect();
+            let quoted_cols: Vec<String> =
+                pk.iter().map(|c| Postgres.quote_identifier(c)).collect();
             elements.push(format!("  PRIMARY KEY ({})", quoted_cols.join(", ")));
         }
 
@@ -48,7 +48,7 @@ impl DdlGenerator for PostgresAdapter {
                 ddl,
                 "\n\nCOMMENT ON TABLE {} IS {};",
                 qualified,
-                quote_literal(comment)
+                Postgres.quote_text(comment)
             );
         }
 
@@ -58,8 +58,8 @@ impl DdlGenerator for PostgresAdapter {
                     ddl,
                     "\n\nCOMMENT ON COLUMN {}.{} IS {};",
                     qualified,
-                    quote_ident(&col.name),
-                    quote_literal(comment)
+                    Postgres.quote_identifier(&col.name),
+                    Postgres.quote_text(comment)
                 );
             }
         }
@@ -73,8 +73,7 @@ mod tests {
     use crate::adapters::test_support;
 
     use crate::adapters::postgres::PostgresAdapter;
-    use crate::app::ports::outbound::DdlGenerator;
-    use crate::domain::{Column, ColumnAttributes, DatabaseType, Table};
+    use crate::domain::{Column, ColumnAttributes, Table};
 
     fn make_column(name: &str, data_type: &str, nullable: bool) -> Column {
         Column {
@@ -115,7 +114,7 @@ mod tests {
                 Some(vec!["id".to_string()]),
             );
 
-            let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
+            let ddl = adapter.generate_ddl(&table);
 
             assert_eq!(
                 ddl,
@@ -134,7 +133,7 @@ mod tests {
                 Some(vec!["tenant_id".to_string(), "id".to_string()]),
             );
 
-            let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
+            let ddl = adapter.generate_ddl(&table);
 
             assert_eq!(
                 ddl,
@@ -153,7 +152,7 @@ mod tests {
                 None,
             );
 
-            let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
+            let ddl = adapter.generate_ddl(&table);
 
             assert_eq!(
                 ddl,
@@ -166,7 +165,7 @@ mod tests {
             let adapter = PostgresAdapter::new();
             let table = make_table(Vec::new(), None);
 
-            let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
+            let ddl = adapter.generate_ddl(&table);
 
             assert_eq!(ddl, "CREATE TABLE \"public\".\"test_table\" (\n);");
         }
@@ -177,7 +176,7 @@ mod tests {
             let mut table = make_table(vec![make_column("id", "integer", false)], None);
             table.comment = Some("User accounts".to_string());
 
-            let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
+            let ddl = adapter.generate_ddl(&table);
 
             assert!(ddl.contains("COMMENT ON TABLE \"public\".\"test_table\" IS 'User accounts';"));
         }
@@ -189,7 +188,7 @@ mod tests {
             col.comment = Some("Primary key".to_string());
             let table = make_table(vec![col], None);
 
-            let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
+            let ddl = adapter.generate_ddl(&table);
 
             assert!(
                 ddl.contains(
@@ -204,7 +203,7 @@ mod tests {
             let mut table = make_table(vec![make_column("id", "integer", false)], None);
             table.comment = Some("It's a test".to_string());
 
-            let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
+            let ddl = adapter.generate_ddl(&table);
 
             assert!(ddl.contains("IS 'It''s a test';"));
         }
@@ -214,9 +213,25 @@ mod tests {
             let adapter = PostgresAdapter::new();
             let table = make_table(vec![make_column("id", "integer", false)], None);
 
-            let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
+            let ddl = adapter.generate_ddl(&table);
 
             assert!(!ddl.contains("COMMENT ON"));
+        }
+
+        #[test]
+        fn backslashes_in_comments_use_escape_string_literals() {
+            let adapter = PostgresAdapter::new();
+            let mut col = make_column("id", "integer", false);
+            col.comment = Some("a\\'b".to_string());
+            let mut table = make_table(vec![col], None);
+            table.comment = Some("C:\\temp".to_string());
+
+            let ddl = adapter.generate_ddl(&table);
+
+            assert!(ddl.contains("COMMENT ON TABLE \"public\".\"test_table\" IS E'C:\\\\temp';"));
+            assert!(
+                ddl.contains("COMMENT ON COLUMN \"public\".\"test_table\".\"id\" IS E'a\\\\''b';")
+            );
         }
     }
 }

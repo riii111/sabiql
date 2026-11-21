@@ -1,9 +1,25 @@
 use super::*;
 use harness::table_detail_loaded_state;
+use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::inspector_tab::InspectorTab;
 use sabiql_domain::{
     ColumnGenerationKind, ConnectionId, TableKind, TableKindInfo, TableStorageAttributes,
 };
+
+fn sqlite_indexes_state(index: Index) -> AppState {
+    let mut state = harness::explorer_selected_state();
+    let mut table = fixtures::sample_postgres_table_detail();
+    table.indexes = vec![index];
+    let _ = state.session.set_table_detail(table, 0);
+    state.session.activate_connection(
+        &ConnectionId::from_string("sqlite-test"),
+        "app.db",
+        &endpoint::sqlite("sqlite:///tmp/app.db"),
+    );
+    state.ui.set_inspector_tab(InspectorTab::Indexes);
+    state.ui.set_focused_pane(FocusedPane::Inspector);
+    state
+}
 
 #[test]
 fn inspector_columns_narrow_pane_keeps_horizontal_scroll() {
@@ -99,11 +115,10 @@ fn inspector_columns_shows_mysql_column_metadata() {
     table.columns[2].generation_expression = Some("(`id` * 2)".to_string());
     table.columns[2].generation_kind = Some(ColumnGenerationKind::Stored);
     let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("mysql-test"),
         "app",
-        DatabaseType::MySQL,
-        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+        &endpoint::mysql("mysql://user@localhost:3306/app?ssl-mode=PREFERRED", None),
     );
     state.ui.set_inspector_tab(InspectorTab::Columns);
     state.ui.set_focused_pane(FocusedPane::Inspector);
@@ -142,11 +157,10 @@ fn inspector_indexes_tab_for_mysql_hides_unsupported_partial_column() {
         ),
     }];
     let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("mysql-test"),
         "app",
-        DatabaseType::MySQL,
-        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+        &endpoint::mysql("mysql://user@localhost:3306/app?ssl-mode=PREFERRED", None),
     );
     state.ui.set_inspector_tab(InspectorTab::Indexes);
     state.ui.set_focused_pane(FocusedPane::Inspector);
@@ -166,11 +180,10 @@ fn inspector_indexes_tab_for_sqlite_hides_unknown_type() {
         index.index_type = IndexType::Unknown;
     }
     let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("sqlite-test"),
         "app.db",
-        DatabaseType::SQLite,
-        "sqlite:///tmp/app.db",
+        &endpoint::sqlite("sqlite:///tmp/app.db"),
     );
     state.ui.set_inspector_tab(InspectorTab::Indexes);
     state.ui.set_focused_pane(FocusedPane::Inspector);
@@ -181,125 +194,87 @@ fn inspector_indexes_tab_for_sqlite_hides_unknown_type() {
 }
 
 #[test]
-fn inspector_indexes_tab_shows_sqlite_partial_index_definition() {
-    let mut state = harness::explorer_selected_state();
-    let mut terminal = create_test_terminal();
-
-    let mut table = fixtures::sample_postgres_table_detail();
-    table.indexes = vec![Index {
-        name: "idx_users_email_active".to_string(),
-        columns: vec!["email".to_string()],
-        attributes: IndexAttributes::PARTIAL,
-        index_type: IndexType::Unknown,
-        definition: Some(
-            "CREATE INDEX idx_users_email_active ON users(email) WHERE email IS NOT NULL"
-                .to_string(),
+fn inspector_indexes_tab_shows_sqlite_index_definitions() {
+    let cases = [
+        (
+            "idx_users_email_active",
+            "email",
+            IndexAttributes::PARTIAL,
+            "CREATE INDEX idx_users_email_active ON users(email) WHERE email IS NOT NULL",
+            true,
         ),
-    }];
-    let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection_with_dsn(
-        &ConnectionId::from_string("sqlite-test"),
-        "app.db",
-        DatabaseType::SQLite,
-        "sqlite:///tmp/app.db",
-    );
-    state.ui.set_inspector_tab(InspectorTab::Indexes);
-    state.ui.set_focused_pane(FocusedPane::Inspector);
-
-    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
-fn inspector_indexes_tab_shows_sqlite_descending_index_definition() {
-    let mut state = harness::explorer_selected_state();
-    let mut terminal = create_test_terminal();
-
-    let mut table = fixtures::sample_postgres_table_detail();
-    table.indexes = vec![Index {
-        name: "idx_users_name_desc".to_string(),
-        columns: vec!["name".to_string()],
-        attributes: IndexAttributes::DESCENDING,
-        index_type: IndexType::Unknown,
-        definition: Some("CREATE INDEX idx_users_name_desc ON users(name DESC)".to_string()),
-    }];
-    let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection_with_dsn(
-        &ConnectionId::from_string("sqlite-test"),
-        "app.db",
-        DatabaseType::SQLite,
-        "sqlite:///tmp/app.db",
-    );
-    state.ui.set_inspector_tab(InspectorTab::Indexes);
-    state.ui.set_focused_pane(FocusedPane::Inspector);
-
-    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
-fn inspector_indexes_tab_shows_sqlite_collation_index_definition() {
-    let mut state = harness::explorer_selected_state();
-    let mut terminal = create_test_terminal();
-
-    let mut table = fixtures::sample_postgres_table_detail();
-    table.indexes = vec![Index {
-        name: "idx_users_name_nocase".to_string(),
-        columns: vec!["name".to_string()],
-        attributes: IndexAttributes::NON_BINARY_COLLATION,
-        index_type: IndexType::Unknown,
-        definition: Some(
-            "CREATE INDEX idx_users_name_nocase ON users(name COLLATE NOCASE)".to_string(),
+        (
+            "idx_users_name_desc",
+            "name",
+            IndexAttributes::DESCENDING,
+            "CREATE INDEX idx_users_name_desc ON users(name DESC)",
+            false,
         ),
-    }];
-    let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection_with_dsn(
-        &ConnectionId::from_string("sqlite-test"),
-        "app.db",
-        DatabaseType::SQLite,
-        "sqlite:///tmp/app.db",
-    );
-    state.ui.set_inspector_tab(InspectorTab::Indexes);
-    state.ui.set_focused_pane(FocusedPane::Inspector);
-
-    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
-fn inspector_indexes_tab_shows_sqlite_partial_expression_details() {
-    let mut state = harness::explorer_selected_state();
-    let mut terminal = create_test_terminal();
-
-    let mut table = fixtures::sample_postgres_table_detail();
-    table.indexes = vec![Index {
-        name: "idx_users_email_lower".to_string(),
-        columns: vec!["<expression>".to_string()],
-        attributes: IndexAttributes::PARTIAL
-            | IndexAttributes::EXPRESSION
-            | IndexAttributes::HAS_AUXILIARY_COLUMNS,
-        index_type: IndexType::Unknown,
-        definition: Some(
-            "CREATE INDEX idx_users_email_lower ON users(lower(email)) WHERE email IS NOT NULL"
-                .to_string(),
+        (
+            "idx_users_name_nocase",
+            "name",
+            IndexAttributes::NON_BINARY_COLLATION,
+            "CREATE INDEX idx_users_name_nocase ON users(name COLLATE NOCASE)",
+            false,
         ),
-    }];
-    let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection_with_dsn(
-        &ConnectionId::from_string("sqlite-test"),
-        "app.db",
-        DatabaseType::SQLite,
-        "sqlite:///tmp/app.db",
-    );
-    state.ui.set_inspector_tab(InspectorTab::Indexes);
-    state.ui.set_focused_pane(FocusedPane::Inspector);
-
+        (
+            "idx_users_email_lower",
+            "<expression>",
+            IndexAttributes::PARTIAL
+                | IndexAttributes::EXPRESSION
+                | IndexAttributes::HAS_AUXILIARY_COLUMNS,
+            "CREATE INDEX idx_users_email_lower ON users(lower(email)) WHERE email IS NOT NULL",
+            true,
+        ),
+    ];
+    let mut table = fixtures::sample_postgres_table_detail();
+    table.indexes = cases
+        .iter()
+        .map(|(name, column, attributes, definition, _)| Index {
+            name: (*name).to_string(),
+            columns: vec![(*column).to_string()],
+            attributes: *attributes,
+            index_type: IndexType::Unknown,
+            definition: Some((*definition).to_string()),
+        })
+        .collect();
+    let mut state = sqlite_indexes_state(table.indexes[0].clone());
+    let mut terminal = create_test_terminal();
     let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
+    insta::assert_snapshot!(
+        "inspector_indexes_tab_shows_sqlite_partial_index_definition",
+        output
+    );
 
-    insta::assert_snapshot!(output);
+    let _ = state.session.set_table_detail(table, 0);
+    let mut terminal = create_test_terminal_sized(240, 40);
+    let output = render_to_string(&mut terminal, &mut state);
+
+    let header = output
+        .lines()
+        .find(|line| line.contains("Name") && line.contains("Partial") && line.contains("Detail"))
+        .expect("SQLite index headers");
+    assert!(!header.contains("Type"), "{header}");
+    for (name, column, _, definition, partial) in cases {
+        let row = output
+            .lines()
+            .find(|line| line.contains(definition))
+            .unwrap_or_else(|| panic!("missing definition: {definition}"));
+        let cells = row
+            .split_once("CREATE INDEX")
+            .unwrap()
+            .0
+            .rsplit_once("││")
+            .unwrap()
+            .1
+            .split_whitespace()
+            .collect::<Vec<_>>();
+        if partial {
+            assert_eq!(cells, [name, column, "✓"], "{row}");
+        } else {
+            assert_eq!(cells, [name, column], "{row}");
+        }
+    }
 }
 
 #[test]
@@ -413,11 +388,10 @@ fn inspector_info_tab_for_sqlite_hides_postgres_only_fields() {
     table.rls = None;
     table.triggers = vec![];
     let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("sqlite-test"),
         "app.db",
-        DatabaseType::SQLite,
-        "sqlite:///tmp/app.db",
+        &endpoint::sqlite("sqlite:///tmp/app.db"),
     );
     state.ui.set_inspector_tab(InspectorTab::Info);
     state.ui.set_focused_pane(FocusedPane::Inspector);
@@ -435,11 +409,10 @@ fn inspector_info_tab_for_mysql_hides_schema_field() {
     let _ = state
         .session
         .set_table_detail(fixtures::sample_postgres_table_detail(), 0);
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("mysql-test"),
         "app",
-        DatabaseType::MySQL,
-        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+        &endpoint::mysql("mysql://user@localhost:3306/app?ssl-mode=PREFERRED", None),
     );
     state.ui.set_inspector_tab(InspectorTab::Info);
     state.ui.set_focused_pane(FocusedPane::Inspector);
@@ -462,11 +435,10 @@ fn inspector_info_tab_for_mysql_shows_storage_attributes() {
         create_options: Some("partitioned".to_string()),
     };
     let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("mysql-test"),
         "app",
-        DatabaseType::MySQL,
-        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+        &endpoint::mysql("mysql://user@localhost:3306/app?ssl-mode=PREFERRED", None),
     );
     state.ui.set_inspector_tab(InspectorTab::Info);
     state.ui.set_focused_pane(FocusedPane::Inspector);
@@ -526,11 +498,10 @@ fn inspector_info_tab_for_sqlite_shows_table_kind_fields() {
         virtual_module: Some("fts5".to_string()),
     };
     let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("sqlite-test"),
         "app.db",
-        DatabaseType::SQLite,
-        "sqlite:///tmp/app.db",
+        &endpoint::sqlite("sqlite:///tmp/app.db"),
     );
     state.ui.set_inspector_tab(InspectorTab::Info);
     state.ui.set_focused_pane(FocusedPane::Inspector);
@@ -553,11 +524,10 @@ fn inspector_info_tab_for_sqlite_shows_view_kind() {
     table.row_count_estimate = Some(2);
     table.kind_info = fixtures::view_kind_info();
     let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("sqlite-test"),
         "app.db",
-        DatabaseType::SQLite,
-        "sqlite:///tmp/app.db",
+        &endpoint::sqlite("sqlite:///tmp/app.db"),
     );
     state.ui.set_inspector_tab(InspectorTab::Info);
     state.ui.set_focused_pane(FocusedPane::Inspector);

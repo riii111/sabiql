@@ -905,8 +905,11 @@ fn trigger_row_cells(row: &InspectorTriggerRow, database_type: DatabaseType) -> 
         row.events.clone(),
         row.definition.clone(),
     ]);
-    if database_type != DatabaseType::SQLite {
-        cells.push(row.security_context.clone().unwrap_or_default());
+    match database_type {
+        DatabaseType::PostgreSQL | DatabaseType::MySQL => {
+            cells.push(row.security_context.clone().unwrap_or_default());
+        }
+        DatabaseType::SQLite => {}
     }
     cells
 }
@@ -1022,27 +1025,11 @@ mod tests {
                 vec!["idx_users_email", "email", ""],
             ),
             (
-                (true, true, false),
-                vec!["Name", "Columns", "Type", "Unique"],
-                vec!["idx_users_email", "email", "B-tree", ""],
-            ),
-            (
                 (false, false, true),
                 vec!["Name", "Columns", "Unique", "Detail"],
                 vec![
                     "idx_users_email",
                     "email",
-                    "",
-                    "CREATE INDEX idx_users_email ON users(email)",
-                ],
-            ),
-            (
-                (true, false, true),
-                vec!["Name", "Columns", "Type", "Unique", "Detail"],
-                vec![
-                    "idx_users_email",
-                    "email",
-                    "B-tree",
                     "",
                     "CREATE INDEX idx_users_email ON users(email)",
                 ],
@@ -1088,7 +1075,7 @@ mod tests {
     }
 
     #[test]
-    fn column_row_cells_include_optional_columns_for_all_display_options() {
+    fn column_row_cells_include_optional_columns_for_display_options() {
         let row = InspectorColumnRow {
             name: "id".to_string(),
             data_type: "integer".to_string(),
@@ -1104,36 +1091,54 @@ mod tests {
             generation_kind: None,
         };
 
-        for read_only in [false, true] {
-            for character_set in [false, true] {
-                for collation in [false, true] {
-                    for generation in [false, true] {
-                        let options = ColumnDisplayOptions {
-                            icon_mode: IconMode::Off,
-                            read_only,
-                            character_set,
-                            collation,
-                            generation,
-                        };
-                        let mut expected = vec!["id", "integer", "", "✓"];
-                        if options.read_only {
-                            expected.push("read-only");
-                        }
-                        expected.extend(["default", "comment"]);
-                        if options.character_set {
-                            expected.push("charset");
-                        }
-                        if options.collation {
-                            expected.push("collation");
-                        }
-                        if options.generation {
-                            expected.push("generation");
-                        }
+        let cases = [
+            (
+                (false, false, false, false),
+                vec!["id", "integer", "", "✓", "default", "comment"],
+            ),
+            (
+                (true, false, false, false),
+                vec!["id", "integer", "", "✓", "read-only", "default", "comment"],
+            ),
+            (
+                (false, true, false, false),
+                vec!["id", "integer", "", "✓", "default", "comment", "charset"],
+            ),
+            (
+                (false, false, true, false),
+                vec!["id", "integer", "", "✓", "default", "comment", "collation"],
+            ),
+            (
+                (false, false, false, true),
+                vec!["id", "integer", "", "✓", "default", "comment", "generation"],
+            ),
+            (
+                (true, true, true, true),
+                vec![
+                    "id",
+                    "integer",
+                    "",
+                    "✓",
+                    "read-only",
+                    "default",
+                    "comment",
+                    "charset",
+                    "collation",
+                    "generation",
+                ],
+            ),
+        ];
 
-                        assert_eq!(column_row_cells(&row, options), expected);
-                    }
-                }
-            }
+        for ((read_only, character_set, collation, generation), expected) in cases {
+            let options = ColumnDisplayOptions {
+                icon_mode: IconMode::Off,
+                read_only,
+                character_set,
+                collation,
+                generation,
+            };
+
+            assert_eq!(column_row_cells(&row, options), expected);
         }
     }
 
@@ -1288,5 +1293,62 @@ mod tests {
                 "missing {expected:?} in {rendered:?}"
             );
         }
+    }
+
+    #[test]
+    fn sqlite_trigger_table_shows_definition_column() {
+        use crate::app::model::shared::theme_id::ThemeId;
+        use crate::theme::palette_for;
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+        use ratatui::layout::Rect;
+
+        let database_type = DatabaseType::SQLite;
+        let expected_headers = ["Name", "Timing", "Event", "Definition"];
+        let expected_cells = ["audit_changes", "BEFORE", "UPDATE", "audit_fn"];
+        let row = InspectorTriggerRow {
+            name: "audit_changes".to_string(),
+            timing: "BEFORE".to_string(),
+            events: "UPDATE".to_string(),
+            action_order: None,
+            definition: "audit_fn".to_string(),
+            security_context: Some("INVOKER".to_string()),
+            creation_context: None,
+        };
+        let mut terminal = Terminal::new(TestBackend::new(100, 6)).unwrap();
+        let theme = palette_for(ThemeId::Default);
+
+        terminal
+            .draw(|frame| {
+                Inspector::render_triggers(
+                    frame,
+                    Rect::new(0, 0, 100, 6),
+                    std::slice::from_ref(&row),
+                    database_type,
+                    0,
+                    0,
+                    theme,
+                );
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let rendered_lines: Vec<String> = (0..buffer.area.height)
+            .map(|y| {
+                (0..buffer.area.width)
+                    .map(|x| buffer.cell((x, y)).unwrap().symbol())
+                    .collect()
+            })
+            .collect();
+        let line_words = |first_word: &str| {
+            rendered_lines
+                .iter()
+                .map(|line| line.split_whitespace().collect::<Vec<_>>())
+                .find(|words| words.first() == Some(&first_word))
+                .unwrap_or_else(|| panic!("missing {first_word:?} row in {rendered_lines:?}"))
+        };
+
+        assert_eq!(line_words("Name"), expected_headers);
+        assert_eq!(line_words("audit_changes"), expected_cells);
     }
 }

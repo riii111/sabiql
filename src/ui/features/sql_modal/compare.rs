@@ -383,7 +383,11 @@ fn slot_detail_text(slot: Option<&CompareSlot>) -> String {
         Some(s) => {
             let time_secs = s.plan.execution_secs();
             let summary = format!(" {}  ({:.2}s)", mode_label(s.plan.is_analyze), time_secs);
-            if s.database_type == DatabaseType::MySQL && s.plan.is_analyze {
+            let shows_actual_metrics = match s.database_type {
+                DatabaseType::MySQL => s.plan.is_analyze,
+                DatabaseType::PostgreSQL | DatabaseType::SQLite => false,
+            };
+            if shows_actual_metrics {
                 format!(
                     "{summary}  {}",
                     super::explain::format_actual_metrics(Some(&s.plan))
@@ -537,5 +541,24 @@ mod tests {
         slot.plan.is_analyze = true;
 
         assert!(slot_detail_text(Some(&slot)).contains("Actual: unavailable"));
+    }
+
+    #[rstest::rstest]
+    #[case::postgres_analyze(DatabaseType::PostgreSQL, true, " ANALYZE  (0.25s)")]
+    #[case::mysql_explain(DatabaseType::MySQL, false, " EXPLAIN  (0.25s)")]
+    fn slot_summary_omits_actual_metrics_outside_mysql_analyze(
+        #[case] database_type: DatabaseType,
+        #[case] is_analyze: bool,
+        #[case] expected: &str,
+    ) {
+        let mut slot = sample_slot(SlotSource::AutoLatest, "plan");
+        slot.database_type = database_type;
+        slot.plan.is_analyze = is_analyze;
+        slot.plan.actual_start_ms = Some(0.01);
+        slot.plan.actual_end_ms = Some(0.5);
+        slot.plan.actual_rows = Some(95.0);
+        slot.plan.loops = Some(2);
+
+        assert_eq!(slot_detail_text(Some(&slot)), expected);
     }
 }

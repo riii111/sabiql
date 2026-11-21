@@ -181,6 +181,7 @@ mod tests {
     use crate::domain::{DatabaseMetadata, TableSummary};
     use crate::model::shared::key_sequence::Prefix;
     use crate::services::AppServices;
+    use crate::test_support::endpoint;
     use crate::update::action::{Action, ScrollTarget, ScrollToCursorTarget};
     use crate::update::reducer::route;
     use rstest::rstest;
@@ -654,7 +655,7 @@ mod tests {
 
     mod horizontal_scroll {
         use super::*;
-        use crate::domain::{ConnectionId, DatabaseType, TableKindInfo};
+        use crate::domain::{ConnectionId, TableKindInfo};
         use crate::policy::table_kind::{explorer_table_label, explorer_table_label_width};
 
         #[rstest]
@@ -760,11 +761,10 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.ui.set_focused_pane(FocusedPane::Explorer);
             state.ui.set_explorer_content_width(4);
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::from_string("sqlite-test"),
                 "sqlite",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/test.db",
+                &endpoint::sqlite("sqlite:///tmp/test.db"),
             );
             let summary =
                 TableSummary::new("main".to_string(), "settings".to_string(), None, false)

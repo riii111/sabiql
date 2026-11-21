@@ -1,4 +1,6 @@
-use super::literal::{encode_preview_column_expr, quote_ident};
+use crate::domain::dialect::{Dialect as _, Sqlite};
+
+use super::literal::encode_preview_column_expr;
 
 pub(in crate::adapters::sqlite) fn build_preview_query(
     table: &str,
@@ -19,12 +21,12 @@ pub(in crate::adapters::sqlite) fn build_preview_query(
     };
     let order_clause = if order_columns.is_empty() {
         rowid_order_alias.map_or_else(String::new, |alias| {
-            format!(" ORDER BY {}", quote_ident(alias))
+            format!(" ORDER BY {}", Sqlite.quote_identifier(alias))
         })
     } else {
         let cols = order_columns
             .iter()
-            .map(|col| quote_ident(col))
+            .map(|col| Sqlite.quote_identifier(col))
             .collect::<Vec<_>>()
             .join(", ");
         format!(" ORDER BY {cols}")
@@ -32,7 +34,7 @@ pub(in crate::adapters::sqlite) fn build_preview_query(
 
     format!(
         "SELECT {visible_select_list} FROM {}{} LIMIT {} OFFSET {}",
-        quote_ident(table),
+        Sqlite.quote_identifier(table),
         order_clause,
         limit,
         offset

@@ -9,7 +9,7 @@ pub(in crate::update) mod sqlite_diagnostics;
 #[cfg(test)]
 mod tests {
     use crate::cmd::effect::Effect;
-    use crate::domain::{ConnectionId, DatabaseType, QueryValue};
+    use crate::domain::{ConnectionId, QueryValue};
     use crate::model::app_state::AppState;
     use crate::model::browse::query_execution::PostDeleteRowSelection;
     use crate::model::shared::confirm_dialog::{ConfirmIntent, CsvExportCacheSnapshot};
@@ -18,6 +18,7 @@ mod tests {
     use crate::model::shared::settings::{IconMode, KeymapPreset};
     use crate::ports::outbound::AppSettings;
     use crate::services::AppServices;
+    use crate::test_support::endpoint;
     use crate::update::action::{
         Action, CursorMove, InputTarget, ListMotion, ListTarget, ModalKind, ScrollAmount,
         ScrollDirection, ScrollTarget, TextKillDirection,
@@ -572,7 +573,7 @@ mod tests {
 
         fn rerunnable_csv_intent(run_id: u64) -> ConfirmIntent {
             ConfirmIntent::CsvExportRerunnable {
-                dsn: CSV_TEST_DSN.to_string(),
+                endpoint: endpoint::postgres(CSV_TEST_DSN),
                 run_id,
                 export_query: "SELECT 1".to_string(),
                 file_name: CSV_TEST_FILE.to_string(),
@@ -581,7 +582,7 @@ mod tests {
 
         fn cached_csv_intent(run_id: u64) -> ConfirmIntent {
             ConfirmIntent::CsvExportCached {
-                dsn: CSV_TEST_DSN.to_string(),
+                endpoint: endpoint::postgres(CSV_TEST_DSN),
                 run_id,
                 file_name: CSV_TEST_FILE.to_string(),
                 row_count: Some(2),
@@ -616,7 +617,6 @@ mod tests {
 
         fn assert_cached_export_effect(effect: &Effect, run_id: u64) {
             let Effect::ExportCsvFromCache {
-                dsn,
                 run_id: effect_run_id,
                 file_name,
                 columns,
@@ -627,7 +627,6 @@ mod tests {
                 panic!("expected cached CSV export effect");
             };
 
-            assert_eq!(dsn, CSV_TEST_DSN);
             assert_eq!(*effect_run_id, run_id);
             assert_eq!(file_name, CSV_TEST_FILE);
             assert_eq!(columns, &vec!["id".to_string()]);
@@ -669,8 +668,7 @@ mod tests {
                 let _ = state.session.begin_mysql_connection_probe(
                     &id,
                     "MySQL",
-                    "mysql://localhost/test",
-                    Some("test"),
+                    &endpoint::mysql("mysql://localhost/test", Some("test")),
                 );
                 state
                     .confirm_dialog
@@ -841,7 +839,7 @@ mod tests {
                 let effects = confirm_effects(&mut state);
                 assert_eq!(effects.len(), 1);
                 let Effect::ExportCsv {
-                    dsn,
+                    endpoint,
                     run_id: effect_run_id,
                     query,
                     file_name,
@@ -850,7 +848,7 @@ mod tests {
                     panic!("expected rerunnable CSV export effect");
                 };
 
-                assert_eq!(dsn, CSV_TEST_DSN);
+                assert_eq!(endpoint, &endpoint::postgres(CSV_TEST_DSN));
                 assert_eq!(*effect_run_id, run_id);
                 assert_eq!(query, "SELECT 1");
                 assert_eq!(file_name, CSV_TEST_FILE);
@@ -870,15 +868,17 @@ mod tests {
             fn csv_export_ignores_mismatched_dsn() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
-                let _ = state
-                    .session
-                    .begin_connecting("postgres://localhost/current");
+                test_fixtures::activate_postgres_connection(
+                    &mut state,
+                    "postgres://localhost/current",
+                );
+                let _ = state.session.begin_connecting();
                 let _ = state.query.begin_running(Instant::now());
                 state.confirm_dialog.open(
                     "",
                     "",
                     ConfirmIntent::CsvExportRerunnable {
-                        dsn: "postgres://localhost/stale".to_string(),
+                        endpoint: endpoint::postgres("postgres://localhost/stale"),
                         run_id: 1,
                         export_query: "SELECT 1".to_string(),
                         file_name: "test.csv".to_string(),
@@ -1235,23 +1235,20 @@ mod tests {
 
         fn connected_state() -> AppState {
             let mut state = AppState::new("test-project".to_string());
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::from_string("test-conn"),
                 "test",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/test",
+                &endpoint::postgres("postgres://localhost/test"),
             );
             state
         }
 
         fn mysql_connected_state(database: &str) -> AppState {
             let mut state = AppState::new("test-project".to_string());
-            state.session.activate_connection_with_target(
+            state.session.activate_connection(
                 &ConnectionId::from_string("mysql-conn"),
                 "mysql",
-                DatabaseType::MySQL,
-                &format!("mysql://localhost/{database}"),
-                Some(database),
+                &endpoint::mysql(&format!("mysql://localhost/{database}"), Some(database)),
             );
             state.session.mark_probe_connected();
             state
@@ -1689,8 +1686,7 @@ mod tests {
                 let _ = state.session.begin_mysql_connection_probe(
                     &target_id,
                     "mysql",
-                    "mysql://localhost/app",
-                    Some("app"),
+                    &endpoint::mysql("mysql://localhost/app", Some("app")),
                 );
 
                 let effects = route(

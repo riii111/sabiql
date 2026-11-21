@@ -1,12 +1,12 @@
+use crate::domain::connection::MySqlConnectionConfig;
 use std::time::Instant;
 
 use crate::adapters::csv_export::export_to_downloads;
-use crate::app::ports::outbound::{AccessMode, DbOperationError, QueryExecutor};
+use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{
     CommandTag, QueryResult, QuerySource, WriteExecutionResult,
     mysql_sql::mysql_tree_explain_query_kind,
 };
-use async_trait::async_trait;
 
 use super::adapter::MySqlAdapter;
 use super::cli::{
@@ -15,12 +15,12 @@ use super::cli::{
     validate_mysql_export_query, validate_mysql_multi_query,
     validate_mysql_multi_query_with_lower_case_table_names,
 };
-use super::dsn::{MySqlDsn, map_mysql_tls_failure, parse_and_validate_mysql_dsn};
+use super::dsn::{NormalizedMySqlConfig, map_mysql_tls_failure};
 use super::metadata;
 use super::option_file::MySqlOptionFile;
 
 async fn execute_adhoc_with_target(
-    target: &MySqlDsn,
+    target: &NormalizedMySqlConfig,
     query: &str,
     access_mode: AccessMode,
 ) -> Result<QueryResult, DbOperationError> {
@@ -123,11 +123,10 @@ fn with_mysql_command_tag(
     Ok(result.with_command_tag(tag))
 }
 
-#[async_trait]
-impl QueryExecutor for MySqlAdapter {
-    async fn execute_preview(
+impl MySqlAdapter {
+    pub async fn execute_preview(
         &self,
-        dsn: &str,
+        config: &MySqlConnectionConfig,
         schema: &str,
         table: &str,
         limit: usize,
@@ -138,7 +137,7 @@ impl QueryExecutor for MySqlAdapter {
             reason = "infra measures mysql execution time at the I/O boundary"
         )]
         let start = Instant::now();
-        let execution = metadata::execute_preview(dsn, schema, table, limit, offset).await?;
+        let execution = metadata::execute_preview(config, schema, table, limit, offset).await?;
         let preview = execution.metadata;
         let values = metadata::convert_preview_values_with_binary_charset(
             execution.result_set,
@@ -171,23 +170,23 @@ impl QueryExecutor for MySqlAdapter {
         Ok(query_result)
     }
 
-    async fn execute_adhoc(
+    pub async fn execute_adhoc(
         &self,
-        dsn: &str,
+        config: &MySqlConnectionConfig,
         query: &str,
         access_mode: AccessMode,
     ) -> Result<QueryResult, DbOperationError> {
-        let target = parse_and_validate_mysql_dsn(dsn)?;
+        let target = NormalizedMySqlConfig::new(config)?;
         execute_adhoc_with_target(&target, query, access_mode).await
     }
 
-    async fn execute_write(
+    pub async fn execute_write(
         &self,
-        dsn: &str,
+        config: &MySqlConnectionConfig,
         query: &str,
         access_mode: AccessMode,
     ) -> Result<WriteExecutionResult, DbOperationError> {
-        let target = parse_and_validate_mysql_dsn(dsn)?;
+        let target = NormalizedMySqlConfig::new(config)?;
         let statements =
             validate_mysql_multi_query(query, target.database.as_deref(), access_mode)?;
 
@@ -215,13 +214,13 @@ impl QueryExecutor for MySqlAdapter {
         })
     }
 
-    async fn export_to_csv(
+    pub async fn export_to_csv(
         &self,
-        dsn: &str,
+        config: &MySqlConnectionConfig,
         query: &str,
         file_name: &str,
     ) -> Result<std::path::PathBuf, DbOperationError> {
-        let target = parse_and_validate_mysql_dsn(dsn)?;
+        let target = NormalizedMySqlConfig::new(config)?;
         validate_mysql_export_query(query, target.database.as_deref())?;
 
         let query = query.to_string();

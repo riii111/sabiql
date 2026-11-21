@@ -15,7 +15,7 @@ use tokio::io::{AsyncRead, BufReader, ReadBuf};
 
 use super::super::{
     capability::MySqlServerCapabilities,
-    dsn::{MySqlDsn, map_mysql_tls_failure},
+    dsn::{NormalizedMySqlConfig, map_mysql_tls_failure},
     option_file::MySqlOptionFile,
 };
 use super::error::{classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error};
@@ -348,7 +348,7 @@ fn append_csv_field_value(
 }
 
 pub(in crate::adapters::mysql) async fn export_mysql_csv_to_file(
-    target: MySqlDsn,
+    target: NormalizedMySqlConfig,
     query: &str,
     path: PathBuf,
 ) -> Result<(), DbOperationError> {

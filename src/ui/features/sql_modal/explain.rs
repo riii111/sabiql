@@ -74,20 +74,21 @@ pub(super) fn render(
                     .fg(theme.semantic.text.accent)
                     .add_modifier(Modifier::BOLD),
             )
-        } else if state.session.active_database_type_or_default() == DatabaseType::SQLite {
-            (
-                SQLITE_EXPLAIN_QUERY_PLAN_PREFIX,
-                Style::default()
-                    .fg(theme.semantic.text.accent)
-                    .add_modifier(Modifier::BOLD),
-            )
         } else {
-            (
-                "EXPLAIN",
-                Style::default()
-                    .fg(theme.semantic.text.accent)
-                    .add_modifier(Modifier::BOLD),
-            )
+            match state.session.active_database_type_or_default() {
+                DatabaseType::SQLite => (
+                    SQLITE_EXPLAIN_QUERY_PLAN_PREFIX,
+                    Style::default()
+                        .fg(theme.semantic.text.accent)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                DatabaseType::PostgreSQL | DatabaseType::MySQL => (
+                    "EXPLAIN",
+                    Style::default()
+                        .fg(theme.semantic.text.accent)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            }
         };
         let time_secs = state.explain.execution_time_ms() as f64 / 1000.0;
         let header = Line::from(vec![
@@ -109,9 +110,11 @@ pub(super) fn render(
 
         let scroll = state.explain.scroll_offset();
         let mut lines = vec![header, query_line];
-        if state.explain.is_analyze()
-            && state.session.active_database_type_or_default() == DatabaseType::MySQL
-        {
+        let shows_actual_metrics = match state.session.active_database_type_or_default() {
+            DatabaseType::MySQL => state.explain.is_analyze(),
+            DatabaseType::PostgreSQL | DatabaseType::SQLite => false,
+        };
+        if shows_actual_metrics {
             lines.push(Line::from(Span::styled(
                 format!("  {}", format_actual_metrics(state.explain.current_plan())),
                 Style::default().fg(theme.semantic.text.muted),

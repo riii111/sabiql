@@ -2785,6 +2785,8 @@ dependencies = [
  "self_update",
  "tempfile",
  "tokio",
+ "url",
+ "urlencoding",
 ]
 
 [[package]]

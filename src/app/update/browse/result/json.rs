@@ -240,12 +240,13 @@ mod tests {
     use crate::domain::Column;
     use crate::domain::ColumnAttributes;
     use crate::test_support;
+    use crate::test_support::endpoint;
     use crate::update::test_fixtures;
 
     use super::*;
     use crate::cmd::effect::Effect;
     use crate::domain::connection::ConnectionId;
-    use crate::domain::{DatabaseType, QueryResult, QuerySource, Table};
+    use crate::domain::{QueryResult, QuerySource, Table};
     use crate::model::shared::flash_timer::FlashId;
     use crate::services::AppServices;
     use crate::update::action::CopyTarget;
@@ -448,11 +449,10 @@ mod tests {
         #[test]
         fn blocked_on_sqlite_json_column() {
             let mut state = state_with_json_cell();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::from_string("sqlite-test"),
                 "sqlite",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
+                &endpoint::sqlite("sqlite:///tmp/app.db"),
             );
 
             route(
@@ -1540,11 +1540,10 @@ mod tests {
         #[test]
         fn mysql_json_edit_uses_explicit_hidden_row_identity() {
             let mut state = state_with_hidden_primary_key_json_value();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::from_string("mysql-test"),
                 "mysql",
-                DatabaseType::MySQL,
-                "mysql://localhost/test",
+                &endpoint::mysql("mysql://localhost/test", None),
             );
             let mut detail = state.session.table_detail().cloned().expect("table detail");
             detail.columns[1].data_type = "json".to_string();

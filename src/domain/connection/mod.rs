@@ -1,5 +1,6 @@
 mod config;
 mod database_type;
+mod endpoint;
 mod id;
 mod name;
 mod profile;
@@ -12,12 +13,12 @@ pub use config::{
     PostgresConnectionConfig, SqliteConnectionConfig, SqliteConnectionConfigError,
 };
 pub use database_type::DatabaseType;
+pub use endpoint::{ConnectionEndpoint, PostgresEndpoint};
 pub use id::ConnectionId;
 pub use name::{ConnectionName, ConnectionNameError};
 pub use profile::{ConnectionProfile, ConnectionProfileError};
 pub use service_entry::ServiceEntry;
 pub use sqlite_path::{
     SqlitePathError, classify_sqlite_metadata_error, classify_sqlite_read_error,
-    sqlite_path_from_dsn,
 };
 pub use ssl_mode::SslMode;

@@ -96,13 +96,13 @@ impl ConnectionField {
     }
 
     pub fn placeholder_for(self, database_type: DatabaseType) -> &'static str {
-        if database_type == DatabaseType::MySQL {
-            return match self {
+        match database_type {
+            DatabaseType::MySQL => match self {
                 Self::Password => "empty = no password",
                 _ => "",
-            };
+            },
+            DatabaseType::PostgreSQL | DatabaseType::SQLite => self.placeholder(),
         }
-        self.placeholder()
     }
 
     pub fn label(self) -> &'static str {
@@ -430,16 +430,19 @@ impl ConnectionSetupState {
                     self.ssl_dropdown.selected_index =
                         if self.focused_field == ConnectionField::CleartextAuth {
                             usize::from(self.enable_cleartext_plugin)
-                        } else if self.database_type == DatabaseType::MySQL {
-                            MySqlSslMode::all_variants()
-                                .iter()
-                                .position(|v| *v == self.mysql_ssl_mode)
-                                .unwrap_or(1)
                         } else {
-                            SslMode::all_variants()
-                                .iter()
-                                .position(|v| *v == self.ssl_mode)
-                                .unwrap_or(2)
+                            match self.database_type {
+                                DatabaseType::MySQL => MySqlSslMode::all_variants()
+                                    .iter()
+                                    .position(|v| *v == self.mysql_ssl_mode)
+                                    .unwrap_or(1),
+                                DatabaseType::PostgreSQL | DatabaseType::SQLite => {
+                                    SslMode::all_variants()
+                                        .iter()
+                                        .position(|v| *v == self.ssl_mode)
+                                        .unwrap_or(2)
+                                }
+                            }
                         };
                 }
             }
@@ -461,10 +464,13 @@ impl ConnectionSetupState {
         } else if self.ssl_dropdown.is_open {
             let max = if self.focused_field == ConnectionField::CleartextAuth {
                 1
-            } else if self.database_type == DatabaseType::MySQL {
-                MySqlSslMode::all_variants().len() - 1
             } else {
-                SslMode::all_variants().len() - 1
+                match self.database_type {
+                    DatabaseType::MySQL => MySqlSslMode::all_variants().len() - 1,
+                    DatabaseType::PostgreSQL | DatabaseType::SQLite => {
+                        SslMode::all_variants().len() - 1
+                    }
+                }
             };
             if self.ssl_dropdown.selected_index < max {
                 self.ssl_dropdown.selected_index += 1;
@@ -499,17 +505,23 @@ impl ConnectionSetupState {
             }
             self.transport_dropdown.is_open = false;
         } else if self.ssl_dropdown.is_open {
-            if self.database_type == DatabaseType::MySQL {
-                if self.focused_field == ConnectionField::CleartextAuth {
-                    self.enable_cleartext_plugin = self.ssl_dropdown.selected_index == 1;
-                } else if let Some(mode) =
-                    MySqlSslMode::all_variants().get(self.ssl_dropdown.selected_index)
-                {
-                    self.set_mysql_ssl_mode(*mode);
+            match self.database_type {
+                DatabaseType::MySQL => {
+                    if self.focused_field == ConnectionField::CleartextAuth {
+                        self.enable_cleartext_plugin = self.ssl_dropdown.selected_index == 1;
+                    } else if let Some(mode) =
+                        MySqlSslMode::all_variants().get(self.ssl_dropdown.selected_index)
+                    {
+                        self.set_mysql_ssl_mode(*mode);
+                    }
                 }
-            } else if let Some(mode) = SslMode::all_variants().get(self.ssl_dropdown.selected_index)
-            {
-                self.ssl_mode = *mode;
+                DatabaseType::PostgreSQL | DatabaseType::SQLite => {
+                    if let Some(mode) =
+                        SslMode::all_variants().get(self.ssl_dropdown.selected_index)
+                    {
+                        self.ssl_mode = *mode;
+                    }
+                }
             }
             self.ssl_dropdown.is_open = false;
         }

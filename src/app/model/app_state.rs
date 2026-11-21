@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use super::explain_context::ExplainContext;
-use crate::domain::connection::{ConnectionId, ConnectionProfile, ServiceEntry};
+use crate::domain::connection::{
+    ConnectionEndpoint, ConnectionId, ConnectionProfile, ServiceEntry,
+};
 use crate::domain::{Column, DatabaseType, TableSummary, mysql_sql::mysql_export_plan};
 use crate::model::browse::inspector_view_model::InspectorViewModel;
 use crate::model::browse::json_detail::JsonDetailState;
@@ -395,7 +397,7 @@ impl AppState {
             match database {
                 Some(DatabaseType::SQLite) => true,
                 Some(DatabaseType::MySQL) => mysql_export_plan(&result.query).is_some(),
-                _ => is_rerunnable_select(&result.query),
+                Some(DatabaseType::PostgreSQL) | None => is_rerunnable_select(&result.query),
             }
         })
     }
@@ -483,8 +485,8 @@ impl AppState {
 
     /// True when a run-scoped async response no longer belongs to the active
     /// connection and query run, and must be dropped without touching state.
-    pub fn is_stale_query_run(&self, dsn: &str, run_id: u64) -> bool {
-        !self.session.dsn_matches(dsn) || !self.query.is_current_run(run_id)
+    pub fn is_stale_query_run(&self, endpoint: &ConnectionEndpoint, run_id: u64) -> bool {
+        !self.session.endpoint_matches(endpoint) || !self.query.is_current_run(run_id)
     }
 
     pub fn is_stale_explain_run(&self, database_generation: u64, run_id: u64) -> bool {
@@ -496,6 +498,7 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use crate::test_support;
+    use crate::test_support::endpoint;
 
     use std::sync::Arc;
     use std::time::Instant;
@@ -560,11 +563,10 @@ mod tests {
     }
 
     fn activate_postgres_connection(state: &mut AppState, dsn: &str) {
-        state.session.activate_connection_with_dsn(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "postgres",
-            DatabaseType::PostgreSQL,
-            dsn,
+            &endpoint::postgres(dsn),
         );
     }
 
@@ -597,11 +599,10 @@ mod tests {
 
         fn active_connection_state(database_type: DatabaseType, dsn: &str) -> AppState {
             let mut state = make_state();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "database",
-                database_type,
-                dsn,
+                &endpoint::for_engine(database_type, dsn),
             );
             state
         }
@@ -658,8 +659,10 @@ mod tests {
             let _ = state.session.begin_mysql_connection_probe(
                 &target_id,
                 "mysql-new",
-                "mysql://user@localhost:3306/new?ssl-mode=PREFERRED",
-                Some("new"),
+                &endpoint::mysql(
+                    "mysql://user@localhost:3306/new?ssl-mode=PREFERRED",
+                    Some("new"),
+                ),
             );
             state
                 .connection_error
@@ -764,9 +767,11 @@ mod tests {
             DatabaseType::PostgreSQL => ("postgres", "postgres://localhost/test"),
             DatabaseType::SQLite => ("sqlite", "sqlite:///tmp/app.db"),
         };
-        state
-            .session
-            .activate_connection_with_dsn(&ConnectionId::new(), name, database_type, dsn);
+        state.session.activate_connection(
+            &ConnectionId::new(),
+            name,
+            &endpoint::for_engine(database_type, dsn),
+        );
     }
 
     fn test_column(
@@ -794,11 +799,10 @@ mod tests {
 
         fn sqlite_numeric_edit_state() -> AppState {
             let mut state = make_state();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "sqlite",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
+                &endpoint::sqlite("sqlite:///tmp/app.db"),
             );
             state
                 .query
@@ -873,11 +877,10 @@ mod tests {
 
         fn mysql_hidden_primary_key_state() -> AppState {
             let mut state = make_state();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "mysql",
-                DatabaseType::MySQL,
-                "mysql://localhost/test",
+                &endpoint::mysql("mysql://localhost/test", None),
             );
             state.query.set_current_result(Arc::new(
                 QueryResult::success_with_values(
@@ -928,11 +931,10 @@ mod tests {
 
         fn mysql_hidden_primary_key_between_columns_state() -> AppState {
             let mut state = make_state();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "mysql",
-                DatabaseType::MySQL,
-                "mysql://localhost/test",
+                &endpoint::mysql("mysql://localhost/test", None),
             );
             state.query.set_current_result(Arc::new(
                 QueryResult::success_with_values(
@@ -1378,11 +1380,10 @@ mod tests {
 
         fn sqlite_preview_state_with_table(mut table: Table) -> AppState {
             let mut state = make_state();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "sqlite",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
+                &endpoint::sqlite("sqlite:///tmp/app.db"),
             );
             table.schema = "main".to_string();
             table.name = "logs".to_string();
@@ -1396,11 +1397,10 @@ mod tests {
 
         fn postgres_preview_state_with_table(mut table: Table) -> AppState {
             let mut state = make_state();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "postgres",
-                DatabaseType::PostgreSQL,
-                "postgres://localhost/app",
+                &endpoint::postgres("postgres://localhost/app"),
             );
             table.schema = "public".to_string();
             table.name = "logs".to_string();
@@ -1435,11 +1435,10 @@ mod tests {
                     QuerySource::Adhoc,
                 )));
             assert!(!state.can_request_csv_export());
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "sqlite",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
+                &endpoint::for_engine(DatabaseType::SQLite, "sqlite:///tmp/app.db"),
             );
             assert!(state.can_request_csv_export());
             state.query.clear_current_result();
@@ -1472,11 +1471,10 @@ mod tests {
         #[case("DESCRIBE users")]
         fn mysql_csv_export_allows_supported_result_queries(#[case] query: &str) {
             let mut state = make_state();
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "mysql",
-                DatabaseType::MySQL,
-                "mysql://localhost/test",
+                &endpoint::mysql("mysql://localhost/test", None),
             );
             state
                 .query
@@ -1608,7 +1606,7 @@ mod tests {
                 reduce(
                     &mut state,
                     Action::TableDetailLoaded {
-                        dsn: "dsn://test".to_string(),
+                        endpoint: endpoint::postgres("dsn://test"),
                         run_id,
                         outcome: Ok(Box::new(make_table_detail())),
                         generation,

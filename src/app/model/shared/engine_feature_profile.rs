@@ -1,4 +1,5 @@
 use crate::domain::connection::DatabaseType;
+use crate::domain::dialect::EngineCapabilities;
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::model::sql_editor::modal::SqlModalTab;
 
@@ -41,29 +42,6 @@ enum ExplainProfile {
     QueryPlanAndAnalyze,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct InspectorProfile {
-    tabs: &'static [InspectorTab],
-    info_fields: &'static [InspectorInfoField],
-}
-
-impl InspectorProfile {
-    const fn new(
-        tabs: &'static [InspectorTab],
-        info_fields: &'static [InspectorInfoField],
-    ) -> Self {
-        Self { tabs, info_fields }
-    }
-
-    pub(crate) fn tabs(&self) -> &'static [InspectorTab] {
-        self.tabs
-    }
-
-    pub(crate) fn info_fields(&self) -> &'static [InspectorInfoField] {
-        self.info_fields
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EngineFeatureProfile {
     Disconnected,
@@ -72,64 +50,50 @@ pub enum EngineFeatureProfile {
     MySQL,
 }
 
-const DISCONNECTED_INSPECTOR: InspectorProfile = InspectorProfile::new(
-    &[InspectorTab::Info],
-    &[InspectorInfoField::Schema, InspectorInfoField::TableName],
-);
-const POSTGRESQL_INSPECTOR: InspectorProfile = InspectorProfile::new(
-    &[
-        InspectorTab::Info,
-        InspectorTab::Columns,
-        InspectorTab::Indexes,
-        InspectorTab::ForeignKeys,
-        InspectorTab::Rls,
-        InspectorTab::Triggers,
-        InspectorTab::Ddl,
-    ],
-    &[
-        InspectorInfoField::Owner,
-        InspectorInfoField::Comment,
-        InspectorInfoField::RowCount,
-        InspectorInfoField::Schema,
-        InspectorInfoField::TableName,
-    ],
-);
-const SQLITE_INSPECTOR: InspectorProfile = InspectorProfile::new(
-    &[
-        InspectorTab::Info,
-        InspectorTab::Columns,
-        InspectorTab::Indexes,
-        InspectorTab::ForeignKeys,
-        InspectorTab::Triggers,
-        InspectorTab::Ddl,
-    ],
-    &[
-        InspectorInfoField::RowCount,
-        InspectorInfoField::Schema,
-        InspectorInfoField::TableName,
-        InspectorInfoField::TableKind,
-        InspectorInfoField::TableFlags,
-    ],
-);
-const MYSQL_INSPECTOR: InspectorProfile = InspectorProfile::new(
-    &[
-        InspectorTab::Info,
-        InspectorTab::Columns,
-        InspectorTab::Indexes,
-        InspectorTab::ForeignKeys,
-        InspectorTab::Triggers,
-        InspectorTab::Ddl,
-    ],
-    &[
-        InspectorInfoField::Comment,
-        InspectorInfoField::RowCount,
-        InspectorInfoField::TableName,
-        InspectorInfoField::Engine,
-        InspectorInfoField::RowFormat,
-        InspectorInfoField::TableCollation,
-        InspectorInfoField::CreateOptions,
-    ],
-);
+const DISCONNECTED_INSPECTOR_TABS: &[InspectorTab] = &[InspectorTab::Info];
+const CONNECTED_INSPECTOR_TABS: &[InspectorTab] = &[
+    InspectorTab::Info,
+    InspectorTab::Columns,
+    InspectorTab::Indexes,
+    InspectorTab::ForeignKeys,
+    InspectorTab::Triggers,
+    InspectorTab::Ddl,
+];
+const CONNECTED_INSPECTOR_TABS_WITH_RLS: &[InspectorTab] = &[
+    InspectorTab::Info,
+    InspectorTab::Columns,
+    InspectorTab::Indexes,
+    InspectorTab::ForeignKeys,
+    InspectorTab::Rls,
+    InspectorTab::Triggers,
+    InspectorTab::Ddl,
+];
+
+const DISCONNECTED_INSPECTOR_FIELDS: &[InspectorInfoField] =
+    &[InspectorInfoField::Schema, InspectorInfoField::TableName];
+const POSTGRESQL_INSPECTOR_FIELDS: &[InspectorInfoField] = &[
+    InspectorInfoField::Owner,
+    InspectorInfoField::Comment,
+    InspectorInfoField::RowCount,
+    InspectorInfoField::Schema,
+    InspectorInfoField::TableName,
+];
+const SQLITE_INSPECTOR_FIELDS: &[InspectorInfoField] = &[
+    InspectorInfoField::RowCount,
+    InspectorInfoField::Schema,
+    InspectorInfoField::TableName,
+    InspectorInfoField::TableKind,
+    InspectorInfoField::TableFlags,
+];
+const MYSQL_INSPECTOR_FIELDS: &[InspectorInfoField] = &[
+    InspectorInfoField::Comment,
+    InspectorInfoField::RowCount,
+    InspectorInfoField::TableName,
+    InspectorInfoField::Engine,
+    InspectorInfoField::RowFormat,
+    InspectorInfoField::TableCollation,
+    InspectorInfoField::CreateOptions,
+];
 
 const NO_CONNECTION_FEATURES: &[ConnectionFeature] = &[];
 const SERVER_FEATURES: &[ConnectionFeature] = &[
@@ -193,11 +157,23 @@ impl EngineFeatureProfile {
     }
 
     pub fn supported_inspector_tabs(&self) -> &'static [InspectorTab] {
-        self.inspector().tabs()
+        let Some(capabilities) = self.capabilities() else {
+            return DISCONNECTED_INSPECTOR_TABS;
+        };
+        if capabilities.row_level_security {
+            CONNECTED_INSPECTOR_TABS_WITH_RLS
+        } else {
+            CONNECTED_INSPECTOR_TABS
+        }
     }
 
     pub fn supported_inspector_info_fields(&self) -> &'static [InspectorInfoField] {
-        self.inspector().info_fields()
+        match self {
+            Self::Disconnected => DISCONNECTED_INSPECTOR_FIELDS,
+            Self::PostgreSQL => POSTGRESQL_INSPECTOR_FIELDS,
+            Self::SQLite => SQLITE_INSPECTOR_FIELDS,
+            Self::MySQL => MYSQL_INSPECTOR_FIELDS,
+        }
     }
 
     pub fn supports_inspector_tab(&self, tab: InspectorTab) -> bool {
@@ -249,20 +225,24 @@ impl EngineFeatureProfile {
         self.cycle_inspector_tab(current, -1)
     }
 
-    fn inspector(&self) -> InspectorProfile {
-        match self {
-            Self::Disconnected => DISCONNECTED_INSPECTOR,
-            Self::PostgreSQL => POSTGRESQL_INSPECTOR,
-            Self::SQLite => SQLITE_INSPECTOR,
-            Self::MySQL => MYSQL_INSPECTOR,
-        }
+    fn capabilities(&self) -> Option<EngineCapabilities> {
+        let database_type = match self {
+            Self::Disconnected => return None,
+            Self::PostgreSQL => DatabaseType::PostgreSQL,
+            Self::SQLite => DatabaseType::SQLite,
+            Self::MySQL => DatabaseType::MySQL,
+        };
+        Some(database_type.dialect().capabilities())
     }
 
     fn explain(&self) -> ExplainProfile {
-        match self {
-            Self::Disconnected => ExplainProfile::Unsupported,
-            Self::SQLite => ExplainProfile::QueryPlanOnly,
-            Self::PostgreSQL | Self::MySQL => ExplainProfile::QueryPlanAndAnalyze,
+        let Some(capabilities) = self.capabilities() else {
+            return ExplainProfile::Unsupported;
+        };
+        if capabilities.explain_analyze {
+            ExplainProfile::QueryPlanAndAnalyze
+        } else {
+            ExplainProfile::QueryPlanOnly
         }
     }
 
@@ -279,7 +259,7 @@ impl EngineFeatureProfile {
     }
 
     fn cycle_inspector_tab(&self, current: InspectorTab, delta: isize) -> InspectorTab {
-        let tabs = self.inspector().tabs();
+        let tabs = self.supported_inspector_tabs();
         let current = self.normalize_inspector_tab(current);
         let current_idx = tabs.iter().position(|tab| *tab == current).unwrap_or(0) as isize;
         let next_idx = (current_idx + delta).rem_euclid(tabs.len() as isize) as usize;
@@ -313,8 +293,8 @@ mod tests {
 
             assert!(!profile.supported_inspector_tabs().is_empty());
             assert!(!profile.supported_inspector_info_fields().is_empty());
-            assert!(has_unique_items(profile.inspector().tabs()));
-            assert!(has_unique_items(profile.inspector().info_fields()));
+            assert!(has_unique_items(profile.supported_inspector_tabs()));
+            assert!(has_unique_items(profile.supported_inspector_info_fields()));
             assert!(has_unique_items(profile.connection_features()));
 
             if profile.supports_plan_comparison() {

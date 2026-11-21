@@ -1,5 +1,6 @@
+use crate::domain::dialect::{Dialect as _, Postgres};
+
 use super::super::PostgresAdapter;
-use super::{quote_ident, quote_literal};
 
 impl PostgresAdapter {
     pub(in crate::adapters::postgres) fn tables_query() -> &'static str {
@@ -135,8 +136,8 @@ impl PostgresAdapter {
                   AND NOT a.attisdropped
             ) c
             ",
-            quote_literal(schema),
-            quote_literal(table)
+            Postgres.quote_text(schema),
+            Postgres.quote_text(table)
         )
     }
 
@@ -155,8 +156,8 @@ impl PostgresAdapter {
               AND n.nspname = {}
               AND c.relname = {}
             ",
-            quote_literal(schema),
-            quote_literal(table)
+            Postgres.quote_text(schema),
+            Postgres.quote_text(table)
         )
     }
 
@@ -172,7 +173,7 @@ impl PostgresAdapter {
         } else {
             let cols = order_columns
                 .iter()
-                .map(|col| quote_ident(col))
+                .map(|col| Postgres.quote_identifier(col))
                 .collect::<Vec<_>>()
                 .join(", ");
             format!(" ORDER BY {cols}")
@@ -180,8 +181,8 @@ impl PostgresAdapter {
 
         format!(
             "SELECT * FROM {}.{}{} LIMIT {} OFFSET {}",
-            quote_ident(schema),
-            quote_ident(table),
+            Postgres.quote_identifier(schema),
+            Postgres.quote_identifier(table),
             order_clause,
             limit,
             offset
@@ -224,8 +225,8 @@ impl PostgresAdapter {
                 ORDER BY idx.relname
             ) i
             ",
-            quote_literal(schema),
-            quote_literal(table)
+            Postgres.quote_text(schema),
+            Postgres.quote_text(table)
         )
     }
 
@@ -257,8 +258,8 @@ impl PostgresAdapter {
                 GROUP BY con.conname, n1.nspname, c1.relname, n2.nspname, c2.relname, con.confdeltype, con.confupdtype
             ) fk
             ",
-            quote_literal(schema),
-            quote_literal(table)
+            Postgres.quote_text(schema),
+            Postgres.quote_text(table)
         )
     }
 
@@ -290,8 +291,8 @@ impl PostgresAdapter {
             WHERE n.nspname = {}
               AND c.relname = {}
             ",
-            quote_literal(schema),
-            quote_literal(table)
+            Postgres.quote_text(schema),
+            Postgres.quote_text(table)
         )
     }
 
@@ -324,8 +325,8 @@ impl PostgresAdapter {
                   AND c.relname = {}
             ) t
             ",
-            quote_literal(schema),
-            quote_literal(table)
+            Postgres.quote_text(schema),
+            Postgres.quote_text(table)
         )
     }
 
@@ -344,8 +345,8 @@ impl PostgresAdapter {
                   AND c.relname = {}
             ) t
             ",
-            quote_literal(schema),
-            quote_literal(table)
+            Postgres.quote_text(schema),
+            Postgres.quote_text(table)
         )
     }
 
@@ -367,8 +368,8 @@ impl PostgresAdapter {
                 'foreign_keys', ({fks})
             )
             ",
-            schema = quote_literal(schema),
-            table = quote_literal(table),
+            schema = Postgres.quote_text(schema),
+            table = Postgres.quote_text(table),
             columns = Self::columns_query(schema, table).trim(),
             fks = Self::foreign_keys_query(schema, table).trim(),
         )
@@ -393,8 +394,8 @@ impl PostgresAdapter {
                 'table_info', ({table_info})
             )
             ",
-            schema = quote_literal(schema),
-            table = quote_literal(table),
+            schema = Postgres.quote_text(schema),
+            table = Postgres.quote_text(table),
             columns = Self::columns_query(schema, table).trim(),
             indexes = Self::indexes_query(schema, table).trim(),
             fks = Self::foreign_keys_query(schema, table).trim(),
@@ -650,6 +651,28 @@ mod tests {
                 sql.contains(ESCAPED),
                 "Hostile input must be quote_literal-escaped in: {sql}"
             );
+        }
+    }
+
+    mod backslash_names {
+        use super::*;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case::path_like("C:\\temp", "E'C:\\\\temp'")]
+        #[case::backslash_before_quote("a\\'b", "E'a\\\\''b'")]
+        #[case::lone_backslash("\\", "E'\\\\'")]
+        fn preview_and_detail_queries_use_escape_string_literals_for_backslashes(
+            #[case] name: &str,
+            #[case] literal: &str,
+        ) {
+            for sql in [
+                PostgresAdapter::preview_pk_columns_query(name, name),
+                PostgresAdapter::table_detail_query(name, name),
+            ] {
+                assert!(sql.contains(&format!("n.nspname = {literal}")), "{sql}");
+                assert!(sql.contains(&format!("c.relname = {literal}")), "{sql}");
+            }
         }
     }
 }

@@ -1,4 +1,5 @@
 use crate::domain::DatabaseType;
+use crate::domain::dialect::LexicalFamily;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenKind {
@@ -53,234 +54,75 @@ enum LexerState {
     InEscapeString,
 }
 
-pub(crate) const POSTGRESQL_KEYWORDS: &[&str] = &[
-    "SELECT",
-    "FROM",
-    "WHERE",
-    "JOIN",
-    "LEFT",
-    "RIGHT",
-    "INNER",
-    "OUTER",
-    "CROSS",
-    "ON",
-    "AND",
-    "OR",
-    "NOT",
-    "IN",
-    "IS",
-    "NULL",
-    "TRUE",
-    "FALSE",
-    "LIKE",
-    "ILIKE",
-    "BETWEEN",
-    "EXISTS",
-    "CASE",
-    "WHEN",
-    "THEN",
-    "ELSE",
-    "END",
-    "AS",
-    "DISTINCT",
-    "ORDER",
-    "BY",
-    "ASC",
-    "DESC",
-    "NULLS",
-    "FIRST",
-    "LAST",
-    "GROUP",
-    "HAVING",
-    "LIMIT",
-    "OFFSET",
-    "UNION",
-    "INTERSECT",
-    "EXCEPT",
-    "ALL",
-    "INSERT",
-    "INTO",
-    "VALUES",
-    "UPDATE",
-    "SET",
-    "DELETE",
-    "ONLY",
-    "CREATE",
-    "DROP",
-    "ALTER",
-    "TABLE",
-    "INDEX",
-    "VIEW",
-    "RETURNING",
-    "WITH",
-    "RECURSIVE",
-    "COALESCE",
-    "NULLIF",
-    "CAST",
-    "USING",
-    "FULL",
-    "NATURAL",
-    "LATERAL",
-    "WINDOW",
-    "OVER",
-    "PARTITION",
-    "ROWS",
-    "RANGE",
-    "UNBOUNDED",
-    "PRECEDING",
-    "FOLLOWING",
-    "CURRENT",
-    "ROW",
-    "DO",
-    "GRANT",
-    "REVOKE",
-    "COPY",
-    "CALL",
-    "MERGE",
-    "TRUNCATE",
-    "BEGIN",
-    "COMMIT",
-    "ROLLBACK",
-    "EXPLAIN",
-    "ANALYZE",
-    "SHOW",
-    "SAVEPOINT",
-    "START",
-    "TRANSACTION",
-    "RELEASE",
-];
-
-pub(crate) const MYSQL_KEYWORDS: &[&str] = &[
-    "SELECT",
-    "FROM",
-    "WHERE",
-    "JOIN",
-    "STRAIGHT_JOIN",
-    "LEFT",
-    "RIGHT",
-    "INNER",
-    "OUTER",
-    "CROSS",
-    "ON",
-    "AND",
-    "OR",
-    "NOT",
-    "IN",
-    "IS",
-    "NULL",
-    "TRUE",
-    "FALSE",
-    "LIKE",
-    "BETWEEN",
-    "EXISTS",
-    "CASE",
-    "WHEN",
-    "THEN",
-    "ELSE",
-    "END",
-    "AS",
-    "DISTINCT",
-    "ORDER",
-    "BY",
-    "ASC",
-    "DESC",
-    "GROUP",
-    "HAVING",
-    "LIMIT",
-    "OFFSET",
-    "UNION",
-    "INTERSECT",
-    "EXCEPT",
-    "ALL",
-    "INSERT",
-    "REPLACE",
-    "INTO",
-    "VALUES",
-    "CALL",
-    "UPDATE",
-    "SET",
-    "DELETE",
-    "CREATE",
-    "DROP",
-    "TRUNCATE",
-    "ALTER",
-    "TABLE",
-    "INDEX",
-    "VIEW",
-    "WITH",
-    "RECURSIVE",
-    "COALESCE",
-    "NULLIF",
-    "CAST",
-    "USING",
-    "FULL",
-    "NATURAL",
-    "WINDOW",
-    "OVER",
-    "PARTITION",
-    "ROWS",
-    "RANGE",
-    "UNBOUNDED",
-    "PRECEDING",
-    "FOLLOWING",
-    "CURRENT",
-    "ROW",
-    "EXPLAIN",
-    "ANALYZE",
-    "SHOW",
-    "DESCRIBE",
-    "DATABASE",
-    "DATABASES",
-    "PRIMARY",
-    "KEY",
-    "FOREIGN",
-    "REFERENCES",
-    "UNIQUE",
-    "DEFAULT",
-    "CONSTRAINT",
-    "CHECK",
-    "IF",
-    "CASCADE",
-    "RENAME",
-    "MODIFY",
-    "COLUMN",
-    "ENGINE",
-    "CHARACTER",
-    "CHARSET",
-    "COLLATE",
-    "AUTO_INCREMENT",
-    "SAVEPOINT",
-    "RELEASE",
-    "USE",
-    "FOR",
-    "LOCK",
-    "SHARE",
-    "START",
-    "TRANSACTION",
-    "COMMIT",
-    "ROLLBACK",
-];
-
 pub struct SqlLexer {
-    database_type: DatabaseType,
+    family: LexicalFamily,
 }
 
 impl SqlLexer {
     pub fn new(database_type: DatabaseType) -> Self {
-        Self { database_type }
-    }
-
-    fn is_mysql(&self) -> bool {
-        self.database_type == DatabaseType::MySQL
+        Self {
+            family: database_type.dialect().lexical_family(),
+        }
     }
 
     fn is_keyword(&self, word: &str) -> bool {
-        let keywords = if self.is_mysql() {
-            MYSQL_KEYWORDS
-        } else {
-            POSTGRESQL_KEYWORDS
-        };
-        keywords.contains(&word)
+        self.family.keywords().contains(&word)
+    }
+
+    fn dash_dash_comment_requires_whitespace(&self) -> bool {
+        match self.family {
+            LexicalFamily::PostgreSql => false,
+            LexicalFamily::MySql => true,
+        }
+    }
+
+    fn hash_starts_comment(&self) -> bool {
+        match self.family {
+            LexicalFamily::PostgreSql => false,
+            LexicalFamily::MySql => true,
+        }
+    }
+
+    fn backtick_quotes_identifier(&self) -> bool {
+        match self.family {
+            LexicalFamily::PostgreSql => false,
+            LexicalFamily::MySql => true,
+        }
+    }
+
+    fn backslash_escapes_in_single_quotes(&self) -> bool {
+        match self.family {
+            LexicalFamily::PostgreSql => false,
+            LexicalFamily::MySql => true,
+        }
+    }
+
+    fn recognizes_index_hints(&self) -> bool {
+        match self.family {
+            LexicalFamily::PostgreSql => false,
+            LexicalFamily::MySql => true,
+        }
+    }
+
+    fn recognizes_statement_modifiers(&self) -> bool {
+        match self.family {
+            LexicalFamily::PostgreSql => false,
+            LexicalFamily::MySql => true,
+        }
+    }
+
+    fn recognizes_upsert_update(&self) -> bool {
+        match self.family {
+            LexicalFamily::PostgreSql => false,
+            LexicalFamily::MySql => true,
+        }
+    }
+
+    fn recognizes_partition_selection(&self) -> bool {
+        match self.family {
+            LexicalFamily::PostgreSql => false,
+            LexicalFamily::MySql => true,
+        }
     }
 
     pub fn tokenize(&self, text: &str, cursor_pos: usize) -> Vec<Token> {
@@ -308,7 +150,7 @@ impl SqlLexer {
                     if c == '-'
                         && pos + 1 < end_pos
                         && chars[pos + 1] == '-'
-                        && (!self.is_mysql()
+                        && (!self.dash_dash_comment_requires_whitespace()
                             || pos + 2 == end_pos
                             || chars[pos + 2].is_ascii_whitespace())
                     {
@@ -326,7 +168,7 @@ impl SqlLexer {
                         continue;
                     }
 
-                    if self.is_mysql() && c == '#' {
+                    if self.hash_starts_comment() && c == '#' {
                         token_start = pos;
                         state = LexerState::InLineComment;
                         pos += 1;
@@ -380,16 +222,15 @@ impl SqlLexer {
                     // MySQL treats double quotes as strings; PostgreSQL treats them as identifiers.
                     if c == '"' {
                         token_start = pos;
-                        state = if self.is_mysql() {
-                            LexerState::InDoubleQuoteString
-                        } else {
-                            LexerState::InDoubleQuoteIdentifier
+                        state = match self.family {
+                            LexicalFamily::PostgreSql => LexerState::InDoubleQuoteIdentifier,
+                            LexicalFamily::MySql => LexerState::InDoubleQuoteString,
                         };
                         pos += 1;
                         continue;
                     }
 
-                    if self.is_mysql() && c == '`' {
+                    if self.backtick_quotes_identifier() && c == '`' {
                         token_start = pos;
                         state = LexerState::InBacktickIdentifier;
                         pos += 1;
@@ -485,7 +326,7 @@ impl SqlLexer {
                 }
 
                 LexerState::InSingleQuote => {
-                    if self.is_mysql() && c == '\\' && pos + 1 < end_pos {
+                    if self.backslash_escapes_in_single_quotes() && c == '\\' && pos + 1 < end_pos {
                         pos += 2;
                         continue;
                     }
@@ -722,7 +563,7 @@ impl SqlLexer {
     }
 
     fn is_mysql_index_hint_scope(&self, tokens: &[Token], scope_index: usize) -> bool {
-        if !self.is_mysql() {
+        if !self.recognizes_index_hints() {
             return false;
         }
 
@@ -767,7 +608,7 @@ impl SqlLexer {
         mut index: usize,
         modifiers: &[&str],
     ) -> usize {
-        if !self.is_mysql() {
+        if !self.recognizes_statement_modifiers() {
             return index;
         }
 
@@ -798,7 +639,7 @@ impl SqlLexer {
     }
 
     fn is_mysql_upsert_update(&self, tokens: &[Token], update_index: usize) -> bool {
-        if !self.is_mysql() {
+        if !self.recognizes_upsert_update() {
             return false;
         }
 
@@ -983,7 +824,7 @@ impl SqlLexer {
             }
         }
 
-        if self.is_mysql()
+        if self.recognizes_partition_selection()
             && *i < tokens.len()
             && matches!(&tokens[*i].kind, TokenKind::Keyword(kw) if kw == "PARTITION")
         {
@@ -1746,6 +1587,30 @@ mod tests {
                     alias: Some("u".to_string()),
                 }]
             );
+        }
+    }
+
+    mod sqlite_syntax {
+        use super::*;
+
+        type TokenSummary = Vec<(TokenKind, String, usize, usize)>;
+
+        fn token_summary(database_type: DatabaseType, sql: &str) -> TokenSummary {
+            SqlLexer::new(database_type)
+                .tokenize(sql, sql.chars().count())
+                .into_iter()
+                .map(|token| (token.kind, token.text, token.start, token.end))
+                .collect()
+        }
+
+        #[test]
+        fn tokens_follow_postgresql_rules_where_mysql_differs() {
+            let sql = "SELECT 1 # FROM users";
+
+            let sqlite = token_summary(DatabaseType::SQLite, sql);
+
+            assert_eq!(sqlite, token_summary(DatabaseType::PostgreSQL, sql));
+            assert_ne!(sqlite, token_summary(DatabaseType::MySQL, sql));
         }
     }
 

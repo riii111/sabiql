@@ -3,14 +3,16 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::connection::ConnectionEndpoint;
 use crate::domain::{
-    Column, ColumnAttributes, ConnectionId, DatabaseMetadata, DatabaseType, FkAction, ForeignKey,
-    Table, TableSignature, TableSignatureSnapshot, TableSummary,
+    Column, ColumnAttributes, ConnectionId, DatabaseMetadata, FkAction, ForeignKey, Table,
+    TableSignature, TableSignatureSnapshot, TableSummary,
 };
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
 use crate::services::AppServices;
+use crate::test_support::endpoint;
 use crate::test_support::table::minimal as minimal_table;
 use crate::update::action::{Action, ConnectionTarget, SmartErRefreshFetched};
 use crate::update::reducer::reduce;
@@ -18,7 +20,7 @@ use crate::update::reducer::reduce;
 const MAX_STEPS: usize = 10_000;
 
 struct PendingFetch {
-    dsn: String,
+    endpoint: Arc<ConnectionEndpoint>,
     run_id: u64,
     schema: String,
     table: String,
@@ -62,7 +64,7 @@ impl CacheFlowDriver {
             .unwrap_or_else(|| panic!("no pending fetch for {qualified_name}"));
         let fetch = self.pending_fetches.remove(index);
         self.channel.push_back(Action::TableDetailCached {
-            dsn: fetch.dsn,
+            endpoint: fetch.endpoint,
             run_id: fetch.run_id,
             schema: fetch.schema,
             table: fetch.table,
@@ -99,12 +101,14 @@ impl CacheFlowDriver {
             .count()
     }
 
-    fn smart_refresh_run(&self) -> Option<(String, u64)> {
+    fn smart_refresh_run(&self) -> Option<(Arc<ConnectionEndpoint>, u64)> {
         self.io_effects
             .iter()
             .rev()
             .find_map(|effect| match effect {
-                Effect::SmartErRefresh { dsn, run_id } => Some((dsn.clone(), *run_id)),
+                Effect::SmartErRefresh { endpoint, run_id } => {
+                    Some((Arc::clone(endpoint), *run_id))
+                }
                 _ => None,
             })
     }
@@ -150,14 +154,14 @@ impl CacheFlowDriver {
                     .push_back(Action::ProcessPrefetchQueue { run_id });
             }
             Effect::PrefetchTableColumnsAndFks {
-                dsn,
+                endpoint,
                 run_id,
                 schema,
                 table,
             } => {
                 self.fetched_tables.push(format!("{schema}.{table}"));
                 self.pending_fetches.push(PendingFetch {
-                    dsn,
+                    endpoint,
                     run_id,
                     schema,
                     table,
@@ -217,11 +221,10 @@ fn table(name: &str, columns: &[&str], references: &[&str]) -> Table {
 
 fn postgres_state(tables: &[&str]) -> AppState {
     let mut state = AppState::new("test".to_string());
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::new(),
         "postgres",
-        DatabaseType::PostgreSQL,
-        POSTGRES_DSN,
+        &endpoint::postgres(POSTGRES_DSN),
     );
     state.session.mark_connected(metadata(tables));
     state
@@ -261,11 +264,11 @@ fn signatures(names: &[&str]) -> Arc<TableSignatureSnapshot> {
 
 fn open_er_diagram(driver: &mut CacheFlowDriver, tables: &[&str]) {
     driver.dispatch(Action::ErOpenDiagram);
-    let (dsn, run_id) = driver
+    let (endpoint, run_id) = driver
         .smart_refresh_run()
         .expect("opening the ER diagram should start a smart refresh");
     driver.dispatch(Action::SmartErRefreshFetched(SmartErRefreshFetched {
-        dsn,
+        endpoint,
         run_id,
         new_metadata: metadata(tables),
         signature_snapshot: signatures(tables),
@@ -293,12 +296,10 @@ mod completion {
     #[test]
     fn mysql_offers_active_database() {
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_target(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "mysql",
-            DatabaseType::MySQL,
-            "mysql://user@localhost:3306/app",
-            Some("app"),
+            &endpoint::mysql("mysql://user@localhost:3306/app", Some("app")),
         );
         state.session.mark_connected(metadata(&["users"]));
         open_sql_modal(&mut state, "SELECT * FROM ");
@@ -375,10 +376,8 @@ mod cache_lifetime {
 
         driver.dispatch(Action::SwitchConnection(ConnectionTarget {
             id: ConnectionId::new(),
-            dsn: "postgres://localhost/other".to_string(),
             name: "other".to_string(),
-            database_type: DatabaseType::PostgreSQL,
-            database: None,
+            endpoint: endpoint::postgres("postgres://localhost/other"),
         }));
 
         assert!(!driver.is_cached("public.users"));
@@ -398,7 +397,7 @@ mod cache_lifetime {
             ("postgres://localhost/other", run_id),
         ] {
             driver.dispatch(Action::TableDetailCached {
-                dsn: dsn.to_string(),
+                endpoint: endpoint::postgres(dsn),
                 run_id: stale_run_id,
                 schema: "public".to_string(),
                 table: "users".to_string(),
@@ -415,12 +414,10 @@ mod cache_lifetime {
     #[test]
     fn pending_mysql_probe_rejects_prefetch_results() {
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_target(
+        state.session.activate_connection(
             &ConnectionId::from_string("mysql-current"),
             "mysql-current",
-            DatabaseType::MySQL,
-            "mysql://localhost/current",
-            Some("current"),
+            &endpoint::mysql("mysql://localhost/current", Some("current")),
         );
         state.session.mark_connected(metadata(&["users"]));
         let mut driver = CacheFlowDriver::new(state);
@@ -435,12 +432,11 @@ mod cache_lifetime {
         let _ = driver.state.session.begin_mysql_connection_probe(
             &ConnectionId::from_string("mysql-target"),
             "mysql-target",
-            "mysql://localhost/target",
-            Some("target"),
+            &endpoint::mysql("mysql://localhost/target", Some("target")),
         );
 
         driver.dispatch(Action::TableDetailCached {
-            dsn: "mysql://localhost/current".to_string(),
+            endpoint: endpoint::mysql("mysql://localhost/current", Some("current")),
             run_id,
             schema: "public".to_string(),
             table: "users".to_string(),

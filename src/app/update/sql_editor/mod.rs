@@ -17,6 +17,7 @@ mod tests {
     use crate::policy::write::sql_risk::AcknowledgeReason;
     use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel};
     use crate::services::AppServices;
+    use crate::test_support::endpoint;
     use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
     use crate::update::reducer::route;
     use crate::update::test_fixtures;
@@ -247,12 +248,10 @@ mod tests {
         #[test]
         fn submit_mysql_alter_table_confirmation_uses_generic_execution_effect() {
             let mut state = sql_modal_state();
-            state.session.activate_connection_with_target(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "mysql",
-                DatabaseType::MySQL,
-                "mysql://test",
-                Some("app"),
+                &endpoint::mysql("mysql://test", Some("app")),
             );
             state
                 .sql_modal
@@ -1076,18 +1075,15 @@ mod tests {
         #[test]
         fn blocks_sql_modal_open_and_submit() {
             let mut state = AppState::new("test".to_string());
-            state.session.activate_connection_with_target(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "current",
-                DatabaseType::MySQL,
-                "mysql://current",
-                Some("app"),
+                &endpoint::mysql("mysql://current", Some("app")),
             );
             let _ = state.session.begin_mysql_connection_probe(
                 &ConnectionId::new(),
                 "target",
-                "mysql://target",
-                Some("app"),
+                &endpoint::mysql("mysql://target", Some("app")),
             );
 
             let effects = reduce_sql_modal(

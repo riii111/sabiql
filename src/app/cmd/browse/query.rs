@@ -88,7 +88,7 @@ pub(in crate::cmd) async fn run(
 ) {
     match effect {
         Effect::ExecutePreview {
-            dsn,
+            endpoint,
             schema,
             table,
             generation,
@@ -103,7 +103,7 @@ pub(in crate::cmd) async fn run(
             query_tasks
                 .replace(async move {
                     match executor
-                        .execute_preview(&dsn, &schema, &table, limit, offset)
+                        .execute_preview(&endpoint, &schema, &table, limit, offset)
                         .await
                     {
                         Ok(result) => {
@@ -133,8 +133,7 @@ pub(in crate::cmd) async fn run(
         }
 
         Effect::ExecuteExplain {
-            dsn,
-            database_type,
+            endpoint,
             database_generation,
             run_id,
             query,
@@ -142,12 +141,13 @@ pub(in crate::cmd) async fn run(
             is_analyze,
             access_mode,
         } => {
+            let database_type = endpoint.engine();
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
 
             query_tasks
                 .replace(async move {
-                    match executor.execute_adhoc(&dsn, &query, access_mode).await {
+                    match executor.execute_adhoc(&endpoint, &query, access_mode).await {
                         Ok(result) => {
                             let plan_result = match database_type {
                                 DatabaseType::SQLite => sqlite_explain_query_plan_text_from_result(
@@ -203,7 +203,7 @@ pub(in crate::cmd) async fn run(
         }
 
         Effect::ExecuteAdhoc {
-            dsn,
+            endpoint,
             run_id,
             query,
             access_mode,
@@ -215,7 +215,7 @@ pub(in crate::cmd) async fn run(
             let history_scope = state.session.query_history_scope();
             query_tasks
                 .replace(async move {
-                    let result = executor.execute_adhoc(&dsn, &query, access_mode).await;
+                    let result = executor.execute_adhoc(&endpoint, &query, access_mode).await;
                     match result {
                         Ok(result) => {
                             let mut result = result;
@@ -267,7 +267,7 @@ pub(in crate::cmd) async fn run(
         }
 
         Effect::ExecuteWrite {
-            dsn,
+            endpoint,
             run_id,
             query,
             access_mode,
@@ -280,7 +280,7 @@ pub(in crate::cmd) async fn run(
 
             query_tasks
                 .replace(async move {
-                    match executor.execute_write(&dsn, &query, access_mode).await {
+                    match executor.execute_write(&endpoint, &query, access_mode).await {
                         Ok(result) => {
                             let mut result = result;
                             mask_mysql_diagnostics(&mut result.diagnostics);
@@ -323,20 +323,17 @@ pub(in crate::cmd) async fn run(
         }
 
         Effect::ExportCsv {
-            dsn,
+            endpoint,
             run_id,
             query,
             file_name,
         } => {
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
-            let export_dsn = dsn.clone();
 
             query_tasks
                 .replace(async move {
-                    let result = executor
-                        .export_to_csv(&export_dsn, &query, &file_name)
-                        .await;
+                    let result = executor.export_to_csv(&endpoint, &query, &file_name).await;
                     match result {
                         Ok(path) => {
                             tx.send(Action::CsvExportSucceeded {
@@ -363,7 +360,6 @@ pub(in crate::cmd) async fn run(
             columns,
             values,
             row_count,
-            ..
         } => {
             let tx = action_tx.clone();
             let exporter = Arc::clone(cached_result_exporter);
@@ -413,6 +409,7 @@ mod tests {
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
+    use crate::test_support::endpoint;
     use crate::update::action::Action;
 
     async fn run_effect(effect: Effect, executor: MockQueryExecutor) -> Action {
@@ -441,11 +438,11 @@ mod tests {
 
         use super::*;
         use crate::cmd::single_task_owner::SingleTaskOwner;
+        use crate::domain::CommandTag;
         use crate::domain::connection::ConnectionId;
         use crate::domain::query_history::{
             QueryHistoryEntry, QueryHistoryScope, QueryResultStatus,
         };
-        use crate::domain::{CommandTag, DatabaseType};
         use crate::ports::outbound::{
             CachedResultExporter, DbOperationError, QueryExecutor, QueryHistoryError,
             QueryHistoryStore,
@@ -521,12 +518,10 @@ mod tests {
 
         fn connected_state() -> AppState {
             let mut state = AppState::new("test".to_string());
-            state.session.activate_connection_with_target(
+            state.session.activate_connection(
                 &ConnectionId::from_string("connection"),
                 "connection",
-                DatabaseType::MySQL,
-                "dsn://test",
-                Some("analytics"),
+                &endpoint::mysql("dsn://test", Some("analytics")),
             );
             state
         }
@@ -611,7 +606,7 @@ mod tests {
 
             let (action, calls) = run_with_history(
                 Effect::ExecuteAdhoc {
-                    dsn: "dsn://test".to_string(),
+                    endpoint: endpoint::mysql("dsn://test", Some("analytics")),
                     run_id: 1,
                     query: "UPDATE users SET active = true".to_string(),
                     access_mode: AccessMode::ReadOnly,
@@ -644,7 +639,7 @@ mod tests {
 
             let (action, calls) = run_with_history(
                 Effect::ExecuteAdhoc {
-                    dsn: "dsn://test".to_string(),
+                    endpoint: endpoint::mysql("dsn://test", Some("analytics")),
                     run_id: 2,
                     query: "SELECT broken".to_string(),
                     access_mode: AccessMode::ReadOnly,
@@ -675,7 +670,7 @@ mod tests {
 
             let (action, calls) = run_with_history(
                 Effect::ExecuteWrite {
-                    dsn: "dsn://test".to_string(),
+                    endpoint: endpoint::mysql("dsn://test", Some("analytics")),
                     run_id: 3,
                     query: "UPDATE users SET active = true".to_string(),
                     access_mode: AccessMode::ReadWrite,
@@ -715,7 +710,7 @@ mod tests {
 
             let (action, calls) = run_with_history(
                 Effect::ExecuteWrite {
-                    dsn: "dsn://test".to_string(),
+                    endpoint: endpoint::mysql("dsn://test", Some("analytics")),
                     run_id: 4,
                     query: "UPDATE users SET active = false".to_string(),
                     access_mode: AccessMode::ReadWrite,
@@ -752,7 +747,7 @@ mod tests {
 
             let (action, calls) = run_with_history(
                 Effect::ExecuteAdhoc {
-                    dsn: "dsn://test".to_string(),
+                    endpoint: endpoint::postgres("dsn://test"),
                     run_id: 5,
                     query: "SELECT 1".to_string(),
                     access_mode: AccessMode::ReadOnly,
@@ -780,7 +775,7 @@ mod tests {
 
             let (action, calls) = run_with_history(
                 Effect::ExecuteAdhoc {
-                    dsn: "dsn://test".to_string(),
+                    endpoint: endpoint::postgres("dsn://test"),
                     run_id: 8,
                     query: "SELECT broken".to_string(),
                     access_mode: AccessMode::ReadOnly,
@@ -811,7 +806,7 @@ mod tests {
 
             let (action, calls) = run_with_history(
                 Effect::ExecuteWrite {
-                    dsn: "dsn://test".to_string(),
+                    endpoint: endpoint::postgres("dsn://test"),
                     run_id: 6,
                     query: "UPDATE users SET active = true".to_string(),
                     access_mode: AccessMode::ReadWrite,
@@ -846,7 +841,7 @@ mod tests {
 
             let (action, calls) = run_with_history(
                 Effect::ExecuteWrite {
-                    dsn: "dsn://test".to_string(),
+                    endpoint: endpoint::postgres("dsn://test"),
                     run_id: 7,
                     query: "UPDATE users SET active = false".to_string(),
                     access_mode: AccessMode::ReadWrite,
@@ -1084,7 +1079,6 @@ mod tests {
             let run = test_fixtures::run_one_effect(
                 &runner,
                 Effect::ExportCsvFromCache {
-                    dsn: "sqlite:///tmp/test.db".to_string(),
                     run_id: 7,
                     file_name: test_file_name("success"),
                     columns: vec!["id".to_string(), "payload".to_string()],
@@ -1126,7 +1120,6 @@ mod tests {
             let run = test_fixtures::run_one_effect(
                 &runner,
                 Effect::ExportCsvFromCache {
-                    dsn: "sqlite:///tmp/test.db".to_string(),
                     run_id: 8,
                     file_name: test_file_name("failure"),
                     columns: vec!["id".to_string()],
@@ -1159,6 +1152,7 @@ mod tests {
         use crate::ports::outbound::connection_store::MockConnectionStore;
         use crate::ports::outbound::metadata::MockMetadataProvider;
         use crate::ports::outbound::query_executor::MockQueryExecutor;
+        use crate::test_support::endpoint;
         use crate::update::action::{Action, QueryFailureContext};
 
         #[tokio::test]
@@ -1180,7 +1174,7 @@ mod tests {
             let run = test_fixtures::run_one_effect(
                 &runner,
                 Effect::ExecutePreview {
-                    dsn: "dsn://test".to_string(),
+                    endpoint: endpoint::postgres("dsn://test"),
                     schema: "public".to_string(),
                     table: "users".to_string(),
                     generation: 1,
@@ -1224,7 +1218,7 @@ mod tests {
             let run = test_fixtures::run_one_effect(
                 &runner,
                 Effect::ExecutePreview {
-                    dsn: "dsn://test".to_string(),
+                    endpoint: endpoint::postgres("dsn://test"),
                     schema: "public".to_string(),
                     table: "users".to_string(),
                     generation: 1,
@@ -1319,7 +1313,7 @@ mod tests {
 
             let action = run_effect(
                 Effect::ExecuteAdhoc {
-                    dsn: "dsn://test".to_string(),
+                    endpoint: endpoint::postgres("dsn://test"),
                     run_id: 1,
                     query: "SELECT 1".to_string(),
                     access_mode: AccessMode::ReadOnly,
@@ -1357,7 +1351,7 @@ mod tests {
 
             let action = run_effect(
                 Effect::ExecuteWrite {
-                    dsn: "dsn://test".to_string(),
+                    endpoint: endpoint::postgres("dsn://test"),
                     run_id: 3,
                     query: "INSERT INTO users VALUES (1)".to_string(),
                     access_mode: AccessMode::ReadWrite,
@@ -1382,7 +1376,7 @@ mod tests {
 
     mod execute_access_mode {
         use super::*;
-        use crate::domain::{DatabaseType, QueryResult, QuerySource, QueryValue};
+        use crate::domain::{QueryResult, QuerySource, QueryValue};
         use crate::ports::outbound::DbOperationError;
 
         #[tokio::test]
@@ -1396,7 +1390,7 @@ mod tests {
 
             let action = run_effect(
                 Effect::ExecuteAdhoc {
-                    dsn: "dsn://test".to_string(),
+                    endpoint: endpoint::postgres("dsn://test"),
                     run_id: 1,
                     query: "SELECT 1".to_string(),
                     access_mode: AccessMode::ReadOnly,
@@ -1419,8 +1413,7 @@ mod tests {
 
             let action = run_effect(
                 Effect::ExecuteExplain {
-                    dsn: "dsn://test".to_string(),
-                    database_type: DatabaseType::PostgreSQL,
+                    endpoint: endpoint::postgres("dsn://test"),
                     database_generation: 0,
                     run_id: 2,
                     query: "EXPLAIN SELECT 1".to_string(),
@@ -1450,8 +1443,7 @@ mod tests {
 
             let action = run_effect(
                 Effect::ExecuteExplain {
-                    dsn: "dsn://test".to_string(),
-                    database_type: DatabaseType::SQLite,
+                    endpoint: endpoint::sqlite("dsn://test"),
                     database_generation: 0,
                     run_id: 2,
                     query: "EXPLAIN QUERY PLAN SELECT 1".to_string(),
@@ -1499,8 +1491,7 @@ mod tests {
 
             let action = run_effect(
                 Effect::ExecuteExplain {
-                    dsn: "dsn://test".to_string(),
-                    database_type: DatabaseType::SQLite,
+                    endpoint: endpoint::sqlite("dsn://test"),
                     database_generation: 0,
                     run_id: 3,
                     query: "EXPLAIN QUERY PLAN SELECT 1".to_string(),
@@ -1547,8 +1538,7 @@ mod tests {
 
             let action = run_effect(
                 Effect::ExecuteExplain {
-                    dsn: "dsn://test".to_string(),
-                    database_type: DatabaseType::SQLite,
+                    endpoint: endpoint::sqlite("dsn://test"),
                     database_generation: 0,
                     run_id: 4,
                     query: "EXPLAIN QUERY PLAN SELECT 1".to_string(),
@@ -1590,7 +1580,7 @@ mod tests {
 
             let action = run_effect(
                 Effect::ExecuteWrite {
-                    dsn: "dsn://test".to_string(),
+                    endpoint: endpoint::postgres("dsn://test"),
                     run_id: 3,
                     query: "INSERT INTO users VALUES (1)".to_string(),
                     access_mode: AccessMode::ReadWrite,

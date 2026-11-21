@@ -4,6 +4,7 @@ pub mod column;
 pub mod command_tag;
 pub mod connection;
 pub mod diagnostic;
+pub mod dialect;
 pub mod er;
 pub mod explain_plan;
 pub mod foreign_key;
@@ -49,5 +50,5 @@ pub use connection::{
     ConnectionConfig, ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType,
     MySqlConnectionConfig, MySqlSslMode, MySqlTransport, PostgresConnectionConfig,
     SqliteConnectionConfig, SqliteConnectionConfigError, SqlitePathError, SslMode,
-    classify_sqlite_metadata_error, classify_sqlite_read_error, sqlite_path_from_dsn,
+    classify_sqlite_metadata_error, classify_sqlite_read_error,
 };

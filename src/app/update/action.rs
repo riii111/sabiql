@@ -1,8 +1,8 @@
-use std::fmt;
 use std::sync::Arc;
 
 use crate::domain::connection::{
-    ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType, ServiceEntry,
+    ConnectionEndpoint, ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType,
+    ServiceEntry,
 };
 use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
 use crate::model::app_state::AppState;
@@ -11,7 +11,7 @@ use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::Prefix;
-use crate::policy::{FeatureRequirement, mask_password};
+use crate::policy::FeatureRequirement;
 use crate::ports::outbound::clipboard::ClipboardError;
 use crate::ports::outbound::{AppSettings, DbOperationError};
 
@@ -209,7 +209,7 @@ pub enum ModalKind {
 
 #[derive(Debug, Clone)]
 pub struct SmartErRefreshFetched {
-    pub dsn: String,
+    pub endpoint: Arc<ConnectionEndpoint>,
     pub run_id: u64,
     pub new_metadata: Arc<DatabaseMetadata>,
     pub signature_snapshot: Arc<TableSignatureSnapshot>,
@@ -217,7 +217,7 @@ pub struct SmartErRefreshFetched {
 
 #[derive(Debug, Clone)]
 pub struct SmartErRefreshError {
-    pub dsn: String,
+    pub endpoint: Arc<ConnectionEndpoint>,
     pub run_id: u64,
     pub error: DbOperationError,
     pub new_metadata: Option<Arc<DatabaseMetadata>>,
@@ -247,39 +247,20 @@ pub struct TableTarget {
     pub generation: u64,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ConnectionTarget {
     pub id: ConnectionId,
-    pub dsn: String,
     pub name: String,
-    pub database_type: DatabaseType,
-    pub database: Option<String>,
+    pub endpoint: Arc<ConnectionEndpoint>,
 }
 
 impl ConnectionTarget {
-    pub fn from_profile(profile: &ConnectionProfile, dsn: String) -> Self {
+    pub fn from_profile(profile: &ConnectionProfile) -> Self {
         Self {
             id: profile.id.clone(),
-            dsn,
             name: profile.display_name().to_string(),
-            database_type: profile.database_type(),
-            database: profile
-                .mysql_config()
-                .and_then(|config| config.database.clone()),
+            endpoint: Arc::new(ConnectionEndpoint::from(&profile.config)),
         }
-    }
-}
-
-impl fmt::Debug for ConnectionTarget {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("ConnectionTarget")
-            .field("id", &self.id)
-            .field("dsn", &mask_password(&self.dsn))
-            .field("name", &self.name)
-            .field("database_type", &self.database_type)
-            .field("database", &self.database)
-            .finish()
     }
 }
 
@@ -453,7 +434,7 @@ pub enum Action {
         effective_user: Option<String>,
     },
     TableDetailLoaded {
-        dsn: String,
+        endpoint: Arc<ConnectionEndpoint>,
         run_id: u64,
         outcome: Result<Box<Table>, DbOperationError>,
         generation: u64,
@@ -464,14 +445,14 @@ pub enum Action {
         table: String,
     },
     TableDetailCached {
-        dsn: String,
+        endpoint: Arc<ConnectionEndpoint>,
         run_id: u64,
         schema: String,
         table: String,
         detail: Box<Table>,
     },
     TableDetailCacheFailed {
-        dsn: String,
+        endpoint: Arc<ConnectionEndpoint>,
         run_id: u64,
         schema: String,
         table: String,
@@ -782,7 +763,7 @@ fn text_feature_requirement(target: InputTarget, edit: TextEdit) -> FeatureRequi
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::connection::MySqlSslMode;
+    use crate::domain::connection::{MySqlConnectionConfig, MySqlSslMode};
     use rstest::rstest;
 
     #[test]
@@ -797,29 +778,35 @@ mod tests {
             MySqlSslMode::Required,
         )
         .unwrap();
-        let target = ConnectionTarget::from_profile(&profile, "mysql://dsn".to_string());
+        let target = ConnectionTarget::from_profile(&profile);
 
         assert_eq!(target.id, profile.id);
-        assert_eq!(target.dsn, "mysql://dsn");
+        assert_eq!(*target.endpoint, ConnectionEndpoint::from(&profile.config));
         assert_eq!(target.name, profile.display_name());
-        assert_eq!(target.database_type, profile.database_type());
-        assert_eq!(target.database.as_deref(), Some("app"));
+        assert_eq!(target.endpoint.engine(), profile.database_type());
+        assert_eq!(target.endpoint.selected_database(), Some("app"));
     }
 
     #[test]
     fn connection_target_debug_masks_mysql_password() {
         let target = ConnectionTarget {
             id: ConnectionId::from_string("mysql"),
-            dsn: "mysql://user:secret@localhost:3306/app".to_string(),
             name: "MySQL".to_string(),
-            database_type: DatabaseType::MySQL,
-            database: Some("app".to_string()),
+            endpoint: Arc::new(ConnectionEndpoint::MySQL(MySqlConnectionConfig::new(
+                "localhost",
+                3306,
+                Some("app".to_string()),
+                "user",
+                "secret",
+                MySqlSslMode::Required,
+            ))),
         };
 
         let debug = format!("{target:?}");
 
         assert!(!debug.contains("secret"));
-        assert!(debug.contains("mysql://user:****@localhost"));
+        assert!(debug.contains(r#"password: "****""#));
+        assert!(debug.contains(r#"host: "localhost""#));
     }
 
     #[test]

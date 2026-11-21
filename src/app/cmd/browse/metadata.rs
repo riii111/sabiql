@@ -5,17 +5,14 @@ use tokio::sync::mpsc;
 use crate::cmd::effect::Effect;
 use crate::cmd::metadata_task::MetadataTaskRegistry;
 use crate::cmd::single_task_owner::SingleTaskOwner;
-use crate::cmd::sqlite_path_validate::validate_sqlite_database_path;
-use crate::domain::sqlite_path_from_dsn;
-use crate::policy::sqlite_path::to_db_operation_error;
-use crate::ports::outbound::{DbOperationError, MetadataProvider, SqlitePathValidator};
+use crate::domain::connection::ConnectionEndpoint;
+use crate::ports::outbound::{DbOperationError, MetadataProvider};
 use crate::update::action::Action;
 
 pub(in crate::cmd) async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
-    sqlite_path_validator: &Arc<dyn SqlitePathValidator>,
     table_detail_tasks: &SingleTaskOwner,
     metadata_tasks: &Arc<MetadataTaskRegistry>,
 ) {
@@ -23,22 +20,26 @@ pub(in crate::cmd) async fn run(
         Effect::CancelMetadataTasks => {
             metadata_tasks.cancel().await;
         }
-        Effect::FetchMetadata { dsn, run_id } => {
+        Effect::FetchMetadata { endpoint, run_id } => {
             fetch_metadata(
                 action_tx,
                 metadata_provider,
-                sqlite_path_validator,
                 metadata_tasks,
-                dsn,
+                endpoint,
                 run_id,
-            )
-            .await;
+            );
         }
-        Effect::FetchEffectiveUser { dsn, run_id } => {
-            fetch_effective_user(action_tx, metadata_provider, metadata_tasks, dsn, run_id);
+        Effect::FetchEffectiveUser { endpoint, run_id } => {
+            fetch_effective_user(
+                action_tx,
+                metadata_provider,
+                metadata_tasks,
+                endpoint,
+                run_id,
+            );
         }
         Effect::FetchTableDetail {
-            dsn,
+            endpoint,
             schema,
             table,
             generation,
@@ -47,7 +48,7 @@ pub(in crate::cmd) async fn run(
             fetch_table_detail(
                 action_tx,
                 metadata_provider,
-                dsn,
+                endpoint,
                 schema,
                 table,
                 generation,
@@ -57,7 +58,7 @@ pub(in crate::cmd) async fn run(
             .await;
         }
         Effect::PrefetchTableColumnsAndFks {
-            dsn,
+            endpoint,
             run_id,
             schema,
             table,
@@ -66,7 +67,7 @@ pub(in crate::cmd) async fn run(
                 action_tx,
                 metadata_provider,
                 metadata_tasks,
-                dsn,
+                endpoint,
                 run_id,
                 schema,
                 table,
@@ -89,33 +90,18 @@ pub(in crate::cmd) async fn run(
     }
 }
 
-async fn fetch_metadata(
+fn fetch_metadata(
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
-    sqlite_path_validator: &Arc<dyn SqlitePathValidator>,
     metadata_tasks: &Arc<MetadataTaskRegistry>,
-    dsn: String,
+    endpoint: Arc<ConnectionEndpoint>,
     run_id: u64,
 ) {
-    if let Some(path) = sqlite_path_from_dsn(&dsn)
-        && let Err(error) =
-            validate_sqlite_database_path(sqlite_path_validator, path.to_string()).await
-    {
-        action_tx
-            .send(Action::MetadataFailed {
-                run_id,
-                error: to_db_operation_error(&error),
-            })
-            .await
-            .ok();
-        return;
-    }
-
     let provider = Arc::clone(metadata_provider);
     let tx = action_tx.clone();
 
     MetadataTaskRegistry::spawn(metadata_tasks, async move {
-        match provider.fetch_metadata(&dsn).await {
+        match provider.fetch_metadata(&endpoint).await {
             Ok(metadata) => {
                 let metadata = Arc::new(metadata);
                 tx.send(Action::MetadataLoaded { run_id, metadata })
@@ -135,14 +121,18 @@ fn fetch_effective_user(
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
     metadata_tasks: &Arc<MetadataTaskRegistry>,
-    dsn: String,
+    endpoint: Arc<ConnectionEndpoint>,
     run_id: u64,
 ) {
     let provider = Arc::clone(metadata_provider);
     let tx = action_tx.clone();
 
     MetadataTaskRegistry::spawn(metadata_tasks, async move {
-        let effective_user = provider.fetch_effective_user(&dsn).await.ok().flatten();
+        let effective_user = provider
+            .fetch_effective_user(&endpoint)
+            .await
+            .ok()
+            .flatten();
         tx.send(Action::EffectiveUserLoaded {
             run_id,
             effective_user,
@@ -155,7 +145,7 @@ fn fetch_effective_user(
 async fn fetch_table_detail(
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
-    dsn: String,
+    endpoint: Arc<ConnectionEndpoint>,
     schema: String,
     table: String,
     generation: u64,
@@ -168,11 +158,11 @@ async fn fetch_table_detail(
     table_detail_tasks
         .replace(async move {
             let outcome = provider
-                .fetch_table_detail(&dsn, &schema, &table)
+                .fetch_table_detail(&endpoint, &schema, &table)
                 .await
                 .map(Box::new);
             tx.send(Action::TableDetailLoaded {
-                dsn,
+                endpoint,
                 run_id,
                 outcome,
                 generation,
@@ -187,7 +177,7 @@ fn prefetch_table_detail(
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
     metadata_tasks: &Arc<MetadataTaskRegistry>,
-    dsn: String,
+    endpoint: Arc<ConnectionEndpoint>,
     run_id: u64,
     schema: String,
     table: String,
@@ -198,13 +188,13 @@ fn prefetch_table_detail(
     MetadataTaskRegistry::spawn(metadata_tasks, async move {
         let result = tokio::time::timeout(
             tokio::time::Duration::from_secs(10),
-            provider.fetch_table_columns_and_fks(&dsn, &schema, &table),
+            provider.fetch_table_columns_and_fks(&endpoint, &schema, &table),
         )
         .await;
         match result {
             Ok(Ok(detail)) => {
                 tx.send(Action::TableDetailCached {
-                    dsn,
+                    endpoint,
                     run_id,
                     schema,
                     table,
@@ -215,7 +205,7 @@ fn prefetch_table_detail(
             }
             Ok(Err(e)) => {
                 tx.send(Action::TableDetailCacheFailed {
-                    dsn,
+                    endpoint,
                     run_id,
                     schema,
                     table,
@@ -226,7 +216,7 @@ fn prefetch_table_detail(
             }
             Err(_) => {
                 tx.send(Action::TableDetailCacheFailed {
-                    dsn,
+                    endpoint,
                     run_id,
                     schema,
                     table,
@@ -248,106 +238,16 @@ mod tests {
     use crate::cmd::effect::Effect;
     use crate::cmd::test_fixtures;
 
-    use crate::domain::SqlitePathError;
     use crate::model::app_state::AppState;
     use crate::ports::outbound::DbOperationError;
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
+    use crate::test_support::endpoint;
     use crate::update::action::Action;
 
     mod fetch_metadata {
         use super::*;
-
-        #[tokio::test]
-        async fn sqlite_missing_file_fails_before_provider_call() {
-            use tempfile::tempdir;
-
-            let dir = tempdir().unwrap();
-            let path = dir.path().join("missing.db");
-            let dsn = format!("sqlite://{}", path.display());
-            let mut mock_provider = MockMetadataProvider::new();
-            mock_provider.expect_fetch_metadata().never();
-
-            let (tx, mut rx) = mpsc::channel(8);
-            let runner = test_fixtures::make_runner(
-                Arc::new(mock_provider),
-                Arc::new(MockQueryExecutor::new()),
-                Arc::new(MockConnectionStore::new()),
-                tx,
-            );
-
-            let run = test_fixtures::run_one_effect(
-                &runner,
-                Effect::FetchMetadata {
-                    dsn: dsn.clone(),
-                    run_id: 7,
-                },
-                AppState::new("test".to_string()),
-                &mut rx,
-                Some(std::time::Duration::from_millis(200)),
-            )
-            .await
-            .unwrap();
-
-            let action = run.actions.into_iter().next().expect("action dispatched");
-            assert!(
-                matches!(
-                    action,
-                    Action::MetadataFailed {
-                        run_id: 7,
-                        error: DbOperationError::SqlitePath(SqlitePathError::FileNotFound(
-                            ref file_path,
-                        )),
-                    } if file_path == &path.display().to_string()
-                ),
-                "expected MetadataFailed, got {action:?}"
-            );
-            assert!(!path.exists());
-        }
-
-        #[tokio::test]
-        async fn sqlite_existing_file_reaches_provider() {
-            use std::fs;
-            use tempfile::tempdir;
-
-            let dir = tempdir().unwrap();
-            let path = dir.path().join("app.db");
-            fs::write(&path, b"").unwrap();
-            let dsn = format!("sqlite://{}", path.display());
-            let mut mock_provider = MockMetadataProvider::new();
-            mock_provider
-                .expect_fetch_metadata()
-                .once()
-                .returning(|_| Ok(test_fixtures::sample_metadata()));
-
-            let (tx, mut rx) = mpsc::channel(8);
-            let runner = test_fixtures::make_runner(
-                Arc::new(mock_provider),
-                Arc::new(MockQueryExecutor::new()),
-                Arc::new(MockConnectionStore::new()),
-                tx,
-            );
-
-            let run = test_fixtures::run_one_effect(
-                &runner,
-                Effect::FetchMetadata {
-                    dsn: dsn.clone(),
-                    run_id: 7,
-                },
-                AppState::new("test".to_string()),
-                &mut rx,
-                Some(std::time::Duration::from_millis(500)),
-            )
-            .await
-            .unwrap();
-
-            let action = run.actions.into_iter().next().expect("action dispatched");
-            assert!(
-                matches!(action, Action::MetadataLoaded { run_id: 7, .. }),
-                "expected MetadataLoaded, got {action:?}"
-            );
-        }
 
         #[tokio::test]
         async fn fetches_metadata_and_returns_metadata_loaded() {
@@ -368,7 +268,7 @@ mod tests {
             let run = test_fixtures::run_one_effect(
                 &runner,
                 Effect::FetchMetadata {
-                    dsn: "dsn://miss".to_string(),
+                    endpoint: endpoint::postgres("dsn://miss"),
                     run_id: 7,
                 },
                 AppState::new("test".to_string()),
@@ -405,7 +305,7 @@ mod tests {
             let run = test_fixtures::run_one_effect(
                 &runner,
                 Effect::FetchMetadata {
-                    dsn: "dsn://err".to_string(),
+                    endpoint: endpoint::postgres("dsn://err"),
                     run_id: 7,
                 },
                 AppState::new("test".to_string()),
@@ -445,7 +345,7 @@ mod tests {
             let run = test_fixtures::run_one_effect(
                 &runner,
                 Effect::FetchEffectiveUser {
-                    dsn: "dsn://test".to_string(),
+                    endpoint: endpoint::postgres("dsn://test"),
                     run_id: 7,
                 },
                 AppState::new("test".to_string()),
@@ -500,7 +400,7 @@ mod tests {
             let run = test_fixtures::run_one_effect(
                 &runner,
                 Effect::FetchTableDetail {
-                    dsn: "dsn://test".to_string(),
+                    endpoint: endpoint::postgres("dsn://test"),
                     schema: "public".to_string(),
                     table: "users".to_string(),
                     generation: 1,
@@ -518,12 +418,12 @@ mod tests {
                 matches!(
                     action,
                     Action::TableDetailLoaded {
-                        ref dsn,
+                        ref endpoint,
                         run_id: 9,
                         generation: 1,
                         outcome: Ok(_),
                         ..
-                    } if dsn == "dsn://test"
+                    } if endpoint == &endpoint::postgres("dsn://test")
                 ),
                 "expected TableDetailLoaded, got {action:?}"
             );
@@ -549,7 +449,7 @@ mod tests {
             let run = test_fixtures::run_one_effect(
                 &runner,
                 Effect::PrefetchTableColumnsAndFks {
-                    dsn: "dsn://test".to_string(),
+                    endpoint: endpoint::postgres("dsn://test"),
                     run_id: 3,
                     schema: "public".to_string(),
                     table: "users".to_string(),

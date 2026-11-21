@@ -1,10 +1,9 @@
+use crate::domain::connection::SqliteConnectionConfig;
 use std::sync::Arc;
 use std::time::Instant;
 
-use async_trait::async_trait;
-
 use crate::adapters::csv_export::export_to_downloads;
-use crate::app::ports::outbound::{AccessMode, DbOperationError, QueryExecutor};
+use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{
     CommandTag, QueryResult, QuerySource, RefreshScope, TableKind, TableKindInfo,
     WriteExecutionResult,
@@ -20,18 +19,17 @@ use super::sqlite3::parser::{
 };
 use super::{SqliteAdapter, sql};
 
-#[async_trait]
-impl QueryExecutor for SqliteAdapter {
-    async fn execute_preview(
+impl SqliteAdapter {
+    pub async fn execute_preview(
         &self,
-        dsn: &str,
+        config: &SqliteConnectionConfig,
         schema: &str,
         table: &str,
         limit: usize,
         offset: usize,
     ) -> Result<QueryResult, DbOperationError> {
         Self::validate_main_schema(schema)?;
-        let path = Self::path_from_dsn(dsn)?;
+        let path = config.path();
         let (columns, order_columns, kind_info) = self.preview_metadata(path, table).await?;
         let rowid_order_alias =
             Self::preview_rowid_order_alias(&columns, &order_columns, &kind_info);
@@ -49,13 +47,13 @@ impl QueryExecutor for SqliteAdapter {
         Ok(result.with_columns_if_empty(columns))
     }
 
-    async fn execute_adhoc(
+    pub async fn execute_adhoc(
         &self,
-        dsn: &str,
+        config: &SqliteConnectionConfig,
         query: &str,
         access_mode: AccessMode,
     ) -> Result<QueryResult, DbOperationError> {
-        let path = Self::path_from_dsn(dsn)?;
+        let path = config.path();
         let plan = sqlite_statement_plan(query)?;
         let marker = sqlite_probe_marker();
         let execution_query = sqlite_adhoc_execution_query_for_plan(&plan, &marker);
@@ -116,13 +114,13 @@ impl QueryExecutor for SqliteAdapter {
         Ok(result)
     }
 
-    async fn execute_write(
+    pub async fn execute_write(
         &self,
-        dsn: &str,
+        config: &SqliteConnectionConfig,
         query: &str,
         access_mode: AccessMode,
     ) -> Result<WriteExecutionResult, DbOperationError> {
-        let path = Self::path_from_dsn(dsn)?;
+        let path = config.path();
         let plan = sqlite_statement_plan(query)?;
         let affected_rows = self
             .execute_changes_query(path, &plan, access_mode.is_read_only())
@@ -133,16 +131,16 @@ impl QueryExecutor for SqliteAdapter {
         })
     }
 
-    async fn export_to_csv(
+    pub async fn export_to_csv(
         &self,
-        dsn: &str,
+        config: &SqliteConnectionConfig,
         query: &str,
         file_name: &str,
     ) -> Result<std::path::PathBuf, DbOperationError> {
         if !is_sqlite_rerunnable_export_query(query)? {
             return Err(sqlite_export_not_rerunnable_error());
         }
-        let database_path = Self::path_from_dsn(dsn)?.to_string();
+        let database_path = config.path().to_string();
         export_to_downloads(file_name, |path| async move {
             self.cli
                 .export_csv(&database_path, query, &path, true)

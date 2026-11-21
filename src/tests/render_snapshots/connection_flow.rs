@@ -4,12 +4,12 @@ use crate::tests::harness::{
 };
 use sabiql_app::model::shared::settings::KeymapPreset;
 use sabiql_app::ports::outbound::DsnBuilder;
-use sabiql_domain::ConnectionProfile;
+use sabiql_domain::connection::ConnectionEndpoint;
 
 struct EmptyPasswordDsnBuilder;
 
 impl DsnBuilder for EmptyPasswordDsnBuilder {
-    fn build_dsn(&self, _profile: &ConnectionProfile) -> String {
+    fn build_dsn(&self, _endpoint: &ConnectionEndpoint) -> String {
         "mysql://mysql_user:@localhost:3306/app?ssl-mode=PREFERRED".to_string()
     }
 }
@@ -365,12 +365,13 @@ fn mysql_active_connection_retryable_error_shows_retry_action() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
 
-    state.session.activate_connection_with_target(
+    state.session.activate_connection(
         &sabiql_domain::ConnectionId::from_string("mysql-test"),
         "mysql",
-        DatabaseType::MySQL,
-        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
-        Some("app"),
+        &endpoint::mysql(
+            "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+            Some("app"),
+        ),
     );
     state.modal.set_mode(InputMode::ConnectionError);
     state
@@ -390,11 +391,10 @@ fn mysql_active_connection_retryable_error_shows_retry_action() {
 fn render_service_error_without_service_file_hint(save_and_connect: bool) -> String {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &sabiql_domain::ConnectionId::from_string("service"),
         "service",
-        DatabaseType::PostgreSQL,
-        "service=mydb",
+        &endpoint::service("mydb"),
     );
     state.set_service_file_path(Some(std::path::PathBuf::from("/etc/pg_service.conf")));
     if save_and_connect {
@@ -428,11 +428,10 @@ fn connection_error_save_failure_hides_retry_in_modal_and_footer() {
 fn non_mysql_retryable_error_hides_retry_in_modal_and_footer() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &sabiql_domain::ConnectionId::from_string("postgres-test"),
         "postgres",
-        DatabaseType::PostgreSQL,
-        "postgres://localhost:5432/app",
+        &endpoint::postgres("postgres://localhost:5432/app"),
     );
     state.modal.set_mode(InputMode::ConnectionError);
     state

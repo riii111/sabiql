@@ -1,5 +1,5 @@
 use crate::adapters::test_support;
-use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
+use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{FkAction, IndexType, TableKind};
 
 use super::SqliteAdapter;

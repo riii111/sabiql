@@ -1,30 +1,14 @@
-use crate::app::ports::outbound::{DbOperationError, MetadataProvider, SqliteCompatibilityKind};
+use crate::app::ports::outbound::{DbOperationError, SqliteCompatibilityKind};
 use crate::domain::{Schema, SqlitePathError, TableKind, TableKindInfo};
 
 use super::super::SqliteAdapter;
 
 mod metadata {
     use crate::adapters::test_support;
+    use crate::domain::connection::SqliteConnectionConfig;
     use rstest::rstest;
 
     use super::*;
-
-    #[tokio::test]
-    async fn invalid_dsn_returns_connection_error() {
-        let adapter = SqliteAdapter::new();
-
-        let postgres_result = adapter.fetch_metadata("postgres://localhost").await;
-        let empty_result = adapter.fetch_metadata("sqlite://").await;
-
-        assert!(matches!(
-            postgres_result,
-            Err(DbOperationError::ConnectionFailed(_))
-        ));
-        assert!(matches!(
-            empty_result,
-            Err(DbOperationError::ConnectionFailed(_))
-        ));
-    }
 
     #[tokio::test]
     async fn rejects_sqlite_before_safe_mode_minimum_at_connection() {
@@ -50,7 +34,7 @@ mod metadata {
     async fn missing_database_file_returns_error_without_creating_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("missing.db");
-        let dsn = format!("sqlite://{}", path.display());
+        let dsn = SqliteConnectionConfig::new(path.to_str().unwrap()).unwrap();
         let adapter = SqliteAdapter::new();
 
         let result = adapter.fetch_metadata(&dsn).await;
@@ -66,6 +50,7 @@ mod metadata {
     #[tokio::test]
     async fn lists_user_tables_in_main_schema_with_one_process() {
         if let Ok(dsn) = std::env::var("SABIQL_PROCESS_COUNTER_DSN") {
+            let dsn = SqliteConnectionConfig::new(dsn).unwrap();
             let adapter = SqliteAdapter::new();
             let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
             let table_names: Vec<_> = metadata
@@ -116,7 +101,7 @@ mod metadata {
     }
 
     #[cfg(unix)]
-    fn assert_catalog_metadata_uses_one_sqlite_process(dsn: &str) {
+    fn assert_catalog_metadata_uses_one_sqlite_process(dsn: &SqliteConnectionConfig) {
         use std::fs;
         use std::os::unix::fs::PermissionsExt;
         use std::process::Command;
@@ -146,7 +131,7 @@ mod metadata {
             .arg("--nocapture")
             .env("SABIQL_PROCESS_COUNTER_FILE", &counter_file)
             .env("SABIQL_REAL_SQLITE3", real_sqlite3)
-            .env("SABIQL_PROCESS_COUNTER_DSN", dsn)
+            .env("SABIQL_PROCESS_COUNTER_DSN", dsn.path())
             .env("PATH", child_path)
             .output()
             .unwrap();

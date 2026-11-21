@@ -46,6 +46,7 @@ mod tests {
     use crate::model::shared::settings::SettingsSection;
     use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel};
     use crate::ports::inbound::Key;
+    use crate::test_support::endpoint;
     use crate::update::action::DetailTarget;
     use crate::update::action::ModalKind;
     use crate::update::action::SearchStep;
@@ -58,17 +59,16 @@ mod tests {
 
     mod mode_dispatch {
         use super::*;
-        use crate::domain::{ConnectionId, DatabaseType};
+        use crate::domain::ConnectionId;
         use crate::model::sql_editor::modal::SqlModalTab;
         use crate::update::test_fixtures;
 
         fn sqlite_connected_state() -> AppState {
             let mut state = AppState::new("test".to_string());
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "database",
-                DatabaseType::SQLite,
-                "sqlite://test.db",
+                &endpoint::sqlite("sqlite://test.db"),
             );
             state
         }

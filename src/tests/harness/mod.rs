@@ -1,3 +1,4 @@
+pub mod endpoint;
 pub mod fixtures;
 pub mod mysql;
 pub mod postgres;
@@ -17,7 +18,7 @@ use sabiql_app::model::shared::text_input::TextInputState;
 use sabiql_app::services::AppServices;
 use sabiql_app::update::action::{Action, ModalKind};
 use sabiql_app::update::reducer::reduce;
-use sabiql_domain::{ConnectionId, DatabaseType};
+use sabiql_domain::ConnectionId;
 use sabiql_ui::shell::layout::MainLayout;
 use sabiql_ui::theme::{ThemePalette, palette_for};
 
@@ -39,11 +40,10 @@ pub fn open_command_palette(state: &mut AppState) {
 
 pub fn create_test_state() -> AppState {
     let mut state = AppState::new("test_project".to_string());
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::from_string("test-connection"),
         "localhost:5432/test",
-        DatabaseType::PostgreSQL,
-        "localhost:5432/test",
+        &endpoint::postgres("localhost:5432/test"),
     );
     state
 }

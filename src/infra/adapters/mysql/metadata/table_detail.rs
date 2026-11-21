@@ -1,3 +1,4 @@
+use crate::domain::connection::MySqlConnectionConfig;
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::time::Duration;
@@ -17,7 +18,7 @@ use super::super::sql::{
 use super::super::{
     capability::MySqlServerCapabilities,
     cli::{MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, MySqlResultSet},
-    dsn::{map_mysql_tls_failure, parse_and_validate_mysql_dsn},
+    dsn::{NormalizedMySqlConfig, map_mysql_tls_failure},
     option_file::MySqlOptionFile,
 };
 use super::catalog::{
@@ -42,21 +43,27 @@ struct MySqlIndexMetadata {
 }
 
 pub(super) async fn fetch_table_detail(
-    dsn: &str,
+    config: &MySqlConnectionConfig,
     schema: &str,
     table: &str,
 ) -> Result<Table, DbOperationError> {
-    fetch_table_detail_with_program(dsn, schema, table, OsStr::new("mysql"), MYSQL_QUERY_TIMEOUT)
-        .await
+    fetch_table_detail_with_program(
+        config,
+        schema,
+        table,
+        OsStr::new("mysql"),
+        MYSQL_QUERY_TIMEOUT,
+    )
+    .await
 }
 
 pub(super) async fn fetch_table_columns_and_fks(
-    dsn: &str,
+    config: &MySqlConnectionConfig,
     schema: &str,
     table: &str,
 ) -> Result<Table, DbOperationError> {
     fetch_table_columns_and_fks_with_program(
-        dsn,
+        config,
         schema,
         table,
         OsStr::new("mysql"),
@@ -66,13 +73,13 @@ pub(super) async fn fetch_table_columns_and_fks(
 }
 
 async fn fetch_table_columns_and_fks_with_program(
-    dsn: &str,
+    config: &MySqlConnectionConfig,
     schema: &str,
     table: &str,
     program: &OsStr,
     timeout: Duration,
 ) -> Result<Table, DbOperationError> {
-    let target = parse_and_validate_mysql_dsn(dsn)?;
+    let target = NormalizedMySqlConfig::new(config)?;
     let database = selected_database(&target)?;
     let option_file = MySqlOptionFile::create(&target)?;
     let mut session = MySqlMetadataSession::spawn_with_metadata_program(program, option_file)?;
@@ -134,13 +141,13 @@ async fn fetch_table_columns_and_fks_with_program(
 }
 
 async fn fetch_table_detail_with_program(
-    dsn: &str,
+    config: &MySqlConnectionConfig,
     schema: &str,
     table: &str,
     program: &OsStr,
     timeout: Duration,
 ) -> Result<Table, DbOperationError> {
-    let target = parse_and_validate_mysql_dsn(dsn)?;
+    let target = NormalizedMySqlConfig::new(config)?;
     let database = selected_database(&target)?;
     let option_file = MySqlOptionFile::create(&target)?;
     let mut session = MySqlMetadataSession::spawn_with_metadata_program(program, option_file)?;
@@ -499,7 +506,7 @@ mod session_tests {
 
     use tempfile::TempDir;
 
-    use super::super::test_support::assert_process_stopped;
+    use super::super::test_support::{assert_process_stopped, connection_config};
     use super::*;
 
     fn fake_metadata_cli(mode: &str) -> (TempDir, std::path::PathBuf, std::path::PathBuf) {
@@ -619,7 +626,7 @@ done
         for (mode, schema, table) in [("table", "app", "items"), ("view", "app", "items_view")] {
             let (_directory, program, transcript) = fake_metadata_cli(mode);
             let detail = fetch_table_detail_with_program(
-                "mysql://user:password@localhost:3306/app",
+                &connection_config("user", "password", "app"),
                 schema,
                 table,
                 OsStr::new(&program),
@@ -709,7 +716,7 @@ done
     async fn inspector_detail_rejects_a_mismatched_completion_marker() {
         let (_directory, program, transcript) = fake_metadata_cli("completion-marker-failure");
         let error = fetch_table_detail_with_program(
-            "mysql://user:password@localhost:3306/app",
+            &connection_config("user", "password", "app"),
             "app",
             "items",
             OsStr::new(&program),
@@ -729,7 +736,7 @@ done
     async fn completion_detail_prefetch_uses_one_process_and_four_metadata_queries() {
         let (_directory, program, transcript) = fake_metadata_cli("table");
         let detail = fetch_table_columns_and_fks_with_program(
-            "mysql://user:password@localhost:3306/app",
+            &connection_config("user", "password", "app"),
             "app",
             "items",
             OsStr::new(&program),
@@ -771,7 +778,7 @@ done
     async fn inspector_detail_read_only_setup_failure_never_sends_metadata_sql() {
         let (_directory, program, transcript) = fake_metadata_cli("read-only-failure");
         let result = fetch_table_detail_with_program(
-            "mysql://user:password@localhost:3306/app",
+            &connection_config("user", "password", "app"),
             "app",
             "items",
             OsStr::new(&program),
@@ -792,7 +799,7 @@ done
      {
         let (_directory, program, transcript) = fake_metadata_cli("empty");
         let error = fetch_table_detail_with_program(
-            "mysql://user:password@localhost:3306/app",
+            &connection_config("user", "password", "app"),
             "app",
             "items",
             OsStr::new(&program),
@@ -806,7 +813,7 @@ done
 
         let (_directory, program, transcript) = fake_metadata_cli("malformed");
         let error = fetch_table_detail_with_program(
-            "mysql://user:password@localhost:3306/app",
+            &connection_config("user", "password", "app"),
             "app",
             "items",
             OsStr::new(&program),
@@ -828,7 +835,7 @@ done
             let (directory, program, transcript) = fake_metadata_cli(mode);
             let task = tokio::spawn(async move {
                 fetch_table_detail_with_program(
-                    "mysql://user:password@localhost:3306/app",
+                    &connection_config("user", "password", "app"),
                     "app",
                     "items",
                     OsStr::new(&program),
@@ -863,7 +870,7 @@ done
         let (_directory, program, transcript) = fake_metadata_cli("timeout");
         let task = tokio::spawn(async move {
             fetch_table_detail_with_program(
-                "mysql://user:password@localhost:3306/app",
+                &connection_config("user", "password", "app"),
                 "app",
                 "items",
                 OsStr::new(&program),

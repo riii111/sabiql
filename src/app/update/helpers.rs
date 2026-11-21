@@ -1,9 +1,11 @@
+use std::sync::Arc;
+
 use unicode_casefold::UnicodeCaseFold;
 
 use crate::cmd::effect::Effect;
 use crate::domain::DatabaseType;
 use crate::domain::connection::{
-    MySqlConnectionConfig, MySqlSslMode, MySqlTransport, SqliteConnectionConfig,
+    ConnectionEndpoint, MySqlConnectionConfig, MySqlSslMode, MySqlTransport, SqliteConnectionConfig,
 };
 use crate::domain::{QueryResult, QueryValue};
 use crate::model::app_state::AppState;
@@ -15,7 +17,6 @@ use crate::policy::write::write_guardrails::{
     evaluate_guardrails, preview_writeability_for_result, stable_row_identity_for_preview,
 };
 use crate::ports::outbound::ClipboardError;
-use crate::sql_builder::build_bulk_delete_sql;
 use crate::update::action::Action;
 
 pub(in crate::update) fn reject_pending_mysql_connection_probe(state: &mut AppState) -> bool {
@@ -33,14 +34,17 @@ pub(in crate::update) fn clipboard_unavailable() -> Action {
     Action::CopyFailed(ClipboardError::Unavailable("Clipboard unavailable".into()))
 }
 
-pub(in crate::update) fn metadata_reload_effects(state: &mut AppState, dsn: &str) -> Vec<Effect> {
+pub(in crate::update) fn metadata_reload_effects(
+    state: &mut AppState,
+    endpoint: &Arc<ConnectionEndpoint>,
+) -> Vec<Effect> {
     let run_id = state.session.begin_reload();
     state.table_detail_cache.clear();
 
     vec![
         Effect::CancelMetadataTasks,
         Effect::FetchMetadata {
-            dsn: dsn.to_string(),
+            endpoint: Arc::clone(endpoint),
             run_id,
         },
     ]
@@ -112,11 +116,13 @@ pub(in crate::update) fn reject_sqlite_null_pk(
     database_type: DatabaseType,
     pk_pairs: &[(String, QueryValue)],
 ) -> Result<(), EditGuardrailError> {
-    if database_type == DatabaseType::SQLite
-        && pk_pairs
+    let rejects_null_identity = match database_type {
+        DatabaseType::SQLite => pk_pairs
             .iter()
-            .any(|(_, value)| matches!(value, QueryValue::Null))
-    {
+            .any(|(_, value)| matches!(value, QueryValue::Null)),
+        DatabaseType::PostgreSQL | DatabaseType::MySQL => false,
+    };
+    if rejects_null_identity {
         return Err(EditGuardrailError::SqliteNullPrimaryKey);
     }
     Ok(())
@@ -194,7 +200,7 @@ pub(in crate::update) fn build_bulk_delete_preview(
     if state.result_interaction.staged_delete_rows().is_empty() {
         return Err(EditGuardrailError::NoRowsStagedForDeletion);
     }
-    if state.session.dsn().is_none() {
+    if state.session.endpoint().is_none() {
         return Err(EditGuardrailError::NoActiveConnection);
     }
     if state.query.is_running() {
@@ -227,12 +233,15 @@ pub(in crate::update) fn build_bulk_delete_preview(
         predicate_pairs_per_row.push(identity_pairs);
     }
 
-    let sql = build_bulk_delete_sql(
-        state.session.active_database_type_or_default(),
-        state.query.pagination.schema(),
-        state.query.pagination.table(),
-        &predicate_pairs_per_row,
-    );
+    let sql = state
+        .session
+        .active_database_type_or_default()
+        .dialect()
+        .bulk_delete_sql(
+            state.query.pagination.schema(),
+            state.query.pagination.table(),
+            &predicate_pairs_per_row,
+        );
 
     let staged_count = state.result_interaction.staged_delete_rows().len();
     let first_deleted_idx = *state
@@ -385,135 +394,10 @@ pub(in crate::update) fn validate_field(state: &mut ConnectionSetupState, field:
         }
     }
 
-    match field {
-        ConnectionField::SqlitePath => {
-            let path = text_input_content(state, ConnectionField::SqlitePath).to_string();
-            match SqliteConnectionConfig::new(path) {
-                Ok(_) => {}
-                Err(error) => state.record_sqlite_config_error(error),
-            }
-        }
-        ConnectionField::Port
-            if state.database_type() != DatabaseType::MySQL
-                || state.mysql_transport() == MySqlTransport::Tcp =>
-        {
-            let port = text_input_content(state, field).trim();
-            if port.is_empty() {
-                state.set_validation_error(field, "Required");
-            } else {
-                match port.parse::<u16>() {
-                    Err(_) => {
-                        state.set_validation_error(field, "Invalid port");
-                    }
-                    Ok(0) => {
-                        state.set_validation_error(field, "Port must be > 0");
-                    }
-                    Ok(_) => {}
-                }
-            }
-        }
-        ConnectionField::Database => {
-            if matches!(
-                state.database_type(),
-                DatabaseType::PostgreSQL | DatabaseType::MySQL
-            ) {
-                require_non_empty(state, field, "Required");
-            }
-        }
-        ConnectionField::Host
-            if state.database_type() == DatabaseType::MySQL
-                && state.mysql_transport() == MySqlTransport::Tcp =>
-        {
-            let host = text_input_content(state, field).trim();
-            if host.is_empty() {
-                state.set_validation_error(field, "Required");
-            } else if !MySqlConnectionConfig::is_valid_host(host) {
-                state.set_validation_error(field, "Invalid host");
-            }
-        }
-        ConnectionField::User if state.database_type() == DatabaseType::MySQL => {
-            require_non_empty(state, field, "Required");
-        }
-        ConnectionField::TransportPath if state.database_type() == DatabaseType::MySQL => {
-            let path = text_input_content(state, field);
-            if state.mysql_transport().requires_path() && path.trim().is_empty() {
-                state.set_validation_error(field, "Required");
-            } else if path.chars().any(char::is_control) {
-                state.set_validation_error(field, "Invalid path");
-            }
-        }
-        ConnectionField::SslCa if state.database_type() == DatabaseType::MySQL => {
-            let path = text_input_content(state, field).to_string();
-            if matches!(
-                state.mysql_ssl_mode(),
-                MySqlSslMode::VerifyCa | MySqlSslMode::VerifyIdentity
-            ) && path.trim().is_empty()
-            {
-                state.set_validation_error(field, "Required for this TLS mode");
-            } else if path.chars().any(char::is_control) {
-                state.set_validation_error(field, "Invalid path");
-            }
-        }
-        ConnectionField::SslCert | ConnectionField::SslKey
-            if state.database_type() == DatabaseType::MySQL =>
-        {
-            let path = text_input_content(state, field).to_string();
-            if path.chars().any(char::is_control) {
-                state.set_validation_error(field, "Invalid path");
-            }
-            let other_field = match field {
-                ConnectionField::SslCert => ConnectionField::SslKey,
-                ConnectionField::SslKey => ConnectionField::SslCert,
-                _ => unreachable!(),
-            };
-            let other_path = text_input_content(state, other_field).to_string();
-            if path.trim().is_empty() != other_path.trim().is_empty() {
-                state.set_validation_error(field, "Both client paths are required");
-                state.set_validation_error(other_field, "Both client paths are required");
-            }
-        }
-        ConnectionField::ServerPublicKeyPath if state.database_type() == DatabaseType::MySQL => {
-            let path = text_input_content(state, field);
-            if path.chars().any(char::is_control) {
-                state.set_validation_error(field, "Invalid path");
-            }
-        }
-        ConnectionField::CleartextAuth if state.database_type() == DatabaseType::MySQL => {
-            if state.cleartext_auth_plugin_enabled()
-                && !state.mysql_ssl_mode().allows_cleartext_auth()
-            {
-                state.set_validation_error(field, "Requires TLS");
-            }
-        }
-        ConnectionField::SslMode if state.database_type() == DatabaseType::MySQL => {
-            if state.mysql_transport() == MySqlTransport::NamedPipe
-                && !matches!(
-                    state.mysql_ssl_mode(),
-                    MySqlSslMode::Disabled | MySqlSslMode::Preferred
-                )
-            {
-                state.set_validation_error(field, "Named pipes do not support TLS");
-            }
-        }
-        ConnectionField::Name => {
-            let name = text_input_content(state, field).trim().to_string();
-            if name.is_empty() {
-                state.set_validation_error(field, "Name is required");
-            }
-        }
-        ConnectionField::DatabaseType
-        | ConnectionField::Transport
-        | ConnectionField::TransportPath
-        | ConnectionField::Port
-        | ConnectionField::Host
-        | ConnectionField::User
-        | ConnectionField::Password
-        | ConnectionField::SslMode
-        | ConnectionField::SslCa
-        | ConnectionField::SslCert
-        | ConnectionField::SslKey
-        | ConnectionField::ServerPublicKeyPath
-        | ConnectionField::CleartextAuth => {}
+    match state.database_type() {
+        DatabaseType::PostgreSQL => validate_postgres_field(state, field),
+        DatabaseType::SQLite => validate_sqlite_field(state, field),
+        DatabaseType::MySQL => validate_mysql_field(state, field),
     }
 }
 
@@ -529,6 +413,164 @@ pub(in crate::update) fn validate_all(state: &mut ConnectionSetupState) {
     }
 }
 
+fn validate_postgres_field(state: &mut ConnectionSetupState, field: ConnectionField) {
+    match field {
+        ConnectionField::Name => validate_name(state),
+        ConnectionField::Port => validate_port(state),
+        ConnectionField::Database => require_non_empty(state, field, "Required"),
+        ConnectionField::DatabaseType
+        | ConnectionField::Host
+        | ConnectionField::User
+        | ConnectionField::Password
+        | ConnectionField::SslMode
+        | ConnectionField::SqlitePath
+        | ConnectionField::Transport
+        | ConnectionField::TransportPath
+        | ConnectionField::CleartextAuth
+        | ConnectionField::SslCa
+        | ConnectionField::SslCert
+        | ConnectionField::SslKey
+        | ConnectionField::ServerPublicKeyPath => {}
+    }
+}
+
+fn validate_sqlite_field(state: &mut ConnectionSetupState, field: ConnectionField) {
+    match field {
+        ConnectionField::Name => validate_name(state),
+        ConnectionField::SqlitePath => {
+            let path = text_input_content(state, ConnectionField::SqlitePath).to_string();
+            match SqliteConnectionConfig::new(path) {
+                Ok(_) => {}
+                Err(error) => state.record_sqlite_config_error(error),
+            }
+        }
+        ConnectionField::DatabaseType
+        | ConnectionField::Transport
+        | ConnectionField::TransportPath
+        | ConnectionField::Host
+        | ConnectionField::Port
+        | ConnectionField::Database
+        | ConnectionField::User
+        | ConnectionField::Password
+        | ConnectionField::SslMode
+        | ConnectionField::CleartextAuth
+        | ConnectionField::SslCa
+        | ConnectionField::SslCert
+        | ConnectionField::SslKey
+        | ConnectionField::ServerPublicKeyPath => {}
+    }
+}
+
+fn validate_mysql_field(state: &mut ConnectionSetupState, field: ConnectionField) {
+    let uses_tcp = state.mysql_transport() == MySqlTransport::Tcp;
+    match field {
+        ConnectionField::Name => validate_name(state),
+        ConnectionField::Port if uses_tcp => validate_port(state),
+        ConnectionField::Host if uses_tcp => {
+            let host = text_input_content(state, field).trim();
+            if host.is_empty() {
+                state.set_validation_error(field, "Required");
+            } else if !MySqlConnectionConfig::is_valid_host(host) {
+                state.set_validation_error(field, "Invalid host");
+            }
+        }
+        ConnectionField::Database | ConnectionField::User => {
+            require_non_empty(state, field, "Required");
+        }
+        ConnectionField::TransportPath => {
+            let path = text_input_content(state, field);
+            if state.mysql_transport().requires_path() && path.trim().is_empty() {
+                state.set_validation_error(field, "Required");
+            } else if path.chars().any(char::is_control) {
+                state.set_validation_error(field, "Invalid path");
+            }
+        }
+        ConnectionField::SslCa => {
+            let path = text_input_content(state, field).to_string();
+            if matches!(
+                state.mysql_ssl_mode(),
+                MySqlSslMode::VerifyCa | MySqlSslMode::VerifyIdentity
+            ) && path.trim().is_empty()
+            {
+                state.set_validation_error(field, "Required for this TLS mode");
+            } else if path.chars().any(char::is_control) {
+                state.set_validation_error(field, "Invalid path");
+            }
+        }
+        ConnectionField::SslCert | ConnectionField::SslKey => {
+            let path = text_input_content(state, field).to_string();
+            if path.chars().any(char::is_control) {
+                state.set_validation_error(field, "Invalid path");
+            }
+            let other_field = match field {
+                ConnectionField::SslCert => ConnectionField::SslKey,
+                ConnectionField::SslKey => ConnectionField::SslCert,
+                _ => unreachable!(),
+            };
+            let other_path = text_input_content(state, other_field).to_string();
+            if path.trim().is_empty() != other_path.trim().is_empty() {
+                state.set_validation_error(field, "Both client paths are required");
+                state.set_validation_error(other_field, "Both client paths are required");
+            }
+        }
+        ConnectionField::ServerPublicKeyPath => {
+            let path = text_input_content(state, field);
+            if path.chars().any(char::is_control) {
+                state.set_validation_error(field, "Invalid path");
+            }
+        }
+        ConnectionField::CleartextAuth => {
+            if state.cleartext_auth_plugin_enabled()
+                && !state.mysql_ssl_mode().allows_cleartext_auth()
+            {
+                state.set_validation_error(field, "Requires TLS");
+            }
+        }
+        ConnectionField::SslMode => {
+            if state.mysql_transport() == MySqlTransport::NamedPipe
+                && !matches!(
+                    state.mysql_ssl_mode(),
+                    MySqlSslMode::Disabled | MySqlSslMode::Preferred
+                )
+            {
+                state.set_validation_error(field, "Named pipes do not support TLS");
+            }
+        }
+        ConnectionField::DatabaseType
+        | ConnectionField::Transport
+        | ConnectionField::Host
+        | ConnectionField::Port
+        | ConnectionField::Password
+        | ConnectionField::SqlitePath => {}
+    }
+}
+
+fn validate_name(state: &mut ConnectionSetupState) {
+    let name = text_input_content(state, ConnectionField::Name)
+        .trim()
+        .to_string();
+    if name.is_empty() {
+        state.set_validation_error(ConnectionField::Name, "Name is required");
+    }
+}
+
+fn validate_port(state: &mut ConnectionSetupState) {
+    let port = text_input_content(state, ConnectionField::Port).trim();
+    if port.is_empty() {
+        state.set_validation_error(ConnectionField::Port, "Required");
+    } else {
+        match port.parse::<u16>() {
+            Err(_) => {
+                state.set_validation_error(ConnectionField::Port, "Invalid port");
+            }
+            Ok(0) => {
+                state.set_validation_error(ConnectionField::Port, "Port must be > 0");
+            }
+            Ok(_) => {}
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -537,40 +579,12 @@ mod tests {
 
     use crate::domain::connection::ConnectionId;
     use crate::domain::{ColumnAttributes, DatabaseType, QuerySource, Table};
+    use crate::test_support::endpoint;
     use rstest::rstest;
 
     mod validate_field_name {
         use super::*;
         use crate::model::shared::text_input::TextInputState;
-
-        #[test]
-        fn empty_name_sets_error() {
-            let mut state = ConnectionSetupState::default();
-
-            validate_field(&mut state, ConnectionField::Name);
-
-            assert_eq!(
-                state.validation_error(ConnectionField::Name),
-                Some("Name is required")
-            );
-        }
-
-        #[test]
-        #[allow(
-            clippy::field_reassign_with_default,
-            reason = "intentional partial override of Default for clarity"
-        )]
-        fn whitespace_only_name_sets_error() {
-            let mut state = ConnectionSetupState::default();
-            *state.input_mut(ConnectionField::Name).unwrap() = TextInputState::new("   ", 3);
-
-            validate_field(&mut state, ConnectionField::Name);
-
-            assert_eq!(
-                state.validation_error(ConnectionField::Name),
-                Some("Name is required")
-            );
-        }
 
         #[rstest]
         #[case("a".repeat(50), false)]
@@ -606,44 +620,10 @@ mod tests {
 
             assert!(!state.has_validation_error(ConnectionField::Name));
         }
-
-        #[test]
-        fn zero_port_sets_error() {
-            let mut state = ConnectionSetupState::default();
-            state.set_database_type(DatabaseType::MySQL);
-            state
-                .input_mut(ConnectionField::Port)
-                .unwrap()
-                .set_content("0".to_string());
-
-            validate_field(&mut state, ConnectionField::Port);
-
-            assert_eq!(
-                state.validation_error(ConnectionField::Port),
-                Some("Port must be > 0")
-            );
-        }
     }
 
     mod validate_sqlite_path {
         use super::*;
-
-        #[test]
-        fn empty_path_sets_required_error() {
-            let mut state = ConnectionSetupState::default();
-            state.set_database_type(DatabaseType::SQLite);
-            state
-                .input_mut(ConnectionField::SqlitePath)
-                .unwrap()
-                .set_content("   ".to_string());
-
-            validate_field(&mut state, ConnectionField::SqlitePath);
-
-            assert_eq!(
-                state.validation_error(ConnectionField::SqlitePath),
-                Some("Required")
-            );
-        }
 
         #[test]
         fn unsupported_path_characters_set_error() {
@@ -758,92 +738,6 @@ mod tests {
     }
 
     #[test]
-    fn mysql_validation_requires_host_user_and_database() {
-        let mut state = ConnectionSetupState::default();
-        state.set_database_type(DatabaseType::MySQL);
-        state
-            .input_mut(ConnectionField::Host)
-            .unwrap()
-            .set_content(" ".to_string());
-        state
-            .input_mut(ConnectionField::User)
-            .unwrap()
-            .set_content(" ".to_string());
-
-        validate_all(&mut state);
-
-        assert_eq!(
-            state.validation_error(ConnectionField::Host),
-            Some("Required")
-        );
-        assert_eq!(
-            state.validation_error(ConnectionField::User),
-            Some("Required")
-        );
-        assert_eq!(
-            state.validation_error(ConnectionField::Database),
-            Some("Required")
-        );
-    }
-
-    #[test]
-    fn mysql_validation_rejects_url_syntax_in_host() {
-        let mut state = ConnectionSetupState::default();
-        state.set_database_type(DatabaseType::MySQL);
-        state
-            .input_mut(ConnectionField::Host)
-            .unwrap()
-            .set_content("db example".to_string());
-
-        validate_field(&mut state, ConnectionField::Host);
-
-        assert_eq!(
-            state.validation_error(ConnectionField::Host),
-            Some("Invalid host")
-        );
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn mysql_unix_socket_validation_uses_path_instead_of_host_and_port() {
-        let mut state = ConnectionSetupState::default();
-        state.set_database_type(DatabaseType::MySQL);
-        state.mysql_transport = MySqlTransport::UnixSocket;
-        state
-            .input_mut(ConnectionField::Host)
-            .unwrap()
-            .set_content(" ".to_string());
-        state
-            .input_mut(ConnectionField::Port)
-            .unwrap()
-            .set_content("not-a-port".to_string());
-        state
-            .input_mut(ConnectionField::TransportPath)
-            .unwrap()
-            .set_content("/run/mysqld/mysqld.sock".to_string());
-
-        validate_field(&mut state, ConnectionField::TransportPath);
-
-        assert_eq!(state.validation_error(ConnectionField::TransportPath), None);
-        assert_eq!(state.validation_error(ConnectionField::Host), None);
-        assert_eq!(state.validation_error(ConnectionField::Port), None);
-    }
-
-    #[test]
-    fn mysql_verification_requires_ca_path() {
-        let mut state = ConnectionSetupState::default();
-        state.set_database_type(DatabaseType::MySQL);
-        state.mysql_ssl_mode = MySqlSslMode::VerifyCa;
-
-        validate_all(&mut state);
-
-        assert_eq!(
-            state.validation_error(ConnectionField::SslCa),
-            Some("Required for this TLS mode")
-        );
-    }
-
-    #[test]
     fn mysql_cleartext_auth_requires_tls() {
         let mut state = ConnectionSetupState::default();
         state.set_database_type(DatabaseType::MySQL);
@@ -860,27 +754,6 @@ mod tests {
         validate_all(&mut state);
 
         assert_eq!(state.validation_error(ConnectionField::CleartextAuth), None);
-    }
-
-    #[test]
-    fn mysql_client_certificate_and_key_are_a_pair() {
-        let mut state = ConnectionSetupState::default();
-        state.set_database_type(DatabaseType::MySQL);
-        state
-            .input_mut(ConnectionField::SslCert)
-            .unwrap()
-            .set_content("client.pem".to_string());
-
-        validate_all(&mut state);
-
-        assert_eq!(
-            state.validation_error(ConnectionField::SslCert),
-            Some("Both client paths are required")
-        );
-        assert_eq!(
-            state.validation_error(ConnectionField::SslKey),
-            Some("Both client paths are required")
-        );
     }
 
     #[test]
@@ -922,6 +795,240 @@ mod tests {
         validate_all(&mut state);
         assert_eq!(state.validation_error(ConnectionField::SslCert), None);
         assert_eq!(state.validation_error(ConnectionField::SslKey), None);
+    }
+
+    mod validate_all_by_engine {
+        use super::*;
+        use std::collections::HashMap;
+
+        fn form(
+            database_type: DatabaseType,
+            inputs: &[(ConnectionField, &str)],
+        ) -> ConnectionSetupState {
+            let mut state = ConnectionSetupState::default();
+            state.set_database_type(database_type);
+            for (field, value) in inputs {
+                state
+                    .input_mut(*field)
+                    .expect("connection field is a text input")
+                    .set_content((*value).to_string());
+            }
+            state
+        }
+
+        fn errors_after_validate_all(
+            mut state: ConnectionSetupState,
+        ) -> HashMap<ConnectionField, String> {
+            validate_all(&mut state);
+            state.validation_errors
+        }
+
+        fn errors(expected: &[(ConnectionField, &str)]) -> HashMap<ConnectionField, String> {
+            expected
+                .iter()
+                .map(|(field, message)| (*field, (*message).to_string()))
+                .collect()
+        }
+
+        const EMPTY_HOST_AND_PORT: &[(ConnectionField, &str)] =
+            &[(ConnectionField::Host, ""), (ConnectionField::Port, "")];
+
+        #[test]
+        fn postgres_requires_name_port_and_database_but_not_host_or_user() {
+            let state = form(DatabaseType::PostgreSQL, EMPTY_HOST_AND_PORT);
+
+            assert_eq!(
+                errors_after_validate_all(state),
+                errors(&[
+                    (ConnectionField::Name, "Name is required"),
+                    (ConnectionField::Port, "Required"),
+                    (ConnectionField::Database, "Required"),
+                ])
+            );
+        }
+
+        #[test]
+        fn postgres_accepts_any_host_text_and_reports_an_invalid_port() {
+            let state = form(
+                DatabaseType::PostgreSQL,
+                &[
+                    (ConnectionField::Name, "pg"),
+                    (ConnectionField::Host, "db example"),
+                    (ConnectionField::Port, "abc"),
+                    (ConnectionField::Database, "app"),
+                ],
+            );
+
+            assert_eq!(
+                errors_after_validate_all(state),
+                errors(&[(ConnectionField::Port, "Invalid port")])
+            );
+        }
+
+        #[test]
+        fn mysql_tcp_requires_name_host_port_database_and_user() {
+            let state = form(
+                DatabaseType::MySQL,
+                &[
+                    (ConnectionField::Name, " "),
+                    (ConnectionField::Host, " "),
+                    (ConnectionField::Port, ""),
+                    (ConnectionField::User, " "),
+                ],
+            );
+
+            assert_eq!(
+                errors_after_validate_all(state),
+                errors(&[
+                    (ConnectionField::Name, "Name is required"),
+                    (ConnectionField::Host, "Required"),
+                    (ConnectionField::Port, "Required"),
+                    (ConnectionField::Database, "Required"),
+                    (ConnectionField::User, "Required"),
+                ])
+            );
+        }
+
+        #[test]
+        fn mysql_tcp_reports_invalid_host_port_and_paths() {
+            let mut state = form(
+                DatabaseType::MySQL,
+                &[
+                    (ConnectionField::Name, "mysql"),
+                    (ConnectionField::Host, "db example"),
+                    (ConnectionField::Port, "0"),
+                    (ConnectionField::Database, "app"),
+                    (ConnectionField::User, "root"),
+                    (ConnectionField::ServerPublicKeyPath, "server\n.pem"),
+                    (ConnectionField::SslCert, "client.pem"),
+                ],
+            );
+            state.enable_cleartext_plugin = true;
+
+            assert_eq!(
+                errors_after_validate_all(state),
+                errors(&[
+                    (ConnectionField::Host, "Invalid host"),
+                    (ConnectionField::Port, "Port must be > 0"),
+                    (ConnectionField::CleartextAuth, "Requires TLS"),
+                    (ConnectionField::ServerPublicKeyPath, "Invalid path"),
+                    (ConnectionField::SslCert, "Both client paths are required"),
+                    (ConnectionField::SslKey, "Both client paths are required"),
+                ])
+            );
+        }
+
+        #[rstest]
+        #[case::verify_ca(MySqlSslMode::VerifyCa)]
+        #[case::verify_identity(MySqlSslMode::VerifyIdentity)]
+        fn mysql_ca_verification_requires_a_valid_ca_path(#[case] ssl_mode: MySqlSslMode) {
+            let mut missing = form(
+                DatabaseType::MySQL,
+                &[
+                    (ConnectionField::Name, "mysql"),
+                    (ConnectionField::Database, "app"),
+                    (ConnectionField::User, "root"),
+                ],
+            );
+            missing.mysql_ssl_mode = ssl_mode;
+            let mut invalid = missing.clone();
+            invalid
+                .input_mut(ConnectionField::SslCa)
+                .unwrap()
+                .set_content("ca\n.pem".to_string());
+
+            assert_eq!(
+                errors_after_validate_all(missing),
+                errors(&[(ConnectionField::SslCa, "Required for this TLS mode")])
+            );
+            assert_eq!(
+                errors_after_validate_all(invalid),
+                errors(&[(ConnectionField::SslCa, "Invalid path")])
+            );
+        }
+
+        #[cfg(unix)]
+        #[test]
+        fn mysql_unix_socket_requires_a_path_instead_of_host_and_port() {
+            let mut missing = form(DatabaseType::MySQL, EMPTY_HOST_AND_PORT);
+            missing.mysql_transport = MySqlTransport::UnixSocket;
+            let mut invalid = missing.clone();
+            invalid
+                .input_mut(ConnectionField::TransportPath)
+                .unwrap()
+                .set_content("/tmp/mysql\n.sock".to_string());
+            let mut valid = form(
+                DatabaseType::MySQL,
+                &[
+                    (ConnectionField::Name, "mysql"),
+                    (ConnectionField::Host, " "),
+                    (ConnectionField::Port, "not-a-port"),
+                    (ConnectionField::Database, "app"),
+                    (ConnectionField::User, "root"),
+                    (ConnectionField::TransportPath, "/run/mysqld/mysqld.sock"),
+                ],
+            );
+            valid.mysql_transport = MySqlTransport::UnixSocket;
+
+            assert_eq!(
+                errors_after_validate_all(missing),
+                errors(&[
+                    (ConnectionField::Name, "Name is required"),
+                    (ConnectionField::TransportPath, "Required"),
+                    (ConnectionField::Database, "Required"),
+                    (ConnectionField::User, "Required"),
+                ])
+            );
+            assert_eq!(
+                errors_after_validate_all(invalid),
+                errors(&[
+                    (ConnectionField::Name, "Name is required"),
+                    (ConnectionField::TransportPath, "Invalid path"),
+                    (ConnectionField::Database, "Required"),
+                    (ConnectionField::User, "Required"),
+                ])
+            );
+            assert_eq!(errors_after_validate_all(valid), errors(&[]));
+        }
+
+        #[cfg(windows)]
+        #[test]
+        fn mysql_named_pipe_requires_a_path_and_rejects_tls_modes_beyond_preferred() {
+            let mut state = form(DatabaseType::MySQL, EMPTY_HOST_AND_PORT);
+            state.mysql_transport = MySqlTransport::NamedPipe;
+            state.mysql_ssl_mode = MySqlSslMode::Required;
+
+            assert_eq!(
+                errors_after_validate_all(state),
+                errors(&[
+                    (ConnectionField::Name, "Name is required"),
+                    (ConnectionField::TransportPath, "Required"),
+                    (ConnectionField::Database, "Required"),
+                    (ConnectionField::User, "Required"),
+                    (ConnectionField::SslMode, "Named pipes do not support TLS"),
+                ])
+            );
+        }
+
+        #[test]
+        fn sqlite_requires_only_name_and_path() {
+            let state = form(
+                DatabaseType::SQLite,
+                &[
+                    (ConnectionField::Host, "db example"),
+                    (ConnectionField::Port, "abc"),
+                    (ConnectionField::SqlitePath, "   "),
+                ],
+            );
+
+            assert_eq!(
+                errors_after_validate_all(state),
+                errors(&[
+                    (ConnectionField::Name, "Name is required"),
+                    (ConnectionField::SqlitePath, "Required"),
+                ])
+            );
+        }
     }
 
     mod delete_refresh_target_bulk {
@@ -970,11 +1077,10 @@ mod tests {
 
         fn sqlite_editable_state() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::from_string("test-connection"),
                 "test",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
+                &endpoint::sqlite("sqlite:///tmp/app.db"),
             );
             state
                 .query

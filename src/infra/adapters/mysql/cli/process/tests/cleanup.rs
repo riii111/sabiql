@@ -1,6 +1,7 @@
 use super::*;
-use crate::adapters::mysql::dsn::parse_mysql_dsn;
+use crate::adapters::mysql::dsn::NormalizedMySqlConfig;
 use crate::adapters::mysql::option_file::MySqlOptionFile;
+use crate::domain::connection::{MySqlConnectionConfig, MySqlSslMode};
 
 #[tokio::test]
 async fn bounds_pty_drain_when_the_slave_stays_open() {
@@ -24,7 +25,15 @@ async fn bounds_pty_drain_when_the_slave_stays_open() {
 
 #[test]
 fn metadata_session_owns_option_file_when_mysql_process_start_fails() {
-    let target = parse_mysql_dsn("mysql://user:secret@localhost:3306").unwrap();
+    let config = MySqlConnectionConfig::new(
+        "localhost",
+        3306,
+        None,
+        "user",
+        "secret",
+        MySqlSslMode::Preferred,
+    );
+    let target = NormalizedMySqlConfig::new(&config).unwrap();
     let option_file = MySqlOptionFile::create(&target).unwrap();
     let path = option_file.path.clone();
     let result = MySqlMetadataSession::spawn_with_metadata_program(

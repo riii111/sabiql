@@ -11,6 +11,7 @@ use crate::model::sql_editor::modal::SqlModalTab;
 use crate::policy::write::sql_risk::AcknowledgeReason;
 use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel};
 use crate::ports::inbound::InputEvent;
+use crate::test_support::endpoint;
 use crate::update::action::ModalKind;
 use crate::update::input::handle_event;
 use crate::update::input::keymap::sql_edit_hints;
@@ -149,11 +150,10 @@ fn check_state(state: &mut AppState) {
 
 fn state(engine: DatabaseType, preset: KeymapPreset, mode: InputMode) -> AppState {
     let mut state = AppState::new("test".to_string());
-    state.session.activate_connection_with_dsn(
+    state.session.activate_connection(
         &ConnectionId::new(),
         "test",
-        engine,
-        "test://database",
+        &endpoint::for_engine(engine, "test://database"),
     );
     state.settings.load_keymap_preset(preset);
     state.modal.set_mode(mode);
@@ -261,8 +261,7 @@ fn sql_history_hint_and_input_follow_availability() {
     let _ = sql.session.begin_mysql_connection_probe(
         &ConnectionId::new(),
         "mysql",
-        "mysql://localhost/test",
-        Some("test"),
+        &endpoint::mysql("mysql://localhost/test", Some("test")),
     );
     assert!(
         !sql_edit_hints(HintSurface::Border, &KeyContext::from_state(&sql))

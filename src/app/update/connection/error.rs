@@ -82,19 +82,15 @@ pub(in crate::update) fn retry_connection(state: &mut AppState) -> Vec<Effect> {
     if let Some(pending) = state.session.pending_mysql_connection_probe().cloned() {
         let target = ConnectionTarget {
             id: pending.id,
-            dsn: pending.dsn,
             name: pending.name,
-            database_type: DatabaseType::MySQL,
-            database: pending.database,
+            endpoint: pending.endpoint,
         };
-        let run_id = state.session.begin_mysql_connection_probe(
-            &target.id,
-            &target.name,
-            &target.dsn,
-            target.database.as_deref(),
-        );
+        let run_id =
+            state
+                .session
+                .begin_mysql_connection_probe(&target.id, &target.name, &target.endpoint);
         state.connection_error.clear();
-        if state.session.dsn_matches(&target.dsn) {
+        if state.session.endpoint_matches(&target.endpoint) {
             state.session.mark_connecting();
         }
         state.modal.set_mode(InputMode::Normal);
@@ -111,7 +107,7 @@ pub(in crate::update) fn retry_connection(state: &mut AppState) -> Vec<Effect> {
     {
         return vec![];
     }
-    if let Some(dsn) = state.session.dsn().map(String::from) {
+    if let Some(endpoint) = state.session.endpoint().cloned() {
         state.connection_error.clear();
         if state.session.active_database_type() == Some(DatabaseType::MySQL) {
             let target = ConnectionTarget {
@@ -120,29 +116,26 @@ pub(in crate::update) fn retry_connection(state: &mut AppState) -> Vec<Effect> {
                     .active_connection_id()
                     .cloned()
                     .expect("active MySQL connection"),
-                dsn,
                 name: state
                     .session
                     .active_connection_name()
                     .unwrap_or_default()
                     .to_string(),
-                database_type: DatabaseType::MySQL,
-                database: state.session.active_database().map(str::to_string),
+                endpoint,
             };
             let run_id = state.session.begin_mysql_connection_probe(
                 &target.id,
                 &target.name,
-                &target.dsn,
-                target.database.as_deref(),
+                &target.endpoint,
             );
             state.session.mark_connecting();
             state.modal.set_mode(InputMode::Normal);
             return vec![Effect::ProbeMySqlConnection { target, run_id }];
         }
-        let run_id = state.session.begin_connecting(&dsn);
+        let run_id = state.session.begin_connecting();
         state.session.disable_read_only();
         state.modal.set_mode(InputMode::Normal);
-        vec![Effect::FetchMetadata { dsn, run_id }]
+        vec![Effect::FetchMetadata { endpoint, run_id }]
     } else {
         vec![]
     }
@@ -153,10 +146,11 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
-    use crate::domain::{ConnectionId, DatabaseType};
+    use crate::domain::ConnectionId;
     use crate::model::connection::error::test_support;
     use crate::model::connection::state::ConnectionState;
     use crate::services::AppServices;
+    use crate::test_support::endpoint;
     use crate::update::action::ScrollTarget;
     use crate::update::reducer::route;
     use crate::update::test_fixtures;
@@ -209,11 +203,10 @@ mod tests {
         #[test]
         fn blocked_for_service_connection() {
             let mut state = AppState::new("test".to_string());
-            state.session.activate_connection_with_dsn(
+            state.session.activate_connection(
                 &ConnectionId::new(),
                 "service",
-                DatabaseType::PostgreSQL,
-                "service=mydb",
+                &endpoint::service("mydb"),
             );
             state.modal.set_mode(InputMode::ConnectionError);
 
@@ -229,13 +222,13 @@ mod tests {
 
         #[test]
         fn blocked_for_cli_ephemeral_connection() {
-            use crate::domain::ConnectionId;
+            use crate::domain::{ConnectionId, SqliteConnectionConfig};
 
             let mut state = AppState::new("test".to_string());
             state.session.activate_cli_ephemeral_connection(
                 &ConnectionId::from_string("cli-sqlite-test"),
                 "app.db",
-                "sqlite:///tmp/app.db",
+                SqliteConnectionConfig::new("/tmp/app.db").unwrap(),
             );
             state.modal.set_mode(InputMode::ConnectionError);
 
@@ -271,13 +264,9 @@ mod tests {
         let mut state = AppState::new("test".to_string());
         let id = ConnectionId::new();
         let dsn = "mysql://user@localhost:3306/app?ssl-mode=PREFERRED";
-        state.session.activate_connection_with_target(
-            &id,
-            "mysql",
-            DatabaseType::MySQL,
-            dsn,
-            Some("app"),
-        );
+        state
+            .session
+            .activate_connection(&id, "mysql", &endpoint::mysql(dsn, Some("app")));
         state.session.set_connection_state(ConnectionState::Failed);
         state.modal.set_mode(InputMode::ConnectionError);
 
@@ -292,8 +281,8 @@ mod tests {
             effect,
             Effect::ProbeMySqlConnection { target, .. }
                 if target.id == id
-                    && target.dsn == dsn
-                    && target.database == Some("app".to_string())
+                    && target.endpoint == endpoint::mysql(dsn, Some("app"))
+                    && target.endpoint.selected_database() == Some("app")
         )));
         assert!(
             !effects
@@ -306,12 +295,13 @@ mod tests {
     #[test]
     fn retry_mysql_ignores_non_retryable_error() {
         let mut state = AppState::new("test".to_string());
-        state.session.activate_connection_with_target(
+        state.session.activate_connection(
             &ConnectionId::new(),
             "mysql",
-            DatabaseType::MySQL,
-            "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
-            Some("app"),
+            &endpoint::mysql(
+                "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+                Some("app"),
+            ),
         );
         state.connection_error.set_error(test_support::from_parts(
             "Connection failed",
@@ -338,12 +328,13 @@ mod tests {
         let mut state = AppState::new("test".to_string());
         let current_id = ConnectionId::from_string("mysql-a");
         let target_id = ConnectionId::from_string("mysql-b");
-        state.session.activate_connection_with_target(
+        state.session.activate_connection(
             &current_id,
             "mysql-a",
-            DatabaseType::MySQL,
-            "mysql://user@localhost:3306/a?ssl-mode=PREFERRED",
-            Some("a"),
+            &endpoint::mysql(
+                "mysql://user@localhost:3306/a?ssl-mode=PREFERRED",
+                Some("a"),
+            ),
         );
         state
             .session
@@ -352,8 +343,10 @@ mod tests {
         let _ = state.session.begin_mysql_connection_probe(
             &target_id,
             "mysql-b",
-            "mysql://user@localhost:3306/b?ssl-mode=PREFERRED",
-            Some("b"),
+            &endpoint::mysql(
+                "mysql://user@localhost:3306/b?ssl-mode=PREFERRED",
+                Some("b"),
+            ),
         );
         state.connection_error.set_error(test_support::from_parts(
             "Connection refused",
@@ -375,8 +368,11 @@ mod tests {
         assert_eq!(state.input_mode(), InputMode::Normal);
         assert!(state.session.connection_state().is_connected());
         assert_eq!(
-            state.session.dsn(),
-            Some("mysql://user@localhost:3306/a?ssl-mode=PREFERRED")
+            state.session.endpoint(),
+            Some(&endpoint::mysql(
+                "mysql://user@localhost:3306/a?ssl-mode=PREFERRED",
+                Some("a")
+            ))
         );
     }
 
@@ -385,16 +381,14 @@ mod tests {
         let mut state = AppState::new("test".to_string());
         let id = ConnectionId::from_string("mysql-a");
         let dsn = "mysql://user@localhost:3306/a?ssl-mode=PREFERRED";
-        state.session.activate_connection_with_target(
+        state
+            .session
+            .activate_connection(&id, "mysql-a", &endpoint::mysql(dsn, Some("a")));
+        let _ = state.session.begin_mysql_connection_probe(
             &id,
             "mysql-a",
-            DatabaseType::MySQL,
-            dsn,
-            Some("a"),
+            &endpoint::mysql(dsn, Some("a")),
         );
-        let _ = state
-            .session
-            .begin_mysql_connection_probe(&id, "mysql-a", dsn, Some("a"));
         state.connection_error.set_error(test_support::from_parts(
             "Connection refused",
             "Check the host, port, and server availability",
@@ -421,12 +415,13 @@ mod tests {
         let mut state = AppState::new("test".to_string());
         let current_id = ConnectionId::from_string("mysql-a");
         let target_id = ConnectionId::from_string("mysql-b");
-        state.session.activate_connection_with_target(
+        state.session.activate_connection(
             &current_id,
             "mysql-a",
-            DatabaseType::MySQL,
-            "mysql://user@localhost:3306/a?ssl-mode=PREFERRED",
-            Some("a"),
+            &endpoint::mysql(
+                "mysql://user@localhost:3306/a?ssl-mode=PREFERRED",
+                Some("a"),
+            ),
         );
         state
             .session
@@ -435,8 +430,10 @@ mod tests {
         let _ = state.session.begin_mysql_connection_probe(
             &target_id,
             "mysql-b",
-            "mysql://user@localhost:3306/b?ssl-mode=PREFERRED",
-            Some("b"),
+            &endpoint::mysql(
+                "mysql://user@localhost:3306/b?ssl-mode=PREFERRED",
+                Some("b"),
+            ),
         );
         state.connection_error.set_error(test_support::from_parts(
             "Connection refused",
@@ -463,8 +460,11 @@ mod tests {
         );
         assert!(state.session.connection_state().is_connected());
         assert_eq!(
-            state.session.dsn(),
-            Some("mysql://user@localhost:3306/a?ssl-mode=PREFERRED")
+            state.session.endpoint(),
+            Some(&endpoint::mysql(
+                "mysql://user@localhost:3306/a?ssl-mode=PREFERRED",
+                Some("a")
+            ))
         );
     }
 }
