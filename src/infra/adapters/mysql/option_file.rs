@@ -696,6 +696,37 @@ mod tests {
     }
 
     #[test]
+    fn option_file_serializes_client_certificate_pair_without_ca_in_required_mode() {
+        let config = MySqlConnectionConfig::new(
+            "localhost",
+            3306,
+            None,
+            "user",
+            "secret",
+            MySqlSslMode::Required,
+        )
+        .with_tls_paths(
+            None,
+            Some("/certs/client.pem".to_string()),
+            Some("/certs/client-key.pem".to_string()),
+        );
+        let target = NormalizedMySqlConfig::new(&config).unwrap();
+
+        let contents = serialize_option_file(&target);
+
+        assert!(contents.contains("ssl-mode = \"REQUIRED\"\n"));
+        assert!(!contents.contains("ssl-ca"));
+        assert!(contents.contains(&format!(
+            "ssl-cert = {}\n",
+            quote_option_value("/certs/client.pem")
+        )));
+        assert!(contents.contains(&format!(
+            "ssl-key = {}\n",
+            quote_option_value("/certs/client-key.pem")
+        )));
+    }
+
+    #[test]
     fn option_file_serializes_server_public_key_path() {
         let directory = tempfile::tempdir().unwrap();
         let key = directory.path().join("server-key.pem");
