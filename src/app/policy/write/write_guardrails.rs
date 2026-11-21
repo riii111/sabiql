@@ -305,21 +305,24 @@ mod tests {
         }
 
         #[test]
-        fn explicit_identity_uses_values_separate_from_display_columns() {
+        fn selected_row_uses_its_hidden_key_when_display_values_match() {
             let table = primary_key_table();
             let result = QueryResult::success_with_values(
                 "SELECT name".to_string(),
                 vec!["name".to_string()],
-                vec![vec![QueryValue::text("alice")]],
+                vec![vec![QueryValue::text("alice")]; 2],
                 0,
                 QuerySource::Preview,
             )
-            .with_explicit_row_identity(vec!["id".to_string()], vec![vec![QueryValue::text("42")]]);
+            .with_explicit_row_identity(
+                vec!["id".to_string()],
+                vec![vec![QueryValue::text("17")], vec![QueryValue::text("42")]],
+            );
 
             let identity = stable_row_identity_for_preview(&table, &result).unwrap();
 
             assert_eq!(
-                identity.identity_pairs_for_row(&result, 0),
+                identity.identity_pairs_for_row(&result, 1),
                 Some(vec![("id".to_string(), QueryValue::text("42"))])
             );
         }
@@ -387,18 +390,7 @@ mod tests {
         }
 
         #[test]
-        fn sqlite_table_without_primary_key_has_no_stable_identity() {
-            let table = test_support::table::minimal("main", "users");
-
-            assert_eq!(
-                preview_writeability(&table),
-                PreviewWriteability::MissingStableRowIdentity
-            );
-            assert_eq!(stable_row_identity_for_table(&table), None);
-        }
-
-        #[test]
-        fn postgres_table_without_primary_key_has_no_stable_identity() {
+        fn table_without_primary_key_has_no_stable_identity() {
             let table = test_support::table::minimal("public", "users");
 
             assert_eq!(

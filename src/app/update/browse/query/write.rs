@@ -1068,26 +1068,29 @@ mod tests {
         }
 
         #[test]
-        fn composite_primary_key_preserves_order_in_update_preview() {
+        fn update_preview_targets_selected_row_with_reordered_key_columns() {
             let mut state = AppState::new("test_project".to_string());
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             state
                 .query
                 .set_current_result(Arc::new(QueryResult::success(
-                    "SELECT first_id, second_id, name FROM composite_users".to_string(),
+                    "SELECT second_id, first_id, name FROM composite_users".to_string(),
                     vec![
-                        "first_id".to_string(),
                         "second_id".to_string(),
+                        "first_id".to_string(),
                         "name".to_string(),
                     ],
-                    vec![vec!["1".to_string(), "2".to_string(), "Alice".to_string()]],
+                    vec![
+                        vec!["8".into(), "7".into(), "Alice".into()],
+                        vec!["2".into(), "1".into(), "Alice".into()],
+                    ],
                     1,
                     QuerySource::Preview,
                 )));
             let mut detail = users_table_detail();
             detail.name = "composite_users".to_string();
-            detail.columns[0].name = "first_id".to_string();
-            detail.columns[1].name = "second_id".to_string();
+            detail.columns[0].name = "second_id".to_string();
+            detail.columns[1].name = "first_id".to_string();
             detail.columns[1].attributes = ColumnAttributes::PRIMARY_KEY;
             detail
                 .columns
@@ -1103,7 +1106,7 @@ mod tests {
             state.modal.set_mode(InputMode::CellEdit);
             state
                 .result_interaction
-                .begin_cell_edit(0, 2, "Alice".to_string());
+                .begin_cell_edit(1, 2, "Alice".to_string());
             state
                 .result_interaction
                 .replace_cell_edit_draft("Bob".to_string());
