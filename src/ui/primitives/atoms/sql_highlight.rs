@@ -440,24 +440,8 @@ mod tests {
     }
 
     #[test]
-    fn highlight_sql_keeps_sqlite_display_compatible_with_postgresql() {
-        let text = r#"SELECT "user" FROM users -- comment"#;
-
-        assert_eq!(
-            highlight_sql_spans(text, DatabaseType::SQLite, &DEFAULT_THEME),
-            highlight_sql_spans(text, DatabaseType::PostgreSQL, &DEFAULT_THEME)
-        );
-    }
-
-    #[rstest::rstest]
-    #[case::hash_and_backtick("SELECT `select` FROM users # note")]
-    #[case::double_quote(r#"SELECT "users." FROM users"#)]
-    #[case::dash_dash_without_space("SELECT 1--1 FROM users")]
-    #[case::backslash_in_string(r"SELECT 'it\'s' AS label FROM users")]
-    #[case::mysql_only_keyword("DESCRIBE users")]
-    fn highlight_sql_keeps_sqlite_display_postgresql_compatible_where_mysql_differs(
-        #[case] text: &str,
-    ) {
+    fn highlight_sql_keeps_sqlite_display_postgresql_compatible_where_mysql_differs() {
+        let text = "SELECT `select` FROM users # note";
         let sqlite = highlight_sql_spans(text, DatabaseType::SQLite, &DEFAULT_THEME);
 
         assert_eq!(

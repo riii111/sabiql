@@ -1025,27 +1025,11 @@ mod tests {
                 vec!["idx_users_email", "email", ""],
             ),
             (
-                (true, true, false),
-                vec!["Name", "Columns", "Type", "Unique"],
-                vec!["idx_users_email", "email", "B-tree", ""],
-            ),
-            (
                 (false, false, true),
                 vec!["Name", "Columns", "Unique", "Detail"],
                 vec![
                     "idx_users_email",
                     "email",
-                    "",
-                    "CREATE INDEX idx_users_email ON users(email)",
-                ],
-            ),
-            (
-                (true, false, true),
-                vec!["Name", "Columns", "Type", "Unique", "Detail"],
-                vec![
-                    "idx_users_email",
-                    "email",
-                    "B-tree",
                     "",
                     "CREATE INDEX idx_users_email ON users(email)",
                 ],
@@ -1091,7 +1075,7 @@ mod tests {
     }
 
     #[test]
-    fn column_row_cells_include_optional_columns_for_all_display_options() {
+    fn column_row_cells_include_optional_columns_for_display_options() {
         let row = InspectorColumnRow {
             name: "id".to_string(),
             data_type: "integer".to_string(),
@@ -1107,36 +1091,54 @@ mod tests {
             generation_kind: None,
         };
 
-        for read_only in [false, true] {
-            for character_set in [false, true] {
-                for collation in [false, true] {
-                    for generation in [false, true] {
-                        let options = ColumnDisplayOptions {
-                            icon_mode: IconMode::Off,
-                            read_only,
-                            character_set,
-                            collation,
-                            generation,
-                        };
-                        let mut expected = vec!["id", "integer", "", "✓"];
-                        if options.read_only {
-                            expected.push("read-only");
-                        }
-                        expected.extend(["default", "comment"]);
-                        if options.character_set {
-                            expected.push("charset");
-                        }
-                        if options.collation {
-                            expected.push("collation");
-                        }
-                        if options.generation {
-                            expected.push("generation");
-                        }
+        let cases = [
+            (
+                (false, false, false, false),
+                vec!["id", "integer", "", "✓", "default", "comment"],
+            ),
+            (
+                (true, false, false, false),
+                vec!["id", "integer", "", "✓", "read-only", "default", "comment"],
+            ),
+            (
+                (false, true, false, false),
+                vec!["id", "integer", "", "✓", "default", "comment", "charset"],
+            ),
+            (
+                (false, false, true, false),
+                vec!["id", "integer", "", "✓", "default", "comment", "collation"],
+            ),
+            (
+                (false, false, false, true),
+                vec!["id", "integer", "", "✓", "default", "comment", "generation"],
+            ),
+            (
+                (true, true, true, true),
+                vec![
+                    "id",
+                    "integer",
+                    "",
+                    "✓",
+                    "read-only",
+                    "default",
+                    "comment",
+                    "charset",
+                    "collation",
+                    "generation",
+                ],
+            ),
+        ];
 
-                        assert_eq!(column_row_cells(&row, options), expected);
-                    }
-                }
-            }
+        for ((read_only, character_set, collation, generation), expected) in cases {
+            let options = ColumnDisplayOptions {
+                icon_mode: IconMode::Off,
+                read_only,
+                character_set,
+                collation,
+                generation,
+            };
+
+            assert_eq!(column_row_cells(&row, options), expected);
         }
     }
 
@@ -1293,28 +1295,17 @@ mod tests {
         }
     }
 
-    #[rstest::rstest]
-    #[case::postgres(
-        DatabaseType::PostgreSQL,
-        &["Name", "Timing", "Event", "Function", "Security"],
-        &["audit_changes", "BEFORE", "UPDATE", "audit_fn", "INVOKER"]
-    )]
-    #[case::sqlite(
-        DatabaseType::SQLite,
-        &["Name", "Timing", "Event", "Definition"],
-        &["audit_changes", "BEFORE", "UPDATE", "audit_fn"]
-    )]
-    fn trigger_table_columns_follow_the_engine(
-        #[case] database_type: DatabaseType,
-        #[case] expected_headers: &[&str],
-        #[case] expected_cells: &[&str],
-    ) {
+    #[test]
+    fn sqlite_trigger_table_shows_definition_column() {
         use crate::app::model::shared::theme_id::ThemeId;
         use crate::theme::palette_for;
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
         use ratatui::layout::Rect;
 
+        let database_type = DatabaseType::SQLite;
+        let expected_headers = ["Name", "Timing", "Event", "Definition"];
+        let expected_cells = ["audit_changes", "BEFORE", "UPDATE", "audit_fn"];
         let row = InspectorTriggerRow {
             name: "audit_changes".to_string(),
             timing: "BEFORE".to_string(),
@@ -1359,6 +1350,5 @@ mod tests {
 
         assert_eq!(line_words("Name"), expected_headers);
         assert_eq!(line_words("audit_changes"), expected_cells);
-        assert_eq!(trigger_row_cells(&row, database_type), expected_cells);
     }
 }

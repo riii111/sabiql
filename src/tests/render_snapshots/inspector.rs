@@ -1,9 +1,25 @@
 use super::*;
 use harness::table_detail_loaded_state;
+use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::inspector_tab::InspectorTab;
 use sabiql_domain::{
     ColumnGenerationKind, ConnectionId, TableKind, TableKindInfo, TableStorageAttributes,
 };
+
+fn sqlite_indexes_state(index: Index) -> AppState {
+    let mut state = harness::explorer_selected_state();
+    let mut table = fixtures::sample_postgres_table_detail();
+    table.indexes = vec![index];
+    let _ = state.session.set_table_detail(table, 0);
+    state.session.activate_connection(
+        &ConnectionId::from_string("sqlite-test"),
+        "app.db",
+        &endpoint::sqlite("sqlite:///tmp/app.db"),
+    );
+    state.ui.set_inspector_tab(InspectorTab::Indexes);
+    state.ui.set_focused_pane(FocusedPane::Inspector);
+    state
+}
 
 #[test]
 fn inspector_columns_narrow_pane_keeps_horizontal_scroll() {
@@ -179,11 +195,7 @@ fn inspector_indexes_tab_for_sqlite_hides_unknown_type() {
 
 #[test]
 fn inspector_indexes_tab_shows_sqlite_partial_index_definition() {
-    let mut state = harness::explorer_selected_state();
-    let mut terminal = create_test_terminal();
-
-    let mut table = fixtures::sample_postgres_table_detail();
-    table.indexes = vec![Index {
+    let mut state = sqlite_indexes_state(Index {
         name: "idx_users_email_active".to_string(),
         columns: vec!["email".to_string()],
         attributes: IndexAttributes::PARTIAL,
@@ -192,15 +204,8 @@ fn inspector_indexes_tab_shows_sqlite_partial_index_definition() {
             "CREATE INDEX idx_users_email_active ON users(email) WHERE email IS NOT NULL"
                 .to_string(),
         ),
-    }];
-    let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection(
-        &ConnectionId::from_string("sqlite-test"),
-        "app.db",
-        &endpoint::sqlite("sqlite:///tmp/app.db"),
-    );
-    state.ui.set_inspector_tab(InspectorTab::Indexes);
-    state.ui.set_focused_pane(FocusedPane::Inspector);
+    });
+    let mut terminal = create_test_terminal();
 
     let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
 
@@ -209,25 +214,14 @@ fn inspector_indexes_tab_shows_sqlite_partial_index_definition() {
 
 #[test]
 fn inspector_indexes_tab_shows_sqlite_descending_index_definition() {
-    let mut state = harness::explorer_selected_state();
-    let mut terminal = create_test_terminal();
-
-    let mut table = fixtures::sample_postgres_table_detail();
-    table.indexes = vec![Index {
+    let mut state = sqlite_indexes_state(Index {
         name: "idx_users_name_desc".to_string(),
         columns: vec!["name".to_string()],
         attributes: IndexAttributes::DESCENDING,
         index_type: IndexType::Unknown,
         definition: Some("CREATE INDEX idx_users_name_desc ON users(name DESC)".to_string()),
-    }];
-    let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection(
-        &ConnectionId::from_string("sqlite-test"),
-        "app.db",
-        &endpoint::sqlite("sqlite:///tmp/app.db"),
-    );
-    state.ui.set_inspector_tab(InspectorTab::Indexes);
-    state.ui.set_focused_pane(FocusedPane::Inspector);
+    });
+    let mut terminal = create_test_terminal();
 
     let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
 
@@ -236,11 +230,7 @@ fn inspector_indexes_tab_shows_sqlite_descending_index_definition() {
 
 #[test]
 fn inspector_indexes_tab_shows_sqlite_collation_index_definition() {
-    let mut state = harness::explorer_selected_state();
-    let mut terminal = create_test_terminal();
-
-    let mut table = fixtures::sample_postgres_table_detail();
-    table.indexes = vec![Index {
+    let mut state = sqlite_indexes_state(Index {
         name: "idx_users_name_nocase".to_string(),
         columns: vec!["name".to_string()],
         attributes: IndexAttributes::NON_BINARY_COLLATION,
@@ -248,15 +238,8 @@ fn inspector_indexes_tab_shows_sqlite_collation_index_definition() {
         definition: Some(
             "CREATE INDEX idx_users_name_nocase ON users(name COLLATE NOCASE)".to_string(),
         ),
-    }];
-    let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection(
-        &ConnectionId::from_string("sqlite-test"),
-        "app.db",
-        &endpoint::sqlite("sqlite:///tmp/app.db"),
-    );
-    state.ui.set_inspector_tab(InspectorTab::Indexes);
-    state.ui.set_focused_pane(FocusedPane::Inspector);
+    });
+    let mut terminal = create_test_terminal();
 
     let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
 
@@ -265,11 +248,7 @@ fn inspector_indexes_tab_shows_sqlite_collation_index_definition() {
 
 #[test]
 fn inspector_indexes_tab_shows_sqlite_partial_expression_details() {
-    let mut state = harness::explorer_selected_state();
-    let mut terminal = create_test_terminal();
-
-    let mut table = fixtures::sample_postgres_table_detail();
-    table.indexes = vec![Index {
+    let mut state = sqlite_indexes_state(Index {
         name: "idx_users_email_lower".to_string(),
         columns: vec!["<expression>".to_string()],
         attributes: IndexAttributes::PARTIAL
@@ -280,15 +259,8 @@ fn inspector_indexes_tab_shows_sqlite_partial_expression_details() {
             "CREATE INDEX idx_users_email_lower ON users(lower(email)) WHERE email IS NOT NULL"
                 .to_string(),
         ),
-    }];
-    let _ = state.session.set_table_detail(table, 0);
-    state.session.activate_connection(
-        &ConnectionId::from_string("sqlite-test"),
-        "app.db",
-        &endpoint::sqlite("sqlite:///tmp/app.db"),
-    );
-    state.ui.set_inspector_tab(InspectorTab::Indexes);
-    state.ui.set_focused_pane(FocusedPane::Inspector);
+    });
+    let mut terminal = create_test_terminal();
 
     let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
 
