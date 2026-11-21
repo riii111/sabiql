@@ -22,7 +22,7 @@ use crate::policy::FeaturePolicy;
 use crate::services::AppServices;
 use crate::update::action::{Action, TableTarget};
 use crate::update::helpers::reject_pending_mysql_connection_probe;
-use crate::update::input::palette::palette_action_for_index;
+use crate::update::input::keymap::{KeyContext, palette_action};
 use crate::update::query_context::termination_effects;
 
 pub fn reduce(
@@ -489,11 +489,12 @@ fn confirm_selection(state: &mut AppState, now: Instant, services: &AppServices)
             return select_table(state, &table);
         }
     } else if state.modal.active_mode() == InputMode::CommandPalette {
-        let cmd_action = palette_action_for_index(
-            state.ui.table_picker().selected(),
-            state.settings.saved_keymap_preset(),
-            &state.session.active_engine_feature_profile(),
-        );
+        let cmd_action = state
+            .ui
+            .palette_commands()
+            .get(state.ui.table_picker().selected())
+            .and_then(|&id| palette_action(id, &KeyContext::for_browse_state(state)))
+            .unwrap_or(Action::None);
         state.modal.set_mode(InputMode::Normal);
         return reduce(state, cmd_action, now, services);
     }
@@ -3647,27 +3648,30 @@ mod tests {
 
     mod command_palette {
         use super::*;
+        use crate::domain::{QueryResult, QuerySource};
         use crate::model::shared::settings::KeymapPreset;
-        use crate::update::input::palette::palette_commands;
+        use crate::update::input::keymap::palette_entry;
+        use crate::update::modal::base::open_modal_command_palette;
         use rstest::rstest;
 
         fn state_in_palette_mode(preset: KeymapPreset) -> AppState {
             let mut state = create_test_state();
             state.settings.load_keymap_preset(preset);
-            state.modal.set_mode(InputMode::CommandPalette);
+            open_modal_command_palette(&mut state);
 
             state
         }
 
         fn palette_index_of(state: &AppState, target: impl Fn(&Action) -> bool) -> usize {
-            palette_commands(
-                state.settings.saved_keymap_preset(),
-                &state.session.active_engine_feature_profile(),
-            )
-            .enumerate()
-            .find(|(_, kb)| target(&kb.action))
-            .map(|(i, _)| i)
-            .expect("action must exist in palette")
+            state
+                .ui
+                .palette_commands()
+                .iter()
+                .filter_map(|&id| palette_entry(id, &KeyContext::for_browse_state(state)))
+                .enumerate()
+                .find(|(_, kb)| target(&kb.action))
+                .map(|(i, _)| i)
+                .expect("action must exist in palette")
         }
 
         fn same_palette_action(left: &Action, right: &Action) -> bool {
@@ -3723,9 +3727,11 @@ mod tests {
 
         #[test]
         fn confirm_selection_with_reload_emits_effects_in_order() {
-            let mut state = state_in_palette_mode(KeymapPreset::Ide);
-            let entry_index = palette_index_of(&state, |a| matches!(a, Action::ReloadMetadata));
+            let mut state = create_test_state();
+            state.settings.load_keymap_preset(KeymapPreset::Ide);
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
+            open_modal_command_palette(&mut state);
+            let entry_index = palette_index_of(&state, |a| matches!(a, Action::ReloadMetadata));
             state.ui.table_picker_mut().set_selection(entry_index);
             let now = Instant::now();
 
@@ -3743,6 +3749,29 @@ mod tests {
                 [Effect::CancelMetadataTasks, Effect::FetchMetadata { .. },]
             ));
             assert!(!state.table_detail_cache.contains("public.cached"));
+        }
+
+        #[test]
+        fn confirm_selection_rechecks_history_after_query_starts() {
+            let mut state = create_test_state();
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
+            open_modal_command_palette(&mut state);
+            let entry_index = palette_index_of(&state, |action| {
+                matches!(action, Action::OpenModal(ModalKind::QueryHistoryPicker))
+            });
+            state.ui.table_picker_mut().set_selection(entry_index);
+            let now = Instant::now();
+            let _ = state.query.begin_running(now);
+
+            let effects = reduce(
+                &mut state,
+                Action::ConfirmSelection,
+                now,
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(effects.is_empty());
         }
 
         #[test]
@@ -3767,6 +3796,111 @@ mod tests {
                 InputMode::CommandPalette,
                 "palette must be closed after confirm"
             );
+        }
+
+        #[test]
+        fn unavailable_export_does_not_execute_another_command() {
+            let mut state = create_test_state();
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    "SELECT 1".to_string(),
+                    vec!["col".to_string()],
+                    vec![vec!["value".to_string()]],
+                    1,
+                    QuerySource::Preview,
+                )));
+            open_modal_command_palette(&mut state);
+            let selected =
+                palette_index_of(&state, |action| matches!(action, Action::RequestCsvExport));
+            let captured = state.ui.palette_commands().to_vec();
+            state.ui.table_picker_mut().set_selection(selected);
+
+            state.query.clear_current_result();
+            let effects = reduce(
+                &mut state,
+                Action::ConfirmSelection,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(effects.is_empty());
+            assert!(!state.session.is_read_only());
+            assert_eq!(state.ui.palette_commands(), captured);
+        }
+
+        #[test]
+        fn mysql_switch_hides_export_and_rechecks_open_palette_selection() {
+            use crate::update::input::keymap::{palette_action, palette_available};
+
+            let mut state = create_test_state();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "mysql-a",
+                DatabaseType::MySQL,
+                "mysql://localhost/a",
+            );
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    "SELECT 1".to_string(),
+                    vec!["col".to_string()],
+                    vec![vec!["value".to_string()]],
+                    1,
+                    QuerySource::Adhoc,
+                )));
+            open_modal_command_palette(&mut state);
+            let selected =
+                palette_index_of(&state, |action| matches!(action, Action::RequestCsvExport));
+            let captured = state.ui.palette_commands().to_vec();
+            let export_id = captured[selected];
+            state.ui.table_picker_mut().set_selection(selected);
+            let now = Instant::now();
+            let effects = reduce(
+                &mut state,
+                Action::SwitchConnection(ConnectionTarget {
+                    id: ConnectionId::new(),
+                    name: "mysql-b".to_string(),
+                    database_type: DatabaseType::MySQL,
+                    dsn: "mysql://localhost/b".to_string(),
+                    database: Some("b".to_string()),
+                }),
+                now,
+                &AppServices::stub(),
+            );
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::ProbeMySqlConnection { .. }))
+            );
+            let context = KeyContext::for_browse_state(&state);
+            assert!(!palette_available(&context).iter().any(|entry| matches!(
+                entry.action,
+                Action::RequestCsvExport | Action::OpenModal(ModalKind::QueryHistoryPicker)
+            )));
+            assert!(palette_action(export_id, &context).is_none());
+            assert_eq!(state.ui.palette_commands(), captured);
+            let effects = reduce(
+                &mut state,
+                Action::ConfirmSelection,
+                now,
+                &AppServices::stub(),
+            );
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(state.messages.last_error().is_none());
+            assert!(
+                reduce(
+                    &mut state,
+                    Action::OpenModal(ModalKind::QueryHistoryPicker),
+                    now,
+                    &AppServices::stub()
+                )
+                .is_empty()
+            );
+            assert_eq!(state.input_mode(), InputMode::Normal);
         }
     }
 

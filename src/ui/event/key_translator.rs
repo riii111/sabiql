@@ -3,7 +3,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use crate::app::ports::inbound::{Key, KeyCombo, Modifiers};
 
 pub fn translate(event: KeyEvent) -> KeyCombo {
-    let key = match event.code {
+    let mut key = match event.code {
         KeyCode::Char(c) => Key::Char(c),
         KeyCode::Enter => Key::Enter,
         KeyCode::Esc => Key::Esc,
@@ -28,6 +28,14 @@ pub fn translate(event: KeyEvent) -> KeyCombo {
     // flag to prevent double-encoding (e.g. Kitty sends 'G' + SHIFT).
     let raw_shift = event.modifiers.contains(KeyModifiers::SHIFT);
     let shift = match key {
+        Key::BackTab => true,
+        Key::Char('D')
+            if event.modifiers.contains(KeyModifiers::CONTROL)
+                && !event.modifiers.contains(KeyModifiers::ALT) =>
+        {
+            key = Key::Char('d');
+            true
+        }
         Key::Char(c) if c.is_ascii_uppercase() => false,
         _ => raw_shift,
     };
@@ -66,6 +74,40 @@ mod tests {
     }
 
     #[test]
+    fn ctrl_shift_d_encodings_translate_to_the_same_combo() {
+        let lower = KeyEvent::new(
+            KeyCode::Char('d'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        );
+        let upper = KeyEvent::new(KeyCode::Char('D'), KeyModifiers::CONTROL);
+        assert_eq!(translate(lower), KeyCombo::ctrl_shift(Key::Char('d')));
+        assert_eq!(translate(upper), translate(lower));
+    }
+
+    #[test]
+    fn ctrl_alt_uppercase_d_remains_uppercase_in_text_input() {
+        use crate::app::model::app_state::AppState;
+        use crate::app::model::shared::input_mode::InputMode;
+        use crate::app::ports::inbound::InputEvent;
+        use crate::app::update::action::{Action, InputTarget};
+        use crate::app::update::input::handle_event;
+
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::CommandLine);
+        let combo = translate(KeyEvent::new(
+            KeyCode::Char('D'),
+            KeyModifiers::CONTROL | KeyModifiers::ALT,
+        ));
+        assert!(matches!(
+            handle_event(InputEvent::Key(combo), &state),
+            Action::TextInput {
+                target: InputTarget::CommandLine,
+                ch: 'D'
+            }
+        ));
+    }
+
+    #[test]
     fn alt_enter_translates_to_alt_modifier() {
         let event = KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT);
 
@@ -87,6 +129,13 @@ mod tests {
                 modifiers: Modifiers::SHIFT,
             }
         );
+    }
+
+    #[test]
+    fn backtab_without_shift_normalizes_to_shift_backtab() {
+        let event = KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE);
+
+        assert_eq!(translate(event), KeyCombo::shift(Key::BackTab));
     }
 
     #[test]
@@ -161,7 +210,7 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_shift_uppercase_d_normalizes_to_ctrl_uppercase_d_without_shift() {
+    fn ctrl_shift_uppercase_d_normalizes_to_ctrl_shift_lowercase_d() {
         let event = KeyEvent::new(
             KeyCode::Char('D'),
             KeyModifiers::CONTROL | KeyModifiers::SHIFT,
@@ -169,7 +218,7 @@ mod tests {
 
         let combo = translate(event);
 
-        assert_eq!(combo, KeyCombo::ctrl(Key::Char('D')));
+        assert_eq!(combo, KeyCombo::ctrl_shift(Key::Char('d')));
     }
 
     #[test]

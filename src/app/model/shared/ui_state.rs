@@ -180,6 +180,7 @@ pub struct UiState {
     connection_list_pane_height: u16,
 
     table_picker: PickerState,
+    palette_commands: Vec<usize>,
 
     er_picker: PickerState,
     er_selected_tables: BTreeSet<String>,
@@ -311,6 +312,14 @@ impl UiState {
 
     pub fn table_picker_mut(&mut self) -> &mut PickerState {
         &mut self.table_picker
+    }
+
+    pub fn palette_commands(&self) -> &[usize] {
+        &self.palette_commands
+    }
+
+    pub fn set_palette_commands(&mut self, commands: Vec<usize>) {
+        self.palette_commands = commands;
     }
 
     pub fn er_picker(&self) -> &PickerState {

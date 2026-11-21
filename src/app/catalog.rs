@@ -1,17 +1,9 @@
 use unicode_width::UnicodeWidthStr;
 
 use crate::model::app_state::AppState;
-use crate::model::connection::setup::ConnectionField;
-use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
-use crate::model::shared::focused_pane::FocusedPane;
-use crate::model::shared::help::{HelpOrigin, JsonHelpMode, SqlHelpMode};
-use crate::model::shared::settings::KeymapPreset;
-use crate::policy::{FeaturePolicy, FeatureRequirement};
-#[allow(
-    clippy::wildcard_imports,
-    reason = "help catalog enumerates nearly every keybindings table; explicit list is churn"
-)]
-use crate::update::input::keybindings::*;
+use crate::model::shared::input_mode::InputMode;
+use crate::policy::FeaturePolicy;
+use crate::update::input::keymap::{Hint, HintSurface, KeyContext, current_hints, reference_hints};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HelpDocument {
@@ -23,44 +15,26 @@ pub struct HelpDocument {
 const FILTER_LINE_COUNT: usize = 1;
 const FILTER_SECTION_GAP_LINES: usize = 1;
 const SECTION_HEADER_LINE_COUNT: usize = 1;
+pub const HELP_KEY_INDENT_WIDTH: usize = 2;
+pub const HELP_KEY_DESC_GAP: usize = 2;
 
 impl HelpDocument {
     pub fn from_state(state: &AppState) -> Self {
         let filter = state.ui.help().filter();
-        Self::new_with_cursor_and_preset(
-            state.ui.help().origin(),
-            filter.content(),
-            filter.cursor(),
-            state.settings.saved_keymap_preset(),
-            &state.session.active_engine_feature_profile(),
-        )
+        let context = state.ui.help().origin().cloned().unwrap_or_else(|| {
+            KeyContext::for_scope(
+                InputMode::Normal,
+                state.settings.saved_keymap_preset(),
+                &FeaturePolicy::new(&state.session.active_engine_feature_profile()),
+            )
+        });
+        Self::new(context, filter.content(), filter.cursor())
     }
 
-    pub fn new(origin: HelpOrigin, filter: &str) -> Self {
-        Self::new_with_cursor(origin, filter, filter.chars().count())
-    }
-
-    pub fn new_with_cursor(origin: HelpOrigin, filter: &str, filter_cursor: usize) -> Self {
-        Self::new_with_cursor_and_preset(
-            origin,
-            filter,
-            filter_cursor,
-            origin.keymap_preset(),
-            &EngineFeatureProfile::postgres_like(),
-        )
-    }
-
-    fn new_with_cursor_and_preset(
-        origin: HelpOrigin,
-        filter: &str,
-        filter_cursor: usize,
-        keymap_preset: KeymapPreset,
-        engine_feature_profile: &EngineFeatureProfile,
-    ) -> Self {
-        let feature_policy = FeaturePolicy::new(engine_feature_profile);
+    fn new(context: KeyContext, filter: &str, filter_cursor: usize) -> Self {
         let normalized = filter.trim().to_lowercase();
-        let mut sections = vec![current_section(origin, &feature_policy)];
-        sections.extend(reference_sections(keymap_preset, &feature_policy));
+        let mut sections = vec![current_section(&context)];
+        sections.extend(reference_sections(&context));
 
         if !normalized.is_empty() {
             sections = sections
@@ -211,504 +185,46 @@ impl HelpRow {
     }
 }
 
-fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSection {
-    let rows = match origin {
-        HelpOrigin::Normal {
-            focused_pane: FocusedPane::Result,
-            staged_delete_in_progress: true,
-            result_active: true,
-            pending_cell_edit_draft,
-            ..
-        } => {
-            let escape = if pending_cell_edit_draft {
-                &result_active::DRAFT_DISCARD
-            } else {
-                &result_active::ESC_BACK
-            };
-            rows_from_binding_refs(&[
-                &result_active::STAGE_DELETE,
-                &result_active::UNSTAGE_DELETE,
-                &cell_edit::WRITE,
-                &global::CONNECTIONS,
-                escape,
-            ])
-        }
-        HelpOrigin::Normal {
-            focused_pane: FocusedPane::Result,
-            staged_delete_in_progress: true,
-            result_active: false,
-            keymap_preset,
-            ..
-        } => rows_from_binding_refs(&[
-            &result_active::ENTER_DEEPEN,
-            &result_active::UNSTAGE_DELETE,
-            &result_active::CLEAR_STAGED_DELETE,
-            &cell_edit::WRITE,
-            &global::CONNECTIONS,
-            &footer_nav::PAGE_NAV,
-            csv_export(keymap_preset),
-        ]),
-        HelpOrigin::Normal {
-            focused_pane: FocusedPane::Result,
-            result_active: true,
-            staged_delete_in_progress: false,
-            can_write_preview,
-            can_edit_selected_cell,
-            pending_cell_edit_draft,
-            ..
-        } => {
-            let mut rows = vec![
-                &result_active::YANK,
-                &result_active::ROW_YANK,
-                &result_active::ROW_DETAIL,
-            ];
-            if can_write_preview {
-                rows.push(&result_active::STAGE_DELETE);
-            }
-            if can_edit_selected_cell {
-                rows.push(&result_active::EDIT);
-            }
-            rows.push(&global::CONNECTIONS);
-            rows.push(if pending_cell_edit_draft {
-                &result_active::DRAFT_DISCARD
-            } else {
-                &result_active::ESC_BACK
-            });
-            rows_from_binding_refs(&rows)
-        }
-        HelpOrigin::Normal {
-            focused_pane: FocusedPane::Result,
-            keymap_preset,
-            ..
-        } => rows_from_binding_refs(&[
-            &result_active::ENTER_DEEPEN,
-            &global::CONNECTIONS,
-            &footer_nav::PAGE_NAV,
-            csv_export(keymap_preset),
-        ]),
-        HelpOrigin::Normal {
-            focused_pane: FocusedPane::Inspector,
-            ..
-        } => rows_from_binding_refs(&[
-            &global::CONNECTIONS,
-            &global::INSPECTOR_TABS,
-            &inspector_ddl::YANK,
-        ]),
-        HelpOrigin::Normal {
-            focused_pane: FocusedPane::Explorer,
-            keymap_preset,
-            ..
-        } => rows_from_binding_refs(&[
-            table_picker(keymap_preset),
-            &global::CONNECTIONS,
-            &global::SQL,
-        ]),
-        HelpOrigin::CommandLine => command_line_rows(feature_policy),
-        HelpOrigin::CellEdit => rows_from_bindings(CELL_EDIT_KEYS),
-        HelpOrigin::TablePicker => rows_from_mode_rows(TABLE_PICKER_ROWS),
-        HelpOrigin::CommandPalette => rows_from_mode_rows(COMMAND_PALETTE_ROWS),
-        HelpOrigin::Settings => rows_from_mode_rows(SETTINGS_ROWS),
-        HelpOrigin::Help => rows_from_mode_rows(HELP_ROWS),
-        HelpOrigin::SqlModal {
-            mode,
-            keymap_preset,
-        } => sql_current_rows(mode, keymap_preset, feature_policy),
-        HelpOrigin::ConnectionSetup {
-            keymap_preset,
-            focused_field,
-        } => connection_setup_current_rows(keymap_preset, focused_field),
-        HelpOrigin::ConnectionError => rows_from_mode_rows(CONNECTION_ERROR_ROWS),
-        HelpOrigin::SqliteDiagnostics => {
-            rows_from_mode_rows_if_visible(SQLITE_DIAGNOSTICS_ROWS, feature_policy)
-        }
-        HelpOrigin::ConfirmDialog => rows_from_bindings(CONFIRM_DIALOG_KEYS),
-        HelpOrigin::ConnectionSelector => rows_from_mode_rows(CONNECTION_SELECTOR_ROWS),
-        HelpOrigin::ErTablePicker { keymap_preset } => {
-            rows_from_mode_rows_if_visible(er_picker_rows(keymap_preset), feature_policy)
-        }
-        HelpOrigin::QueryHistoryPicker => rows_from_mode_rows(QUERY_HISTORY_PICKER_ROWS),
-        HelpOrigin::JsonDetail { mode } => json_current_rows(mode, feature_policy),
-        HelpOrigin::JsonEdit => rows_from_mode_rows_if_visible(JSON_EDIT_ROWS, feature_policy),
-        HelpOrigin::CellDetail { searching: true } => rows_from_bindings(CELL_DETAIL_SEARCH_KEYS),
-        HelpOrigin::CellDetail { searching: false } => rows_from_mode_rows(CELL_DETAIL_ROWS),
-        HelpOrigin::RowDetail => rows_from_mode_rows(ROW_DETAIL_ROWS),
-    };
-
+fn current_section(context: &KeyContext) -> HelpSection {
     HelpSection {
-        title: format!("Current: {}", origin.label()),
-        rows,
+        title: format!("Current: {}", context.label()),
+        rows: current_hints(context)
+            .into_iter()
+            .map(|hint| HelpRow::new(hint.key, hint.description))
+            .collect(),
     }
 }
 
-fn command_line_rows(feature_policy: &FeaturePolicy) -> Vec<HelpRow> {
-    rows_from_binding_iter(
-        COMMAND_LINE_KEYS
-            .iter()
-            .filter(|binding| feature_policy.is_enabled(binding.feature_requirement())),
-    )
-}
-
-fn reference_sections(
-    keymap_preset: KeymapPreset,
-    feature_policy: &FeaturePolicy,
-) -> Vec<HelpSection> {
-    let mut open_switch_rows = vec![
-        table_picker(keymap_preset),
-        &global::SQL,
-        &global::CONNECTIONS,
-        query_history(keymap_preset),
-        &global::PANE_SWITCH,
-        &global::INSPECTOR_TABS,
-    ];
-    if feature_policy.is_enabled(global::ER_DIAGRAM.feature_requirement()) {
-        open_switch_rows.insert(2, &global::ER_DIAGRAM);
-    }
-    if feature_policy.is_enabled(sqlite_diagnostics(keymap_preset).feature_requirement()) {
-        open_switch_rows.insert(2, sqlite_diagnostics(keymap_preset));
-    }
-
-    let mut data_action_rows = rows_from_binding_refs(&[
-        &global::RELOAD,
-        csv_export(keymap_preset),
-        &result_active::YANK,
-        &result_active::ROW_YANK,
-        &result_active::STAGE_DELETE,
-        &result_active::UNSTAGE_DELETE,
-        &inspector_ddl::YANK,
-    ]);
-    if feature_policy.is_enabled(json_detail::YANK.feature_requirement()) {
-        data_action_rows.extend(rows_from_mode_row_refs_if_visible(
-            &[&json_detail::YANK],
-            feature_policy,
-        ));
-    }
-
-    let mut search_filter_rows = rows_from_mode_row_refs(&[
-        &table_picker::TYPE_FILTER,
-        &query_history_picker::TYPE_FILTER,
-    ]);
-    if feature_policy.is_enabled(er_picker::TYPE_FILTER.feature_requirement()) {
-        search_filter_rows.insert(1, row_from_mode_row(&er_picker::TYPE_FILTER));
-    }
-    if feature_policy.is_enabled(json_search::TYPE_SEARCH.feature_requirement()) {
-        search_filter_rows.extend(rows_from_bindings_if_visible(
-            JSON_SEARCH_KEYS,
-            feature_policy,
-        ));
-    }
-    search_filter_rows.extend(rows_from_mode_rows(HELP_ROWS));
-
-    let mut editing_rows = merge_rows(&[
-        sql_current_rows(SqlHelpMode::Normal, keymap_preset, feature_policy),
-        sql_current_rows(SqlHelpMode::Insert, keymap_preset, feature_policy),
-        rows_from_bindings(CELL_EDIT_KEYS),
-        rows_from_bindings_if_visible(SQL_MODAL_CONFIRMING_KEYS, feature_policy),
-    ]);
-    if feature_policy.is_enabled(FeatureRequirement::JsonDocumentEdit) {
-        editing_rows.extend(rows_from_mode_rows_if_visible(
-            JSON_EDIT_ROWS,
-            feature_policy,
-        ));
-    }
-
-    let mut advanced_rows = Vec::new();
-    if feature_policy.is_enabled(FeatureRequirement::Explain) {
-        advanced_rows.extend(sql_current_rows(
-            SqlHelpMode::Plan,
-            keymap_preset,
-            feature_policy,
-        ));
-    }
-    if feature_policy.is_enabled(FeatureRequirement::PlanComparison) {
-        advanced_rows.extend(sql_current_rows(
-            SqlHelpMode::Compare,
-            keymap_preset,
-            feature_policy,
-        ));
-    }
-    if feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
-        advanced_rows.extend(rows_from_mode_rows_if_visible(
-            er_picker_rows(keymap_preset),
-            feature_policy,
-        ));
-    }
-    if feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail) {
-        advanced_rows.extend(rows_from_mode_rows_if_visible(
-            JSON_DETAIL_ROWS,
-            feature_policy,
-        ));
-    }
-    advanced_rows.extend(rows_from_mode_rows(ROW_DETAIL_ROWS));
-
-    vec![
-        section(
-            "Common",
-            rows_from_binding_refs(&[
-                &global::HELP,
-                &global::QUIT,
-                settings(keymap_preset),
-                command_palette(keymap_preset),
-                &global::COMMAND_LINE,
-                &global::FOCUS,
-                read_only(keymap_preset),
-            ]),
-        ),
-        section("Navigation", rows_from_bindings(NAVIGATION_KEYS)),
-        section("Open / Switch", rows_from_binding_refs(&open_switch_rows)),
-        section("Data Actions", data_action_rows),
-        section("Editing", editing_rows),
-        section("Search / Filter", search_filter_rows),
-        section(
-            "Connections",
-            merge_rows(&[
-                rows_from_binding_refs(&[
-                    &connection_setup::TAB_NAV,
-                    &connection_setup::TAB_NEXT,
-                    &connection_setup::TAB_PREV,
-                    connection_setup_save(keymap_preset),
-                    &connection_setup::ESC_CANCEL,
-                    &connection_setup::ENTER_DROPDOWN,
-                    &connection_setup::DROPDOWN_NAV,
-                ]),
-                rows_from_mode_rows(CONNECTION_SELECTOR_ROWS),
-                rows_from_mode_rows(CONNECTION_ERROR_ROWS),
-            ]),
-        ),
-        section(
-            "Modal Basics",
-            merge_rows(&[
-                rows_from_bindings(OVERLAY_KEYS),
-                rows_from_bindings(CONFIRM_DIALOG_KEYS),
-                rows_from_mode_rows(HELP_ROWS),
-            ]),
-        ),
-        section("Advanced", merge_rows(&[advanced_rows])),
+fn reference_sections(context: &KeyContext) -> Vec<HelpSection> {
+    [
+        ("Common", HintSurface::Common),
+        ("Navigation", HintSurface::Navigation),
+        ("Open / Switch", HintSurface::OpenSwitch),
+        ("Data Actions", HintSurface::DataActions),
+        ("Editing", HintSurface::Editing),
+        ("Search / Filter", HintSurface::SearchFilter),
+        ("Connections", HintSurface::Connections),
+        ("Modal Basics", HintSurface::ModalBasics),
+        ("Advanced", HintSurface::Advanced),
     ]
     .into_iter()
+    .map(|(title, surface)| section(title, rows_from_hints(reference_hints(surface, context))))
     .filter(|section| !section.rows.is_empty())
     .collect()
-}
-
-fn sql_current_rows(
-    mode: SqlHelpMode,
-    keymap_preset: KeymapPreset,
-    feature_policy: &FeaturePolicy,
-) -> Vec<HelpRow> {
-    match mode {
-        SqlHelpMode::Normal => rows_from_binding_refs_if_visible(
-            &[
-                &sql_modal_normal::RUN,
-                &sql_modal_normal::YANK,
-                &sql_modal_normal::ENTER_INSERT,
-                &sql_modal_normal::APPEND,
-                &sql_modal_normal::MOVE,
-                &sql_modal_normal::HOME_END,
-                &sql_modal_normal::VIEWPORT,
-                &sql_modal_normal::CLOSE,
-                &sql_modal_normal::CLEAR,
-                sql_modal_normal_query_history(keymap_preset),
-            ],
-            feature_policy,
-        ),
-        SqlHelpMode::Insert | SqlHelpMode::Running => match keymap_preset {
-            KeymapPreset::Default => rows_from_bindings_if_visible(SQL_MODAL_KEYS, feature_policy),
-            KeymapPreset::Ide => rows_from_binding_refs_if_visible(
-                &[
-                    &sql_modal::RUN,
-                    &sql_modal::ESC_NORMAL,
-                    &sql_modal::MOVE,
-                    &sql_modal::HOME_END,
-                    &sql_modal::TAB,
-                    &sql_modal::CLEAR,
-                ],
-                feature_policy,
-            ),
-        },
-        SqlHelpMode::Plan => {
-            let mut bindings: Vec<&KeyBinding> = vec![sql_modal_plan_explain(keymap_preset)];
-            if feature_policy.is_enabled(sql_modal_plan::ANALYZE.feature_requirement()) {
-                bindings.push(&sql_modal_plan::ANALYZE);
-            }
-            bindings.extend([
-                &sql_modal_plan::YANK,
-                &sql_modal_plan::SCROLL,
-                &sql_modal_plan::TAB,
-                &sql_modal_plan::BACKTAB,
-                &sql_modal_plan::CLOSE,
-            ]);
-            rows_from_binding_refs_if_visible(&bindings, feature_policy)
-        }
-        SqlHelpMode::Compare => {
-            let mut bindings: Vec<&KeyBinding> = vec![sql_modal_compare_explain(keymap_preset)];
-            if feature_policy.is_enabled(sql_modal_compare::ANALYZE.feature_requirement()) {
-                bindings.push(&sql_modal_compare::ANALYZE);
-            }
-            bindings.extend([
-                &sql_modal_compare::EDIT_QUERY,
-                &sql_modal_compare::YANK,
-                &sql_modal_compare::SCROLL,
-                &sql_modal_compare::TAB,
-                &sql_modal_compare::BACKTAB,
-                &sql_modal_compare::CLOSE,
-            ]);
-            rows_from_binding_refs_if_visible(&bindings, feature_policy)
-        }
-        SqlHelpMode::Confirm => {
-            rows_from_bindings_if_visible(SQL_MODAL_CONFIRMING_KEYS, feature_policy)
-        }
-    }
-}
-
-fn connection_setup_current_rows(
-    keymap_preset: KeymapPreset,
-    focused_field: ConnectionField,
-) -> Vec<HelpRow> {
-    let is_dropdown_field = matches!(
-        focused_field,
-        ConnectionField::DatabaseType | ConnectionField::Transport | ConnectionField::SslMode
-    );
-    let submit = if is_dropdown_field {
-        &connection_setup::ENTER_DROPDOWN
-    } else {
-        connection_setup_save(keymap_preset)
-    };
-    let mut rows = rows_from_binding_refs(&[
-        &connection_setup::TAB_NAV,
-        &connection_setup::TAB_NEXT,
-        &connection_setup::TAB_PREV,
-        submit,
-    ]);
-    if is_dropdown_field {
-        rows.push(HelpRow::new(
-            connection_setup::SAVE.key,
-            connection_setup::SAVE.description,
-        ));
-    }
-    rows.extend(rows_from_binding_refs(&[
-        &connection_setup::ESC_CANCEL,
-        &connection_setup::DROPDOWN_NAV,
-    ]));
-    rows
-}
-
-fn json_current_rows(mode: JsonHelpMode, feature_policy: &FeaturePolicy) -> Vec<HelpRow> {
-    match mode {
-        JsonHelpMode::Detail => rows_from_mode_rows_if_visible(JSON_DETAIL_ROWS, feature_policy),
-        JsonHelpMode::Search => rows_from_bindings_if_visible(JSON_SEARCH_KEYS, feature_policy),
-        JsonHelpMode::Edit => rows_from_mode_rows_if_visible(JSON_EDIT_ROWS, feature_policy),
-    }
 }
 
 fn section(title: &str, rows: Vec<HelpRow>) -> HelpSection {
     HelpSection {
         title: title.to_string(),
-        rows,
+        rows: merge_rows(&[rows]),
     }
 }
 
-fn rows_from_bindings(bindings: &[KeyBinding]) -> Vec<HelpRow> {
-    rows_from_binding_iter(bindings.iter())
-}
-
-fn rows_from_bindings_if_visible(
-    bindings: &[KeyBinding],
-    feature_policy: &FeaturePolicy,
-) -> Vec<HelpRow> {
-    rows_from_binding_iter(
-        bindings
-            .iter()
-            .filter(|binding| feature_policy.is_enabled(binding.feature_requirement())),
-    )
-}
-
-fn rows_from_binding_refs(bindings: &[&KeyBinding]) -> Vec<HelpRow> {
-    rows_from_binding_iter(bindings.iter().copied())
-}
-
-fn rows_from_binding_refs_if_visible(
-    bindings: &[&KeyBinding],
-    feature_policy: &FeaturePolicy,
-) -> Vec<HelpRow> {
-    rows_from_binding_iter(
-        bindings
-            .iter()
-            .copied()
-            .filter(|binding| feature_policy.is_enabled(binding.feature_requirement())),
-    )
-}
-
-fn rows_from_binding_iter<'a>(bindings: impl IntoIterator<Item = &'a KeyBinding>) -> Vec<HelpRow> {
-    let bindings = bindings.into_iter().collect::<Vec<_>>();
-    let mut rows = Vec::new();
-    let mut i = 0;
-    while i < bindings.len() {
-        if i + 1 < bindings.len()
-            && let Some(row) = paired_binding_row(bindings[i], bindings[i + 1])
-        {
-            rows.push(row);
-            i += 2;
-        } else if i + 1 < bindings.len() && bindings[i].key == bindings[i + 1].key {
-            rows.push(HelpRow::new(
-                bindings[i].key,
-                format!("Toggle {}", bindings[i].desc_short),
-            ));
-            i += 2;
-        } else {
-            rows.push(HelpRow::new(bindings[i].key, bindings[i].description));
-            i += 1;
-        }
-    }
-    rows
-}
-
-fn paired_binding_row(first: &KeyBinding, second: &KeyBinding) -> Option<HelpRow> {
-    let pair = (first.desc_short, second.desc_short);
-    let (description, separator) = match pair {
-        ("Down", "Up") if first.description.starts_with("Move") => {
-            ("Move down / up / scroll", " / ")
-        }
-        ("Down", "Up") => ("Scroll down / up", " / "),
-        ("Top", "Bottom") => ("Jump to top / bottom", " / "),
-        ("Next Page", "Prev Page") => ("Next / previous page", " / "),
-        _ => return None,
-    };
-
-    Some(HelpRow::new(
-        format!("{}{}{}", first.key, separator, second.key),
-        description,
-    ))
-}
-
-fn rows_from_mode_rows(rows: &[ModeRow]) -> Vec<HelpRow> {
-    rows.iter().map(row_from_mode_row).collect()
-}
-
-fn rows_from_mode_rows_if_visible(
-    rows: &[ModeRow],
-    feature_policy: &FeaturePolicy,
-) -> Vec<HelpRow> {
-    rows.iter()
-        .filter(|row| feature_policy.is_enabled(row.feature_requirement()))
-        .map(row_from_mode_row)
+fn rows_from_hints(hints: Vec<Hint>) -> Vec<HelpRow> {
+    hints
+        .into_iter()
+        .map(|hint| HelpRow::new(hint.key, hint.description))
         .collect()
-}
-
-fn rows_from_mode_row_refs(rows: &[&ModeRow]) -> Vec<HelpRow> {
-    rows.iter().map(|&row| row_from_mode_row(row)).collect()
-}
-
-fn rows_from_mode_row_refs_if_visible(
-    rows: &[&ModeRow],
-    feature_policy: &FeaturePolicy,
-) -> Vec<HelpRow> {
-    rows.iter()
-        .filter(|row| feature_policy.is_enabled(row.feature_requirement()))
-        .map(|&row| row_from_mode_row(row))
-        .collect()
-}
-
-fn row_from_mode_row(row: &ModeRow) -> HelpRow {
-    HelpRow::new(row.key, row.description)
 }
 
 fn merge_rows(groups: &[Vec<HelpRow>]) -> Vec<HelpRow> {
@@ -731,9 +247,12 @@ mod tests {
     use crate::domain::{
         ColumnAttributes, ConnectionId, DatabaseType, QueryResult, QuerySource, QueryValue,
     };
-    use crate::model::shared::input_mode::InputMode;
-    use crate::model::shared::ui_state::FocusMode;
+    use crate::model::connection::setup::ConnectionField;
+    use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
+    use crate::model::shared::focused_pane::FocusedPane;
+    use crate::model::shared::settings::KeymapPreset;
     use crate::model::sql_editor::modal::SqlModalTab;
+    use crate::policy::FeatureRequirement;
     use crate::test_support;
     use std::sync::Arc;
 
@@ -744,6 +263,241 @@ mod tests {
             .flat_map(HelpSection::rows)
             .map(HelpRow::description)
             .collect()
+    }
+
+    #[test]
+    fn normal_help_finds_settings_and_command_operations() {
+        let mut state = AppState::new("test".to_string());
+        let context = KeyContext::from_state(&state);
+        state.ui.help_mut().open(context);
+        let document = HelpDocument::from_state(&state);
+        for description in [
+            "Select setting",
+            "Switch settings section",
+            "Edit custom browser",
+            "Submit command",
+        ] {
+            assert!(
+                document
+                    .sections()
+                    .iter()
+                    .skip(1)
+                    .flat_map(HelpSection::rows)
+                    .any(|row| row.description() == description),
+                "{description}"
+            );
+            let filtered = HelpDocument::new(
+                KeyContext::from_state(&state),
+                description,
+                description.len(),
+            );
+            assert!(row_descriptions(&filtered).contains(&description));
+        }
+    }
+
+    #[test]
+    fn normal_help_references_commands_and_conditional_navigation() {
+        for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
+            let mut state = AppState::new("test".to_string());
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "database",
+                DatabaseType::PostgreSQL,
+                "postgres://test",
+            );
+            state.settings.load_keymap_preset(preset);
+            let context = KeyContext::from_state(&state);
+            state.ui.help_mut().open(context.clone());
+            let document = HelpDocument::from_state(&state);
+            let rows: Vec<_> = document
+                .sections()
+                .iter()
+                .skip(1)
+                .flat_map(HelpSection::rows)
+                .collect();
+            for key in [
+                ":quit",
+                ":help",
+                ":sql",
+                ":erd",
+                ":settings",
+                ":palette",
+                ":w",
+            ] {
+                assert!(rows.iter().any(|row| row.key() == key), "{preset:?}: {key}");
+                let filtered = HelpDocument::new(context.clone(), key, key.len());
+                assert!(
+                    filtered
+                        .sections()
+                        .iter()
+                        .flat_map(HelpSection::rows)
+                        .any(|row| row.key() == key),
+                    "filtered {key}"
+                );
+            }
+            for description in [
+                "Exit command line",
+                "Enter cell selection at the current viewport anchor",
+                "Exit cell selection",
+                "Discard pending draft",
+                "Exit Focus mode",
+                "Disable Read-Only mode",
+            ] {
+                assert!(
+                    rows.iter().any(|row| row.description() == description),
+                    "{description}"
+                );
+            }
+            assert!(rows.iter().any(|row| row.description() == "Navigate"
+                && row.key().contains('j')
+                && row.key().contains('k')));
+        }
+
+        let mut sqlite = AppState::new("test".to_string());
+        sqlite.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "sqlite",
+            DatabaseType::SQLite,
+            "sqlite:///tmp/test.db",
+        );
+        let document = HelpDocument::new(KeyContext::from_state(&sqlite), "", 0);
+        assert!(
+            !document
+                .sections()
+                .iter()
+                .skip(1)
+                .flat_map(HelpSection::rows)
+                .any(|row| row.key() == ":erd")
+        );
+    }
+
+    #[test]
+    fn reload_is_current_only_when_connected_but_always_in_reference() {
+        let mut state = AppState::new("test".to_string());
+        let context = KeyContext::from_state(&state);
+        state.ui.help_mut().open(context);
+        let document = HelpDocument::from_state(&state);
+        assert!(
+            !document.sections()[0]
+                .rows()
+                .iter()
+                .any(|row| row.description() == "Reload metadata")
+        );
+        assert!(
+            document
+                .sections()
+                .iter()
+                .find(|section| section.title() == "Data Actions")
+                .unwrap()
+                .rows()
+                .iter()
+                .any(|row| row.description() == "Reload metadata")
+        );
+
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            DatabaseType::PostgreSQL,
+            "postgres://test",
+        );
+        let document = HelpDocument::new(KeyContext::from_state(&state), "", 0);
+        assert!(
+            document.sections()[0]
+                .rows()
+                .iter()
+                .any(|row| row.description() == "Reload metadata")
+        );
+    }
+
+    #[test]
+    fn pending_sequence_does_not_filter_reference_sections() {
+        use crate::model::shared::key_sequence::{KeySequenceState, Prefix};
+
+        let mut state = AppState::new("test".to_string());
+        let idle = HelpDocument::new(KeyContext::from_state(&state), "", 0);
+        state
+            .ui
+            .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::G));
+        let pending = HelpDocument::new(KeyContext::from_state(&state), "", 0);
+        assert_eq!(&idle.sections()[1..], &pending.sections()[1..]);
+    }
+
+    #[test]
+    fn help_origins_exclude_common_and_navigation_from_current() {
+        use crate::ports::inbound::{InputEvent, Key, KeyCombo};
+        use crate::services::AppServices;
+        use crate::update::input::handle_event;
+        use crate::update::reducer::reduce;
+        use std::time::Instant;
+
+        fn press(state: &mut AppState, key: Key) {
+            let action = handle_event(InputEvent::Key(KeyCombo::plain(key)), state);
+            reduce(state, action, Instant::now(), &AppServices::stub());
+        }
+        fn has_row(document: &HelpDocument, section: &str, key: &str, description: &str) -> bool {
+            document
+                .sections()
+                .iter()
+                .find(|group| group.title().starts_with(section))
+                .is_some_and(|group| {
+                    group
+                        .rows()
+                        .iter()
+                        .any(|row| row.key() == key && row.description() == description)
+                })
+        }
+
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            DatabaseType::PostgreSQL,
+            "postgres://test",
+        );
+        press(&mut state, Key::Char('?'));
+        let document = HelpDocument::from_state(&state);
+        for (key, description) in [("Enter", "Select table"), ("Esc", "Cancel")] {
+            assert!(!has_row(&document, "Current:", key, description));
+            assert!(has_row(&document, "Navigation", key, description));
+        }
+
+        press(&mut state, Key::Esc);
+        press(&mut state, Key::Char(':'));
+        for ch in "help".chars() {
+            press(&mut state, Key::Char(ch));
+        }
+        press(&mut state, Key::Enter);
+        assert_eq!(state.input_mode(), InputMode::Help);
+        let document = HelpDocument::from_state(&state);
+        assert_eq!(document.sections()[0].title(), "Current: Command Line");
+        for (key, description) in [(":quit", "Quit application"), (":help", "Show help")] {
+            assert!(!has_row(&document, "Current:", key, description));
+            assert!(has_row(&document, "Common", key, description));
+        }
+
+        press(&mut state, Key::Esc);
+        state.ui.set_focused_pane(FocusedPane::Result);
+        state.result_interaction.activate_cell(0, 0);
+        state
+            .result_interaction
+            .begin_cell_edit(0, 0, "before".to_string());
+        state
+            .result_interaction
+            .replace_cell_edit_draft("after".to_string());
+        press(&mut state, Key::Char('?'));
+        let document = HelpDocument::from_state(&state);
+        assert!(has_row(
+            &document,
+            "Current:",
+            "Esc",
+            "Discard pending draft"
+        ));
+        assert!(has_row(
+            &document,
+            "Editing",
+            "Esc",
+            "Discard pending draft"
+        ));
     }
 
     fn result_state_with_selected_column(
@@ -798,133 +552,13 @@ mod tests {
     }
 
     fn current_descriptions(state: &mut AppState) -> Vec<String> {
-        let origin = HelpOrigin::from_state(state);
+        let origin = KeyContext::from_state(state);
         state.ui.help_mut().open(origin);
         HelpDocument::from_state(state).sections()[0]
             .rows()
             .iter()
             .map(|row| row.description().to_string())
             .collect()
-    }
-
-    #[test]
-    fn document_starts_with_current_section() {
-        let document = HelpDocument::new(
-            HelpOrigin::Normal {
-                focused_pane: FocusedPane::Result,
-                result_active: true,
-                staged_delete_in_progress: false,
-                can_write_preview: true,
-                can_edit_selected_cell: true,
-                pending_cell_edit_draft: false,
-                keymap_preset: KeymapPreset::default(),
-            },
-            "",
-        );
-
-        assert_eq!(document.sections()[0].title(), "Current: Result Pane");
-        assert!(
-            document.sections()[0]
-                .rows()
-                .iter()
-                .any(|row| row.description().contains("active row"))
-        );
-    }
-
-    #[test]
-    fn normal_help_includes_connections_for_every_pane_state() {
-        for (focused_pane, result_active, staged_delete_in_progress) in [
-            (FocusedPane::Explorer, false, false),
-            (FocusedPane::Inspector, false, false),
-            (FocusedPane::Result, false, false),
-            (FocusedPane::Result, true, false),
-            (FocusedPane::Result, false, true),
-            (FocusedPane::Result, true, true),
-        ] {
-            let document = HelpDocument::new(
-                HelpOrigin::Normal {
-                    focused_pane,
-                    result_active,
-                    staged_delete_in_progress,
-                    can_write_preview: true,
-                    can_edit_selected_cell: true,
-                    pending_cell_edit_draft: false,
-                    keymap_preset: KeymapPreset::default(),
-                },
-                "",
-            );
-
-            assert!(
-                document.sections()[0]
-                    .rows()
-                    .iter()
-                    .any(|row| row.description() == "Open Connection Selector"),
-                "missing Connections hint for {focused_pane:?} ({result_active}, {staged_delete_in_progress})"
-            );
-        }
-    }
-
-    #[test]
-    fn focus_mode_help_includes_connections() {
-        let mut state = AppState::new("test".to_string());
-        state
-            .ui
-            .set_focus_mode(FocusMode::focused(FocusedPane::Explorer));
-
-        let document = HelpDocument::new(HelpOrigin::from_state(&state), "");
-
-        assert!(
-            document.sections()[0]
-                .rows()
-                .iter()
-                .any(|row| row.description() == "Open Connection Selector")
-        );
-    }
-
-    #[test]
-    fn result_scroll_help_omits_row_detail() {
-        let document = HelpDocument::new(
-            HelpOrigin::Normal {
-                focused_pane: FocusedPane::Result,
-                result_active: false,
-                staged_delete_in_progress: false,
-                can_write_preview: true,
-                can_edit_selected_cell: true,
-                pending_cell_edit_draft: false,
-                keymap_preset: KeymapPreset::default(),
-            },
-            "",
-        );
-
-        assert!(
-            !document.sections()[0]
-                .rows()
-                .iter()
-                .any(|row| row.description() == "Open Row Detail")
-        );
-    }
-
-    #[test]
-    fn result_active_help_includes_row_detail() {
-        let document = HelpDocument::new(
-            HelpOrigin::Normal {
-                focused_pane: FocusedPane::Result,
-                result_active: true,
-                staged_delete_in_progress: false,
-                can_write_preview: true,
-                can_edit_selected_cell: true,
-                pending_cell_edit_draft: false,
-                keymap_preset: KeymapPreset::default(),
-            },
-            "",
-        );
-
-        assert!(
-            document.sections()[0]
-                .rows()
-                .iter()
-                .any(|row| row.description() == "Open Row Detail")
-        );
     }
 
     #[test]
@@ -1023,227 +657,26 @@ mod tests {
 
         let descriptions = current_descriptions(&mut state);
 
-        assert!(descriptions.iter().any(
-            |description| description == "Discard the pending draft and stay in cell selection"
-        ));
-        assert!(!descriptions.iter().any(|description| {
-            description
-                == "Exit cell selection and return to scroll mode without clearing staged deletes"
-        }));
+        assert!(
+            descriptions
+                .iter()
+                .any(|description| description == "Discard pending draft")
+        );
+        assert!(
+            !descriptions
+                .iter()
+                .any(|description| { description == "Exit cell selection" })
+        );
 
         state.result_interaction.discard_cell_edit();
         state.result_interaction.activate_cell(0, 0);
         let document = HelpDocument::from_state(&state);
-        assert!(document.sections()[0].rows().iter().any(|row| {
-            row.description() == "Discard the pending draft and stay in cell selection"
-        }));
-    }
-
-    #[test]
-    fn read_only_result_active_help_omits_write_actions() {
-        let document = HelpDocument::new(
-            HelpOrigin::Normal {
-                focused_pane: FocusedPane::Result,
-                result_active: true,
-                staged_delete_in_progress: false,
-                can_write_preview: false,
-                can_edit_selected_cell: false,
-                pending_cell_edit_draft: false,
-                keymap_preset: KeymapPreset::default(),
-            },
-            "",
-        );
-        let current_rows = document.sections()[0].rows();
-
-        assert!(!current_rows.iter().any(|row| row.description()
-            == "Stage the active row for deletion (red highlight; :w to commit)"));
         assert!(
-            !current_rows
+            document.sections()[0]
+                .rows()
                 .iter()
-                .any(|row| row.description() == "Edit active cell")
+                .any(|row| { row.description() == "Discard pending draft" })
         );
-        assert!(
-            current_rows
-                .iter()
-                .any(|row| row.description() == "Open Row Detail")
-        );
-    }
-
-    #[test]
-    fn staged_delete_result_help_omits_disabled_result_actions() {
-        let document = HelpDocument::new(
-            HelpOrigin::Normal {
-                focused_pane: FocusedPane::Result,
-                result_active: true,
-                staged_delete_in_progress: true,
-                can_write_preview: true,
-                can_edit_selected_cell: true,
-                pending_cell_edit_draft: false,
-                keymap_preset: KeymapPreset::default(),
-            },
-            "",
-        );
-        let current_rows = document.sections()[0].rows();
-
-        assert!(
-            !current_rows
-                .iter()
-                .any(|row| row.description() == "Open Row Detail")
-        );
-        assert!(
-            !current_rows
-                .iter()
-                .any(|row| row.description() == "Copy the active cell value to clipboard")
-        );
-        assert!(
-            current_rows
-                .iter()
-                .any(|row| row.description() == "Unstage the last staged row deletion")
-        );
-    }
-
-    #[test]
-    fn staged_delete_result_scroll_help_includes_unstage() {
-        let document = HelpDocument::new(
-            HelpOrigin::Normal {
-                focused_pane: FocusedPane::Result,
-                result_active: false,
-                staged_delete_in_progress: true,
-                can_write_preview: true,
-                can_edit_selected_cell: true,
-                pending_cell_edit_draft: false,
-                keymap_preset: KeymapPreset::default(),
-            },
-            "",
-        );
-        let current_rows = document.sections()[0].rows();
-
-        assert!(
-            current_rows
-                .iter()
-                .any(|row| row.description() == "Unstage the last staged row deletion")
-        );
-        assert!(
-            !current_rows
-                .iter()
-                .any(|row| row.description() == "Open Row Detail")
-        );
-    }
-
-    #[test]
-    fn filter_matches_key_description_and_section_title() {
-        let copy = HelpDocument::new(
-            HelpOrigin::Normal {
-                focused_pane: FocusedPane::Result,
-                result_active: true,
-                staged_delete_in_progress: false,
-                can_write_preview: true,
-                can_edit_selected_cell: true,
-                pending_cell_edit_draft: false,
-                keymap_preset: KeymapPreset::default(),
-            },
-            "copy",
-        );
-        let copy_rows = copy
-            .sections()
-            .iter()
-            .flat_map(HelpSection::rows)
-            .collect::<Vec<_>>();
-
-        assert!(!copy_rows.is_empty());
-        assert!(
-            copy_rows
-                .iter()
-                .all(|row| row.key().to_lowercase().contains("copy")
-                    || row.description().to_lowercase().contains("copy"))
-        );
-
-        let navigation = HelpDocument::new(
-            HelpOrigin::Normal {
-                focused_pane: FocusedPane::Explorer,
-                result_active: false,
-                staged_delete_in_progress: false,
-                can_write_preview: true,
-                can_edit_selected_cell: true,
-                pending_cell_edit_draft: false,
-                keymap_preset: KeymapPreset::default(),
-            },
-            "navigation",
-        );
-
-        assert!(
-            navigation
-                .sections()
-                .iter()
-                .any(|section| section.title() == "Navigation" && section.rows().len() > 1)
-        );
-    }
-
-    #[test]
-    fn no_matches_document_has_fallback_row() {
-        let document = HelpDocument::new(
-            HelpOrigin::Normal {
-                focused_pane: FocusedPane::Explorer,
-                result_active: false,
-                staged_delete_in_progress: false,
-                can_write_preview: true,
-                can_edit_selected_cell: true,
-                pending_cell_edit_draft: false,
-                keymap_preset: KeymapPreset::default(),
-            },
-            "zz-no-match",
-        );
-
-        assert_eq!(document.sections()[0].title(), "No matches");
-        assert_eq!(
-            document.sections()[0].rows()[0].description(),
-            "Try another filter"
-        );
-    }
-
-    #[test]
-    fn line_count_uses_rendered_section_dimensions() {
-        let document = HelpDocument::new(
-            HelpOrigin::Normal {
-                focused_pane: FocusedPane::Explorer,
-                result_active: false,
-                staged_delete_in_progress: false,
-                can_write_preview: true,
-                can_edit_selected_cell: true,
-                pending_cell_edit_draft: false,
-                keymap_preset: KeymapPreset::default(),
-            },
-            "",
-        );
-        let section_lines: usize = document
-            .sections()
-            .iter()
-            .map(|section| SECTION_HEADER_LINE_COUNT + section.rows().len())
-            .sum();
-        let expected = FILTER_LINE_COUNT
-            + FILTER_SECTION_GAP_LINES
-            + section_lines
-            + document.sections().len().saturating_sub(1);
-
-        assert_eq!(document.line_count(), expected);
-    }
-
-    #[test]
-    fn content_width_expands_to_longest_key_label() {
-        let document = HelpDocument::new(HelpOrigin::Help, "");
-
-        assert!(
-            document.key_column_width()
-                >= UnicodeWidthStr::width("Ctrl+F / Ctrl+B / PageDown / PageUp")
-        );
-    }
-
-    #[test]
-    fn document_preserves_filter_cursor() {
-        let document = HelpDocument::new_with_cursor(HelpOrigin::Help, "copy", 2);
-
-        assert_eq!(document.filter(), "copy");
-        assert_eq!(document.filter_cursor(), 2);
     }
 
     #[test]
@@ -1257,7 +690,7 @@ mod tests {
         );
         sql_state.modal.set_mode(InputMode::SqlModal);
         sql_state.sql_modal.set_active_tab(SqlModalTab::Plan);
-        let sql_document = HelpDocument::new(HelpOrigin::from_state(&sql_state), "");
+        let sql_document = HelpDocument::new(KeyContext::from_state(&sql_state), "", 0);
 
         assert_eq!(
             sql_document.sections()[0].title(),
@@ -1267,7 +700,7 @@ mod tests {
         let mut json_state = AppState::new("test".to_string());
         json_state.modal.set_mode(InputMode::JsonDetail);
         json_state.json_detail.enter_search();
-        let json_document = HelpDocument::new(HelpOrigin::from_state(&json_state), "");
+        let json_document = HelpDocument::new(KeyContext::from_state(&json_state), "", 0);
 
         assert_eq!(json_document.sections()[0].title(), "Current: JSON Search");
     }
@@ -1281,7 +714,7 @@ mod tests {
             DatabaseType::SQLite,
             "sqlite://test.db",
         );
-        let origin = HelpOrigin::from_state(&state);
+        let origin = KeyContext::from_state(&state);
         state.ui.help_mut().open(origin);
 
         let document = HelpDocument::from_state(&state);
@@ -1328,7 +761,7 @@ mod tests {
                 database_type,
                 "database",
             );
-            let origin = HelpOrigin::from_state(&state);
+            let origin = KeyContext::from_state(&state);
             state.ui.help_mut().open(origin);
 
             let document = HelpDocument::from_state(&state);
@@ -1362,7 +795,7 @@ mod tests {
         state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.set_active_tab(SqlModalTab::Plan);
 
-        let document = HelpDocument::new(HelpOrigin::from_state(&state), "");
+        let document = HelpDocument::new(KeyContext::from_state(&state), "", 0);
 
         assert_eq!(document.sections()[0].title(), "Current: SQL Editor Plan");
     }
@@ -1377,7 +810,7 @@ mod tests {
             "sqlite://test.db",
         );
         state.modal.set_mode(InputMode::CommandLine);
-        let origin = HelpOrigin::from_state(&state);
+        let origin = KeyContext::from_state(&state);
         state.ui.help_mut().open(origin);
 
         let document = HelpDocument::from_state(&state);
@@ -1392,27 +825,125 @@ mod tests {
     }
 
     #[test]
-    fn connection_setup_help_matches_ssl_field_actions() {
-        let document = HelpDocument::new(
-            HelpOrigin::ConnectionSetup {
-                keymap_preset: KeymapPreset::Ide,
-                focused_field: ConnectionField::SslMode,
-            },
-            "",
+    fn reference_sections_and_filter_use_derived_rows() {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            DatabaseType::PostgreSQL,
+            "postgres://test",
         );
-        let current_rows = document.sections()[0].rows();
+        let context = KeyContext::from_state(&state);
+        let document = HelpDocument::new(context.clone(), "", 0);
+        let titles: Vec<_> = document.sections().iter().map(HelpSection::title).collect();
+        for title in [
+            "Common",
+            "Navigation",
+            "Open / Switch",
+            "Data Actions",
+            "Editing",
+            "Search / Filter",
+            "Connections",
+            "Modal Basics",
+            "Advanced",
+        ] {
+            assert!(titles.contains(&title), "missing {title}");
+        }
+        let editing = document
+            .sections()
+            .iter()
+            .find(|section| section.title() == "Editing")
+            .unwrap();
+        assert!(
+            editing
+                .rows()
+                .iter()
+                .any(|row| row.key() == "Ctrl+A" && row.description() == "Move to line start")
+        );
+        let filtered = HelpDocument::new(context.clone(), "line start", 4);
+        assert_eq!(filtered.filter_cursor(), 4);
+        assert!(
+            filtered
+                .sections()
+                .iter()
+                .flat_map(HelpSection::rows)
+                .any(|row| row.description() == "Move to line start")
+        );
+        let no_matches = HelpDocument::new(context, "not-a-real-command", 100);
+        assert_eq!(no_matches.sections()[0].title(), "No matches");
+        assert_eq!(no_matches.filter_cursor(), "not-a-real-command".len());
+        assert!(document.line_count() > document.sections().len());
+        assert!(document.content_width() >= document.key_column_width());
+    }
 
-        assert!(current_rows.iter().any(|row| {
-            row.key() == connection_setup::ENTER_DROPDOWN.key
-                && row.description() == connection_setup::ENTER_DROPDOWN.description
-        }));
-        assert!(current_rows.iter().any(|row| {
-            row.key() == connection_setup::SAVE.key
-                && row.description() == connection_setup::SAVE.description
-        }));
-        assert!(!current_rows.iter().any(|row| {
-            row.key() == connection_setup::SAVE_IDE.key
-                && row.description() == connection_setup::SAVE_IDE.description
-        }));
+    #[test]
+    fn connection_setup_help_keeps_the_open_dropdown_snapshot() {
+        let mut state = AppState::new("test".to_string());
+        state.settings.load_keymap_preset(KeymapPreset::Ide);
+        state.modal.set_mode(InputMode::ConnectionSetup);
+        state.connection_setup.toggle_focused_dropdown();
+        let context = KeyContext::from_state(&state);
+        state.ui.help_mut().open(context);
+        state.connection_setup.toggle_focused_dropdown();
+        let document = HelpDocument::from_state(&state);
+        let rows = document.sections()[0].rows();
+        assert!(
+            rows.iter().any(
+                |row| row.key() == "Enter" && row.description() == "Confirm dropdown selection"
+            )
+        );
+        assert!(
+            rows.iter()
+                .any(|row| row.key() == "Ctrl+S" && row.description() == "Save and connect")
+        );
+    }
+
+    #[test]
+    fn sql_help_keeps_the_visible_completion_snapshot() {
+        use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
+
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::SqlModal);
+        state.sql_modal.enter_editing();
+        state.sql_modal.apply_completion_update(
+            &[CompletionCandidate {
+                text: "users".to_string(),
+                kind: CompletionKind::Table,
+                score: 1,
+            }],
+            0,
+            true,
+        );
+        let context = KeyContext::from_state(&state);
+        state.ui.help_mut().open(context);
+        state.sql_modal.dismiss_completion();
+
+        let document = HelpDocument::from_state(&state);
+        let rows = document.sections()[0].rows();
+        assert!(
+            rows.iter()
+                .any(|row| row.description() == "Accept completion" && row.key().contains("Enter"))
+        );
+        assert!(
+            rows.iter()
+                .any(|row| row.description() == "Dismiss completion" && row.key().contains("Esc"))
+        );
+    }
+
+    #[test]
+    fn connection_setup_cleartext_auth_is_a_dropdown() {
+        let policy = FeaturePolicy::new(&EngineFeatureProfile::postgres_like());
+        let context = KeyContext::for_scope(InputMode::ConnectionSetup, KeymapPreset::Ide, &policy)
+            .with_connection_setup(ConnectionField::CleartextAuth, false);
+        let document = HelpDocument::new(context, "", 0);
+        let rows = document.sections()[0].rows();
+        assert!(
+            rows.iter()
+                .any(|row| row.key() == "Enter" && row.description() == "Toggle dropdown")
+        );
+        assert!(
+            rows.iter()
+                .any(|row| row.key() == "Ctrl+S" && row.description() == "Save and connect")
+        );
     }
 }

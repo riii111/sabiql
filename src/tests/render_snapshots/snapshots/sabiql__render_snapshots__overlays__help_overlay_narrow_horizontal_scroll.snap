@@ -5,22 +5,22 @@ expression: output
 ⌂ test_pr… ▸ … ▸ - connected | localhost:5432/test
 ┌ [1] Explor┐[Info] [Cols] [Idx] [FK] [RLS] [Trig]
 │> ▦ pub╭ Help ───────────────────────────╮──────┐
-│  ▦ pub│                             Ret▲│      │
-│  ▦ pub│                             Mov││      │
-│       │                             Lin││      │
-│       │                             Ins││      │
-│       │                             Pre││      │
-│       │                             Edi││      │
-│       │                             Mov┃│      │
-│       │                             Jum││      │
-│       │                             Ope││──────┘
-│       │                             Exi││──────┐
-│       │                             Exe││      │
-│       │                             Can││      │
-│       │                             Ret││      │
-│       │                             Mov││      │
-│       │                             Lin▼│      │
-│       │ x  23% ◀︎────═════─────────────▶︎ │      │
+│  ▦ pub│                     Copy the ac▲│      │
+│  ▦ pub│                     Clear all s││      │
+│       │                     Unstage the││      │
+│       │                     Open active││      │
+│       │                     Copy the ac││      │
+│       │                     Stage the a┃│      │
+│       │                     Copy full J││      │
+│       │                                ││      │
+│       │                                ││──────┘
+│       │                     Exit cell s││──────┐
+│       │                     Edit active││      │
+│       │                     Discard pen││      │
+│       │                     Preview and││      │
+│       │                     Move to lin││      │
+│       │                     Move to lin▼│      │
+│       │ x  31% ◀︎─────═══════──────────▶︎ │      │
 │       │─────────────────────────────────│      │
 │       │ [BROWSE]                        │      │
-└───────╰ /: Filter │ Esc: Close │ ?: Clos╯──────┘
+└───────╰ /: Filter │ Esc/?: Close ───────╯──────┘

@@ -7,7 +7,7 @@ use crate::theme::ThemePalette;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::connection::error_state::ConnectionErrorState;
-use crate::app::update::input::keybindings::connection_error;
+use crate::app::update::input::keymap::{HintSurface, KeyContext, connection_error_hints};
 use crate::primitives::atoms::key_chip;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::primitives::utils::text_utils::wrapped_line_count;
@@ -47,12 +47,16 @@ impl ConnectionError {
         };
         let height = Constraint::Length((FIXED_OVERHEAD + details_height).clamp(9, max_height));
 
+        let context = KeyContext::from_state(state);
+        let hints = connection_error_hints(HintSurface::Border, &context)
+            .into_iter()
+            .map(|hint| (hint.key, hint.short));
         let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(70),
             height,
             " Connection Error ",
-            FooterHintBar::new([connection_error::ESC_CLOSE.as_hint()]),
+            FooterHintBar::new(hints),
             theme,
         );
 
@@ -69,7 +73,14 @@ impl ConnectionError {
 
         Self::render_summary(frame, chunks[0], error_info.summary(), theme);
         Self::render_hint(frame, chunks[2], state, theme);
-        Self::render_details_section(frame, chunks[4], error_state, details_expanded, theme);
+        Self::render_details_section(
+            frame,
+            chunks[4],
+            error_state,
+            details_expanded,
+            &context,
+            theme,
+        );
         Self::render_actions(frame, chunks[6], state, now, theme);
     }
 
@@ -113,6 +124,7 @@ impl ConnectionError {
         area: Rect,
         error_state: &ConnectionErrorState,
         expanded: bool,
+        context: &KeyContext,
         theme: &ThemePalette,
     ) {
         if expanded {
@@ -139,6 +151,9 @@ impl ConnectionError {
                 frame.render_widget(para, chunks[1]);
             }
         } else {
+            let detail_hint = connection_error_hints(HintSurface::Details, context)
+                .first()
+                .map_or_default(|hint| format!("(press {} to expand)", hint.key));
             let toggle_line = Line::from(vec![
                 Span::styled(
                     "▶ ",
@@ -148,10 +163,7 @@ impl ConnectionError {
                     "Details ",
                     Style::default().fg(theme.component.navigation.section_header),
                 ),
-                Span::styled(
-                    "(press d to expand)",
-                    Style::default().fg(theme.semantic.text.muted),
-                ),
+                Span::styled(detail_hint, Style::default().fg(theme.semantic.text.muted)),
             ]);
             frame.render_widget(Paragraph::new(toggle_line), area);
         }
@@ -165,31 +177,17 @@ impl ConnectionError {
         theme: &ThemePalette,
     ) {
         let error_state = &state.connection_error;
-        let first = if state.can_retry_connection_error() {
-            connection_error::RETRY.as_hint()
-        } else {
-            connection_error::EDIT.as_hint()
-        };
+        let hints = connection_error_hints(HintSurface::Footer, &KeyContext::from_state(state));
         let mut spans = vec![Span::styled(
             "Actions: ",
             Style::default().fg(theme.semantic.text.muted),
         )];
-        spans.push(key_chip(first.0, theme));
-        spans.push(Span::raw(format!(" {}  ", first.1)));
-        for (index, (key, desc)) in [
-            connection_error::SWITCH.as_hint(),
-            connection_error::DETAILS.as_hint(),
-            connection_error::COPY.as_hint(),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            spans.push(key_chip(key, theme));
-            spans.push(Span::raw(if index == 2 {
-                format!(" {desc}")
-            } else {
-                format!(" {desc}  ")
-            }));
+        for (index, hint) in hints.iter().enumerate() {
+            if index > 0 {
+                spans.push(Span::raw("  "));
+            }
+            spans.push(key_chip(&hint.key, theme));
+            spans.push(Span::raw(format!(" {}", hint.short)));
         }
 
         if error_state.is_copied_visible_at(now) {

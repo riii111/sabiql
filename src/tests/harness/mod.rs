@@ -15,6 +15,8 @@ use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::connection::setup::ConnectionField;
 use sabiql_app::model::shared::text_input::TextInputState;
 use sabiql_app::services::AppServices;
+use sabiql_app::update::action::{Action, ModalKind};
+use sabiql_app::update::reducer::reduce;
 use sabiql_domain::{ConnectionId, DatabaseType};
 use sabiql_ui::shell::layout::MainLayout;
 use sabiql_ui::theme::{ThemePalette, palette_for};
@@ -24,6 +26,15 @@ pub const TEST_HEIGHT: u16 = 51;
 
 pub fn test_instant() -> Instant {
     Instant::now()
+}
+
+pub fn open_command_palette(state: &mut AppState) {
+    reduce(
+        state,
+        Action::OpenModal(ModalKind::CommandPalette),
+        test_instant(),
+        &AppServices::stub(),
+    );
 }
 
 pub fn create_test_state() -> AppState {

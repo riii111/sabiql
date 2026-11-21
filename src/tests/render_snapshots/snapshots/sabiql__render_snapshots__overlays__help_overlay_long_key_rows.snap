@@ -8,46 +8,46 @@ expression: output
 │  ▦ public.posts                       ││(select a table)                                                                                                          │
 │  ▦ public.comments                    ││                                                                                                                          │
 │                        ╭ Help ───────────────────────────────────────────────────────────────────────────────────────────────────────────╮                        │
-│                        │  Esc                                          Return to Normal mode                                            ▲│                        │
-│                        │  ↑↓←→                                         Move cursor                                                      ││                        │
-│                        │  Home/End                                     Line start/end                                                   ││                        │
-│                        │  Tab                                          Insert tab / Accept completion                                   ││                        │
-│                        │  :w                                           Preview and confirm UPDATE                                       ││                        │
-│                        │  type                                         Edit cell value                                                  ││                        │
-│                        │  ←→                                           Move cursor                                                      ││                        │
-│                        │  Home/End                                     Jump to start/end                                                ││                        │
-│                        │  :                                            Open command line                                                ││                        │
-│                        │  Esc                                          Exit to Cell Active (draft preserved)                            ││                        │
-│                        │  Enter                                        Execute the confirmed statement                                  ││                        │
-│                        │  Esc                                          Cancel and return to editor                                      ││                        │
-│                        │  Esc                                          Return to Normal mode                                            ││                        │
-│                        │  ↑↓←→                                         Move cursor                                                      ││                        │
-│                        │  Home / End                                   Line start/end                                                   ┃│                        │
-│                        │                                                                                                                ┃│                        │
-│                        │▸ Search / Filter                                                                                               ┃│                        │
-│                        │  type                                         Type to filter                                                   ┃│                        │
-│                        │  type                                         Type to filter                                                   ┃│────────────────────────┘
-│                        │  type                                         Type to filter                                                   ┃│────────────────────────┐
-│                        │  type                                         Type to search                                                   ┃│                        │
-│                        │  Enter                                        Confirm search                                                   ┃│                        │
-│                        │  Esc                                          Cancel search                                                    ││                        │
-│                        │  Ctrl+N / Ctrl+P / j / k / ↑ / ↓              Scroll down / up                                                 ││                        │
-│                        │  Home / End                                   Jump to top / bottom                                             ││                        │
-│                        │  Ctrl+D / Ctrl+U                              Scroll half page down / up                                       ││                        │
-│                        │  Ctrl+F / Ctrl+B / PageDown / PageUp          Scroll full page down / up                                       ││                        │
-│                        │  h / l / ← / →                                Scroll left / right                                              ││                        │
-│                        │  /                                            Edit filter                                                      ││                        │
-│                        │  Esc                                          Close help                                                       ││                        │
-│                        │  ?                                            Close help                                                       ││                        │
+│                        │  Y                                    Copy the active cell value to clipboard                                  ▲│                        │
+│                        │  Esc                                  Clear all staged row deletions                                           ││                        │
+│                        │  u                                    Unstage the last staged row deletion                                     ││                        │
+│                        │  Enter                                Open active cell detail                                                  ││                        │
+│                        │  yy                                   Copy the active row values to clipboard (TSV)                            ││                        │
+│                        │  dd                                   Stage the active row for deletion                                        ││                        │
+│                        │  y                                    Copy full JSON                                                           ││                        │
 │                        │                                                                                                                ││                        │
-│                        │▸ Connections                                                                                                   ││                        │
-│                        │  Tab/⇧Tab                                     Next/Previous field                                              ││                        │
-│                        │  Tab                                          Next field                                                       ││                        │
-│                        │  ⇧Tab                                         Previous field                                                   ││                        │
-│                        │  Ctrl+S                                       Save and connect                                                 ▼│                        │
+│                        │▸ Editing                                                                                                       ││                        │
+│                        │  Esc                                  Exit cell selection                                                      ││                        │
+│                        │  i                                    Edit active cell                                                         ││                        │
+│                        │  Esc                                  Discard pending draft                                                    ┃│                        │
+│                        │  :w                                   Preview and confirm changes                                              ┃│                        │
+│                        │  Ctrl+A                               Move to line start                                                       ┃│                        │
+│                        │  Ctrl+E                               Move to line end                                                         ┃│                        │
+│                        │  Ctrl+B                               Move left                                                                ┃│                        │
+│                        │  Ctrl+F                               Move right                                                               ┃│                        │
+│                        │  Ctrl+H                               Delete previous character                                                ││                        │
+│                        │  Ctrl+D                               Delete next character                                                    ││────────────────────────┘
+│                        │  Ctrl+K                               Cut to line end                                                          ││────────────────────────┐
+│                        │  Ctrl+U                               Cut to line start                                                        ││                        │
+│                        │  Ctrl+W                               Cut previous word                                                        ││                        │
+│                        │  Ctrl+Y                               Paste cut text                                                           ││                        │
+│                        │  Alt+B                                Move to previous word                                                    ││                        │
+│                        │  Alt+F                                Move to next word                                                        ││                        │
+│                        │  Alt+D                                Cut next word                                                            ││                        │
+│                        │  :                                    Open command line                                                        ││                        │
+│                        │  type                                 Edit cell value                                                          ││                        │
+│                        │  ← / →                                Move cursor                                                              ││                        │
+│                        │  Home / End                           Jump to start/end                                                        ││                        │
+│                        │  Esc                                  Exit to Cell Active (draft preserved)                                    ││                        │
+│                        │  i                                    Edit custom browser                                                      ││                        │
+│                        │  Enter                                Apply setting                                                            ││                        │
+│                        │  Esc                                  Finish editing                                                           ││                        │
+│                        │  type                                 Edit custom browser                                                      ││                        │
+│                        │  Alt+Enter / F5                       Execute query                                                            ││                        │
+│                        │  y                                    Copy query to clipboard                                                  ▼│                        │
 │                        │─────────────────────────────────────────────────────────────────────────────────────────────────────────────────│                        │
 │                        │ [BROWSE]                                                                                                        │                        │
-│                        ╰ /: Filter │ Esc: Close │ ?: Close ──────────────────────────────────────────────────────────────────────────────╯                        │
+│                        ╰ /: Filter │ Esc/?: Close ───────────────────────────────────────────────────────────────────────────────────────╯                        │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘

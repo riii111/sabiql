@@ -11,27 +11,27 @@ expression: output
 │                        │Filter: copy                                                                                                     │                        │
 │                        │                                                                                                                 │                        │
 │                        │▸ Current: Result Pane                                                                                           │                        │
-│                        │  Y     Copy the active cell value to clipboard                                                                  │                        │
-│                        │  y, y  Copy the active row values to clipboard (TSV)                                                            │                        │
+│                        │  yy  Copy the active row values to clipboard (TSV)                                                              │                        │
+│                        │  Y   Copy the active cell value to clipboard                                                                    │                        │
 │                        │                                                                                                                 │                        │
 │                        │▸ Data Actions                                                                                                   │                        │
-│                        │  Y     Copy the active cell value to clipboard                                                                  │                        │
-│                        │  y, y  Copy the active row values to clipboard (TSV)                                                            │                        │
-│                        │  y     Copy DDL to clipboard                                                                                    │                        │
-│                        │  y     Copy full JSON                                                                                           │                        │
+│                        │  y   Copy DDL to clipboard                                                                                      │                        │
+│                        │  Y   Copy the active cell value to clipboard                                                                    │                        │
+│                        │  yy  Copy the active row values to clipboard (TSV)                                                              │                        │
+│                        │  y   Copy full JSON                                                                                             │                        │
 │                        │                                                                                                                 │                        │
 │                        │▸ Editing                                                                                                        │                        │
-│                        │  y     Copy query to clipboard                                                                                  │                        │
+│                        │  y   Copy query to clipboard                                                                                    │                        │
 │                        │                                                                                                                 │                        │
 │                        │▸ Connections                                                                                                    │                        │
-│                        │  y     Copy error to clipboard                                                                                  │                        │
+│                        │  y   Copy error to clipboard                                                                                    │                        │
 │                        │                                                                                                                 │                        │
 │                        │▸ Advanced                                                                                                       │────────────────────────┘
-│                        │  y     Copy to clipboard                                                                                        │────────────────────────┐
-│                        │  y     Copy full JSON                                                                                           │                        │
-│                        │  y     Copy displayed text to clipboard                                                                         │                        │
-│                        │  Y     Copy row as JSON to clipboard                                                                            │                        │
-│                        │                                                                                                                 │                        │
+│                        │  y   Copy full cell text                                                                                        │────────────────────────┐
+│                        │  y   Copy displayed text to clipboard                                                                           │                        │
+│                        │  Y   Copy row as JSON to clipboard                                                                              │                        │
+│                        │  y   Copy to clipboard                                                                                          │                        │
+│                        │  y   Copy full JSON                                                                                             │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │

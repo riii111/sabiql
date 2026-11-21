@@ -1,9 +1,9 @@
 use crate::catalog::HelpDocument;
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
-use crate::model::shared::help::HelpOrigin;
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{ScrollAmount, ScrollDirection};
+use crate::update::input::keymap::KeyContext;
 
 fn scroll_help_by(
     state: &mut AppState,
@@ -45,7 +45,7 @@ pub(in crate::update) fn toggle_help(state: &mut AppState) -> Vec<Effect> {
     if state.modal.active_mode() == InputMode::Help {
         close_help(state);
     } else {
-        let origin = HelpOrigin::from_state(state);
+        let origin = KeyContext::from_state(state);
         state.ui.help_mut().open(origin);
         state.modal.push_mode(InputMode::Help);
     }

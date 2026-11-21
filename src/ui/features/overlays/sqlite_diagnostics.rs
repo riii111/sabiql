@@ -6,7 +6,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::sqlite::diagnostics::{DiagnosticFieldKind, display_field, display_rows};
-use crate::app::update::input::keybindings::sqlite_diagnostics;
+use crate::app::update::input::keymap::{HintSurface, KeyContext, sqlite_diagnostics_hints};
 use crate::domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::primitives::utils::text_utils::wrapped_line_count;
@@ -25,18 +25,11 @@ impl SqliteDiagnosticsOverlay {
         state: &AppState,
         theme: &ThemePalette,
     ) -> SqliteDiagnosticsRenderMetrics {
-        let hint_bar = if state.sqlite_diagnostics.can_run_quick_check() {
-            FooterHintBar::new([
-                sqlite_diagnostics::ESC_CLOSE.as_hint(),
-                sqlite_diagnostics::SCROLL.as_hint(),
-                sqlite_diagnostics::RUN_QUICK_CHECK.as_hint(),
-            ])
-        } else {
-            FooterHintBar::new([
-                sqlite_diagnostics::ESC_CLOSE.as_hint(),
-                sqlite_diagnostics::SCROLL.as_hint(),
-            ])
-        };
+        let hint_bar = FooterHintBar::new(
+            sqlite_diagnostics_hints(HintSurface::Border, &KeyContext::from_state(state))
+                .into_iter()
+                .map(|hint| (hint.key, hint.short)),
+        );
         let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(70),
@@ -74,12 +67,8 @@ impl SqliteDiagnosticsOverlay {
         let lines = build_render_lines(
             snapshot,
             theme,
-            quick_check_override.or_else(|| {
-                snapshot
-                    .quick_check
-                    .is_pending()
-                    .then_some("Not run. Press r to run quick check.")
-            }),
+            quick_check_override
+                .or_else(|| snapshot.quick_check.is_pending().then_some("Not run.")),
         );
         render_lines(frame, inner, state, lines, viewport_width, viewport_height)
     }

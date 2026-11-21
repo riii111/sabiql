@@ -8,7 +8,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::render_output::PickerLayout;
 use crate::app::model::sql_editor::query_history::GroupedEntry;
-use crate::app::update::input::keybindings::query_history_picker;
+use crate::app::update::input::keymap::{HintSurface, KeyContext, Picker, picker_hints};
 use crate::domain::query_history::{Iso8601Timestamp, QueryResultStatus};
 use crate::primitives::molecules::{FooterHintBar, render_filter_input_line, render_modal};
 use crate::primitives::utils::text_utils::truncate_to_width_with;
@@ -112,10 +112,13 @@ impl QueryHistoryPicker {
             " Query History ",
             FooterHintBar::with_prefix(
                 format!("{grouped_count} entries │ type to filter"),
-                [
-                    query_history_picker::ENTER_SELECT.as_hint(),
-                    query_history_picker::ESC_CLOSE.as_hint(),
-                ],
+                picker_hints(
+                    Picker::QueryHistory,
+                    HintSurface::Border,
+                    &KeyContext::from_state(state),
+                )
+                .into_iter()
+                .map(|hint| (hint.key, hint.short)),
             ),
             theme,
         );

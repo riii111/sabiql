@@ -3,7 +3,6 @@ use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::text_input::TextEdit;
 use crate::update::action::ListMotion;
-use crate::update::input::palette::palette_command_count;
 
 pub(in crate::update) fn paste_table_picker(state: &mut AppState, text: String) -> Vec<Effect> {
     state.ui.table_picker_mut().insert_filter_str(&text);
@@ -103,11 +102,7 @@ pub(in crate::update) fn list_select_command_palette(
 ) -> Vec<Effect> {
     match motion {
         ListMotion::Next => {
-            let max = palette_command_count(
-                state.settings.saved_keymap_preset(),
-                &state.session.active_engine_feature_profile(),
-            )
-            .saturating_sub(1);
+            let max = state.ui.palette_commands().len().saturating_sub(1);
             let selected = state.ui.table_picker().selected();
             if selected < max {
                 state.ui.table_picker_mut().set_selection(selected + 1);
@@ -294,6 +289,7 @@ mod tests {
     mod picker_navigation {
         use super::*;
         use crate::domain::{DatabaseMetadata, TableSummary};
+        use crate::update::modal::base::open_modal_command_palette;
         use std::sync::Arc;
 
         fn state_with_tables(count: usize) -> AppState {
@@ -422,7 +418,7 @@ mod tests {
         #[test]
         fn command_palette_next_increments() {
             let mut state = AppState::new("test".to_string());
-            state.modal.set_mode(InputMode::CommandPalette);
+            open_modal_command_palette(&mut state);
 
             route(
                 &mut state,

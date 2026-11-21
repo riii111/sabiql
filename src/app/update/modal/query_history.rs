@@ -6,19 +6,7 @@ use crate::update::action::ListMotion;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 pub(in crate::update) fn open_modal_query_history_picker(state: &mut AppState) -> Vec<Effect> {
-    if state.modal.active_mode() == InputMode::QueryHistoryPicker {
-        return vec![];
-    }
-    if state.session.active_connection_id().is_none() {
-        return vec![];
-    }
-    if state.query.is_running() {
-        return vec![];
-    }
-    if state.modal.active_mode() == InputMode::ConfirmDialog {
-        return vec![];
-    }
-    if state.sql_modal.completion().visible && !state.sql_modal.completion().candidates.is_empty() {
+    if !state.can_open_query_history() {
         return vec![];
     }
 

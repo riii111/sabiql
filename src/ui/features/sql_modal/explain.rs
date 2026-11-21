@@ -12,7 +12,7 @@ use crate::app::model::shared::text_input::TextInputState;
 use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
 use crate::app::policy::write::sql_risk::AcknowledgeReason;
 use crate::app::policy::{FeaturePolicy, FeatureRequirement};
-use crate::app::update::input::keybindings::sql_modal_plan_explain;
+use crate::app::update::input::keymap::{HintSurface, KeyContext, sql_view_hints};
 use crate::domain::DatabaseType;
 use crate::domain::explain_plan::ExplainPlan;
 use crate::domain::sqlite_sql::SQLITE_EXPLAIN_QUERY_PLAN_PREFIX;
@@ -136,7 +136,13 @@ pub(super) fn render(
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
         area.height
     } else {
-        let explain_key = sql_modal_plan_explain(state.settings.saved_keymap_preset()).key;
+        let explain_key = sql_view_hints(
+            HintSurface::ExplainPlaceholder,
+            &KeyContext::from_state(state),
+        )
+        .into_iter()
+        .next()
+        .map_or_else(String::new, |hint| hint.key);
         let placeholder = Line::from(Span::styled(
             format!(" Press {explain_key} to run EXPLAIN"),
             Style::default().fg(theme.semantic.text.placeholder),
@@ -306,12 +312,5 @@ fn build_analyze_acknowledge_lines<'a>(
             Style::default().fg(theme.semantic.text.dim),
         )));
     }
-    lines.push(Line::raw(""));
-
-    lines.push(Line::from(Span::styled(
-        " Press Enter to execute  Esc: Cancel",
-        Style::default().fg(theme.semantic.text.secondary),
-    )));
-
     lines
 }

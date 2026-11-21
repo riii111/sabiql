@@ -33,7 +33,7 @@ expression: output
 │                        │                                                                                                                 │                        │
 │                        │Database list: 0: main @ /tmp/app.db                                                                             │                        │
 │                        │                                                                                                                 │                        │
-│                        │Quick check: Not run. Press r to run quick check.                                                                │                        │
+│                        │Quick check: Not run.                                                                                            │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │
@@ -42,7 +42,7 @@ expression: output
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │
-│                        ╰ Esc: Close │ ↑↓: Scroll │ r: Run check ─────────────────────────────────────────────────────────────────────────╯                        │
+│                        ╰ j/k: Scroll │ r: Run check │ Esc: Close ────────────────────────────────────────────────────────────────────────╯                        │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

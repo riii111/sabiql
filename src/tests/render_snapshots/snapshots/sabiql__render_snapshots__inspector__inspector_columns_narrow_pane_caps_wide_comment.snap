@@ -40,4 +40,4 @@ expression: output
 │                          ││                                                                                │
 │                          ││                                                                                │
 └──────────────────────────┘└────────────────────────────────────────────────────────────────────────────────┘
-r:Reload  s:SQL  e:ER Diagram  c:Connections  ^P:Tables  ^O:History  ^R:Read-Only  f:Focus  Tab/⇧Tab:InsTabs
+^P:Tables  f:Focus  r:Reload  s:SQL  e:ER Diagram  c:Connections  ^R:Read-Only  ^O:History  Tab/⇧Tab:InsTabs

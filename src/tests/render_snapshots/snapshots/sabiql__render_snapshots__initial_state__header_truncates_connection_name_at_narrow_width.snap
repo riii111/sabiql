@@ -20,4 +20,4 @@ connected | user: app_user | very-long-connection-name-that…
 │             ││                                           │
 │             ││                                           │
 └─────────────┘└───────────────────────────────────────────┘
-r:Reload  s:SQL  e:ER Diagram  c:Connections  ^P:Tables  ^O:
+^P:Tables  f:Focus  r:Reload  s:SQL  e:ER Diagram  c:Connect

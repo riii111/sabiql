@@ -1,21 +1,9 @@
-mod cell_detail;
-mod connections;
-mod editors;
-mod interaction;
-mod json;
-mod normal;
-mod overlays;
-mod pickers;
-mod row_detail;
-mod sql_modal;
-
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::FeaturePolicy;
 use crate::ports::inbound::{InputEvent, KeyCombo};
 use crate::update::action::Action;
-use crate::update::input::keybindings::readline_action_for;
-use interaction::{InputInteraction, resolve_input_interaction};
+use crate::update::input::keymap::{KeyContext, key_action};
 
 pub fn handle_event(event: InputEvent, state: &AppState) -> Action {
     match event {
@@ -49,83 +37,19 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
 }
 
 fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
-    let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
-    let interaction = resolve_input_interaction(state);
-    match interaction {
-        InputInteraction::FormEditing(target) => {
-            if let Some(action) = readline_action_for(&combo, target) {
-                return action;
-            }
-        }
-        InputInteraction::VimEditing(target) if readline_action_for(&combo, target).is_some() => {
-            return Action::None;
-        }
-        InputInteraction::Viewing | InputInteraction::VimEditing(_) => {}
-    }
-    match state.input_mode() {
-        InputMode::Normal => normal::handle_normal_mode(combo, state),
-        InputMode::CommandLine => {
-            editors::handle_command_line_mode_with_policy(combo, &feature_policy)
-        }
-        InputMode::CellEdit => editors::handle_cell_edit_keys(combo),
-        InputMode::TablePicker => pickers::handle_table_picker_keys(combo),
-        InputMode::CommandPalette => pickers::handle_command_palette_keys(combo),
-        InputMode::Settings => pickers::handle_settings_keys(combo, state),
-        InputMode::Help => {
-            overlays::handle_help_keys_with_policy(combo, interaction, &feature_policy)
-        }
-        InputMode::SqlModal => {
-            let completion_visible = state.sql_modal.completion().visible
-                && !state.sql_modal.completion().candidates.is_empty();
-            sql_modal::handle_sql_modal_keys_with_feature_policy(
-                combo,
-                completion_visible,
-                state.sql_modal.status(),
-                state
-                    .session
-                    .active_engine_feature_profile()
-                    .normalize_sql_modal_tab(state.sql_modal.active_tab()),
-                state.ui.key_sequence().pending_prefix(),
-                state.settings.saved_keymap_preset(),
-                &feature_policy,
-            )
-        }
-        InputMode::ConnectionSetup => connections::handle_connection_setup_keys(combo, state),
-        InputMode::ConnectionError => connections::handle_connection_error_keys(combo),
-        InputMode::ConfirmDialog => overlays::handle_confirm_dialog_keys(combo),
-        InputMode::SqliteDiagnostics => {
-            overlays::handle_sqlite_diagnostics_keys_with_policy(combo, &feature_policy)
-        }
-        InputMode::ConnectionSelector => connections::handle_connection_selector_keys(combo),
-        InputMode::ErTablePicker => pickers::handle_er_table_picker_keys(combo, state),
-        InputMode::QueryHistoryPicker => pickers::handle_query_history_picker_keys(combo),
-        InputMode::JsonDetail => json::handle_json_detail_keys_with_policy(
-            combo,
-            interaction,
-            state.ui.key_sequence().pending_prefix(),
-            &feature_policy,
-        ),
-        InputMode::JsonEdit => json::handle_json_edit_keys_with_policy(combo, &feature_policy),
-        InputMode::CellDetail => {
-            let is_searching = state.cell_detail.search().is_active();
-            cell_detail::handle_cell_detail_keys(combo, is_searching)
-        }
-        InputMode::RowDetail => row_detail::handle_row_detail_keys(combo),
-    }
+    key_action(combo, &KeyContext::from_state(state))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::shared::settings::{KeymapPreset, SettingsSection};
+    use crate::model::shared::settings::SettingsSection;
     use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel};
     use crate::ports::inbound::Key;
     use crate::update::action::DetailTarget;
     use crate::update::action::ModalKind;
     use crate::update::action::SearchStep;
-    use crate::update::action::{
-        CursorMove, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget, TextKillDirection,
-    };
+    use crate::update::action::{CursorMove, InputTarget};
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {
@@ -252,6 +176,7 @@ mod tests {
         SqlModalHighRisk,
         SqlModalAnalyzeHighRisk,
         JsonSearch,
+        CellDetailSearch,
         HelpFilter,
     }
 
@@ -271,6 +196,11 @@ mod tests {
                 InputTarget::Filter
             }
             FormSurface::ErFilter => {
+                use crate::update::test_fixtures;
+                test_fixtures::activate_postgres_connection(
+                    &mut state,
+                    "postgres://localhost/test",
+                );
                 state.modal.set_mode(InputMode::ErTablePicker);
                 InputTarget::ErFilter
             }
@@ -303,6 +233,11 @@ mod tests {
                 InputTarget::SqlModalHighRisk
             }
             FormSurface::SqlModalAnalyzeHighRisk => {
+                use crate::update::test_fixtures;
+                test_fixtures::activate_postgres_connection(
+                    &mut state,
+                    "postgres://localhost/test",
+                );
                 state.modal.set_mode(InputMode::SqlModal);
                 state.sql_modal.begin_confirming_analyze_high(
                     "EXPLAIN DELETE FROM users".to_string(),
@@ -311,9 +246,19 @@ mod tests {
                 InputTarget::SqlModalAnalyzeHighRisk
             }
             FormSurface::JsonSearch => {
+                use crate::update::test_fixtures;
+                test_fixtures::activate_postgres_connection(
+                    &mut state,
+                    "postgres://localhost/test",
+                );
                 state.modal.set_mode(InputMode::JsonDetail);
                 state.json_detail.enter_search();
                 InputTarget::JsonSearch
+            }
+            FormSurface::CellDetailSearch => {
+                state.modal.set_mode(InputMode::CellDetail);
+                state.cell_detail.enter_search();
+                InputTarget::CellDetailSearch
             }
             FormSurface::HelpFilter => {
                 state.modal.set_mode(InputMode::Help);
@@ -335,6 +280,7 @@ mod tests {
     #[case(FormSurface::SqlModalHighRisk)]
     #[case(FormSurface::SqlModalAnalyzeHighRisk)]
     #[case(FormSurface::JsonSearch)]
+    #[case(FormSurface::CellDetailSearch)]
     #[case(FormSurface::HelpFilter)]
     fn form_editing_surfaces_prioritize_readline(#[case] surface: FormSurface) {
         let (state, target) = form_editing_state(surface);
@@ -349,95 +295,73 @@ mod tests {
         ));
     }
 
-    #[rstest]
-    #[case(InputTarget::CommandLine)]
-    #[case(InputTarget::ResultCellEdit)]
-    #[case(InputTarget::Filter)]
-    #[case(InputTarget::ErFilter)]
-    #[case(InputTarget::QueryHistoryFilter)]
-    #[case(InputTarget::SettingsErBrowser)]
-    #[case(InputTarget::ConnectionSetup)]
-    #[case(InputTarget::SqlModalHighRisk)]
-    #[case(InputTarget::SqlModalAnalyzeHighRisk)]
-    #[case(InputTarget::JsonSearch)]
-    #[case(InputTarget::HelpFilter)]
-    fn readline_leaves_ctrl_n_and_ctrl_p_for_existing_handlers(#[case] target: InputTarget) {
-        for key in ['n', 'p'] {
-            assert!(readline_action_for(&KeyCombo::ctrl(Key::Char(key)), target).is_none());
-        }
-    }
-
-    #[rstest]
-    #[case(InputMode::SqlModal)]
-    #[case(InputMode::JsonEdit)]
-    fn document_editors_do_not_intercept_readline_shortcuts(#[case] mode: InputMode) {
+    #[test]
+    fn unavailable_json_search_keeps_only_exit() {
         let mut state = AppState::new("test".to_string());
-        state.modal.set_mode(mode);
-        if mode == InputMode::SqlModal {
-            state.sql_modal.enter_editing();
-        }
+        state.modal.set_mode(InputMode::JsonDetail);
+        state.json_detail.enter_search();
 
-        let readline_keys = [
-            KeyCombo::ctrl(Key::Char('a')),
-            KeyCombo::ctrl(Key::Char('e')),
-            KeyCombo::ctrl(Key::Char('b')),
-            KeyCombo::ctrl(Key::Char('f')),
-            KeyCombo::ctrl(Key::Char('h')),
-            KeyCombo::ctrl(Key::Char('d')),
-            KeyCombo::ctrl(Key::Char('k')),
-            KeyCombo::ctrl(Key::Char('u')),
-            KeyCombo::ctrl(Key::Char('w')),
-            KeyCombo::ctrl(Key::Char('y')),
-            KeyCombo::alt(Key::Char('b')),
-            KeyCombo::alt(Key::Char('f')),
-            KeyCombo::alt(Key::Char('d')),
-        ];
-
-        for combo in readline_keys {
-            let result = handle_key_event(combo, &state);
-
-            assert!(
-                matches!(result, Action::None),
-                "{combo:?} should be unbound"
-            );
-        }
-    }
-
-    #[rstest]
-    #[case(KeymapPreset::Default)]
-    #[case(KeymapPreset::Ide)]
-    fn sql_editing_ctrl_e_is_unbound_for_each_preset(#[case] preset: KeymapPreset) {
-        let mut state = AppState::new("test".to_string());
-        state.modal.set_mode(InputMode::SqlModal);
-        state.sql_modal.enter_editing();
-        state.settings.load_keymap_preset(preset);
-
-        let result = handle_key_event(KeyCombo::ctrl(Key::Char('e')), &state);
-
-        assert!(matches!(result, Action::None));
+        assert!(matches!(
+            handle_key_event(KeyCombo::ctrl(Key::Char('a')), &state),
+            Action::None
+        ));
+        assert!(matches!(
+            handle_key_event(KeyCombo::plain(Key::Esc), &state),
+            Action::DetailSearch {
+                target: DetailTarget::JsonDetail,
+                step: SearchStep::Exit,
+            }
+        ));
     }
 
     #[test]
-    fn help_routes_ctrl_u_to_scroll_while_viewing_and_readline_while_editing() {
-        let mut viewing = AppState::new("test".to_string());
-        viewing.modal.set_mode(InputMode::Help);
-        let viewing_action = handle_key_event(KeyCombo::ctrl(Key::Char('u')), &viewing);
+    fn json_prefix_completes_or_cancels_and_search_treats_g_as_text() {
+        use crate::model::browse::json_detail::JsonDetailState;
+        use crate::model::shared::key_sequence::{KeySequenceState, Prefix};
+        use crate::services::AppServices;
+        use crate::update::{reducer::route, test_fixtures};
+        use std::time::Instant;
+
+        let mut state = AppState::new("test".to_string());
+        test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
+        state.json_detail = JsonDetailState::open(0, 0, "json".to_string(), "[1, 2]".to_string());
+        state.modal.set_mode(InputMode::JsonDetail);
+        let services = AppServices::stub();
+
+        let first = handle_key_event(KeyCombo::plain(Key::Char('g')), &state);
+        assert!(matches!(first, Action::BeginKeySequence(Prefix::G)));
+        route(&mut state, first, Instant::now(), &services);
+        assert_eq!(
+            state.ui.key_sequence(),
+            KeySequenceState::WaitingSecondKey(Prefix::G)
+        );
+        let second = handle_key_event(KeyCombo::plain(Key::Char('g')), &state);
         assert!(matches!(
-            viewing_action,
-            Action::Scroll {
-                target: ScrollTarget::Help,
-                direction: ScrollDirection::Up,
-                amount: ScrollAmount::HalfPage,
+            second,
+            Action::TextMoveCursor {
+                target: InputTarget::JsonEdit,
+                direction: CursorMove::FirstLine
             }
         ));
+        route(&mut state, second, Instant::now(), &services);
+        assert_eq!(state.ui.key_sequence(), KeySequenceState::Idle);
 
-        viewing.ui.help_mut().enter_filter_editing();
-        let editing_action = handle_key_event(KeyCombo::ctrl(Key::Char('u')), &viewing);
+        let first = handle_key_event(KeyCombo::plain(Key::Char('g')), &state);
+        route(&mut state, first, Instant::now(), &services);
+        let cancel = handle_key_event(KeyCombo::ctrl(Key::Char('g')), &state);
+        assert!(matches!(cancel, Action::CancelKeySequence));
+        route(&mut state, cancel, Instant::now(), &services);
+        assert_eq!(state.ui.key_sequence(), KeySequenceState::Idle);
+
+        state
+            .ui
+            .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::G));
+        state.json_detail.enter_search();
         assert!(matches!(
-            editing_action,
-            Action::TextKill {
-                target: InputTarget::HelpFilter,
-                direction: TextKillDirection::ToLineStart,
+            handle_key_event(KeyCombo::plain(Key::Char('g')), &state),
+            Action::TextInput {
+                target: InputTarget::JsonSearch,
+                ch: 'g'
             }
         ));
     }

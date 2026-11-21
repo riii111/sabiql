@@ -1,0 +1,1613 @@
+---
+source: src/tests/keymap_baseline.rs
+expression: "capture_matrix(engine, preset)"
+---
+## Normal
+BeginKeySequence(Z): 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z'
+ConfirmSelection: Enter, ⇧Enter
+EnterCommandLine: ':'
+Escape: Esc, ⇧Esc
+OpenModal(CommandPalette): F(1)
+OpenModal(ConnectionSelector): 'c'
+OpenModal(QueryHistoryPicker): ^'o'
+OpenModal(Settings): ','
+OpenModal(SqlModal): 's'
+OpenModal(SqliteDiagnostics): ^'D', ^⇧'d'
+OpenModal(TablePicker): ^'p'
+Quit: 'q'
+ReloadMetadata: 'r'
+Scroll { target: Explorer, direction: Left, amount: Line }: 'h', Left
+Scroll { target: Explorer, direction: Right, amount: Line }: 'l', Right
+Select(First): 'g', Home
+Select(FullPageDown): ^'f', PageDown
+Select(FullPageUp): ^'b', PageUp
+Select(HalfPageDown): ^'d'
+Select(HalfPageUp): ^'u'
+Select(Last): 'G', End
+Select(Next): 'j', Down
+Select(Previous): 'k', Up
+Select(ViewportBottom): 'L'
+Select(ViewportMiddle): 'M'
+Select(ViewportTop): 'H'
+SetFocusedPane(Explorer): '1', ^'1', ⌥'1', ^⌥'1', ⇧'1', ^⇧'1'
+SetFocusedPane(Inspector): '2', ^'2', ⌥'2', ^⌥'2', ⇧'2', ^⇧'2'
+SetFocusedPane(Result): '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3'
+ToggleFocus: 'f'
+ToggleHelp: '?'
+ToggleReadOnly: ^'r'
+footer: ^P:Tables  f:Focus  r:Reload  s:SQL  c:Connections  ^⇧D:Diagnostics  ^R:Read-Only  ^O:History  ?:Help  ,:Settings  F1:Palette  q:Quit
+help: 1 / 2 / 3: Switch pane focus
+help: Ctrl+P: Open Table Picker
+help: r: Reload metadata
+help: s: Open SQL Editor
+help: c: Open Connection Selector
+help: Ctrl+Shift+D: Open SQLite Diagnostics
+help: Ctrl+O: Open Query History
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## CommandLine
+CommandLineSubmit: Enter
+ExitCommandLine: Esc
+TextBackspace { target: CommandLine }: ^'h', Backspace, ^Backspace, ⌥Backspace, ^⌥Backspace, ⇧Backspace, ^⇧Backspace
+TextDelete { target: CommandLine }: ^'d', Delete, ^Delete, ⌥Delete, ^⌥Delete, ⇧Delete, ^⇧Delete
+TextInput { target: CommandLine }: ' ', ⌥' ', ^⌥' ', ⇧' ', '!', ⌥'!', ^⌥'!', ⇧'!', '"', ⌥'"', ^⌥'"', ⇧'"', '#', ⌥'#', ^⌥'#', ⇧'#', '$', ⌥'$', ^⌥'$', ⇧'$', '%', ⌥'%', ^⌥'%', ⇧'%', '&', ⌥'&', ^⌥'&', ⇧'&', '\'', ⌥'\'', ^⌥'\'', ⇧'\'', '(', ⌥'(', ^⌥'(', ⇧'(', ')', ⌥')', ^⌥')', ⇧')', '*', ⌥'*', ^⌥'*', ⇧'*', '+', ⌥'+', ^⌥'+', ⇧'+', ',', ⌥',', ^⌥',', ⇧',', '-', ⌥'-', ^⌥'-', ⇧'-', '.', ⌥'.', ^⌥'.', ⇧'.', '/', ⌥'/', ^⌥'/', ⇧'/', '0', ⌥'0', ^⌥'0', ⇧'0', '1', ⌥'1', ^⌥'1', ⇧'1', '2', ⌥'2', ^⌥'2', ⇧'2', '3', ⌥'3', ^⌥'3', ⇧'3', '4', ⌥'4', ^⌥'4', ⇧'4', '5', ⌥'5', ^⌥'5', ⇧'5', '6', ⌥'6', ^⌥'6', ⇧'6', '7', ⌥'7', ^⌥'7', ⇧'7', '8', ⌥'8', ^⌥'8', ⇧'8', '9', ⌥'9', ^⌥'9', ⇧'9', ':', ⌥':', ^⌥':', ⇧':', ';', ⌥';', ^⌥';', ⇧';', '<', ⌥'<', ^⌥'<', ⇧'<', '=', ⌥'=', ^⌥'=', ⇧'=', '>', ⌥'>', ^⌥'>', ⇧'>', '?', ⌥'?', ^⌥'?', ⇧'?', '@', ⌥'@', ^⌥'@', ⇧'@', 'A', ⌥'A', ^⌥'A', ⇧'A', 'B', ⌥'B', ^⌥'B', ⇧'B', 'C', ⌥'C', ^⌥'C', ⇧'C', 'D', ⌥'D', ^⌥'D', ⇧'D', 'E', ⌥'E', ^⌥'E', ⇧'E', 'F', ⌥'F', ^⌥'F', ⇧'F', 'G', ⌥'G', ^⌥'G', ⇧'G', 'H', ⌥'H', ^⌥'H', ⇧'H', 'I', ⌥'I', ^⌥'I', ⇧'I', 'J', ⌥'J', ^⌥'J', ⇧'J', 'K', ⌥'K', ^⌥'K', ⇧'K', 'L', ⌥'L', ^⌥'L', ⇧'L', 'M', ⌥'M', ^⌥'M', ⇧'M', 'N', ⌥'N', ^⌥'N', ⇧'N', 'O', ⌥'O', ^⌥'O', ⇧'O', 'P', ⌥'P', ^⌥'P', ⇧'P', 'Q', ⌥'Q', ^⌥'Q', ⇧'Q', 'R', ⌥'R', ^⌥'R', ⇧'R', 'S', ⌥'S', ^⌥'S', ⇧'S', 'T', ⌥'T', ^⌥'T', ⇧'T', 'U', ⌥'U', ^⌥'U', ⇧'U', 'V', ⌥'V', ^⌥'V', ⇧'V', 'W', ⌥'W', ^⌥'W', ⇧'W', 'X', ⌥'X', ^⌥'X', ⇧'X', 'Y', ⌥'Y', ^⌥'Y', ⇧'Y', 'Z', ⌥'Z', ^⌥'Z', ⇧'Z', '[', ⌥'[', ^⌥'[', ⇧'[', '\\', ⌥'\\', ^⌥'\\', ⇧'\\', ']', ⌥']', ^⌥']', ⇧']', '^', ⌥'^', ^⌥'^', ⇧'^', '_', ⌥'_', ^⌥'_', ⇧'_', '`', ⌥'`', ^⌥'`', ⇧'`', 'a', ⌥'a', ^⌥'a', ⇧'a', 'b', ^⌥'b', ⇧'b', 'c', ⌥'c', ^⌥'c', ⇧'c', 'd', ^⌥'d', ⇧'d', 'e', ⌥'e', ^⌥'e', ⇧'e', 'f', ^⌥'f', ⇧'f', 'g', ⌥'g', ^⌥'g', ⇧'g', 'h', ⌥'h', ^⌥'h', ⇧'h', 'i', ⌥'i', ^⌥'i', ⇧'i', 'j', ⌥'j', ^⌥'j', ⇧'j', 'k', ⌥'k', ^⌥'k', ⇧'k', 'l', ⌥'l', ^⌥'l', ⇧'l', 'm', ⌥'m', ^⌥'m', ⇧'m', 'n', ⌥'n', ^⌥'n', ⇧'n', 'o', ⌥'o', ^⌥'o', ⇧'o', 'p', ⌥'p', ^⌥'p', ⇧'p', 'q', ⌥'q', ^⌥'q', ⇧'q', 'r', ⌥'r', ^⌥'r', ⇧'r', 's', ⌥'s', ^⌥'s', ⇧'s', 't', ⌥'t', ^⌥'t', ⇧'t', 'u', ⌥'u', ^⌥'u', ⇧'u', 'v', ⌥'v', ^⌥'v', ⇧'v', 'w', ⌥'w', ^⌥'w', ⇧'w', 'x', ⌥'x', ^⌥'x', ⇧'x', 'y', ⌥'y', ^⌥'y', ⇧'y', 'z', ⌥'z', ^⌥'z', ⇧'z', '{', ⌥'{', ^⌥'{', ⇧'{', '|', ⌥'|', ^⌥'|', ⇧'|', '}', ⌥'}', ^⌥'}', ⇧'}', '~', ⌥'~', ^⌥'~', ⇧'~'
+TextKill { target: CommandLine, direction: ReadlinePreviousWhitespace }: ^'w'
+TextKill { target: CommandLine, direction: ReadlineWordEnd }: ⌥'d'
+TextKill { target: CommandLine, direction: ToLineEnd }: ^'k'
+TextKill { target: CommandLine, direction: ToLineStart }: ^'u'
+TextMoveCursor { target: CommandLine, direction: End }: End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
+TextMoveCursor { target: CommandLine, direction: Home }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
+TextMoveCursor { target: CommandLine, direction: Left }: ^'b', Left, ^Left, ⌥Left, ^⌥Left, ⇧Left, ^⇧Left
+TextMoveCursor { target: CommandLine, direction: LineEnd }: ^'e'
+TextMoveCursor { target: CommandLine, direction: LineStart }: ^'a'
+TextMoveCursor { target: CommandLine, direction: ReadlineWordEnd }: ⌥'f'
+TextMoveCursor { target: CommandLine, direction: ReadlineWordStart }: ⌥'b'
+TextMoveCursor { target: CommandLine, direction: Right }: ^'f', Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
+TextYank { target: CommandLine }: ^'y'
+footer: Enter:Submit  Esc:Exit
+help: :sql: Open SQL Editor
+help: :settings: Open Settings
+help: :palette: Open Command Palette
+help: :w: Preview and confirm changes
+help: Enter: Submit command
+help: Esc: Exit command line
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## CellEdit
+EnterCommandLine: ':'
+ResultCancelCellEdit: Esc
+TextBackspace { target: ResultCellEdit }: ^'h', Backspace, ^Backspace, ⌥Backspace, ^⌥Backspace, ⇧Backspace, ^⇧Backspace
+TextDelete { target: ResultCellEdit }: ^'d', Delete, ^Delete, ⌥Delete, ^⌥Delete, ⇧Delete, ^⇧Delete
+TextInput { target: ResultCellEdit }: ' ', ⌥' ', ^⌥' ', ⇧' ', '!', ⌥'!', ^⌥'!', ⇧'!', '"', ⌥'"', ^⌥'"', ⇧'"', '#', ⌥'#', ^⌥'#', ⇧'#', '$', ⌥'$', ^⌥'$', ⇧'$', '%', ⌥'%', ^⌥'%', ⇧'%', '&', ⌥'&', ^⌥'&', ⇧'&', '\'', ⌥'\'', ^⌥'\'', ⇧'\'', '(', ⌥'(', ^⌥'(', ⇧'(', ')', ⌥')', ^⌥')', ⇧')', '*', ⌥'*', ^⌥'*', ⇧'*', '+', ⌥'+', ^⌥'+', ⇧'+', ',', ⌥',', ^⌥',', ⇧',', '-', ⌥'-', ^⌥'-', ⇧'-', '.', ⌥'.', ^⌥'.', ⇧'.', '/', ⌥'/', ^⌥'/', ⇧'/', '0', ⌥'0', ^⌥'0', ⇧'0', '1', ⌥'1', ^⌥'1', ⇧'1', '2', ⌥'2', ^⌥'2', ⇧'2', '3', ⌥'3', ^⌥'3', ⇧'3', '4', ⌥'4', ^⌥'4', ⇧'4', '5', ⌥'5', ^⌥'5', ⇧'5', '6', ⌥'6', ^⌥'6', ⇧'6', '7', ⌥'7', ^⌥'7', ⇧'7', '8', ⌥'8', ^⌥'8', ⇧'8', '9', ⌥'9', ^⌥'9', ⇧'9', ⌥':', ^⌥':', ⇧':', ';', ⌥';', ^⌥';', ⇧';', '<', ⌥'<', ^⌥'<', ⇧'<', '=', ⌥'=', ^⌥'=', ⇧'=', '>', ⌥'>', ^⌥'>', ⇧'>', '?', ⌥'?', ^⌥'?', ⇧'?', '@', ⌥'@', ^⌥'@', ⇧'@', 'A', ⌥'A', ^⌥'A', ⇧'A', 'B', ⌥'B', ^⌥'B', ⇧'B', 'C', ⌥'C', ^⌥'C', ⇧'C', 'D', ⌥'D', ^⌥'D', ⇧'D', 'E', ⌥'E', ^⌥'E', ⇧'E', 'F', ⌥'F', ^⌥'F', ⇧'F', 'G', ⌥'G', ^⌥'G', ⇧'G', 'H', ⌥'H', ^⌥'H', ⇧'H', 'I', ⌥'I', ^⌥'I', ⇧'I', 'J', ⌥'J', ^⌥'J', ⇧'J', 'K', ⌥'K', ^⌥'K', ⇧'K', 'L', ⌥'L', ^⌥'L', ⇧'L', 'M', ⌥'M', ^⌥'M', ⇧'M', 'N', ⌥'N', ^⌥'N', ⇧'N', 'O', ⌥'O', ^⌥'O', ⇧'O', 'P', ⌥'P', ^⌥'P', ⇧'P', 'Q', ⌥'Q', ^⌥'Q', ⇧'Q', 'R', ⌥'R', ^⌥'R', ⇧'R', 'S', ⌥'S', ^⌥'S', ⇧'S', 'T', ⌥'T', ^⌥'T', ⇧'T', 'U', ⌥'U', ^⌥'U', ⇧'U', 'V', ⌥'V', ^⌥'V', ⇧'V', 'W', ⌥'W', ^⌥'W', ⇧'W', 'X', ⌥'X', ^⌥'X', ⇧'X', 'Y', ⌥'Y', ^⌥'Y', ⇧'Y', 'Z', ⌥'Z', ^⌥'Z', ⇧'Z', '[', ⌥'[', ^⌥'[', ⇧'[', '\\', ⌥'\\', ^⌥'\\', ⇧'\\', ']', ⌥']', ^⌥']', ⇧']', '^', ⌥'^', ^⌥'^', ⇧'^', '_', ⌥'_', ^⌥'_', ⇧'_', '`', ⌥'`', ^⌥'`', ⇧'`', 'a', ⌥'a', ^⌥'a', ⇧'a', 'b', ^⌥'b', ⇧'b', 'c', ⌥'c', ^⌥'c', ⇧'c', 'd', ^⌥'d', ⇧'d', 'e', ⌥'e', ^⌥'e', ⇧'e', 'f', ^⌥'f', ⇧'f', 'g', ⌥'g', ^⌥'g', ⇧'g', 'h', ⌥'h', ^⌥'h', ⇧'h', 'i', ⌥'i', ^⌥'i', ⇧'i', 'j', ⌥'j', ^⌥'j', ⇧'j', 'k', ⌥'k', ^⌥'k', ⇧'k', 'l', ⌥'l', ^⌥'l', ⇧'l', 'm', ⌥'m', ^⌥'m', ⇧'m', 'n', ⌥'n', ^⌥'n', ⇧'n', 'o', ⌥'o', ^⌥'o', ⇧'o', 'p', ⌥'p', ^⌥'p', ⇧'p', 'q', ⌥'q', ^⌥'q', ⇧'q', 'r', ⌥'r', ^⌥'r', ⇧'r', 's', ⌥'s', ^⌥'s', ⇧'s', 't', ⌥'t', ^⌥'t', ⇧'t', 'u', ⌥'u', ^⌥'u', ⇧'u', 'v', ⌥'v', ^⌥'v', ⇧'v', 'w', ⌥'w', ^⌥'w', ⇧'w', 'x', ⌥'x', ^⌥'x', ⇧'x', 'y', ⌥'y', ^⌥'y', ⇧'y', 'z', ⌥'z', ^⌥'z', ⇧'z', '{', ⌥'{', ^⌥'{', ⇧'{', '|', ⌥'|', ^⌥'|', ⇧'|', '}', ⌥'}', ^⌥'}', ⇧'}', '~', ⌥'~', ^⌥'~', ⇧'~'
+TextKill { target: ResultCellEdit, direction: ReadlinePreviousWhitespace }: ^'w'
+TextKill { target: ResultCellEdit, direction: ReadlineWordEnd }: ⌥'d'
+TextKill { target: ResultCellEdit, direction: ToLineEnd }: ^'k'
+TextKill { target: ResultCellEdit, direction: ToLineStart }: ^'u'
+TextMoveCursor { target: ResultCellEdit, direction: End }: End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
+TextMoveCursor { target: ResultCellEdit, direction: Home }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
+TextMoveCursor { target: ResultCellEdit, direction: Left }: ^'b', Left, ^Left, ⌥Left, ^⌥Left, ⇧Left, ^⇧Left
+TextMoveCursor { target: ResultCellEdit, direction: LineEnd }: ^'e'
+TextMoveCursor { target: ResultCellEdit, direction: LineStart }: ^'a'
+TextMoveCursor { target: ResultCellEdit, direction: ReadlineWordEnd }: ⌥'f'
+TextMoveCursor { target: ResultCellEdit, direction: ReadlineWordStart }: ⌥'b'
+TextMoveCursor { target: ResultCellEdit, direction: Right }: ^'f', Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
+TextYank { target: ResultCellEdit }: ^'y'
+footer: :w:Write  type:Edit  ←/→:Move  Esc:Normal
+help: :w: Preview and confirm changes
+help: :: Open command line
+help: type: Edit cell value
+help: ← / →: Move cursor
+help: Home / End: Jump to start/end
+help: Esc: Exit to Cell Active (draft preserved)
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## TablePicker
+CloseModal(TablePicker): Esc
+ConfirmSelection: Enter
+ListSelect { target: TablePicker, motion: Next }: ^'n', Down
+ListSelect { target: TablePicker, motion: Previous }: ^'p', Up
+TextBackspace { target: Filter }: ^'h', Backspace
+TextDelete { target: Filter }: ^'d', Delete
+TextInput { target: Filter }: ' ', ⌥' ', ^⌥' ', ⇧' ', '!', ⌥'!', ^⌥'!', ⇧'!', '"', ⌥'"', ^⌥'"', ⇧'"', '#', ⌥'#', ^⌥'#', ⇧'#', '$', ⌥'$', ^⌥'$', ⇧'$', '%', ⌥'%', ^⌥'%', ⇧'%', '&', ⌥'&', ^⌥'&', ⇧'&', '\'', ⌥'\'', ^⌥'\'', ⇧'\'', '(', ⌥'(', ^⌥'(', ⇧'(', ')', ⌥')', ^⌥')', ⇧')', '*', ⌥'*', ^⌥'*', ⇧'*', '+', ⌥'+', ^⌥'+', ⇧'+', ',', ⌥',', ^⌥',', ⇧',', '-', ⌥'-', ^⌥'-', ⇧'-', '.', ⌥'.', ^⌥'.', ⇧'.', '/', ⌥'/', ^⌥'/', ⇧'/', '0', ⌥'0', ^⌥'0', ⇧'0', '1', ⌥'1', ^⌥'1', ⇧'1', '2', ⌥'2', ^⌥'2', ⇧'2', '3', ⌥'3', ^⌥'3', ⇧'3', '4', ⌥'4', ^⌥'4', ⇧'4', '5', ⌥'5', ^⌥'5', ⇧'5', '6', ⌥'6', ^⌥'6', ⇧'6', '7', ⌥'7', ^⌥'7', ⇧'7', '8', ⌥'8', ^⌥'8', ⇧'8', '9', ⌥'9', ^⌥'9', ⇧'9', ':', ⌥':', ^⌥':', ⇧':', ';', ⌥';', ^⌥';', ⇧';', '<', ⌥'<', ^⌥'<', ⇧'<', '=', ⌥'=', ^⌥'=', ⇧'=', '>', ⌥'>', ^⌥'>', ⇧'>', '?', ⌥'?', ^⌥'?', ⇧'?', '@', ⌥'@', ^⌥'@', ⇧'@', 'A', ⌥'A', ^⌥'A', ⇧'A', 'B', ⌥'B', ^⌥'B', ⇧'B', 'C', ⌥'C', ^⌥'C', ⇧'C', 'D', ⌥'D', ^⌥'D', ⇧'D', 'E', ⌥'E', ^⌥'E', ⇧'E', 'F', ⌥'F', ^⌥'F', ⇧'F', 'G', ⌥'G', ^⌥'G', ⇧'G', 'H', ⌥'H', ^⌥'H', ⇧'H', 'I', ⌥'I', ^⌥'I', ⇧'I', 'J', ⌥'J', ^⌥'J', ⇧'J', 'K', ⌥'K', ^⌥'K', ⇧'K', 'L', ⌥'L', ^⌥'L', ⇧'L', 'M', ⌥'M', ^⌥'M', ⇧'M', 'N', ⌥'N', ^⌥'N', ⇧'N', 'O', ⌥'O', ^⌥'O', ⇧'O', 'P', ⌥'P', ^⌥'P', ⇧'P', 'Q', ⌥'Q', ^⌥'Q', ⇧'Q', 'R', ⌥'R', ^⌥'R', ⇧'R', 'S', ⌥'S', ^⌥'S', ⇧'S', 'T', ⌥'T', ^⌥'T', ⇧'T', 'U', ⌥'U', ^⌥'U', ⇧'U', 'V', ⌥'V', ^⌥'V', ⇧'V', 'W', ⌥'W', ^⌥'W', ⇧'W', 'X', ⌥'X', ^⌥'X', ⇧'X', 'Y', ⌥'Y', ^⌥'Y', ⇧'Y', 'Z', ⌥'Z', ^⌥'Z', ⇧'Z', '[', ⌥'[', ^⌥'[', ⇧'[', '\\', ⌥'\\', ^⌥'\\', ⇧'\\', ']', ⌥']', ^⌥']', ⇧']', '^', ⌥'^', ^⌥'^', ⇧'^', '_', ⌥'_', ^⌥'_', ⇧'_', '`', ⌥'`', ^⌥'`', ⇧'`', 'a', ⌥'a', ^⌥'a', ⇧'a', 'b', ^⌥'b', ⇧'b', 'c', ⌥'c', ^⌥'c', ⇧'c', 'd', ^⌥'d', ⇧'d', 'e', ⌥'e', ^⌥'e', ⇧'e', 'f', ^⌥'f', ⇧'f', 'g', ⌥'g', ^⌥'g', ⇧'g', 'h', ⌥'h', ^⌥'h', ⇧'h', 'i', ⌥'i', ^⌥'i', ⇧'i', 'j', ⌥'j', ^⌥'j', ⇧'j', 'k', ⌥'k', ^⌥'k', ⇧'k', 'l', ⌥'l', ^⌥'l', ⇧'l', 'm', ⌥'m', ^⌥'m', ⇧'m', 'n', ⌥'n', ^⌥'n', ⇧'n', 'o', ⌥'o', ^⌥'o', ⇧'o', 'p', ⌥'p', ^⌥'p', ⇧'p', 'q', ⌥'q', ^⌥'q', ⇧'q', 'r', ⌥'r', ^⌥'r', ⇧'r', 's', ⌥'s', ^⌥'s', ⇧'s', 't', ⌥'t', ^⌥'t', ⇧'t', 'u', ⌥'u', ^⌥'u', ⇧'u', 'v', ⌥'v', ^⌥'v', ⇧'v', 'w', ⌥'w', ^⌥'w', ⇧'w', 'x', ⌥'x', ^⌥'x', ⇧'x', 'y', ⌥'y', ^⌥'y', ⇧'y', 'z', ⌥'z', ^⌥'z', ⇧'z', '{', ⌥'{', ^⌥'{', ⇧'{', '|', ⌥'|', ^⌥'|', ⇧'|', '}', ⌥'}', ^⌥'}', ⇧'}', '~', ⌥'~', ^⌥'~', ⇧'~'
+TextKill { target: Filter, direction: ReadlinePreviousWhitespace }: ^'w'
+TextKill { target: Filter, direction: ReadlineWordEnd }: ⌥'d'
+TextKill { target: Filter, direction: ToLineEnd }: ^'k'
+TextKill { target: Filter, direction: ToLineStart }: ^'u'
+TextMoveCursor { target: Filter, direction: End }: End
+TextMoveCursor { target: Filter, direction: Home }: Home
+TextMoveCursor { target: Filter, direction: Left }: ^'b', Left
+TextMoveCursor { target: Filter, direction: LineEnd }: ^'e'
+TextMoveCursor { target: Filter, direction: LineStart }: ^'a'
+TextMoveCursor { target: Filter, direction: ReadlineWordEnd }: ⌥'f'
+TextMoveCursor { target: Filter, direction: ReadlineWordStart }: ⌥'b'
+TextMoveCursor { target: Filter, direction: Right }: ^'f', Right
+TextYank { target: Filter }: ^'y'
+footer: type:Filter
+border: ╭ Table Picker ───────────────────────────────────────────────────────────────────────────────────╮
+border: ╰ 0 tables │ Enter: Select │ Esc: Close ──────────────────────────────────────────────────────────╯
+help: Enter: Select table
+help: type: Type to filter
+help: Esc: Close
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## CommandPalette
+CloseModal(CommandPalette): Esc
+ConfirmSelection: Enter
+ListSelect { target: CommandPalette, motion: Next }: 'j', ^'n', Down
+ListSelect { target: CommandPalette, motion: Previous }: 'k', ^'p', Up
+footer: 
+border: ╭ Command Palette ────────────────────────────────────────────────────────────────╮
+border: ╰ Enter: Execute │ Esc: Close ────────────────────────────────────────────────────╯
+help: Enter: Execute command
+help: Esc: Close
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## Settings
+SettingsApply: Enter
+SettingsCancel: Esc
+SettingsNextSection: Tab
+SettingsPreviousSection: BackTab, ⇧BackTab
+SettingsSelectNext: 'j', ^'n', Down
+SettingsSelectPrevious: 'k', ^'p', Up
+SettingsStartCustomBrowserEdit: 'i'
+footer: j/k:Select
+border: ╭ Settings ───────────────────────────────────────────────────────────────────────────────────────╮
+border: ╭ Focused panel ─────────────╮
+border: ╰────────────────────────────╯
+border: ╰ Enter: Apply │ Tab/⇧Tab: Section │ Esc: Cancel ─────────────────────────────────────────────────╯
+help: Enter: Apply setting
+help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Select setting
+help: i: Edit custom browser
+help: Tab / Shift+Tab: Switch settings section
+help: Esc: Cancel
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## Help
+CloseModal(Help): '?', Esc
+EnterHelpFilter: '/'
+Scroll { target: Help, direction: Down, amount: FullPage }: ^'f', PageDown
+Scroll { target: Help, direction: Down, amount: HalfPage }: ^'d'
+Scroll { target: Help, direction: Down, amount: Line }: 'j', ^'n', Down
+Scroll { target: Help, direction: Down, amount: ToEnd }: End
+Scroll { target: Help, direction: Left, amount: Line }: 'h', Left
+Scroll { target: Help, direction: Right, amount: Line }: 'l', Right
+Scroll { target: Help, direction: Up, amount: FullPage }: ^'b', PageUp
+Scroll { target: Help, direction: Up, amount: HalfPage }: ^'u'
+Scroll { target: Help, direction: Up, amount: Line }: 'k', ^'p', Up
+Scroll { target: Help, direction: Up, amount: ToStart }: Home
+footer: 
+border: ╭ Help ───────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+border: ╰ /: Filter │ Esc/?: Close ───────────────────────────────────────────────────────────────────────────────────────╯
+help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Scroll down / up
+help: h / l / ← / →: Scroll left / right
+help: Ctrl+D / Ctrl+U: Scroll half page down / up
+help: PageDown / PageUp / Ctrl+F / Ctrl+B: Scroll full page down / up
+help: Home / End: Jump to top / bottom
+help: /: Edit filter
+help: Esc / ?: Close help
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## SqlModal
+BeginKeySequence(G): 'g'
+CloseModal(SqlModal): Esc, ⇧Esc
+ExplainRequest: ^'e'
+OpenModal(QueryHistoryPicker): ^'o'
+SqlModalAppendInsert: 'A', ⇧'A'
+SqlModalClear: ^'l', ^⌥'l', ^⇧'l'
+SqlModalEnterInsert: 'i', ⇧'i'
+SqlModalNextTab: Tab
+SqlModalPrevTab: BackTab, ⇧BackTab
+SqlModalSubmit: ⌥Enter, ^⌥Enter, F(5)
+SqlModalYank: 'y', ⇧'y'
+TextMoveCursor { target: SqlModal, direction: Down }: 'j', ^'n', Down, ^Down, ⌥Down, ^⌥Down, ⇧Down, ^⇧Down
+TextMoveCursor { target: SqlModal, direction: End }: End
+TextMoveCursor { target: SqlModal, direction: Home }: Home
+TextMoveCursor { target: SqlModal, direction: LastLine }: 'G'
+TextMoveCursor { target: SqlModal, direction: Left }: 'h', Left, ^Left, ⌥Left, ^⌥Left, ⇧Left, ^⇧Left
+TextMoveCursor { target: SqlModal, direction: LineEnd }: '$'
+TextMoveCursor { target: SqlModal, direction: LineStart }: '0'
+TextMoveCursor { target: SqlModal, direction: Right }: 'l', Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
+TextMoveCursor { target: SqlModal, direction: Up }: 'k', ^'p', Up, ^Up, ⌥Up, ^⌥Up, ⇧Up, ^⇧Up
+TextMoveCursor { target: SqlModal, direction: ViewportBottom }: 'L'
+TextMoveCursor { target: SqlModal, direction: ViewportMiddle }: 'M'
+TextMoveCursor { target: SqlModal, direction: ViewportTop }: 'H'
+TextMoveCursor { target: SqlModal, direction: WordBackward }: 'b'
+TextMoveCursor { target: SqlModal, direction: WordForward }: 'w'
+footer: 
+border: ╭ SQL Editor ── [SQL] [Plan] ──────────────────────────────────────────────────────────────────────────────────────────────────────╮
+border: ╰ ⌥Enter/F5: Run │ ^E: Explain │ i/A: Insert │ Tab/⇧Tab: Switch │ Esc: Close ──────────────────────────────────────────────────────╯
+help: Alt+Enter / F5: Execute query
+help: Ctrl+E: Run EXPLAIN on current query
+help: y: Copy query to clipboard
+help: i / A: Enter Insert mode / append at line end
+help: Tab / Shift+Tab: Switch tab
+help: Ctrl+L: Clear editor
+help: Ctrl+O: Open Query History
+help: h / l / ← / →: Move cursor left / right
+help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Move cursor down / up
+help: 0 / $ / w / b / Home / End: Move by word or line boundary
+help: gg / G / H / M / L: Jump by buffer or viewport
+help: Esc: Close editor
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## ConnectionSetup
+ConnectionSetupCancel: Esc, ^Esc, ⌥Esc, ^⌥Esc, ⇧Esc, ^⇧Esc
+ConnectionSetupNextField: Tab, ^Tab, ⌥Tab, ^⌥Tab, ⇧Tab, ^⇧Tab
+ConnectionSetupPrevField: BackTab, ^BackTab, ⌥BackTab, ^⌥BackTab, ⇧BackTab, ^⇧BackTab
+ConnectionSetupSave: ^'s'
+ConnectionSetupToggleDropdown: Enter, ^Enter, ⌥Enter, ^⌥Enter, ⇧Enter, ^⇧Enter
+TextBackspace { target: ConnectionSetup }: Backspace, ^Backspace, ⌥Backspace, ^⌥Backspace, ⇧Backspace, ^⇧Backspace
+TextDelete { target: ConnectionSetup }: Delete, ^Delete, ⌥Delete, ^⌥Delete, ⇧Delete, ^⇧Delete
+TextInput { target: ConnectionSetup }: ' ', ⌥' ', ^⌥' ', ⇧' ', '!', ⌥'!', ^⌥'!', ⇧'!', '"', ⌥'"', ^⌥'"', ⇧'"', '#', ⌥'#', ^⌥'#', ⇧'#', '$', ⌥'$', ^⌥'$', ⇧'$', '%', ⌥'%', ^⌥'%', ⇧'%', '&', ⌥'&', ^⌥'&', ⇧'&', '\'', ⌥'\'', ^⌥'\'', ⇧'\'', '(', ⌥'(', ^⌥'(', ⇧'(', ')', ⌥')', ^⌥')', ⇧')', '*', ⌥'*', ^⌥'*', ⇧'*', '+', ⌥'+', ^⌥'+', ⇧'+', ',', ⌥',', ^⌥',', ⇧',', '-', ⌥'-', ^⌥'-', ⇧'-', '.', ⌥'.', ^⌥'.', ⇧'.', '/', ⌥'/', ^⌥'/', ⇧'/', '0', ⌥'0', ^⌥'0', ⇧'0', '1', ⌥'1', ^⌥'1', ⇧'1', '2', ⌥'2', ^⌥'2', ⇧'2', '3', ⌥'3', ^⌥'3', ⇧'3', '4', ⌥'4', ^⌥'4', ⇧'4', '5', ⌥'5', ^⌥'5', ⇧'5', '6', ⌥'6', ^⌥'6', ⇧'6', '7', ⌥'7', ^⌥'7', ⇧'7', '8', ⌥'8', ^⌥'8', ⇧'8', '9', ⌥'9', ^⌥'9', ⇧'9', ':', ⌥':', ^⌥':', ⇧':', ';', ⌥';', ^⌥';', ⇧';', '<', ⌥'<', ^⌥'<', ⇧'<', '=', ⌥'=', ^⌥'=', ⇧'=', '>', ⌥'>', ^⌥'>', ⇧'>', '?', ⌥'?', ^⌥'?', ⇧'?', '@', ⌥'@', ^⌥'@', ⇧'@', 'A', ⌥'A', ^⌥'A', ⇧'A', 'B', ⌥'B', ^⌥'B', ⇧'B', 'C', ⌥'C', ^⌥'C', ⇧'C', 'D', ⌥'D', ^⌥'D', ⇧'D', 'E', ⌥'E', ^⌥'E', ⇧'E', 'F', ⌥'F', ^⌥'F', ⇧'F', 'G', ⌥'G', ^⌥'G', ⇧'G', 'H', ⌥'H', ^⌥'H', ⇧'H', 'I', ⌥'I', ^⌥'I', ⇧'I', 'J', ⌥'J', ^⌥'J', ⇧'J', 'K', ⌥'K', ^⌥'K', ⇧'K', 'L', ⌥'L', ^⌥'L', ⇧'L', 'M', ⌥'M', ^⌥'M', ⇧'M', 'N', ⌥'N', ^⌥'N', ⇧'N', 'O', ⌥'O', ^⌥'O', ⇧'O', 'P', ⌥'P', ^⌥'P', ⇧'P', 'Q', ⌥'Q', ^⌥'Q', ⇧'Q', 'R', ⌥'R', ^⌥'R', ⇧'R', 'S', ⌥'S', ^⌥'S', ⇧'S', 'T', ⌥'T', ^⌥'T', ⇧'T', 'U', ⌥'U', ^⌥'U', ⇧'U', 'V', ⌥'V', ^⌥'V', ⇧'V', 'W', ⌥'W', ^⌥'W', ⇧'W', 'X', ⌥'X', ^⌥'X', ⇧'X', 'Y', ⌥'Y', ^⌥'Y', ⇧'Y', 'Z', ⌥'Z', ^⌥'Z', ⇧'Z', '[', ⌥'[', ^⌥'[', ⇧'[', '\\', ⌥'\\', ^⌥'\\', ⇧'\\', ']', ⌥']', ^⌥']', ⇧']', '^', ⌥'^', ^⌥'^', ⇧'^', '_', ⌥'_', ^⌥'_', ⇧'_', '`', ⌥'`', ^⌥'`', ⇧'`', 'a', ⌥'a', ^⌥'a', ⇧'a', 'b', ⌥'b', ^⌥'b', ⇧'b', 'c', ⌥'c', ^⌥'c', ⇧'c', 'd', ⌥'d', ^⌥'d', ⇧'d', 'e', ⌥'e', ^⌥'e', ⇧'e', 'f', ⌥'f', ^⌥'f', ⇧'f', 'g', ⌥'g', ^⌥'g', ⇧'g', 'h', ⌥'h', ^⌥'h', ⇧'h', 'i', ⌥'i', ^⌥'i', ⇧'i', 'j', ⌥'j', ^⌥'j', ⇧'j', 'k', ⌥'k', ^⌥'k', ⇧'k', 'l', ⌥'l', ^⌥'l', ⇧'l', 'm', ⌥'m', ^⌥'m', ⇧'m', 'n', ⌥'n', ^⌥'n', ⇧'n', 'o', ⌥'o', ^⌥'o', ⇧'o', 'p', ⌥'p', ^⌥'p', ⇧'p', 'q', ⌥'q', ^⌥'q', ⇧'q', 'r', ⌥'r', ^⌥'r', ⇧'r', 's', ⌥'s', ^⌥'s', ⇧'s', 't', ⌥'t', ^⌥'t', ⇧'t', 'u', ⌥'u', ^⌥'u', ⇧'u', 'v', ⌥'v', ^⌥'v', ⇧'v', 'w', ⌥'w', ^⌥'w', ⇧'w', 'x', ⌥'x', ^⌥'x', ⇧'x', 'y', ⌥'y', ^⌥'y', ⇧'y', 'z', ⌥'z', ^⌥'z', ⇧'z', '{', ⌥'{', ^⌥'{', ⇧'{', '|', ⌥'|', ^⌥'|', ⇧'|', '}', ⌥'}', ^⌥'}', ⇧'}', '~', ⌥'~', ^⌥'~', ⇧'~'
+TextMoveCursor { target: ConnectionSetup, direction: End }: End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
+TextMoveCursor { target: ConnectionSetup, direction: Home }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
+TextMoveCursor { target: ConnectionSetup, direction: Left }: Left, ^Left, ⌥Left, ^⌥Left, ⇧Left, ^⇧Left
+TextMoveCursor { target: ConnectionSetup, direction: Right }: Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
+footer: 
+border: ╭ New Connection ────────────────────────────────────────────╮
+border: ╰ Tab/⇧Tab: Field │ Enter: Toggle │ ^S: Connect │ Esc: Cancel╯
+help: Tab / Shift+Tab: Next/Previous field
+help: Enter: Toggle dropdown
+help: Ctrl+S: Save and connect
+help: Esc: Cancel
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## ConnectionError
+CloseConnectionError: Esc
+CopyConnectionError: 'y'
+OpenModal(ConnectionSelector): 's'
+ReenterConnectionSetup: 'e'
+RetryConnection: 'r'
+Scroll { target: ConnectionError, direction: Down, amount: Line }: 'j', ^'n', Down
+Scroll { target: ConnectionError, direction: Up, amount: Line }: 'k', ^'p', Up
+ToggleConnectionErrorDetails: 'd'
+footer: e:Edit  s:Switch  d:Details  y:Copy
+help: r: Retry connection
+help: e: Edit connection settings
+help: s: Switch to another connection
+help: d: Toggle error details and requirements
+help: y: Copy error to clipboard
+help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Scroll error
+help: Esc: Close
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## ConfirmDialog
+ConfirmDialogCancel: Esc
+ConfirmDialogConfirm: Enter
+Scroll { target: ConfirmDialog, direction: Down, amount: Line }: 'j', ^'n', Down
+Scroll { target: ConfirmDialog, direction: Up, amount: Line }: 'k', ^'p', Up
+footer: 
+border: ╭ Confirm ─────────────────────────────╮
+border: ╰ Enter: Confirm │ Esc: Cancel ────────╯
+help: Enter: Confirm
+help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Scroll down / up
+help: Esc: Cancel
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+## ConnectionSelector
+ConfirmConnectionSelection: Enter
+Escape: Esc
+ListSelect { target: ConnectionList, motion: Next }: 'j', ^'n', Down
+ListSelect { target: ConnectionList, motion: Previous }: 'k', ^'p', Up
+OpenModal(ConnectionSetup): 'n'
+RequestDeleteSelectedConnection: 'd'
+RequestEditSelectedConnection: 'e'
+footer: 
+border: ╭ Select Connection ──────────────────────────────────────────────────────────────────────────────╮
+border: ╰ Enter: Confirm │ n: New │ e: Edit │ d: Delete │ Esc: Close ─────────────────────────────────────╯
+help: Enter: Confirm selection
+help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Select connection
+help: n: New connection
+help: e: Edit connection
+help: d: Delete connection
+help: Esc: Close selector
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## ErTablePicker
+CloseModal(ErTablePicker): Esc
+footer: 
+border: ╭ ER Diagram ─────────────────────────────────────────────────────────────────────────────────────╮
+border: ╰ 0/0 selected │ Esc: Close ──────────────────────────────────────────────────────────────────────╯
+help: Esc: Close
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## QueryHistoryPicker
+CloseModal(QueryHistoryPicker): Esc
+ListSelect { target: QueryHistory, motion: Next }: ^'n', Down
+ListSelect { target: QueryHistory, motion: Previous }: ^'p', Up
+QueryHistoryConfirmSelection: Enter
+TextBackspace { target: QueryHistoryFilter }: ^'h', Backspace
+TextDelete { target: QueryHistoryFilter }: ^'d', Delete
+TextInput { target: QueryHistoryFilter }: ' ', ⌥' ', ^⌥' ', ⇧' ', '!', ⌥'!', ^⌥'!', ⇧'!', '"', ⌥'"', ^⌥'"', ⇧'"', '#', ⌥'#', ^⌥'#', ⇧'#', '$', ⌥'$', ^⌥'$', ⇧'$', '%', ⌥'%', ^⌥'%', ⇧'%', '&', ⌥'&', ^⌥'&', ⇧'&', '\'', ⌥'\'', ^⌥'\'', ⇧'\'', '(', ⌥'(', ^⌥'(', ⇧'(', ')', ⌥')', ^⌥')', ⇧')', '*', ⌥'*', ^⌥'*', ⇧'*', '+', ⌥'+', ^⌥'+', ⇧'+', ',', ⌥',', ^⌥',', ⇧',', '-', ⌥'-', ^⌥'-', ⇧'-', '.', ⌥'.', ^⌥'.', ⇧'.', '/', ⌥'/', ^⌥'/', ⇧'/', '0', ⌥'0', ^⌥'0', ⇧'0', '1', ⌥'1', ^⌥'1', ⇧'1', '2', ⌥'2', ^⌥'2', ⇧'2', '3', ⌥'3', ^⌥'3', ⇧'3', '4', ⌥'4', ^⌥'4', ⇧'4', '5', ⌥'5', ^⌥'5', ⇧'5', '6', ⌥'6', ^⌥'6', ⇧'6', '7', ⌥'7', ^⌥'7', ⇧'7', '8', ⌥'8', ^⌥'8', ⇧'8', '9', ⌥'9', ^⌥'9', ⇧'9', ':', ⌥':', ^⌥':', ⇧':', ';', ⌥';', ^⌥';', ⇧';', '<', ⌥'<', ^⌥'<', ⇧'<', '=', ⌥'=', ^⌥'=', ⇧'=', '>', ⌥'>', ^⌥'>', ⇧'>', '?', ⌥'?', ^⌥'?', ⇧'?', '@', ⌥'@', ^⌥'@', ⇧'@', 'A', ⌥'A', ^⌥'A', ⇧'A', 'B', ⌥'B', ^⌥'B', ⇧'B', 'C', ⌥'C', ^⌥'C', ⇧'C', 'D', ⌥'D', ^⌥'D', ⇧'D', 'E', ⌥'E', ^⌥'E', ⇧'E', 'F', ⌥'F', ^⌥'F', ⇧'F', 'G', ⌥'G', ^⌥'G', ⇧'G', 'H', ⌥'H', ^⌥'H', ⇧'H', 'I', ⌥'I', ^⌥'I', ⇧'I', 'J', ⌥'J', ^⌥'J', ⇧'J', 'K', ⌥'K', ^⌥'K', ⇧'K', 'L', ⌥'L', ^⌥'L', ⇧'L', 'M', ⌥'M', ^⌥'M', ⇧'M', 'N', ⌥'N', ^⌥'N', ⇧'N', 'O', ⌥'O', ^⌥'O', ⇧'O', 'P', ⌥'P', ^⌥'P', ⇧'P', 'Q', ⌥'Q', ^⌥'Q', ⇧'Q', 'R', ⌥'R', ^⌥'R', ⇧'R', 'S', ⌥'S', ^⌥'S', ⇧'S', 'T', ⌥'T', ^⌥'T', ⇧'T', 'U', ⌥'U', ^⌥'U', ⇧'U', 'V', ⌥'V', ^⌥'V', ⇧'V', 'W', ⌥'W', ^⌥'W', ⇧'W', 'X', ⌥'X', ^⌥'X', ⇧'X', 'Y', ⌥'Y', ^⌥'Y', ⇧'Y', 'Z', ⌥'Z', ^⌥'Z', ⇧'Z', '[', ⌥'[', ^⌥'[', ⇧'[', '\\', ⌥'\\', ^⌥'\\', ⇧'\\', ']', ⌥']', ^⌥']', ⇧']', '^', ⌥'^', ^⌥'^', ⇧'^', '_', ⌥'_', ^⌥'_', ⇧'_', '`', ⌥'`', ^⌥'`', ⇧'`', 'a', ⌥'a', ^⌥'a', ⇧'a', 'b', ^⌥'b', ⇧'b', 'c', ⌥'c', ^⌥'c', ⇧'c', 'd', ^⌥'d', ⇧'d', 'e', ⌥'e', ^⌥'e', ⇧'e', 'f', ^⌥'f', ⇧'f', 'g', ⌥'g', ^⌥'g', ⇧'g', 'h', ⌥'h', ^⌥'h', ⇧'h', 'i', ⌥'i', ^⌥'i', ⇧'i', 'j', ⌥'j', ^⌥'j', ⇧'j', 'k', ⌥'k', ^⌥'k', ⇧'k', 'l', ⌥'l', ^⌥'l', ⇧'l', 'm', ⌥'m', ^⌥'m', ⇧'m', 'n', ⌥'n', ^⌥'n', ⇧'n', 'o', ⌥'o', ^⌥'o', ⇧'o', 'p', ⌥'p', ^⌥'p', ⇧'p', 'q', ⌥'q', ^⌥'q', ⇧'q', 'r', ⌥'r', ^⌥'r', ⇧'r', 's', ⌥'s', ^⌥'s', ⇧'s', 't', ⌥'t', ^⌥'t', ⇧'t', 'u', ⌥'u', ^⌥'u', ⇧'u', 'v', ⌥'v', ^⌥'v', ⇧'v', 'w', ⌥'w', ^⌥'w', ⇧'w', 'x', ⌥'x', ^⌥'x', ⇧'x', 'y', ⌥'y', ^⌥'y', ⇧'y', 'z', ⌥'z', ^⌥'z', ⇧'z', '{', ⌥'{', ^⌥'{', ⇧'{', '|', ⌥'|', ^⌥'|', ⇧'|', '}', ⌥'}', ^⌥'}', ⇧'}', '~', ⌥'~', ^⌥'~', ⇧'~'
+TextKill { target: QueryHistoryFilter, direction: ReadlinePreviousWhitespace }: ^'w'
+TextKill { target: QueryHistoryFilter, direction: ReadlineWordEnd }: ⌥'d'
+TextKill { target: QueryHistoryFilter, direction: ToLineEnd }: ^'k'
+TextKill { target: QueryHistoryFilter, direction: ToLineStart }: ^'u'
+TextMoveCursor { target: QueryHistoryFilter, direction: End }: End
+TextMoveCursor { target: QueryHistoryFilter, direction: Home }: Home
+TextMoveCursor { target: QueryHistoryFilter, direction: Left }: ^'b', Left
+TextMoveCursor { target: QueryHistoryFilter, direction: LineEnd }: ^'e'
+TextMoveCursor { target: QueryHistoryFilter, direction: LineStart }: ^'a'
+TextMoveCursor { target: QueryHistoryFilter, direction: ReadlineWordEnd }: ⌥'f'
+TextMoveCursor { target: QueryHistoryFilter, direction: ReadlineWordStart }: ⌥'b'
+TextMoveCursor { target: QueryHistoryFilter, direction: Right }: ^'f', Right
+TextYank { target: QueryHistoryFilter }: ^'y'
+footer: 
+border: ╭ Query History ──────────────────────────────────────────────────────────────────────────────────────────────────╮
+border: ╰ 0 entries │ type to filter │ Enter: Select │ Esc: Close ────────────────────────────────────────────────────────╯
+help: Enter: Select query
+help: type: Type to filter
+help: Esc: Close
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+## JsonDetail
+CloseModal(JsonDetail): 'q', Esc
+footer: 
+help: Esc / q: Close JSON detail
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## JsonEdit
+JsonExitEdit: Esc
+footer: 
+help: Esc: Return to Normal mode
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## CellDetail
+CloseModal(CellDetail): 'q', Esc
+DetailSearch { target: CellDetail, step: Enter }: '/'
+DetailSearch { target: CellDetail, step: Next }: 'n'
+DetailSearch { target: CellDetail, step: Prev }: 'N'
+DetailYankAll(CellDetail): 'y'
+Scroll { target: CellDetail, direction: Down, amount: FullPage }: PageDown
+Scroll { target: CellDetail, direction: Down, amount: HalfPage }: ^'d'
+Scroll { target: CellDetail, direction: Down, amount: Line }: 'j', ^'n', Down
+Scroll { target: CellDetail, direction: Down, amount: ToEnd }: End
+Scroll { target: CellDetail, direction: Up, amount: FullPage }: PageUp
+Scroll { target: CellDetail, direction: Up, amount: HalfPage }: ^'u'
+Scroll { target: CellDetail, direction: Up, amount: Line }: 'k', ^'p', Up
+Scroll { target: CellDetail, direction: Up, amount: ToStart }: Home
+footer: n/N:Next/Prev  j/k:Scroll
+help: y: Copy full cell text
+help: /: Search cell text
+help: n / N: Jump to next / previous search result
+help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Scroll down / up
+help: Ctrl+D / Ctrl+U: Scroll half page down / up
+help: PageDown / PageUp: Scroll full page down / up
+help: Home / End: Jump to top / bottom
+help: Esc / q: Close cell detail
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## SqliteDiagnostics
+CloseModal(SqliteDiagnostics): Esc
+RunSqliteDiagnosticsQuickCheck: 'r'
+Scroll { target: SqliteDiagnostics, direction: Down, amount: Line }: 'j', ^'n', Down
+Scroll { target: SqliteDiagnostics, direction: Up, amount: Line }: 'k', ^'p', Up
+ToggleHelp: '?'
+footer: ?:Help
+border: ╭ SQLite Diagnostics ─────────────────────────────────────────────────────────────────────────────────────────────╮
+border: ╰ j/k: Scroll │ Esc: Close ───────────────────────────────────────────────────────────────────────────────────────╯
+help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Scroll down / up
+help: r: Run quick check
+help: ?: Toggle help
+help: Esc: Close
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## RowDetail
+CloseModal(RowDetail): Esc
+RowDetailYank: 'y'
+RowDetailYankJson: 'Y'
+Scroll { target: RowDetail, direction: Down, amount: FullPage }: ^'f', PageDown
+Scroll { target: RowDetail, direction: Down, amount: HalfPage }: ^'d'
+Scroll { target: RowDetail, direction: Down, amount: Line }: 'j', ^'n', Down
+Scroll { target: RowDetail, direction: Down, amount: ToEnd }: 'G', End
+Scroll { target: RowDetail, direction: Left, amount: Line }: 'h', Left
+Scroll { target: RowDetail, direction: Right, amount: Line }: 'l', Right
+Scroll { target: RowDetail, direction: Up, amount: FullPage }: ^'b', PageUp
+Scroll { target: RowDetail, direction: Up, amount: HalfPage }: ^'u'
+Scroll { target: RowDetail, direction: Up, amount: Line }: 'k', ^'p', Up
+Scroll { target: RowDetail, direction: Up, amount: ToStart }: 'g', Home
+footer: 
+help: y: Copy displayed text to clipboard
+help: Y: Copy row as JSON to clipboard
+help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Scroll down / up
+help: h / l / ← / →: Scroll left / right
+help: Ctrl+D / Ctrl+U: Scroll half page down / up
+help: PageDown / PageUp / Ctrl+F / Ctrl+B: Scroll full page down / up
+help: g / G / Home / End: Jump to top / bottom
+help: Esc: Close Row Detail modal
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## Normal Inspector
+BeginKeySequence(Z): 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z'
+EnterCommandLine: ':'
+Escape: Esc, ⇧Esc
+InspectorNextTab: Tab, ^Tab, ⌥Tab, ^⌥Tab, ⇧Tab, ^⇧Tab
+InspectorPrevTab: BackTab, ^BackTab, ⌥BackTab, ^⌥BackTab, ⇧BackTab, ^⇧BackTab
+OpenModal(CommandPalette): F(1)
+OpenModal(ConnectionSelector): 'c'
+OpenModal(QueryHistoryPicker): ^'o'
+OpenModal(Settings): ','
+OpenModal(SqlModal): 's'
+OpenModal(SqliteDiagnostics): ^'D', ^⇧'d'
+OpenModal(TablePicker): ^'p'
+Quit: 'q'
+ReloadMetadata: 'r'
+Scroll { target: Inspector, direction: Down, amount: FullPage }: ^'f', PageDown
+Scroll { target: Inspector, direction: Down, amount: HalfPage }: ^'d'
+Scroll { target: Inspector, direction: Down, amount: Line }: 'j', Down
+Scroll { target: Inspector, direction: Down, amount: ToEnd }: 'G', End
+Scroll { target: Inspector, direction: Left, amount: Line }: 'h', Left
+Scroll { target: Inspector, direction: Right, amount: Line }: 'l', Right
+Scroll { target: Inspector, direction: Up, amount: FullPage }: ^'b', PageUp
+Scroll { target: Inspector, direction: Up, amount: HalfPage }: ^'u'
+Scroll { target: Inspector, direction: Up, amount: Line }: 'k', Up
+Scroll { target: Inspector, direction: Up, amount: ToStart }: 'g', Home
+SetFocusedPane(Explorer): '1', ^'1', ⌥'1', ^⌥'1', ⇧'1', ^⇧'1'
+SetFocusedPane(Inspector): '2', ^'2', ⌥'2', ^⌥'2', ⇧'2', ^⇧'2'
+SetFocusedPane(Result): '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3'
+ToggleFocus: 'f'
+ToggleHelp: '?'
+ToggleReadOnly: ^'r'
+footer: ^P:Tables  f:Focus  r:Reload  s:SQL  c:Connections  ^⇧D:Diagnostics  ^R:Read-Only  ^O:History  Tab/⇧Tab:InsTabs  ?:Help  ,:Settings  F1:Palette  q:Quit
+help: 1 / 2 / 3: Switch pane focus
+help: Tab / Shift+Tab: Inspector prev/next tab
+help: Ctrl+P: Open Table Picker
+help: r: Reload metadata
+help: s: Open SQL Editor
+help: c: Open Connection Selector
+help: Ctrl+Shift+D: Open SQLite Diagnostics
+help: Ctrl+O: Open Query History
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## Normal Result
+BeginKeySequence(Z): 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z'
+EnterCommandLine: ':'
+Escape: Esc, ⇧Esc
+OpenModal(CommandPalette): F(1)
+OpenModal(ConnectionSelector): 'c'
+OpenModal(QueryHistoryPicker): ^'o'
+OpenModal(Settings): ','
+OpenModal(SqlModal): 's'
+OpenModal(SqliteDiagnostics): ^'D', ^⇧'d'
+OpenModal(TablePicker): ^'p'
+Quit: 'q'
+ReloadMetadata: 'r'
+ResultActivateCell: Enter, ⇧Enter
+ResultNextPage: ']', ^']', ⌥']', ^⌥']', ⇧']', ^⇧']'
+ResultPrevPage: '[', ^'[', ⌥'[', ^⌥'[', ⇧'[', ^⇧'['
+Scroll { target: Result, direction: Down, amount: FullPage }: ^'f', PageDown
+Scroll { target: Result, direction: Down, amount: HalfPage }: ^'d'
+Scroll { target: Result, direction: Down, amount: Line }: 'j', Down
+Scroll { target: Result, direction: Down, amount: ToEnd }: 'G', End
+Scroll { target: Result, direction: Down, amount: ViewportBottom }: 'L'
+Scroll { target: Result, direction: Left, amount: Line }: 'h', Left
+Scroll { target: Result, direction: Right, amount: Line }: 'l', Right
+Scroll { target: Result, direction: Up, amount: FullPage }: ^'b', PageUp
+Scroll { target: Result, direction: Up, amount: HalfPage }: ^'u'
+Scroll { target: Result, direction: Up, amount: Line }: 'k', Up
+Scroll { target: Result, direction: Up, amount: ToStart }: 'g', Home
+Scroll { target: Result, direction: Up, amount: ViewportMiddle }: 'M'
+Scroll { target: Result, direction: Up, amount: ViewportTop }: 'H'
+SetFocusedPane(Explorer): '1', ^'1', ⌥'1', ^⌥'1', ⇧'1', ^⇧'1'
+SetFocusedPane(Inspector): '2', ^'2', ⌥'2', ^⌥'2', ⇧'2', ^⇧'2'
+SetFocusedPane(Result): '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3'
+ToggleFocus: 'f'
+ToggleHelp: '?'
+ToggleReadOnly: ^'r'
+footer: Enter:Select  ^P:Tables  f:Focus  r:Reload  s:SQL  c:Connections  ^⇧D:Diagnostics  ^R:Read-Only  ^O:History  ?:Help  ,:Settings  F1:Palette  q:Quit
+help: 1 / 2 / 3: Switch pane focus
+help: Esc: Cancel
+help: Ctrl+P: Open Table Picker
+help: r: Reload metadata
+help: s: Open SQL Editor
+help: c: Open Connection Selector
+help: Ctrl+Shift+D: Open SQLite Diagnostics
+help: Ctrl+O: Open Query History
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## Normal focus
+BeginKeySequence(Z): 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z'
+EnterCommandLine: ':'
+Escape: Esc, ⇧Esc
+OpenModal(CommandPalette): F(1)
+OpenModal(ConnectionSelector): 'c'
+OpenModal(QueryHistoryPicker): ^'o'
+OpenModal(Settings): ','
+OpenModal(SqlModal): 's'
+OpenModal(SqliteDiagnostics): ^'D', ^⇧'d'
+OpenModal(TablePicker): ^'p'
+Quit: 'q'
+ReloadMetadata: 'r'
+ResultActivateCell: Enter, ⇧Enter
+ResultNextPage: ']', ^']', ⌥']', ^⌥']', ⇧']', ^⇧']'
+ResultPrevPage: '[', ^'[', ⌥'[', ^⌥'[', ⇧'[', ^⇧'['
+Scroll { target: Result, direction: Down, amount: FullPage }: ^'f', PageDown
+Scroll { target: Result, direction: Down, amount: HalfPage }: ^'d'
+Scroll { target: Result, direction: Down, amount: Line }: 'j', Down
+Scroll { target: Result, direction: Down, amount: ToEnd }: 'G', End
+Scroll { target: Result, direction: Down, amount: ViewportBottom }: 'L'
+Scroll { target: Result, direction: Left, amount: Line }: 'h', Left
+Scroll { target: Result, direction: Right, amount: Line }: 'l', Right
+Scroll { target: Result, direction: Up, amount: FullPage }: ^'b', PageUp
+Scroll { target: Result, direction: Up, amount: HalfPage }: ^'u'
+Scroll { target: Result, direction: Up, amount: Line }: 'k', Up
+Scroll { target: Result, direction: Up, amount: ToStart }: 'g', Home
+Scroll { target: Result, direction: Up, amount: ViewportMiddle }: 'M'
+Scroll { target: Result, direction: Up, amount: ViewportTop }: 'H'
+ToggleFocus: '1', ^'1', ⌥'1', ^⌥'1', ⇧'1', ^⇧'1', '2', ^'2', ⌥'2', ^⌥'2', ⇧'2', ^⇧'2', '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3', 'f'
+ToggleHelp: '?'
+ToggleReadOnly: ^'r'
+footer: Enter:Select  c:Connections  ?:Help  ,:Settings  f:Exit Focus  q:Quit
+help: 1 / 2 / 3: Switch pane focus
+help: Esc: Cancel
+help: Ctrl+P: Open Table Picker
+help: r: Reload metadata
+help: s: Open SQL Editor
+help: c: Open Connection Selector
+help: Ctrl+Shift+D: Open SQLite Diagnostics
+help: Ctrl+O: Open Query History
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Exit Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## Normal read-only
+BeginKeySequence(Z): 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z'
+ConfirmSelection: Enter, ⇧Enter
+EnterCommandLine: ':'
+Escape: Esc, ⇧Esc
+OpenModal(CommandPalette): F(1)
+OpenModal(ConnectionSelector): 'c'
+OpenModal(QueryHistoryPicker): ^'o'
+OpenModal(Settings): ','
+OpenModal(SqlModal): 's'
+OpenModal(SqliteDiagnostics): ^'D', ^⇧'d'
+OpenModal(TablePicker): ^'p'
+Quit: 'q'
+ReloadMetadata: 'r'
+Scroll { target: Explorer, direction: Left, amount: Line }: 'h', Left
+Scroll { target: Explorer, direction: Right, amount: Line }: 'l', Right
+Select(First): 'g', Home
+Select(FullPageDown): ^'f', PageDown
+Select(FullPageUp): ^'b', PageUp
+Select(HalfPageDown): ^'d'
+Select(HalfPageUp): ^'u'
+Select(Last): 'G', End
+Select(Next): 'j', Down
+Select(Previous): 'k', Up
+Select(ViewportBottom): 'L'
+Select(ViewportMiddle): 'M'
+Select(ViewportTop): 'H'
+SetFocusedPane(Explorer): '1', ^'1', ⌥'1', ^⌥'1', ⇧'1', ^⇧'1'
+SetFocusedPane(Inspector): '2', ^'2', ⌥'2', ^⌥'2', ⇧'2', ^⇧'2'
+SetFocusedPane(Result): '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3'
+ToggleFocus: 'f'
+ToggleHelp: '?'
+ToggleReadOnly: ^'r'
+footer: ^P:Tables  f:Focus  r:Reload  s:SQL  c:Connections  ^⇧D:Diagnostics  ^R:Read-Write  ^O:History  ?:Help  ,:Settings  F1:Palette  q:Quit
+help: 1 / 2 / 3: Switch pane focus
+help: Ctrl+P: Open Table Picker
+help: r: Reload metadata
+help: s: Open SQL Editor
+help: c: Open Connection Selector
+help: Ctrl+Shift+D: Open SQLite Diagnostics
+help: Ctrl+O: Open Query History
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Disable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## Normal result with connection error
+BeginKeySequence(Z): 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z'
+ConfirmSelection: Enter
+EnterCommandLine: ':'
+Escape: Esc, ⇧Esc
+OpenModal(CommandPalette): F(1)
+OpenModal(ConnectionSelector): 'c'
+OpenModal(QueryHistoryPicker): ^'o'
+OpenModal(Settings): ','
+OpenModal(SqlModal): 's'
+OpenModal(SqliteDiagnostics): ^'D', ^⇧'d'
+OpenModal(TablePicker): ^'p'
+Quit: 'q'
+ReloadMetadata: 'r'
+ResultActivateCell: ⇧Enter
+ResultNextPage: ']', ^']', ⌥']', ^⌥']', ⇧']', ^⇧']'
+ResultPrevPage: '[', ^'[', ⌥'[', ^⌥'[', ⇧'[', ^⇧'['
+Scroll { target: Result, direction: Down, amount: FullPage }: ^'f', PageDown
+Scroll { target: Result, direction: Down, amount: HalfPage }: ^'d'
+Scroll { target: Result, direction: Down, amount: Line }: 'j', Down
+Scroll { target: Result, direction: Down, amount: ToEnd }: 'G', End
+Scroll { target: Result, direction: Down, amount: ViewportBottom }: 'L'
+Scroll { target: Result, direction: Left, amount: Line }: 'h', Left
+Scroll { target: Result, direction: Right, amount: Line }: 'l', Right
+Scroll { target: Result, direction: Up, amount: FullPage }: ^'b', PageUp
+Scroll { target: Result, direction: Up, amount: HalfPage }: ^'u'
+Scroll { target: Result, direction: Up, amount: Line }: 'k', Up
+Scroll { target: Result, direction: Up, amount: ToStart }: 'g', Home
+Scroll { target: Result, direction: Up, amount: ViewportMiddle }: 'M'
+Scroll { target: Result, direction: Up, amount: ViewportTop }: 'H'
+SetFocusedPane(Explorer): '1', ^'1', ⌥'1', ^⌥'1', ⇧'1', ^⇧'1'
+SetFocusedPane(Inspector): '2', ^'2', ⌥'2', ^⌥'2', ⇧'2', ^⇧'2'
+SetFocusedPane(Result): '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3'
+ToggleFocus: 'f'
+ToggleHelp: '?'
+ToggleReadOnly: ^'r'
+footer: Enter:Error  ^P:Tables  f:Focus  r:Reload  s:SQL  c:Connections  ^⇧D:Diagnostics  ^R:Read-Only  ^O:History  ?:Help  ,:Settings  F1:Palette  q:Quit
+help: Enter: Open connection error details
+help: 1 / 2 / 3: Switch pane focus
+help: Esc: Cancel
+help: Ctrl+P: Open Table Picker
+help: r: Reload metadata
+help: s: Open SQL Editor
+help: c: Open Connection Selector
+help: Ctrl+Shift+D: Open SQLite Diagnostics
+help: Ctrl+O: Open Query History
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## Normal result active
+BeginKeySequence(Z): 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z'
+EnterCommandLine: ':'
+OpenModal(CommandPalette): F(1)
+OpenModal(ConnectionSelector): 'c'
+OpenModal(QueryHistoryPicker): ^'o'
+OpenModal(RowDetail): 'K'
+OpenModal(Settings): ','
+OpenModal(SqlModal): 's'
+OpenModal(SqliteDiagnostics): ^'D', ^⇧'d'
+OpenModal(TablePicker): ^'p'
+Quit: 'q'
+ReloadMetadata: 'r'
+RequestCsvExport: ^'e'
+ResultCellLeft: 'h', Left
+ResultCellRight: 'l', Right
+ResultCellYank: 'Y'
+ResultDeleteOperatorPending: 'd', ⇧'d'
+ResultEnterCellEdit: 'i', ⇧'i'
+ResultExitToScroll: Esc, ⇧Esc
+ResultNextPage: ']', ^']', ⌥']', ^⌥']', ⇧']', ^⇧']'
+ResultOpenCellDetail: Enter, ⇧Enter
+ResultPrevPage: '[', ^'[', ⌥'[', ^⌥'[', ⇧'[', ^⇧'['
+ResultRowYankOperatorPending: 'y', ⇧'y'
+Scroll { target: Result, direction: Down, amount: FullPage }: ^'f', PageDown
+Scroll { target: Result, direction: Down, amount: HalfPage }: ^'d'
+Scroll { target: Result, direction: Down, amount: Line }: 'j', Down
+Scroll { target: Result, direction: Down, amount: ToEnd }: 'G', End
+Scroll { target: Result, direction: Down, amount: ViewportBottom }: 'L'
+Scroll { target: Result, direction: Up, amount: FullPage }: ^'b', PageUp
+Scroll { target: Result, direction: Up, amount: HalfPage }: ^'u'
+Scroll { target: Result, direction: Up, amount: Line }: 'k', Up
+Scroll { target: Result, direction: Up, amount: ToStart }: 'g', Home
+Scroll { target: Result, direction: Up, amount: ViewportMiddle }: 'M'
+Scroll { target: Result, direction: Up, amount: ViewportTop }: 'H'
+SetFocusedPane(Explorer): '1', ^'1', ⌥'1', ^⌥'1', ⇧'1', ^⇧'1'
+SetFocusedPane(Inspector): '2', ^'2', ⌥'2', ^⌥'2', ⇧'2', ^⇧'2'
+SetFocusedPane(Result): '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3'
+ToggleFocus: 'f'
+ToggleHelp: '?'
+ToggleReadOnly: ^'r'
+footer: Enter:Detail  yy:Yank Row  dd:Stage Del  K:Row Detail  Y:Yank Cell  c:Connections  ?:Help  Esc:Back  q:Quit
+help: 1 / 2 / 3: Switch pane focus
+help: Enter: Open active cell detail
+help: Esc: Exit cell selection
+help: yy: Copy the active row values to clipboard (TSV)
+help: dd: Stage the active row for deletion
+help: K: Open Row Detail
+help: Y: Copy the active cell value to clipboard
+help: Ctrl+P: Open Table Picker
+help: r: Reload metadata
+help: s: Open SQL Editor
+help: c: Open Connection Selector
+help: Ctrl+Shift+D: Open SQLite Diagnostics
+help: Ctrl+E: Export result to CSV
+help: Ctrl+O: Open Query History
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+E: Export result to CSV => RequestCsvExport
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## Normal result draft
+BeginKeySequence(Z): 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z'
+EnterCommandLine: ':'
+OpenModal(CommandPalette): F(1)
+OpenModal(ConnectionSelector): 'c'
+OpenModal(QueryHistoryPicker): ^'o'
+OpenModal(RowDetail): 'K'
+OpenModal(Settings): ','
+OpenModal(SqlModal): 's'
+OpenModal(SqliteDiagnostics): ^'D', ^⇧'d'
+OpenModal(TablePicker): ^'p'
+Quit: 'q'
+ReloadMetadata: 'r'
+RequestCsvExport: ^'e'
+ResultCellLeft: 'h', Left
+ResultCellRight: 'l', Right
+ResultCellYank: 'Y'
+ResultDeleteOperatorPending: 'd', ⇧'d'
+ResultDiscardCellEdit: Esc, ⇧Esc
+ResultEnterCellEdit: 'i', ⇧'i'
+ResultNextPage: ']', ^']', ⌥']', ^⌥']', ⇧']', ^⇧']'
+ResultOpenCellDetail: Enter, ⇧Enter
+ResultPrevPage: '[', ^'[', ⌥'[', ^⌥'[', ⇧'[', ^⇧'['
+ResultRowYankOperatorPending: 'y', ⇧'y'
+Scroll { target: Result, direction: Down, amount: FullPage }: ^'f', PageDown
+Scroll { target: Result, direction: Down, amount: HalfPage }: ^'d'
+Scroll { target: Result, direction: Down, amount: Line }: 'j', Down
+Scroll { target: Result, direction: Down, amount: ToEnd }: 'G', End
+Scroll { target: Result, direction: Down, amount: ViewportBottom }: 'L'
+Scroll { target: Result, direction: Up, amount: FullPage }: ^'b', PageUp
+Scroll { target: Result, direction: Up, amount: HalfPage }: ^'u'
+Scroll { target: Result, direction: Up, amount: Line }: 'k', Up
+Scroll { target: Result, direction: Up, amount: ToStart }: 'g', Home
+Scroll { target: Result, direction: Up, amount: ViewportMiddle }: 'M'
+Scroll { target: Result, direction: Up, amount: ViewportTop }: 'H'
+SetFocusedPane(Explorer): '1', ^'1', ⌥'1', ^⌥'1', ⇧'1', ^⇧'1'
+SetFocusedPane(Inspector): '2', ^'2', ⌥'2', ^⌥'2', ⇧'2', ^⇧'2'
+SetFocusedPane(Result): '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3'
+ToggleFocus: 'f'
+ToggleHelp: '?'
+ToggleReadOnly: ^'r'
+footer: i:Edit  :w:Write  c:Connections  ?:Help  Esc:Discard  q:Quit
+help: 1 / 2 / 3: Switch pane focus
+help: Esc: Discard pending draft
+help: i: Edit active cell
+help: :w: Preview and confirm changes
+help: Ctrl+P: Open Table Picker
+help: r: Reload metadata
+help: s: Open SQL Editor
+help: c: Open Connection Selector
+help: Ctrl+Shift+D: Open SQLite Diagnostics
+help: Ctrl+E: Export result to CSV
+help: Ctrl+O: Open Query History
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+E: Export result to CSV => RequestCsvExport
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## Normal result staged
+BeginKeySequence(Z): 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z'
+EnterCommandLine: ':'
+OpenModal(CommandPalette): F(1)
+OpenModal(ConnectionSelector): 'c'
+OpenModal(QueryHistoryPicker): ^'o'
+OpenModal(Settings): ','
+OpenModal(SqlModal): 's'
+OpenModal(SqliteDiagnostics): ^'D', ^⇧'d'
+OpenModal(TablePicker): ^'p'
+Quit: 'q'
+ReloadMetadata: 'r'
+RequestCsvExport: ^'e'
+ResultCellLeft: 'h', Left
+ResultCellRight: 'l', Right
+ResultDeleteOperatorPending: 'd', ⇧'d'
+ResultEnterCellEdit: 'i', ⇧'i'
+ResultExitToScroll: Esc, ⇧Esc
+ResultNextPage: ']', ^']', ⌥']', ^⌥']', ⇧']', ^⇧']'
+ResultOpenCellDetail: Enter, ⇧Enter
+ResultPrevPage: '[', ^'[', ⌥'[', ^⌥'[', ⇧'[', ^⇧'['
+ResultRowYankOperatorPending: 'y', ⇧'y'
+Scroll { target: Result, direction: Down, amount: FullPage }: ^'f', PageDown
+Scroll { target: Result, direction: Down, amount: HalfPage }: ^'d'
+Scroll { target: Result, direction: Down, amount: Line }: 'j', Down
+Scroll { target: Result, direction: Down, amount: ToEnd }: 'G', End
+Scroll { target: Result, direction: Down, amount: ViewportBottom }: 'L'
+Scroll { target: Result, direction: Up, amount: FullPage }: ^'b', PageUp
+Scroll { target: Result, direction: Up, amount: HalfPage }: ^'u'
+Scroll { target: Result, direction: Up, amount: Line }: 'k', Up
+Scroll { target: Result, direction: Up, amount: ToStart }: 'g', Home
+Scroll { target: Result, direction: Up, amount: ViewportMiddle }: 'M'
+Scroll { target: Result, direction: Up, amount: ViewportTop }: 'H'
+SetFocusedPane(Explorer): '1', ^'1', ⌥'1', ^⌥'1', ⇧'1', ^⇧'1'
+SetFocusedPane(Inspector): '2', ^'2', ⌥'2', ^⌥'2', ⇧'2', ^⇧'2'
+SetFocusedPane(Result): '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3'
+ToggleFocus: 'f'
+ToggleHelp: '?'
+ToggleReadOnly: ^'r'
+UnstageLastStagedRow: 'u', ⌥'u', ^⌥'u', ⇧'u', ^⇧'u'
+footer: dd:Stage Del  u:Unstage  :w:Write  c:Connections  ?:Help  Esc:Back  q:Quit
+help: 1 / 2 / 3: Switch pane focus
+help: Esc: Exit cell selection
+help: dd: Stage the active row for deletion
+help: u: Unstage the last staged row deletion
+help: :w: Preview and confirm changes
+help: Ctrl+P: Open Table Picker
+help: r: Reload metadata
+help: s: Open SQL Editor
+help: c: Open Connection Selector
+help: Ctrl+Shift+D: Open SQLite Diagnostics
+help: Ctrl+E: Export result to CSV
+help: Ctrl+O: Open Query History
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+E: Export result to CSV => RequestCsvExport
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## Normal result yank pending
+BeginKeySequence(Z): 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z'
+EnterCommandLine: ':'
+OpenModal(CommandPalette): F(1)
+OpenModal(ConnectionSelector): 'c'
+OpenModal(QueryHistoryPicker): ^'o'
+OpenModal(RowDetail): 'K'
+OpenModal(Settings): ','
+OpenModal(SqlModal): 's'
+OpenModal(SqliteDiagnostics): ^'D', ^⇧'d'
+OpenModal(TablePicker): ^'p'
+Quit: 'q'
+ReloadMetadata: 'r'
+RequestCsvExport: ^'e'
+ResultCellLeft: 'h', Left
+ResultCellRight: 'l', Right
+ResultCellYank: 'Y'
+ResultDeleteOperatorPending: 'd', ⇧'d'
+ResultEnterCellEdit: 'i', ⇧'i'
+ResultExitToScroll: Esc, ⇧Esc
+ResultNextPage: ']', ^']', ⌥']', ^⌥']', ⇧']', ^⇧']'
+ResultOpenCellDetail: Enter, ⇧Enter
+ResultPrevPage: '[', ^'[', ⌥'[', ^⌥'[', ⇧'[', ^⇧'['
+ResultRowYank: 'y', ⇧'y'
+Scroll { target: Result, direction: Down, amount: FullPage }: ^'f', PageDown
+Scroll { target: Result, direction: Down, amount: HalfPage }: ^'d'
+Scroll { target: Result, direction: Down, amount: Line }: 'j', Down
+Scroll { target: Result, direction: Down, amount: ToEnd }: 'G', End
+Scroll { target: Result, direction: Down, amount: ViewportBottom }: 'L'
+Scroll { target: Result, direction: Up, amount: FullPage }: ^'b', PageUp
+Scroll { target: Result, direction: Up, amount: HalfPage }: ^'u'
+Scroll { target: Result, direction: Up, amount: Line }: 'k', Up
+Scroll { target: Result, direction: Up, amount: ToStart }: 'g', Home
+Scroll { target: Result, direction: Up, amount: ViewportMiddle }: 'M'
+Scroll { target: Result, direction: Up, amount: ViewportTop }: 'H'
+SetFocusedPane(Explorer): '1', ^'1', ⌥'1', ^⌥'1', ⇧'1', ^⇧'1'
+SetFocusedPane(Inspector): '2', ^'2', ⌥'2', ^⌥'2', ⇧'2', ^⇧'2'
+SetFocusedPane(Result): '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3'
+ToggleFocus: 'f'
+ToggleHelp: '?'
+ToggleReadOnly: ^'r'
+footer: Enter:Detail  yy:Yank Row  dd:Stage Del  K:Row Detail  Y:Yank Cell  c:Connections  ?:Help  Esc:Back  q:Quit
+help: 1 / 2 / 3: Switch pane focus
+help: Enter: Open active cell detail
+help: Esc: Exit cell selection
+help: yy: Copy the active row values to clipboard (TSV)
+help: dd: Stage the active row for deletion
+help: K: Open Row Detail
+help: Y: Copy the active cell value to clipboard
+help: Ctrl+P: Open Table Picker
+help: r: Reload metadata
+help: s: Open SQL Editor
+help: c: Open Connection Selector
+help: Ctrl+Shift+D: Open SQLite Diagnostics
+help: Ctrl+E: Export result to CSV
+help: Ctrl+O: Open Query History
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+E: Export result to CSV => RequestCsvExport
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## Normal result delete pending
+BeginKeySequence(Z): 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z'
+EnterCommandLine: ':'
+OpenModal(CommandPalette): F(1)
+OpenModal(ConnectionSelector): 'c'
+OpenModal(QueryHistoryPicker): ^'o'
+OpenModal(RowDetail): 'K'
+OpenModal(Settings): ','
+OpenModal(SqlModal): 's'
+OpenModal(SqliteDiagnostics): ^'D', ^⇧'d'
+OpenModal(TablePicker): ^'p'
+Quit: 'q'
+ReloadMetadata: 'r'
+RequestCsvExport: ^'e'
+ResultCellLeft: 'h', Left
+ResultCellRight: 'l', Right
+ResultCellYank: 'Y'
+ResultEnterCellEdit: 'i', ⇧'i'
+ResultExitToScroll: Esc, ⇧Esc
+ResultNextPage: ']', ^']', ⌥']', ^⌥']', ⇧']', ^⇧']'
+ResultOpenCellDetail: Enter, ⇧Enter
+ResultPrevPage: '[', ^'[', ⌥'[', ^⌥'[', ⇧'[', ^⇧'['
+ResultRowYankOperatorPending: 'y', ⇧'y'
+Scroll { target: Result, direction: Down, amount: FullPage }: ^'f', PageDown
+Scroll { target: Result, direction: Down, amount: HalfPage }: ^'d'
+Scroll { target: Result, direction: Down, amount: Line }: 'j', Down
+Scroll { target: Result, direction: Down, amount: ToEnd }: 'G', End
+Scroll { target: Result, direction: Down, amount: ViewportBottom }: 'L'
+Scroll { target: Result, direction: Up, amount: FullPage }: ^'b', PageUp
+Scroll { target: Result, direction: Up, amount: HalfPage }: ^'u'
+Scroll { target: Result, direction: Up, amount: Line }: 'k', Up
+Scroll { target: Result, direction: Up, amount: ToStart }: 'g', Home
+Scroll { target: Result, direction: Up, amount: ViewportMiddle }: 'M'
+Scroll { target: Result, direction: Up, amount: ViewportTop }: 'H'
+SetFocusedPane(Explorer): '1', ^'1', ⌥'1', ^⌥'1', ⇧'1', ^⇧'1'
+SetFocusedPane(Inspector): '2', ^'2', ⌥'2', ^⌥'2', ⇧'2', ^⇧'2'
+SetFocusedPane(Result): '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3'
+StageRowForDelete: 'd', ⇧'d'
+ToggleFocus: 'f'
+ToggleHelp: '?'
+ToggleReadOnly: ^'r'
+footer: Enter:Detail  yy:Yank Row  dd:Stage Del  K:Row Detail  Y:Yank Cell  c:Connections  ?:Help  Esc:Back  q:Quit
+help: 1 / 2 / 3: Switch pane focus
+help: Enter: Open active cell detail
+help: Esc: Exit cell selection
+help: yy: Copy the active row values to clipboard (TSV)
+help: dd: Stage the active row for deletion
+help: K: Open Row Detail
+help: Y: Copy the active cell value to clipboard
+help: Ctrl+P: Open Table Picker
+help: r: Reload metadata
+help: s: Open SQL Editor
+help: c: Open Connection Selector
+help: Ctrl+Shift+D: Open SQLite Diagnostics
+help: Ctrl+E: Export result to CSV
+help: Ctrl+O: Open Query History
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+E: Export result to CSV => RequestCsvExport
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## Normal result prefix
+CancelKeySequence: ' ', ^' ', ⌥' ', ^⌥' ', ⇧' ', ^⇧' ', '!', ^'!', ⌥'!', ^⌥'!', ⇧'!', ^⇧'!', '"', ^'"', ⌥'"', ^⌥'"', ⇧'"', ^⇧'"', '#', ^'#', ⌥'#', ^⌥'#', ⇧'#', ^⇧'#', '$', ^'$', ⌥'$', ^⌥'$', ⇧'$', ^⇧'$', '%', ^'%', ⌥'%', ^⌥'%', ⇧'%', ^⇧'%', '&', ^'&', ⌥'&', ^⌥'&', ⇧'&', ^⇧'&', '\'', ^'\'', ⌥'\'', ^⌥'\'', ⇧'\'', ^⇧'\'', '(', ^'(', ⌥'(', ^⌥'(', ⇧'(', ^⇧'(', ')', ^')', ⌥')', ^⌥')', ⇧')', ^⇧')', '*', ^'*', ⌥'*', ^⌥'*', ⇧'*', ^⇧'*', '+', ^'+', ⌥'+', ^⌥'+', ⇧'+', ^⇧'+', ',', ^',', ⌥',', ^⌥',', ⇧',', ^⇧',', '-', ^'-', ⌥'-', ^⌥'-', ⇧'-', ^⇧'-', '.', ^'.', ⌥'.', ^⌥'.', ⇧'.', ^⇧'.', '/', ^'/', ⌥'/', ^⌥'/', ⇧'/', ^⇧'/', '0', ^'0', ⌥'0', ^⌥'0', ⇧'0', ^⇧'0', '1', ^'1', ⌥'1', ^⌥'1', ⇧'1', ^⇧'1', '2', ^'2', ⌥'2', ^⌥'2', ⇧'2', ^⇧'2', '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3', '4', ^'4', ⌥'4', ^⌥'4', ⇧'4', ^⇧'4', '5', ^'5', ⌥'5', ^⌥'5', ⇧'5', ^⇧'5', '6', ^'6', ⌥'6', ^⌥'6', ⇧'6', ^⇧'6', '7', ^'7', ⌥'7', ^⌥'7', ⇧'7', ^⇧'7', '8', ^'8', ⌥'8', ^⌥'8', ⇧'8', ^⇧'8', '9', ^'9', ⌥'9', ^⌥'9', ⇧'9', ^⇧'9', ':', ^':', ⌥':', ^⌥':', ⇧':', ^⇧':', ';', ^';', ⌥';', ^⌥';', ⇧';', ^⇧';', '<', ^'<', ⌥'<', ^⌥'<', ⇧'<', ^⇧'<', '=', ^'=', ⌥'=', ^⌥'=', ⇧'=', ^⇧'=', '>', ^'>', ⌥'>', ^⌥'>', ⇧'>', ^⇧'>', '?', ^'?', ⌥'?', ^⌥'?', ⇧'?', ^⇧'?', '@', ^'@', ⌥'@', ^⌥'@', ⇧'@', ^⇧'@', 'A', ^'A', ⌥'A', ^⌥'A', ⇧'A', ^⇧'A', 'B', ^'B', ⌥'B', ^⌥'B', ⇧'B', ^⇧'B', 'C', ^'C', ⌥'C', ^⌥'C', ⇧'C', ^⇧'C', 'D', ^'D', ⌥'D', ^⌥'D', ⇧'D', ^⇧'D', 'E', ^'E', ⌥'E', ^⌥'E', ⇧'E', ^⇧'E', 'F', ^'F', ⌥'F', ^⌥'F', ⇧'F', ^⇧'F', 'G', ^'G', ⌥'G', ^⌥'G', ⇧'G', ^⇧'G', 'H', ^'H', ⌥'H', ^⌥'H', ⇧'H', ^⇧'H', 'I', ^'I', ⌥'I', ^⌥'I', ⇧'I', ^⇧'I', 'J', ^'J', ⌥'J', ^⌥'J', ⇧'J', ^⇧'J', 'K', ^'K', ⌥'K', ^⌥'K', ⇧'K', ^⇧'K', 'L', ^'L', ⌥'L', ^⌥'L', ⇧'L', ^⇧'L', 'M', ^'M', ⌥'M', ^⌥'M', ⇧'M', ^⇧'M', 'N', ^'N', ⌥'N', ^⌥'N', ⇧'N', ^⇧'N', 'O', ^'O', ⌥'O', ^⌥'O', ⇧'O', ^⇧'O', 'P', ^'P', ⌥'P', ^⌥'P', ⇧'P', ^⇧'P', 'Q', ^'Q', ⌥'Q', ^⌥'Q', ⇧'Q', ^⇧'Q', 'R', ^'R', ⌥'R', ^⌥'R', ⇧'R', ^⇧'R', 'S', ^'S', ⌥'S', ^⌥'S', ⇧'S', ^⇧'S', 'T', ^'T', ⌥'T', ^⌥'T', ⇧'T', ^⇧'T', 'U', ^'U', ⌥'U', ^⌥'U', ⇧'U', ^⇧'U', 'V', ^'V', ⌥'V', ^⌥'V', ⇧'V', ^⇧'V', 'W', ^'W', ⌥'W', ^⌥'W', ⇧'W', ^⇧'W', 'X', ^'X', ⌥'X', ^⌥'X', ⇧'X', ^⇧'X', 'Y', ^'Y', ⌥'Y', ^⌥'Y', ⇧'Y', ^⇧'Y', 'Z', ^'Z', ⌥'Z', ^⌥'Z', ⇧'Z', ^⇧'Z', '[', ^'[', ⌥'[', ^⌥'[', ⇧'[', ^⇧'[', '\\', ^'\\', ⌥'\\', ^⌥'\\', ⇧'\\', ^⇧'\\', ']', ^']', ⌥']', ^⌥']', ⇧']', ^⇧']', '^', ^'^', ⌥'^', ^⌥'^', ⇧'^', ^⇧'^', '_', ^'_', ⌥'_', ^⌥'_', ⇧'_', ^⇧'_', '`', ^'`', ⌥'`', ^⌥'`', ⇧'`', ^⇧'`', 'a', ^'a', ⌥'a', ^⌥'a', ⇧'a', ^⇧'a', ^'b', ⌥'b', ^⌥'b', ⇧'b', ^⇧'b', 'c', ^'c', ⌥'c', ^⌥'c', ⇧'c', ^⇧'c', 'd', ^'d', ⌥'d', ^⌥'d', ⇧'d', ^⇧'d', 'e', ^'e', ⌥'e', ^⌥'e', ⇧'e', ^⇧'e', 'f', ^'f', ⌥'f', ^⌥'f', ⇧'f', ^⇧'f', 'g', ^'g', ⌥'g', ^⌥'g', ⇧'g', ^⇧'g', 'h', ^'h', ⌥'h', ^⌥'h', ⇧'h', ^⇧'h', 'i', ^'i', ⌥'i', ^⌥'i', ⇧'i', ^⇧'i', 'j', ^'j', ⌥'j', ^⌥'j', ⇧'j', ^⇧'j', 'k', ^'k', ⌥'k', ^⌥'k', ⇧'k', ^⇧'k', 'l', ^'l', ⌥'l', ^⌥'l', ⇧'l', ^⇧'l', 'm', ^'m', ⌥'m', ^⌥'m', ⇧'m', ^⇧'m', 'n', ^'n', ⌥'n', ^⌥'n', ⇧'n', ^⇧'n', 'o', ^'o', ⌥'o', ^⌥'o', ⇧'o', ^⇧'o', 'p', ^'p', ⌥'p', ^⌥'p', ⇧'p', ^⇧'p', 'q', ^'q', ⌥'q', ^⌥'q', ⇧'q', ^⇧'q', 'r', ^'r', ⌥'r', ^⌥'r', ⇧'r', ^⇧'r', 's', ^'s', ⌥'s', ^⌥'s', ⇧'s', ^⇧'s', ^'t', ⌥'t', ^⌥'t', ⇧'t', ^⇧'t', 'u', ^'u', ⌥'u', ^⌥'u', ⇧'u', ^⇧'u', 'v', ^'v', ⌥'v', ^⌥'v', ⇧'v', ^⇧'v', 'w', ^'w', ⌥'w', ^⌥'w', ⇧'w', ^⇧'w', 'x', ^'x', ⌥'x', ^⌥'x', ⇧'x', ^⇧'x', 'y', ^'y', ⌥'y', ^⌥'y', ⇧'y', ^⇧'y', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z', '{', ^'{', ⌥'{', ^⌥'{', ⇧'{', ^⇧'{', '|', ^'|', ⌥'|', ^⌥'|', ⇧'|', ^⇧'|', '}', ^'}', ⌥'}', ^⌥'}', ⇧'}', ^⇧'}', '~', ^'~', ⌥'~', ^⌥'~', ⇧'~', ^⇧'~', Enter, ^Enter, ⌥Enter, ^⌥Enter, ⇧Enter, ^⇧Enter, Esc, ^Esc, ⌥Esc, ^⌥Esc, ⇧Esc, ^⇧Esc, Tab, ^Tab, ⌥Tab, ^⌥Tab, ⇧Tab, ^⇧Tab, BackTab, ^BackTab, ⌥BackTab, ^⌥BackTab, ⇧BackTab, ^⇧BackTab, Up, ^Up, ⌥Up, ^⌥Up, ⇧Up, ^⇧Up, Down, ^Down, ⌥Down, ^⌥Down, ⇧Down, ^⇧Down, Left, ^Left, ⌥Left, ^⌥Left, ⇧Left, ^⇧Left, Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right, Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home, End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End, Backspace, ^Backspace, ⌥Backspace, ^⌥Backspace, ⇧Backspace, ^⇧Backspace, Delete, ^Delete, ⌥Delete, ^⌥Delete, ⇧Delete, ^⇧Delete, PageUp, ^PageUp, ⌥PageUp, ^⌥PageUp, ⇧PageUp, ^⇧PageUp, PageDown, ^PageDown, ⌥PageDown, ^⌥PageDown, ⇧PageDown, ^⇧PageDown, F(1), ^F(1), ⌥F(1), ^⌥F(1), ⇧F(1), ^⇧F(1), F(5), ^F(5), ⌥F(5), ^⌥F(5), ⇧F(5), ^⇧F(5)
+ScrollToCursor { target: Result, position: Bottom }: 'b'
+ScrollToCursor { target: Result, position: Center }: 'z'
+ScrollToCursor { target: Result, position: Top }: 't'
+footer: 
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+E: Export result to CSV => RequestCsvExport
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## ConnectionSetup dropdown
+ConnectionSetupDropdownCancel: Esc, ^Esc, ⌥Esc, ^⌥Esc, ⇧Esc, ^⇧Esc
+ConnectionSetupDropdownConfirm: Enter, ^Enter, ⌥Enter, ^⌥Enter, ⇧Enter, ^⇧Enter
+ConnectionSetupDropdownNext: ^'n', Down, ^Down, ⌥Down, ^⌥Down, ⇧Down, ^⇧Down
+ConnectionSetupDropdownPrev: ^'p', Up, ^Up, ⌥Up, ^⌥Up, ⇧Up, ^⇧Up
+ConnectionSetupSave: ^'s'
+footer: 
+border: ╭ New Connection ────────────────────────────────────────────╮
+border: ╰ Enter: Select │ ^S: Connect │ Esc: Cancel ─────────────────╯
+help: Enter: Confirm dropdown selection
+help: Ctrl+S: Save and connect
+help: ↓ / Ctrl+N / ↑ / Ctrl+P: Dropdown navigation
+help: Esc: Cancel dropdown
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## ConnectionSetup cleartext
+ConnectionSetupCancel: Esc, ^Esc, ⌥Esc, ^⌥Esc, ⇧Esc, ^⇧Esc
+ConnectionSetupNextField: Tab, ^Tab, ⌥Tab, ^⌥Tab, ⇧Tab, ^⇧Tab
+ConnectionSetupPrevField: BackTab, ^BackTab, ⌥BackTab, ^⌥BackTab, ⇧BackTab, ^⇧BackTab
+ConnectionSetupSave: ^'s'
+ConnectionSetupToggleDropdown: Enter, ^Enter, ⌥Enter, ^⌥Enter, ⇧Enter, ^⇧Enter
+TextBackspace { target: ConnectionSetup }: Backspace, ^Backspace, ⌥Backspace, ^⌥Backspace, ⇧Backspace, ^⇧Backspace
+TextDelete { target: ConnectionSetup }: Delete, ^Delete, ⌥Delete, ^⌥Delete, ⇧Delete, ^⇧Delete
+TextInput { target: ConnectionSetup }: ' ', ⌥' ', ^⌥' ', ⇧' ', '!', ⌥'!', ^⌥'!', ⇧'!', '"', ⌥'"', ^⌥'"', ⇧'"', '#', ⌥'#', ^⌥'#', ⇧'#', '$', ⌥'$', ^⌥'$', ⇧'$', '%', ⌥'%', ^⌥'%', ⇧'%', '&', ⌥'&', ^⌥'&', ⇧'&', '\'', ⌥'\'', ^⌥'\'', ⇧'\'', '(', ⌥'(', ^⌥'(', ⇧'(', ')', ⌥')', ^⌥')', ⇧')', '*', ⌥'*', ^⌥'*', ⇧'*', '+', ⌥'+', ^⌥'+', ⇧'+', ',', ⌥',', ^⌥',', ⇧',', '-', ⌥'-', ^⌥'-', ⇧'-', '.', ⌥'.', ^⌥'.', ⇧'.', '/', ⌥'/', ^⌥'/', ⇧'/', '0', ⌥'0', ^⌥'0', ⇧'0', '1', ⌥'1', ^⌥'1', ⇧'1', '2', ⌥'2', ^⌥'2', ⇧'2', '3', ⌥'3', ^⌥'3', ⇧'3', '4', ⌥'4', ^⌥'4', ⇧'4', '5', ⌥'5', ^⌥'5', ⇧'5', '6', ⌥'6', ^⌥'6', ⇧'6', '7', ⌥'7', ^⌥'7', ⇧'7', '8', ⌥'8', ^⌥'8', ⇧'8', '9', ⌥'9', ^⌥'9', ⇧'9', ':', ⌥':', ^⌥':', ⇧':', ';', ⌥';', ^⌥';', ⇧';', '<', ⌥'<', ^⌥'<', ⇧'<', '=', ⌥'=', ^⌥'=', ⇧'=', '>', ⌥'>', ^⌥'>', ⇧'>', '?', ⌥'?', ^⌥'?', ⇧'?', '@', ⌥'@', ^⌥'@', ⇧'@', 'A', ⌥'A', ^⌥'A', ⇧'A', 'B', ⌥'B', ^⌥'B', ⇧'B', 'C', ⌥'C', ^⌥'C', ⇧'C', 'D', ⌥'D', ^⌥'D', ⇧'D', 'E', ⌥'E', ^⌥'E', ⇧'E', 'F', ⌥'F', ^⌥'F', ⇧'F', 'G', ⌥'G', ^⌥'G', ⇧'G', 'H', ⌥'H', ^⌥'H', ⇧'H', 'I', ⌥'I', ^⌥'I', ⇧'I', 'J', ⌥'J', ^⌥'J', ⇧'J', 'K', ⌥'K', ^⌥'K', ⇧'K', 'L', ⌥'L', ^⌥'L', ⇧'L', 'M', ⌥'M', ^⌥'M', ⇧'M', 'N', ⌥'N', ^⌥'N', ⇧'N', 'O', ⌥'O', ^⌥'O', ⇧'O', 'P', ⌥'P', ^⌥'P', ⇧'P', 'Q', ⌥'Q', ^⌥'Q', ⇧'Q', 'R', ⌥'R', ^⌥'R', ⇧'R', 'S', ⌥'S', ^⌥'S', ⇧'S', 'T', ⌥'T', ^⌥'T', ⇧'T', 'U', ⌥'U', ^⌥'U', ⇧'U', 'V', ⌥'V', ^⌥'V', ⇧'V', 'W', ⌥'W', ^⌥'W', ⇧'W', 'X', ⌥'X', ^⌥'X', ⇧'X', 'Y', ⌥'Y', ^⌥'Y', ⇧'Y', 'Z', ⌥'Z', ^⌥'Z', ⇧'Z', '[', ⌥'[', ^⌥'[', ⇧'[', '\\', ⌥'\\', ^⌥'\\', ⇧'\\', ']', ⌥']', ^⌥']', ⇧']', '^', ⌥'^', ^⌥'^', ⇧'^', '_', ⌥'_', ^⌥'_', ⇧'_', '`', ⌥'`', ^⌥'`', ⇧'`', 'a', ⌥'a', ^⌥'a', ⇧'a', 'b', ⌥'b', ^⌥'b', ⇧'b', 'c', ⌥'c', ^⌥'c', ⇧'c', 'd', ⌥'d', ^⌥'d', ⇧'d', 'e', ⌥'e', ^⌥'e', ⇧'e', 'f', ⌥'f', ^⌥'f', ⇧'f', 'g', ⌥'g', ^⌥'g', ⇧'g', 'h', ⌥'h', ^⌥'h', ⇧'h', 'i', ⌥'i', ^⌥'i', ⇧'i', 'j', ⌥'j', ^⌥'j', ⇧'j', 'k', ⌥'k', ^⌥'k', ⇧'k', 'l', ⌥'l', ^⌥'l', ⇧'l', 'm', ⌥'m', ^⌥'m', ⇧'m', 'n', ⌥'n', ^⌥'n', ⇧'n', 'o', ⌥'o', ^⌥'o', ⇧'o', 'p', ⌥'p', ^⌥'p', ⇧'p', 'q', ⌥'q', ^⌥'q', ⇧'q', 'r', ⌥'r', ^⌥'r', ⇧'r', 's', ⌥'s', ^⌥'s', ⇧'s', 't', ⌥'t', ^⌥'t', ⇧'t', 'u', ⌥'u', ^⌥'u', ⇧'u', 'v', ⌥'v', ^⌥'v', ⇧'v', 'w', ⌥'w', ^⌥'w', ⇧'w', 'x', ⌥'x', ^⌥'x', ⇧'x', 'y', ⌥'y', ^⌥'y', ⇧'y', 'z', ⌥'z', ^⌥'z', ⇧'z', '{', ⌥'{', ^⌥'{', ⇧'{', '|', ⌥'|', ^⌥'|', ⇧'|', '}', ⌥'}', ^⌥'}', ⇧'}', '~', ⌥'~', ^⌥'~', ⇧'~'
+TextMoveCursor { target: ConnectionSetup, direction: End }: End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
+TextMoveCursor { target: ConnectionSetup, direction: Home }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
+TextMoveCursor { target: ConnectionSetup, direction: Left }: Left, ^Left, ⌥Left, ^⌥Left, ⇧Left, ^⇧Left
+TextMoveCursor { target: ConnectionSetup, direction: Right }: Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
+footer: 
+border: ╭ New Connection ────────────────────────────────────────────╮
+border: ╰ Tab/⇧Tab: Field │ Enter: Toggle │ ^S: Connect │ Esc: Cancel╯
+help: Tab / Shift+Tab: Next/Previous field
+help: Enter: Toggle dropdown
+help: Ctrl+S: Save and connect
+help: Esc: Cancel
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## SqlModal editing
+OpenModal(QueryHistoryPicker): ^'o'
+SqlModalClear: ^'l', ^⌥'l', ^⇧'l'
+SqlModalEnterNormal: Esc, ⇧Esc
+SqlModalInsertTab: Tab, ^Tab, ⌥Tab, ^⌥Tab, ⇧Tab, ^⇧Tab
+SqlModalNewLine: Enter, ^Enter, ⇧Enter, ^⇧Enter
+SqlModalSubmit: ⌥Enter, ^⌥Enter, F(5)
+TextBackspace { target: SqlModal }: Backspace, ^Backspace, ⌥Backspace, ^⌥Backspace, ⇧Backspace, ^⇧Backspace
+TextDelete { target: SqlModal }: Delete, ^Delete, ⌥Delete, ^⌥Delete, ⇧Delete, ^⇧Delete
+TextInput { target: SqlModal }: ' ', ^' ', ⌥' ', ^⌥' ', ⇧' ', ^⇧' ', '!', ^'!', ⌥'!', ^⌥'!', ⇧'!', ^⇧'!', '"', ^'"', ⌥'"', ^⌥'"', ⇧'"', ^⇧'"', '#', ^'#', ⌥'#', ^⌥'#', ⇧'#', ^⇧'#', '$', ^'$', ⌥'$', ^⌥'$', ⇧'$', ^⇧'$', '%', ^'%', ⌥'%', ^⌥'%', ⇧'%', ^⇧'%', '&', ^'&', ⌥'&', ^⌥'&', ⇧'&', ^⇧'&', '\'', ^'\'', ⌥'\'', ^⌥'\'', ⇧'\'', ^⇧'\'', '(', ^'(', ⌥'(', ^⌥'(', ⇧'(', ^⇧'(', ')', ^')', ⌥')', ^⌥')', ⇧')', ^⇧')', '*', ^'*', ⌥'*', ^⌥'*', ⇧'*', ^⇧'*', '+', ^'+', ⌥'+', ^⌥'+', ⇧'+', ^⇧'+', ',', ^',', ⌥',', ^⌥',', ⇧',', ^⇧',', '-', ^'-', ⌥'-', ^⌥'-', ⇧'-', ^⇧'-', '.', ^'.', ⌥'.', ^⌥'.', ⇧'.', ^⇧'.', '/', ^'/', ⌥'/', ^⌥'/', ⇧'/', ^⇧'/', '0', ^'0', ⌥'0', ^⌥'0', ⇧'0', ^⇧'0', '1', ^'1', ⌥'1', ^⌥'1', ⇧'1', ^⇧'1', '2', ^'2', ⌥'2', ^⌥'2', ⇧'2', ^⇧'2', '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3', '4', ^'4', ⌥'4', ^⌥'4', ⇧'4', ^⇧'4', '5', ^'5', ⌥'5', ^⌥'5', ⇧'5', ^⇧'5', '6', ^'6', ⌥'6', ^⌥'6', ⇧'6', ^⇧'6', '7', ^'7', ⌥'7', ^⌥'7', ⇧'7', ^⇧'7', '8', ^'8', ⌥'8', ^⌥'8', ⇧'8', ^⇧'8', '9', ^'9', ⌥'9', ^⌥'9', ⇧'9', ^⇧'9', ':', ^':', ⌥':', ^⌥':', ⇧':', ^⇧':', ';', ^';', ⌥';', ^⌥';', ⇧';', ^⇧';', '<', ^'<', ⌥'<', ^⌥'<', ⇧'<', ^⇧'<', '=', ^'=', ⌥'=', ^⌥'=', ⇧'=', ^⇧'=', '>', ^'>', ⌥'>', ^⌥'>', ⇧'>', ^⇧'>', '?', ^'?', ⌥'?', ^⌥'?', ⇧'?', ^⇧'?', '@', ^'@', ⌥'@', ^⌥'@', ⇧'@', ^⇧'@', 'A', ^'A', ⌥'A', ^⌥'A', ⇧'A', ^⇧'A', 'B', ^'B', ⌥'B', ^⌥'B', ⇧'B', ^⇧'B', 'C', ^'C', ⌥'C', ^⌥'C', ⇧'C', ^⇧'C', 'D', ^'D', ⌥'D', ^⌥'D', ⇧'D', ^⇧'D', 'E', ^'E', ⌥'E', ^⌥'E', ⇧'E', ^⇧'E', 'F', ^'F', ⌥'F', ^⌥'F', ⇧'F', ^⇧'F', 'G', ^'G', ⌥'G', ^⌥'G', ⇧'G', ^⇧'G', 'H', ^'H', ⌥'H', ^⌥'H', ⇧'H', ^⇧'H', 'I', ^'I', ⌥'I', ^⌥'I', ⇧'I', ^⇧'I', 'J', ^'J', ⌥'J', ^⌥'J', ⇧'J', ^⇧'J', 'K', ^'K', ⌥'K', ^⌥'K', ⇧'K', ^⇧'K', 'L', ^'L', ⌥'L', ^⌥'L', ⇧'L', ^⇧'L', 'M', ^'M', ⌥'M', ^⌥'M', ⇧'M', ^⇧'M', 'N', ^'N', ⌥'N', ^⌥'N', ⇧'N', ^⇧'N', 'O', ^'O', ⌥'O', ^⌥'O', ⇧'O', ^⇧'O', 'P', ^'P', ⌥'P', ^⌥'P', ⇧'P', ^⇧'P', 'Q', ^'Q', ⌥'Q', ^⌥'Q', ⇧'Q', ^⇧'Q', 'R', ^'R', ⌥'R', ^⌥'R', ⇧'R', ^⇧'R', 'S', ^'S', ⌥'S', ^⌥'S', ⇧'S', ^⇧'S', 'T', ^'T', ⌥'T', ^⌥'T', ⇧'T', ^⇧'T', 'U', ^'U', ⌥'U', ^⌥'U', ⇧'U', ^⇧'U', 'V', ^'V', ⌥'V', ^⌥'V', ⇧'V', ^⇧'V', 'W', ^'W', ⌥'W', ^⌥'W', ⇧'W', ^⇧'W', 'X', ^'X', ⌥'X', ^⌥'X', ⇧'X', ^⇧'X', 'Y', ^'Y', ⌥'Y', ^⌥'Y', ⇧'Y', ^⇧'Y', 'Z', ^'Z', ⌥'Z', ^⌥'Z', ⇧'Z', ^⇧'Z', '[', ^'[', ⌥'[', ^⌥'[', ⇧'[', ^⇧'[', '\\', ^'\\', ⌥'\\', ^⌥'\\', ⇧'\\', ^⇧'\\', ']', ^']', ⌥']', ^⌥']', ⇧']', ^⇧']', '^', ^'^', ⌥'^', ^⌥'^', ⇧'^', ^⇧'^', '_', ^'_', ⌥'_', ^⌥'_', ⇧'_', ^⇧'_', '`', ^'`', ⌥'`', ^⌥'`', ⇧'`', ^⇧'`', 'a', ⌥'a', ^⌥'a', ⇧'a', ^⇧'a', 'b', ^⌥'b', ⇧'b', ^⇧'b', 'c', ^'c', ⌥'c', ^⌥'c', ⇧'c', ^⇧'c', 'd', ^⌥'d', ⇧'d', ^⇧'d', 'e', ⇧'e', ^⇧'e', 'f', ^⌥'f', ⇧'f', ^⇧'f', 'g', ^'g', ⌥'g', ^⌥'g', ⇧'g', ^⇧'g', 'h', ⌥'h', ^⌥'h', ⇧'h', ^⇧'h', 'i', ^'i', ⌥'i', ^⌥'i', ⇧'i', ^⇧'i', 'j', ^'j', ⌥'j', ^⌥'j', ⇧'j', ^⇧'j', 'k', ⌥'k', ^⌥'k', ⇧'k', ^⇧'k', 'l', ⌥'l', ⇧'l', 'm', ^'m', ⌥'m', ^⌥'m', ⇧'m', ^⇧'m', 'n', ^'n', ⌥'n', ^⌥'n', ⇧'n', ^⇧'n', 'o', ⌥'o', ^⌥'o', ⇧'o', ^⇧'o', 'p', ^'p', ⌥'p', ^⌥'p', ⇧'p', ^⇧'p', 'q', ^'q', ⌥'q', ^⌥'q', ⇧'q', ^⇧'q', 'r', ^'r', ⌥'r', ^⌥'r', ⇧'r', ^⇧'r', 's', ^'s', ⌥'s', ^⌥'s', ⇧'s', ^⇧'s', 't', ^'t', ⌥'t', ^⌥'t', ⇧'t', ^⇧'t', 'u', ⌥'u', ^⌥'u', ⇧'u', ^⇧'u', 'v', ^'v', ⌥'v', ^⌥'v', ⇧'v', ^⇧'v', 'w', ⌥'w', ^⌥'w', ⇧'w', ^⇧'w', 'x', ^'x', ⌥'x', ^⌥'x', ⇧'x', ^⇧'x', 'y', ⌥'y', ^⌥'y', ⇧'y', ^⇧'y', 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z', '{', ^'{', ⌥'{', ^⌥'{', ⇧'{', ^⇧'{', '|', ^'|', ⌥'|', ^⌥'|', ⇧'|', ^⇧'|', '}', ^'}', ⌥'}', ^⌥'}', ⇧'}', ^⇧'}', '~', ^'~', ⌥'~', ^⌥'~', ⇧'~', ^⇧'~'
+TextMoveCursor { target: SqlModal, direction: Down }: Down, ^Down, ⌥Down, ^⌥Down, ⇧Down, ^⇧Down
+TextMoveCursor { target: SqlModal, direction: End }: End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
+TextMoveCursor { target: SqlModal, direction: Home }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
+TextMoveCursor { target: SqlModal, direction: Left }: Left, ^Left, ⌥Left, ^⌥Left, ⇧Left, ^⇧Left
+TextMoveCursor { target: SqlModal, direction: Right }: Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
+TextMoveCursor { target: SqlModal, direction: Up }: Up, ^Up, ⌥Up, ^⌥Up, ⇧Up, ^⇧Up
+footer: ←/→/↑/↓:Move
+border: ╭ SQL Editor ── [SQL] [Plan] ──────────────────────────────────────────────────────────────────────────────────────────────────────╮
+border: ╰ ⌥Enter/F5: Run │ ^L: Clear │ ^O: History │ Esc: Normal ──────────────────────────────────────────────────────────────────────────╯
+help: Alt+Enter / F5: Execute query
+help: Ctrl+L: Clear editor
+help: Ctrl+O: Open Query History
+help: Esc: Return to Normal mode
+help: ← / → / ↑ / ↓: Move cursor
+help: Home / End: Line start/end
+help: Tab: Insert tab
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## SqlModal completion
+CompletionAccept: Enter, ^Enter, ⇧Enter, ^⇧Enter, Tab, ^Tab, ⌥Tab, ^⌥Tab, ⇧Tab, ^⇧Tab
+CompletionDismiss: Esc, ^Esc, ⌥Esc, ^⌥Esc, ⇧Esc, ^⇧Esc, Left, ^Left, ⌥Left, ^⌥Left, ⇧Left, ^⇧Left, Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
+CompletionNext: ^'n', Down, ^Down, ⌥Down, ^⌥Down, ⇧Down, ^⇧Down
+CompletionPrev: ^'p', Up, ^Up, ⌥Up, ^⌥Up, ⇧Up, ^⇧Up
+SqlModalClear: ^'l', ^⌥'l', ^⇧'l'
+SqlModalSubmit: ⌥Enter, ^⌥Enter, F(5)
+TextBackspace { target: SqlModal }: Backspace, ^Backspace, ⌥Backspace, ^⌥Backspace, ⇧Backspace, ^⇧Backspace
+TextDelete { target: SqlModal }: Delete, ^Delete, ⌥Delete, ^⌥Delete, ⇧Delete, ^⇧Delete
+TextInput { target: SqlModal }: ' ', ^' ', ⌥' ', ^⌥' ', ⇧' ', ^⇧' ', '!', ^'!', ⌥'!', ^⌥'!', ⇧'!', ^⇧'!', '"', ^'"', ⌥'"', ^⌥'"', ⇧'"', ^⇧'"', '#', ^'#', ⌥'#', ^⌥'#', ⇧'#', ^⇧'#', '$', ^'$', ⌥'$', ^⌥'$', ⇧'$', ^⇧'$', '%', ^'%', ⌥'%', ^⌥'%', ⇧'%', ^⇧'%', '&', ^'&', ⌥'&', ^⌥'&', ⇧'&', ^⇧'&', '\'', ^'\'', ⌥'\'', ^⌥'\'', ⇧'\'', ^⇧'\'', '(', ^'(', ⌥'(', ^⌥'(', ⇧'(', ^⇧'(', ')', ^')', ⌥')', ^⌥')', ⇧')', ^⇧')', '*', ^'*', ⌥'*', ^⌥'*', ⇧'*', ^⇧'*', '+', ^'+', ⌥'+', ^⌥'+', ⇧'+', ^⇧'+', ',', ^',', ⌥',', ^⌥',', ⇧',', ^⇧',', '-', ^'-', ⌥'-', ^⌥'-', ⇧'-', ^⇧'-', '.', ^'.', ⌥'.', ^⌥'.', ⇧'.', ^⇧'.', '/', ^'/', ⌥'/', ^⌥'/', ⇧'/', ^⇧'/', '0', ^'0', ⌥'0', ^⌥'0', ⇧'0', ^⇧'0', '1', ^'1', ⌥'1', ^⌥'1', ⇧'1', ^⇧'1', '2', ^'2', ⌥'2', ^⌥'2', ⇧'2', ^⇧'2', '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3', '4', ^'4', ⌥'4', ^⌥'4', ⇧'4', ^⇧'4', '5', ^'5', ⌥'5', ^⌥'5', ⇧'5', ^⇧'5', '6', ^'6', ⌥'6', ^⌥'6', ⇧'6', ^⇧'6', '7', ^'7', ⌥'7', ^⌥'7', ⇧'7', ^⇧'7', '8', ^'8', ⌥'8', ^⌥'8', ⇧'8', ^⇧'8', '9', ^'9', ⌥'9', ^⌥'9', ⇧'9', ^⇧'9', ':', ^':', ⌥':', ^⌥':', ⇧':', ^⇧':', ';', ^';', ⌥';', ^⌥';', ⇧';', ^⇧';', '<', ^'<', ⌥'<', ^⌥'<', ⇧'<', ^⇧'<', '=', ^'=', ⌥'=', ^⌥'=', ⇧'=', ^⇧'=', '>', ^'>', ⌥'>', ^⌥'>', ⇧'>', ^⇧'>', '?', ^'?', ⌥'?', ^⌥'?', ⇧'?', ^⇧'?', '@', ^'@', ⌥'@', ^⌥'@', ⇧'@', ^⇧'@', 'A', ^'A', ⌥'A', ^⌥'A', ⇧'A', ^⇧'A', 'B', ^'B', ⌥'B', ^⌥'B', ⇧'B', ^⇧'B', 'C', ^'C', ⌥'C', ^⌥'C', ⇧'C', ^⇧'C', 'D', ^'D', ⌥'D', ^⌥'D', ⇧'D', ^⇧'D', 'E', ^'E', ⌥'E', ^⌥'E', ⇧'E', ^⇧'E', 'F', ^'F', ⌥'F', ^⌥'F', ⇧'F', ^⇧'F', 'G', ^'G', ⌥'G', ^⌥'G', ⇧'G', ^⇧'G', 'H', ^'H', ⌥'H', ^⌥'H', ⇧'H', ^⇧'H', 'I', ^'I', ⌥'I', ^⌥'I', ⇧'I', ^⇧'I', 'J', ^'J', ⌥'J', ^⌥'J', ⇧'J', ^⇧'J', 'K', ^'K', ⌥'K', ^⌥'K', ⇧'K', ^⇧'K', 'L', ^'L', ⌥'L', ^⌥'L', ⇧'L', ^⇧'L', 'M', ^'M', ⌥'M', ^⌥'M', ⇧'M', ^⇧'M', 'N', ^'N', ⌥'N', ^⌥'N', ⇧'N', ^⇧'N', 'O', ^'O', ⌥'O', ^⌥'O', ⇧'O', ^⇧'O', 'P', ^'P', ⌥'P', ^⌥'P', ⇧'P', ^⇧'P', 'Q', ^'Q', ⌥'Q', ^⌥'Q', ⇧'Q', ^⇧'Q', 'R', ^'R', ⌥'R', ^⌥'R', ⇧'R', ^⇧'R', 'S', ^'S', ⌥'S', ^⌥'S', ⇧'S', ^⇧'S', 'T', ^'T', ⌥'T', ^⌥'T', ⇧'T', ^⇧'T', 'U', ^'U', ⌥'U', ^⌥'U', ⇧'U', ^⇧'U', 'V', ^'V', ⌥'V', ^⌥'V', ⇧'V', ^⇧'V', 'W', ^'W', ⌥'W', ^⌥'W', ⇧'W', ^⇧'W', 'X', ^'X', ⌥'X', ^⌥'X', ⇧'X', ^⇧'X', 'Y', ^'Y', ⌥'Y', ^⌥'Y', ⇧'Y', ^⇧'Y', 'Z', ^'Z', ⌥'Z', ^⌥'Z', ⇧'Z', ^⇧'Z', '[', ^'[', ⌥'[', ^⌥'[', ⇧'[', ^⇧'[', '\\', ^'\\', ⌥'\\', ^⌥'\\', ⇧'\\', ^⇧'\\', ']', ^']', ⌥']', ^⌥']', ⇧']', ^⇧']', '^', ^'^', ⌥'^', ^⌥'^', ⇧'^', ^⇧'^', '_', ^'_', ⌥'_', ^⌥'_', ⇧'_', ^⇧'_', '`', ^'`', ⌥'`', ^⌥'`', ⇧'`', ^⇧'`', 'a', ⌥'a', ^⌥'a', ⇧'a', ^⇧'a', 'b', ^⌥'b', ⇧'b', ^⇧'b', 'c', ^'c', ⌥'c', ^⌥'c', ⇧'c', ^⇧'c', 'd', ^⌥'d', ⇧'d', ^⇧'d', 'e', ⇧'e', ^⇧'e', 'f', ^⌥'f', ⇧'f', ^⇧'f', 'g', ^'g', ⌥'g', ^⌥'g', ⇧'g', ^⇧'g', 'h', ⌥'h', ^⌥'h', ⇧'h', ^⇧'h', 'i', ^'i', ⌥'i', ^⌥'i', ⇧'i', ^⇧'i', 'j', ^'j', ⌥'j', ^⌥'j', ⇧'j', ^⇧'j', 'k', ⌥'k', ^⌥'k', ⇧'k', ^⇧'k', 'l', ⌥'l', ⇧'l', 'm', ^'m', ⌥'m', ^⌥'m', ⇧'m', ^⇧'m', 'n', ⌥'n', ^⌥'n', ⇧'n', ^⇧'n', 'o', ⌥'o', ^⌥'o', ⇧'o', ^⇧'o', 'p', ⌥'p', ^⌥'p', ⇧'p', ^⇧'p', 'q', ^'q', ⌥'q', ^⌥'q', ⇧'q', ^⇧'q', 'r', ^'r', ⌥'r', ^⌥'r', ⇧'r', ^⇧'r', 's', ^'s', ⌥'s', ^⌥'s', ⇧'s', ^⇧'s', 't', ^'t', ⌥'t', ^⌥'t', ⇧'t', ^⇧'t', 'u', ⌥'u', ^⌥'u', ⇧'u', ^⇧'u', 'v', ^'v', ⌥'v', ^⌥'v', ⇧'v', ^⇧'v', 'w', ⌥'w', ^⌥'w', ⇧'w', ^⇧'w', 'x', ^'x', ⌥'x', ^⌥'x', ⇧'x', ^⇧'x', 'y', ⌥'y', ^⌥'y', ⇧'y', ^⇧'y', 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z', '{', ^'{', ⌥'{', ^⌥'{', ⇧'{', ^⇧'{', '|', ^'|', ⌥'|', ^⌥'|', ⇧'|', ^⇧'|', '}', ^'}', ⌥'}', ^⌥'}', ⇧'}', ^⇧'}', '~', ^'~', ⌥'~', ^⌥'~', ⇧'~', ^⇧'~'
+TextMoveCursor { target: SqlModal, direction: End }: End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
+TextMoveCursor { target: SqlModal, direction: Home }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
+footer: 
+border: ╭ SQL Editor ── [SQL] [Plan] ──────────────────────────────────────────────────────────────────────────────────────────────────────╮
+border: ╰ ⌥Enter/F5: Run │ ^L: Clear │ Tab/Enter: Accept │ Esc: Dismiss ───────────────────────────────────────────────────────────────────╯
+help: Alt+Enter / F5: Execute query
+help: Ctrl+L: Clear editor
+help: ↑ / Ctrl+P / ↓ / Ctrl+N: Select completion
+help: Tab / Enter: Accept completion
+help: Esc: Dismiss completion
+help: Home / End: Line start/end
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+## SqlModal Plan
+CloseModal(SqlModal): Esc, ⇧Esc
+ExplainRequest: ^'e'
+Scroll { target: ExplainPlan, direction: Down, amount: Line }: 'j', ^'n', Down
+Scroll { target: ExplainPlan, direction: Up, amount: Line }: 'k', ^'p', Up
+SqlModalNextTab: Tab
+SqlModalPrevTab: BackTab, ⇧BackTab
+SqlModalYank: 'y', ⇧'y'
+footer: 
+border: ╭ SQL Editor ── [SQL] [Plan] ──────────────────────────────────────────────────────────────────────────────────────────────────────╮
+border: ╰ y: Yank │ Tab/⇧Tab: Switch │ Esc: Close ─────────────────────────────────────────────────────────────────────────────────────────╯
+help: Ctrl+E: Run EXPLAIN on current query
+help: y: Copy to clipboard
+help: Tab / Shift+Tab: Switch tab
+help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Scroll plan text
+help: Esc: Close editor
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## SqlModal Compare
+BeginKeySequence(G): 'g'
+CloseModal(SqlModal): Esc, ⇧Esc
+ExplainRequest: ^'e'
+OpenModal(QueryHistoryPicker): ^'o'
+SqlModalAppendInsert: 'A', ⇧'A'
+SqlModalClear: ^'l', ^⌥'l', ^⇧'l'
+SqlModalEnterInsert: 'i', ⇧'i'
+SqlModalNextTab: Tab
+SqlModalPrevTab: BackTab, ⇧BackTab
+SqlModalSubmit: ⌥Enter, ^⌥Enter, F(5)
+SqlModalYank: 'y', ⇧'y'
+TextMoveCursor { target: SqlModal, direction: Down }: 'j', ^'n', Down, ^Down, ⌥Down, ^⌥Down, ⇧Down, ^⇧Down
+TextMoveCursor { target: SqlModal, direction: End }: End
+TextMoveCursor { target: SqlModal, direction: Home }: Home
+TextMoveCursor { target: SqlModal, direction: LastLine }: 'G'
+TextMoveCursor { target: SqlModal, direction: Left }: 'h', Left, ^Left, ⌥Left, ^⌥Left, ⇧Left, ^⇧Left
+TextMoveCursor { target: SqlModal, direction: LineEnd }: '$'
+TextMoveCursor { target: SqlModal, direction: LineStart }: '0'
+TextMoveCursor { target: SqlModal, direction: Right }: 'l', Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
+TextMoveCursor { target: SqlModal, direction: Up }: 'k', ^'p', Up, ^Up, ⌥Up, ^⌥Up, ⇧Up, ^⇧Up
+TextMoveCursor { target: SqlModal, direction: ViewportBottom }: 'L'
+TextMoveCursor { target: SqlModal, direction: ViewportMiddle }: 'M'
+TextMoveCursor { target: SqlModal, direction: ViewportTop }: 'H'
+TextMoveCursor { target: SqlModal, direction: WordBackward }: 'b'
+TextMoveCursor { target: SqlModal, direction: WordForward }: 'w'
+footer: 
+border: ╭ SQL Editor ── [SQL] [Plan] ──────────────────────────────────────────────────────────────────────────────────────────────────────╮
+border: ╰ ⌥Enter/F5: Run │ ^E: Explain │ i/A: Insert │ Tab/⇧Tab: Switch │ Esc: Close ──────────────────────────────────────────────────────╯
+help: Alt+Enter / F5: Execute query
+help: Ctrl+E: Run EXPLAIN on current query
+help: y: Copy query to clipboard
+help: i / A: Enter Insert mode / append at line end
+help: Tab / Shift+Tab: Switch tab
+help: Ctrl+L: Clear editor
+help: Ctrl+O: Open Query History
+help: h / l / ← / →: Move cursor left / right
+help: j / k / ↓ / ↑ / Ctrl+N / Ctrl+P: Move cursor down / up
+help: 0 / $ / w / b / Home / End: Move by word or line boundary
+help: gg / G / H / M / L: Jump by buffer or viewport
+help: Esc: Close editor
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## SqlModal confirm high
+SqlModalCancelConfirm: Esc, ^Esc, ⌥Esc, ^⌥Esc, ⇧Esc, ^⇧Esc
+SqlModalConfirmExecute: Enter, ⇧Enter
+TextBackspace { target: SqlModalHighRisk }: ^'h', Backspace, ⇧Backspace
+TextDelete { target: SqlModalHighRisk }: ^'d', Delete, ⇧Delete
+TextInput { target: SqlModalHighRisk }: ' ', ⌥' ', ^⌥' ', ⇧' ', '!', ⌥'!', ^⌥'!', ⇧'!', '"', ⌥'"', ^⌥'"', ⇧'"', '#', ⌥'#', ^⌥'#', ⇧'#', '$', ⌥'$', ^⌥'$', ⇧'$', '%', ⌥'%', ^⌥'%', ⇧'%', '&', ⌥'&', ^⌥'&', ⇧'&', '\'', ⌥'\'', ^⌥'\'', ⇧'\'', '(', ⌥'(', ^⌥'(', ⇧'(', ')', ⌥')', ^⌥')', ⇧')', '*', ⌥'*', ^⌥'*', ⇧'*', '+', ⌥'+', ^⌥'+', ⇧'+', ',', ⌥',', ^⌥',', ⇧',', '-', ⌥'-', ^⌥'-', ⇧'-', '.', ⌥'.', ^⌥'.', ⇧'.', '/', ⌥'/', ^⌥'/', ⇧'/', '0', ⌥'0', ^⌥'0', ⇧'0', '1', ⌥'1', ^⌥'1', ⇧'1', '2', ⌥'2', ^⌥'2', ⇧'2', '3', ⌥'3', ^⌥'3', ⇧'3', '4', ⌥'4', ^⌥'4', ⇧'4', '5', ⌥'5', ^⌥'5', ⇧'5', '6', ⌥'6', ^⌥'6', ⇧'6', '7', ⌥'7', ^⌥'7', ⇧'7', '8', ⌥'8', ^⌥'8', ⇧'8', '9', ⌥'9', ^⌥'9', ⇧'9', ':', ⌥':', ^⌥':', ⇧':', ';', ⌥';', ^⌥';', ⇧';', '<', ⌥'<', ^⌥'<', ⇧'<', '=', ⌥'=', ^⌥'=', ⇧'=', '>', ⌥'>', ^⌥'>', ⇧'>', '?', ⌥'?', ^⌥'?', ⇧'?', '@', ⌥'@', ^⌥'@', ⇧'@', 'A', ⌥'A', ^⌥'A', ⇧'A', 'B', ⌥'B', ^⌥'B', ⇧'B', 'C', ⌥'C', ^⌥'C', ⇧'C', 'D', ⌥'D', ^⌥'D', ⇧'D', 'E', ⌥'E', ^⌥'E', ⇧'E', 'F', ⌥'F', ^⌥'F', ⇧'F', 'G', ⌥'G', ^⌥'G', ⇧'G', 'H', ⌥'H', ^⌥'H', ⇧'H', 'I', ⌥'I', ^⌥'I', ⇧'I', 'J', ⌥'J', ^⌥'J', ⇧'J', 'K', ⌥'K', ^⌥'K', ⇧'K', 'L', ⌥'L', ^⌥'L', ⇧'L', 'M', ⌥'M', ^⌥'M', ⇧'M', 'N', ⌥'N', ^⌥'N', ⇧'N', 'O', ⌥'O', ^⌥'O', ⇧'O', 'P', ⌥'P', ^⌥'P', ⇧'P', 'Q', ⌥'Q', ^⌥'Q', ⇧'Q', 'R', ⌥'R', ^⌥'R', ⇧'R', 'S', ⌥'S', ^⌥'S', ⇧'S', 'T', ⌥'T', ^⌥'T', ⇧'T', 'U', ⌥'U', ^⌥'U', ⇧'U', 'V', ⌥'V', ^⌥'V', ⇧'V', 'W', ⌥'W', ^⌥'W', ⇧'W', 'X', ⌥'X', ^⌥'X', ⇧'X', 'Y', ⌥'Y', ^⌥'Y', ⇧'Y', 'Z', ⌥'Z', ^⌥'Z', ⇧'Z', '[', ⌥'[', ^⌥'[', ⇧'[', '\\', ⌥'\\', ^⌥'\\', ⇧'\\', ']', ⌥']', ^⌥']', ⇧']', '^', ⌥'^', ^⌥'^', ⇧'^', '_', ⌥'_', ^⌥'_', ⇧'_', '`', ⌥'`', ^⌥'`', ⇧'`', 'a', ⌥'a', ^⌥'a', ⇧'a', 'b', ^⌥'b', ⇧'b', 'c', ⌥'c', ^⌥'c', ⇧'c', 'd', ^⌥'d', ⇧'d', 'e', ⌥'e', ^⌥'e', ⇧'e', 'f', ^⌥'f', ⇧'f', 'g', ⌥'g', ^⌥'g', ⇧'g', 'h', ⌥'h', ^⌥'h', ⇧'h', 'i', ⌥'i', ^⌥'i', ⇧'i', 'j', ⌥'j', ^⌥'j', ⇧'j', 'k', ⌥'k', ^⌥'k', ⇧'k', 'l', ⌥'l', ^⌥'l', ⇧'l', 'm', ⌥'m', ^⌥'m', ⇧'m', 'n', ⌥'n', ^⌥'n', ⇧'n', 'o', ⌥'o', ^⌥'o', ⇧'o', 'p', ⌥'p', ^⌥'p', ⇧'p', 'q', ⌥'q', ^⌥'q', ⇧'q', 'r', ⌥'r', ^⌥'r', ⇧'r', 's', ⌥'s', ^⌥'s', ⇧'s', 't', ⌥'t', ^⌥'t', ⇧'t', 'u', ⌥'u', ^⌥'u', ⇧'u', 'v', ⌥'v', ^⌥'v', ⇧'v', 'w', ⌥'w', ^⌥'w', ⇧'w', 'x', ⌥'x', ^⌥'x', ⇧'x', 'y', ⌥'y', ^⌥'y', ⇧'y', 'z', ⌥'z', ^⌥'z', ⇧'z', '{', ⌥'{', ^⌥'{', ⇧'{', '|', ⌥'|', ^⌥'|', ⇧'|', '}', ⌥'}', ^⌥'}', ⇧'}', '~', ⌥'~', ^⌥'~', ⇧'~'
+TextKill { target: SqlModalHighRisk, direction: ReadlinePreviousWhitespace }: ^'w'
+TextKill { target: SqlModalHighRisk, direction: ReadlineWordEnd }: ⌥'d'
+TextKill { target: SqlModalHighRisk, direction: ToLineEnd }: ^'k'
+TextKill { target: SqlModalHighRisk, direction: ToLineStart }: ^'u'
+TextMoveCursor { target: SqlModalHighRisk, direction: End }: End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
+TextMoveCursor { target: SqlModalHighRisk, direction: Home }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
+TextMoveCursor { target: SqlModalHighRisk, direction: Left }: ^'b', Left, ^Left, ⌥Left, ^⌥Left, ⇧Left, ^⇧Left
+TextMoveCursor { target: SqlModalHighRisk, direction: LineEnd }: ^'e'
+TextMoveCursor { target: SqlModalHighRisk, direction: LineStart }: ^'a'
+TextMoveCursor { target: SqlModalHighRisk, direction: ReadlineWordEnd }: ⌥'f'
+TextMoveCursor { target: SqlModalHighRisk, direction: ReadlineWordStart }: ⌥'b'
+TextMoveCursor { target: SqlModalHighRisk, direction: Right }: ^'f', Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
+TextYank { target: SqlModalHighRisk }: ^'y'
+footer: 
+border: ╭ SQL ── ⚠ HIGH ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+border: ╰ Esc: Back ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+help: Enter: Execute the confirmed statement
+help: Esc: Cancel and return to editor
+help: type: Type confirmation name
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## SqlModal confirm analyze high
+footer: 
+border: ╭ SQL Editor ── [SQL] [Plan] ──────────────────────────────────────────────────────────────────────────────────────────────────────╮
+border: ╰  ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## SqlModal confirm risk
+SqlModalCancelConfirm: Esc, ^Esc, ⌥Esc, ^⌥Esc, ⇧Esc, ^⇧Esc
+SqlModalConfirmExecute: Enter, ⇧Enter
+footer: 
+border: ╭ SQL ── ⚠ UNKNOWN RISK ───────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+border: ╰ Enter: Execute │ Esc: Back ──────────────────────────────────────────────────────────────────────────────────────────────────────╯
+help: Enter: Execute the confirmed statement
+help: Esc: Cancel and return to editor
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## SqlModal confirm analyze risk
+footer: 
+border: ╭ SQL Editor ── [SQL] [Plan] ──────────────────────────────────────────────────────────────────────────────────────────────────────╮
+border: ╰  ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## JsonDetail search
+DetailSearch { target: JsonDetail, step: Exit }: Esc
+footer: 
+help: Esc: Cancel search
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## Help filter
+ExitHelpFilter: Esc
+TextBackspace { target: HelpFilter }: ^'h', Backspace
+TextDelete { target: HelpFilter }: ^'d', Delete
+TextInput { target: HelpFilter }: ' ', ⌥' ', ^⌥' ', ⇧' ', '!', ⌥'!', ^⌥'!', ⇧'!', '"', ⌥'"', ^⌥'"', ⇧'"', '#', ⌥'#', ^⌥'#', ⇧'#', '$', ⌥'$', ^⌥'$', ⇧'$', '%', ⌥'%', ^⌥'%', ⇧'%', '&', ⌥'&', ^⌥'&', ⇧'&', '\'', ⌥'\'', ^⌥'\'', ⇧'\'', '(', ⌥'(', ^⌥'(', ⇧'(', ')', ⌥')', ^⌥')', ⇧')', '*', ⌥'*', ^⌥'*', ⇧'*', '+', ⌥'+', ^⌥'+', ⇧'+', ',', ⌥',', ^⌥',', ⇧',', '-', ⌥'-', ^⌥'-', ⇧'-', '.', ⌥'.', ^⌥'.', ⇧'.', '/', ⌥'/', ^⌥'/', ⇧'/', '0', ⌥'0', ^⌥'0', ⇧'0', '1', ⌥'1', ^⌥'1', ⇧'1', '2', ⌥'2', ^⌥'2', ⇧'2', '3', ⌥'3', ^⌥'3', ⇧'3', '4', ⌥'4', ^⌥'4', ⇧'4', '5', ⌥'5', ^⌥'5', ⇧'5', '6', ⌥'6', ^⌥'6', ⇧'6', '7', ⌥'7', ^⌥'7', ⇧'7', '8', ⌥'8', ^⌥'8', ⇧'8', '9', ⌥'9', ^⌥'9', ⇧'9', ':', ⌥':', ^⌥':', ⇧':', ';', ⌥';', ^⌥';', ⇧';', '<', ⌥'<', ^⌥'<', ⇧'<', '=', ⌥'=', ^⌥'=', ⇧'=', '>', ⌥'>', ^⌥'>', ⇧'>', '?', ⌥'?', ^⌥'?', ⇧'?', '@', ⌥'@', ^⌥'@', ⇧'@', 'A', ⌥'A', ^⌥'A', ⇧'A', 'B', ⌥'B', ^⌥'B', ⇧'B', 'C', ⌥'C', ^⌥'C', ⇧'C', 'D', ⌥'D', ^⌥'D', ⇧'D', 'E', ⌥'E', ^⌥'E', ⇧'E', 'F', ⌥'F', ^⌥'F', ⇧'F', 'G', ⌥'G', ^⌥'G', ⇧'G', 'H', ⌥'H', ^⌥'H', ⇧'H', 'I', ⌥'I', ^⌥'I', ⇧'I', 'J', ⌥'J', ^⌥'J', ⇧'J', 'K', ⌥'K', ^⌥'K', ⇧'K', 'L', ⌥'L', ^⌥'L', ⇧'L', 'M', ⌥'M', ^⌥'M', ⇧'M', 'N', ⌥'N', ^⌥'N', ⇧'N', 'O', ⌥'O', ^⌥'O', ⇧'O', 'P', ⌥'P', ^⌥'P', ⇧'P', 'Q', ⌥'Q', ^⌥'Q', ⇧'Q', 'R', ⌥'R', ^⌥'R', ⇧'R', 'S', ⌥'S', ^⌥'S', ⇧'S', 'T', ⌥'T', ^⌥'T', ⇧'T', 'U', ⌥'U', ^⌥'U', ⇧'U', 'V', ⌥'V', ^⌥'V', ⇧'V', 'W', ⌥'W', ^⌥'W', ⇧'W', 'X', ⌥'X', ^⌥'X', ⇧'X', 'Y', ⌥'Y', ^⌥'Y', ⇧'Y', 'Z', ⌥'Z', ^⌥'Z', ⇧'Z', '[', ⌥'[', ^⌥'[', ⇧'[', '\\', ⌥'\\', ^⌥'\\', ⇧'\\', ']', ⌥']', ^⌥']', ⇧']', '^', ⌥'^', ^⌥'^', ⇧'^', '_', ⌥'_', ^⌥'_', ⇧'_', '`', ⌥'`', ^⌥'`', ⇧'`', 'a', ⌥'a', ^⌥'a', ⇧'a', 'b', ^⌥'b', ⇧'b', 'c', ⌥'c', ^⌥'c', ⇧'c', 'd', ^⌥'d', ⇧'d', 'e', ⌥'e', ^⌥'e', ⇧'e', 'f', ^⌥'f', ⇧'f', 'g', ⌥'g', ^⌥'g', ⇧'g', 'h', ⌥'h', ^⌥'h', ⇧'h', 'i', ⌥'i', ^⌥'i', ⇧'i', 'j', ⌥'j', ^⌥'j', ⇧'j', 'k', ⌥'k', ^⌥'k', ⇧'k', 'l', ⌥'l', ^⌥'l', ⇧'l', 'm', ⌥'m', ^⌥'m', ⇧'m', 'n', ⌥'n', ^⌥'n', ⇧'n', 'o', ⌥'o', ^⌥'o', ⇧'o', 'p', ⌥'p', ^⌥'p', ⇧'p', 'q', ⌥'q', ^⌥'q', ⇧'q', 'r', ⌥'r', ^⌥'r', ⇧'r', 's', ⌥'s', ^⌥'s', ⇧'s', 't', ⌥'t', ^⌥'t', ⇧'t', 'u', ⌥'u', ^⌥'u', ⇧'u', 'v', ⌥'v', ^⌥'v', ⇧'v', 'w', ⌥'w', ^⌥'w', ⇧'w', 'x', ⌥'x', ^⌥'x', ⇧'x', 'y', ⌥'y', ^⌥'y', ⇧'y', 'z', ⌥'z', ^⌥'z', ⇧'z', '{', ⌥'{', ^⌥'{', ⇧'{', '|', ⌥'|', ^⌥'|', ⇧'|', '}', ⌥'}', ^⌥'}', ⇧'}', '~', ⌥'~', ^⌥'~', ⇧'~'
+TextKill { target: HelpFilter, direction: ReadlinePreviousWhitespace }: ^'w'
+TextKill { target: HelpFilter, direction: ReadlineWordEnd }: ⌥'d'
+TextKill { target: HelpFilter, direction: ToLineEnd }: ^'k'
+TextKill { target: HelpFilter, direction: ToLineStart }: ^'u'
+TextMoveCursor { target: HelpFilter, direction: End }: End
+TextMoveCursor { target: HelpFilter, direction: Home }: Home
+TextMoveCursor { target: HelpFilter, direction: Left }: ^'b', Left
+TextMoveCursor { target: HelpFilter, direction: LineEnd }: ^'e'
+TextMoveCursor { target: HelpFilter, direction: LineStart }: ^'a'
+TextMoveCursor { target: HelpFilter, direction: ReadlineWordEnd }: ⌥'f'
+TextMoveCursor { target: HelpFilter, direction: ReadlineWordStart }: ⌥'b'
+TextMoveCursor { target: HelpFilter, direction: Right }: ^'f', Right
+TextYank { target: HelpFilter }: ^'y'
+footer: 
+border: ╭ Help ───────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+border: ╰ Esc: Browse ────────────────────────────────────────────────────────────────────────────────────────────────────╯
+help: Esc: Return to help browsing
+help: type: Filter help
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## Settings browser
+SettingsApply: Enter, ^Enter, ⌥Enter, ^⌥Enter, ⇧Enter, ^⇧Enter
+SettingsStopCustomBrowserEdit: Esc, ^Esc, ⌥Esc, ^⌥Esc, ⇧Esc, ^⇧Esc
+TextBackspace { target: SettingsErBrowser }: ^'h', Backspace, ^Backspace, ⌥Backspace, ^⌥Backspace, ⇧Backspace, ^⇧Backspace
+TextDelete { target: SettingsErBrowser }: ^'d', Delete, ^Delete, ⌥Delete, ^⌥Delete, ⇧Delete, ^⇧Delete
+TextInput { target: SettingsErBrowser }: ' ', ⌥' ', ^⌥' ', ⇧' ', '!', ⌥'!', ^⌥'!', ⇧'!', '"', ⌥'"', ^⌥'"', ⇧'"', '#', ⌥'#', ^⌥'#', ⇧'#', '$', ⌥'$', ^⌥'$', ⇧'$', '%', ⌥'%', ^⌥'%', ⇧'%', '&', ⌥'&', ^⌥'&', ⇧'&', '\'', ⌥'\'', ^⌥'\'', ⇧'\'', '(', ⌥'(', ^⌥'(', ⇧'(', ')', ⌥')', ^⌥')', ⇧')', '*', ⌥'*', ^⌥'*', ⇧'*', '+', ⌥'+', ^⌥'+', ⇧'+', ',', ⌥',', ^⌥',', ⇧',', '-', ⌥'-', ^⌥'-', ⇧'-', '.', ⌥'.', ^⌥'.', ⇧'.', '/', ⌥'/', ^⌥'/', ⇧'/', '0', ⌥'0', ^⌥'0', ⇧'0', '1', ⌥'1', ^⌥'1', ⇧'1', '2', ⌥'2', ^⌥'2', ⇧'2', '3', ⌥'3', ^⌥'3', ⇧'3', '4', ⌥'4', ^⌥'4', ⇧'4', '5', ⌥'5', ^⌥'5', ⇧'5', '6', ⌥'6', ^⌥'6', ⇧'6', '7', ⌥'7', ^⌥'7', ⇧'7', '8', ⌥'8', ^⌥'8', ⇧'8', '9', ⌥'9', ^⌥'9', ⇧'9', ':', ⌥':', ^⌥':', ⇧':', ';', ⌥';', ^⌥';', ⇧';', '<', ⌥'<', ^⌥'<', ⇧'<', '=', ⌥'=', ^⌥'=', ⇧'=', '>', ⌥'>', ^⌥'>', ⇧'>', '?', ⌥'?', ^⌥'?', ⇧'?', '@', ⌥'@', ^⌥'@', ⇧'@', 'A', ⌥'A', ^⌥'A', ⇧'A', 'B', ⌥'B', ^⌥'B', ⇧'B', 'C', ⌥'C', ^⌥'C', ⇧'C', 'D', ⌥'D', ^⌥'D', ⇧'D', 'E', ⌥'E', ^⌥'E', ⇧'E', 'F', ⌥'F', ^⌥'F', ⇧'F', 'G', ⌥'G', ^⌥'G', ⇧'G', 'H', ⌥'H', ^⌥'H', ⇧'H', 'I', ⌥'I', ^⌥'I', ⇧'I', 'J', ⌥'J', ^⌥'J', ⇧'J', 'K', ⌥'K', ^⌥'K', ⇧'K', 'L', ⌥'L', ^⌥'L', ⇧'L', 'M', ⌥'M', ^⌥'M', ⇧'M', 'N', ⌥'N', ^⌥'N', ⇧'N', 'O', ⌥'O', ^⌥'O', ⇧'O', 'P', ⌥'P', ^⌥'P', ⇧'P', 'Q', ⌥'Q', ^⌥'Q', ⇧'Q', 'R', ⌥'R', ^⌥'R', ⇧'R', 'S', ⌥'S', ^⌥'S', ⇧'S', 'T', ⌥'T', ^⌥'T', ⇧'T', 'U', ⌥'U', ^⌥'U', ⇧'U', 'V', ⌥'V', ^⌥'V', ⇧'V', 'W', ⌥'W', ^⌥'W', ⇧'W', 'X', ⌥'X', ^⌥'X', ⇧'X', 'Y', ⌥'Y', ^⌥'Y', ⇧'Y', 'Z', ⌥'Z', ^⌥'Z', ⇧'Z', '[', ⌥'[', ^⌥'[', ⇧'[', '\\', ⌥'\\', ^⌥'\\', ⇧'\\', ']', ⌥']', ^⌥']', ⇧']', '^', ⌥'^', ^⌥'^', ⇧'^', '_', ⌥'_', ^⌥'_', ⇧'_', '`', ⌥'`', ^⌥'`', ⇧'`', 'a', ⌥'a', ^⌥'a', ⇧'a', 'b', ^⌥'b', ⇧'b', 'c', ⌥'c', ^⌥'c', ⇧'c', 'd', ^⌥'d', ⇧'d', 'e', ⌥'e', ^⌥'e', ⇧'e', 'f', ^⌥'f', ⇧'f', 'g', ⌥'g', ^⌥'g', ⇧'g', 'h', ⌥'h', ^⌥'h', ⇧'h', 'i', ⌥'i', ^⌥'i', ⇧'i', 'j', ⌥'j', ^⌥'j', ⇧'j', 'k', ⌥'k', ^⌥'k', ⇧'k', 'l', ⌥'l', ^⌥'l', ⇧'l', 'm', ⌥'m', ^⌥'m', ⇧'m', 'n', ⌥'n', ^⌥'n', ⇧'n', 'o', ⌥'o', ^⌥'o', ⇧'o', 'p', ⌥'p', ^⌥'p', ⇧'p', 'q', ⌥'q', ^⌥'q', ⇧'q', 'r', ⌥'r', ^⌥'r', ⇧'r', 's', ⌥'s', ^⌥'s', ⇧'s', 't', ⌥'t', ^⌥'t', ⇧'t', 'u', ⌥'u', ^⌥'u', ⇧'u', 'v', ⌥'v', ^⌥'v', ⇧'v', 'w', ⌥'w', ^⌥'w', ⇧'w', 'x', ⌥'x', ^⌥'x', ⇧'x', 'y', ⌥'y', ^⌥'y', ⇧'y', 'z', ⌥'z', ^⌥'z', ⇧'z', '{', ⌥'{', ^⌥'{', ⇧'{', '|', ⌥'|', ^⌥'|', ⇧'|', '}', ⌥'}', ^⌥'}', ⇧'}', '~', ⌥'~', ^⌥'~', ⇧'~'
+TextKill { target: SettingsErBrowser, direction: ReadlinePreviousWhitespace }: ^'w'
+TextKill { target: SettingsErBrowser, direction: ReadlineWordEnd }: ⌥'d'
+TextKill { target: SettingsErBrowser, direction: ToLineEnd }: ^'k'
+TextKill { target: SettingsErBrowser, direction: ToLineStart }: ^'u'
+TextMoveCursor { target: SettingsErBrowser, direction: End }: End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
+TextMoveCursor { target: SettingsErBrowser, direction: Home }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
+TextMoveCursor { target: SettingsErBrowser, direction: Left }: ^'b', Left, ^Left, ⌥Left, ^⌥Left, ⇧Left, ^⇧Left
+TextMoveCursor { target: SettingsErBrowser, direction: LineEnd }: ^'e'
+TextMoveCursor { target: SettingsErBrowser, direction: LineStart }: ^'a'
+TextMoveCursor { target: SettingsErBrowser, direction: ReadlineWordEnd }: ⌥'f'
+TextMoveCursor { target: SettingsErBrowser, direction: ReadlineWordStart }: ⌥'b'
+TextMoveCursor { target: SettingsErBrowser, direction: Right }: ^'f', Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
+TextYank { target: SettingsErBrowser }: ^'y'
+footer: 
+border: ╭ Settings ───────────────────────────────────────────────────────────────────────────────────────╮
+border: ╰ Enter: Apply │ Esc: Done │ type: Browser ───────────────────────────────────────────────────────╯
+help: Enter: Apply setting
+help: Esc: Finish editing
+help: type: Edit custom browser
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)
+## CellDetail search
+DetailSearch { target: CellDetail, step: Exit }: Esc
+DetailSearch { target: CellDetail, step: Submit }: Enter
+TextBackspace { target: CellDetailSearch }: ^'h', Backspace, ⇧Backspace
+TextDelete { target: CellDetailSearch }: ^'d', Delete, ⇧Delete
+TextInput { target: CellDetailSearch }: ' ', ⌥' ', ^⌥' ', ⇧' ', '!', ⌥'!', ^⌥'!', ⇧'!', '"', ⌥'"', ^⌥'"', ⇧'"', '#', ⌥'#', ^⌥'#', ⇧'#', '$', ⌥'$', ^⌥'$', ⇧'$', '%', ⌥'%', ^⌥'%', ⇧'%', '&', ⌥'&', ^⌥'&', ⇧'&', '\'', ⌥'\'', ^⌥'\'', ⇧'\'', '(', ⌥'(', ^⌥'(', ⇧'(', ')', ⌥')', ^⌥')', ⇧')', '*', ⌥'*', ^⌥'*', ⇧'*', '+', ⌥'+', ^⌥'+', ⇧'+', ',', ⌥',', ^⌥',', ⇧',', '-', ⌥'-', ^⌥'-', ⇧'-', '.', ⌥'.', ^⌥'.', ⇧'.', '/', ⌥'/', ^⌥'/', ⇧'/', '0', ⌥'0', ^⌥'0', ⇧'0', '1', ⌥'1', ^⌥'1', ⇧'1', '2', ⌥'2', ^⌥'2', ⇧'2', '3', ⌥'3', ^⌥'3', ⇧'3', '4', ⌥'4', ^⌥'4', ⇧'4', '5', ⌥'5', ^⌥'5', ⇧'5', '6', ⌥'6', ^⌥'6', ⇧'6', '7', ⌥'7', ^⌥'7', ⇧'7', '8', ⌥'8', ^⌥'8', ⇧'8', '9', ⌥'9', ^⌥'9', ⇧'9', ':', ⌥':', ^⌥':', ⇧':', ';', ⌥';', ^⌥';', ⇧';', '<', ⌥'<', ^⌥'<', ⇧'<', '=', ⌥'=', ^⌥'=', ⇧'=', '>', ⌥'>', ^⌥'>', ⇧'>', '?', ⌥'?', ^⌥'?', ⇧'?', '@', ⌥'@', ^⌥'@', ⇧'@', 'A', ⌥'A', ^⌥'A', ⇧'A', 'B', ⌥'B', ^⌥'B', ⇧'B', 'C', ⌥'C', ^⌥'C', ⇧'C', 'D', ⌥'D', ^⌥'D', ⇧'D', 'E', ⌥'E', ^⌥'E', ⇧'E', 'F', ⌥'F', ^⌥'F', ⇧'F', 'G', ⌥'G', ^⌥'G', ⇧'G', 'H', ⌥'H', ^⌥'H', ⇧'H', 'I', ⌥'I', ^⌥'I', ⇧'I', 'J', ⌥'J', ^⌥'J', ⇧'J', 'K', ⌥'K', ^⌥'K', ⇧'K', 'L', ⌥'L', ^⌥'L', ⇧'L', 'M', ⌥'M', ^⌥'M', ⇧'M', 'N', ⌥'N', ^⌥'N', ⇧'N', 'O', ⌥'O', ^⌥'O', ⇧'O', 'P', ⌥'P', ^⌥'P', ⇧'P', 'Q', ⌥'Q', ^⌥'Q', ⇧'Q', 'R', ⌥'R', ^⌥'R', ⇧'R', 'S', ⌥'S', ^⌥'S', ⇧'S', 'T', ⌥'T', ^⌥'T', ⇧'T', 'U', ⌥'U', ^⌥'U', ⇧'U', 'V', ⌥'V', ^⌥'V', ⇧'V', 'W', ⌥'W', ^⌥'W', ⇧'W', 'X', ⌥'X', ^⌥'X', ⇧'X', 'Y', ⌥'Y', ^⌥'Y', ⇧'Y', 'Z', ⌥'Z', ^⌥'Z', ⇧'Z', '[', ⌥'[', ^⌥'[', ⇧'[', '\\', ⌥'\\', ^⌥'\\', ⇧'\\', ']', ⌥']', ^⌥']', ⇧']', '^', ⌥'^', ^⌥'^', ⇧'^', '_', ⌥'_', ^⌥'_', ⇧'_', '`', ⌥'`', ^⌥'`', ⇧'`', 'a', ⌥'a', ^⌥'a', ⇧'a', 'b', ^⌥'b', ⇧'b', 'c', ⌥'c', ^⌥'c', ⇧'c', 'd', ^⌥'d', ⇧'d', 'e', ⌥'e', ^⌥'e', ⇧'e', 'f', ^⌥'f', ⇧'f', 'g', ⌥'g', ^⌥'g', ⇧'g', 'h', ⌥'h', ^⌥'h', ⇧'h', 'i', ⌥'i', ^⌥'i', ⇧'i', 'j', ⌥'j', ^⌥'j', ⇧'j', 'k', ⌥'k', ^⌥'k', ⇧'k', 'l', ⌥'l', ^⌥'l', ⇧'l', 'm', ⌥'m', ^⌥'m', ⇧'m', 'n', ⌥'n', ^⌥'n', ⇧'n', 'o', ⌥'o', ^⌥'o', ⇧'o', 'p', ⌥'p', ^⌥'p', ⇧'p', 'q', ⌥'q', ^⌥'q', ⇧'q', 'r', ⌥'r', ^⌥'r', ⇧'r', 's', ⌥'s', ^⌥'s', ⇧'s', 't', ⌥'t', ^⌥'t', ⇧'t', 'u', ⌥'u', ^⌥'u', ⇧'u', 'v', ⌥'v', ^⌥'v', ⇧'v', 'w', ⌥'w', ^⌥'w', ⇧'w', 'x', ⌥'x', ^⌥'x', ⇧'x', 'y', ⌥'y', ^⌥'y', ⇧'y', 'z', ⌥'z', ^⌥'z', ⇧'z', '{', ⌥'{', ^⌥'{', ⇧'{', '|', ⌥'|', ^⌥'|', ⇧'|', '}', ⌥'}', ^⌥'}', ⇧'}', '~', ⌥'~', ^⌥'~', ⇧'~'
+TextKill { target: CellDetailSearch, direction: ReadlinePreviousWhitespace }: ^'w'
+TextKill { target: CellDetailSearch, direction: ReadlineWordEnd }: ⌥'d'
+TextKill { target: CellDetailSearch, direction: ToLineEnd }: ^'k'
+TextKill { target: CellDetailSearch, direction: ToLineStart }: ^'u'
+TextMoveCursor { target: CellDetailSearch, direction: End }: End, ⇧End
+TextMoveCursor { target: CellDetailSearch, direction: Home }: Home, ⇧Home
+TextMoveCursor { target: CellDetailSearch, direction: Left }: ^'b', Left, ⇧Left
+TextMoveCursor { target: CellDetailSearch, direction: LineEnd }: ^'e'
+TextMoveCursor { target: CellDetailSearch, direction: LineStart }: ^'a'
+TextMoveCursor { target: CellDetailSearch, direction: ReadlineWordEnd }: ⌥'f'
+TextMoveCursor { target: CellDetailSearch, direction: ReadlineWordStart }: ⌥'b'
+TextMoveCursor { target: CellDetailSearch, direction: Right }: ^'f', Right, ⇧Right
+TextYank { target: CellDetailSearch }: ^'y'
+footer: type:Search
+help: Enter: Confirm search
+help: Esc: Cancel search
+help: type: Type to search
+palette: q: Quit application => Quit
+palette: ?: Toggle help => ToggleHelp
+palette: Ctrl+P: Open Table Picker => OpenModal(TablePicker)
+palette: ,: Open Settings => OpenModal(Settings)
+palette: f: Toggle Focus mode => ToggleFocus
+palette: r: Reload metadata => ReloadMetadata
+palette: s: Open SQL Editor => OpenModal(SqlModal)
+palette: c: Open Connection Selector => OpenModal(ConnectionSelector)
+palette: Ctrl+Shift+D: Open SQLite Diagnostics => OpenModal(SqliteDiagnostics)
+palette: Ctrl+R: Enable Read-Only mode => ToggleReadOnly
+palette: Ctrl+O: Open Query History => OpenModal(QueryHistoryPicker)

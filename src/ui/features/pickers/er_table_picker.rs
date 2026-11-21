@@ -7,7 +7,7 @@ use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::render_output::PickerLayout;
 use crate::app::policy::table_kind::{table_display_name, table_key_display_name};
-use crate::app::update::input::keybindings;
+use crate::app::update::input::keymap::{HintSurface, KeyContext, Picker, picker_hints};
 use crate::domain::er::er_output_filename;
 use crate::primitives::atoms::Icon;
 use crate::primitives::molecules::{FooterHintBar, render_filter_input_line, render_modal};
@@ -58,9 +58,6 @@ impl ErTablePicker {
             let selected_vec: Vec<String> = state.ui.er_selected_tables().iter().cloned().collect();
             er_output_filename(&selected_vec, total_count)
         };
-        let select_all_hint =
-            keybindings::er_picker_select_all(state.settings.saved_keymap_preset()).as_hint();
-
         let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(60),
@@ -68,12 +65,13 @@ impl ErTablePicker {
             " ER Diagram ",
             FooterHintBar::with_prefix(
                 format!("{selected_count}/{total_count} selected"),
-                [
-                    keybindings::er_picker::SELECT.as_hint(),
-                    select_all_hint,
-                    keybindings::er_picker::ENTER_GENERATE.as_hint(),
-                    keybindings::er_picker::ESC_CLOSE.as_hint(),
-                ],
+                picker_hints(
+                    Picker::Er,
+                    HintSurface::Border,
+                    &KeyContext::from_state(state),
+                )
+                .into_iter()
+                .map(|hint| (hint.key, hint.short)),
             ),
             theme,
         );

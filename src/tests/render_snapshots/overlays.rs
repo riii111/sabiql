@@ -2,9 +2,9 @@ use super::*;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use sabiql_app::model::app_state::AppState;
-use sabiql_app::model::shared::help::HelpOrigin;
 use sabiql_app::model::shared::settings::KeymapPreset;
 use sabiql_app::policy::write::sql_risk::AcknowledgeReason;
+use sabiql_app::update::input::keymap::KeyContext;
 use sabiql_domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 use sabiql_domain::{
     ConnectionId, DatabaseDiagnostic, DiagnosticField, DiagnosticLevel, QueryResult,
@@ -15,6 +15,28 @@ const POSTGRES_SEQ_SCAN_PLAN: &str =
     "Seq Scan on users  (cost=0.00..1000.00 rows=2550 width=36)\n  Filter: (id > 10)";
 const POSTGRES_INDEX_SCAN_PLAN: &str = "Index Scan using idx_users_id on users  (cost=0.28..8.30 rows=1 width=36)\n  Index Cond: (id > 10)";
 const POSTGRES_PLAN_QUERY: &str = "SELECT * FROM users WHERE id > 10";
+
+#[test]
+fn empty_sql_editor_does_not_advertise_insert_during_key_sequence() {
+    use sabiql_app::ports::inbound::{InputEvent, Key, KeyCombo};
+    use sabiql_app::update::action::Action;
+    use sabiql_app::update::input::handle_event;
+    use sabiql_app::update::reducer::reduce;
+
+    let mut state = postgres_connected_state();
+    state.modal.set_mode(InputMode::SqlModal);
+    let g = handle_event(InputEvent::Key(KeyCombo::plain(Key::Char('g'))), &state);
+    assert!(matches!(g, Action::BeginKeySequence(_)));
+    reduce(&mut state, g, test_instant(), &AppServices::stub());
+    let mut terminal = create_test_terminal();
+    let output = render_to_string(&mut terminal, &mut state);
+    assert!(!output.contains("Press i"));
+    assert!(!output.contains("i/A:Insert"));
+    assert!(matches!(
+        handle_event(InputEvent::Key(KeyCombo::plain(Key::Char('i'))), &state),
+        Action::CancelKeySequence
+    ));
+}
 
 fn baseline_sqlite_diagnostics_snapshot() -> SqliteDiagnosticsSnapshot {
     SqliteDiagnosticsSnapshot {
@@ -489,7 +511,7 @@ fn help_overlay_filtered_current_result() {
 
     state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 0);
-    let origin = HelpOrigin::from_state(&state);
+    let origin = KeyContext::from_state(&state);
     state.ui.help_mut().open(origin);
     for ch in "copy".chars() {
         state.ui.help_mut().insert_filter_char(ch);
@@ -536,7 +558,7 @@ fn command_palette_overlay() {
     let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
-    state.modal.set_mode(InputMode::CommandPalette);
+    harness::open_command_palette(&mut state);
 
     let output = render_to_string(&mut terminal, &mut state);
 

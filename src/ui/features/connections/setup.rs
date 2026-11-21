@@ -8,7 +8,7 @@ use crate::app::model::connection::setup::{
 };
 use crate::app::policy::mask_password;
 use crate::app::services::AppServices;
-use crate::app::update::input::keybindings::{connection_setup, connection_setup_save};
+use crate::app::update::input::keymap::{HintSurface, KeyContext, connection_setup_hints};
 use crate::domain::connection::{
     ConnectionId, ConnectionProfile, DatabaseType, MySqlSslMode, MySqlTransport, SslMode,
 };
@@ -71,16 +71,16 @@ impl ConnectionSetup {
             + notice_height
             - 1;
 
-        let (title, submit_desc) = if form_state.is_edit_mode() {
-            (" Edit Connection ", "Save")
+        let title = if form_state.is_edit_mode() {
+            " Edit Connection "
         } else {
-            (" New Connection ", "Connect")
+            " New Connection "
         };
-        let submit_hints = Self::submit_hints(state, form_state, submit_desc);
-        let mut footer_hints = vec![connection_setup::TAB_NAV.as_hint()];
-        footer_hints.extend(submit_hints);
-        footer_hints.push(("Esc", "Cancel"));
-        let footer = FooterHintBar::new(footer_hints);
+        let footer = FooterHintBar::new(
+            connection_setup_hints(HintSurface::Border, &KeyContext::from_state(state))
+                .into_iter()
+                .map(|hint| (hint.key, hint.short)),
+        );
 
         let (_, modal_inner) = render_modal(
             frame,
@@ -257,30 +257,6 @@ impl ConnectionSetup {
             .copied();
         debug_assert!(area.is_some(), "open dropdown field must be visible");
         area
-    }
-
-    fn submit_hints(
-        state: &AppState,
-        form_state: &ConnectionSetupState,
-        submit_desc: &'static str,
-    ) -> Vec<(&'static str, &'static str)> {
-        if matches!(
-            form_state.focused_field(),
-            ConnectionField::DatabaseType
-                | ConnectionField::Transport
-                | ConnectionField::SslMode
-                | ConnectionField::CleartextAuth
-        ) {
-            vec![
-                connection_setup::ENTER_DROPDOWN.as_hint(),
-                (connection_setup::SAVE.key_short, submit_desc),
-            ]
-        } else {
-            vec![(
-                connection_setup_save(state.settings.saved_keymap_preset()).key_short,
-                submit_desc,
-            )]
-        }
     }
 
     fn render_text_field(
@@ -626,6 +602,7 @@ fn preview_prefix(prefix: &'static str, width: usize) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::model::shared::input_mode::InputMode;
     use crate::app::model::shared::settings::KeymapPreset;
     use crate::domain::connection::ConnectionConfig;
 
@@ -636,50 +613,33 @@ mod tests {
     }
 
     #[test]
-    fn submit_hints_include_toggle_and_save_on_ssl_field() {
-        let state = AppState::new("test".to_string());
-        let mut form_state = ConnectionSetupState::default();
-        focus_field(&mut form_state, ConnectionField::SslMode);
-
-        assert_eq!(
-            ConnectionSetup::submit_hints(&state, &form_state, "Connect"),
-            vec![("Enter", "Toggle"), ("^S", "Connect")]
-        );
-    }
-
-    #[test]
-    fn submit_hint_uses_toggle_on_database_type_field() {
-        let state = AppState::new("test".to_string());
-        let form_state = ConnectionSetupState::default();
-
-        assert_eq!(
-            ConnectionSetup::submit_hints(&state, &form_state, "Connect"),
-            vec![("Enter", "Toggle"), ("^S", "Connect")]
-        );
-    }
-
-    #[test]
-    fn submit_hints_use_preset_save_key_off_ssl_field() {
+    fn setup_hints_follow_dropdown_and_preset() {
         let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::ConnectionSetup);
         state.settings.load_keymap_preset(KeymapPreset::Ide);
-        let mut form_state = ConnectionSetupState::default();
-        form_state.focus_next_field();
-
-        assert_eq!(
-            ConnectionSetup::submit_hints(&state, &form_state, "Connect"),
-            vec![("Enter", "Connect")]
+        focus_field(&mut state.connection_setup, ConnectionField::SslMode);
+        let hints = connection_setup_hints(HintSurface::Border, &KeyContext::from_state(&state));
+        assert!(
+            hints
+                .iter()
+                .any(|hint| hint.key == "Enter" && hint.short == "Toggle")
         );
-    }
-
-    #[test]
-    fn submit_hints_use_default_save_key_on_text_field() {
-        let state = AppState::new("test".to_string());
-        let mut form_state = ConnectionSetupState::default();
-        form_state.focus_next_field();
-
-        assert_eq!(
-            ConnectionSetup::submit_hints(&state, &form_state, "Connect"),
-            vec![("^S", "Connect")]
+        assert!(
+            hints
+                .iter()
+                .any(|hint| hint.key == "^S" && hint.short == "Connect")
+        );
+        state.connection_setup.toggle_focused_dropdown();
+        let hints = connection_setup_hints(HintSurface::Border, &KeyContext::from_state(&state));
+        assert!(
+            hints
+                .iter()
+                .any(|hint| hint.key == "Enter" && hint.short == "Select")
+        );
+        assert!(
+            hints
+                .iter()
+                .any(|hint| hint.key == "^S" && hint.short == "Connect")
         );
     }
 

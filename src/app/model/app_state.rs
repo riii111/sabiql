@@ -371,18 +371,33 @@ impl AppState {
                     && self.connection_error.can_retry()))
     }
 
+    pub fn can_open_query_history(&self) -> bool {
+        self.session.active_connection_id().is_some()
+            && self.session.pending_mysql_connection_probe().is_none()
+            && !self.query.is_running()
+            && !matches!(
+                self.input_mode(),
+                InputMode::QueryHistoryPicker | InputMode::ConfirmDialog
+            )
+            && (!self.sql_modal.completion().visible
+                || self.sql_modal.completion().candidates.is_empty())
+    }
+
     pub fn can_request_csv_export(&self) -> bool {
-        let Some(result) = self.query.visible_result() else {
-            return false;
-        };
-        if result.is_error() {
-            return false;
-        }
-        match self.session.active_database_type() {
-            Some(DatabaseType::SQLite) => true,
-            Some(DatabaseType::MySQL) => mysql_export_plan(&result.query).is_some(),
-            _ => is_rerunnable_select(&result.query),
-        }
+        let database = self.session.active_database_type();
+        self.query.cached_csv_export(database, || {
+            let Some(result) = self.query.visible_result() else {
+                return false;
+            };
+            if result.is_error() {
+                return false;
+            }
+            match database {
+                Some(DatabaseType::SQLite) => true,
+                Some(DatabaseType::MySQL) => mysql_export_plan(&result.query).is_some(),
+                _ => is_rerunnable_select(&result.query),
+            }
+        })
     }
 
     pub fn visible_preview_target_read_only_reason(&self) -> Option<&'static str> {
@@ -1404,6 +1419,34 @@ mod tests {
                 .query
                 .set_current_result(make_query_result(QuerySource::Preview));
 
+            assert!(state.can_request_csv_export());
+        }
+
+        #[test]
+        fn csv_export_is_rechecked_after_result_or_database_changes() {
+            let mut state = make_state();
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    "UPDATE users SET name = 'b'".to_string(),
+                    vec![],
+                    vec![],
+                    10,
+                    QuerySource::Adhoc,
+                )));
+            assert!(!state.can_request_csv_export());
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
+            );
+            assert!(state.can_request_csv_export());
+            state.query.clear_current_result();
+            assert!(!state.can_request_csv_export());
+            state
+                .query
+                .set_current_result(make_query_result(QuerySource::Preview));
             assert!(state.can_request_csv_export());
         }
 

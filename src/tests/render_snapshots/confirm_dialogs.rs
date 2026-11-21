@@ -56,6 +56,21 @@ fn confirm_dialog() {
 }
 
 #[test]
+fn blocked_write_preview_only_offers_cancel() {
+    let mut state = postgres_connected_state();
+    let mut preview = make_update_preview(Vec::new(), "UPDATE users SET id = 1".to_string());
+    preview.guardrail.blocked = true;
+    state.result_interaction.set_write_preview(preview);
+    open_write_confirm(&mut state, "Confirm UPDATE", "UPDATE users SET id = 1");
+    let mut terminal = create_test_terminal();
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    assert!(output.contains("Esc: Cancel"));
+    assert!(!output.contains("Enter: Confirm"));
+}
+
+#[test]
 fn confirm_dialog_update_preview() {
     let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
