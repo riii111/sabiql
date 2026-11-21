@@ -103,6 +103,30 @@ mod cli_sqlite_startup {
     }
 
     #[cfg(unix)]
+    #[test]
+    fn activation_rejects_symlink_to_path_with_control_characters() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tempdir().unwrap();
+        let database = dir.path().join("app\n.db");
+        let alias = dir.path().join("current.db");
+        fs::write(&database, b"").unwrap();
+        symlink(&database, &alias).unwrap();
+        let target =
+            resolve_cli_sqlite_target(alias.to_str().unwrap(), &FsSqlitePathValidator).unwrap();
+        let mut state = AppState::new("test".to_string());
+
+        let error = activate_cli_sqlite_connection(&mut state, &target, &FsSqlitePathValidator)
+            .unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "Cannot use the canonical SQLite database path: SQLite database path contains unsupported characters"
+        );
+        assert_eq!(state.session.dsn(), None);
+    }
+
+    #[cfg(unix)]
     #[tokio::test]
     async fn activation_pins_canonical_target_for_identity_preview_and_write() {
         use std::os::unix::fs::symlink;

@@ -40,6 +40,8 @@ pub enum CliSqliteActivateError {
     Path(#[from] SqlitePathError),
     #[error("Cannot represent the canonical SQLite database path")]
     InvalidPathEncoding,
+    #[error("Cannot use the canonical SQLite database path: {0}")]
+    Config(#[from] SqliteConnectionConfigError),
 }
 
 impl CliSqliteTarget {
@@ -93,11 +95,12 @@ pub fn activate_cli_sqlite_connection(
     let canonical_path = canonical_path
         .to_str()
         .ok_or(CliSqliteActivateError::InvalidPathEncoding)?;
-    let connection_id = connection_id_for_path(canonical_path);
+    let canonical_config = SqliteConnectionConfig::new(canonical_path)?;
+    let connection_id = connection_id_for_path(canonical_config.path());
     state.session.activate_cli_ephemeral_connection(
         &connection_id,
         &target.display_name(),
-        &format!("sqlite://{canonical_path}"),
+        &format!("sqlite://{}", canonical_config.path()),
     );
     state.modal.set_mode(InputMode::Normal);
     Ok(())
