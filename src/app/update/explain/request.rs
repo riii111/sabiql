@@ -28,13 +28,15 @@ pub(in crate::update) fn explain_request(state: &mut AppState, now: Instant) -> 
         return vec![];
     }
     let database_type = state.session.active_database_type_or_default();
-    if database_type == DatabaseType::MySQL {
-        if let Some(message) = mysql_explain_rejection_message(&content) {
-            show_explain_error_on_plan(state, message);
-            return vec![];
+    let rejection = match database_type {
+        DatabaseType::MySQL => mysql_explain_rejection_message(&content),
+        DatabaseType::PostgreSQL | DatabaseType::SQLite => {
+            is_multi_statement(database_type, &content)
+                .then_some("EXPLAIN does not support multiple statements")
         }
-    } else if is_multi_statement(database_type, &content) {
-        show_explain_error_on_plan(state, "EXPLAIN does not support multiple statements");
+    };
+    if let Some(message) = rejection {
+        show_explain_error_on_plan(state, message);
         return vec![];
     }
     let query = match database_type.dialect().explain_sql(&content) {

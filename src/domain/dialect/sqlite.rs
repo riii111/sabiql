@@ -1,7 +1,8 @@
 use std::fmt::Write as _;
 
-use super::Dialect;
-use crate::sqlite_sql::build_sqlite_explain_query_plan_sql;
+use super::{Dialect, StatementSplitError};
+use crate::sql_lex::is_comment_only;
+use crate::sqlite_sql::{build_sqlite_explain_query_plan_sql, split_sqlite_statements};
 
 pub struct Sqlite;
 
@@ -38,5 +39,14 @@ impl Dialect for Sqlite {
 
     fn explain_analyze_sql(&self, _query: &str) -> Option<String> {
         None
+    }
+
+    fn split_statements(&self, sql: &str) -> Result<Vec<String>, StatementSplitError> {
+        Ok(split_sqlite_statements(sql)
+            .statements()
+            .iter()
+            .filter(|statement| !is_comment_only(statement))
+            .map(|statement| (*statement).to_string())
+            .collect())
     }
 }

@@ -15,7 +15,12 @@ pub trait Dialect: Sync {
     fn table_reference(&self, schema: &str, table: &str) -> String;
     fn explain_sql(&self, query: &str) -> Option<String>;
     fn explain_analyze_sql(&self, query: &str) -> Option<String>;
+    fn split_statements(&self, sql: &str) -> Result<Vec<String>, StatementSplitError>;
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
+pub struct StatementSplitError(String);
 
 impl DatabaseType {
     #[deny(

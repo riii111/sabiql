@@ -1,7 +1,7 @@
 use std::fmt::Write as _;
 
-use super::Dialect;
-use crate::mysql_sql::mysql_explain_rejection_message;
+use super::{Dialect, StatementSplitError};
+use crate::mysql_sql::{mysql_explain_rejection_message, split_mysql_statements};
 
 pub struct MySql;
 
@@ -53,5 +53,9 @@ impl Dialect for MySql {
 
     fn explain_analyze_sql(&self, query: &str) -> Option<String> {
         Some(format!("EXPLAIN ANALYZE FORMAT=TREE {query}"))
+    }
+
+    fn split_statements(&self, sql: &str) -> Result<Vec<String>, StatementSplitError> {
+        split_mysql_statements(sql).map_err(|error| StatementSplitError(error.0))
     }
 }

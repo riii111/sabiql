@@ -495,6 +495,200 @@ mod explain {
     }
 }
 
+mod split_statements_tests {
+    use super::*;
+    use rstest::rstest;
+
+    fn split_statements(sql: &str) -> Vec<String> {
+        DatabaseType::PostgreSQL
+            .dialect()
+            .split_statements(sql)
+            .expect("PostgreSQL statement splitting is infallible")
+    }
+
+    #[rstest]
+    #[case::single("SELECT 1", vec!["SELECT 1"])]
+    #[case::two("SELECT 1; SELECT 2", vec!["SELECT 1", "SELECT 2"])]
+    #[case::trailing_semicolon("SELECT 1;", vec!["SELECT 1"])]
+    #[case::empty("", Vec::<&str>::new())]
+    #[case::whitespace_only("   ", Vec::<&str>::new())]
+    fn basic_split(#[case] sql: &str, #[case] expected: Vec<&str>) {
+        assert_eq!(split_statements(sql), expected);
+    }
+
+    #[rstest]
+    #[case::single_quote("SELECT 'a;b'", vec!["SELECT 'a;b'"])]
+    #[case::double_quote("SELECT \"a;b\"", vec!["SELECT \"a;b\""])]
+    #[case::dollar_quote("SELECT $$a;b$$", vec!["SELECT $$a;b$$"])]
+    #[case::tagged_dollar_quote("SELECT $tag$a;b$tag$", vec!["SELECT $tag$a;b$tag$"])]
+    fn semicolon_in_strings(#[case] sql: &str, #[case] expected: Vec<&str>) {
+        assert_eq!(split_statements(sql), expected);
+    }
+
+    #[rstest]
+    #[case::bracket_quote(
+        "DROP TABLE [a;b]; SELECT 1",
+        vec!["DROP TABLE [a", "b]", "SELECT 1"]
+    )]
+    #[case::backtick_quote(
+        "DROP TABLE `a;b`; SELECT 1",
+        vec!["DROP TABLE `a", "b`", "SELECT 1"]
+    )]
+    #[case::bracket_contains_drop(
+        "SELECT [1; DROP TABLE users]",
+        vec!["SELECT [1", "DROP TABLE users]"]
+    )]
+    #[case::backtick_contains_drop(
+        "SELECT `1; DROP TABLE users`",
+        vec!["SELECT `1", "DROP TABLE users`"]
+    )]
+    fn postgres_brackets_and_backticks_do_not_hide_semicolons(
+        #[case] sql: &str,
+        #[case] expected: Vec<&str>,
+    ) {
+        assert_eq!(split_statements(sql), expected);
+    }
+
+    #[rstest]
+    #[case::line_comment("SELECT 1 -- ;comment\n; SELECT 2", vec!["SELECT 1 -- ;comment", "SELECT 2"])]
+    #[case::block_comment("SELECT /* ; */ 1; SELECT 2", vec!["SELECT /* ; */ 1", "SELECT 2"])]
+    fn semicolon_in_comments(#[case] sql: &str, #[case] expected: Vec<&str>) {
+        assert_eq!(split_statements(sql), expected);
+    }
+
+    #[test]
+    fn do_block_split() {
+        let sql = "DO $$ BEGIN RAISE NOTICE 'hi'; END $$; SELECT 1";
+        let result = split_statements(sql);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], "DO $$ BEGIN RAISE NOTICE 'hi'; END $$");
+        assert_eq!(result[1], "SELECT 1");
+    }
+
+    #[test]
+    fn escaped_quote_no_split() {
+        let sql = "SELECT 'it''s;here'";
+        let result = split_statements(sql);
+        assert_eq!(result, vec!["SELECT 'it''s;here'"]);
+    }
+
+    #[test]
+    fn trailing_comment_only() {
+        let sql = "SELECT 1; -- comment";
+        let result = split_statements(sql);
+        assert_eq!(result, vec!["SELECT 1"]);
+    }
+
+    #[test]
+    fn comment_only_input() {
+        let sql = "-- just a comment";
+        let result = split_statements(sql);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn unclosed_quote() {
+        let sql = "SELECT 'unclosed";
+        let result = split_statements(sql);
+        assert_eq!(result, vec!["SELECT 'unclosed"]);
+    }
+
+    #[test]
+    fn non_ascii_before_semicolon() {
+        // Case-folding of İ (U+0130) changes byte length in lowercase.
+        // Byte offsets must come from the original sql, not the lowercased copy.
+        let sql = "SELECT 'İ'; SELECT 2";
+        let result = split_statements(sql);
+        assert_eq!(result, vec!["SELECT 'İ'", "SELECT 2"]);
+    }
+
+    mod by_engine {
+        use super::*;
+
+        fn split_for(database_type: DatabaseType, sql: &str) -> Result<Vec<String>, String> {
+            database_type
+                .dialect()
+                .split_statements(sql)
+                .map_err(|error| error.to_string())
+        }
+
+        fn owned(statements: &[&str]) -> Vec<String> {
+            statements.iter().map(ToString::to_string).collect()
+        }
+
+        #[test]
+        fn postgres_keeps_dollar_quoted_semicolons_in_one_statement() {
+            assert_eq!(
+                split_for(DatabaseType::PostgreSQL, "SELECT $$a;b$$; SELECT 2"),
+                Ok(owned(&["SELECT $$a;b$$", "SELECT 2"]))
+            );
+        }
+
+        #[rstest]
+        #[case::mysql(DatabaseType::MySQL)]
+        #[case::sqlite(DatabaseType::SQLite)]
+        fn other_engines_split_inside_dollar_quotes(#[case] database_type: DatabaseType) {
+            assert_eq!(
+                split_for(database_type, "SELECT $$a;b$$"),
+                Ok(owned(&["SELECT $$a", "b$$"]))
+            );
+        }
+
+        #[rstest]
+        #[case::quoted_literal("SELECT 'a; SELECT 2", "unterminated MySQL quoted literal")]
+        #[case::block_comment("SELECT 1 /* note", "unterminated MySQL block comment")]
+        #[case::parentheses("SELECT (1; SELECT 2", "unbalanced MySQL parentheses")]
+        fn mysql_lex_failures_return_the_lexer_message(#[case] sql: &str, #[case] message: &str) {
+            assert_eq!(
+                split_for(DatabaseType::MySQL, sql),
+                Err(message.to_string())
+            );
+        }
+
+        #[test]
+        fn mysql_drops_hash_comment_only_fragments() {
+            assert_eq!(
+                split_for(DatabaseType::MySQL, "SELECT 1; # note\n; SELECT 2"),
+                Ok(owned(&["SELECT 1", "SELECT 2"]))
+            );
+        }
+
+        #[test]
+        fn sqlite_drops_comment_only_fragments() {
+            assert_eq!(
+                split_for(
+                    DatabaseType::SQLite,
+                    "SELECT 1; -- note\n; /* block */; SELECT 2; -- trailing"
+                ),
+                Ok(owned(&["SELECT 1", "SELECT 2"]))
+            );
+        }
+
+        #[test]
+        fn sqlite_keeps_trigger_body_statements_together() {
+            assert_eq!(
+                split_for(
+                    DatabaseType::SQLite,
+                    "CREATE TRIGGER audit AFTER INSERT ON users BEGIN INSERT INTO log VALUES (1); END; SELECT 1"
+                ),
+                Ok(owned(&[
+                    "CREATE TRIGGER audit AFTER INSERT ON users BEGIN INSERT INTO log VALUES (1); END",
+                    "SELECT 1",
+                ]))
+            );
+        }
+
+        #[rstest]
+        #[case::unclosed_body(
+            "CREATE TRIGGER audit AFTER INSERT ON users BEGIN INSERT INTO log VALUES (1);"
+        )]
+        #[case::missing_body("CREATE TRIGGER audit AFTER INSERT ON users")]
+        fn sqlite_returns_fragments_despite_trigger_split_errors(#[case] sql: &str) {
+            assert_eq!(split_for(DatabaseType::SQLite, sql), Ok(owned(&[sql])));
+        }
+    }
+}
+
 mod postgres {
     use crate::{DatabaseType, QueryValue};
 

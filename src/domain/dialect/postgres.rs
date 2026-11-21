@@ -1,6 +1,7 @@
 use std::fmt::Write as _;
 
-use super::Dialect;
+use super::{Dialect, StatementSplitError};
+use crate::postgres_sql;
 
 pub struct Postgres;
 
@@ -40,5 +41,12 @@ impl Dialect for Postgres {
 
     fn explain_analyze_sql(&self, query: &str) -> Option<String> {
         Some(format!("EXPLAIN ANALYZE {query}"))
+    }
+
+    fn split_statements(&self, sql: &str) -> Result<Vec<String>, StatementSplitError> {
+        Ok(postgres_sql::split_statements(sql)
+            .into_iter()
+            .map(str::to_owned)
+            .collect())
     }
 }
