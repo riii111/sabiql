@@ -1,5 +1,6 @@
 mod config;
 mod database_type;
+mod endpoint;
 mod id;
 mod name;
 mod profile;
@@ -12,6 +13,7 @@ pub use config::{
     PostgresConnectionConfig, SqliteConnectionConfig, SqliteConnectionConfigError,
 };
 pub use database_type::DatabaseType;
+pub use endpoint::{ConnectionEndpoint, PostgresEndpoint};
 pub use id::ConnectionId;
 pub use name::{ConnectionName, ConnectionNameError};
 pub use profile::{ConnectionProfile, ConnectionProfileError};
