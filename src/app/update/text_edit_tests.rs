@@ -522,3 +522,41 @@ fn text_edits_keep_per_target_behavior() {
         }
     }
 }
+
+#[rstest::rstest]
+#[case::er_filter(InputTarget::ErFilter, TextKillDirection::ToLineStart, "ab cd")]
+#[case::query_history(
+    InputTarget::QueryHistoryFilter,
+    TextKillDirection::ToLineStart,
+    "ab cd"
+)]
+#[case::settings_browser(
+    InputTarget::SettingsErBrowser,
+    TextKillDirection::ToLineStart,
+    "ab cd"
+)]
+#[case::cell_editor(InputTarget::ResultCellEdit, TextKillDirection::ToLineEnd, "cd")]
+fn kill_then_yank_restores_text(
+    #[case] target: InputTarget,
+    #[case] direction: TextKillDirection,
+    #[case] killed: &str,
+) {
+    let mut state = state_for(target);
+    if matches!(direction, TextKillDirection::ToLineStart) {
+        dispatch(
+            &mut state,
+            Action::TextMoveCursor {
+                target,
+                direction: CursorMove::End,
+            },
+        );
+    }
+    dispatch(&mut state, Action::TextKill { target, direction });
+    if matches!(direction, TextKillDirection::ToLineStart) {
+        assert_eq!(edited_text(&state, target), Some(("", 0)));
+    }
+    dispatch(&mut state, Action::TextYank { target });
+
+    assert_eq!(edited_text(&state, target).unwrap().0, "ab cd");
+    assert_eq!(state.kill_buffer(), Some(killed));
+}
