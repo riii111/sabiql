@@ -1249,10 +1249,12 @@ mod tests {
             }
         }
 
-        #[test]
-        fn execute_write_with_non_one_row_sets_error() {
+        #[rstest]
+        #[case::no_rows(0)]
+        #[case::multiple_rows(2)]
+        fn unexpected_update_count_reports_error_and_refreshes(#[case] affected_rows: usize) {
             let mut state = editable_state();
-            let action = write_succeeded_action(&mut state, 0);
+            let action = write_succeeded_action(&mut state, affected_rows);
 
             let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
@@ -1261,27 +1263,7 @@ mod tests {
             assert!(state.query.is_running());
             assert_eq!(
                 state.messages.last_error.as_deref(),
-                Some("UPDATE expected 1 row, but affected 0 rows")
-            );
-            assert!(matches!(
-                effects.first(),
-                Some(Effect::ExecutePreview { .. })
-            ));
-        }
-
-        #[test]
-        fn execute_write_with_multiple_rows_sets_error() {
-            let mut state = editable_state();
-            let action = write_succeeded_action(&mut state, 2);
-
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
-
-            assert_eq!(effects.len(), 1);
-            assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(state.query.is_running());
-            assert_eq!(
-                state.messages.last_error.as_deref(),
-                Some("UPDATE expected 1 row, but affected 2 rows")
+                Some(format!("UPDATE expected 1 row, but affected {affected_rows} rows").as_str())
             );
             assert!(matches!(
                 effects.first(),

@@ -320,23 +320,6 @@ mod tests {
         }
 
         #[test]
-        fn noop_when_reached_end() {
-            let mut state = create_test_state();
-            state.query.set_current_result(preview_result(100));
-            state.query.pagination.set_page_result(0, true);
-            let now = Instant::now();
-
-            let effects = route(
-                &mut state,
-                Action::ResultNextPage,
-                now,
-                &AppServices::stub(),
-            );
-
-            assert!(effects.is_empty());
-        }
-
-        #[test]
         fn noop_for_adhoc() {
             let mut state = create_test_state();
             state.query.set_current_result(adhoc_result());
@@ -372,7 +355,7 @@ mod tests {
         }
 
         #[test]
-        fn preserves_view_state_when_next_page_noops() {
+        fn next_on_last_page_preserves_selection_and_staged_rows() {
             let mut state = create_test_state();
             state
                 .query
@@ -381,13 +364,14 @@ mod tests {
             state.result_interaction.activate_cell(2, 1);
             state.result_interaction.stage_row(2);
 
-            route(
+            let effects = route(
                 &mut state,
                 Action::ResultNextPage,
                 Instant::now(),
                 &AppServices::stub(),
             );
 
+            assert!(effects.is_empty());
             assert_eq!(state.result_interaction.selection().row(), Some(2));
             assert_eq!(state.result_interaction.selection().cell(), Some(1));
             assert!(state.result_interaction.staged_delete_rows().contains(&2));
@@ -523,26 +507,7 @@ mod tests {
         }
 
         #[test]
-        fn noop_on_first_page() {
-            let mut state = create_test_state();
-            state
-                .query
-                .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
-            state.query.pagination.set_current_page(0);
-            let now = Instant::now();
-
-            let effects = route(
-                &mut state,
-                Action::ResultPrevPage,
-                now,
-                &AppServices::stub(),
-            );
-
-            assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn preserves_view_state_when_prev_page_noops() {
+        fn prev_on_first_page_preserves_selection_and_staged_rows() {
             let mut state = create_test_state();
             state
                 .query
@@ -551,13 +516,14 @@ mod tests {
             state.result_interaction.activate_cell(1, 1);
             state.result_interaction.stage_row(1);
 
-            route(
+            let effects = route(
                 &mut state,
                 Action::ResultPrevPage,
                 Instant::now(),
                 &AppServices::stub(),
             );
 
+            assert!(effects.is_empty());
             assert_eq!(state.result_interaction.selection().row(), Some(1));
             assert_eq!(state.result_interaction.selection().cell(), Some(1));
             assert!(state.result_interaction.staged_delete_rows().contains(&1));
