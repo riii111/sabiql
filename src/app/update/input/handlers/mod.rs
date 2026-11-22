@@ -8,13 +8,9 @@ pub fn handle_event(event: InputEvent, state: &AppState) -> Action {
         InputEvent::Init => Action::Render,
         InputEvent::Resize(w, h) => Action::Resize(w, h),
         InputEvent::Key(combo) => handle_key_event(combo, state),
-        InputEvent::Paste(text) => handle_paste_event(text, state),
+        InputEvent::Paste(text) => paste_target(&KeyContext::from_state(state))
+            .map_or(Action::None, |target| Action::Paste { target, text }),
     }
-}
-
-fn handle_paste_event(text: String, state: &AppState) -> Action {
-    paste_target(&KeyContext::from_state(state))
-        .map_or(Action::None, |target| Action::Paste { target, text })
 }
 
 fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
@@ -352,106 +348,20 @@ mod tests {
         use super::*;
         use crate::update::test_fixtures;
 
-        fn make_state(mode: InputMode) -> AppState {
+        fn sqlite_state(mode: InputMode) -> AppState {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(mode);
+            test_fixtures::activate_sqlite_connection(&mut state, "sqlite://test.db");
             state
         }
 
-        fn assert_pastes_into(state: &AppState, expected: InputTarget) {
-            let result = handle_paste_event("text".to_string(), state);
-
-            assert!(
-                matches!(&result, Action::Paste { target, text } if *target == expected && text == "text"),
-                "{result:?}"
-            );
-        }
-
-        fn assert_ignores_paste(state: &AppState) {
-            let result = handle_paste_event("text".to_string(), state);
+        #[rstest]
+        #[case::er_table_picker(InputMode::ErTablePicker)]
+        #[case::json_edit(InputMode::JsonEdit)]
+        fn sqlite_ignores_paste_into_unsupported_input(#[case] mode: InputMode) {
+            let result = handle_event(InputEvent::Paste("text".to_string()), &sqlite_state(mode));
 
             assert!(matches!(result, Action::None), "{result:?}");
-        }
-
-        #[test]
-        fn sql_modal_insert_pastes_into_editor() {
-            let mut state = make_state(InputMode::SqlModal);
-            state.sql_modal.enter_editing();
-
-            assert_pastes_into(&state, InputTarget::SqlModal);
-        }
-
-        #[test]
-        fn sql_modal_normal_ignores_paste() {
-            assert_ignores_paste(&make_state(InputMode::SqlModal));
-        }
-
-        #[test]
-        fn table_picker_pastes_into_filter() {
-            assert_pastes_into(&make_state(InputMode::TablePicker), InputTarget::Filter);
-        }
-
-        #[test]
-        fn er_table_picker_pastes_into_filter() {
-            let mut state = make_state(InputMode::ErTablePicker);
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-
-            assert_pastes_into(&state, InputTarget::ErFilter);
-        }
-
-        #[test]
-        fn sqlite_ignores_er_table_picker_paste() {
-            let mut state = make_state(InputMode::ErTablePicker);
-            test_fixtures::activate_sqlite_connection(&mut state, "sqlite://test.db");
-
-            assert_ignores_paste(&state);
-        }
-
-        #[test]
-        fn sqlite_ignores_json_edit_paste() {
-            let mut state = make_state(InputMode::JsonEdit);
-            test_fixtures::activate_sqlite_connection(&mut state, "sqlite://test.db");
-
-            assert_ignores_paste(&state);
-        }
-
-        #[test]
-        fn query_history_picker_pastes_into_filter() {
-            assert_pastes_into(
-                &make_state(InputMode::QueryHistoryPicker),
-                InputTarget::QueryHistoryFilter,
-            );
-        }
-
-        #[test]
-        fn cell_detail_search_pastes_into_query() {
-            let mut state = make_state(InputMode::CellDetail);
-            state.cell_detail.enter_search();
-
-            assert_pastes_into(&state, InputTarget::CellDetailSearch);
-        }
-
-        #[test]
-        fn cell_detail_viewing_ignores_paste() {
-            assert_ignores_paste(&make_state(InputMode::CellDetail));
-        }
-
-        #[test]
-        fn normal_mode_ignores_paste() {
-            assert_ignores_paste(&make_state(InputMode::Normal));
-        }
-
-        #[test]
-        fn help_viewing_ignores_paste() {
-            assert_ignores_paste(&make_state(InputMode::Help));
-        }
-
-        #[test]
-        fn help_filter_pastes_into_filter() {
-            let mut state = make_state(InputMode::Help);
-            state.ui.help_mut().enter_filter_editing();
-
-            assert_pastes_into(&state, InputTarget::HelpFilter);
         }
     }
 

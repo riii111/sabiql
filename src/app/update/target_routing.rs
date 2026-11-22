@@ -185,11 +185,18 @@ pub(in crate::update) fn paste(
         InputTarget::ResultCellEdit => browse::navigation::input::paste_cell_edit(state, text),
         InputTarget::ConnectionSetup => connection::setup::paste_connection_setup(state, text),
         InputTarget::CommandLine => browse::navigation::input::paste_command_line(state, text),
-        InputTarget::Filter => browse::navigation::input::paste_table_picker(state, text),
-        InputTarget::ErFilter => browse::navigation::input::paste_er_table_picker(state, text),
+        InputTarget::Filter => {
+            state.ui.table_picker_mut().insert_filter_str(&text);
+            vec![]
+        }
+        InputTarget::ErFilter => {
+            state.ui.er_picker_mut().insert_filter_str(&text);
+            vec![]
+        }
         InputTarget::SettingsErBrowser => modal::settings::paste_custom_browser(state, text),
         InputTarget::QueryHistoryFilter => {
-            browse::navigation::input::paste_query_history_picker(state, text)
+            state.query_history_picker.insert_filter_str(&text);
+            vec![]
         }
         InputTarget::JsonEdit => browse::result::json::paste_json_edit(state, text),
         InputTarget::JsonSearch => browse::result::detail_search::paste_search_query(

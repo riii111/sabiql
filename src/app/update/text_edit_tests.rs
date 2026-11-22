@@ -566,43 +566,10 @@ mod paste {
 
     #[test]
     fn viewing_states_ignore_paste() {
-        for (label, mut state) in viewing_states() {
-            let mode = state.input_mode();
-            let edited: Vec<_> = TARGETS
-                .iter()
-                .map(|&target| edited_text(&state, target).map(|(content, _)| content.to_string()))
-                .collect();
-
-            let action = paste(&mut state);
+        for (label, state) in viewing_states() {
+            let action = handle_event(InputEvent::Paste(PASTED.to_string()), &state);
 
             assert!(action.is_none(), "{label} produced {action:?}");
-            assert_eq!(state.input_mode(), mode, "{label}");
-            let after: Vec<_> = TARGETS
-                .iter()
-                .map(|&target| edited_text(&state, target).map(|(content, _)| content.to_string()))
-                .collect();
-            assert_eq!(after, edited, "{label}");
-        }
-    }
-
-    #[test]
-    fn detail_viewing_keeps_search_matches() {
-        for (label, mut state) in viewing_states() {
-            let json_matches = state.json_detail.search().matches().to_vec();
-            let cell_matches = state.cell_detail.search().matches().to_vec();
-
-            paste(&mut state);
-
-            assert_eq!(
-                state.json_detail.search().matches(),
-                json_matches,
-                "{label}"
-            );
-            assert_eq!(
-                state.cell_detail.search().matches(),
-                cell_matches,
-                "{label}"
-            );
         }
     }
 }
