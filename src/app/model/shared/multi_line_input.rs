@@ -2,7 +2,7 @@ use crate::model::shared::cursor::CursorMove;
 
 use super::text_input::{
     TextInputState, TextKillDirection, char_to_byte_index, next_word_start, previous_word_start,
-    readline_forward_word_end, readline_previous_whitespace_boundary, readline_previous_word_start,
+    readline_forward_word_end, readline_previous_boundary,
 };
 use crate::model::shared::text_input::TextEdit;
 
@@ -120,7 +120,7 @@ impl MultiLineInputState {
 
     pub fn kill_previous_word(&mut self) -> String {
         self.remove_range(
-            readline_previous_whitespace_boundary(self.content(), self.cursor()),
+            readline_previous_boundary(self.content(), self.cursor(), |ch| !ch.is_whitespace()),
             self.cursor(),
         )
     }
@@ -223,7 +223,11 @@ impl MultiLineInputState {
                 self.preferred_col = None;
             }
             CursorMove::ReadlineWordStart => {
-                let previous = readline_previous_word_start(self.content(), self.cursor());
+                let previous = readline_previous_boundary(
+                    self.content(),
+                    self.cursor(),
+                    char::is_alphanumeric,
+                );
                 self.set_cursor_and_sync(previous);
                 self.preferred_col = None;
             }

@@ -124,7 +124,7 @@ impl TextInputState {
 
     pub fn kill_previous_word(&mut self) -> String {
         self.remove_range(
-            readline_previous_whitespace_boundary(&self.content, self.cursor),
+            readline_previous_boundary(&self.content, self.cursor, |ch| !ch.is_whitespace()),
             self.cursor,
         )
     }
@@ -188,7 +188,8 @@ impl TextInputState {
                 self.cursor = previous_word_start(&self.content, self.cursor);
             }
             CursorMove::ReadlineWordStart => {
-                self.cursor = readline_previous_word_start(&self.content, self.cursor);
+                self.cursor =
+                    readline_previous_boundary(&self.content, self.cursor, char::is_alphanumeric);
             }
             CursorMove::ReadlineWordEnd => {
                 self.cursor = readline_forward_word_end(&self.content, self.cursor);
@@ -381,15 +382,11 @@ pub(super) fn readline_forward_word_end(content: &str, cursor: usize) -> usize {
     idx
 }
 
-pub(super) fn readline_previous_word_start(content: &str, cursor: usize) -> usize {
-    readline_backward_boundary(content, cursor, char::is_alphanumeric)
-}
-
-pub(super) fn readline_previous_whitespace_boundary(content: &str, cursor: usize) -> usize {
-    readline_backward_boundary(content, cursor, |ch| !ch.is_whitespace())
-}
-
-fn readline_backward_boundary(content: &str, cursor: usize, in_word: fn(char) -> bool) -> usize {
+pub(super) fn readline_previous_boundary(
+    content: &str,
+    cursor: usize,
+    in_word: fn(char) -> bool,
+) -> usize {
     let mut chars = content.chars();
     let mut idx = chars.by_ref().take(cursor).count();
     let before_len = content.len() - chars.as_str().len();
@@ -1051,7 +1048,10 @@ mod tests {
             #[case] cursor: usize,
             #[case] expected: usize,
         ) {
-            assert_eq!(readline_previous_word_start(content, cursor), expected);
+            assert_eq!(
+                readline_previous_boundary(content, cursor, char::is_alphanumeric),
+                expected
+            );
         }
 
         #[rstest]
@@ -1069,7 +1069,7 @@ mod tests {
             #[case] expected: usize,
         ) {
             assert_eq!(
-                readline_previous_whitespace_boundary(content, cursor),
+                readline_previous_boundary(content, cursor, |ch| !ch.is_whitespace()),
                 expected
             );
         }
