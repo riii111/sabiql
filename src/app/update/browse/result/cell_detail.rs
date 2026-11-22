@@ -48,10 +48,10 @@ pub(in crate::update) fn close_modal_cell_detail(state: &mut AppState) -> Vec<Ef
     vec![]
 }
 
-pub(in crate::update) fn paste_cell_detail(state: &mut AppState, text: String) -> Vec<Effect> {
-    if !state.cell_detail.search().is_active() {
-        return vec![];
-    }
+pub(in crate::update) fn paste_cell_detail_search(
+    state: &mut AppState,
+    text: String,
+) -> Vec<Effect> {
     let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
     state
         .cell_detail

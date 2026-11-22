@@ -462,47 +462,141 @@ fn assert_side_effects(state: &AppState, target: InputTarget, step: Step, contex
     }
 }
 
-mod paste_outside_search {
+mod paste {
     use super::*;
+    use crate::model::shared::settings::SettingsSection;
+    use crate::ports::inbound::InputEvent;
+    use crate::update::input::handle_event;
+
+    const PASTED: &str = "zz";
+
+    fn paste(state: &mut AppState) -> Action {
+        let action = handle_event(InputEvent::Paste(PASTED.to_string()), state);
+        dispatch(state, action.clone());
+        action
+    }
+
+    fn editing_state(target: InputTarget) -> AppState {
+        let mut state = state_for(target);
+        if target == InputTarget::SqlModal {
+            dispatch(&mut state, Action::SqlModalEnterInsert);
+        }
+        state
+    }
+
+    fn inserted_at_cursor(content: &str, cursor: usize) -> String {
+        let mut expected: String = content.chars().take(cursor).collect();
+        expected.push_str(PASTED);
+        expected.extend(content.chars().skip(cursor));
+        expected
+    }
 
     #[test]
-    fn json_detail_viewing_ignores_paste() {
-        let mut state = state_for(InputTarget::JsonSearch);
+    fn editing_inputs_receive_pasted_text_at_cursor() {
+        for target in TARGETS {
+            let mut state = editing_state(target);
+            let (content, cursor) =
+                edited_text(&state, target).unwrap_or_else(|| panic!("{target:?} has no input"));
+            let content = content.to_string();
+
+            let action = paste(&mut state);
+
+            assert!(
+                matches!(action, Action::Paste { target: actual, .. } if actual == target),
+                "{target:?} produced {action:?}"
+            );
+            assert_eq!(
+                edited_text(&state, target).map(|(content, _)| content.to_string()),
+                Some(inserted_at_cursor(&content, cursor)),
+                "{target:?}"
+            );
+        }
+    }
+
+    fn viewing_states() -> Vec<(&'static str, AppState)> {
+        let mut json_detail = state_for(InputTarget::JsonSearch);
         dispatch(
-            &mut state,
+            &mut json_detail,
             Action::DetailSearch {
                 target: DetailTarget::JsonDetail,
                 step: SearchStep::Exit,
             },
         );
-        let input = state.json_detail.search().input().clone();
-        let matches = state.json_detail.search().matches().to_vec();
-
-        dispatch(&mut state, Action::Paste("pasted".to_string()));
-
-        assert_eq!(state.input_mode(), InputMode::JsonDetail);
-        assert_eq!(state.json_detail.search().input(), &input);
-        assert_eq!(state.json_detail.search().matches(), matches);
-    }
-
-    #[test]
-    fn cell_detail_viewing_ignores_paste() {
-        let mut state = state_for(InputTarget::CellDetailSearch);
+        let mut cell_detail = state_for(InputTarget::CellDetailSearch);
         dispatch(
-            &mut state,
+            &mut cell_detail,
             Action::DetailSearch {
                 target: DetailTarget::CellDetail,
                 step: SearchStep::Exit,
             },
         );
-        let input = state.cell_detail.search().input().clone();
-        let matches = state.cell_detail.search().matches().to_vec();
+        let mut help = connected_state();
+        dispatch(&mut help, Action::ToggleHelp);
+        let mut settings = connected_state();
+        dispatch(&mut settings, Action::OpenModal(ModalKind::Settings));
+        while settings.settings.section() != SettingsSection::ErDiagram {
+            dispatch(&mut settings, Action::SettingsNextSection);
+        }
+        let mut connection_setup = state_for(InputTarget::ConnectionSetup);
+        while !connection_setup.connection_setup.has_open_dropdown() {
+            dispatch(&mut connection_setup, Action::ConnectionSetupPrevField);
+            dispatch(&mut connection_setup, Action::ConnectionSetupToggleDropdown);
+        }
+        let mut palette = connected_state();
+        dispatch(&mut palette, Action::OpenModal(ModalKind::CommandPalette));
 
-        dispatch(&mut state, Action::Paste("pasted".to_string()));
+        vec![
+            ("browse", connected_state()),
+            ("SQL modal normal", state_for(InputTarget::SqlModal)),
+            ("JSON detail", json_detail),
+            ("cell detail", cell_detail),
+            ("help", help),
+            ("settings", settings),
+            ("connection setup dropdown", connection_setup),
+            ("command palette", palette),
+        ]
+    }
 
-        assert_eq!(state.input_mode(), InputMode::CellDetail);
-        assert_eq!(state.cell_detail.search().input(), &input);
-        assert_eq!(state.cell_detail.search().matches(), matches);
+    #[test]
+    fn viewing_states_ignore_paste() {
+        for (label, mut state) in viewing_states() {
+            let mode = state.input_mode();
+            let edited: Vec<_> = TARGETS
+                .iter()
+                .map(|&target| edited_text(&state, target).map(|(content, _)| content.to_string()))
+                .collect();
+
+            let action = paste(&mut state);
+
+            assert!(action.is_none(), "{label} produced {action:?}");
+            assert_eq!(state.input_mode(), mode, "{label}");
+            let after: Vec<_> = TARGETS
+                .iter()
+                .map(|&target| edited_text(&state, target).map(|(content, _)| content.to_string()))
+                .collect();
+            assert_eq!(after, edited, "{label}");
+        }
+    }
+
+    #[test]
+    fn detail_viewing_keeps_search_matches() {
+        for (label, mut state) in viewing_states() {
+            let json_matches = state.json_detail.search().matches().to_vec();
+            let cell_matches = state.cell_detail.search().matches().to_vec();
+
+            paste(&mut state);
+
+            assert_eq!(
+                state.json_detail.search().matches(),
+                json_matches,
+                "{label}"
+            );
+            assert_eq!(
+                state.cell_detail.search().matches(),
+                cell_matches,
+                "{label}"
+            );
+        }
     }
 }
 

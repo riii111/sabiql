@@ -403,7 +403,10 @@ mod tests {
 
             reduce(
                 &mut state,
-                &Action::Paste("db.example.com".to_string()),
+                &Action::Paste {
+                    target: InputTarget::ConnectionSetup,
+                    text: "db.example.com".to_string(),
+                },
                 Instant::now(),
             );
 
@@ -418,7 +421,10 @@ mod tests {
 
             reduce(
                 &mut state,
-                &Action::Paste("54ab32".to_string()),
+                &Action::Paste {
+                    target: InputTarget::ConnectionSetup,
+                    text: "54ab32".to_string(),
+                },
                 Instant::now(),
             );
 
@@ -443,7 +449,10 @@ mod tests {
 
             reduce(
                 &mut state,
-                &Action::Paste("321000".to_string()),
+                &Action::Paste {
+                    target: InputTarget::ConnectionSetup,
+                    text: "321000".to_string(),
+                },
                 Instant::now(),
             );
 
@@ -466,7 +475,14 @@ mod tests {
                 .unwrap()
                 .set_content("12345".to_string());
 
-            reduce(&mut state, &Action::Paste("6".to_string()), Instant::now());
+            reduce(
+                &mut state,
+                &Action::Paste {
+                    target: InputTarget::ConnectionSetup,
+                    text: "6".to_string(),
+                },
+                Instant::now(),
+            );
 
             assert_eq!(
                 state
@@ -484,7 +500,10 @@ mod tests {
 
             reduce(
                 &mut state,
-                &Action::Paste("local\nhost".to_string()),
+                &Action::Paste {
+                    target: InputTarget::ConnectionSetup,
+                    text: "local\nhost".to_string(),
+                },
                 Instant::now(),
             );
 
@@ -505,7 +524,10 @@ mod tests {
 
             reduce(
                 &mut state,
-                &Action::Paste("disable".to_string()),
+                &Action::Paste {
+                    target: InputTarget::ConnectionSetup,
+                    text: "disable".to_string(),
+                },
                 Instant::now(),
             );
 
@@ -516,7 +538,14 @@ mod tests {
         fn host_paste_respects_limit() {
             let mut state = setup_state_with_field(ConnectionField::Host);
 
-            reduce(&mut state, &Action::Paste("a".repeat(300)), Instant::now());
+            reduce(
+                &mut state,
+                &Action::Paste {
+                    target: InputTarget::ConnectionSetup,
+                    text: "a".repeat(300),
+                },
+                Instant::now(),
+            );
 
             assert_eq!(state.connection_setup.host.char_count(), 255);
         }

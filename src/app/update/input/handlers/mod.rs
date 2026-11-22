@@ -1,9 +1,7 @@
 use crate::model::app_state::AppState;
-use crate::model::shared::input_mode::InputMode;
-use crate::policy::FeaturePolicy;
 use crate::ports::inbound::{InputEvent, KeyCombo};
 use crate::update::action::Action;
-use crate::update::input::keymap::{KeyContext, key_action};
+use crate::update::input::keymap::{KeyContext, key_action, paste_target};
 
 pub fn handle_event(event: InputEvent, state: &AppState) -> Action {
     match event {
@@ -15,25 +13,8 @@ pub fn handle_event(event: InputEvent, state: &AppState) -> Action {
 }
 
 fn handle_paste_event(text: String, state: &AppState) -> Action {
-    let action = Action::Paste(text);
-    let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
-    if !feature_policy.is_enabled(action.feature_requirement_for_state(state)) {
-        return Action::None;
-    }
-
-    match state.input_mode() {
-        InputMode::TablePicker
-        | InputMode::ErTablePicker
-        | InputMode::CommandLine
-        | InputMode::CellEdit
-        | InputMode::ConnectionSetup
-        | InputMode::SqlModal
-        | InputMode::QueryHistoryPicker
-        | InputMode::JsonEdit
-        | InputMode::JsonDetail
-        | InputMode::CellDetail => action,
-        _ => Action::None,
-    }
+    paste_target(&KeyContext::from_state(state))
+        .map_or(Action::None, |target| Action::Paste { target, text })
 }
 
 fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
@@ -43,6 +24,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::settings::SettingsSection;
     use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel};
     use crate::ports::inbound::Key;
@@ -376,32 +358,45 @@ mod tests {
             state
         }
 
-        #[test]
-        fn sql_modal_pastes_text() {
-            let state = make_state(InputMode::SqlModal);
+        fn assert_pastes_into(state: &AppState, expected: InputTarget) {
+            let result = handle_paste_event("text".to_string(), state);
 
-            let result = handle_paste_event("hello".to_string(), &state);
+            assert!(
+                matches!(&result, Action::Paste { target, text } if *target == expected && text == "text"),
+                "{result:?}"
+            );
+        }
 
-            assert!(matches!(result, Action::Paste(t) if t == "hello"));
+        fn assert_ignores_paste(state: &AppState) {
+            let result = handle_paste_event("text".to_string(), state);
+
+            assert!(matches!(result, Action::None), "{result:?}");
         }
 
         #[test]
-        fn table_picker_pastes_text() {
-            let state = make_state(InputMode::TablePicker);
+        fn sql_modal_insert_pastes_into_editor() {
+            let mut state = make_state(InputMode::SqlModal);
+            state.sql_modal.enter_editing();
 
-            let result = handle_paste_event("world".to_string(), &state);
-
-            assert!(matches!(result, Action::Paste(t) if t == "world"));
+            assert_pastes_into(&state, InputTarget::SqlModal);
         }
 
         #[test]
-        fn er_table_picker_pastes_text() {
+        fn sql_modal_normal_ignores_paste() {
+            assert_ignores_paste(&make_state(InputMode::SqlModal));
+        }
+
+        #[test]
+        fn table_picker_pastes_into_filter() {
+            assert_pastes_into(&make_state(InputMode::TablePicker), InputTarget::Filter);
+        }
+
+        #[test]
+        fn er_table_picker_pastes_into_filter() {
             let mut state = make_state(InputMode::ErTablePicker);
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
 
-            let result = handle_paste_event("public.users".to_string(), &state);
-
-            assert!(matches!(result, Action::Paste(t) if t == "public.users"));
+            assert_pastes_into(&state, InputTarget::ErFilter);
         }
 
         #[test]
@@ -409,9 +404,7 @@ mod tests {
             let mut state = make_state(InputMode::ErTablePicker);
             test_fixtures::activate_sqlite_connection(&mut state, "sqlite://test.db");
 
-            let result = handle_paste_event("public.users".to_string(), &state);
-
-            assert!(matches!(result, Action::None));
+            assert_ignores_paste(&state);
         }
 
         #[test]
@@ -419,45 +412,46 @@ mod tests {
             let mut state = make_state(InputMode::JsonEdit);
             test_fixtures::activate_sqlite_connection(&mut state, "sqlite://test.db");
 
-            let result = handle_paste_event("{}".to_string(), &state);
-
-            assert!(matches!(result, Action::None));
+            assert_ignores_paste(&state);
         }
 
         #[test]
-        fn query_history_picker_pastes_text() {
-            let state = make_state(InputMode::QueryHistoryPicker);
-
-            let result = handle_paste_event("users".to_string(), &state);
-
-            assert!(matches!(result, Action::Paste(t) if t == "users"));
+        fn query_history_picker_pastes_into_filter() {
+            assert_pastes_into(
+                &make_state(InputMode::QueryHistoryPicker),
+                InputTarget::QueryHistoryFilter,
+            );
         }
 
         #[test]
-        fn cell_detail_pastes_text() {
-            let state = make_state(InputMode::CellDetail);
+        fn cell_detail_search_pastes_into_query() {
+            let mut state = make_state(InputMode::CellDetail);
+            state.cell_detail.enter_search();
 
-            let result = handle_paste_event("needle".to_string(), &state);
+            assert_pastes_into(&state, InputTarget::CellDetailSearch);
+        }
 
-            assert!(matches!(result, Action::Paste(t) if t == "needle"));
+        #[test]
+        fn cell_detail_viewing_ignores_paste() {
+            assert_ignores_paste(&make_state(InputMode::CellDetail));
         }
 
         #[test]
         fn normal_mode_ignores_paste() {
-            let state = make_state(InputMode::Normal);
-
-            let result = handle_paste_event("text".to_string(), &state);
-
-            assert!(matches!(result, Action::None));
+            assert_ignores_paste(&make_state(InputMode::Normal));
         }
 
         #[test]
-        fn help_mode_ignores_paste() {
-            let state = make_state(InputMode::Help);
+        fn help_viewing_ignores_paste() {
+            assert_ignores_paste(&make_state(InputMode::Help));
+        }
 
-            let result = handle_paste_event("text".to_string(), &state);
+        #[test]
+        fn help_filter_pastes_into_filter() {
+            let mut state = make_state(InputMode::Help);
+            state.ui.help_mut().enter_filter_editing();
 
-            assert!(matches!(result, Action::None));
+            assert_pastes_into(&state, InputTarget::HelpFilter);
         }
     }
 

@@ -2,11 +2,10 @@ use std::time::Instant;
 
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
-use crate::model::shared::input_mode::InputMode;
 use crate::services::AppServices;
 use crate::update::action::{
-    CursorPosition, ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
-    ScrollToCursorTarget, SelectMotion,
+    CursorPosition, InputTarget, ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection,
+    ScrollTarget, ScrollToCursorTarget, SelectMotion,
 };
 use crate::update::{browse, connection, explain, modal, sql_editor};
 
@@ -172,28 +171,31 @@ pub(in crate::update) fn close_modal(state: &mut AppState, kind: ModalKind) -> V
     clippy::match_wildcard_for_single_variants,
     reason = "Every variant must name its handler so a new variant fails to compile instead of being silently dropped."
 )]
-pub(in crate::update) fn paste(state: &mut AppState, text: String, now: Instant) -> Vec<Effect> {
-    match state.input_mode() {
-        InputMode::CommandLine => browse::navigation::input::paste_command_line(state, text),
-        InputMode::CellEdit => browse::navigation::input::paste_cell_edit(state, text),
-        InputMode::TablePicker => browse::navigation::input::paste_table_picker(state, text),
-        InputMode::SqlModal => sql_editor::editing::paste_sql_modal(state, text, now),
-        InputMode::ConnectionSetup => connection::setup::paste_connection_setup(state, text),
-        InputMode::ErTablePicker => browse::navigation::input::paste_er_table_picker(state, text),
-        InputMode::QueryHistoryPicker => {
+pub(in crate::update) fn paste(
+    state: &mut AppState,
+    target: InputTarget,
+    text: String,
+    now: Instant,
+) -> Vec<Effect> {
+    match target {
+        InputTarget::SqlModal => sql_editor::editing::paste_sql_modal(state, text, now),
+        InputTarget::SqlModalHighRisk | InputTarget::SqlModalAnalyzeHighRisk => {
+            sql_editor::high_risk::paste_text(state, target, text)
+        }
+        InputTarget::ResultCellEdit => browse::navigation::input::paste_cell_edit(state, text),
+        InputTarget::ConnectionSetup => connection::setup::paste_connection_setup(state, text),
+        InputTarget::CommandLine => browse::navigation::input::paste_command_line(state, text),
+        InputTarget::Filter => browse::navigation::input::paste_table_picker(state, text),
+        InputTarget::ErFilter => browse::navigation::input::paste_er_table_picker(state, text),
+        InputTarget::SettingsErBrowser => modal::settings::paste_custom_browser(state, text),
+        InputTarget::QueryHistoryFilter => {
             browse::navigation::input::paste_query_history_picker(state, text)
         }
-        InputMode::JsonDetail => browse::result::json::paste_json_detail(state, text),
-        InputMode::JsonEdit => browse::result::json::paste_json_edit(state, text),
-        InputMode::CellDetail => browse::result::cell_detail::paste_cell_detail(state, text),
-        InputMode::Normal
-        | InputMode::CommandPalette
-        | InputMode::Settings
-        | InputMode::Help
-        | InputMode::ConnectionError
-        | InputMode::ConfirmDialog
-        | InputMode::ConnectionSelector
-        | InputMode::SqliteDiagnostics
-        | InputMode::RowDetail => vec![],
+        InputTarget::JsonEdit => browse::result::json::paste_json_edit(state, text),
+        InputTarget::JsonSearch => browse::result::json::paste_json_search(state, text),
+        InputTarget::CellDetailSearch => {
+            browse::result::cell_detail::paste_cell_detail_search(state, text)
+        }
+        InputTarget::HelpFilter => modal::help::paste_help_filter(state, text),
     }
 }

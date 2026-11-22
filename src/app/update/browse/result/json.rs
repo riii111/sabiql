@@ -1,7 +1,7 @@
 use crate::cmd::effect::Effect;
 use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
-use crate::model::browse::json_detail::{JsonDetailMode, JsonDetailState};
+use crate::model::browse::json_detail::JsonDetailState;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::KeySequenceState;
 use crate::model::shared::ui_state::DEFAULT_JSON_DETAIL_EDITOR_VISIBLE_ROWS;
@@ -134,10 +134,7 @@ pub(in crate::update) fn paste_json_edit(state: &mut AppState, text: String) -> 
     vec![]
 }
 
-pub(in crate::update) fn paste_json_detail(state: &mut AppState, text: String) -> Vec<Effect> {
-    if state.json_detail.mode() != JsonDetailMode::Searching {
-        return vec![];
-    }
+pub(in crate::update) fn paste_json_search(state: &mut AppState, text: String) -> Vec<Effect> {
     let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
     state
         .json_detail
@@ -247,6 +244,7 @@ mod tests {
     use crate::cmd::effect::Effect;
     use crate::domain::connection::ConnectionId;
     use crate::domain::{QueryResult, QuerySource, Table};
+    use crate::model::browse::json_detail::JsonDetailMode;
     use crate::model::shared::flash_timer::FlashId;
     use crate::services::AppServices;
     use crate::update::action::CopyTarget;
@@ -1456,7 +1454,15 @@ mod tests {
                 now,
                 &services,
             );
-            reduce_app(&mut state, Action::Paste(" ".to_string()), now, &services);
+            reduce_app(
+                &mut state,
+                Action::Paste {
+                    target: InputTarget::JsonEdit,
+                    text: " ".to_string(),
+                },
+                now,
+                &services,
+            );
 
             assert_eq!(state.input_mode(), InputMode::JsonEdit);
             assert_eq!(state.json_detail.mode(), JsonDetailMode::Editing);

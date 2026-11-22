@@ -105,7 +105,7 @@ pub(in crate::update) fn route(
         Action::ExitHelpFilter => modal::help::exit_help_filter(state),
         Action::Select(motion) => target_routing::select(state, motion),
         Action::ListSelect { target, motion } => target_routing::list_select(state, target, motion),
-        Action::Paste(text) => target_routing::paste(state, text, now),
+        Action::Paste { target, text } => target_routing::paste(state, target, text, now),
         Action::BeginKeySequence(prefix) => begin_key_sequence(state, prefix),
         Action::OpenModal(kind) => target_routing::open_modal(state, kind, now),
         Action::CloseModal(kind) => target_routing::close_modal(state, kind),
@@ -785,7 +785,13 @@ mod tests {
             let mut er_state = sqlite_state();
             er_state.modal.set_mode(InputMode::ErTablePicker);
             er_state.ui.er_picker_mut().insert_filter_str("before");
-            assert_unsupported_action_is_a_noop(&mut er_state, Action::Paste("after".to_string()));
+            assert_unsupported_action_is_a_noop(
+                &mut er_state,
+                Action::Paste {
+                    target: InputTarget::ErFilter,
+                    text: "after".to_string(),
+                },
+            );
             assert_eq!(er_state.ui.er_picker().filter_input().content(), "before");
 
             let mut json_edit_state = sqlite_state();
@@ -796,7 +802,10 @@ mod tests {
                 .set_content("before".to_string());
             assert_unsupported_action_is_a_noop(
                 &mut json_edit_state,
-                Action::Paste("after".to_string()),
+                Action::Paste {
+                    target: InputTarget::JsonEdit,
+                    text: "after".to_string(),
+                },
             );
             assert_eq!(json_edit_state.json_detail.editor().content(), "before");
 

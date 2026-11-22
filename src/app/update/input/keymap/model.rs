@@ -290,6 +290,15 @@ pub(super) fn resolve(rows: &[Row], combo: KeyCombo, context: &KeyContext) -> Op
         })
 }
 
+pub(super) fn text_target(rows: &[Row], context: &KeyContext) -> Option<InputTarget> {
+    rows.iter()
+        .flat_map(|row| &row.bindings)
+        .find_map(|binding| match binding.output {
+            Output::Text(target) if binding.enabled(context) => Some(target),
+            _ => None,
+        })
+}
+
 fn sequence_bindings<'a>(
     rows: &'a [Row],
     context: &'a KeyContext,

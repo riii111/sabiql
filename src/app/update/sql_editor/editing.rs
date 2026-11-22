@@ -4,7 +4,7 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::key_sequence::KeySequenceState;
 use crate::model::shared::text_input::TextEdit;
-use crate::model::sql_editor::modal::{SqlModalStatus, sql_modal_visible_rows};
+use crate::model::sql_editor::modal::sql_modal_visible_rows;
 use crate::update::action::CursorMove;
 
 pub(in crate::update) fn paste_sql_modal(
@@ -12,9 +12,6 @@ pub(in crate::update) fn paste_sql_modal(
     text: String,
     now: Instant,
 ) -> Vec<Effect> {
-    if !matches!(state.sql_modal.status(), SqlModalStatus::Editing) {
-        return vec![];
-    }
     let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
     state.sql_modal.editor.insert_str(&normalized);
     state

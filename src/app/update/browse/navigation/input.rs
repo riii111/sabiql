@@ -145,7 +145,10 @@ mod tests {
 
             route(
                 &mut state,
-                Action::Paste("hel\nlo\r\n".to_string()),
+                Action::Paste {
+                    target: InputTarget::Filter,
+                    text: "hel\nlo\r\n".to_string(),
+                },
                 Instant::now(),
                 &AppServices::stub(),
             );
@@ -161,7 +164,10 @@ mod tests {
 
             route(
                 &mut state,
-                Action::Paste("x".to_string()),
+                Action::Paste {
+                    target: InputTarget::Filter,
+                    text: "x".to_string(),
+                },
                 Instant::now(),
                 &AppServices::stub(),
             );
@@ -176,7 +182,10 @@ mod tests {
 
             route(
                 &mut state,
-                Action::Paste("qu\nit".to_string()),
+                Action::Paste {
+                    target: InputTarget::CommandLine,
+                    text: "qu\nit".to_string(),
+                },
                 Instant::now(),
                 &AppServices::stub(),
             );
@@ -191,7 +200,10 @@ mod tests {
 
             route(
                 &mut state,
-                Action::Paste("public.users".to_string()),
+                Action::Paste {
+                    target: InputTarget::ErFilter,
+                    text: "public.users".to_string(),
+                },
                 Instant::now(),
                 &AppServices::stub(),
             );
@@ -210,7 +222,10 @@ mod tests {
 
             route(
                 &mut state,
-                Action::Paste("public\n.users\r\n".to_string()),
+                Action::Paste {
+                    target: InputTarget::ErFilter,
+                    text: "public\n.users\r\n".to_string(),
+                },
                 Instant::now(),
                 &AppServices::stub(),
             );
@@ -229,7 +244,10 @@ mod tests {
 
             route(
                 &mut state,
-                Action::Paste("us\ners\r\n".to_string()),
+                Action::Paste {
+                    target: InputTarget::QueryHistoryFilter,
+                    text: "us\ners\r\n".to_string(),
+                },
                 Instant::now(),
                 &AppServices::stub(),
             );

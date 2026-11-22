@@ -2,6 +2,7 @@ use crate::catalog::HelpDocument;
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
+use crate::model::shared::picker::sanitize_filter_text;
 use crate::update::action::{ScrollAmount, ScrollDirection};
 use crate::update::input::keymap::KeyContext;
 
@@ -54,6 +55,14 @@ pub(in crate::update) fn toggle_help(state: &mut AppState) -> Vec<Effect> {
 
 pub(in crate::update) fn close_modal_help(state: &mut AppState) -> Vec<Effect> {
     close_help(state);
+    vec![]
+}
+
+pub(in crate::update) fn paste_help_filter(state: &mut AppState, text: String) -> Vec<Effect> {
+    state
+        .ui
+        .help_mut()
+        .edit_filter(|input| input.insert_str(&sanitize_filter_text(&text)));
     vec![]
 }
 

@@ -331,7 +331,10 @@ pub enum Action {
         target: ListTarget,
         motion: ListMotion,
     },
-    Paste(String),
+    Paste {
+        target: InputTarget,
+        text: String,
+    },
     BeginKeySequence(Prefix),
     CancelKeySequence,
 
@@ -639,6 +642,9 @@ impl Action {
         if let Some((target, edit)) = self.text_edit() {
             return text_feature_requirement(target, edit);
         }
+        if let Self::Paste { target, .. } = *self {
+            return text_feature_requirement(target, TextEdit::Insert(' '));
+        }
 
         match self {
             Self::OpenModal(ModalKind::ErTablePicker)
@@ -722,12 +728,6 @@ impl Action {
             } if mode == InputMode::JsonDetail && json_mode == JsonDetailMode::Searching => {
                 FeatureRequirement::None
             }
-            Self::Paste(_) => match mode {
-                InputMode::ErTablePicker => FeatureRequirement::ErDiagram,
-                InputMode::JsonDetail => FeatureRequirement::JsonDocumentDetail,
-                InputMode::JsonEdit => FeatureRequirement::JsonDocumentEdit,
-                _ => FeatureRequirement::None,
-            },
             Self::BeginKeySequence(Prefix::G)
                 if matches!(mode, InputMode::JsonDetail | InputMode::JsonEdit) =>
             {
@@ -944,7 +944,7 @@ mod tests {
         const JSON_EDIT_MOVE_CURSOR_REQUIREMENT: FeatureRequirement =
             FeatureRequirement::JsonDocumentDetail;
 
-        fn text_actions(target: InputTarget) -> [(&'static str, Action); 6] {
+        fn text_actions(target: InputTarget) -> [(&'static str, Action); 7] {
             [
                 ("Insert", Action::TextInput { target, ch: 'x' }),
                 ("Backspace", Action::TextBackspace { target }),
@@ -962,6 +962,13 @@ mod tests {
                     Action::TextMoveCursor {
                         target,
                         direction: CursorMove::Left,
+                    },
+                ),
+                (
+                    "Paste",
+                    Action::Paste {
+                        target,
+                        text: "x".to_string(),
                     },
                 ),
             ]
@@ -1092,36 +1099,14 @@ mod tests {
         fn stateful_actions() -> Vec<(&'static str, AppState, Action)> {
             let mut searching = state_in(InputMode::JsonDetail);
             searching.json_detail.enter_search();
-            vec![
-                (
-                    "search JsonDetail Exit while searching",
-                    searching,
-                    Action::DetailSearch {
-                        target: DetailTarget::JsonDetail,
-                        step: SearchStep::Exit,
-                    },
-                ),
-                (
-                    "paste in JsonDetail",
-                    state_in(InputMode::JsonDetail),
-                    Action::Paste("x".to_string()),
-                ),
-                (
-                    "paste in JsonEdit",
-                    state_in(InputMode::JsonEdit),
-                    Action::Paste("x".to_string()),
-                ),
-                (
-                    "paste in ErTablePicker",
-                    state_in(InputMode::ErTablePicker),
-                    Action::Paste("x".to_string()),
-                ),
-                (
-                    "paste in CellDetail",
-                    state_in(InputMode::CellDetail),
-                    Action::Paste("x".to_string()),
-                ),
-            ]
+            vec![(
+                "search JsonDetail Exit while searching",
+                searching,
+                Action::DetailSearch {
+                    target: DetailTarget::JsonDetail,
+                    step: SearchStep::Exit,
+                },
+            )]
         }
 
         fn report() -> String {
@@ -1194,11 +1179,7 @@ search CellDetail Submit => None\n\
 yank all JsonDetail => JsonDocumentDetail\n\
 yank all CellDetail => None\n\
 toggle Help => None\n\
-search JsonDetail Exit while searching => None\n\
-paste in JsonDetail => JsonDocumentDetail\n\
-paste in JsonEdit => JsonDocumentEdit\n\
-paste in ErTablePicker => ErDiagram\n\
-paste in CellDetail => None";
+search JsonDetail Exit while searching => None";
     }
 
     mod shared_scroll_helpers {

@@ -3,7 +3,15 @@ use std::time::Instant;
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
+use crate::model::shared::picker::sanitize_filter_text;
 use crate::ports::outbound::AppSettings;
+
+pub(in crate::update) fn paste_custom_browser(state: &mut AppState, text: String) -> Vec<Effect> {
+    state
+        .settings
+        .edit_custom_browser(|input| input.insert_str(&sanitize_filter_text(&text)));
+    vec![]
+}
 
 pub(in crate::update) fn open_modal_settings(state: &mut AppState) -> Vec<Effect> {
     state.settings.open(state.ui.theme_id());
