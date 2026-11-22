@@ -470,12 +470,6 @@ mod paste {
 
     const PASTED: &str = "zz";
 
-    fn paste(state: &mut AppState) -> Action {
-        let action = handle_event(InputEvent::Paste(PASTED.to_string()), state);
-        dispatch(state, action.clone());
-        action
-    }
-
     fn editing_state(target: InputTarget) -> AppState {
         let mut state = state_for(target);
         if target == InputTarget::SqlModal {
@@ -499,17 +493,33 @@ mod paste {
                 edited_text(&state, target).unwrap_or_else(|| panic!("{target:?} has no input"));
             let content = content.to_string();
 
-            let action = paste(&mut state);
-
+            let action = handle_event(InputEvent::Paste(PASTED.to_string()), &state);
             assert!(
                 matches!(action, Action::Paste { target: actual, .. } if actual == target),
                 "{target:?} produced {action:?}"
             );
+            dispatch(&mut state, action);
+
             assert_eq!(
                 edited_text(&state, target).map(|(content, _)| content.to_string()),
                 Some(inserted_at_cursor(&content, cursor)),
                 "{target:?}"
             );
+            match target {
+                InputTarget::JsonSearch => {
+                    assert!(
+                        state.json_detail.search().matches().is_empty(),
+                        "{target:?}"
+                    );
+                }
+                InputTarget::CellDetailSearch => {
+                    assert!(
+                        state.cell_detail.search().matches().is_empty(),
+                        "{target:?}"
+                    );
+                }
+                _ => {}
+            }
         }
     }
 
