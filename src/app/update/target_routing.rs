@@ -4,8 +4,8 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::services::AppServices;
 use crate::update::action::{
-    CursorPosition, InputTarget, ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection,
-    ScrollTarget, ScrollToCursorTarget, SelectMotion,
+    CursorPosition, DetailTarget, InputTarget, ListMotion, ListTarget, ModalKind, ScrollAmount,
+    ScrollDirection, ScrollTarget, ScrollToCursorTarget, SelectMotion,
 };
 use crate::update::{browse, connection, explain, modal, sql_editor};
 
@@ -192,10 +192,16 @@ pub(in crate::update) fn paste(
             browse::navigation::input::paste_query_history_picker(state, text)
         }
         InputTarget::JsonEdit => browse::result::json::paste_json_edit(state, text),
-        InputTarget::JsonSearch => browse::result::json::paste_json_search(state, text),
-        InputTarget::CellDetailSearch => {
-            browse::result::cell_detail::paste_cell_detail_search(state, text)
-        }
+        InputTarget::JsonSearch => browse::result::detail_search::paste_search_query(
+            state,
+            DetailTarget::JsonDetail,
+            &text,
+        ),
+        InputTarget::CellDetailSearch => browse::result::detail_search::paste_search_query(
+            state,
+            DetailTarget::CellDetail,
+            &text,
+        ),
         InputTarget::HelpFilter => modal::help::paste_help_filter(state, text),
     }
 }

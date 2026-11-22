@@ -537,6 +537,12 @@ mod paste {
         while settings.settings.section() != SettingsSection::ErDiagram {
             dispatch(&mut settings, Action::SettingsNextSection);
         }
+        let mut select_field = connected_state();
+        select_field.modal.set_mode(InputMode::ConnectionSetup);
+        assert_eq!(
+            select_field.connection_setup.focused_field(),
+            ConnectionField::DatabaseType
+        );
         let mut connection_setup = state_for(InputTarget::ConnectionSetup);
         while !connection_setup.connection_setup.has_open_dropdown() {
             dispatch(&mut connection_setup, Action::ConnectionSetupPrevField);
@@ -552,6 +558,7 @@ mod paste {
             ("cell detail", cell_detail),
             ("help", help),
             ("settings", settings),
+            ("connection setup select field", select_field),
             ("connection setup dropdown", connection_setup),
             ("command palette", palette),
         ]

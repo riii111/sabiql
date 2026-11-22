@@ -4,10 +4,7 @@ use crate::model::app_state::AppState;
 use crate::model::shared::detail_view::{DetailDisplayMode, ReadOnlyDetailState};
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::preview_cell_text::{CellPresentationPolicy, format_for_cell_detail};
-use crate::update::action::DetailTarget;
 use crate::update::action::{Action, ModalKind, ScrollAmount, ScrollDirection};
-
-use super::detail_search::refresh_search_matches;
 
 pub(in crate::update) fn result_open_cell_detail(state: &mut AppState) -> Vec<Effect> {
     if selected_cell_uses_json_detail_modal(state) {
@@ -45,20 +42,6 @@ pub(in crate::update) fn result_open_cell_detail(state: &mut AppState) -> Vec<Ef
 pub(in crate::update) fn close_modal_cell_detail(state: &mut AppState) -> Vec<Effect> {
     state.cell_detail.close();
     state.modal.pop_mode();
-    vec![]
-}
-
-pub(in crate::update) fn paste_cell_detail_search(
-    state: &mut AppState,
-    text: String,
-) -> Vec<Effect> {
-    let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
-    state
-        .cell_detail
-        .search_mut()
-        .input_mut()
-        .insert_str(&clean);
-    refresh_search_matches(state, DetailTarget::CellDetail);
     vec![]
 }
 
@@ -137,6 +120,7 @@ mod tests {
     use crate::domain::connection::ConnectionId;
     use crate::domain::{ColumnAttributes, QueryResult, QuerySource, Table};
     use crate::services::AppServices;
+    use crate::update::action::DetailTarget;
     use crate::update::action::InputTarget;
     use crate::update::action::SearchStep;
     use crate::update::reducer::route;

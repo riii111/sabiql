@@ -1062,7 +1062,7 @@ mod tests {
         #[case("one   two", 6, 0)]
         #[case("a b.c_d", 7, 2)]
         #[case("a\tb\nc", 5, 4)]
-        #[case("x 🍣🍣", 4, 2)]
+        #[case("x\u{3000}🍣🍣", 4, 2)]
         fn previous_whitespace_boundary(
             #[case] content: &str,
             #[case] cursor: usize,

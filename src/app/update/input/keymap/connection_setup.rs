@@ -112,7 +112,7 @@ fn rows(submit: &'static str) -> Vec<Row> {
         text,
     ));
     rows.push(Row::new(
-        vec![Binding::text(InputTarget::ConnectionSetup).when(form)],
+        vec![Binding::text(InputTarget::ConnectionSetup).when(text)],
         "Edit",
         "Edit connection setting",
         &[HintSurface::Connections],

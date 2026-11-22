@@ -7,9 +7,7 @@ use crate::model::shared::key_sequence::KeySequenceState;
 use crate::model::shared::ui_state::DEFAULT_JSON_DETAIL_EDITOR_VISIBLE_ROWS;
 use crate::policy::preview_cell_text::CellPresentationPolicy;
 use crate::update::action::CursorMove;
-use crate::update::action::DetailTarget;
 
-use super::detail_search::refresh_search_matches;
 use crate::model::shared::text_input::TextEdit;
 use crate::update::helpers::{EditGuardrailError, editable_preview_base, ensure_column_writable};
 
@@ -134,17 +132,6 @@ pub(in crate::update) fn paste_json_edit(state: &mut AppState, text: String) -> 
     vec![]
 }
 
-pub(in crate::update) fn paste_json_search(state: &mut AppState, text: String) -> Vec<Effect> {
-    let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
-    state
-        .json_detail
-        .search_mut()
-        .input_mut()
-        .insert_str(&clean);
-    refresh_search_matches(state, DetailTarget::JsonDetail);
-    vec![]
-}
-
 fn ensure_json_column_writable(state: &AppState) -> Result<(), EditGuardrailError> {
     let (_, identity) = editable_preview_base(state)?;
     ensure_column_writable(state, state.json_detail.column_name(), &identity)
@@ -248,6 +235,7 @@ mod tests {
     use crate::model::shared::flash_timer::FlashId;
     use crate::services::AppServices;
     use crate::update::action::CopyTarget;
+    use crate::update::action::DetailTarget;
     use crate::update::action::InputTarget;
     use crate::update::action::SearchStep;
     use crate::update::action::TextKillDirection;

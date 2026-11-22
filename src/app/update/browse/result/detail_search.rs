@@ -97,6 +97,17 @@ fn flash_id(target: DetailTarget) -> FlashId {
     }
 }
 
+pub(in crate::update) fn paste_search_query(
+    state: &mut AppState,
+    target: DetailTarget,
+    text: &str,
+) -> Vec<Effect> {
+    let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
+    search_mut(state, target).input_mut().insert_str(&clean);
+    refresh_search_matches(state, target);
+    vec![]
+}
+
 pub(in crate::update) fn edit_search_query(
     state: &mut AppState,
     target: DetailTarget,
