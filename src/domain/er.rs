@@ -266,34 +266,30 @@ mod tests {
             assert_eq!(result[0].qualified_name, "public.users");
         }
 
-        #[test]
-        fn direct_fk_returns_both() {
-            let tables = vec![
-                make_table("posts", "public", vec![("public.posts", "public.users")]),
+        #[rstest::rstest]
+        #[case::reverse_edge("public.users", 1, &["audit.posts", "public.users"])]
+        #[case::two_hops("public.users", 2, &["audit.comments", "audit.posts", "public.users"])]
+        #[case::forward_edges("audit.comments", UNLIMITED, &["audit.comments", "audit.posts", "public.users"])]
+        fn follows_only_reachable_qualified_tables(
+            #[case] seed: &str,
+            #[case] depth: usize,
+            #[case] expected: &[&str],
+        ) {
+            let tables = [
                 make_table("users", "public", vec![]),
+                make_table("posts", "audit", vec![("audit.posts", "public.users")]),
+                make_table("comments", "audit", vec![("audit.comments", "audit.posts")]),
+                make_table("users", "audit", vec![]),
             ];
 
-            let result = fk_reachable_tables(&tables, "public.users", UNLIMITED);
+            let reached = fk_reachable_tables(&tables, seed, depth);
+            let mut names: Vec<_> = reached
+                .iter()
+                .map(|table| table.qualified_name.as_str())
+                .collect();
+            names.sort_unstable();
 
-            assert_eq!(result.len(), 2);
-        }
-
-        #[test]
-        fn transitive_fk_returns_chain() {
-            // A -> B -> C
-            let tables = vec![
-                make_table(
-                    "comments",
-                    "public",
-                    vec![("public.comments", "public.posts")],
-                ),
-                make_table("posts", "public", vec![("public.posts", "public.users")]),
-                make_table("users", "public", vec![]),
-            ];
-
-            let result = fk_reachable_tables(&tables, "public.users", UNLIMITED);
-
-            assert_eq!(result.len(), 3);
+            assert_eq!(names, expected);
         }
 
         #[test]
@@ -307,84 +303,6 @@ mod tests {
             let result = fk_reachable_tables(&tables, "public.a", UNLIMITED);
 
             assert_eq!(result.len(), 2);
-        }
-
-        #[test]
-        fn disconnected_table_excluded() {
-            let tables = vec![
-                make_table("posts", "public", vec![("public.posts", "public.users")]),
-                make_table("users", "public", vec![]),
-                make_table("logs", "public", vec![]),
-            ];
-
-            let result = fk_reachable_tables(&tables, "public.users", UNLIMITED);
-
-            assert_eq!(result.len(), 2);
-            assert!(!result.iter().any(|t| t.qualified_name == "public.logs"));
-        }
-
-        #[test]
-        fn bidirectional_traversal() {
-            // seed=posts, posts->users FK. Traversal should find users via reverse edge.
-            let tables = vec![
-                make_table("posts", "public", vec![("public.posts", "public.users")]),
-                make_table("users", "public", vec![]),
-            ];
-
-            let result = fk_reachable_tables(&tables, "public.posts", UNLIMITED);
-
-            assert_eq!(result.len(), 2);
-        }
-
-        #[test]
-        fn cross_schema_fk() {
-            let tables = vec![
-                make_table("users", "public", vec![("public.users", "audit.logs")]),
-                make_table("logs", "audit", vec![]),
-            ];
-
-            let result = fk_reachable_tables(&tables, "public.users", UNLIMITED);
-
-            assert_eq!(result.len(), 2);
-        }
-
-        #[test]
-        fn depth_1_returns_direct_neighbors_only() {
-            // A -> B -> C, depth=1 from A should return A and B only
-            let tables = vec![
-                make_table(
-                    "comments",
-                    "public",
-                    vec![("public.comments", "public.posts")],
-                ),
-                make_table("posts", "public", vec![("public.posts", "public.users")]),
-                make_table("users", "public", vec![]),
-            ];
-
-            let result = fk_reachable_tables(&tables, "public.users", 1);
-
-            assert_eq!(result.len(), 2);
-            assert!(result.iter().any(|t| t.qualified_name == "public.users"));
-            assert!(result.iter().any(|t| t.qualified_name == "public.posts"));
-            assert!(!result.iter().any(|t| t.qualified_name == "public.comments"));
-        }
-
-        #[test]
-        fn depth_2_returns_two_hops() {
-            // A -> B -> C, depth=2 from A should return all three
-            let tables = vec![
-                make_table(
-                    "comments",
-                    "public",
-                    vec![("public.comments", "public.posts")],
-                ),
-                make_table("posts", "public", vec![("public.posts", "public.users")]),
-                make_table("users", "public", vec![]),
-            ];
-
-            let result = fk_reachable_tables(&tables, "public.users", 2);
-
-            assert_eq!(result.len(), 3);
         }
     }
 

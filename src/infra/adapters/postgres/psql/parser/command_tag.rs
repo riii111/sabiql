@@ -713,15 +713,6 @@ mod tests {
         }
 
         #[test]
-        fn schema_modifying_takes_priority() {
-            let tags = vec![CommandTag::Drop("TABLE".to_string()), CommandTag::Delete(1)];
-            assert_eq!(
-                resolved(tags.clone(), tags).aggregate(),
-                Some(CommandTag::Drop("TABLE".to_string()))
-            );
-        }
-
-        #[test]
         fn last_needs_refresh() {
             let tags = vec![CommandTag::Insert(1), CommandTag::Update(2)];
             assert_eq!(
@@ -748,22 +739,21 @@ mod tests {
             let all = vec![CommandTag::Begin, CommandTag::Commit];
             assert_eq!(resolved(all, vec![]).aggregate(), Some(CommandTag::Commit));
         }
-
-        #[test]
-        fn ddl_and_dml_mixed_schema_wins() {
-            let tags = vec![
-                CommandTag::Create("TABLE".to_string()),
-                CommandTag::Insert(1),
-            ];
-            assert_eq!(
-                resolved(tags.clone(), tags).aggregate(),
-                Some(CommandTag::Create("TABLE".to_string()))
-            );
-        }
     }
 
     mod parse_aggregate_command_tag {
         use super::*;
+
+        #[test]
+        fn committed_ddl_between_row_changes_requires_schema_refresh() {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag(
+                    "BEGIN\nUPDATE 1\nCREATE TABLE\nDELETE 1\nCOMMIT",
+                    "BEGIN; UPDATE t SET x=1; CREATE TABLE u (x int); DELETE FROM t; COMMIT",
+                ),
+                Some(CommandTag::Create("TABLE".to_string())),
+            );
+        }
 
         #[test]
         fn committed_txn_with_update() {

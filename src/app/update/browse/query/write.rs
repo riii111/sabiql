@@ -1068,26 +1068,29 @@ mod tests {
         }
 
         #[test]
-        fn composite_primary_key_preserves_order_in_update_preview() {
+        fn update_preview_targets_selected_row_with_reordered_key_columns() {
             let mut state = AppState::new("test_project".to_string());
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             state
                 .query
                 .set_current_result(Arc::new(QueryResult::success(
-                    "SELECT first_id, second_id, name FROM composite_users".to_string(),
+                    "SELECT second_id, first_id, name FROM composite_users".to_string(),
                     vec![
-                        "first_id".to_string(),
                         "second_id".to_string(),
+                        "first_id".to_string(),
                         "name".to_string(),
                     ],
-                    vec![vec!["1".to_string(), "2".to_string(), "Alice".to_string()]],
+                    vec![
+                        vec!["8".into(), "7".into(), "Alice".into()],
+                        vec!["2".into(), "1".into(), "Alice".into()],
+                    ],
                     1,
                     QuerySource::Preview,
                 )));
             let mut detail = users_table_detail();
             detail.name = "composite_users".to_string();
-            detail.columns[0].name = "first_id".to_string();
-            detail.columns[1].name = "second_id".to_string();
+            detail.columns[0].name = "second_id".to_string();
+            detail.columns[1].name = "first_id".to_string();
             detail.columns[1].attributes = ColumnAttributes::PRIMARY_KEY;
             detail
                 .columns
@@ -1103,7 +1106,7 @@ mod tests {
             state.modal.set_mode(InputMode::CellEdit);
             state
                 .result_interaction
-                .begin_cell_edit(0, 2, "Alice".to_string());
+                .begin_cell_edit(1, 2, "Alice".to_string());
             state
                 .result_interaction
                 .replace_cell_edit_draft("Bob".to_string());
@@ -1246,10 +1249,12 @@ mod tests {
             }
         }
 
-        #[test]
-        fn execute_write_with_non_one_row_sets_error() {
+        #[rstest]
+        #[case::no_rows(0)]
+        #[case::multiple_rows(2)]
+        fn unexpected_update_count_reports_error_and_refreshes(#[case] affected_rows: usize) {
             let mut state = editable_state();
-            let action = write_succeeded_action(&mut state, 0);
+            let action = write_succeeded_action(&mut state, affected_rows);
 
             let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
@@ -1258,27 +1263,7 @@ mod tests {
             assert!(state.query.is_running());
             assert_eq!(
                 state.messages.last_error.as_deref(),
-                Some("UPDATE expected 1 row, but affected 0 rows")
-            );
-            assert!(matches!(
-                effects.first(),
-                Some(Effect::ExecutePreview { .. })
-            ));
-        }
-
-        #[test]
-        fn execute_write_with_multiple_rows_sets_error() {
-            let mut state = editable_state();
-            let action = write_succeeded_action(&mut state, 2);
-
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
-
-            assert_eq!(effects.len(), 1);
-            assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(state.query.is_running());
-            assert_eq!(
-                state.messages.last_error.as_deref(),
-                Some("UPDATE expected 1 row, but affected 2 rows")
+                Some(format!("UPDATE expected 1 row, but affected {affected_rows} rows").as_str())
             );
             assert!(matches!(
                 effects.first(),

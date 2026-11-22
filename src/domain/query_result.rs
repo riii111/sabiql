@@ -500,20 +500,30 @@ mod tests {
             );
         }
 
-        #[test]
-        fn removes_sentinel_column_without_display_rows() {
+        #[rstest::rstest]
+        #[case::no_rows(QueryValue::Null, QueryValue::Null, None)]
+        #[case::real_null(QueryValue::Null, QueryValue::SqlLiteral("1".into()), Some(QueryValue::Null))]
+        #[case::text(QueryValue::text("body"), QueryValue::SqlLiteral("1".into()), Some(QueryValue::text("body")))]
+        fn removing_sentinel_distinguishes_empty_results_from_real_rows(
+            #[case] body: QueryValue,
+            #[case] sentinel: QueryValue,
+            #[case] expected: Option<QueryValue>,
+        ) {
             let result = QueryResult::success_with_values(
-                "SELECT body, sentinel".to_string(),
+                "SELECT body".to_string(),
                 vec!["body".to_string(), "sentinel".to_string()],
-                vec![vec![QueryValue::text("body"), QueryValue::text("sentinel")]],
+                vec![vec![body, sentinel]],
                 0,
                 QuerySource::Adhoc,
             )
             .without_empty_result_sentinel();
 
-            assert_eq!(result.columns, vec!["body"]);
-            assert_eq!(result.values(), &[vec![QueryValue::text("body")]]);
-            assert_eq!(result.display_row_at(0), Some(vec!["body".to_string()]));
+            assert_eq!(result.columns, ["body"]);
+            assert_eq!(result.row_count(), usize::from(expected.is_some()));
+            let display_row = expected.as_ref().map(|value| vec![value.display_value()]);
+            assert_eq!(result.display_row_at(0), display_row);
+            let rows: Vec<_> = expected.into_iter().map(|value| vec![value]).collect();
+            assert_eq!(result.values(), rows);
         }
 
         #[test]

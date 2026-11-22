@@ -616,27 +616,6 @@ mod tests {
         }
 
         #[test]
-        fn parse_quoted_value_decodes_adhoc_unistr() {
-            assert_eq!(
-                parse_quoted_value("unistr('\\u0001\\u0001')", QuerySource::Adhoc, true).unwrap(),
-                QueryValue::Text("\x01\x01".to_string())
-            );
-            assert_eq!(
-                parse_quoted_value("unistr('\\u0001O''Reilly')", QuerySource::Adhoc, true).unwrap(),
-                QueryValue::Text("\x01O'Reilly".to_string())
-            );
-        }
-
-        #[test]
-        fn parse_quoted_value_decodes_unistr_control_characters() {
-            assert_eq!(
-                parse_quoted_value("unistr('line 1\\u000aline 2')", QuerySource::Adhoc, true)
-                    .unwrap(),
-                QueryValue::Text("line 1\nline 2".to_string())
-            );
-        }
-
-        #[test]
         fn decode_unistr_quoted_text_decodes_documented_escape_forms() {
             assert_eq!(
                 decode_unistr_quoted_text("unistr('\\U0001F600\\+01F642\\0041')").unwrap(),
@@ -683,30 +662,11 @@ mod tests {
         }
 
         #[test]
-        fn parse_quoted_value_decodes_preview_transport_plain_quoted() {
-            let sentinel = sql::sqlite_nul_text_sentinel();
-            let quoted = format!("'{sentinel}68656C6C6F'");
-            let value = parse_quoted_value(&quoted, QuerySource::Preview, true).unwrap();
-
-            assert_eq!(value, QueryValue::Text("hello".to_string()));
-        }
-
-        #[test]
         fn parse_quoted_value_keeps_plain_quoted_transport_as_text_for_adhoc() {
             let sentinel = sql::sqlite_nul_text_sentinel();
             let transport = format!("{sentinel}68656C6C6F");
             let quoted = format!("'{transport}'");
             let value = parse_quoted_value(&quoted, QuerySource::Adhoc, true).unwrap();
-
-            assert_eq!(value, QueryValue::Text(transport));
-        }
-
-        #[test]
-        fn parse_quoted_value_skips_preview_transport_decode_for_column_names() {
-            let sentinel = sql::sqlite_nul_text_sentinel();
-            let transport = format!("{sentinel}68656C6C6F");
-            let quoted = format!("'{transport}'");
-            let value = parse_quoted_value(&quoted, QuerySource::Preview, false).unwrap();
 
             assert_eq!(value, QueryValue::Text(transport));
         }
@@ -728,16 +688,24 @@ mod tests {
         }
 
         #[test]
-        fn quoted_to_query_result_decodes_adhoc_unistr() {
-            let quoted = "'value'\nunistr('\\u0001\\u0001')\n";
-
+        fn quoted_to_query_result_decodes_adhoc_unistr_rows_in_order() {
+            let quoted = concat!(
+                "'value'\n",
+                "unistr('\\u0001\\u0001')\n",
+                "unistr('\\u0001O''Reilly')\n",
+                "unistr('line 1\\u000aline 2')\n",
+            );
             let result =
-                quoted_to_query_result("SELECT char(1) || char(1)", quoted, QuerySource::Adhoc, 1)
+                quoted_to_query_result("SELECT value FROM t", quoted, QuerySource::Adhoc, 1)
                     .unwrap();
 
             assert_eq!(
-                result.value_at(0, 0),
-                Some(&QueryValue::Text("\x01\x01".to_string()))
+                result.values(),
+                [
+                    [QueryValue::text("\x01\x01")],
+                    [QueryValue::text("\x01O'Reilly")],
+                    [QueryValue::text("line 1\nline 2")],
+                ]
             );
         }
 

@@ -85,89 +85,46 @@ mod tests {
     use super::*;
 
     #[test]
-    fn serde_round_trip() {
+    fn saved_update_preserves_database_and_affected_rows() {
         let entry = QueryHistoryEntry::new_with_database(
-            "SELECT * FROM users".to_string(),
-            "2026-03-13T12:00:00Z".to_string(),
-            ConnectionId::from_string("test-uuid"),
-            None,
-            QueryResultStatus::Success,
-            None,
-        );
-
-        let json = serde_json::to_string(&entry).unwrap();
-        let deserialized: QueryHistoryEntry = serde_json::from_str(&json).unwrap();
-
-        assert_eq!(entry, deserialized);
-    }
-
-    #[test]
-    fn serde_round_trip_with_affected_rows() {
-        let entry = QueryHistoryEntry::new_with_database(
-            "UPDATE users SET name = 'x'".to_string(),
-            "2026-03-13T12:00:00Z".to_string(),
-            ConnectionId::from_string("test-uuid"),
-            None,
+            "UPDATE users SET active = true".into(),
+            "2026-03-13T12:00:00Z".into(),
+            ConnectionId::from_string("abc-123"),
+            Some("analytics".into()),
             QueryResultStatus::Success,
             Some(5),
         );
+        let saved = serde_json::json!({
+            "query": "UPDATE users SET active = true",
+            "executed_at": "2026-03-13T12:00:00Z",
+            "connection_id": "abc-123",
+            "database": "analytics",
+            "result_status": "Success",
+            "affected_rows": 5,
+        });
 
-        let json = serde_json::to_string(&entry).unwrap();
-        let deserialized: QueryHistoryEntry = serde_json::from_str(&json).unwrap();
-
-        assert_eq!(entry, deserialized);
-        assert_eq!(deserialized.result_status, QueryResultStatus::Success);
-        assert_eq!(deserialized.affected_rows, Some(5));
-    }
-
-    #[test]
-    fn serde_json_format() {
-        let entry = QueryHistoryEntry::new_with_database(
-            "SELECT 1".to_string(),
-            "2026-03-13T12:00:00Z".to_string(),
-            ConnectionId::from_string("abc-123"),
-            None,
-            QueryResultStatus::Success,
-            None,
+        assert_eq!(serde_json::to_value(&entry).unwrap(), saved);
+        assert_eq!(
+            serde_json::from_value::<QueryHistoryEntry>(saved).unwrap(),
+            entry
         );
-
-        let json = serde_json::to_string(&entry).unwrap();
-
-        assert!(json.contains("\"query\":\"SELECT 1\""));
-        assert!(json.contains("\"executed_at\":\"2026-03-13T12:00:00Z\""));
-        assert!(json.contains("\"connection_id\":\"abc-123\""));
-        assert!(json.contains("\"result_status\":\"Success\""));
     }
 
     #[test]
-    fn serde_reads_entries_without_database() {
-        let json = r#"{
-            "query":"SELECT 1",
-            "executed_at":"2026-03-13T12:00:00Z",
-            "connection_id":"abc-123",
-            "result_status":"Success",
-            "affected_rows":null
-        }"#;
+    fn legacy_failure_without_database_remains_unscoped() {
+        let saved = serde_json::json!({
+            "query": "SELECT missing",
+            "executed_at": "2026-03-13T12:00:00Z",
+            "connection_id": "abc-123",
+            "result_status": "Failed",
+            "affected_rows": null,
+        });
 
-        let entry: QueryHistoryEntry = serde_json::from_str(json).unwrap();
+        let entry: QueryHistoryEntry = serde_json::from_value(saved.clone()).unwrap();
 
         assert_eq!(entry.database, None);
-    }
-
-    #[test]
-    fn serde_round_trip_preserves_database() {
-        let entry = QueryHistoryEntry::new_with_database(
-            "SELECT 1".to_string(),
-            "2026-03-13T12:00:00Z".to_string(),
-            ConnectionId::from_string("abc-123"),
-            Some("analytics".to_string()),
-            QueryResultStatus::Success,
-            None,
-        );
-
-        let json = serde_json::to_string(&entry).unwrap();
-        let deserialized: QueryHistoryEntry = serde_json::from_str(&json).unwrap();
-
-        assert_eq!(deserialized.database.as_deref(), Some("analytics"));
+        assert_eq!(entry.result_status, QueryResultStatus::Failed);
+        assert_eq!(entry.affected_rows, None);
+        assert_eq!(serde_json::to_value(entry).unwrap(), saved);
     }
 }

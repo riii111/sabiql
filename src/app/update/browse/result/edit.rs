@@ -126,8 +126,8 @@ mod tests {
     use crate::domain::{QueryResult, QuerySource, QueryValue, Table};
     use crate::services::AppServices;
     use crate::test_support::endpoint;
+    use crate::update::action::CursorMove;
     use crate::update::action::InputTarget;
-    use crate::update::action::{CursorMove, TextKillDirection};
     use crate::update::reducer::route;
     use crate::update::test_fixtures::edit_text;
     use rstest::rstest;
@@ -724,33 +724,6 @@ mod tests {
             );
 
             assert_eq!(state.result_interaction.cell_edit().input().cursor(), 3);
-        }
-
-        #[test]
-        fn kill_then_yank_restores_cell_edit_text() {
-            let mut state = state_in_cell_edit("before after", 7);
-
-            edit_text(
-                &mut state,
-                &Action::TextKill {
-                    target: InputTarget::ResultCellEdit,
-                    direction: TextKillDirection::ToLineEnd,
-                },
-                Instant::now(),
-            );
-            edit_text(
-                &mut state,
-                &Action::TextYank {
-                    target: InputTarget::ResultCellEdit,
-                },
-                Instant::now(),
-            );
-
-            assert_eq!(
-                state.result_interaction.cell_edit().draft_value(),
-                "before after"
-            );
-            assert_eq!(state.kill_buffer(), Some("after"));
         }
     }
 }

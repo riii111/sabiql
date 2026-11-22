@@ -295,27 +295,6 @@ ssl_mode = "prefer"
         }
 
         #[test]
-        fn same_id_updates_without_duplicate_error() {
-            let temp_dir = TempDir::new().unwrap();
-            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
-
-            let mut profile = make_test_profile("Production");
-            store.save(&profile).unwrap();
-
-            profile.config = ConnectionConfig::PostgreSQL(PostgresConnectionConfig::new(
-                "newhost",
-                5432,
-                "testdb",
-                "testuser",
-                "testpass",
-                SslMode::Prefer,
-            ));
-            let result = store.save(&profile);
-
-            assert!(result.is_ok());
-        }
-
-        #[test]
         fn preserves_existing_app_settings() {
             let temp_dir = TempDir::new().unwrap();
             let config_path = temp_dir.path().join(CONFIG_FILE_NAME);
@@ -518,7 +497,7 @@ ssl_mode = "prefer"
         }
 
         #[test]
-        fn existing_file_preserved_on_save_roundtrip() {
+        fn updating_one_profile_preserves_the_other_on_disk() {
             let temp_dir = TempDir::new().unwrap();
             let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
 
@@ -539,12 +518,8 @@ ssl_mode = "prefer"
 
             let all = store.load_all().unwrap();
             assert_eq!(all.len(), 2);
-            assert!(all.iter().any(|p| p.name.as_str() == "First"));
-            assert!(all.iter().any(|p| {
-                p.name.as_str() == "Second"
-                    && p.postgres_config()
-                        .is_some_and(|config| config.host == "updated-host")
-            }));
+            assert!(all.contains(&profile1));
+            assert!(all.contains(&profile2));
         }
     }
 }

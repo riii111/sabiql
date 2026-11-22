@@ -800,54 +800,28 @@ Execution Time: 0.600 ms";
             }
         }
 
-        #[test]
-        fn improved_when_cost_drops_below_threshold() {
-            let baseline = make_plan(Some(1000.0), Some(100.0), Some("Seq Scan"));
-            let current = make_plan(Some(500.0), Some(100.0), Some("Seq Scan"));
+        #[rstest::rstest]
+        #[case::improved(10.0, ComparisonVerdict::Improved, "-50.0%")]
+        #[case::lower_boundary(18.0, ComparisonVerdict::Similar, "-10.0%")]
+        #[case::similar(21.0, ComparisonVerdict::Similar, "+5.0%")]
+        #[case::upper_boundary(22.0, ComparisonVerdict::Similar, "+10.0%")]
+        #[case::worsened(30.0, ComparisonVerdict::Worsened, "+50.0%")]
+        fn compares_cost_and_reports_change_from_baseline(
+            #[case] cost: f64,
+            #[case] verdict: ComparisonVerdict,
+            #[case] percent: &str,
+        ) {
+            let baseline = make_plan(Some(20.0), None, None);
+            let current = make_plan(Some(cost), None, None);
 
             let result = compare_plans(&baseline, &current);
 
-            assert_eq!(result.verdict, ComparisonVerdict::Improved);
-        }
-
-        #[test]
-        fn worsened_when_cost_exceeds_threshold() {
-            let baseline = make_plan(Some(100.0), Some(10.0), Some("Index Scan"));
-            let current = make_plan(Some(1000.0), Some(10.0), Some("Seq Scan"));
-
-            let result = compare_plans(&baseline, &current);
-
-            assert_eq!(result.verdict, ComparisonVerdict::Worsened);
-        }
-
-        #[test]
-        fn similar_within_threshold() {
-            let baseline = make_plan(Some(100.0), Some(10.0), Some("Seq Scan"));
-            let current = make_plan(Some(105.0), Some(10.0), Some("Seq Scan"));
-
-            let result = compare_plans(&baseline, &current);
-
-            assert_eq!(result.verdict, ComparisonVerdict::Similar);
-        }
-
-        #[test]
-        fn boundary_at_exactly_0_9_is_similar() {
-            let baseline = make_plan(Some(100.0), None, None);
-            let current = make_plan(Some(90.0), None, None);
-
-            let result = compare_plans(&baseline, &current);
-
-            assert_eq!(result.verdict, ComparisonVerdict::Similar);
-        }
-
-        #[test]
-        fn boundary_at_exactly_1_1_is_similar() {
-            let baseline = make_plan(Some(100.0), None, None);
-            let current = make_plan(Some(110.0), None, None);
-
-            let result = compare_plans(&baseline, &current);
-
-            assert_eq!(result.verdict, ComparisonVerdict::Similar);
+            assert_eq!(result.verdict, verdict);
+            assert!(
+                result.reasons.iter().any(|reason| reason.contains(percent)),
+                "{:?}",
+                result.reasons
+            );
         }
 
         #[test]
@@ -911,6 +885,7 @@ Execution Time: 0.600 ms";
 
             let result = compare_plans(&baseline, &current);
 
+            assert_eq!(result.verdict, ComparisonVerdict::Improved);
             assert!(
                 result
                     .reasons
