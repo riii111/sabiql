@@ -1,15 +1,13 @@
 use crate::cmd::effect::Effect;
 use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
-use crate::model::browse::json_detail::{JsonDetailMode, JsonDetailState};
+use crate::model::browse::json_detail::JsonDetailState;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::KeySequenceState;
 use crate::model::shared::ui_state::DEFAULT_JSON_DETAIL_EDITOR_VISIBLE_ROWS;
 use crate::policy::preview_cell_text::CellPresentationPolicy;
 use crate::update::action::CursorMove;
-use crate::update::action::DetailTarget;
 
-use super::detail_search::refresh_search_matches;
 use crate::model::shared::text_input::TextEdit;
 use crate::update::helpers::{EditGuardrailError, editable_preview_base, ensure_column_writable};
 
@@ -134,20 +132,6 @@ pub(in crate::update) fn paste_json_edit(state: &mut AppState, text: String) -> 
     vec![]
 }
 
-pub(in crate::update) fn paste_json_detail(state: &mut AppState, text: String) -> Vec<Effect> {
-    if state.json_detail.mode() != JsonDetailMode::Searching {
-        return vec![];
-    }
-    let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
-    state
-        .json_detail
-        .search_mut()
-        .input_mut()
-        .insert_str(&clean);
-    refresh_search_matches(state, DetailTarget::JsonDetail);
-    vec![]
-}
-
 fn ensure_json_column_writable(state: &AppState) -> Result<(), EditGuardrailError> {
     let (_, identity) = editable_preview_base(state)?;
     ensure_column_writable(state, state.json_detail.column_name(), &identity)
@@ -247,9 +231,11 @@ mod tests {
     use crate::cmd::effect::Effect;
     use crate::domain::connection::ConnectionId;
     use crate::domain::{QueryResult, QuerySource, Table};
+    use crate::model::browse::json_detail::JsonDetailMode;
     use crate::model::shared::flash_timer::FlashId;
     use crate::services::AppServices;
     use crate::update::action::CopyTarget;
+    use crate::update::action::DetailTarget;
     use crate::update::action::InputTarget;
     use crate::update::action::SearchStep;
     use crate::update::action::TextKillDirection;
@@ -1456,7 +1442,15 @@ mod tests {
                 now,
                 &services,
             );
-            reduce_app(&mut state, Action::Paste(" ".to_string()), now, &services);
+            reduce_app(
+                &mut state,
+                Action::Paste {
+                    target: InputTarget::JsonEdit,
+                    text: " ".to_string(),
+                },
+                now,
+                &services,
+            );
 
             assert_eq!(state.input_mode(), InputMode::JsonEdit);
             assert_eq!(state.json_detail.mode(), JsonDetailMode::Editing);

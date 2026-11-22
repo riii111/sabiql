@@ -4,16 +4,6 @@ use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::text_input::TextEdit;
 use crate::update::action::ListMotion;
 
-pub(in crate::update) fn paste_table_picker(state: &mut AppState, text: String) -> Vec<Effect> {
-    state.ui.table_picker_mut().insert_filter_str(&text);
-    vec![]
-}
-
-pub(in crate::update) fn paste_er_table_picker(state: &mut AppState, text: String) -> Vec<Effect> {
-    state.ui.er_picker_mut().insert_filter_str(&text);
-    vec![]
-}
-
 pub(in crate::update) fn paste_command_line(state: &mut AppState, text: String) -> Vec<Effect> {
     let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
     state.command_line_input.insert_str(&clean);
@@ -26,14 +16,6 @@ pub(in crate::update) fn paste_command_line(state: &mut AppState, text: String) 
 pub(in crate::update) fn paste_cell_edit(state: &mut AppState, text: String) -> Vec<Effect> {
     let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
     state.result_interaction.cell_edit_insert_str(&clean);
-    vec![]
-}
-
-pub(in crate::update) fn paste_query_history_picker(
-    state: &mut AppState,
-    text: String,
-) -> Vec<Effect> {
-    state.query_history_picker.insert_filter_str(&text);
     vec![]
 }
 
@@ -145,7 +127,10 @@ mod tests {
 
             route(
                 &mut state,
-                Action::Paste("hel\nlo\r\n".to_string()),
+                Action::Paste {
+                    target: InputTarget::Filter,
+                    text: "hel\nlo\r\n".to_string(),
+                },
                 Instant::now(),
                 &AppServices::stub(),
             );
@@ -161,7 +146,10 @@ mod tests {
 
             route(
                 &mut state,
-                Action::Paste("x".to_string()),
+                Action::Paste {
+                    target: InputTarget::Filter,
+                    text: "x".to_string(),
+                },
                 Instant::now(),
                 &AppServices::stub(),
             );
@@ -176,7 +164,10 @@ mod tests {
 
             route(
                 &mut state,
-                Action::Paste("qu\nit".to_string()),
+                Action::Paste {
+                    target: InputTarget::CommandLine,
+                    text: "qu\nit".to_string(),
+                },
                 Instant::now(),
                 &AppServices::stub(),
             );
@@ -191,7 +182,10 @@ mod tests {
 
             route(
                 &mut state,
-                Action::Paste("public.users".to_string()),
+                Action::Paste {
+                    target: InputTarget::ErFilter,
+                    text: "public.users".to_string(),
+                },
                 Instant::now(),
                 &AppServices::stub(),
             );
@@ -210,7 +204,10 @@ mod tests {
 
             route(
                 &mut state,
-                Action::Paste("public\n.users\r\n".to_string()),
+                Action::Paste {
+                    target: InputTarget::ErFilter,
+                    text: "public\n.users\r\n".to_string(),
+                },
                 Instant::now(),
                 &AppServices::stub(),
             );
@@ -229,7 +226,10 @@ mod tests {
 
             route(
                 &mut state,
-                Action::Paste("us\ners\r\n".to_string()),
+                Action::Paste {
+                    target: InputTarget::QueryHistoryFilter,
+                    text: "us\ners\r\n".to_string(),
+                },
                 Instant::now(),
                 &AppServices::stub(),
             );

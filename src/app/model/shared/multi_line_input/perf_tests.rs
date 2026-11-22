@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use super::{
     MultiLineInputState, next_word_start, previous_word_start, readline_forward_word_end,
-    readline_previous_word_start,
+    readline_previous_boundary,
 };
 use crate::model::shared::cursor::CursorMove;
 
@@ -68,7 +68,8 @@ impl BaselineTextInputState {
                 self.cursor = previous_word_start(&self.content, self.cursor);
             }
             CursorMove::ReadlineWordStart => {
-                self.cursor = readline_previous_word_start(&self.content, self.cursor);
+                self.cursor =
+                    readline_previous_boundary(&self.content, self.cursor, char::is_alphanumeric);
             }
             CursorMove::ReadlineWordEnd => {
                 self.cursor = readline_forward_word_end(&self.content, self.cursor);
@@ -184,7 +185,11 @@ impl BaselineMultiLineInputState {
                 self.preferred_col = None;
             }
             CursorMove::ReadlineWordStart => {
-                self.set_cursor_raw(readline_previous_word_start(self.content(), self.cursor()));
+                self.set_cursor_raw(readline_previous_boundary(
+                    self.content(),
+                    self.cursor(),
+                    char::is_alphanumeric,
+                ));
                 self.preferred_col = None;
             }
             CursorMove::ReadlineWordEnd => {

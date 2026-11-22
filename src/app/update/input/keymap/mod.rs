@@ -29,7 +29,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::SqlModalTab;
 use crate::policy::FeatureRequirement;
 use crate::ports::inbound::KeyCombo;
-use crate::update::action::Action;
+use crate::update::action::{Action, InputTarget};
 
 pub use browse::{BrowseShortcut, browse_hints, browse_shortcut};
 pub use cell_detail::cell_detail_hints;
@@ -245,6 +245,11 @@ fn scope_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
     } else {
         scope_rows(context).map_or_else(Vec::new, |rows| model::hints(rows, context, surface))
     }
+}
+
+/// Returns the input that receives typed characters in the current scope, or `None` while viewing.
+pub(crate) fn paste_target(context: &KeyContext) -> Option<InputTarget> {
+    scope_rows(context).and_then(|rows| model::text_target(rows, context))
 }
 
 pub(crate) fn key_action(combo: KeyCombo, context: &KeyContext) -> Action {

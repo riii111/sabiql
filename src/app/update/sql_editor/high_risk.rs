@@ -3,6 +3,7 @@ use std::time::Instant;
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::key_sequence::KeySequenceState;
+use crate::model::shared::picker::sanitize_filter_text;
 use crate::model::shared::text_input::TextInputState;
 use crate::model::sql_editor::modal::{
     HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalContext, SqlModalStatus,
@@ -59,6 +60,18 @@ pub(in crate::update) fn sql_modal_confirm_execute(
     if matched {
         let query = state.sql_modal.editor.content().trim().to_string();
         return start_adhoc_if_connected(state, query, now);
+    }
+    vec![]
+}
+
+pub(in crate::update) fn paste_text(
+    state: &mut AppState,
+    target: InputTarget,
+    text: String,
+) -> Vec<Effect> {
+    if let Some(input) = high_risk_input_mut(&mut state.sql_modal, target) {
+        input.insert_str(&sanitize_filter_text(&text));
+        input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
     }
     vec![]
 }

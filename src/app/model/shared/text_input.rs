@@ -124,7 +124,7 @@ impl TextInputState {
 
     pub fn kill_previous_word(&mut self) -> String {
         self.remove_range(
-            readline_previous_whitespace_boundary(&self.content, self.cursor),
+            readline_previous_boundary(&self.content, self.cursor, |ch| !ch.is_whitespace()),
             self.cursor,
         )
     }
@@ -188,7 +188,8 @@ impl TextInputState {
                 self.cursor = previous_word_start(&self.content, self.cursor);
             }
             CursorMove::ReadlineWordStart => {
-                self.cursor = readline_previous_word_start(&self.content, self.cursor);
+                self.cursor =
+                    readline_previous_boundary(&self.content, self.cursor, char::is_alphanumeric);
             }
             CursorMove::ReadlineWordEnd => {
                 self.cursor = readline_forward_word_end(&self.content, self.cursor);
@@ -367,41 +368,34 @@ pub(super) fn previous_word_start(content: &str, cursor: usize) -> usize {
 }
 
 pub(super) fn readline_forward_word_end(content: &str, cursor: usize) -> usize {
-    let chars: Vec<char> = content.chars().collect();
-    let mut idx = cursor.min(chars.len());
+    let mut chars = content.chars();
+    let mut idx = chars.by_ref().take(cursor).count();
+    let mut after = chars.peekable();
 
-    while idx < chars.len() && !chars[idx].is_alphanumeric() {
+    while after.next_if(|ch| !ch.is_alphanumeric()).is_some() {
         idx += 1;
     }
-    while idx < chars.len() && chars[idx].is_alphanumeric() {
+    while after.next_if(|ch| ch.is_alphanumeric()).is_some() {
         idx += 1;
     }
 
     idx
 }
 
-pub(super) fn readline_previous_word_start(content: &str, cursor: usize) -> usize {
-    let chars: Vec<char> = content.chars().collect();
-    let mut idx = cursor.min(chars.len());
+pub(super) fn readline_previous_boundary(
+    content: &str,
+    cursor: usize,
+    in_word: fn(char) -> bool,
+) -> usize {
+    let mut chars = content.chars();
+    let mut idx = chars.by_ref().take(cursor).count();
+    let before_len = content.len() - chars.as_str().len();
+    let mut before = content[..before_len].chars().rev().peekable();
 
-    while idx > 0 && !chars[idx - 1].is_alphanumeric() {
+    while before.next_if(|&ch| !in_word(ch)).is_some() {
         idx -= 1;
     }
-    while idx > 0 && chars[idx - 1].is_alphanumeric() {
-        idx -= 1;
-    }
-
-    idx
-}
-
-pub(super) fn readline_previous_whitespace_boundary(content: &str, cursor: usize) -> usize {
-    let chars: Vec<char> = content.chars().collect();
-    let mut idx = cursor.min(chars.len());
-
-    while idx > 0 && chars[idx - 1].is_whitespace() {
-        idx -= 1;
-    }
-    while idx > 0 && !chars[idx - 1].is_whitespace() {
+    while before.next_if(|&ch| in_word(ch)).is_some() {
         idx -= 1;
     }
 
@@ -1017,6 +1011,67 @@ mod tests {
             assert_eq!(killed, expected_killed);
             assert_eq!(input.content(), expected_content);
             assert_eq!(input.cursor(), cursor.min(expected_content.chars().count()));
+        }
+    }
+
+    mod readline_boundary_tests {
+        use super::*;
+
+        #[rstest]
+        #[case("", 0, 0)]
+        #[case("foo", 3, 3)]
+        #[case("foo", 10, 3)]
+        #[case("foo bar", 1, 3)]
+        #[case("foo_bar", 0, 3)]
+        #[case("foo_bar", 3, 7)]
+        #[case("--  x", 0, 5)]
+        #[case("café 🍣 ok", 0, 4)]
+        #[case("café 🍣 ok", 4, 9)]
+        #[case("a\n\tb", 1, 4)]
+        fn forward_word_end(#[case] content: &str, #[case] cursor: usize, #[case] expected: usize) {
+            assert_eq!(readline_forward_word_end(content, cursor), expected);
+        }
+
+        #[rstest]
+        #[case("", 0, 0)]
+        #[case("foo", 0, 0)]
+        #[case("foo", 10, 0)]
+        #[case("foo bar", 6, 4)]
+        #[case("foo_bar", 7, 4)]
+        #[case("foo_bar", 4, 0)]
+        #[case("x  --", 5, 0)]
+        #[case("ok 🍣 café", 9, 5)]
+        #[case("ok 🍣 café", 5, 0)]
+        #[case("a\n\tb", 3, 0)]
+        fn previous_word_start(
+            #[case] content: &str,
+            #[case] cursor: usize,
+            #[case] expected: usize,
+        ) {
+            assert_eq!(
+                readline_previous_boundary(content, cursor, char::is_alphanumeric),
+                expected
+            );
+        }
+
+        #[rstest]
+        #[case("", 0, 0)]
+        #[case("foo.bar", 10, 0)]
+        #[case("foo  ", 5, 0)]
+        #[case("foo bar", 5, 4)]
+        #[case("one   two", 6, 0)]
+        #[case("a b.c_d", 7, 2)]
+        #[case("a\tb\nc", 5, 4)]
+        #[case("x\u{3000}🍣🍣", 4, 2)]
+        fn previous_whitespace_boundary(
+            #[case] content: &str,
+            #[case] cursor: usize,
+            #[case] expected: usize,
+        ) {
+            assert_eq!(
+                readline_previous_boundary(content, cursor, |ch| !ch.is_whitespace()),
+                expected
+            );
         }
     }
 }

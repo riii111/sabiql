@@ -16,9 +16,11 @@ mod tests {
     use crate::model::sql_editor::modal::{AdhocSuccessSnapshot, SqlModalStatus, SqlModalTab};
     use crate::policy::write::sql_risk::AcknowledgeReason;
     use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel};
+    use crate::ports::inbound::InputEvent;
     use crate::services::AppServices;
     use crate::test_support::endpoint;
     use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
+    use crate::update::input::handle_event;
     use crate::update::reducer::route;
     use crate::update::test_fixtures;
     use crate::update::test_fixtures::edit_text;
@@ -27,6 +29,11 @@ mod tests {
 
     fn reduce_sql_modal(state: &mut AppState, action: &Action, now: Instant) -> Vec<Effect> {
         route(state, action.clone(), now, &AppServices::stub())
+    }
+
+    fn paste_event(state: &mut AppState, text: &str) {
+        let action = handle_event(InputEvent::Paste(text.to_string()), state);
+        reduce_sql_modal(state, &action, Instant::now());
     }
 
     fn sql_modal_state() -> AppState {
@@ -51,7 +58,14 @@ mod tests {
                 .editor
                 .set_content_with_cursor("SELCT".to_string(), 3);
 
-            reduce_sql_modal(&mut state, &Action::Paste("E".to_string()), Instant::now());
+            reduce_sql_modal(
+                &mut state,
+                &Action::Paste {
+                    target: InputTarget::SqlModal,
+                    text: "E".to_string(),
+                },
+                Instant::now(),
+            );
 
             assert_eq!(state.sql_modal.editor.content(), "SELECT");
         }
@@ -62,7 +76,10 @@ mod tests {
 
             reduce_sql_modal(
                 &mut state,
-                &Action::Paste("SELECT\n*\nFROM".to_string()),
+                &Action::Paste {
+                    target: InputTarget::SqlModal,
+                    text: "SELECT\n*\nFROM".to_string(),
+                },
                 Instant::now(),
             );
 
@@ -75,7 +92,10 @@ mod tests {
 
             reduce_sql_modal(
                 &mut state,
-                &Action::Paste("a\r\nb".to_string()),
+                &Action::Paste {
+                    target: InputTarget::SqlModal,
+                    text: "a\r\nb".to_string(),
+                },
                 Instant::now(),
             );
 
@@ -92,7 +112,10 @@ mod tests {
 
             reduce_sql_modal(
                 &mut state,
-                &Action::Paste("XYZ".to_string()),
+                &Action::Paste {
+                    target: InputTarget::SqlModal,
+                    text: "XYZ".to_string(),
+                },
                 Instant::now(),
             );
 
@@ -104,7 +127,14 @@ mod tests {
             let mut state = editing_state();
             state.sql_modal.apply_completion_update(&[], 0, true);
 
-            reduce_sql_modal(&mut state, &Action::Paste("x".to_string()), Instant::now());
+            reduce_sql_modal(
+                &mut state,
+                &Action::Paste {
+                    target: InputTarget::SqlModal,
+                    text: "x".to_string(),
+                },
+                Instant::now(),
+            );
 
             assert!(!state.sql_modal.completion().visible);
         }
@@ -119,7 +149,10 @@ mod tests {
 
             reduce_sql_modal(
                 &mut state,
-                &Action::Paste("日本語".to_string()),
+                &Action::Paste {
+                    target: InputTarget::SqlModal,
+                    text: "日本語".to_string(),
+                },
                 Instant::now(),
             );
 
@@ -128,7 +161,7 @@ mod tests {
         }
 
         #[test]
-        fn confirming_high_is_ignored() {
+        fn confirming_high_leaves_editor_unchanged() {
             let mut state = editing_state();
             state
                 .sql_modal
@@ -142,11 +175,7 @@ mod tests {
                 "users".to_string(),
             );
 
-            reduce_sql_modal(
-                &mut state,
-                &Action::Paste("injected".to_string()),
-                Instant::now(),
-            );
+            paste_event(&mut state, "injected");
 
             assert_eq!(state.sql_modal.editor.content(), "DROP TABLE users");
             assert!(matches!(
@@ -1059,11 +1088,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("original".to_string());
 
-            reduce_sql_modal(
-                &mut state,
-                &Action::Paste("injected".to_string()),
-                Instant::now(),
-            );
+            paste_event(&mut state, "injected");
 
             assert_eq!(state.sql_modal.editor.content(), "original");
         }
