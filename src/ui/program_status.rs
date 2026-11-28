@@ -84,7 +84,8 @@ impl ProgramStatusReporter {
 }
 
 fn is_busy(state: &AppState) -> bool {
-    state.query.is_running() || state.er_preparation.is_busy()
+    // ER preparation hands off between steps without a frame that stays busy, so only query runs are reported.
+    state.query.is_running()
 }
 
 fn finished_state(state: &AppState, run: Option<BusyRun>) -> ProgramState {
@@ -130,19 +131,6 @@ mod tests {
             ProgramState::Working.sequence(),
             "\x1b]7501;state=working:app=sabiql\x1b\\"
         );
-    }
-
-    #[test]
-    fn diagram_stays_working_until_rendering_ends() {
-        let now = Instant::now();
-        let mut state = AppState::new("test".to_string());
-        let _ = state.er_preparation.start_waiting_run();
-        let mut reporter = ProgramStatusReporter::default();
-        report_working(&mut reporter, &state, now);
-
-        state.er_preparation.mark_rendering();
-
-        assert_eq!(reporter.observe(&state, now + REPORT_AFTER * 2), None);
     }
 
     #[test]
@@ -214,11 +202,11 @@ mod tests {
             1,
             QuerySource::Adhoc,
         )));
-        let _ = state.er_preparation.start_waiting_run();
+        let _ = state.query.begin_running(now);
         let mut reporter = ProgramStatusReporter::default();
         report_working(&mut reporter, &state, now);
 
-        state.er_preparation.reset();
+        state.query.mark_idle();
 
         assert_eq!(
             reporter.observe(&state, now + REPORT_AFTER),
