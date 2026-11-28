@@ -33,7 +33,8 @@ pub(super) fn confirmation_text_field(target: InputTarget) -> Vec<Row> {
 pub(super) fn consume_readline(target: InputTarget) -> Vec<Row> {
     let mut rows = readline_rows(target);
     for row in &mut rows {
-        row.references = &[];
+        row.surfaces
+            .retain(|surface| *surface != HintSurface::Editing);
         for binding in &mut row.bindings {
             *binding = binding.clone().consume();
         }
@@ -191,8 +192,8 @@ pub(super) fn document_navigation(target: InputTarget, shifted_prefix: bool) -> 
     ];
     if target == InputTarget::SqlModal {
         jumps.extend([
-            movement(CursorMove::Home, &[KeyCombo::plain(Key::Home)]),
-            movement(CursorMove::End, &[KeyCombo::plain(Key::End)]),
+            movement(CursorMove::LineStart, &[KeyCombo::plain(Key::Home)]),
+            movement(CursorMove::LineEnd, &[KeyCombo::plain(Key::End)]),
         ]);
     } else {
         jumps[0] = jumps[0].clone().with_no_ctrl_alt(Key::Home);
@@ -297,7 +298,10 @@ pub(super) fn text_field_with_navigation(target: InputTarget) -> (Vec<Row>, Vec<
             ],
         ),
         group(
-            &[(Key::Home, CursorMove::Home), (Key::End, CursorMove::End)],
+            &[
+                (Key::Home, CursorMove::LineStart),
+                (Key::End, CursorMove::LineEnd),
+            ],
             "Jump",
             "Jump to start/end",
             &[HintSurface::Current, HintSurface::Editing],
@@ -348,7 +352,7 @@ fn cursor_rows(target: InputTarget, modifiers: KeyModifiers) -> Vec<Row> {
         hidden(
             Action::TextMoveCursor {
                 target,
-                direction: CursorMove::Home,
+                direction: CursorMove::LineStart,
             },
             Key::Home,
             modifiers,
@@ -356,7 +360,7 @@ fn cursor_rows(target: InputTarget, modifiers: KeyModifiers) -> Vec<Row> {
         hidden(
             Action::TextMoveCursor {
                 target,
-                direction: CursorMove::End,
+                direction: CursorMove::LineEnd,
             },
             Key::End,
             modifiers,
@@ -455,14 +459,18 @@ fn hidden_binding(action: Action, combos: &[KeyCombo]) -> Row {
         Action::TextYank { .. } => "Paste cut text",
         _ => unreachable!(),
     };
-    Row {
-        bindings: vec![Binding::action(action, combos)],
-        short: "",
-        description,
-        references: &[HintSurface::Editing],
-        dynamic_label: None,
-        visible: None,
-        surfaces: &[],
+    {
+        let mut row = Row {
+            bindings: vec![Binding::action(action, combos)],
+            short: "",
+            description,
+
+            dynamic_label: None,
+            visible: None,
+            surfaces: [].to_vec(),
+        };
+        row.surfaces.extend_from_slice(&[HintSurface::Editing]);
+        row
     }
 }
 

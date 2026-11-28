@@ -1,0 +1,602 @@
+# None Default 0, Some(PostgreSQL) Default 0, Some(MySQL) Default 0, Some(SQLite) Default 0
+[Common]
+q | Quit application
+? | Toggle help
+, | Open Settings
+: | Enter command line
+F1 | Open Command Palette
+f | Toggle Focus mode
+Ctrl+R | Enable Read-Only mode
+f | Exit Focus mode
+Ctrl+R | Disable Read-Only mode
+:quit | Quit application
+:help | Show help
+# None Default 1, None Ide 1, Some(SQLite) Default 1, Some(SQLite) Ide 1
+[Navigation]
+j / k / ↓ / ↑ | Move down/up
+h / l / ← / → | Move left/right
+g / G / Home / End | First/last item
+H / M / L | First/middle/last visible item
+Ctrl+D / Ctrl+U | Scroll half page down/up
+Ctrl+F / Ctrl+B / PageDown / PageUp | Scroll full page down/up
+zz / zt / zb | Scroll cursor to center/top/bottom
+Enter | Select table
+Esc | Cancel
+Enter | Enter cell selection at the current viewport anchor
+] / [ | Next/Previous page
+↓ / ↑ / Ctrl+N / Ctrl+P | Navigate
+# None Default 2
+[Open / Switch]
+Ctrl+P | Open Table Picker
+s | Open SQL Editor
+c | Open Connection Selector
+Ctrl+O | Open Query History
+1 / 2 / 3 | Switch pane focus
+Tab / Shift+Tab | Inspector prev/next tab
+:sql | Open SQL Editor
+:settings | Open Settings
+:palette | Open Command Palette
+# None Default 3, Some(SQLite) Default 3
+[Data Actions]
+r | Reload metadata
+Ctrl+E | Export result to CSV
+y | Copy DDL to clipboard
+Esc | Cancel
+K | Open Row Detail
+Y | Copy the active cell value to clipboard
+Esc | Clear all staged row deletions
+u | Unstage the last staged row deletion
+Enter | Open active cell detail
+yy | Copy the active row values to clipboard (TSV)
+dd | Stage the active row for deletion
+# None Default 4, Some(SQLite) Default 4
+[Editing]
+Esc | Exit cell selection
+i | Edit active cell
+Esc | Discard pending draft
+:w | Preview and confirm changes
+Ctrl+A | Move to line start
+Ctrl+E | Move to line end
+Ctrl+B | Move left
+Ctrl+F | Move right
+Ctrl+H | Delete previous character
+Ctrl+D | Delete next character
+Ctrl+K | Cut to line end
+Ctrl+U | Cut to line start
+Ctrl+W | Cut previous word
+Ctrl+Y | Paste cut text
+Alt+B | Move to previous word
+Alt+F | Move to next word
+Alt+D | Cut next word
+: | Open command line
+type | Edit cell value
+← / → | Move cursor
+Home / End | Jump to start/end
+Esc | Exit to Cell Active (draft preserved)
+i | Edit custom browser
+Enter | Apply setting
+Esc | Finish editing
+type | Edit custom browser
+Alt+Enter / F5 | Execute query
+y | Copy query to clipboard
+i / A | Enter Insert mode / append at line end
+Ctrl+L | Clear editor
+Ctrl+O | Open Query History
+h / l / ← / → | Move cursor left / right
+j / k / ↓ / ↑ / Ctrl+N / Ctrl+P | Move cursor down / up
+0 / $ / w / b / Home / End | Move by word or line boundary
+gg / G / H / M / L | Jump by buffer or viewport
+Esc | Close editor
+Esc | Return to Normal mode
+← / → / ↑ / ↓ | Move cursor
+Home / End | Line start/end
+Tab | Insert tab
+↑ / Ctrl+P / ↓ / Ctrl+N | Select completion
+Tab / Enter | Accept completion
+Esc | Dismiss completion
+Enter | Execute the confirmed statement
+Esc | Cancel and return to editor
+type | Type confirmation name
+# None Default 5, None Ide 5, Some(PostgreSQL) Default 5, Some(PostgreSQL) Ide 5, Some(MySQL) Default 5, Some(MySQL) Ide 5, Some(SQLite) Default 5, Some(SQLite) Ide 5
+[Search / Filter]
+type | Type to filter
+j / k / ↓ / ↑ / Ctrl+N / Ctrl+P | Scroll down / up
+h / l / ← / → | Scroll left / right
+Ctrl+D / Ctrl+U | Scroll half page down / up
+PageDown / PageUp / Ctrl+F / Ctrl+B | Scroll full page down / up
+Home / End | Jump to top / bottom
+/ | Edit filter
+Esc / ? | Close help
+Esc | Return to help browsing
+type | Filter help
+Enter | Confirm search
+Esc | Cancel search
+type | Type to search
+# None Default 6, Some(PostgreSQL) Default 6, Some(MySQL) Default 6, Some(SQLite) Default 6
+[Connections]
+Enter | Open connection error details
+r | Retry connection
+e | Edit connection settings
+s | Switch to another connection
+d | Toggle error details and requirements
+y | Copy error to clipboard
+j / k / ↓ / ↑ / Ctrl+N / Ctrl+P | Scroll error
+Esc | Close
+Enter | Confirm selection
+j / k / ↓ / ↑ / Ctrl+N / Ctrl+P | Select connection
+n | New connection
+e | Edit connection
+d | Delete connection
+Esc | Close selector
+Tab / Shift+Tab | Next/Previous field
+Enter | Toggle dropdown
+Ctrl+S | Save and connect
+Esc | Cancel
+Enter | Confirm dropdown selection
+↓ / Ctrl+N / ↑ / Ctrl+P | Dropdown navigation
+Esc | Cancel dropdown
+type | Edit connection setting
+# None Default 7, None Ide 7, Some(PostgreSQL) Default 7, Some(PostgreSQL) Ide 7, Some(MySQL) Default 7, Some(MySQL) Ide 7, Some(SQLite) Default 7, Some(SQLite) Ide 7
+[Modal Basics]
+Enter | Submit command
+Esc | Exit command line
+type | Enter command
+Enter | Select table
+Esc | Close
+Enter | Execute command
+Enter | Apply setting
+j / k / ↓ / ↑ / Ctrl+N / Ctrl+P | Select setting
+Tab / Shift+Tab | Switch settings section
+Esc | Cancel
+j / k / ↓ / ↑ / Ctrl+N / Ctrl+P | Scroll down / up
+h / l / ← / → | Scroll left / right
+Ctrl+D / Ctrl+U | Scroll half page down / up
+PageDown / PageUp / Ctrl+F / Ctrl+B | Scroll full page down / up
+Home / End | Jump to top / bottom
+/ | Edit filter
+Esc / ? | Close help
+Enter | Confirm
+Enter | Select query
+# None Default 8, None Ide 8
+[Advanced]
+y | Copy full cell text
+/ | Search cell text
+n / N | Jump to next / previous search result
+j / k / ↓ / ↑ / Ctrl+N / Ctrl+P | Scroll down / up
+Ctrl+D / Ctrl+U | Scroll half page down / up
+PageDown / PageUp | Scroll full page down / up
+Home / End | Jump to top / bottom
+Esc / q | Close cell detail
+y | Copy displayed text to clipboard
+Y | Copy row as JSON to clipboard
+h / l / ← / → | Scroll left / right
+PageDown / PageUp / Ctrl+F / Ctrl+B | Scroll full page down / up
+g / G / Home / End | Jump to top / bottom
+Esc | Close Row Detail modal
+Tab / Shift+Tab | Switch tab
+Esc | Close editor
+# None Ide 0, Some(PostgreSQL) Ide 0, Some(MySQL) Ide 0, Some(SQLite) Ide 0
+[Common]
+q | Quit application
+? | Toggle help
+, | Open Settings
+: | Enter command line
+P | Open Command Palette
+f | Toggle Focus mode
+R | Enable Read-Only mode
+f | Exit Focus mode
+R | Disable Read-Only mode
+:quit | Quit application
+:help | Show help
+# None Ide 2
+[Open / Switch]
+T | Open Table Picker
+s | Open SQL Editor
+c | Open Connection Selector
+O | Open Query History
+1 / 2 / 3 | Switch pane focus
+Tab / Shift+Tab | Inspector prev/next tab
+:sql | Open SQL Editor
+:settings | Open Settings
+:palette | Open Command Palette
+# None Ide 3, Some(SQLite) Ide 3
+[Data Actions]
+r | Reload metadata
+E | Export result to CSV
+y | Copy DDL to clipboard
+Esc | Cancel
+K | Open Row Detail
+Y | Copy the active cell value to clipboard
+Esc | Clear all staged row deletions
+u | Unstage the last staged row deletion
+Enter | Open active cell detail
+yy | Copy the active row values to clipboard (TSV)
+dd | Stage the active row for deletion
+# None Ide 4, Some(SQLite) Ide 4
+[Editing]
+Esc | Exit cell selection
+i | Edit active cell
+Esc | Discard pending draft
+:w | Preview and confirm changes
+Ctrl+A | Move to line start
+Ctrl+E | Move to line end
+Ctrl+B | Move left
+Ctrl+F | Move right
+Ctrl+H | Delete previous character
+Ctrl+D | Delete next character
+Ctrl+K | Cut to line end
+Ctrl+U | Cut to line start
+Ctrl+W | Cut previous word
+Ctrl+Y | Paste cut text
+Alt+B | Move to previous word
+Alt+F | Move to next word
+Alt+D | Cut next word
+: | Open command line
+type | Edit cell value
+← / → | Move cursor
+Home / End | Jump to start/end
+Esc | Exit to Cell Active (draft preserved)
+i | Edit custom browser
+Enter | Apply setting
+Esc | Finish editing
+type | Edit custom browser
+Alt+Enter / F5 | Execute query
+y | Copy query to clipboard
+i / A | Enter Insert mode / append at line end
+Ctrl+L | Clear editor
+O | Open Query History
+h / l / ← / → | Move cursor left / right
+j / k / ↓ / ↑ / Ctrl+N / Ctrl+P | Move cursor down / up
+0 / $ / w / b / Home / End | Move by word or line boundary
+gg / G / H / M / L | Jump by buffer or viewport
+Esc | Close editor
+Esc | Return to Normal mode
+← / → / ↑ / ↓ | Move cursor
+Home / End | Line start/end
+Tab | Insert tab
+↑ / Ctrl+P / ↓ / Ctrl+N | Select completion
+Tab / Enter | Accept completion
+Esc | Dismiss completion
+Enter | Execute the confirmed statement
+Esc | Cancel and return to editor
+type | Type confirmation name
+# None Ide 6, Some(PostgreSQL) Ide 6, Some(MySQL) Ide 6, Some(SQLite) Ide 6
+[Connections]
+Enter | Open connection error details
+r | Retry connection
+e | Edit connection settings
+s | Switch to another connection
+d | Toggle error details and requirements
+y | Copy error to clipboard
+j / k / ↓ / ↑ / Ctrl+N / Ctrl+P | Scroll error
+Esc | Close
+Enter | Confirm selection
+j / k / ↓ / ↑ / Ctrl+N / Ctrl+P | Select connection
+n | New connection
+e | Edit connection
+d | Delete connection
+Esc | Close selector
+Tab / Shift+Tab | Next/Previous field
+Enter | Toggle dropdown
+Ctrl+S | Save and connect
+Esc | Cancel
+Enter | Confirm dropdown selection
+↓ / Ctrl+N / ↑ / Ctrl+P | Dropdown navigation
+Esc | Cancel dropdown
+Enter / Ctrl+S | Save and connect
+type | Edit connection setting
+# Some(PostgreSQL) Default 1, Some(PostgreSQL) Ide 1, Some(MySQL) Default 1, Some(MySQL) Ide 1
+[Navigation]
+j / k / ↓ / ↑ | Move down/up
+h / l / ← / → | Move left/right
+g / G / Home / End | First/last item
+H / M / L | First/middle/last visible item
+Ctrl+D / Ctrl+U | Scroll half page down/up
+Ctrl+F / Ctrl+B / PageDown / PageUp | Scroll full page down/up
+zz / zt / zb | Scroll cursor to center/top/bottom
+Enter | Select table
+Esc | Cancel
+Enter | Enter cell selection at the current viewport anchor
+] / [ | Next/Previous page
+↓ / ↑ / Ctrl+N / Ctrl+P | Navigate
+↓ / ↑ | Scroll confirmation
+# Some(PostgreSQL) Default 2, Some(MySQL) Default 2
+[Open / Switch]
+Ctrl+P | Open Table Picker
+s | Open SQL Editor
+e | Open ER Diagram
+c | Open Connection Selector
+Ctrl+O | Open Query History
+1 / 2 / 3 | Switch pane focus
+Tab / Shift+Tab | Inspector prev/next tab
+:sql | Open SQL Editor
+:erd | Open ER Diagram
+:settings | Open Settings
+:palette | Open Command Palette
+# Some(PostgreSQL) Default 3, Some(MySQL) Default 3
+[Data Actions]
+r | Reload metadata
+Ctrl+E | Export result to CSV
+y | Copy DDL to clipboard
+Esc | Cancel
+K | Open Row Detail
+Y | Copy the active cell value to clipboard
+Esc | Clear all staged row deletions
+u | Unstage the last staged row deletion
+Enter | Open active cell detail
+yy | Copy the active row values to clipboard (TSV)
+dd | Stage the active row for deletion
+y | Copy full JSON
+# Some(PostgreSQL) Default 4, Some(MySQL) Default 4
+[Editing]
+Esc | Exit cell selection
+i | Edit active cell
+Esc | Discard pending draft
+:w | Preview and confirm changes
+Ctrl+A | Move to line start
+Ctrl+E | Move to line end
+Ctrl+B | Move left
+Ctrl+F | Move right
+Ctrl+H | Delete previous character
+Ctrl+D | Delete next character
+Ctrl+K | Cut to line end
+Ctrl+U | Cut to line start
+Ctrl+W | Cut previous word
+Ctrl+Y | Paste cut text
+Alt+B | Move to previous word
+Alt+F | Move to next word
+Alt+D | Cut next word
+: | Open command line
+type | Edit cell value
+← / → | Move cursor
+Home / End | Jump to start/end
+Esc | Exit to Cell Active (draft preserved)
+i | Edit custom browser
+Enter | Apply setting
+Esc | Finish editing
+type | Edit custom browser
+Alt+Enter / F5 | Execute query
+y | Copy query to clipboard
+i / A | Enter Insert mode / append at line end
+Ctrl+L | Clear editor
+Ctrl+O | Open Query History
+h / l / ← / → | Move cursor left / right
+j / k / ↓ / ↑ / Ctrl+N / Ctrl+P | Move cursor down / up
+0 / $ / w / b / Home / End | Move by word or line boundary
+gg / G / H / M / L | Jump by buffer or viewport
+Esc | Close editor
+Alt+E | Run EXPLAIN ANALYZE on current query
+Esc | Return to Normal mode
+← / → / ↑ / ↓ | Move cursor
+Home / End | Line start/end
+Tab | Insert tab
+↑ / Ctrl+P / ↓ / Ctrl+N | Select completion
+Tab / Enter | Accept completion
+Esc | Dismiss completion
+Enter | Execute the confirmed statement
+Esc | Cancel and return to editor
+type | Type confirmation name
+# Some(PostgreSQL) Default 8, Some(MySQL) Default 8
+[Advanced]
+y | Copy full cell text
+/ | Search cell text
+n / N | Jump to next / previous search result
+j / k / ↓ / ↑ / Ctrl+N / Ctrl+P | Scroll down / up
+Ctrl+D / Ctrl+U | Scroll half page down / up
+PageDown / PageUp | Scroll full page down / up
+Home / End | Jump to top / bottom
+Esc / q | Close cell detail
+y | Copy displayed text to clipboard
+Y | Copy row as JSON to clipboard
+h / l / ← / → | Scroll left / right
+PageDown / PageUp / Ctrl+F / Ctrl+B | Scroll full page down / up
+g / G / Home / End | Jump to top / bottom
+Esc | Close Row Detail modal
+Ctrl+E | Run EXPLAIN on current query
+Alt+E | Run EXPLAIN ANALYZE on current query
+Tab / Shift+Tab | Switch tab
+Esc | Close editor
+y | Copy to clipboard
+j / k / ↓ / ↑ / Ctrl+N / Ctrl+P | Scroll plan text
+e | Edit query in SQL tab
+j / k / ↓ / ↑ / Ctrl+N / Ctrl+P | Scroll comparison text
+Enter | Generate ER diagram
+Space | Toggle table selection
+Alt+A | Select/deselect all tables
+↓ / ↑ / Ctrl+N / Ctrl+P | Navigate
+type | Type to filter
+Esc | Close
+y | Copy full JSON
+i / A | Enter Insert mode / append at line end
+/ | Search JSON text
+h / l / ← / → | Move cursor left / right
+j / k / ↓ / ↑ / Ctrl+N / Ctrl+P | Move cursor down / up
+0 / $ / w / b / Home / End | Move by word or line boundary
+gg / G / H / M / L | Jump by buffer or viewport
+Esc / q | Close JSON detail
+# Some(PostgreSQL) Ide 2, Some(MySQL) Ide 2
+[Open / Switch]
+T | Open Table Picker
+s | Open SQL Editor
+e | Open ER Diagram
+c | Open Connection Selector
+O | Open Query History
+1 / 2 / 3 | Switch pane focus
+Tab / Shift+Tab | Inspector prev/next tab
+:sql | Open SQL Editor
+:erd | Open ER Diagram
+:settings | Open Settings
+:palette | Open Command Palette
+# Some(PostgreSQL) Ide 3, Some(MySQL) Ide 3
+[Data Actions]
+r | Reload metadata
+E | Export result to CSV
+y | Copy DDL to clipboard
+Esc | Cancel
+K | Open Row Detail
+Y | Copy the active cell value to clipboard
+Esc | Clear all staged row deletions
+u | Unstage the last staged row deletion
+Enter | Open active cell detail
+yy | Copy the active row values to clipboard (TSV)
+dd | Stage the active row for deletion
+y | Copy full JSON
+# Some(PostgreSQL) Ide 4, Some(MySQL) Ide 4
+[Editing]
+Esc | Exit cell selection
+i | Edit active cell
+Esc | Discard pending draft
+:w | Preview and confirm changes
+Ctrl+A | Move to line start
+Ctrl+E | Move to line end
+Ctrl+B | Move left
+Ctrl+F | Move right
+Ctrl+H | Delete previous character
+Ctrl+D | Delete next character
+Ctrl+K | Cut to line end
+Ctrl+U | Cut to line start
+Ctrl+W | Cut previous word
+Ctrl+Y | Paste cut text
+Alt+B | Move to previous word
+Alt+F | Move to next word
+Alt+D | Cut next word
+: | Open command line
+type | Edit cell value
+← / → | Move cursor
+Home / End | Jump to start/end
+Esc | Exit to Cell Active (draft preserved)
+i | Edit custom browser
+Enter | Apply setting
+Esc | Finish editing
+type | Edit custom browser
+Alt+Enter / F5 | Execute query
+y | Copy query to clipboard
+i / A | Enter Insert mode / append at line end
+Ctrl+L | Clear editor
+O | Open Query History
+h / l / ← / → | Move cursor left / right
+j / k / ↓ / ↑ / Ctrl+N / Ctrl+P | Move cursor down / up
+0 / $ / w / b / Home / End | Move by word or line boundary
+gg / G / H / M / L | Jump by buffer or viewport
+Esc | Close editor
+Alt+E | Run EXPLAIN ANALYZE on current query
+Esc | Return to Normal mode
+← / → / ↑ / ↓ | Move cursor
+Home / End | Line start/end
+Tab | Insert tab
+↑ / Ctrl+P / ↓ / Ctrl+N | Select completion
+Tab / Enter | Accept completion
+Esc | Dismiss completion
+Enter | Execute the confirmed statement
+Esc | Cancel and return to editor
+type | Type confirmation name
+# Some(PostgreSQL) Ide 8, Some(MySQL) Ide 8
+[Advanced]
+y | Copy full cell text
+/ | Search cell text
+n / N | Jump to next / previous search result
+j / k / ↓ / ↑ / Ctrl+N / Ctrl+P | Scroll down / up
+Ctrl+D / Ctrl+U | Scroll half page down / up
+PageDown / PageUp | Scroll full page down / up
+Home / End | Jump to top / bottom
+Esc / q | Close cell detail
+y | Copy displayed text to clipboard
+Y | Copy row as JSON to clipboard
+h / l / ← / → | Scroll left / right
+PageDown / PageUp / Ctrl+F / Ctrl+B | Scroll full page down / up
+g / G / Home / End | Jump to top / bottom
+Esc | Close Row Detail modal
+E | Run EXPLAIN on current query
+Alt+E | Run EXPLAIN ANALYZE on current query
+Tab / Shift+Tab | Switch tab
+Esc | Close editor
+y | Copy to clipboard
+j / k / ↓ / ↑ / Ctrl+N / Ctrl+P | Scroll plan text
+e | Edit query in SQL tab
+j / k / ↓ / ↑ / Ctrl+N / Ctrl+P | Scroll comparison text
+Enter | Generate ER diagram
+Space | Toggle table selection
+Alt+A | Select/deselect all tables
+↓ / ↑ / Ctrl+N / Ctrl+P | Navigate
+type | Type to filter
+Esc | Close
+y | Copy full JSON
+i / A | Enter Insert mode / append at line end
+/ | Search JSON text
+h / l / ← / → | Move cursor left / right
+j / k / ↓ / ↑ / Ctrl+N / Ctrl+P | Move cursor down / up
+0 / $ / w / b / Home / End | Move by word or line boundary
+gg / G / H / M / L | Jump by buffer or viewport
+Esc / q | Close JSON detail
+# Some(SQLite) Default 2
+[Open / Switch]
+Ctrl+P | Open Table Picker
+s | Open SQL Editor
+c | Open Connection Selector
+Ctrl+Shift+D | Open SQLite Diagnostics
+Ctrl+O | Open Query History
+1 / 2 / 3 | Switch pane focus
+Tab / Shift+Tab | Inspector prev/next tab
+:sql | Open SQL Editor
+:settings | Open Settings
+:palette | Open Command Palette
+# Some(SQLite) Default 8
+[Advanced]
+y | Copy full cell text
+/ | Search cell text
+n / N | Jump to next / previous search result
+j / k / ↓ / ↑ / Ctrl+N / Ctrl+P | Scroll down / up
+Ctrl+D / Ctrl+U | Scroll half page down / up
+PageDown / PageUp | Scroll full page down / up
+Home / End | Jump to top / bottom
+Esc / q | Close cell detail
+y | Copy displayed text to clipboard
+Y | Copy row as JSON to clipboard
+h / l / ← / → | Scroll left / right
+PageDown / PageUp / Ctrl+F / Ctrl+B | Scroll full page down / up
+g / G / Home / End | Jump to top / bottom
+Esc | Close Row Detail modal
+Ctrl+E | Run EXPLAIN on current query
+Tab / Shift+Tab | Switch tab
+Esc | Close editor
+y | Copy to clipboard
+j / k / ↓ / ↑ / Ctrl+N / Ctrl+P | Scroll plan text
+r | Run quick check
+? | Toggle help
+Esc | Close
+# Some(SQLite) Ide 2
+[Open / Switch]
+T | Open Table Picker
+s | Open SQL Editor
+c | Open Connection Selector
+D | Open SQLite Diagnostics
+O | Open Query History
+1 / 2 / 3 | Switch pane focus
+Tab / Shift+Tab | Inspector prev/next tab
+:sql | Open SQL Editor
+:settings | Open Settings
+:palette | Open Command Palette
+# Some(SQLite) Ide 8
+[Advanced]
+y | Copy full cell text
+/ | Search cell text
+n / N | Jump to next / previous search result
+j / k / ↓ / ↑ / Ctrl+N / Ctrl+P | Scroll down / up
+Ctrl+D / Ctrl+U | Scroll half page down / up
+PageDown / PageUp | Scroll full page down / up
+Home / End | Jump to top / bottom
+Esc / q | Close cell detail
+y | Copy displayed text to clipboard
+Y | Copy row as JSON to clipboard
+h / l / ← / → | Scroll left / right
+PageDown / PageUp / Ctrl+F / Ctrl+B | Scroll full page down / up
+g / G / Home / End | Jump to top / bottom
+Esc | Close Row Detail modal
+E | Run EXPLAIN on current query
+Tab / Shift+Tab | Switch tab
+Esc | Close editor
+y | Copy to clipboard
+j / k / ↓ / ↑ / Ctrl+N / Ctrl+P | Scroll plan text
+r | Run quick check
+? | Toggle help
+Esc | Close

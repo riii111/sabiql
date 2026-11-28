@@ -5,7 +5,6 @@ use crate::model::app_state::AppState;
 use crate::model::shared::key_sequence::KeySequenceState;
 use crate::model::shared::text_input::TextEdit;
 use crate::model::sql_editor::modal::sql_modal_visible_rows;
-use crate::update::action::CursorMove;
 
 pub(in crate::update) fn paste_sql_modal(
     state: &mut AppState,
@@ -58,33 +57,14 @@ pub(in crate::update) fn sql_modal_clear(state: &mut AppState) -> Vec<Effect> {
     vec![]
 }
 
-pub(in crate::update) fn edit_text(
-    state: &mut AppState,
-    edit: TextEdit,
-    yank_text: Option<&str>,
-    now: Instant,
-) -> String {
+pub(in crate::update) fn edit_text(state: &mut AppState, edit: TextEdit, now: Instant) {
     let visible_rows = sql_modal_visible_rows(state.ui.terminal_height);
-    if let TextEdit::MoveCursor(movement) = edit {
-        match movement {
-            CursorMove::ViewportTop | CursorMove::ViewportMiddle | CursorMove::ViewportBottom => {
-                state
-                    .sql_modal
-                    .editor
-                    .move_cursor_to_viewport_position(movement, visible_rows);
-            }
-            _ => state.sql_modal.editor.move_cursor(movement),
-        }
-        state.sql_modal.editor.update_scroll(visible_rows);
+    if state.sql_modal.editor.apply_editor_edit(edit, visible_rows) {
+        state.sql_modal.enter_editing();
+        state
+            .sql_modal
+            .schedule_completion(now + Duration::from_millis(100));
+    } else if matches!(edit, TextEdit::MoveCursor(_)) {
         state.ui.key_sequence = KeySequenceState::Idle;
-        return String::new();
     }
-
-    state.sql_modal.enter_editing();
-    let killed = state.sql_modal.editor.apply_edit(edit, yank_text);
-    state.sql_modal.editor.update_scroll(visible_rows);
-    state
-        .sql_modal
-        .schedule_completion(now + Duration::from_millis(100));
-    killed
 }

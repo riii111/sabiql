@@ -1,3 +1,4 @@
+use crate::app::model::shared::input_mode::InputMode;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
@@ -5,7 +6,6 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::app::model::app_state::AppState;
-use crate::app::model::browse::json_detail::JsonDetailMode;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::shared::render_output::JsonDetailLayout;
 use crate::app::update::input::keymap::{KeyContext, border_hints};
@@ -33,7 +33,7 @@ impl JsonDetail {
             return None;
         }
 
-        let is_editing = matches!(state.json_detail.mode(), JsonDetailMode::Editing);
+        let is_editing = state.input_mode() == InputMode::JsonEdit;
         let title = if is_editing {
             format!(
                 " JSON Edit \u{2500}\u{2500} {} (json) ",
@@ -58,20 +58,19 @@ impl JsonDetail {
             theme,
         );
 
-        let (editor_area, status_area, search_area) =
-            if matches!(state.json_detail.mode(), JsonDetailMode::Searching) {
-                let [editor_area, status_area, search_area] = Layout::vertical([
-                    Constraint::Min(1),
-                    Constraint::Length(1),
-                    Constraint::Length(1),
-                ])
-                .areas(inner);
-                (editor_area, status_area, Some(search_area))
-            } else {
-                let [editor_area, status_area] =
-                    Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
-                (editor_area, status_area, None)
-            };
+        let (editor_area, status_area, search_area) = if state.json_detail.search().is_active() {
+            let [editor_area, status_area, search_area] = Layout::vertical([
+                Constraint::Min(1),
+                Constraint::Length(1),
+                Constraint::Length(1),
+            ])
+            .areas(inner);
+            (editor_area, status_area, Some(search_area))
+        } else {
+            let [editor_area, status_area] =
+                Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
+            (editor_area, status_area, None)
+        };
 
         Self::render_editor_content(frame, editor_area, state, is_editing, now, theme);
         Self::render_status(frame, status_area, state, theme);

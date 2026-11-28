@@ -7,20 +7,20 @@ use super::common::conditional_text_field;
 use super::model::{Binding, Row, hints};
 use super::{Hint, HintSurface, KeyContext};
 
-static CONNECT: LazyLock<Vec<Row>> = LazyLock::new(|| rows("Connect"));
+pub(super) static CONNECT: LazyLock<Vec<Row>> = LazyLock::new(|| rows("Connect"));
 static SAVE: LazyLock<Vec<Row>> = LazyLock::new(|| rows("Save"));
 
 fn form(context: &KeyContext) -> bool {
-    !context.is_setup_dropdown_open()
+    !context.is_setup_dropdown_open
 }
 fn text(context: &KeyContext) -> bool {
-    form(context) && context.is_setup_text_focused()
+    form(context) && context.is_setup_text_focused
 }
 fn closed_dropdown(context: &KeyContext) -> bool {
-    form(context) && context.is_setup_dropdown_field()
+    form(context) && context.is_setup_dropdown_field
 }
 fn open_dropdown(context: &KeyContext) -> bool {
-    context.is_setup_dropdown_open()
+    context.is_setup_dropdown_open
 }
 
 fn rows(submit: &'static str) -> Vec<Row> {
@@ -121,7 +121,7 @@ fn rows(submit: &'static str) -> Vec<Row> {
 }
 
 pub(super) fn active_rows(context: &KeyContext) -> &'static [Row] {
-    if context.is_setup_editing() {
+    if context.is_setup_editing {
         &SAVE
     } else {
         &CONNECT

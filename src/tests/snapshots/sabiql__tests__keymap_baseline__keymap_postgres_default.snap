@@ -64,11 +64,9 @@ TextKill { target: CommandLine, direction: ReadlinePreviousWhitespace }: ^'w'
 TextKill { target: CommandLine, direction: ReadlineWordEnd }: ⌥'d'
 TextKill { target: CommandLine, direction: ToLineEnd }: ^'k'
 TextKill { target: CommandLine, direction: ToLineStart }: ^'u'
-TextMoveCursor { target: CommandLine, direction: End }: End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
-TextMoveCursor { target: CommandLine, direction: Home }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
 TextMoveCursor { target: CommandLine, direction: Left }: ^'b', Left, ^Left, ⌥Left, ^⌥Left, ⇧Left, ^⇧Left
-TextMoveCursor { target: CommandLine, direction: LineEnd }: ^'e'
-TextMoveCursor { target: CommandLine, direction: LineStart }: ^'a'
+TextMoveCursor { target: CommandLine, direction: LineEnd }: ^'e', End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
+TextMoveCursor { target: CommandLine, direction: LineStart }: ^'a', Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
 TextMoveCursor { target: CommandLine, direction: ReadlineWordEnd }: ⌥'f'
 TextMoveCursor { target: CommandLine, direction: ReadlineWordStart }: ⌥'b'
 TextMoveCursor { target: CommandLine, direction: Right }: ^'f', Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
@@ -92,11 +90,9 @@ TextKill { target: ResultCellEdit, direction: ReadlinePreviousWhitespace }: ^'w'
 TextKill { target: ResultCellEdit, direction: ReadlineWordEnd }: ⌥'d'
 TextKill { target: ResultCellEdit, direction: ToLineEnd }: ^'k'
 TextKill { target: ResultCellEdit, direction: ToLineStart }: ^'u'
-TextMoveCursor { target: ResultCellEdit, direction: End }: End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
-TextMoveCursor { target: ResultCellEdit, direction: Home }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
 TextMoveCursor { target: ResultCellEdit, direction: Left }: ^'b', Left, ^Left, ⌥Left, ^⌥Left, ⇧Left, ^⇧Left
-TextMoveCursor { target: ResultCellEdit, direction: LineEnd }: ^'e'
-TextMoveCursor { target: ResultCellEdit, direction: LineStart }: ^'a'
+TextMoveCursor { target: ResultCellEdit, direction: LineEnd }: ^'e', End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
+TextMoveCursor { target: ResultCellEdit, direction: LineStart }: ^'a', Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
 TextMoveCursor { target: ResultCellEdit, direction: ReadlineWordEnd }: ⌥'f'
 TextMoveCursor { target: ResultCellEdit, direction: ReadlineWordStart }: ⌥'b'
 TextMoveCursor { target: ResultCellEdit, direction: Right }: ^'f', Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
@@ -121,11 +117,9 @@ TextKill { target: Filter, direction: ReadlinePreviousWhitespace }: ^'w'
 TextKill { target: Filter, direction: ReadlineWordEnd }: ⌥'d'
 TextKill { target: Filter, direction: ToLineEnd }: ^'k'
 TextKill { target: Filter, direction: ToLineStart }: ^'u'
-TextMoveCursor { target: Filter, direction: End }: End
-TextMoveCursor { target: Filter, direction: Home }: Home
 TextMoveCursor { target: Filter, direction: Left }: ^'b', Left
-TextMoveCursor { target: Filter, direction: LineEnd }: ^'e'
-TextMoveCursor { target: Filter, direction: LineStart }: ^'a'
+TextMoveCursor { target: Filter, direction: LineEnd }: ^'e', End
+TextMoveCursor { target: Filter, direction: LineStart }: ^'a', Home
 TextMoveCursor { target: Filter, direction: ReadlineWordEnd }: ⌥'f'
 TextMoveCursor { target: Filter, direction: ReadlineWordStart }: ⌥'b'
 TextMoveCursor { target: Filter, direction: Right }: ^'f', Right
@@ -147,11 +141,9 @@ TextKill { target: Filter, direction: ReadlinePreviousWhitespace }: ^'w'
 TextKill { target: Filter, direction: ReadlineWordEnd }: ⌥'d'
 TextKill { target: Filter, direction: ToLineEnd }: ^'k'
 TextKill { target: Filter, direction: ToLineStart }: ^'u'
-TextMoveCursor { target: Filter, direction: End }: End
-TextMoveCursor { target: Filter, direction: Home }: Home
 TextMoveCursor { target: Filter, direction: Left }: ^'b', Left
-TextMoveCursor { target: Filter, direction: LineEnd }: ^'e'
-TextMoveCursor { target: Filter, direction: LineStart }: ^'a'
+TextMoveCursor { target: Filter, direction: LineEnd }: ^'e', End
+TextMoveCursor { target: Filter, direction: LineStart }: ^'a', Home
 TextMoveCursor { target: Filter, direction: ReadlineWordEnd }: ⌥'f'
 TextMoveCursor { target: Filter, direction: ReadlineWordStart }: ⌥'b'
 TextMoveCursor { target: Filter, direction: Right }: ^'f', Right
@@ -212,12 +204,10 @@ SqlModalPrevTab: BackTab, ⇧BackTab
 SqlModalSubmit: ⌥Enter, ^⌥Enter, F(5)
 SqlModalYank: 'y', ⇧'y'
 TextMoveCursor { target: SqlModal, direction: Down }: 'j', ^'n', Down, ^Down, ⌥Down, ^⌥Down, ⇧Down, ^⇧Down
-TextMoveCursor { target: SqlModal, direction: End }: End
-TextMoveCursor { target: SqlModal, direction: Home }: Home
 TextMoveCursor { target: SqlModal, direction: LastLine }: 'G'
 TextMoveCursor { target: SqlModal, direction: Left }: 'h', Left, ^Left, ⌥Left, ^⌥Left, ⇧Left, ^⇧Left
-TextMoveCursor { target: SqlModal, direction: LineEnd }: '$'
-TextMoveCursor { target: SqlModal, direction: LineStart }: '0'
+TextMoveCursor { target: SqlModal, direction: LineEnd }: '$', End
+TextMoveCursor { target: SqlModal, direction: LineStart }: '0', Home
 TextMoveCursor { target: SqlModal, direction: Right }: 'l', Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
 TextMoveCursor { target: SqlModal, direction: Up }: 'k', ^'p', Up, ^Up, ⌥Up, ^⌥Up, ⇧Up, ^⇧Up
 TextMoveCursor { target: SqlModal, direction: ViewportBottom }: 'L'
@@ -248,9 +238,9 @@ ConnectionSetupSave: ^'s'
 ConnectionSetupToggleDropdown: Enter, ^Enter, ⌥Enter, ^⌥Enter, ⇧Enter, ^⇧Enter
 TextBackspace { target: ConnectionSetup }: Backspace, ^Backspace, ⌥Backspace, ^⌥Backspace, ⇧Backspace, ^⇧Backspace
 TextDelete { target: ConnectionSetup }: Delete, ^Delete, ⌥Delete, ^⌥Delete, ⇧Delete, ^⇧Delete
-TextMoveCursor { target: ConnectionSetup, direction: End }: End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
-TextMoveCursor { target: ConnectionSetup, direction: Home }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
 TextMoveCursor { target: ConnectionSetup, direction: Left }: Left, ^Left, ⌥Left, ^⌥Left, ⇧Left, ^⇧Left
+TextMoveCursor { target: ConnectionSetup, direction: LineEnd }: End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
+TextMoveCursor { target: ConnectionSetup, direction: LineStart }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
 TextMoveCursor { target: ConnectionSetup, direction: Right }: Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
 footer: 
 help: Tab / Shift+Tab: Next/Previous field
@@ -325,11 +315,9 @@ TextKill { target: ErFilter, direction: ReadlinePreviousWhitespace }: ^'w'
 TextKill { target: ErFilter, direction: ReadlineWordEnd }: ⌥'d'
 TextKill { target: ErFilter, direction: ToLineEnd }: ^'k'
 TextKill { target: ErFilter, direction: ToLineStart }: ^'u'
-TextMoveCursor { target: ErFilter, direction: End }: End
-TextMoveCursor { target: ErFilter, direction: Home }: Home
 TextMoveCursor { target: ErFilter, direction: Left }: ^'b', Left
-TextMoveCursor { target: ErFilter, direction: LineEnd }: ^'e'
-TextMoveCursor { target: ErFilter, direction: LineStart }: ^'a'
+TextMoveCursor { target: ErFilter, direction: LineEnd }: ^'e', End
+TextMoveCursor { target: ErFilter, direction: LineStart }: ^'a', Home
 TextMoveCursor { target: ErFilter, direction: ReadlineWordEnd }: ⌥'f'
 TextMoveCursor { target: ErFilter, direction: ReadlineWordStart }: ⌥'b'
 TextMoveCursor { target: ErFilter, direction: Right }: ^'f', Right
@@ -354,11 +342,9 @@ TextKill { target: QueryHistoryFilter, direction: ReadlinePreviousWhitespace }: 
 TextKill { target: QueryHistoryFilter, direction: ReadlineWordEnd }: ⌥'d'
 TextKill { target: QueryHistoryFilter, direction: ToLineEnd }: ^'k'
 TextKill { target: QueryHistoryFilter, direction: ToLineStart }: ^'u'
-TextMoveCursor { target: QueryHistoryFilter, direction: End }: End
-TextMoveCursor { target: QueryHistoryFilter, direction: Home }: Home
 TextMoveCursor { target: QueryHistoryFilter, direction: Left }: ^'b', Left
-TextMoveCursor { target: QueryHistoryFilter, direction: LineEnd }: ^'e'
-TextMoveCursor { target: QueryHistoryFilter, direction: LineStart }: ^'a'
+TextMoveCursor { target: QueryHistoryFilter, direction: LineEnd }: ^'e', End
+TextMoveCursor { target: QueryHistoryFilter, direction: LineStart }: ^'a', Home
 TextMoveCursor { target: QueryHistoryFilter, direction: ReadlineWordEnd }: ⌥'f'
 TextMoveCursor { target: QueryHistoryFilter, direction: ReadlineWordStart }: ⌥'b'
 TextMoveCursor { target: QueryHistoryFilter, direction: Right }: ^'f', Right
@@ -406,9 +392,9 @@ TextBackspace { target: JsonEdit }: Backspace, ^Backspace, ⌥Backspace, ^⌥Bac
 TextDelete { target: JsonEdit }: Delete, ^Delete, ⌥Delete, ^⌥Delete, ⇧Delete, ^⇧Delete
 TextInput { target: JsonEdit }: ' ', ^' ', ⌥' ', ^⌥' ', ⇧' ', ^⇧' ', '!', ^'!', ⌥'!', ^⌥'!', ⇧'!', ^⇧'!', '"', ^'"', ⌥'"', ^⌥'"', ⇧'"', ^⇧'"', '#', ^'#', ⌥'#', ^⌥'#', ⇧'#', ^⇧'#', '$', ^'$', ⌥'$', ^⌥'$', ⇧'$', ^⇧'$', '%', ^'%', ⌥'%', ^⌥'%', ⇧'%', ^⇧'%', '&', ^'&', ⌥'&', ^⌥'&', ⇧'&', ^⇧'&', '\'', ^'\'', ⌥'\'', ^⌥'\'', ⇧'\'', ^⇧'\'', '(', ^'(', ⌥'(', ^⌥'(', ⇧'(', ^⇧'(', ')', ^')', ⌥')', ^⌥')', ⇧')', ^⇧')', '*', ^'*', ⌥'*', ^⌥'*', ⇧'*', ^⇧'*', '+', ^'+', ⌥'+', ^⌥'+', ⇧'+', ^⇧'+', ',', ^',', ⌥',', ^⌥',', ⇧',', ^⇧',', '-', ^'-', ⌥'-', ^⌥'-', ⇧'-', ^⇧'-', '.', ^'.', ⌥'.', ^⌥'.', ⇧'.', ^⇧'.', '/', ^'/', ⌥'/', ^⌥'/', ⇧'/', ^⇧'/', '0', ^'0', ⌥'0', ^⌥'0', ⇧'0', ^⇧'0', '1', ^'1', ⌥'1', ^⌥'1', ⇧'1', ^⇧'1', '2', ^'2', ⌥'2', ^⌥'2', ⇧'2', ^⇧'2', '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3', '4', ^'4', ⌥'4', ^⌥'4', ⇧'4', ^⇧'4', '5', ^'5', ⌥'5', ^⌥'5', ⇧'5', ^⇧'5', '6', ^'6', ⌥'6', ^⌥'6', ⇧'6', ^⇧'6', '7', ^'7', ⌥'7', ^⌥'7', ⇧'7', ^⇧'7', '8', ^'8', ⌥'8', ^⌥'8', ⇧'8', ^⇧'8', '9', ^'9', ⌥'9', ^⌥'9', ⇧'9', ^⇧'9', ':', ^':', ⌥':', ^⌥':', ⇧':', ^⇧':', ';', ^';', ⌥';', ^⌥';', ⇧';', ^⇧';', '<', ^'<', ⌥'<', ^⌥'<', ⇧'<', ^⇧'<', '=', ^'=', ⌥'=', ^⌥'=', ⇧'=', ^⇧'=', '>', ^'>', ⌥'>', ^⌥'>', ⇧'>', ^⇧'>', '?', ^'?', ⌥'?', ^⌥'?', ⇧'?', ^⇧'?', '@', ^'@', ⌥'@', ^⌥'@', ⇧'@', ^⇧'@', 'A', ^'A', ⌥'A', ^⌥'A', ⇧'A', ^⇧'A', 'B', ^'B', ⌥'B', ^⌥'B', ⇧'B', ^⇧'B', 'C', ^'C', ⌥'C', ^⌥'C', ⇧'C', ^⇧'C', 'D', ^'D', ⌥'D', ^⌥'D', ⇧'D', ^⇧'D', 'E', ^'E', ⌥'E', ^⌥'E', ⇧'E', ^⇧'E', 'F', ^'F', ⌥'F', ^⌥'F', ⇧'F', ^⇧'F', 'G', ^'G', ⌥'G', ^⌥'G', ⇧'G', ^⇧'G', 'H', ^'H', ⌥'H', ^⌥'H', ⇧'H', ^⇧'H', 'I', ^'I', ⌥'I', ^⌥'I', ⇧'I', ^⇧'I', 'J', ^'J', ⌥'J', ^⌥'J', ⇧'J', ^⇧'J', 'K', ^'K', ⌥'K', ^⌥'K', ⇧'K', ^⇧'K', 'L', ^'L', ⌥'L', ^⌥'L', ⇧'L', ^⇧'L', 'M', ^'M', ⌥'M', ^⌥'M', ⇧'M', ^⇧'M', 'N', ^'N', ⌥'N', ^⌥'N', ⇧'N', ^⇧'N', 'O', ^'O', ⌥'O', ^⌥'O', ⇧'O', ^⇧'O', 'P', ^'P', ⌥'P', ^⌥'P', ⇧'P', ^⇧'P', 'Q', ^'Q', ⌥'Q', ^⌥'Q', ⇧'Q', ^⇧'Q', 'R', ^'R', ⌥'R', ^⌥'R', ⇧'R', ^⇧'R', 'S', ^'S', ⌥'S', ^⌥'S', ⇧'S', ^⇧'S', 'T', ^'T', ⌥'T', ^⌥'T', ⇧'T', ^⇧'T', 'U', ^'U', ⌥'U', ^⌥'U', ⇧'U', ^⇧'U', 'V', ^'V', ⌥'V', ^⌥'V', ⇧'V', ^⇧'V', 'W', ^'W', ⌥'W', ^⌥'W', ⇧'W', ^⇧'W', 'X', ^'X', ⌥'X', ^⌥'X', ⇧'X', ^⇧'X', 'Y', ^'Y', ⌥'Y', ^⌥'Y', ⇧'Y', ^⇧'Y', 'Z', ^'Z', ⌥'Z', ^⌥'Z', ⇧'Z', ^⇧'Z', '[', ^'[', ⌥'[', ^⌥'[', ⇧'[', ^⇧'[', '\\', ^'\\', ⌥'\\', ^⌥'\\', ⇧'\\', ^⇧'\\', ']', ^']', ⌥']', ^⌥']', ⇧']', ^⇧']', '^', ^'^', ⌥'^', ^⌥'^', ⇧'^', ^⇧'^', '_', ^'_', ⌥'_', ^⌥'_', ⇧'_', ^⇧'_', '`', ^'`', ⌥'`', ^⌥'`', ⇧'`', ^⇧'`', 'a', ⌥'a', ^⌥'a', ⇧'a', ^⇧'a', 'b', ^⌥'b', ⇧'b', ^⇧'b', 'c', ^'c', ⌥'c', ^⌥'c', ⇧'c', ^⇧'c', 'd', ^⌥'d', ⇧'d', ^⇧'d', 'e', ⌥'e', ^⌥'e', ⇧'e', ^⇧'e', 'f', ^⌥'f', ⇧'f', ^⇧'f', 'g', ^'g', ⌥'g', ^⌥'g', ⇧'g', ^⇧'g', 'h', ⌥'h', ^⌥'h', ⇧'h', ^⇧'h', 'i', ^'i', ⌥'i', ^⌥'i', ⇧'i', ^⇧'i', 'j', ^'j', ⌥'j', ^⌥'j', ⇧'j', ^⇧'j', 'k', ⌥'k', ^⌥'k', ⇧'k', ^⇧'k', 'l', ^'l', ⌥'l', ^⌥'l', ⇧'l', ^⇧'l', 'm', ^'m', ⌥'m', ^⌥'m', ⇧'m', ^⇧'m', 'n', ^'n', ⌥'n', ^⌥'n', ⇧'n', ^⇧'n', 'o', ^'o', ⌥'o', ^⌥'o', ⇧'o', ^⇧'o', 'p', ^'p', ⌥'p', ^⌥'p', ⇧'p', ^⇧'p', 'q', ^'q', ⌥'q', ^⌥'q', ⇧'q', ^⇧'q', 'r', ^'r', ⌥'r', ^⌥'r', ⇧'r', ^⇧'r', 's', ^'s', ⌥'s', ^⌥'s', ⇧'s', ^⇧'s', 't', ^'t', ⌥'t', ^⌥'t', ⇧'t', ^⇧'t', 'u', ⌥'u', ^⌥'u', ⇧'u', ^⇧'u', 'v', ^'v', ⌥'v', ^⌥'v', ⇧'v', ^⇧'v', 'w', ⌥'w', ^⌥'w', ⇧'w', ^⇧'w', 'x', ^'x', ⌥'x', ^⌥'x', ⇧'x', ^⇧'x', 'y', ⌥'y', ^⌥'y', ⇧'y', ^⇧'y', 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z', '{', ^'{', ⌥'{', ^⌥'{', ⇧'{', ^⇧'{', '|', ^'|', ⌥'|', ^⌥'|', ⇧'|', ^⇧'|', '}', ^'}', ⌥'}', ^⌥'}', ⇧'}', ^⇧'}', '~', ^'~', ⌥'~', ^⌥'~', ⇧'~', ^⇧'~', Enter, ^Enter, ⌥Enter, ^⌥Enter, ⇧Enter, ^⇧Enter, Tab, ^Tab, ⌥Tab, ^⌥Tab, ⇧Tab, ^⇧Tab
 TextMoveCursor { target: JsonEdit, direction: Down }: Down, ^Down, ⌥Down, ^⌥Down, ⇧Down, ^⇧Down
-TextMoveCursor { target: JsonEdit, direction: End }: End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
-TextMoveCursor { target: JsonEdit, direction: Home }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
 TextMoveCursor { target: JsonEdit, direction: Left }: Left, ^Left, ⌥Left, ^⌥Left, ⇧Left, ^⇧Left
+TextMoveCursor { target: JsonEdit, direction: LineEnd }: End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
+TextMoveCursor { target: JsonEdit, direction: LineStart }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
 TextMoveCursor { target: JsonEdit, direction: Right }: Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
 TextMoveCursor { target: JsonEdit, direction: Up }: Up, ^Up, ⌥Up, ^⌥Up, ⇧Up, ^⇧Up
 footer: ←/→/↑/↓:Move  Home/End:Line
@@ -1025,9 +1011,9 @@ ConnectionSetupSave: ^'s'
 ConnectionSetupToggleDropdown: Enter, ^Enter, ⌥Enter, ^⌥Enter, ⇧Enter, ^⇧Enter
 TextBackspace { target: ConnectionSetup }: Backspace, ^Backspace, ⌥Backspace, ^⌥Backspace, ⇧Backspace, ^⇧Backspace
 TextDelete { target: ConnectionSetup }: Delete, ^Delete, ⌥Delete, ^⌥Delete, ⇧Delete, ^⇧Delete
-TextMoveCursor { target: ConnectionSetup, direction: End }: End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
-TextMoveCursor { target: ConnectionSetup, direction: Home }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
 TextMoveCursor { target: ConnectionSetup, direction: Left }: Left, ^Left, ⌥Left, ^⌥Left, ⇧Left, ^⇧Left
+TextMoveCursor { target: ConnectionSetup, direction: LineEnd }: End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
+TextMoveCursor { target: ConnectionSetup, direction: LineStart }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
 TextMoveCursor { target: ConnectionSetup, direction: Right }: Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
 footer: 
 help: Tab / Shift+Tab: Next/Previous field
@@ -1047,9 +1033,9 @@ TextBackspace { target: SqlModal }: Backspace, ^Backspace, ⌥Backspace, ^⌥Bac
 TextDelete { target: SqlModal }: Delete, ^Delete, ⌥Delete, ^⌥Delete, ⇧Delete, ^⇧Delete
 TextInput { target: SqlModal }: ' ', ^' ', ⌥' ', ^⌥' ', ⇧' ', ^⇧' ', '!', ^'!', ⌥'!', ^⌥'!', ⇧'!', ^⇧'!', '"', ^'"', ⌥'"', ^⌥'"', ⇧'"', ^⇧'"', '#', ^'#', ⌥'#', ^⌥'#', ⇧'#', ^⇧'#', '$', ^'$', ⌥'$', ^⌥'$', ⇧'$', ^⇧'$', '%', ^'%', ⌥'%', ^⌥'%', ⇧'%', ^⇧'%', '&', ^'&', ⌥'&', ^⌥'&', ⇧'&', ^⇧'&', '\'', ^'\'', ⌥'\'', ^⌥'\'', ⇧'\'', ^⇧'\'', '(', ^'(', ⌥'(', ^⌥'(', ⇧'(', ^⇧'(', ')', ^')', ⌥')', ^⌥')', ⇧')', ^⇧')', '*', ^'*', ⌥'*', ^⌥'*', ⇧'*', ^⇧'*', '+', ^'+', ⌥'+', ^⌥'+', ⇧'+', ^⇧'+', ',', ^',', ⌥',', ^⌥',', ⇧',', ^⇧',', '-', ^'-', ⌥'-', ^⌥'-', ⇧'-', ^⇧'-', '.', ^'.', ⌥'.', ^⌥'.', ⇧'.', ^⇧'.', '/', ^'/', ⌥'/', ^⌥'/', ⇧'/', ^⇧'/', '0', ^'0', ⌥'0', ^⌥'0', ⇧'0', ^⇧'0', '1', ^'1', ⌥'1', ^⌥'1', ⇧'1', ^⇧'1', '2', ^'2', ⌥'2', ^⌥'2', ⇧'2', ^⇧'2', '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3', '4', ^'4', ⌥'4', ^⌥'4', ⇧'4', ^⇧'4', '5', ^'5', ⌥'5', ^⌥'5', ⇧'5', ^⇧'5', '6', ^'6', ⌥'6', ^⌥'6', ⇧'6', ^⇧'6', '7', ^'7', ⌥'7', ^⌥'7', ⇧'7', ^⇧'7', '8', ^'8', ⌥'8', ^⌥'8', ⇧'8', ^⇧'8', '9', ^'9', ⌥'9', ^⌥'9', ⇧'9', ^⇧'9', ':', ^':', ⌥':', ^⌥':', ⇧':', ^⇧':', ';', ^';', ⌥';', ^⌥';', ⇧';', ^⇧';', '<', ^'<', ⌥'<', ^⌥'<', ⇧'<', ^⇧'<', '=', ^'=', ⌥'=', ^⌥'=', ⇧'=', ^⇧'=', '>', ^'>', ⌥'>', ^⌥'>', ⇧'>', ^⇧'>', '?', ^'?', ⌥'?', ^⌥'?', ⇧'?', ^⇧'?', '@', ^'@', ⌥'@', ^⌥'@', ⇧'@', ^⇧'@', 'A', ^'A', ⌥'A', ^⌥'A', ⇧'A', ^⇧'A', 'B', ^'B', ⌥'B', ^⌥'B', ⇧'B', ^⇧'B', 'C', ^'C', ⌥'C', ^⌥'C', ⇧'C', ^⇧'C', 'D', ^'D', ⌥'D', ^⌥'D', ⇧'D', ^⇧'D', 'E', ^'E', ⌥'E', ^⌥'E', ⇧'E', ^⇧'E', 'F', ^'F', ⌥'F', ^⌥'F', ⇧'F', ^⇧'F', 'G', ^'G', ⌥'G', ^⌥'G', ⇧'G', ^⇧'G', 'H', ^'H', ⌥'H', ^⌥'H', ⇧'H', ^⇧'H', 'I', ^'I', ⌥'I', ^⌥'I', ⇧'I', ^⇧'I', 'J', ^'J', ⌥'J', ^⌥'J', ⇧'J', ^⇧'J', 'K', ^'K', ⌥'K', ^⌥'K', ⇧'K', ^⇧'K', 'L', ^'L', ⌥'L', ^⌥'L', ⇧'L', ^⇧'L', 'M', ^'M', ⌥'M', ^⌥'M', ⇧'M', ^⇧'M', 'N', ^'N', ⌥'N', ^⌥'N', ⇧'N', ^⇧'N', 'O', ^'O', ⌥'O', ^⌥'O', ⇧'O', ^⇧'O', 'P', ^'P', ⌥'P', ^⌥'P', ⇧'P', ^⇧'P', 'Q', ^'Q', ⌥'Q', ^⌥'Q', ⇧'Q', ^⇧'Q', 'R', ^'R', ⌥'R', ^⌥'R', ⇧'R', ^⇧'R', 'S', ^'S', ⌥'S', ^⌥'S', ⇧'S', ^⇧'S', 'T', ^'T', ⌥'T', ^⌥'T', ⇧'T', ^⇧'T', 'U', ^'U', ⌥'U', ^⌥'U', ⇧'U', ^⇧'U', 'V', ^'V', ⌥'V', ^⌥'V', ⇧'V', ^⇧'V', 'W', ^'W', ⌥'W', ^⌥'W', ⇧'W', ^⇧'W', 'X', ^'X', ⌥'X', ^⌥'X', ⇧'X', ^⇧'X', 'Y', ^'Y', ⌥'Y', ^⌥'Y', ⇧'Y', ^⇧'Y', 'Z', ^'Z', ⌥'Z', ^⌥'Z', ⇧'Z', ^⇧'Z', '[', ^'[', ⌥'[', ^⌥'[', ⇧'[', ^⇧'[', '\\', ^'\\', ⌥'\\', ^⌥'\\', ⇧'\\', ^⇧'\\', ']', ^']', ⌥']', ^⌥']', ⇧']', ^⇧']', '^', ^'^', ⌥'^', ^⌥'^', ⇧'^', ^⇧'^', '_', ^'_', ⌥'_', ^⌥'_', ⇧'_', ^⇧'_', '`', ^'`', ⌥'`', ^⌥'`', ⇧'`', ^⇧'`', 'a', ⌥'a', ^⌥'a', ⇧'a', ^⇧'a', 'b', ^⌥'b', ⇧'b', ^⇧'b', 'c', ^'c', ⌥'c', ^⌥'c', ⇧'c', ^⇧'c', 'd', ^⌥'d', ⇧'d', ^⇧'d', 'e', ⇧'e', ^⇧'e', 'f', ^⌥'f', ⇧'f', ^⇧'f', 'g', ^'g', ⌥'g', ^⌥'g', ⇧'g', ^⇧'g', 'h', ⌥'h', ^⌥'h', ⇧'h', ^⇧'h', 'i', ^'i', ⌥'i', ^⌥'i', ⇧'i', ^⇧'i', 'j', ^'j', ⌥'j', ^⌥'j', ⇧'j', ^⇧'j', 'k', ⌥'k', ^⌥'k', ⇧'k', ^⇧'k', 'l', ⌥'l', ⇧'l', 'm', ^'m', ⌥'m', ^⌥'m', ⇧'m', ^⇧'m', 'n', ^'n', ⌥'n', ^⌥'n', ⇧'n', ^⇧'n', 'o', ⌥'o', ^⌥'o', ⇧'o', ^⇧'o', 'p', ^'p', ⌥'p', ^⌥'p', ⇧'p', ^⇧'p', 'q', ^'q', ⌥'q', ^⌥'q', ⇧'q', ^⇧'q', 'r', ^'r', ⌥'r', ^⌥'r', ⇧'r', ^⇧'r', 's', ^'s', ⌥'s', ^⌥'s', ⇧'s', ^⇧'s', 't', ^'t', ⌥'t', ^⌥'t', ⇧'t', ^⇧'t', 'u', ⌥'u', ^⌥'u', ⇧'u', ^⇧'u', 'v', ^'v', ⌥'v', ^⌥'v', ⇧'v', ^⇧'v', 'w', ⌥'w', ^⌥'w', ⇧'w', ^⇧'w', 'x', ^'x', ⌥'x', ^⌥'x', ⇧'x', ^⇧'x', 'y', ⌥'y', ^⌥'y', ⇧'y', ^⇧'y', 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z', '{', ^'{', ⌥'{', ^⌥'{', ⇧'{', ^⇧'{', '|', ^'|', ⌥'|', ^⌥'|', ⇧'|', ^⇧'|', '}', ^'}', ⌥'}', ^⌥'}', ⇧'}', ^⇧'}', '~', ^'~', ⌥'~', ^⌥'~', ⇧'~', ^⇧'~'
 TextMoveCursor { target: SqlModal, direction: Down }: Down, ^Down, ⌥Down, ^⌥Down, ⇧Down, ^⇧Down
-TextMoveCursor { target: SqlModal, direction: End }: End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
-TextMoveCursor { target: SqlModal, direction: Home }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
 TextMoveCursor { target: SqlModal, direction: Left }: Left, ^Left, ⌥Left, ^⌥Left, ⇧Left, ^⇧Left
+TextMoveCursor { target: SqlModal, direction: LineEnd }: End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
+TextMoveCursor { target: SqlModal, direction: LineStart }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
 TextMoveCursor { target: SqlModal, direction: Right }: Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
 TextMoveCursor { target: SqlModal, direction: Up }: Up, ^Up, ⌥Up, ^⌥Up, ⇧Up, ^⇧Up
 footer: ←/→/↑/↓:Move
@@ -1073,8 +1059,8 @@ SqlModalSubmit: ⌥Enter, ^⌥Enter, F(5)
 TextBackspace { target: SqlModal }: Backspace, ^Backspace, ⌥Backspace, ^⌥Backspace, ⇧Backspace, ^⇧Backspace
 TextDelete { target: SqlModal }: Delete, ^Delete, ⌥Delete, ^⌥Delete, ⇧Delete, ^⇧Delete
 TextInput { target: SqlModal }: ' ', ^' ', ⌥' ', ^⌥' ', ⇧' ', ^⇧' ', '!', ^'!', ⌥'!', ^⌥'!', ⇧'!', ^⇧'!', '"', ^'"', ⌥'"', ^⌥'"', ⇧'"', ^⇧'"', '#', ^'#', ⌥'#', ^⌥'#', ⇧'#', ^⇧'#', '$', ^'$', ⌥'$', ^⌥'$', ⇧'$', ^⇧'$', '%', ^'%', ⌥'%', ^⌥'%', ⇧'%', ^⇧'%', '&', ^'&', ⌥'&', ^⌥'&', ⇧'&', ^⇧'&', '\'', ^'\'', ⌥'\'', ^⌥'\'', ⇧'\'', ^⇧'\'', '(', ^'(', ⌥'(', ^⌥'(', ⇧'(', ^⇧'(', ')', ^')', ⌥')', ^⌥')', ⇧')', ^⇧')', '*', ^'*', ⌥'*', ^⌥'*', ⇧'*', ^⇧'*', '+', ^'+', ⌥'+', ^⌥'+', ⇧'+', ^⇧'+', ',', ^',', ⌥',', ^⌥',', ⇧',', ^⇧',', '-', ^'-', ⌥'-', ^⌥'-', ⇧'-', ^⇧'-', '.', ^'.', ⌥'.', ^⌥'.', ⇧'.', ^⇧'.', '/', ^'/', ⌥'/', ^⌥'/', ⇧'/', ^⇧'/', '0', ^'0', ⌥'0', ^⌥'0', ⇧'0', ^⇧'0', '1', ^'1', ⌥'1', ^⌥'1', ⇧'1', ^⇧'1', '2', ^'2', ⌥'2', ^⌥'2', ⇧'2', ^⇧'2', '3', ^'3', ⌥'3', ^⌥'3', ⇧'3', ^⇧'3', '4', ^'4', ⌥'4', ^⌥'4', ⇧'4', ^⇧'4', '5', ^'5', ⌥'5', ^⌥'5', ⇧'5', ^⇧'5', '6', ^'6', ⌥'6', ^⌥'6', ⇧'6', ^⇧'6', '7', ^'7', ⌥'7', ^⌥'7', ⇧'7', ^⇧'7', '8', ^'8', ⌥'8', ^⌥'8', ⇧'8', ^⇧'8', '9', ^'9', ⌥'9', ^⌥'9', ⇧'9', ^⇧'9', ':', ^':', ⌥':', ^⌥':', ⇧':', ^⇧':', ';', ^';', ⌥';', ^⌥';', ⇧';', ^⇧';', '<', ^'<', ⌥'<', ^⌥'<', ⇧'<', ^⇧'<', '=', ^'=', ⌥'=', ^⌥'=', ⇧'=', ^⇧'=', '>', ^'>', ⌥'>', ^⌥'>', ⇧'>', ^⇧'>', '?', ^'?', ⌥'?', ^⌥'?', ⇧'?', ^⇧'?', '@', ^'@', ⌥'@', ^⌥'@', ⇧'@', ^⇧'@', 'A', ^'A', ⌥'A', ^⌥'A', ⇧'A', ^⇧'A', 'B', ^'B', ⌥'B', ^⌥'B', ⇧'B', ^⇧'B', 'C', ^'C', ⌥'C', ^⌥'C', ⇧'C', ^⇧'C', 'D', ^'D', ⌥'D', ^⌥'D', ⇧'D', ^⇧'D', 'E', ^'E', ⌥'E', ^⌥'E', ⇧'E', ^⇧'E', 'F', ^'F', ⌥'F', ^⌥'F', ⇧'F', ^⇧'F', 'G', ^'G', ⌥'G', ^⌥'G', ⇧'G', ^⇧'G', 'H', ^'H', ⌥'H', ^⌥'H', ⇧'H', ^⇧'H', 'I', ^'I', ⌥'I', ^⌥'I', ⇧'I', ^⇧'I', 'J', ^'J', ⌥'J', ^⌥'J', ⇧'J', ^⇧'J', 'K', ^'K', ⌥'K', ^⌥'K', ⇧'K', ^⇧'K', 'L', ^'L', ⌥'L', ^⌥'L', ⇧'L', ^⇧'L', 'M', ^'M', ⌥'M', ^⌥'M', ⇧'M', ^⇧'M', 'N', ^'N', ⌥'N', ^⌥'N', ⇧'N', ^⇧'N', 'O', ^'O', ⌥'O', ^⌥'O', ⇧'O', ^⇧'O', 'P', ^'P', ⌥'P', ^⌥'P', ⇧'P', ^⇧'P', 'Q', ^'Q', ⌥'Q', ^⌥'Q', ⇧'Q', ^⇧'Q', 'R', ^'R', ⌥'R', ^⌥'R', ⇧'R', ^⇧'R', 'S', ^'S', ⌥'S', ^⌥'S', ⇧'S', ^⇧'S', 'T', ^'T', ⌥'T', ^⌥'T', ⇧'T', ^⇧'T', 'U', ^'U', ⌥'U', ^⌥'U', ⇧'U', ^⇧'U', 'V', ^'V', ⌥'V', ^⌥'V', ⇧'V', ^⇧'V', 'W', ^'W', ⌥'W', ^⌥'W', ⇧'W', ^⇧'W', 'X', ^'X', ⌥'X', ^⌥'X', ⇧'X', ^⇧'X', 'Y', ^'Y', ⌥'Y', ^⌥'Y', ⇧'Y', ^⇧'Y', 'Z', ^'Z', ⌥'Z', ^⌥'Z', ⇧'Z', ^⇧'Z', '[', ^'[', ⌥'[', ^⌥'[', ⇧'[', ^⇧'[', '\\', ^'\\', ⌥'\\', ^⌥'\\', ⇧'\\', ^⇧'\\', ']', ^']', ⌥']', ^⌥']', ⇧']', ^⇧']', '^', ^'^', ⌥'^', ^⌥'^', ⇧'^', ^⇧'^', '_', ^'_', ⌥'_', ^⌥'_', ⇧'_', ^⇧'_', '`', ^'`', ⌥'`', ^⌥'`', ⇧'`', ^⇧'`', 'a', ⌥'a', ^⌥'a', ⇧'a', ^⇧'a', 'b', ^⌥'b', ⇧'b', ^⇧'b', 'c', ^'c', ⌥'c', ^⌥'c', ⇧'c', ^⇧'c', 'd', ^⌥'d', ⇧'d', ^⇧'d', 'e', ⇧'e', ^⇧'e', 'f', ^⌥'f', ⇧'f', ^⇧'f', 'g', ^'g', ⌥'g', ^⌥'g', ⇧'g', ^⇧'g', 'h', ⌥'h', ^⌥'h', ⇧'h', ^⇧'h', 'i', ^'i', ⌥'i', ^⌥'i', ⇧'i', ^⇧'i', 'j', ^'j', ⌥'j', ^⌥'j', ⇧'j', ^⇧'j', 'k', ⌥'k', ^⌥'k', ⇧'k', ^⇧'k', 'l', ⌥'l', ⇧'l', 'm', ^'m', ⌥'m', ^⌥'m', ⇧'m', ^⇧'m', 'n', ⌥'n', ^⌥'n', ⇧'n', ^⇧'n', 'o', ⌥'o', ^⌥'o', ⇧'o', ^⇧'o', 'p', ⌥'p', ^⌥'p', ⇧'p', ^⇧'p', 'q', ^'q', ⌥'q', ^⌥'q', ⇧'q', ^⇧'q', 'r', ^'r', ⌥'r', ^⌥'r', ⇧'r', ^⇧'r', 's', ^'s', ⌥'s', ^⌥'s', ⇧'s', ^⇧'s', 't', ^'t', ⌥'t', ^⌥'t', ⇧'t', ^⇧'t', 'u', ⌥'u', ^⌥'u', ⇧'u', ^⇧'u', 'v', ^'v', ⌥'v', ^⌥'v', ⇧'v', ^⇧'v', 'w', ⌥'w', ^⌥'w', ⇧'w', ^⇧'w', 'x', ^'x', ⌥'x', ^⌥'x', ⇧'x', ^⇧'x', 'y', ⌥'y', ^⌥'y', ⇧'y', ^⇧'y', 'z', ^'z', ⌥'z', ^⌥'z', ⇧'z', ^⇧'z', '{', ^'{', ⌥'{', ^⌥'{', ⇧'{', ^⇧'{', '|', ^'|', ⌥'|', ^⌥'|', ⇧'|', ^⇧'|', '}', ^'}', ⌥'}', ^⌥'}', ⇧'}', ^⇧'}', '~', ^'~', ⌥'~', ^⌥'~', ⇧'~', ^⇧'~'
-TextMoveCursor { target: SqlModal, direction: End }: End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
-TextMoveCursor { target: SqlModal, direction: Home }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
+TextMoveCursor { target: SqlModal, direction: LineEnd }: End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
+TextMoveCursor { target: SqlModal, direction: LineStart }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
 footer: 
 help: Alt+Enter / F5: Execute query
 help: Ctrl+L: Clear editor
@@ -1130,11 +1116,9 @@ TextKill { target: SqlModalHighRisk, direction: ReadlinePreviousWhitespace }: ^'
 TextKill { target: SqlModalHighRisk, direction: ReadlineWordEnd }: ⌥'d'
 TextKill { target: SqlModalHighRisk, direction: ToLineEnd }: ^'k'
 TextKill { target: SqlModalHighRisk, direction: ToLineStart }: ^'u'
-TextMoveCursor { target: SqlModalHighRisk, direction: End }: End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
-TextMoveCursor { target: SqlModalHighRisk, direction: Home }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
 TextMoveCursor { target: SqlModalHighRisk, direction: Left }: ^'b', Left, ^Left, ⌥Left, ^⌥Left, ⇧Left, ^⇧Left
-TextMoveCursor { target: SqlModalHighRisk, direction: LineEnd }: ^'e'
-TextMoveCursor { target: SqlModalHighRisk, direction: LineStart }: ^'a'
+TextMoveCursor { target: SqlModalHighRisk, direction: LineEnd }: ^'e', End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
+TextMoveCursor { target: SqlModalHighRisk, direction: LineStart }: ^'a', Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
 TextMoveCursor { target: SqlModalHighRisk, direction: ReadlineWordEnd }: ⌥'f'
 TextMoveCursor { target: SqlModalHighRisk, direction: ReadlineWordStart }: ⌥'b'
 TextMoveCursor { target: SqlModalHighRisk, direction: Right }: ^'f', Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
@@ -1156,11 +1140,9 @@ TextKill { target: SqlModalAnalyzeHighRisk, direction: ReadlinePreviousWhitespac
 TextKill { target: SqlModalAnalyzeHighRisk, direction: ReadlineWordEnd }: ⌥'d'
 TextKill { target: SqlModalAnalyzeHighRisk, direction: ToLineEnd }: ^'k'
 TextKill { target: SqlModalAnalyzeHighRisk, direction: ToLineStart }: ^'u'
-TextMoveCursor { target: SqlModalAnalyzeHighRisk, direction: End }: End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
-TextMoveCursor { target: SqlModalAnalyzeHighRisk, direction: Home }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
 TextMoveCursor { target: SqlModalAnalyzeHighRisk, direction: Left }: ^'b', Left, ^Left, ⌥Left, ^⌥Left, ⇧Left, ^⇧Left
-TextMoveCursor { target: SqlModalAnalyzeHighRisk, direction: LineEnd }: ^'e'
-TextMoveCursor { target: SqlModalAnalyzeHighRisk, direction: LineStart }: ^'a'
+TextMoveCursor { target: SqlModalAnalyzeHighRisk, direction: LineEnd }: ^'e', End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
+TextMoveCursor { target: SqlModalAnalyzeHighRisk, direction: LineStart }: ^'a', Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
 TextMoveCursor { target: SqlModalAnalyzeHighRisk, direction: ReadlineWordEnd }: ⌥'f'
 TextMoveCursor { target: SqlModalAnalyzeHighRisk, direction: ReadlineWordStart }: ⌥'b'
 TextMoveCursor { target: SqlModalAnalyzeHighRisk, direction: Right }: ^'f', Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
@@ -1196,11 +1178,9 @@ TextKill { target: JsonSearch, direction: ReadlinePreviousWhitespace }: ^'w'
 TextKill { target: JsonSearch, direction: ReadlineWordEnd }: ⌥'d'
 TextKill { target: JsonSearch, direction: ToLineEnd }: ^'k'
 TextKill { target: JsonSearch, direction: ToLineStart }: ^'u'
-TextMoveCursor { target: JsonSearch, direction: End }: End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
-TextMoveCursor { target: JsonSearch, direction: Home }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
 TextMoveCursor { target: JsonSearch, direction: Left }: ^'b', Left, ^Left, ⌥Left, ^⌥Left, ⇧Left, ^⇧Left
-TextMoveCursor { target: JsonSearch, direction: LineEnd }: ^'e'
-TextMoveCursor { target: JsonSearch, direction: LineStart }: ^'a'
+TextMoveCursor { target: JsonSearch, direction: LineEnd }: ^'e', End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
+TextMoveCursor { target: JsonSearch, direction: LineStart }: ^'a', Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
 TextMoveCursor { target: JsonSearch, direction: ReadlineWordEnd }: ⌥'f'
 TextMoveCursor { target: JsonSearch, direction: ReadlineWordStart }: ⌥'b'
 TextMoveCursor { target: JsonSearch, direction: Right }: ^'f', Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
@@ -1219,11 +1199,9 @@ TextKill { target: HelpFilter, direction: ReadlinePreviousWhitespace }: ^'w'
 TextKill { target: HelpFilter, direction: ReadlineWordEnd }: ⌥'d'
 TextKill { target: HelpFilter, direction: ToLineEnd }: ^'k'
 TextKill { target: HelpFilter, direction: ToLineStart }: ^'u'
-TextMoveCursor { target: HelpFilter, direction: End }: End
-TextMoveCursor { target: HelpFilter, direction: Home }: Home
 TextMoveCursor { target: HelpFilter, direction: Left }: ^'b', Left
-TextMoveCursor { target: HelpFilter, direction: LineEnd }: ^'e'
-TextMoveCursor { target: HelpFilter, direction: LineStart }: ^'a'
+TextMoveCursor { target: HelpFilter, direction: LineEnd }: ^'e', End
+TextMoveCursor { target: HelpFilter, direction: LineStart }: ^'a', Home
 TextMoveCursor { target: HelpFilter, direction: ReadlineWordEnd }: ⌥'f'
 TextMoveCursor { target: HelpFilter, direction: ReadlineWordStart }: ⌥'b'
 TextMoveCursor { target: HelpFilter, direction: Right }: ^'f', Right
@@ -1242,11 +1220,9 @@ TextKill { target: SettingsErBrowser, direction: ReadlinePreviousWhitespace }: ^
 TextKill { target: SettingsErBrowser, direction: ReadlineWordEnd }: ⌥'d'
 TextKill { target: SettingsErBrowser, direction: ToLineEnd }: ^'k'
 TextKill { target: SettingsErBrowser, direction: ToLineStart }: ^'u'
-TextMoveCursor { target: SettingsErBrowser, direction: End }: End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
-TextMoveCursor { target: SettingsErBrowser, direction: Home }: Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
 TextMoveCursor { target: SettingsErBrowser, direction: Left }: ^'b', Left, ^Left, ⌥Left, ^⌥Left, ⇧Left, ^⇧Left
-TextMoveCursor { target: SettingsErBrowser, direction: LineEnd }: ^'e'
-TextMoveCursor { target: SettingsErBrowser, direction: LineStart }: ^'a'
+TextMoveCursor { target: SettingsErBrowser, direction: LineEnd }: ^'e', End, ^End, ⌥End, ^⌥End, ⇧End, ^⇧End
+TextMoveCursor { target: SettingsErBrowser, direction: LineStart }: ^'a', Home, ^Home, ⌥Home, ^⌥Home, ⇧Home, ^⇧Home
 TextMoveCursor { target: SettingsErBrowser, direction: ReadlineWordEnd }: ⌥'f'
 TextMoveCursor { target: SettingsErBrowser, direction: ReadlineWordStart }: ⌥'b'
 TextMoveCursor { target: SettingsErBrowser, direction: Right }: ^'f', Right, ^Right, ⌥Right, ^⌥Right, ⇧Right, ^⇧Right
@@ -1266,11 +1242,9 @@ TextKill { target: CellDetailSearch, direction: ReadlinePreviousWhitespace }: ^'
 TextKill { target: CellDetailSearch, direction: ReadlineWordEnd }: ⌥'d'
 TextKill { target: CellDetailSearch, direction: ToLineEnd }: ^'k'
 TextKill { target: CellDetailSearch, direction: ToLineStart }: ^'u'
-TextMoveCursor { target: CellDetailSearch, direction: End }: End, ⇧End
-TextMoveCursor { target: CellDetailSearch, direction: Home }: Home, ⇧Home
 TextMoveCursor { target: CellDetailSearch, direction: Left }: ^'b', Left, ⇧Left
-TextMoveCursor { target: CellDetailSearch, direction: LineEnd }: ^'e'
-TextMoveCursor { target: CellDetailSearch, direction: LineStart }: ^'a'
+TextMoveCursor { target: CellDetailSearch, direction: LineEnd }: ^'e', End, ⇧End
+TextMoveCursor { target: CellDetailSearch, direction: LineStart }: ^'a', Home, ⇧Home
 TextMoveCursor { target: CellDetailSearch, direction: ReadlineWordEnd }: ⌥'f'
 TextMoveCursor { target: CellDetailSearch, direction: ReadlineWordStart }: ⌥'b'
 TextMoveCursor { target: CellDetailSearch, direction: Right }: ^'f', Right, ⇧Right

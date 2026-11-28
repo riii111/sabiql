@@ -160,7 +160,7 @@ mod tests {
         let mut state = CellEditState::default();
         state.begin(0, 0, "hello".to_string());
 
-        state.move_cursor(CursorMove::Home);
+        state.move_cursor(CursorMove::LineStart);
         assert_eq!(state.input().cursor(), 0);
 
         state.insert_char('X');
@@ -186,7 +186,7 @@ mod tests {
         let mut state = CellEditState::default();
         state.begin(0, 0, "abcd".to_string());
 
-        state.move_cursor(CursorMove::Home);
+        state.move_cursor(CursorMove::LineStart);
         state.delete();
 
         assert_eq!(state.draft_value(), "bcd");

@@ -9,9 +9,9 @@ use super::model::{Binding, Row, hints};
 use super::scroll::line_scroll;
 use super::{Hint, HintSurface, KeyContext};
 
-static SQL: LazyLock<Vec<Row>> = LazyLock::new(|| rows(SqlModalTab::Sql));
-static PLAN: LazyLock<Vec<Row>> = LazyLock::new(|| rows(SqlModalTab::Plan));
-static COMPARE: LazyLock<Vec<Row>> = LazyLock::new(|| rows(SqlModalTab::Compare));
+pub(super) static SQL: LazyLock<Vec<Row>> = LazyLock::new(|| rows(SqlModalTab::Sql));
+pub(super) static PLAN: LazyLock<Vec<Row>> = LazyLock::new(|| rows(SqlModalTab::Plan));
+pub(super) static COMPARE: LazyLock<Vec<Row>> = LazyLock::new(|| rows(SqlModalTab::Compare));
 
 fn rows(tab: SqlModalTab) -> Vec<Row> {
     let sql = tab == SqlModalTab::Sql;
@@ -85,24 +85,23 @@ fn rows(tab: SqlModalTab) -> Vec<Row> {
         } else {
             "Copy to clipboard"
         },
-        references: &[],
+
         dynamic_label: None,
         visible: if tab == SqlModalTab::Compare {
-            Some(|context, surface| {
-                surface != HintSurface::Border || context.sql_compare_can_yank()
-            })
+            Some(|context, surface| surface != HintSurface::Border || context.sql_compare_can_yank)
         } else {
             None
         },
-        surfaces: if sql {
-            &[HintSurface::Current, HintSurface::Editing]
+        surfaces: (if sql {
+            &[HintSurface::Current, HintSurface::Editing][..]
         } else {
             &[
                 HintSurface::Border,
                 HintSurface::Current,
                 HintSurface::Advanced,
             ]
-        },
+        })
+        .to_vec(),
     });
     if sql {
         rows.push(Row::new(
@@ -126,16 +125,17 @@ fn rows(tab: SqlModalTab) -> Vec<Row> {
         ],
         short: "Switch",
         description: "Switch tab",
-        references: &[],
+
         dynamic_label: None,
         visible: Some(|context, surface| {
-            surface != HintSurface::Border || context.sql_has_multiple_tabs()
+            surface != HintSurface::Border || context.sql_has_multiple_tabs
         }),
-        surfaces: &[
+        surfaces: [
             HintSurface::Border,
             HintSurface::Current,
             HintSurface::Advanced,
-        ],
+        ]
+        .to_vec(),
     });
     if sql {
         rows.push(Row::new(
@@ -151,7 +151,7 @@ fn rows(tab: SqlModalTab) -> Vec<Row> {
                     &[KeyCombo::ctrl(Key::Char('o'))],
                 )
                 .ide(&[KeyCombo::plain(Key::Char('O'))])
-                .when(KeyContext::can_open_history),
+                .when(|context| context.can_open_history),
             ],
             "History",
             "Open Query History",
@@ -159,7 +159,7 @@ fn rows(tab: SqlModalTab) -> Vec<Row> {
         ));
         let mut navigation = document_navigation(InputTarget::SqlModal, false);
         for row in &mut navigation {
-            row.surfaces = &[HintSurface::Current, HintSurface::Editing];
+            row.surfaces = [HintSurface::Current, HintSurface::Editing].to_vec();
         }
         rows.extend(navigation);
     } else {
@@ -174,7 +174,7 @@ fn rows(tab: SqlModalTab) -> Vec<Row> {
         } else {
             "Scroll comparison text"
         };
-        scroll.surfaces = &[HintSurface::Current, HintSurface::Advanced];
+        scroll.surfaces = [HintSurface::Current, HintSurface::Advanced].to_vec();
         rows.push(scroll);
     }
     rows.push(Row::new(
@@ -195,7 +195,7 @@ fn rows(tab: SqlModalTab) -> Vec<Row> {
 }
 
 pub(super) fn active_rows(context: &KeyContext) -> Option<&'static [Row]> {
-    Some(match context.sql_tab()? {
+    Some(match context.sql_tab? {
         SqlModalTab::Sql => &SQL,
         SqlModalTab::Plan => &PLAN,
         SqlModalTab::Compare => &COMPARE,

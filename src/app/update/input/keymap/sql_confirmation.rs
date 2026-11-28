@@ -8,10 +8,10 @@ use super::context::SqlConfirmation;
 use super::model::{Binding, Row, hints};
 use super::{Hint, HintSurface, KeyContext};
 
-static HIGH: LazyLock<Vec<Row>> = LazyLock::new(|| rows(false, true));
-static RISK: LazyLock<Vec<Row>> = LazyLock::new(|| rows(false, false));
-static ANALYZE_HIGH: LazyLock<Vec<Row>> = LazyLock::new(|| rows(true, true));
-static ANALYZE_RISK: LazyLock<Vec<Row>> = LazyLock::new(|| rows(true, false));
+pub(super) static HIGH: LazyLock<Vec<Row>> = LazyLock::new(|| rows(false, true));
+pub(super) static RISK: LazyLock<Vec<Row>> = LazyLock::new(|| rows(false, false));
+pub(super) static ANALYZE_HIGH: LazyLock<Vec<Row>> = LazyLock::new(|| rows(true, true));
+pub(super) static ANALYZE_RISK: LazyLock<Vec<Row>> = LazyLock::new(|| rows(true, false));
 
 fn rows(analyze: bool, typed: bool) -> Vec<Row> {
     let (confirm, cancel, confirm_label, cancel_label) = if analyze {
@@ -34,16 +34,17 @@ fn rows(analyze: bool, typed: bool) -> Vec<Row> {
             bindings: vec![Binding::no_ctrl_alt(confirm, Key::Enter)],
             short: confirm_label,
             description: "Execute the confirmed statement",
-            references: &[],
+
             dynamic_label: None,
             visible: Some(|context, surface| {
-                surface != HintSurface::Border || context.is_sql_confirmation_matched()
+                surface != HintSurface::Border || context.is_sql_confirmation_matched
             }),
-            surfaces: &[
+            surfaces: [
                 HintSurface::Border,
                 HintSurface::Current,
                 HintSurface::Editing,
-            ],
+            ]
+            .to_vec(),
         },
         Row::new(
             vec![Binding::any_modifiers(cancel, Key::Esc)],
@@ -99,7 +100,7 @@ fn rows(analyze: bool, typed: bool) -> Vec<Row> {
 }
 
 pub(super) fn active_rows(context: &KeyContext) -> Option<&'static [Row]> {
-    Some(match context.sql_confirmation()? {
+    Some(match context.sql_confirmation? {
         SqlConfirmation::High => &HIGH,
         SqlConfirmation::Risk => &RISK,
         SqlConfirmation::AnalyzeHigh => &ANALYZE_HIGH,

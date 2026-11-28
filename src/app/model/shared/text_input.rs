@@ -161,16 +161,10 @@ impl TextInputState {
                     self.cursor += 1;
                 }
             }
-            CursorMove::Home
-            | CursorMove::LineStart
-            | CursorMove::BufferStart
-            | CursorMove::FirstLine => {
+            CursorMove::LineStart | CursorMove::FirstLine => {
                 self.cursor = 0;
             }
-            CursorMove::End
-            | CursorMove::LineEnd
-            | CursorMove::BufferEnd
-            | CursorMove::LastLine => {
+            CursorMove::LineEnd | CursorMove::LastLine => {
                 self.cursor = self.char_count;
             }
             CursorMove::WordForward => {
@@ -639,7 +633,7 @@ mod tests {
         fn move_home() {
             let mut s = state_with("abc", 2);
 
-            s.move_cursor(CursorMove::Home);
+            s.move_cursor(CursorMove::LineStart);
 
             assert_eq!(s.cursor(), 0);
         }
@@ -648,7 +642,7 @@ mod tests {
         fn move_end() {
             let mut s = state_with("abc", 0);
 
-            s.move_cursor(CursorMove::End);
+            s.move_cursor(CursorMove::LineEnd);
 
             assert_eq!(s.cursor(), 3);
         }

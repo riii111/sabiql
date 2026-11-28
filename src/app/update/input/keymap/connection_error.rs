@@ -15,7 +15,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
     ];
     let mut scroll = line_scroll(ScrollTarget::ConnectionError);
     scroll.description = "Scroll error";
-    scroll.surfaces = &[HintSurface::Current, HintSurface::Connections];
+    scroll.surfaces = [HintSurface::Current, HintSurface::Connections].to_vec();
     vec![
         Row {
             bindings: vec![Binding::action(
@@ -24,12 +24,12 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Retry",
             description: "Retry connection",
-            references: &[],
+
             dynamic_label: None,
             visible: Some(|context, surface| {
-                surface != HintSurface::Footer || context.can_retry_connection()
+                surface != HintSurface::Footer || context.can_retry_connection
             }),
-            surfaces: action_surfaces,
+            surfaces: (action_surfaces).to_vec(),
         },
         Row {
             bindings: vec![Binding::action(
@@ -38,12 +38,12 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Edit",
             description: "Edit connection settings",
-            references: &[],
+
             dynamic_label: None,
             visible: Some(|context, surface| {
-                surface != HintSurface::Footer || !context.can_retry_connection()
+                surface != HintSurface::Footer || !context.can_retry_connection
             }),
-            surfaces: action_surfaces,
+            surfaces: (action_surfaces).to_vec(),
         },
         Row::new(
             vec![Binding::action(

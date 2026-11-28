@@ -90,30 +90,35 @@ fn command_row(
     short: &'static str,
     description: &'static str,
 ) -> Row {
-    Row {
-        bindings: vec![Binding::command(command, name, aliases)],
-        short,
-        description,
-        references: match command {
+    {
+        let mut row = Row {
+            bindings: vec![Binding::command(command, name, aliases)],
+            short,
+            description,
+
+            dynamic_label: None,
+            visible: if command == LineCommand::Write {
+                Some(|context, surface| {
+                    surface != HintSurface::FooterAction
+                        || context.browse_draft
+                        || context.browse_staged_delete
+                })
+            } else {
+                None
+            },
+            surfaces: (if command == LineCommand::Write {
+                &[HintSurface::Current, HintSurface::FooterAction][..]
+            } else {
+                &[HintSurface::Current]
+            })
+            .to_vec(),
+        };
+        row.surfaces.extend_from_slice(match command {
             LineCommand::Write => &[HintSurface::Editing],
             LineCommand::Open(_) => &[HintSurface::OpenSwitch],
             LineCommand::Quit | LineCommand::Help => &[HintSurface::Common],
-        },
-        dynamic_label: None,
-        visible: if command == LineCommand::Write {
-            Some(|context, surface| {
-                surface != HintSurface::FooterAction
-                    || context.browse_draft()
-                    || context.browse_staged_delete()
-            })
-        } else {
-            None
-        },
-        surfaces: if command == LineCommand::Write {
-            &[HintSurface::Current, HintSurface::FooterAction]
-        } else {
-            &[HintSurface::Current]
-        },
+        });
+        row
     }
 }
 
@@ -159,12 +164,14 @@ pub(super) static EDITING: LazyLock<Vec<Row>> = LazyLock::new(|| {
 
 pub(super) fn cell_edit_write_row() -> Row {
     let mut row = WRITE.clone();
-    row.surfaces = &[
+    row.surfaces = [
         HintSurface::Footer,
         HintSurface::Current,
         HintSurface::Editing,
-    ];
-    row.references = &[];
+    ]
+    .to_vec();
+    row.surfaces
+        .retain(|surface| *surface != HintSurface::Editing);
     row
 }
 
