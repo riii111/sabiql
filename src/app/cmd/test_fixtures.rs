@@ -19,6 +19,9 @@ use crate::domain::{
 use crate::model::app_state::AppState;
 use crate::model::browse::session::ConnectionSaveGuard;
 use crate::ports::outbound::DbOperationError;
+use crate::ports::outbound::connection_store::MockConnectionStore;
+use crate::ports::outbound::metadata::MockMetadataProvider;
+use crate::ports::outbound::query_executor::MockQueryExecutor;
 use crate::ports::outbound::{
     AppSettings, CachedResultExporter, ClipboardError, ClipboardWriter, ConfigWriter,
     ConfigWriterError, ConnectionStore, ErDiagramExporter, ErExportResult, ErLogWriter,
@@ -331,6 +334,41 @@ fn make_runner_with_cached_result_exporter_and_probe(
     mysql_connection_probe: Arc<dyn MySqlConnectionProbe>,
     cached_result_exporter: Arc<dyn CachedResultExporter>,
 ) -> EffectRunner {
+    make_runner_with_all(
+        metadata_provider,
+        query_executor,
+        connection_store,
+        action_tx,
+        mysql_connection_probe,
+        cached_result_exporter,
+        Arc::new(NoopSettingsStore),
+    )
+}
+
+pub fn make_runner_with_settings_store(
+    action_tx: mpsc::Sender<Action>,
+    settings_store: Arc<dyn SettingsStore>,
+) -> EffectRunner {
+    make_runner_with_all(
+        Arc::new(MockMetadataProvider::new()),
+        Arc::new(MockQueryExecutor::new()),
+        Arc::new(MockConnectionStore::new()),
+        action_tx,
+        Arc::new(NoopMySqlConnectionProbe),
+        Arc::new(TestCachedResultExporter),
+        settings_store,
+    )
+}
+
+fn make_runner_with_all(
+    metadata_provider: Arc<dyn MetadataProvider>,
+    query_executor: Arc<dyn QueryExecutor>,
+    connection_store: Arc<dyn ConnectionStore>,
+    action_tx: mpsc::Sender<Action>,
+    mysql_connection_probe: Arc<dyn MySqlConnectionProbe>,
+    cached_result_exporter: Arc<dyn CachedResultExporter>,
+    settings_store: Arc<dyn SettingsStore>,
+) -> EffectRunner {
     EffectRunner::new(
         metadata_provider,
         ConnectionDeps {
@@ -354,7 +392,7 @@ fn make_runner_with_cached_result_exporter_and_probe(
             clipboard: Arc::new(NoopClipboardWriter),
             folder_opener: Arc::new(NoopFolderOpener),
         },
-        Arc::new(NoopSettingsStore),
+        settings_store,
         action_tx,
     )
 }

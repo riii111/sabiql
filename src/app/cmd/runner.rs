@@ -112,6 +112,17 @@ impl EffectRunner {
         Ok(())
     }
 
+    pub async fn finish_settings_saves(&self) {
+        let last_save = self
+            .settings_save
+            .lock()
+            .expect("settings save lock poisoned")
+            .take();
+        if let Some(last_save) = last_save {
+            let _ = last_save.await;
+        }
+    }
+
     fn report<A>(
         &self,
         task: impl Future<Output = A> + Send + 'static,
@@ -1225,6 +1236,74 @@ mod tests {
                 other => panic!("expected saved settings, got {other:?}"),
             });
             assert_eq!(themes, [ThemeId::Light, ThemeId::Default]);
+        }
+    }
+
+    mod settings_shutdown {
+        use std::sync::Mutex as StdMutex;
+        use std::sync::mpsc as std_mpsc;
+
+        use super::*;
+        use crate::model::shared::theme_id::ThemeId;
+        use crate::ports::outbound::{AppSettings, SettingsStoreError};
+
+        struct GatedSettingsStore {
+            first_release: StdMutex<Option<std_mpsc::Receiver<()>>>,
+            saved: StdMutex<Vec<ThemeId>>,
+        }
+
+        impl SettingsStore for GatedSettingsStore {
+            fn save(&self, settings: AppSettings) -> Result<(), SettingsStoreError> {
+                let release = self.first_release.lock().unwrap().take();
+                if let Some(release) = release {
+                    release.recv().unwrap();
+                }
+                self.saved.lock().unwrap().push(settings.theme_id);
+                Ok(())
+            }
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn shutdown_finishes_queued_saves_after_the_queue_closes() {
+            let (release_tx, release_rx) = std_mpsc::channel();
+            let store = Arc::new(GatedSettingsStore {
+                first_release: StdMutex::new(Some(release_rx)),
+                saved: StdMutex::new(Vec::new()),
+            });
+            let (tx, rx) = mpsc::channel(1);
+            let runner = test_fixtures::make_runner_with_settings_store(
+                tx,
+                Arc::clone(&store) as Arc<dyn SettingsStore>,
+            );
+            let save = |theme_id| Effect::SaveSettings {
+                settings: AppSettings {
+                    theme_id,
+                    ..AppSettings::default()
+                },
+            };
+            runner
+                .execute_effects(
+                    vec![save(ThemeId::Light), save(ThemeId::Default)],
+                    &mut NoopRenderer,
+                    &mut AppState::new("test".to_string()),
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            drop(rx);
+            release_tx.send(()).unwrap();
+            tokio::time::timeout(
+                std::time::Duration::from_secs(1),
+                runner.finish_settings_saves(),
+            )
+            .await
+            .expect("queued saves should finish");
+
+            assert_eq!(
+                *store.saved.lock().unwrap(),
+                [ThemeId::Light, ThemeId::Default]
+            );
         }
     }
 

@@ -399,6 +399,9 @@ impl Runtime {
         }
 
         self.tui.exit()?;
+        // Nothing reads the action queue after the loop, so it is closed first and pending saves can write without blocking on a full queue.
+        drop(self.action_rx);
+        self.effect_runner.finish_settings_saves().await;
         Ok(())
     }
 
