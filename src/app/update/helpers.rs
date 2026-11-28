@@ -400,7 +400,7 @@ pub(in crate::update) fn validate_field(state: &mut ConnectionSetupState, field:
         ConnectionField::Name => match ConnectionName::validate(text_input_content(state, field)) {
             Ok(()) => {}
             Err(ConnectionNameError::Empty) => {
-                state.set_validation_error(field, "Name is required")
+                state.set_validation_error(field, "Name is required");
             }
             Err(ConnectionNameError::TooLong { max, .. }) => {
                 state.set_validation_error(field, format!("Must be {max} characters or less"));
