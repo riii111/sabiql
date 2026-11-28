@@ -67,7 +67,10 @@ fn dispatch_enabled_action(
     now: Instant,
     services: &AppServices,
 ) -> Vec<Effect> {
-    state.result_interaction.clear_operator_pending();
+    // Animation frames arrive between keystrokes, so only real actions end a pending `yy` or `dd`.
+    if !matches!(action, Action::Render) {
+        state.result_interaction.clear_operator_pending();
+    }
     route(state, action, now, services)
 }
 
@@ -588,6 +591,21 @@ mod tests {
 
             assert!(state.should_quit);
             assert!(matches!(effects.as_slice(), [Effect::CancelTrackedTasks]));
+        }
+
+        #[test]
+        fn render_keeps_pending_yank_operator() {
+            let mut state = create_test_state();
+            state.result_interaction.start_yank_operator();
+
+            reduce(
+                &mut state,
+                Action::Render,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(state.result_interaction.is_yank_operator_pending());
         }
 
         #[test]

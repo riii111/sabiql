@@ -365,8 +365,12 @@ impl ResultPane {
                             && in_flash
                             && !is_editing_cell
                         {
-                            cell =
-                                cell.fg(afterglow_fg(theme.semantic.text.primary, progress, theme));
+                            let settled = if is_staged_for_delete {
+                                theme.component.table.staged_delete_fg
+                            } else {
+                                theme.semantic.text.primary
+                            };
+                            cell = cell.fg(afterglow_fg(settled, progress, theme));
                         }
                         cell
                     })

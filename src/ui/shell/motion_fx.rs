@@ -8,6 +8,7 @@ use crate::theme::ThemePalette;
 
 // The scrim's DIM cannot be interpolated, so it switches on halfway through the fade.
 const SCRIM_SWITCH_PROGRESS: f32 = 0.5;
+const MODAL_HANDOFF: f32 = 0.5;
 
 pub(super) fn apply_focus_transition(
     buf: &mut Buffer,
@@ -99,7 +100,6 @@ impl ModalAfterimage {
     }
 }
 
-/// `visibility` falls from 1.0 when the modal closes to 0.0 when it is gone.
 pub(super) fn apply_modal_fade_out(
     buf: &mut Buffer,
     afterimage: &ModalAfterimage,
@@ -117,10 +117,17 @@ pub(super) fn apply_modal_fade_out(
             }
         }
     }
+    // A cell shows either the modal or the panes, so the modal fades over the first half and then gives way to the dimmed panes.
+    if visibility < MODAL_HANDOFF {
+        return;
+    }
+    let progress = (visibility - MODAL_HANDOFF) / (1.0 - MODAL_HANDOFF);
     for (x, y, modal_cell) in &afterimage.cells {
         if let Some(cell) = buf.cell_mut((*x, *y)) {
+            let under_bg = cell.bg;
             *cell = modal_cell.clone();
-            fade_overlay_cell(cell, visibility, theme);
+            fade_overlay_cell(cell, progress, theme);
+            cell.bg = blend(under_bg, cell.bg, progress);
         }
     }
 }
@@ -401,12 +408,22 @@ mod tests {
         }
 
         #[test]
-        fn nearly_gone_modal_mutes_its_text_and_lifts_the_dim() {
+        fn half_faded_modal_mutes_its_text() {
+            let mut buf = panes();
+
+            apply_modal_fade_out(&mut buf, &afterimage(), 0.75, THEME);
+
+            assert_eq!(buf[(2, 0)].symbol(), "M");
+            assert_ne!(buf[(2, 0)].fg, Color::Rgb(250, 250, 250));
+        }
+
+        #[test]
+        fn nearly_gone_modal_gives_way_to_undimmed_panes() {
             let mut buf = panes();
 
             apply_modal_fade_out(&mut buf, &afterimage(), 0.1, THEME);
 
-            assert_ne!(buf[(2, 0)].fg, Color::Rgb(250, 250, 250));
+            assert_eq!(buf[(2, 0)].symbol(), "c");
             assert!(!buf[(0, 0)].modifier.contains(Modifier::DIM));
         }
     }

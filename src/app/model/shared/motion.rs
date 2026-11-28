@@ -89,6 +89,12 @@ pub struct FocusTransition {
 }
 
 #[derive(Debug, Clone, Copy)]
+struct ModalCloseTween {
+    from: f32,
+    tween: Tween,
+}
+
+#[derive(Debug, Clone, Copy)]
 struct LayoutTween {
     from: f32,
     to: f32,
@@ -101,7 +107,7 @@ pub struct MotionState {
     scroll: Option<ScrollTween>,
     focus: Option<FocusTween>,
     modal: Option<Tween>,
-    modal_close: Option<Tween>,
+    modal_close: Option<ModalCloseTween>,
     layout: Option<LayoutTween>,
 }
 
@@ -126,6 +132,17 @@ impl MotionState {
             to,
             tween: Tween::new(now, SCROLL_DURATION),
         });
+    }
+
+    pub fn scrolling_pane(&self) -> Option<ScrolledPane> {
+        self.scroll.map(|scroll| scroll.pane)
+    }
+
+    /// Ends the scroll tween when its pane now sits anywhere but the tween's end, so returning there later does not resume it.
+    pub fn settle_scroll(&mut self, actual: usize) {
+        if self.scroll.is_some_and(|scroll| scroll.to != actual) {
+            self.scroll = None;
+        }
     }
 
     /// A tween applies only while the model still targets its end offset; any other change wins immediately.
@@ -174,17 +191,23 @@ impl MotionState {
     }
 
     pub fn begin_modal_close(&mut self, now: Instant) {
-        if self.enabled {
-            self.modal = None;
-            self.modal_close = Some(Tween::new(now, MODAL_CLOSE_DURATION));
+        if !self.enabled {
+            return;
         }
+        // A modal closed before it finished fading in starts fading out from how it was drawn.
+        let from = self.modal_progress(now).unwrap_or(1.0);
+        self.modal = None;
+        self.modal_close = Some(ModalCloseTween {
+            from,
+            tween: Tween::new(now, MODAL_CLOSE_DURATION),
+        });
     }
 
     /// Falls from 1.0 when the modal closes to 0.0 when it is gone.
     pub fn modal_close_visibility(&self, now: Instant) -> Option<f32> {
         self.modal_close
-            .filter(|close| close.is_active(now))
-            .map(|close| 1.0 - close.eased_progress(now))
+            .filter(|close| close.tween.is_active(now))
+            .map(|close| close.from * (1.0 - close.tween.eased_progress(now)))
     }
 
     pub fn begin_focus_mode(&mut self, entering: bool, now: Instant) {
@@ -215,7 +238,7 @@ impl MotionState {
             self.scroll.map(|scroll| scroll.tween),
             self.focus.map(|focus| focus.tween),
             self.modal,
-            self.modal_close,
+            self.modal_close.map(|close| close.tween),
             self.layout.map(|layout| layout.tween),
         ]
         .into_iter()
@@ -307,6 +330,28 @@ mod tests {
         }
 
         #[test]
+        fn moving_away_from_target_drops_the_tween() {
+            let mut motion = enabled();
+            let now = Instant::now();
+            motion.begin_scroll(ScrolledPane::Help, 0, 40, now);
+
+            motion.settle_scroll(39);
+
+            assert_eq!(motion.scroll_offset(ScrolledPane::Help, 40, now), 40);
+        }
+
+        #[test]
+        fn staying_on_target_keeps_the_tween() {
+            let mut motion = enabled();
+            let now = Instant::now();
+            motion.begin_scroll(ScrolledPane::Help, 0, 40, now);
+
+            motion.settle_scroll(40);
+
+            assert_eq!(motion.scroll_offset(ScrolledPane::Help, 40, now), 0);
+        }
+
+        #[test]
         fn retarget_starts_from_displayed_offset() {
             let mut motion = enabled();
             let now = Instant::now();
@@ -394,6 +439,19 @@ mod tests {
                 motion.modal_close_visibility(now + MODAL_CLOSE_DURATION),
                 None
             );
+        }
+
+        #[test]
+        fn closing_mid_fade_in_starts_from_drawn_visibility() {
+            let mut motion = enabled();
+            let now = Instant::now();
+            motion.begin_modal(now);
+            let midway = now + MODAL_DURATION / 2;
+            let drawn = motion.modal_progress(midway).expect("fading in");
+
+            motion.begin_modal_close(midway);
+
+            assert_eq!(motion.modal_close_visibility(midway), Some(drawn));
         }
 
         #[test]

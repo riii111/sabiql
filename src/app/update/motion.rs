@@ -45,6 +45,10 @@ impl MotionProbe {
                 .motion
                 .begin_focus(self.focused_pane, state.ui.focused_pane(), now);
         }
+        if let Some(pane) = state.motion.scrolling_pane() {
+            let actual = scroll_offset(state, pane);
+            state.motion.settle_scroll(actual);
+        }
         if let Some((pane, before)) = self.scroll_before {
             let after = scroll_offset(state, pane);
             state.motion.begin_scroll(pane, before, after, now);

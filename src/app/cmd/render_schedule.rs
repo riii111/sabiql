@@ -33,11 +33,14 @@ pub fn next_animation_deadline(state: &AppState, now: Instant) -> Option<Instant
         earliest = min_instant(earliest, Some(debounce_until));
     }
 
-    if let Some(flash) = state.result_interaction.yank_flash() {
+    // A flash already past its solid phase is in its afterglow, whose frames are scheduled below.
+    if let Some(flash) = state.result_interaction.yank_flash()
+        && flash.until > now
+    {
         earliest = min_instant(earliest, Some(flash.until));
     }
 
-    earliest = min_instant(earliest, state.flash_timers.earliest_deadline());
+    earliest = min_instant(earliest, state.flash_timers.earliest_deadline(now));
 
     if state.motion.is_enabled() {
         earliest = min_instant(earliest, state.flash_timers.next_afterglow_frame(now));
@@ -83,6 +86,8 @@ fn min_instant(a: Option<Instant>, b: Option<Instant>) -> Option<Instant> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::shared::flash_timer::FlashId;
+    use crate::model::shared::ui_state::YankFlash;
 
     fn create_test_state() -> AppState {
         AppState::new("test".to_string())
@@ -142,6 +147,35 @@ mod tests {
             let deadline = next_animation_deadline(&state, now);
 
             assert_eq!(deadline, Some(expires_at));
+        }
+
+        #[test]
+        fn fading_panel_flash_schedules_a_future_frame() {
+            let mut state = create_test_state();
+            state.motion.enable();
+            let now = Instant::now();
+            state.flash_timers.set(FlashId::Ddl, now);
+            let fading = now + Duration::from_millis(250);
+
+            let deadline = next_animation_deadline(&state, fading).expect("afterglow frame");
+
+            assert!(deadline > fading);
+        }
+
+        #[test]
+        fn fading_result_flash_schedules_a_future_frame() {
+            let mut state = create_test_state();
+            state.motion.enable();
+            let now = Instant::now();
+            state.result_interaction.set_yank_flash(Some(YankFlash {
+                row: 0,
+                col: None,
+                until: now.checked_sub(Duration::from_millis(1)).unwrap(),
+            }));
+
+            let deadline = next_animation_deadline(&state, now).expect("afterglow frame");
+
+            assert!(deadline > now);
         }
 
         #[test]

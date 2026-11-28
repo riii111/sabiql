@@ -145,11 +145,14 @@ impl Explorer {
             state.ui.explorer_scroll_offset(),
             now,
         );
+        let animating = scroll_offset != state.ui.explorer_scroll_offset();
         let visible_rows = area.height as usize;
         // The list widget pulls its window back to the selection, so the selection stays hidden until the animated window reaches it.
         let selected = has_cached_data
             .then(|| state.ui.explorer_selected())
-            .filter(|&selected| (scroll_offset..scroll_offset + visible_rows).contains(&selected));
+            .filter(|&selected| {
+                !animating || (scroll_offset..scroll_offset + visible_rows).contains(&selected)
+            });
         let mut list_state = ListState::default()
             .with_selected(selected)
             .with_offset(scroll_offset);

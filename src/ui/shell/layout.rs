@@ -91,7 +91,6 @@ impl MainLayout {
         let modal_fade = shows_overlay
             .then(|| state.motion.modal_progress(now))
             .flatten();
-        // The modal fades in against the panes drawn before it, and its image is kept against them for fading out.
         let background = (shows_overlay && (modal_fade.is_some() || afterimage.is_some()))
             .then(|| frame.buffer_mut().clone());
         let connection_list_pane_height = match state.input_mode() {
@@ -272,10 +271,19 @@ impl MainLayout {
                 widths_cache: result_widths_cache,
                 pane_height: result_area.height,
             },
-            pane_areas: PaneAreas {
-                explorer: left_area.map(pane_area),
-                inspector: inspector_area.map(pane_area),
-                result: Some(pane_area(result_area)),
+            // Panes collapsing into focus mode are on their way out, so the pointer cannot focus them.
+            pane_areas: if state.ui.is_focus_mode() {
+                PaneAreas {
+                    explorer: None,
+                    inspector: None,
+                    result: Some(pane_area(result_area)),
+                }
+            } else {
+                PaneAreas {
+                    explorer: left_area.map(pane_area),
+                    inspector: inspector_area.map(pane_area),
+                    result: Some(pane_area(result_area)),
+                }
             },
         }
     }
@@ -288,7 +296,6 @@ fn collapsed_length(full: u16, collapse: f32) -> u16 {
     (f32::from(full) * (1.0 - collapse)).round() as u16
 }
 
-/// A column narrower than `MIN_PANE_EXTENT` is left to the remaining area.
 fn split_columns(area: Rect, width: u16) -> (Option<Rect>, Rect) {
     if width < MIN_PANE_EXTENT {
         return (None, area);
@@ -298,7 +305,6 @@ fn split_columns(area: Rect, width: u16) -> (Option<Rect>, Rect) {
     (Some(left), right)
 }
 
-/// A row shorter than `MIN_PANE_EXTENT` is left to the remaining area.
 fn split_rows(area: Rect, height: u16) -> (Option<Rect>, Rect) {
     if height < MIN_PANE_EXTENT {
         return (None, area);

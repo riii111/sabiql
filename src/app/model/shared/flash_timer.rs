@@ -78,8 +78,13 @@ impl FlashTimerStore {
             .retain(|_, until| now < *until + FLASH_AFTERGLOW);
     }
 
-    pub fn earliest_deadline(&self) -> Option<Instant> {
-        self.timers.values().copied().min()
+    /// The next end of a solid flash; flashes already in their afterglow are scheduled by `next_afterglow_frame`.
+    pub fn earliest_deadline(&self, now: Instant) -> Option<Instant> {
+        self.timers
+            .values()
+            .copied()
+            .filter(|&until| until > now)
+            .min()
     }
 }
 
@@ -144,7 +149,7 @@ mod tests {
         store.set(FlashId::Ddl, now);
         store.set(FlashId::SqlModal, later);
 
-        let earliest = store.earliest_deadline().unwrap();
+        let earliest = store.earliest_deadline(now).unwrap();
         assert_eq!(earliest, now + FLASH_DURATION);
     }
 
@@ -199,9 +204,18 @@ mod tests {
     }
 
     #[test]
+    fn earliest_deadline_skips_flashes_already_fading() {
+        let mut store = FlashTimerStore::default();
+        let now = Instant::now();
+        store.set(FlashId::Ddl, now);
+
+        assert_eq!(store.earliest_deadline(now + FLASH_DURATION), None);
+    }
+
+    #[test]
     fn earliest_deadline_empty_returns_none() {
         let store = FlashTimerStore::default();
 
-        assert!(store.earliest_deadline().is_none());
+        assert!(store.earliest_deadline(Instant::now()).is_none());
     }
 }
