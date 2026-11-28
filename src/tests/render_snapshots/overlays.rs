@@ -699,6 +699,40 @@ fn query_history_picker_with_entries() {
 }
 
 #[test]
+fn query_history_picker_keeps_a_whole_emoji_before_the_ellipsis() {
+    for filter in ["", "developer"] {
+        let mut state = create_test_state();
+        // A 29-cell modal leaves three cells for the query in each list row.
+        let mut terminal = create_test_terminal_sized(41, 24);
+
+        state.modal.set_mode(InputMode::QueryHistoryPicker);
+        state
+            .query_history_picker
+            .replace_entries(&[QueryHistoryEntry::new_with_database(
+                "👩‍💻 developer".to_string(),
+                "2026-03-13T10:00:00Z".to_string(),
+                ConnectionId::from_string("test-conn"),
+                None,
+                QueryResultStatus::Success,
+                None,
+            )]);
+
+        state.query_history_picker.insert_filter_str(filter);
+
+        let buffer = render_and_get_buffer_at(&mut terminal, &mut state, test_instant());
+
+        let status = buffer
+            .area
+            .positions()
+            .find(|&position| buffer[position].symbol() == "✓")
+            .expect("history list status");
+        let emoji = buffer[(status.x + 2, status.y)].symbol();
+        let ellipsis = buffer[(status.x + 4, status.y)].symbol();
+        assert_eq!(format!("{emoji}{ellipsis}"), "👩‍💻…", "filter {filter:?}");
+    }
+}
+
+#[test]
 fn query_history_picker_empty() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();

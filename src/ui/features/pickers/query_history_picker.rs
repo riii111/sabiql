@@ -3,6 +3,7 @@ use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap};
+use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::model::app_state::AppState;
@@ -238,9 +239,8 @@ fn build_list_item(
             }),
         ));
     } else {
-        let chars: Vec<char> = truncated.chars().collect();
-        for (ci, ch) in chars.iter().enumerate() {
-            let is_match = ge.match_indices.contains(&(ci as u32));
+        for (index, grapheme) in truncated.graphemes(true).enumerate() {
+            let is_match = ge.match_indices.contains(&(index as u32));
             let color = if is_match {
                 theme.semantic.text.accent
             } else if i == selected_idx {
@@ -252,7 +252,7 @@ fn build_list_item(
             if is_match {
                 style = style.add_modifier(Modifier::BOLD);
             }
-            spans.push(Span::styled(ch.to_string(), style));
+            spans.push(Span::styled(grapheme.to_string(), style));
         }
     }
 

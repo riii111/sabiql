@@ -35,19 +35,7 @@ pub(crate) fn truncate_to_width(s: &str, max_width: usize) -> String {
 }
 
 pub(crate) fn take_within_width(s: &str, budget: usize) -> String {
-    use unicode_width::UnicodeWidthChar;
-
-    let mut taken = String::new();
-    let mut used = 0;
-    for ch in s.chars() {
-        let w = UnicodeWidthChar::width(ch).unwrap_or(0);
-        if used + w > budget {
-            break;
-        }
-        taken.push(ch);
-        used += w;
-    }
-    taken
+    truncate_with_offset(s, 0, budget)
 }
 
 pub(crate) fn truncate_with_offset(s: &str, offset: usize, max_width: usize) -> String {
