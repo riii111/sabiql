@@ -118,7 +118,6 @@ mod tests {
     use crate::domain::Column;
     use crate::domain::connection::ConnectionId;
     use crate::domain::{ColumnAttributes, QueryResult, QuerySource, Table};
-    use crate::services::AppServices;
     use crate::update::action::DetailTarget;
     use crate::update::action::InputTarget;
     use crate::update::action::SearchStep;
@@ -165,12 +164,7 @@ mod tests {
     fn long_text_cell_opens_read_only_detail() {
         let mut state = state_with_cell("text", &"a".repeat(60));
 
-        route(
-            &mut state,
-            Action::ResultOpenCellDetail,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        route(&mut state, Action::ResultOpenCellDetail, Instant::now());
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert!(state.cell_detail.is_active());
@@ -181,12 +175,7 @@ mod tests {
     fn short_text_cell_opens_detail() {
         let mut state = state_with_cell("text", "short");
 
-        route(
-            &mut state,
-            Action::ResultOpenCellDetail,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        route(&mut state, Action::ResultOpenCellDetail, Instant::now());
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert_eq!(state.cell_detail.content(), "short");
@@ -196,12 +185,7 @@ mod tests {
     fn json_column_opens_read_only_pretty_detail() {
         let mut state = state_with_cell("json", r#"{"b":2,"a":1}"#);
 
-        route(
-            &mut state,
-            Action::ResultOpenCellDetail,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        route(&mut state, Action::ResultOpenCellDetail, Instant::now());
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert_eq!(state.cell_detail.content(), "{\n  \"a\": 1,\n  \"b\": 2\n}");
@@ -221,12 +205,7 @@ mod tests {
             &endpoint::sqlite("sqlite:///tmp/app.db"),
         );
 
-        route(
-            &mut state,
-            Action::ResultOpenCellDetail,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        route(&mut state, Action::ResultOpenCellDetail, Instant::now());
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert_eq!(state.cell_detail.content(), r#"{"b":2,"a":1}"#);
@@ -242,12 +221,7 @@ mod tests {
             &endpoint::sqlite("sqlite:///tmp/app.db"),
         );
 
-        route(
-            &mut state,
-            Action::ResultOpenCellDetail,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        route(&mut state, Action::ResultOpenCellDetail, Instant::now());
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert_eq!(
@@ -273,12 +247,7 @@ mod tests {
             &endpoint::sqlite("sqlite:///tmp/app.db"),
         );
 
-        route(
-            &mut state,
-            Action::ResultOpenCellDetail,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        route(&mut state, Action::ResultOpenCellDetail, Instant::now());
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert_eq!(state.cell_detail.content(), "hello");
@@ -294,12 +263,7 @@ mod tests {
             &endpoint::sqlite("sqlite:///tmp/app.db"),
         );
 
-        route(
-            &mut state,
-            Action::ResultOpenCellDetail,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        route(&mut state, Action::ResultOpenCellDetail, Instant::now());
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert_eq!(state.cell_detail.content(), "42");
@@ -319,12 +283,7 @@ mod tests {
             &endpoint::sqlite("sqlite:///tmp/app.db"),
         );
 
-        route(
-            &mut state,
-            Action::ResultOpenCellDetail,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        route(&mut state, Action::ResultOpenCellDetail, Instant::now());
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert_eq!(state.cell_detail.content(), "{\n  \"a\": 1\n}");
@@ -339,12 +298,7 @@ mod tests {
     fn text_json_container_opens_read_only_pretty_detail() {
         let mut state = state_with_cell("text", r#"{"items":["admin","writer"]}"#);
 
-        route(
-            &mut state,
-            Action::ResultOpenCellDetail,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        route(&mut state, Action::ResultOpenCellDetail, Instant::now());
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert_eq!(
@@ -364,18 +318,12 @@ mod tests {
     #[test]
     fn yank_all_copies_displayed_cell_value() {
         let mut state = state_with_cell("json", r#"{"b":2,"a":1}"#);
-        route(
-            &mut state,
-            Action::ResultOpenCellDetail,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        route(&mut state, Action::ResultOpenCellDetail, Instant::now());
 
         let result = route(
             &mut state,
             Action::DetailYankAll(DetailTarget::CellDetail),
             Instant::now(),
-            &AppServices::stub(),
         );
 
         assert!(matches!(
@@ -393,12 +341,7 @@ mod tests {
             &endpoint::sqlite("sqlite:///tmp/app.db"),
         );
 
-        route(
-            &mut state,
-            Action::ResultOpenCellDetail,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        route(&mut state, Action::ResultOpenCellDetail, Instant::now());
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert!(state.cell_detail.is_active());
@@ -411,12 +354,7 @@ mod tests {
     fn json_cell_dispatches_to_existing_json_modal() {
         let mut state = state_with_cell("jsonb", r#"{"a":1}"#);
 
-        let result = route(
-            &mut state,
-            Action::ResultOpenCellDetail,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        let result = route(&mut state, Action::ResultOpenCellDetail, Instant::now());
 
         assert!(matches!(
             result.as_slice(),
@@ -430,12 +368,7 @@ mod tests {
     fn json_document_null_dispatches_to_existing_json_modal() {
         let mut state = state_with_cell("jsonb", "null");
 
-        let result = route(
-            &mut state,
-            Action::ResultOpenCellDetail,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        let result = route(&mut state, Action::ResultOpenCellDetail, Instant::now());
 
         assert!(matches!(
             result.as_slice(),
@@ -463,12 +396,7 @@ mod tests {
                 QuerySource::Preview,
             )));
 
-        let result = route(
-            &mut state,
-            Action::ResultOpenCellDetail,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        let result = route(&mut state, Action::ResultOpenCellDetail, Instant::now());
 
         assert!(result.is_empty());
         assert_eq!(state.input_mode(), InputMode::CellDetail);
@@ -498,12 +426,7 @@ mod tests {
                 QuerySource::Adhoc,
             )));
 
-        let effects = route(
-            &mut state,
-            Action::ResultOpenCellDetail,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        let effects = route(&mut state, Action::ResultOpenCellDetail, Instant::now());
 
         assert!(effects.is_empty());
         assert_eq!(state.input_mode(), InputMode::CellDetail);
@@ -516,12 +439,7 @@ mod tests {
     #[test]
     fn search_input_tracks_matches_case_insensitively() {
         let mut state = state_with_cell("text", "Alpha\nalpha");
-        route(
-            &mut state,
-            Action::ResultOpenCellDetail,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        route(&mut state, Action::ResultOpenCellDetail, Instant::now());
         route(
             &mut state,
             Action::DetailSearch {
@@ -529,7 +447,6 @@ mod tests {
                 step: SearchStep::Enter,
             },
             Instant::now(),
-            &AppServices::stub(),
         );
 
         edit_text(

@@ -42,7 +42,6 @@ use crate::policy::write::inline_cell_edit::supports_inline_edit;
 use crate::policy::write::write_guardrails::{
     PreviewWriteability, preview_writeability_for_result,
 };
-use crate::ports::outbound::DdlGenerator;
 
 pub struct AppState {
     pub should_quit: bool,
@@ -292,13 +291,12 @@ impl AppState {
         self.ui.result_visible_rows()
     }
 
-    pub fn inspector_view_model(&self, ddl_generator: &dyn DdlGenerator) -> InspectorViewModel {
+    pub fn inspector_view_model(&self) -> InspectorViewModel {
         InspectorViewModel::build_with_detail_state(
             &self.session.active_engine_feature_profile(),
             self.ui.inspector_tab,
             self.session.table_detail_state(),
             self.session.active_database_type_or_default(),
-            ddl_generator,
         )
     }
 
@@ -528,7 +526,6 @@ mod tests {
     };
     use crate::model::shared::viewport::ViewportPlan;
     use crate::model::table_prefetch::FailedPrefetchEntry;
-    use crate::services::AppServices;
     use crate::update::action::Action;
     use crate::update::reducer::reduce;
     use rstest::rstest;
@@ -693,9 +690,7 @@ mod tests {
     ) {
         let mut state = make_state();
         activate_database_connection(&mut state, database_type);
-
-        let services = AppServices::stub();
-        let view_model = state.inspector_view_model(services.ddl_generator.as_ref());
+        let view_model = state.inspector_view_model();
 
         assert_eq!(
             view_model.load_state(),
@@ -714,9 +709,7 @@ mod tests {
         let _ = state
             .session
             .select_table("public", "users", &mut state.query);
-
-        let services = AppServices::stub();
-        let view_model = state.inspector_view_model(services.ddl_generator.as_ref());
+        let view_model = state.inspector_view_model();
 
         assert_eq!(view_model.load_state(), &InspectorLoadState::Loading);
         assert_eq!(view_model.empty_state(), None);
@@ -736,9 +729,7 @@ mod tests {
             state.session.selection_generation(),
             "permission denied".to_string()
         ));
-
-        let services = AppServices::stub();
-        let view_model = state.inspector_view_model(services.ddl_generator.as_ref());
+        let view_model = state.inspector_view_model();
 
         assert_eq!(
             view_model.load_state(),
@@ -762,9 +753,7 @@ mod tests {
                 .session
                 .set_table_detail(make_table_detail(), generation)
         );
-
-        let services = AppServices::stub();
-        let view_model = state.inspector_view_model(services.ddl_generator.as_ref());
+        let view_model = state.inspector_view_model();
 
         assert_eq!(view_model.load_state(), &InspectorLoadState::Loaded);
         assert!(view_model.section().is_some());
@@ -1327,12 +1316,7 @@ mod tests {
         fn resets_prefetch_state() {
             let mut state = prepare_state_for_reload();
 
-            reduce(
-                &mut state,
-                Action::ReloadMetadata,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::ReloadMetadata, Instant::now());
 
             assert!(state.table_prefetch.active_prefetch_run_id().is_none());
             assert!(!state.table_prefetch.has_pending_prefetch());
@@ -1350,12 +1334,7 @@ mod tests {
             let mut state = prepare_state_for_reload();
             let _ = state.er_preparation.start_waiting_run();
 
-            reduce(
-                &mut state,
-                Action::ReloadMetadata,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::ReloadMetadata, Instant::now());
 
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
         }
@@ -1368,12 +1347,7 @@ mod tests {
             assert!(state.messages.last_error().is_some());
             assert!(state.messages.expires_at().is_none());
 
-            reduce(
-                &mut state,
-                Action::ReloadMetadata,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::ReloadMetadata, Instant::now());
 
             assert!(state.messages.last_error().is_none());
             assert!(state.messages.expires_at().is_none());
@@ -1577,7 +1551,6 @@ mod tests {
                         generation,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.ui.inspector_scroll_offset, 0);

@@ -1,54 +1,50 @@
 use std::fmt::Write as _;
 
-use crate::domain::dialect::{Dialect as _, Sqlite};
-use crate::domain::{Table, Trigger};
+use crate::dialect::{Dialect as _, Sqlite};
+use crate::{Table, Trigger};
 
-use super::super::SqliteAdapter;
-
-impl SqliteAdapter {
-    pub fn generate_ddl(&self, table: &Table) -> String {
-        if let Some(source_ddl) = table.source_ddl() {
-            let mut ddl = source_ddl.to_string();
-            append_trigger_ddls(&mut ddl, &table.triggers);
-            return ddl;
-        }
-
-        let mut ddl = format!("CREATE TABLE {} (\n", Sqlite.quote_identifier(&table.name));
-        let has_primary_key = table.primary_key.as_ref().is_some_and(|pk| !pk.is_empty());
-
-        for (i, col) in table.columns.iter().enumerate() {
-            let nullable = if col.is_nullable() { "" } else { " NOT NULL" };
-            let default = col
-                .default
-                .as_ref()
-                .map_or_default(|d| format!(" DEFAULT {d}"));
-
-            let _ = write!(
-                ddl,
-                "  {} {}{}{}",
-                Sqlite.quote_identifier(&col.name),
-                col.data_type,
-                nullable,
-                default
-            );
-
-            if i + 1 < table.columns.len() || has_primary_key {
-                ddl.push(',');
-            }
-            ddl.push('\n');
-        }
-
-        if let Some(pk) = &table.primary_key
-            && !pk.is_empty()
-        {
-            let quoted_cols: Vec<String> = pk.iter().map(|c| Sqlite.quote_identifier(c)).collect();
-            let _ = writeln!(ddl, "  PRIMARY KEY ({})", quoted_cols.join(", "));
-        }
-
-        ddl.push_str(");");
+pub(super) fn generate_ddl(table: &Table) -> String {
+    if let Some(source_ddl) = table.source_ddl() {
+        let mut ddl = source_ddl.to_string();
         append_trigger_ddls(&mut ddl, &table.triggers);
-        ddl
+        return ddl;
     }
+
+    let mut ddl = format!("CREATE TABLE {} (\n", Sqlite.quote_identifier(&table.name));
+    let has_primary_key = table.primary_key.as_ref().is_some_and(|pk| !pk.is_empty());
+
+    for (i, col) in table.columns.iter().enumerate() {
+        let nullable = if col.is_nullable() { "" } else { " NOT NULL" };
+        let default = col
+            .default
+            .as_ref()
+            .map_or_default(|d| format!(" DEFAULT {d}"));
+
+        let _ = write!(
+            ddl,
+            "  {} {}{}{}",
+            Sqlite.quote_identifier(&col.name),
+            col.data_type,
+            nullable,
+            default
+        );
+
+        if i + 1 < table.columns.len() || has_primary_key {
+            ddl.push(',');
+        }
+        ddl.push('\n');
+    }
+
+    if let Some(pk) = &table.primary_key
+        && !pk.is_empty()
+    {
+        let quoted_cols: Vec<String> = pk.iter().map(|c| Sqlite.quote_identifier(c)).collect();
+        let _ = writeln!(ddl, "  PRIMARY KEY ({})", quoted_cols.join(", "));
+    }
+
+    ddl.push_str(");");
+    append_trigger_ddls(&mut ddl, &table.triggers);
+    ddl
 }
 
 fn append_trigger_ddls(ddl: &mut String, triggers: &[Trigger]) {
@@ -80,8 +76,8 @@ fn terminate_ddl_statement(ddl: &mut String) {
 
 #[cfg(test)]
 mod tests {
-    use crate::domain::{Column, ColumnAttributes};
-    use sabiql_domain::test_support::table;
+    use crate::test_support::table;
+    use crate::{Column, ColumnAttributes};
 
     use super::*;
 
@@ -115,7 +111,6 @@ mod tests {
 
         #[test]
         fn table_with_pk_returns_schema_free_ddl() {
-            let adapter = SqliteAdapter::new();
             let table = make_table(
                 vec![
                     make_column("id", "INTEGER", false),
@@ -124,7 +119,7 @@ mod tests {
                 Some(vec!["id".to_string()]),
             );
 
-            let ddl = adapter.generate_ddl(&table);
+            let ddl = generate_ddl(&table);
 
             assert!(ddl.contains("CREATE TABLE \"test_table\""));
             assert!(ddl.contains("\"id\" INTEGER NOT NULL"));
@@ -135,7 +130,6 @@ mod tests {
 
         #[test]
         fn composite_primary_key_quotes_all_columns() {
-            let adapter = SqliteAdapter::new();
             let table = make_table(
                 vec![
                     make_column("tenant_id", "INTEGER", false),
@@ -144,21 +138,20 @@ mod tests {
                 Some(vec!["tenant_id".to_string(), "id".to_string()]),
             );
 
-            let ddl = adapter.generate_ddl(&table);
+            let ddl = generate_ddl(&table);
 
             assert!(ddl.contains("PRIMARY KEY (\"tenant_id\", \"id\")"));
         }
 
         #[test]
         fn defaults_are_preserved_and_comments_are_omitted() {
-            let adapter = SqliteAdapter::new();
             let mut column = make_column("created_at", "TEXT", false);
             column.default = Some("CURRENT_TIMESTAMP".to_string());
             column.comment = Some("created time".to_string());
             let mut table = make_table(vec![column], None);
             table.comment = Some("events".to_string());
 
-            let ddl = adapter.generate_ddl(&table);
+            let ddl = generate_ddl(&table);
 
             assert!(ddl.contains("\"created_at\" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"));
             assert!(!ddl.contains("COMMENT ON"));
@@ -166,7 +159,6 @@ mod tests {
 
         #[test]
         fn source_ddl_appends_trigger_definitions() {
-            let adapter = SqliteAdapter::new();
             let mut table = make_table(vec![make_column("id", "INTEGER", false)], None);
             table.source_ddl =
                 Some("CREATE TABLE \"users\" (\n  \"id\" INTEGER NOT NULL\n)".to_string());
@@ -176,7 +168,7 @@ mod tests {
                     .to_string(),
             });
 
-            let ddl = adapter.generate_ddl(&table);
+            let ddl = generate_ddl(&table);
 
             assert_eq!(
                 ddl,

@@ -1,16 +1,6 @@
 use super::*;
 use crate::tests::harness::{focus_connection_field, set_connection_input};
 use sabiql_app::model::shared::settings::KeymapPreset;
-use sabiql_app::ports::outbound::DsnBuilder;
-use sabiql_domain::connection::ConnectionEndpoint;
-
-struct EmptyPasswordDsnBuilder;
-
-impl DsnBuilder for EmptyPasswordDsnBuilder {
-    fn build_dsn(&self, _endpoint: &ConnectionEndpoint) -> String {
-        "mysql://mysql_user:@localhost:3306/app?ssl-mode=PREFERRED".to_string()
-    }
-}
 
 fn repeated(ch: char, len: usize) -> String {
     std::iter::repeat_n(ch, len).collect()
@@ -106,8 +96,6 @@ fn connection_setup_mysql_cleartext_auth_notice() {
 fn connection_setup_mysql_preview_does_not_mask_empty_password() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
-    let mut services = AppServices::stub();
-    services.dsn_builder = Arc::new(EmptyPasswordDsnBuilder);
 
     state.modal.set_mode(InputMode::ConnectionSetup);
     state
@@ -124,7 +112,7 @@ fn connection_setup_mysql_preview_does_not_mask_empty_password() {
         .unwrap()
         .set_content("mysql_user".to_string());
 
-    let buffer = harness::render_and_get_buffer_with_services(&mut terminal, &mut state, &services);
+    let buffer = harness::render_and_get_buffer(&mut terminal, &mut state);
     let output = harness::modal_contents(&buffer);
 
     insta::assert_snapshot!(output);

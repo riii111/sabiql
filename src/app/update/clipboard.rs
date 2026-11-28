@@ -38,17 +38,11 @@ mod tests {
     use super::*;
     use crate::model::shared::flash_timer::FlashId;
     use crate::ports::outbound::clipboard::ClipboardError;
-    use crate::services::AppServices;
     use crate::update::action::Action;
     use crate::update::reducer::route;
 
     fn copied(state: &mut AppState, target: CopyTarget, now: Instant) {
-        route(
-            state,
-            Action::CopySucceeded(target),
-            now,
-            &AppServices::stub(),
-        );
+        route(state, Action::CopySucceeded(target), now);
     }
 
     #[rstest]
@@ -100,7 +94,6 @@ mod tests {
             &mut state,
             Action::CopyFailed(ClipboardError::Unavailable("Clipboard unavailable".into())),
             Instant::now(),
-            &AppServices::stub(),
         );
 
         assert_eq!(

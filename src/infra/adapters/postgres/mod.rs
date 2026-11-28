@@ -7,5 +7,4 @@ mod psql;
 mod sql;
 
 pub use adapter::PostgresAdapter;
-pub(in crate::adapters) use dsn::postgres_conninfo;
 pub use pg_service::PgServiceFileReader;

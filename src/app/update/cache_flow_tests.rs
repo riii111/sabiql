@@ -11,7 +11,6 @@ use crate::domain::{
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
-use crate::services::AppServices;
 use crate::test_support::endpoint;
 use crate::test_support::table::minimal as minimal_table;
 use crate::update::action::{Action, ConnectionTarget, SmartErRefreshFetched};
@@ -28,7 +27,6 @@ struct PendingFetch {
 
 struct CacheFlowDriver {
     state: AppState,
-    services: AppServices,
     now: Instant,
     queue: VecDeque<Action>,
     channel: VecDeque<Action>,
@@ -41,7 +39,6 @@ impl CacheFlowDriver {
     fn new(state: AppState) -> Self {
         Self {
             state,
-            services: AppServices::stub(),
             now: Instant::now(),
             queue: VecDeque::new(),
             channel: VecDeque::new(),
@@ -129,7 +126,7 @@ impl CacheFlowDriver {
             while let Some(action) = self.queue.pop_front() {
                 steps += 1;
                 assert!(steps < MAX_STEPS, "action processing did not settle");
-                let effects = reduce(&mut self.state, action, self.now, &self.services);
+                let effects = reduce(&mut self.state, action, self.now);
                 for effect in effects {
                     self.handle(effect);
                 }

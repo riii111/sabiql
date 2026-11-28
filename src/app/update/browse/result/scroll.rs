@@ -233,7 +233,6 @@ mod tests {
     use super::*;
     use crate::domain::QuerySource;
     use crate::model::shared::key_sequence::Prefix;
-    use crate::services::AppServices;
     use crate::update::action::{Action, ScrollTarget, ScrollToCursorTarget};
     use crate::update::reducer::route;
     use std::time::Instant;
@@ -272,7 +271,6 @@ mod tests {
                         amount: ScrollAmount::HalfPage,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.scroll_offset(), 10);
@@ -291,7 +289,6 @@ mod tests {
                         amount: ScrollAmount::HalfPage,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.scroll_offset(), 40);
@@ -311,7 +308,6 @@ mod tests {
                         amount: ScrollAmount::FullPage,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.scroll_offset(), 10);
@@ -330,7 +326,6 @@ mod tests {
                         amount: ScrollAmount::FullPage,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.scroll_offset(), 0);
@@ -354,7 +349,6 @@ mod tests {
                         amount: ScrollAmount::ViewportMiddle,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(10));
@@ -372,7 +366,6 @@ mod tests {
                         amount: ScrollAmount::ViewportMiddle,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.scroll_offset(), 0);
@@ -396,7 +389,6 @@ mod tests {
                         amount: ScrollAmount::HalfPage,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(20));
@@ -417,7 +409,6 @@ mod tests {
                         amount: ScrollAmount::HalfPage,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(25));
@@ -442,7 +433,6 @@ mod tests {
                         amount: ScrollAmount::HalfPage,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(20));
@@ -464,7 +454,6 @@ mod tests {
                         amount: ScrollAmount::FullPage,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(30));
@@ -485,7 +474,6 @@ mod tests {
                         amount: ScrollAmount::FullPage,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(20));
@@ -507,7 +495,6 @@ mod tests {
                         amount: ScrollAmount::HalfPage,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.scroll_offset(), 0);
@@ -527,7 +514,6 @@ mod tests {
                         amount: ScrollAmount::HalfPage,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(99));
@@ -548,7 +534,6 @@ mod tests {
                         amount: ScrollAmount::HalfPage,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(0));
@@ -569,7 +554,6 @@ mod tests {
                         amount: ScrollAmount::HalfPage,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(5));
@@ -590,7 +574,6 @@ mod tests {
                         amount: ScrollAmount::HalfPage,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(9));
@@ -611,7 +594,6 @@ mod tests {
                         amount: ScrollAmount::FullPage,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(99));
@@ -632,7 +614,6 @@ mod tests {
                         amount: ScrollAmount::FullPage,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(0));
@@ -653,7 +634,6 @@ mod tests {
                         amount: ScrollAmount::FullPage,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(5));
@@ -681,7 +661,6 @@ mod tests {
                     position: CursorPosition::Center,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             // row=50, visible=20, offset=50-10=40, max=80 → 40
@@ -703,7 +682,6 @@ mod tests {
                     position: CursorPosition::Top,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.result_interaction.scroll_offset(), 30);
@@ -724,7 +702,6 @@ mod tests {
                     position: CursorPosition::Bottom,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             // row=30, visible=20, offset=30-19=11, max=80 → 11
@@ -745,7 +722,6 @@ mod tests {
                     position: CursorPosition::Center,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             // No row selected, offset unchanged
@@ -768,7 +744,6 @@ mod tests {
                     position: CursorPosition::Top,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             // row=95, clamped to max_scroll=80

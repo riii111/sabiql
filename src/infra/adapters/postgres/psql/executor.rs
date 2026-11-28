@@ -423,7 +423,7 @@ mod tests {
     }
 
     mod connection_argument {
-        use crate::adapters::postgres::postgres_conninfo;
+        use crate::domain::connection::postgres_conninfo;
         use crate::domain::connection::{ConnectionProfile, PostgresEndpoint, SslMode};
 
         use super::super::PostgresAdapter;

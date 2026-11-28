@@ -14,7 +14,6 @@ mod tests {
     };
     use crate::model::app_state::AppState;
     use crate::model::er_state::ErStatus;
-    use crate::services::AppServices;
     use crate::test_support::endpoint;
     use crate::test_support::table::minimal as minimal_table;
     use crate::update::action::{
@@ -25,7 +24,7 @@ mod tests {
     use std::sync::Arc;
 
     fn reduce_er(state: &mut AppState, action: &Action, now: Instant) -> Vec<Effect> {
-        route(state, action.clone(), now, &AppServices::stub())
+        route(state, action.clone(), now)
     }
 
     fn state_with_dsn(dsn: &str) -> AppState {
@@ -218,29 +217,18 @@ mod tests {
                     error: DbOperationError::Timeout("timed out".to_string()),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
             assert!(effects.is_empty());
             assert!(state.session.pending_mysql_connection_probe().is_some());
             assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
 
-            let effects = reducer::reduce(
-                &mut state,
-                Action::CloseConnectionError,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = reducer::reduce(&mut state, Action::CloseConnectionError, Instant::now());
             assert!(matches!(effects.as_slice(), [Effect::CancelConnectionTask]));
             assert!(state.session.pending_mysql_connection_probe().is_none());
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
             assert!(state.table_prefetch.active_prefetch_run_id().is_none());
 
-            let effects = reducer::reduce(
-                &mut state,
-                Action::ErOpenDiagram,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = reducer::reduce(&mut state, Action::ErOpenDiagram, Instant::now());
             assert!(matches!(
                 effects.as_slice(),
                 [Effect::SmartErRefresh { run_id: reopened_run_id, .. }]

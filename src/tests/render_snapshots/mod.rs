@@ -21,13 +21,12 @@ use sabiql_app::policy::write::write_guardrails::{
     AdhocRiskDecision, ColumnDiff, GuardrailDecision, RiskLevel, TargetSummary, WriteOperation,
     WritePreview,
 };
-use sabiql_app::ports::outbound::{ConnectionFailureKind, DbOperationError, DdlGenerator};
-use sabiql_app::services::AppServices;
+use sabiql_app::ports::outbound::{ConnectionFailureKind, DbOperationError};
 use sabiql_domain::test_support::endpoint;
 use sabiql_domain::test_support::table;
 use sabiql_domain::{
     ColumnAttributes, CommandTag, DatabaseType, FkAction, ForeignKey, Index, IndexAttributes,
-    IndexType, QuerySource, Table,
+    IndexType, QuerySource,
 };
 
 fn trim_line_endings(output: &str) -> String {

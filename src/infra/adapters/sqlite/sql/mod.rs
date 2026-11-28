@@ -1,4 +1,3 @@
-mod ddl;
 mod literal;
 mod metadata;
 mod preview;

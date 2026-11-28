@@ -1,79 +1,73 @@
 use std::fmt::Write as _;
 
-use crate::domain::Table;
-use crate::domain::dialect::{Dialect as _, Postgres};
+use crate::Table;
+use crate::dialect::{Dialect as _, Postgres};
 
-use super::super::PostgresAdapter;
+pub(super) fn generate_ddl(table: &Table) -> String {
+    let qualified = format!(
+        "{}.{}",
+        Postgres.quote_identifier(&table.schema),
+        Postgres.quote_identifier(&table.name)
+    );
+    let mut ddl = format!("CREATE TABLE {qualified} (\n");
 
-impl PostgresAdapter {
-    pub fn generate_ddl(&self, table: &Table) -> String {
-        let qualified = format!(
-            "{}.{}",
-            Postgres.quote_identifier(&table.schema),
-            Postgres.quote_identifier(&table.name)
+    let mut elements = Vec::with_capacity(table.columns.len() + 1);
+    for col in &table.columns {
+        let nullable = if col.is_nullable() { "" } else { " NOT NULL" };
+        let default = col
+            .default
+            .as_ref()
+            .map_or_default(|d| format!(" DEFAULT {d}"));
+
+        elements.push(format!(
+            "  {} {}{}{}",
+            Postgres.quote_identifier(&col.name),
+            col.data_type,
+            nullable,
+            default
+        ));
+    }
+
+    if let Some(pk) = &table.primary_key {
+        let quoted_cols: Vec<String> = pk.iter().map(|c| Postgres.quote_identifier(c)).collect();
+        elements.push(format!("  PRIMARY KEY ({})", quoted_cols.join(", ")));
+    }
+
+    if !elements.is_empty() {
+        ddl.push_str(&elements.join(",\n"));
+        ddl.push('\n');
+    }
+    ddl.push_str(");");
+
+    if let Some(comment) = &table.comment {
+        let _ = write!(
+            ddl,
+            "\n\nCOMMENT ON TABLE {} IS {};",
+            qualified,
+            Postgres.quote_text(comment)
         );
-        let mut ddl = format!("CREATE TABLE {qualified} (\n");
+    }
 
-        let mut elements = Vec::with_capacity(table.columns.len() + 1);
-        for col in &table.columns {
-            let nullable = if col.is_nullable() { "" } else { " NOT NULL" };
-            let default = col
-                .default
-                .as_ref()
-                .map_or_default(|d| format!(" DEFAULT {d}"));
-
-            elements.push(format!(
-                "  {} {}{}{}",
-                Postgres.quote_identifier(&col.name),
-                col.data_type,
-                nullable,
-                default
-            ));
-        }
-
-        if let Some(pk) = &table.primary_key {
-            let quoted_cols: Vec<String> =
-                pk.iter().map(|c| Postgres.quote_identifier(c)).collect();
-            elements.push(format!("  PRIMARY KEY ({})", quoted_cols.join(", ")));
-        }
-
-        if !elements.is_empty() {
-            ddl.push_str(&elements.join(",\n"));
-            ddl.push('\n');
-        }
-        ddl.push_str(");");
-
-        if let Some(comment) = &table.comment {
+    for col in &table.columns {
+        if let Some(comment) = &col.comment {
             let _ = write!(
                 ddl,
-                "\n\nCOMMENT ON TABLE {} IS {};",
+                "\n\nCOMMENT ON COLUMN {}.{} IS {};",
                 qualified,
+                Postgres.quote_identifier(&col.name),
                 Postgres.quote_text(comment)
             );
         }
-
-        for col in &table.columns {
-            if let Some(comment) = &col.comment {
-                let _ = write!(
-                    ddl,
-                    "\n\nCOMMENT ON COLUMN {}.{} IS {};",
-                    qualified,
-                    Postgres.quote_identifier(&col.name),
-                    Postgres.quote_text(comment)
-                );
-            }
-        }
-
-        ddl
     }
+
+    ddl
 }
 
 #[cfg(test)]
 mod tests {
-    use sabiql_domain::test_support::table;
-
-    use crate::adapters::postgres::PostgresAdapter;
-    use crate::domain::{Column, ColumnAttributes, Table};
+    use super::generate_ddl;
+    use crate::test_support::table;
+    use crate::{Column, ColumnAttributes, Table};
 
     fn make_column(name: &str, data_type: &str, nullable: bool) -> Column {
         Column {
@@ -105,7 +99,6 @@ mod tests {
 
         #[test]
         fn table_with_single_primary_key_returns_valid_ddl() {
-            let adapter = PostgresAdapter::new();
             let table = make_table(
                 vec![
                     make_column("id", "integer", false),
@@ -114,7 +107,7 @@ mod tests {
                 Some(vec!["id".to_string()]),
             );
 
-            let ddl = adapter.generate_ddl(&table);
+            let ddl = generate_ddl(&table);
 
             assert_eq!(
                 ddl,
@@ -124,7 +117,6 @@ mod tests {
 
         #[test]
         fn table_with_composite_primary_key_returns_valid_ddl() {
-            let adapter = PostgresAdapter::new();
             let table = make_table(
                 vec![
                     make_column("tenant_id", "integer", false),
@@ -133,7 +125,7 @@ mod tests {
                 Some(vec!["tenant_id".to_string(), "id".to_string()]),
             );
 
-            let ddl = adapter.generate_ddl(&table);
+            let ddl = generate_ddl(&table);
 
             assert_eq!(
                 ddl,
@@ -143,7 +135,6 @@ mod tests {
 
         #[test]
         fn table_without_primary_key_returns_valid_ddl() {
-            let adapter = PostgresAdapter::new();
             let table = make_table(
                 vec![
                     make_column("id", "integer", false),
@@ -152,7 +143,7 @@ mod tests {
                 None,
             );
 
-            let ddl = adapter.generate_ddl(&table);
+            let ddl = generate_ddl(&table);
 
             assert_eq!(
                 ddl,
@@ -162,33 +153,30 @@ mod tests {
 
         #[test]
         fn empty_table_returns_valid_ddl() {
-            let adapter = PostgresAdapter::new();
             let table = make_table(Vec::new(), None);
 
-            let ddl = adapter.generate_ddl(&table);
+            let ddl = generate_ddl(&table);
 
             assert_eq!(ddl, "CREATE TABLE \"public\".\"test_table\" (\n);");
         }
 
         #[test]
         fn table_comment_appended_after_create() {
-            let adapter = PostgresAdapter::new();
             let mut table = make_table(vec![make_column("id", "integer", false)], None);
             table.comment = Some("User accounts".to_string());
 
-            let ddl = adapter.generate_ddl(&table);
+            let ddl = generate_ddl(&table);
 
             assert!(ddl.contains("COMMENT ON TABLE \"public\".\"test_table\" IS 'User accounts';"));
         }
 
         #[test]
         fn column_comment_appended_after_create() {
-            let adapter = PostgresAdapter::new();
             let mut col = make_column("id", "integer", false);
             col.comment = Some("Primary key".to_string());
             let table = make_table(vec![col], None);
 
-            let ddl = adapter.generate_ddl(&table);
+            let ddl = generate_ddl(&table);
 
             assert!(
                 ddl.contains(
@@ -199,24 +187,22 @@ mod tests {
 
         #[test]
         fn single_quote_in_comment_is_escaped() {
-            let adapter = PostgresAdapter::new();
             let mut table = make_table(vec![make_column("id", "integer", false)], None);
             table.comment = Some("It's a test".to_string());
 
-            let ddl = adapter.generate_ddl(&table);
+            let ddl = generate_ddl(&table);
 
             assert!(ddl.contains("IS 'It''s a test';"));
         }
 
         #[test]
         fn backslashes_in_comments_use_escape_string_literals() {
-            let adapter = PostgresAdapter::new();
             let mut col = make_column("id", "integer", false);
             col.comment = Some("a\\'b".to_string());
             let mut table = make_table(vec![col], None);
             table.comment = Some("C:\\temp".to_string());
 
-            let ddl = adapter.generate_ddl(&table);
+            let ddl = generate_ddl(&table);
 
             assert!(ddl.contains("COMMENT ON TABLE \"public\".\"test_table\" IS E'C:\\\\temp';"));
             assert!(

@@ -101,7 +101,6 @@ mod tests {
 
     use crate::domain::{QueryResult, QuerySource};
     use crate::model::shared::input_mode::InputMode;
-    use crate::services::AppServices;
     use crate::update::action::ScrollDirection;
     use crate::update::reducer::reduce;
 
@@ -318,12 +317,7 @@ mod tests {
         probe.record(&mut state, start);
         let midway = start + Duration::from_millis(30);
 
-        reduce(
-            &mut state,
-            Action::ResultActivateCell,
-            midway,
-            &AppServices::stub(),
-        );
+        reduce(&mut state, Action::ResultActivateCell, midway);
 
         assert_eq!(state.result_interaction.selection().row(), Some(20));
         assert_eq!(state.motion.scroll_target(), None);
@@ -337,7 +331,7 @@ mod tests {
         state.result_interaction.set_scroll_offset(20);
         probe.record(&mut state, now);
 
-        reduce(&mut state, Action::Render, now, &AppServices::stub());
+        reduce(&mut state, Action::Render, now);
 
         assert_eq!(state.motion.scroll_offset(ScrolledPane::Result, 20, now), 0);
     }
@@ -356,7 +350,7 @@ mod tests {
             )));
         state.ui.set_result_pane_height(24);
         let start = Instant::now();
-        reduce(&mut state, page_down(), start, &AppServices::stub());
+        reduce(&mut state, page_down(), start);
         let target = state.result_interaction.scroll_offset();
         let line_up = Action::Scroll {
             target: ScrollTarget::Result,
@@ -364,12 +358,7 @@ mod tests {
             amount: ScrollAmount::Line,
         };
 
-        reduce(
-            &mut state,
-            line_up,
-            start + Duration::from_millis(30),
-            &AppServices::stub(),
-        );
+        reduce(&mut state, line_up, start + Duration::from_millis(30));
 
         assert_eq!(state.result_interaction.scroll_offset(), target - 1);
         assert_eq!(state.motion.scroll_target(), None);
@@ -391,7 +380,7 @@ mod tests {
             )));
         state.ui.set_result_pane_height(24);
         let start = Instant::now();
-        reduce(&mut state, page_down(), start, &AppServices::stub());
+        reduce(&mut state, page_down(), start);
         let target = state.result_interaction.scroll_offset();
         let drawn_at = start + Duration::from_millis(30);
         state.motion.note_frame(drawn_at);
@@ -401,7 +390,7 @@ mod tests {
             amount: ScrollAmount::Line,
         };
 
-        reduce(&mut state, right, drawn_at, &AppServices::stub());
+        reduce(&mut state, right, drawn_at);
 
         assert_eq!(state.result_interaction.scroll_offset(), target);
         assert_eq!(

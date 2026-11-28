@@ -27,7 +27,6 @@ use crate::ports::outbound::{
     RenderResult, Renderer, ServiceFileError, SettingsStore, SettingsStoreError,
     SqliteDiagnosticsProvider, SqlitePathValidator,
 };
-use crate::services::AppServices;
 use crate::update::action::Action;
 
 pub(super) struct DropFlag(pub(super) Arc<AtomicBool>);
@@ -173,12 +172,7 @@ impl FolderOpener for NoopFolderOpener {
 
 pub struct NoopRenderer;
 impl Renderer for NoopRenderer {
-    fn draw(
-        &mut self,
-        _state: &AppState,
-        _services: &AppServices,
-        _now: Instant,
-    ) -> RenderResult<RenderOutput> {
+    fn draw(&mut self, _state: &AppState, _now: Instant) -> RenderResult<RenderOutput> {
         Ok(RenderOutput::default())
     }
 }
@@ -203,12 +197,7 @@ pub fn run_one_effect<'a>(
     Box::pin(async move {
         let mut renderer = NoopRenderer;
         let mut actions = runner
-            .execute_effects(
-                vec![effect],
-                &mut renderer,
-                &mut state,
-                &AppServices::stub(),
-            )
+            .execute_effects(vec![effect], &mut renderer, &mut state)
             .await?;
 
         if let Some(timeout) = action_timeout {

@@ -1,5 +1,6 @@
 use crate::adapters::test_support;
-use crate::domain::TableKind;
+use crate::domain::ddl::generate_ddl;
+use crate::domain::{DatabaseType, TableKind};
 
 use super::SqliteAdapter;
 
@@ -28,7 +29,7 @@ async fn source_ddl_preserves_without_rowid_and_virtual_table_syntax() {
     );
     assert!(without_rowid.kind_info.without_rowid);
     assert_eq!(
-        adapter.generate_ddl(&without_rowid),
+        generate_ddl(DatabaseType::SQLite, &without_rowid),
         without_rowid.source_ddl().unwrap()
     );
 
@@ -56,5 +57,8 @@ async fn source_ddl_preserves_without_rowid_and_virtual_table_syntax() {
             .is_some_and(|ddl| ddl.starts_with("CREATE VIEW"))
     );
     assert_eq!(view.kind_info.kind, TableKind::View);
-    assert_eq!(adapter.generate_ddl(&view), view.source_ddl().unwrap());
+    assert_eq!(
+        generate_ddl(DatabaseType::SQLite, &view),
+        view.source_ddl().unwrap()
+    );
 }

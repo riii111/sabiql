@@ -2,11 +2,11 @@
 source: src/tests/render_snapshots/inspector.rs
 expression: output
 ---
-⌂ test_project ▸ Pg test_db ▸ -                                                                                                       connected | localhost:5432/test
-┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]
-│> ▦ public.users                       │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│  ▦ public.posts                       ││CREATE VIRTUAL TABLE users USING fts5(name, email);                                                                       │
-│  ▦ public.comments                    ││-- source ddl is not rebuilt                                                                                              │
+⌂ test_project ▸ My test_db ▸ -                                                                                                                       connected | app
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]
+│> ▦ users                              │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  ▦ posts                              ││CREATE VIRTUAL TABLE users USING fts5(name, email);                                                                       │
+│  ▦ comments                           ││-- source ddl is not rebuilt                                                                                              │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

@@ -441,12 +441,7 @@ fn result_pane_json_detail_mode() {
     let (mut state, now) = json_detail_state();
     let mut terminal = create_test_terminal();
 
-    reduce(
-        &mut state,
-        Action::OpenModal(ModalKind::JsonDetail),
-        now,
-        &AppServices::stub(),
-    );
+    reduce(&mut state, Action::OpenModal(ModalKind::JsonDetail), now);
     assert_eq!(state.input_mode(), InputMode::JsonDetail);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -458,22 +453,17 @@ fn result_pane_json_detail_mode() {
 fn json_detail_border_tracks_input_during_mode_transitions() {
     let (mut state, now) = json_detail_state();
     let mut terminal = create_test_terminal();
-    reduce(
-        &mut state,
-        Action::OpenModal(ModalKind::JsonDetail),
-        now,
-        &AppServices::stub(),
-    );
+    reduce(&mut state, Action::OpenModal(ModalKind::JsonDetail), now);
 
     let search = handle_event(InputEvent::Key(KeyCombo::plain(Key::Char('/'))), &state);
-    reduce(&mut state, search, now, &AppServices::stub());
+    reduce(&mut state, search, now);
 
     let search_view = render_to_string(&mut terminal, &mut state);
     assert!(search_view.contains("Enter: Confirm") && search_view.contains("Esc: Cancel"));
     assert!(!search_view.contains("i/A: Insert"));
     for key in [Key::Esc, Key::Char('i')] {
         let action = handle_event(InputEvent::Key(KeyCombo::plain(key)), &state);
-        reduce(&mut state, action, now, &AppServices::stub());
+        reduce(&mut state, action, now);
     }
     let edit_view = render_to_string(&mut terminal, &mut state);
     assert!(edit_view.contains("Esc: Normal"));
@@ -485,12 +475,7 @@ fn result_pane_cell_detail_mode() {
     let (mut state, now) = cell_detail_state();
     let mut terminal = create_test_terminal();
 
-    reduce(
-        &mut state,
-        Action::ResultOpenCellDetail,
-        now,
-        &AppServices::stub(),
-    );
+    reduce(&mut state, Action::ResultOpenCellDetail, now);
     assert_eq!(state.input_mode(), InputMode::CellDetail);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -503,12 +488,7 @@ fn result_pane_sqlite_json_text_cell_detail_mode() {
     let (mut state, now) = sqlite_json_text_cell_detail_state();
     let mut terminal = create_test_terminal();
 
-    reduce(
-        &mut state,
-        Action::ResultOpenCellDetail,
-        now,
-        &AppServices::stub(),
-    );
+    reduce(&mut state, Action::ResultOpenCellDetail, now);
     assert_eq!(state.input_mode(), InputMode::CellDetail);
 
     let output = render_modal_to_string(&mut terminal, &mut state);
@@ -548,12 +528,7 @@ fn result_pane_json_detail_shows_vertical_scrollbar() {
         )));
     state.result_interaction.activate_cell(0, 3);
 
-    reduce(
-        &mut state,
-        Action::OpenModal(ModalKind::JsonDetail),
-        now,
-        &AppServices::stub(),
-    );
+    reduce(&mut state, Action::OpenModal(ModalKind::JsonDetail), now);
     assert_eq!(state.input_mode(), InputMode::JsonDetail);
 
     let output = render_modal_to_string(&mut terminal, &mut state);
@@ -566,12 +541,7 @@ fn result_pane_json_edit_mode() {
     let (mut state, now) = json_detail_state();
     let mut terminal = create_test_terminal();
 
-    reduce(
-        &mut state,
-        Action::OpenModal(ModalKind::JsonDetail),
-        now,
-        &AppServices::stub(),
-    );
+    reduce(&mut state, Action::OpenModal(ModalKind::JsonDetail), now);
     assert_eq!(state.input_mode(), InputMode::JsonDetail);
     reduce(
         &mut state,
@@ -580,7 +550,6 @@ fn result_pane_json_edit_mode() {
             direction: CursorMove::Down,
         },
         now,
-        &AppServices::stub(),
     );
     reduce(
         &mut state,
@@ -589,9 +558,8 @@ fn result_pane_json_edit_mode() {
             direction: CursorMove::Right,
         },
         now,
-        &AppServices::stub(),
     );
-    reduce(&mut state, Action::JsonEnterEdit, now, &AppServices::stub());
+    reduce(&mut state, Action::JsonEnterEdit, now);
     assert_eq!(state.input_mode(), InputMode::JsonEdit);
 
     let output = render_modal_to_string(&mut terminal, &mut state);
@@ -618,12 +586,7 @@ fn result_pane_row_detail_shows_scrollbars() {
         )));
     state.result_interaction.activate_cell(0, 0);
 
-    reduce(
-        &mut state,
-        Action::OpenModal(ModalKind::RowDetail),
-        now,
-        &AppServices::stub(),
-    );
+    reduce(&mut state, Action::OpenModal(ModalKind::RowDetail), now);
     assert_eq!(state.input_mode(), InputMode::RowDetail);
 
     let output = render_modal_to_string(&mut terminal, &mut state);
@@ -650,12 +613,7 @@ fn result_pane_row_detail_renders_tail_beyond_u16_range() {
         )));
     state.result_interaction.activate_cell(0, 0);
 
-    reduce(
-        &mut state,
-        Action::OpenModal(ModalKind::RowDetail),
-        now,
-        &AppServices::stub(),
-    );
+    reduce(&mut state, Action::OpenModal(ModalKind::RowDetail), now);
     state.row_detail.scroll_down_by(usize::MAX, 1);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -669,12 +627,7 @@ fn result_pane_row_detail_mode() {
     let (mut state, now) = row_detail_state();
     let mut terminal = create_test_terminal();
 
-    reduce(
-        &mut state,
-        Action::OpenModal(ModalKind::RowDetail),
-        now,
-        &AppServices::stub(),
-    );
+    reduce(&mut state, Action::OpenModal(ModalKind::RowDetail), now);
     assert_eq!(state.input_mode(), InputMode::RowDetail);
 
     let output = render_to_string(&mut terminal, &mut state);

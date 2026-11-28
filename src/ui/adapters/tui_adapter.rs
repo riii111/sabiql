@@ -9,7 +9,6 @@ use crate::app::model::shared::help::HelpMode;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::ports::outbound::renderer::{RenderOutput, RenderResult, Renderer};
-use crate::app::services::AppServices;
 use crate::shell::layout::MainLayout;
 use crate::tui::TuiRunner;
 
@@ -28,15 +27,10 @@ impl<'a> TuiAdapter<'a> {
 }
 
 impl Renderer for TuiAdapter<'_> {
-    fn draw(
-        &mut self,
-        state: &AppState,
-        services: &AppServices,
-        now: Instant,
-    ) -> RenderResult<RenderOutput> {
+    fn draw(&mut self, state: &AppState, now: Instant) -> RenderResult<RenderOutput> {
         let mut output = RenderOutput::default();
         self.tui.terminal().draw(|frame| {
-            output = MainLayout::render(frame, state, None, services, now);
+            output = MainLayout::render(frame, state, None, now);
         })?;
         let uses_insert = uses_insert_cursor(state);
         if self.last_cursor_insert != Some(uses_insert) {

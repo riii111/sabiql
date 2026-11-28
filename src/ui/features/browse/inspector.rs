@@ -22,7 +22,6 @@ use crate::app::model::shared::viewport::{
     widths_fingerprint,
 };
 use crate::app::policy::column::column_generation_kind_label;
-use crate::app::services::AppServices;
 use crate::primitives::atoms::Icon;
 use crate::primitives::atoms::{apply_yank_flash, panel_block};
 use crate::primitives::utils::text_utils::{
@@ -50,14 +49,13 @@ impl Inspector {
         frame: &mut Frame,
         area: Rect,
         state: &AppState,
-        services: &AppServices,
         now: Instant,
         theme: &ThemePalette,
     ) -> ViewportPlan {
         let is_focused = state.ui.focused_pane() == FocusedPane::Inspector;
         let [tab_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
-        let view_model = state.inspector_view_model(services.ddl_generator.as_ref());
+        let view_model = state.inspector_view_model();
 
         Self::render_tab_bar(frame, tab_area, view_model.active_tab(), state, theme);
         Self::render_content(

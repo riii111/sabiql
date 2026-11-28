@@ -312,7 +312,6 @@ mod tests {
     use crate::domain::connection::{ConnectionConfig, SslMode};
     use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::er_state::ErStatus;
-    use crate::services::AppServices;
     use crate::test_support::endpoint;
     use crate::update::action::InputTarget;
     use crate::update::action::TextKillDirection;
@@ -321,7 +320,7 @@ mod tests {
     use crate::update::test_fixtures;
     use crate::update::test_fixtures::edit_text;
     fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Vec<Effect> {
-        route(state, action.clone(), now, &AppServices::stub())
+        route(state, action.clone(), now)
     }
 
     fn create_profile(name: &str) -> ConnectionProfile {
@@ -743,7 +742,6 @@ mod tests {
                     lower_case_table_names: 0,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.session.active_connection_id(), Some(&current_id));
@@ -802,7 +800,6 @@ mod tests {
                 &mut state,
                 Action::SwitchConnection(target.clone()),
                 Instant::now(),
-                &AppServices::stub(),
             );
             reduce(
                 &mut state,
