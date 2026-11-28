@@ -395,6 +395,26 @@ mod tests {
         }
 
         #[test]
+        fn submit_erd_is_ignored_when_engine_lacks_er_diagrams() {
+            let mut state = AppState::new("test".to_string());
+            update_test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/test.db");
+            state.modal.push_mode(InputMode::CommandLine);
+            state.command_line_input.set_content("erd".to_string());
+
+            let effects = route(
+                &mut state,
+                Action::CommandLineSubmit,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(!state.ui.pending_er_picker());
+            assert!(state.messages.last_success().is_none());
+        }
+
+        #[test]
         fn submit_settings_opens_settings() {
             let mut state = create_test_state();
             state.modal.push_mode(InputMode::CommandLine);

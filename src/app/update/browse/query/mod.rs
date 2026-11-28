@@ -113,6 +113,33 @@ pub(super) mod tests {
     use crate::update::action::{Action, QueryContext};
     use crate::update::test_fixtures;
 
+    #[test]
+    fn table_load_reloads_only_detail_while_mysql_probe_is_pending() {
+        use crate::cmd::effect::Effect;
+        use crate::domain::ConnectionId;
+        use crate::test_support::endpoint;
+
+        let mut state = create_test_state();
+        let generation = state
+            .session
+            .select_table("public", "users", &mut state.query);
+        let _ = state.session.begin_mysql_connection_probe(
+            &ConnectionId::new(),
+            "target",
+            &endpoint::mysql("mysql://localhost/target", Some("target")),
+        );
+        let endpoint = state.session.endpoint().cloned().unwrap();
+
+        let effect = super::table_load_effect(&mut state, endpoint, Instant::now());
+
+        assert!(matches!(
+            effect,
+            Effect::FetchTableDetail { generation: fetched, ref table, .. }
+                if fetched == generation && table == "users"
+        ));
+        assert!(!state.query.is_running());
+    }
+
     pub fn create_test_state() -> AppState {
         let mut state = AppState::new("test_project".to_string());
         test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");

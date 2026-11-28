@@ -49,6 +49,7 @@ mod tests {
     use crate::model::shared::input_mode::InputMode;
     use crate::services::AppServices;
     use crate::update::reducer::route;
+    use crate::update::test_fixtures;
 
     #[test]
     fn request_prefetches_only_referenced_tables() {
@@ -76,5 +77,30 @@ mod tests {
             [Effect::SchedulePrefetchQueueProcessing { .. }]
         ));
         assert_eq!(state.table_prefetch.pending_prefetch_count(), 1);
+    }
+
+    #[test]
+    fn request_during_active_prefetch_fetches_missing_tables_in_that_run() {
+        let mut state = AppState::new("test".to_string());
+        test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
+        state.modal.set_mode(InputMode::SqlModal);
+        state
+            .sql_modal
+            .editor
+            .set_content("SELECT * FROM public.users".to_string());
+        let run_id = state.table_prefetch.begin_completion_prefetch();
+
+        let effects = route(
+            &mut state,
+            Action::CompletionRequest,
+            Instant::now(),
+            &AppServices::stub(),
+        );
+
+        assert!(matches!(
+            effects.as_slice(),
+            [Effect::PrefetchTableColumnsAndFks { run_id: fetch_run_id, schema, table, .. }]
+                if *fetch_run_id == run_id && schema == "public" && table == "users"
+        ));
     }
 }

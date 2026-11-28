@@ -622,7 +622,7 @@ impl Action {
             Self::DetailYankAll(DetailTarget::JsonDetail)
             | Self::Copied {
                 target: CopyTarget::Panel(FlashId::JsonDetail),
-                outcome: Ok(()),
+                ..
             }
             | Self::DetailSearch {
                 target: DetailTarget::JsonDetail,
