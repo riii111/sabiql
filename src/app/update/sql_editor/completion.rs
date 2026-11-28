@@ -1,30 +1,7 @@
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
-use crate::model::sql_editor::modal::sql_modal_visible_rows;
 use crate::policy::sql::completion::{CompletionEngine, CompletionInput};
 use crate::update::action::Action;
-
-pub(in crate::update) fn completion_next(state: &mut AppState) -> Vec<Effect> {
-    state.sql_modal.completion_next();
-    vec![]
-}
-
-pub(in crate::update) fn completion_prev(state: &mut AppState) -> Vec<Effect> {
-    state.sql_modal.completion_prev();
-    vec![]
-}
-
-pub(in crate::update) fn completion_dismiss(state: &mut AppState) -> Vec<Effect> {
-    state.sql_modal.dismiss_completion();
-    vec![]
-}
-
-pub(in crate::update) fn completion_accept(state: &mut AppState) -> Vec<Effect> {
-    state
-        .sql_modal
-        .accept_selected_completion(sql_modal_visible_rows(state.ui.terminal_height()));
-    vec![]
-}
 
 pub(in crate::update) fn completion_request(state: &mut AppState) -> Vec<Effect> {
     let outcome = CompletionEngine::new(&state.table_detail_cache).complete(CompletionInput {
@@ -87,13 +64,11 @@ mod tests {
         state.modal.set_mode(InputMode::SqlModal);
         state
             .sql_modal
-            .editor_mut_for_input()
+            .editor
             .set_content("SELECT * FROM public.users".to_string());
         let mut metadata = DatabaseMetadata::new("test".to_string());
         metadata.table_summaries = (0..3)
-            .map(|index| {
-                TableSummary::new("public".to_string(), format!("table_{index}"), None, false)
-            })
+            .map(|index| TableSummary::new("public".to_string(), format!("table_{index}"), None))
             .collect();
         state.session.set_metadata(Some(Arc::new(metadata)));
 

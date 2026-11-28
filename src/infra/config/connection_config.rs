@@ -496,7 +496,7 @@ mod tests {
         entry.mysql_transport_path = Some("/run/mysqld/mysqld.sock".to_string());
 
         let profile = ConnectionProfile::try_from(&entry).unwrap();
-        let config = profile.mysql_config().unwrap();
+        let config = profile.config.as_mysql().unwrap();
         assert_eq!(config.transport, MySqlTransport::UnixSocket);
         assert_eq!(
             config.transport_path.as_deref(),
@@ -522,7 +522,7 @@ mod tests {
         entry.mysql_enable_cleartext_plugin = Some(true);
 
         let profile = ConnectionProfile::try_from(&entry).unwrap();
-        assert!(profile.mysql_config().unwrap().enable_cleartext_plugin);
+        assert!(profile.config.as_mysql().unwrap().enable_cleartext_plugin);
 
         let serialized = ConnectionConfigEntry::from(&profile);
         assert_eq!(serialized.mysql_enable_cleartext_plugin, Some(true));
@@ -537,7 +537,7 @@ mod tests {
         entry.mysql_ssl_key = Some(r"C:\certs\client-key.pem".to_string());
 
         let profile = ConnectionProfile::try_from(&entry).unwrap();
-        let config = profile.mysql_config().unwrap();
+        let config = profile.config.as_mysql().unwrap();
         assert_eq!(config.ssl_mode, MySqlSslMode::VerifyIdentity);
         assert_eq!(config.ssl_ca.as_deref(), Some("/tmp/ca #1.pem"));
         assert_eq!(config.ssl_cert.as_deref(), Some(r"C:\certs\client.pem"));
@@ -557,7 +557,8 @@ mod tests {
         let profile = ConnectionProfile::try_from(&entry).unwrap();
         assert_eq!(
             profile
-                .mysql_config()
+                .config
+                .as_mysql()
                 .unwrap()
                 .server_public_key_path
                 .as_deref(),
@@ -577,7 +578,7 @@ mod tests {
         entry.mysql_ssl_ca = Some("/tmp/old-ca.pem".to_string());
 
         let profile = ConnectionProfile::try_from(&entry).unwrap();
-        let config = profile.mysql_config().unwrap();
+        let config = profile.config.as_mysql().unwrap();
         assert_eq!(config.ssl_ca, None);
 
         let serialized = ConnectionConfigEntry::from(&profile);
@@ -588,7 +589,7 @@ mod tests {
     fn mysql_entry_without_database_is_valid() {
         let profile = ConnectionProfile::try_from(&mysql_entry(None)).unwrap();
 
-        let config = profile.mysql_config().unwrap();
+        let config = profile.config.as_mysql().unwrap();
         assert_eq!(config.database, None);
         assert_eq!(config.ssl_mode, MySqlSslMode::Required);
     }

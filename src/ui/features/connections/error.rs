@@ -12,10 +12,10 @@ use crate::primitives::atoms::key_chip;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::primitives::utils::text_utils::wrapped_line_count;
 
-pub struct ConnectionError;
+pub(crate) struct ConnectionError;
 
 impl ConnectionError {
-    pub fn render(frame: &mut Frame, state: &AppState, now: Instant, theme: &ThemePalette) {
+    pub(crate) fn render(frame: &mut Frame, state: &AppState, now: Instant, theme: &ThemePalette) {
         let error_state = &state.connection_error;
         let Some(error_info) = error_state.error_info() else {
             return;

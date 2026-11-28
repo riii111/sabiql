@@ -151,7 +151,7 @@ fn update_editor_scroll(state: &mut AppState) {
 }
 
 fn effective_visible_rows(state: &AppState) -> usize {
-    match state.ui.json_detail_editor_visible_rows() {
+    match state.ui.json_detail_editor_visible_rows {
         0 => DEFAULT_JSON_DETAIL_EDITOR_VISIBLE_ROWS,
         rows => rows,
     }
@@ -199,7 +199,7 @@ pub(in crate::update) fn edit_json_text(
             _ => state.json_detail.editor_mut().move_cursor(direction),
         }
         update_editor_scroll(state);
-        state.ui.set_key_sequence(KeySequenceState::Idle);
+        state.ui.key_sequence = KeySequenceState::Idle;
         return String::new();
     }
 
@@ -737,7 +737,7 @@ mod tests {
         #[test]
         fn movement_updates_scroll_with_current_editor_viewport_height() {
             let mut state = state_with_json_value(r#"{"items":["admin","writer","reader"]}"#);
-            state.ui.set_json_detail_editor_visible_rows(2);
+            state.ui.json_detail_editor_visible_rows = 2;
             open_detail(&mut state);
 
             edit_text(
@@ -770,7 +770,7 @@ mod tests {
         ) {
             let mut state =
                 state_with_json_value("{\n  \"a\": 1,\n  \"b\": 2,\n  \"c\": 3,\n  \"d\": 4\n}");
-            state.ui.set_json_detail_editor_visible_rows(3);
+            state.ui.json_detail_editor_visible_rows = 3;
             open_detail(&mut state);
             state.modal.replace_mode(InputMode::JsonEdit);
             state.json_detail.enter_edit();
@@ -800,9 +800,7 @@ mod tests {
             open_detail(&mut state);
             state.modal.replace_mode(InputMode::JsonEdit);
             state.json_detail.enter_edit();
-            state
-                .ui
-                .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::G));
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::G);
 
             edit_text(
                 &mut state,
@@ -813,7 +811,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.key_sequence().pending_prefix(), None);
+            assert_eq!(state.ui.key_sequence.pending_prefix(), None);
         }
 
         #[test]

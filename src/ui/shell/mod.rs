@@ -1,4 +1,4 @@
-pub mod command_line;
+mod command_line;
 pub mod footer;
-pub mod header;
+mod header;
 pub mod layout;

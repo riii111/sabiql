@@ -4,10 +4,9 @@ use crate::app::model::shared::theme_id::ThemeId;
 use crate::app::policy::write::write_guardrails::RiskLevel;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StatusTone {
+pub(crate) enum StatusTone {
     Success,
     Error,
-    Warning,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -172,11 +171,10 @@ impl ThemePalette {
         Style::default().fg(self.component.modal.border)
     }
 
-    pub fn status_style(&self, tone: StatusTone) -> Style {
+    pub(crate) fn status_style(&self, tone: StatusTone) -> Style {
         let color = match tone {
             StatusTone::Success => self.semantic.status.success,
             StatusTone::Error => self.semantic.status.error,
-            StatusTone::Warning => self.semantic.status.warning,
         };
         Style::default().fg(color)
     }
@@ -387,9 +385,9 @@ mod tests {
 
     #[test]
     fn status_style_uses_requested_tone() {
-        let style = DEFAULT_THEME.status_style(StatusTone::Warning);
+        let style = DEFAULT_THEME.status_style(StatusTone::Error);
 
-        assert_eq!(style.fg, Some(DEFAULT_THEME.semantic.status.warning));
+        assert_eq!(style.fg, Some(DEFAULT_THEME.semantic.status.error));
     }
 
     #[test]

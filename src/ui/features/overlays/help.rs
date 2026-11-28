@@ -24,12 +24,12 @@ use crate::primitives::atoms::scroll_indicator::{
 use crate::primitives::atoms::{CursorKind, set_terminal_cursor, text_cursor_spans_with_kind};
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 
-pub struct HelpOverlay;
+pub(crate) struct HelpOverlay;
 
 const FILTER_LABEL: &str = "Filter: ";
 
 impl HelpOverlay {
-    pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) {
+    pub(crate) fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) {
         let document = HelpDocument::from_state(state);
         let footer = FooterHintBar::new(
             help_hints(HintSurface::Border, &KeyContext::from_state(state))

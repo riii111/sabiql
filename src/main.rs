@@ -180,7 +180,7 @@ fn initialize_state(
 }
 
 fn apply_app_settings(state: &mut AppState, app_settings: AppSettings) {
-    state.ui.set_theme(app_settings.theme_id);
+    state.ui.theme_id = app_settings.theme_id;
     state.settings.load_icon_mode(app_settings.icon_mode);
     state
         .settings
@@ -354,7 +354,7 @@ impl Runtime {
 
         let initial_size = self.tui.terminal().size()?;
         self.state.ui.set_terminal_width(initial_size.width);
-        self.state.ui.set_terminal_height(initial_size.height);
+        self.state.ui.terminal_height = initial_size.height;
 
         if self.state.session.endpoint().is_some() && self.state.input_mode() == InputMode::Normal {
             self.process_action(Action::TryConnect).await?;

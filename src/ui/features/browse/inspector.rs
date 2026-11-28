@@ -30,7 +30,7 @@ use crate::primitives::utils::text_utils::{
 };
 use crate::theme::ThemePalette;
 
-pub struct Inspector;
+pub(crate) struct Inspector;
 
 #[derive(Debug, Clone, Copy)]
 #[expect(
@@ -46,7 +46,7 @@ struct ColumnDisplayOptions {
 }
 
 impl Inspector {
-    pub fn render(
+    pub(crate) fn render(
         frame: &mut Frame,
         area: Rect,
         state: &AppState,
@@ -54,7 +54,7 @@ impl Inspector {
         now: Instant,
         theme: &ThemePalette,
     ) -> ViewportPlan {
-        let is_focused = state.ui.focused_pane() == FocusedPane::Inspector;
+        let is_focused = state.ui.focused_pane == FocusedPane::Inspector;
         let [tab_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
         let view_model = state.inspector_view_model(services.ddl_generator.as_ref());
@@ -164,13 +164,7 @@ impl Inspector {
 
         match view_model.section() {
             Some(InspectorSection::Info { rows }) => {
-                Self::render_info(
-                    frame,
-                    inner,
-                    rows,
-                    state.ui.inspector_scroll_offset(),
-                    theme,
-                );
+                Self::render_info(frame, inner, rows, state.ui.inspector_scroll_offset, theme);
                 ViewportPlan::default()
             }
             Some(InspectorSection::Columns {
@@ -192,9 +186,9 @@ impl Inspector {
                     inner,
                     rows,
                     options,
-                    state.ui.inspector_scroll_offset(),
-                    state.ui.inspector_horizontal_offset(),
-                    state.ui.inspector_viewport_plan(),
+                    state.ui.inspector_scroll_offset,
+                    state.ui.inspector_horizontal_offset,
+                    &state.ui.inspector_viewport_plan,
                     theme,
                 )
             }
@@ -211,7 +205,7 @@ impl Inspector {
                     *show_type,
                     *show_partial,
                     *show_details,
-                    state.ui.inspector_scroll_offset(),
+                    state.ui.inspector_scroll_offset,
                     theme,
                 );
                 ViewportPlan::default()
@@ -221,19 +215,13 @@ impl Inspector {
                     frame,
                     inner,
                     rows,
-                    state.ui.inspector_scroll_offset(),
+                    state.ui.inspector_scroll_offset,
                     theme,
                 );
                 ViewportPlan::default()
             }
             Some(InspectorSection::Rls { rows }) => {
-                Self::render_rls(
-                    frame,
-                    inner,
-                    rows,
-                    state.ui.inspector_scroll_offset(),
-                    theme,
-                );
+                Self::render_rls(frame, inner, rows, state.ui.inspector_scroll_offset, theme);
                 ViewportPlan::default()
             }
             Some(InspectorSection::Triggers { rows }) => Self::render_triggers(
@@ -241,8 +229,8 @@ impl Inspector {
                 inner,
                 rows,
                 state.session.active_database_type_or_default(),
-                state.ui.inspector_scroll_offset(),
-                state.ui.inspector_horizontal_offset(),
+                state.ui.inspector_scroll_offset,
+                state.ui.inspector_horizontal_offset,
                 theme,
             ),
             Some(InspectorSection::Ddl { rows }) => {
@@ -250,7 +238,7 @@ impl Inspector {
                     frame,
                     inner,
                     rows,
-                    state.ui.inspector_scroll_offset(),
+                    state.ui.inspector_scroll_offset,
                     &state.flash_timers,
                     now,
                     theme,

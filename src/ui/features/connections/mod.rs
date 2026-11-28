@@ -1,3 +1,3 @@
-pub mod error;
-pub mod selector;
-pub mod setup;
+pub(crate) mod error;
+pub(crate) mod selector;
+pub(crate) mod setup;

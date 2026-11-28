@@ -76,10 +76,14 @@ struct PreviewData<'a> {
     executed_at: &'a Iso8601Timestamp,
 }
 
-pub struct QueryHistoryPicker;
+pub(crate) struct QueryHistoryPicker;
 
 impl QueryHistoryPicker {
-    pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) -> PickerLayout {
+    pub(crate) fn render(
+        frame: &mut Frame,
+        state: &AppState,
+        theme: &ThemePalette,
+    ) -> PickerLayout {
         let filter_is_empty = state
             .query_history_picker
             .filter_input()

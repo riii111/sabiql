@@ -582,7 +582,10 @@ mod tests {
         );
         assert_eq!(statement.target(), Some("users"));
         assert_eq!(statement.target_database.as_deref(), None);
-        assert!(validate_mysql_statements(&[statement], Some("app")).is_ok());
+        assert!(
+            validate_mysql_statements_with_lower_case_table_names(&[statement], Some("app"), 0)
+                .is_ok()
+        );
     }
 
     #[test]

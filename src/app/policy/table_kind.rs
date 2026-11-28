@@ -124,7 +124,7 @@ mod tests {
 
     #[test]
     fn sqlite_explorer_shows_table_name_without_schema() {
-        let summary = TableSummary::new("main".to_string(), "users".to_string(), None, false);
+        let summary = TableSummary::new("main".to_string(), "users".to_string(), None);
 
         assert_eq!(
             explorer_table_label(&summary, DatabaseType::SQLite),
@@ -134,7 +134,7 @@ mod tests {
 
     #[test]
     fn sqlite_explorer_hides_virtual_table_suffix_but_inspector_keeps_kind() {
-        let summary = TableSummary::new("main".to_string(), "notes_fts".to_string(), None, false)
+        let summary = TableSummary::new("main".to_string(), "notes_fts".to_string(), None)
             .with_kind_info(TableKindInfo {
                 kind: TableKind::Virtual,
                 virtual_module: Some("fts5".to_string()),
@@ -153,7 +153,7 @@ mod tests {
 
     #[test]
     fn sqlite_explorer_hides_table_flags_but_inspector_keeps_flags() {
-        let summary = TableSummary::new("main".to_string(), "settings".to_string(), None, false)
+        let summary = TableSummary::new("main".to_string(), "settings".to_string(), None)
             .with_kind_info(TableKindInfo {
                 is_strict: true,
                 without_rowid: true,
@@ -172,12 +172,11 @@ mod tests {
 
     #[test]
     fn sqlite_explorer_hides_view_suffix_but_inspector_keeps_kind() {
-        let summary =
-            TableSummary::new("main".to_string(), "active_users".to_string(), None, false)
-                .with_kind_info(TableKindInfo {
-                    kind: TableKind::View,
-                    ..TableKindInfo::default()
-                });
+        let summary = TableSummary::new("main".to_string(), "active_users".to_string(), None)
+            .with_kind_info(TableKindInfo {
+                kind: TableKind::View,
+                ..TableKindInfo::default()
+            });
 
         assert_eq!(
             explorer_table_label(&summary, DatabaseType::SQLite),
@@ -188,7 +187,7 @@ mod tests {
 
     #[test]
     fn mysql_table_display_omits_database() {
-        let summary = TableSummary::new("app".to_string(), "users".to_string(), None, false);
+        let summary = TableSummary::new("app".to_string(), "users".to_string(), None);
 
         assert_eq!(explorer_table_label(&summary, DatabaseType::MySQL), "users");
         assert_eq!(
@@ -203,7 +202,7 @@ mod tests {
 
     #[test]
     fn mysql_view_keeps_explorer_kind_suffix() {
-        let summary = TableSummary::new("app".to_string(), "active_users".to_string(), None, false)
+        let summary = TableSummary::new("app".to_string(), "active_users".to_string(), None)
             .with_kind_info(TableKindInfo {
                 kind: TableKind::View,
                 ..TableKindInfo::default()

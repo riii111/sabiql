@@ -1,6 +1,5 @@
 use super::text_input::TextInputState;
 use super::theme_id::ThemeId;
-use crate::model::shared::cursor::CursorMove;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsSection {
@@ -392,30 +391,6 @@ impl SettingsState {
         self.editing_custom_er_browser = false;
     }
 
-    pub fn input_custom_browser(&mut self, ch: char) {
-        if self.is_editing_custom_er_browser() {
-            self.custom_er_browser.insert_char(ch);
-        }
-    }
-
-    pub fn backspace_custom_browser(&mut self) {
-        if self.is_editing_custom_er_browser() {
-            self.custom_er_browser.backspace();
-        }
-    }
-
-    pub fn delete_custom_browser(&mut self) {
-        if self.is_editing_custom_er_browser() {
-            self.custom_er_browser.delete();
-        }
-    }
-
-    pub fn move_custom_browser_cursor(&mut self, direction: CursorMove) {
-        if self.is_editing_custom_er_browser() {
-            self.custom_er_browser.move_cursor(direction);
-        }
-    }
-
     pub fn edit_custom_browser<R>(
         &mut self,
         edit: impl FnOnce(&mut TextInputState) -> R,
@@ -474,6 +449,7 @@ fn custom_input_for(browser: Option<&str>) -> TextInputState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::shared::cursor::CursorMove;
 
     #[test]
     fn open_tracks_previous_and_selected_theme() {
@@ -639,7 +615,7 @@ mod tests {
         state.switch_next_section();
         state.select_next();
 
-        state.move_custom_browser_cursor(CursorMove::Left);
+        state.edit_custom_browser(|input| input.move_cursor(CursorMove::Left));
 
         assert_eq!(
             state.selected_er_browser_choice(),
@@ -654,7 +630,7 @@ mod tests {
         state.switch_next_section();
         state.select_previous();
 
-        state.input_custom_browser('f');
+        state.edit_custom_browser(|input| input.insert_char('f'));
 
         assert!(!state.is_editing_custom_er_browser());
         assert_eq!(state.custom_er_browser().content(), "");

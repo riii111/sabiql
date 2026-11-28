@@ -21,7 +21,7 @@ fn pending_draft_cell_uses_orange_fg() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state);
-    state.ui.set_focused_pane(FocusedPane::Result);
+    state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::Normal);
     state
@@ -47,7 +47,7 @@ fn active_cell_edit_uses_yellow_fg() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state);
-    state.ui.set_focused_pane(FocusedPane::Result);
+    state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::CellEdit);
     state
@@ -74,7 +74,7 @@ fn staged_delete_row_uses_dark_red_bg() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state);
-    state.ui.set_focused_pane(FocusedPane::Result);
+    state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.activate_cell(0, 0);
     state.result_interaction.stage_row(1);
 
@@ -114,7 +114,7 @@ fn result_highlight_respects_injected_now() {
 
     with_current_result(&mut state);
     // Unfocused so highlight border is distinguishable from focus border
-    state.ui.set_focused_pane(FocusedPane::Explorer);
+    state.ui.focused_pane = FocusedPane::Explorer;
 
     let highlight_until = now + Duration::from_millis(500);
     state.query.set_result_highlight(highlight_until);
@@ -275,7 +275,7 @@ fn help_overlay_omits_scrollbars_when_content_fits() {
 
     state.modal.set_mode(InputMode::Help);
     state.ui.set_terminal_width(180);
-    state.ui.set_terminal_height(300);
+    state.ui.terminal_height = 300;
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 

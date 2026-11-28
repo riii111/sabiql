@@ -668,6 +668,7 @@ mod tests {
 
     mod cell_edit_cursor_ops {
         use super::*;
+        use crate::model::shared::text_input::TextEdit;
 
         fn state_in_cell_edit(content: &str, cursor: usize) -> AppState {
             let mut state = AppState::new("test".to_string());
@@ -675,7 +676,11 @@ mod tests {
             state
                 .result_interaction
                 .begin_cell_edit(0, 0, content.to_string());
-            state.result_interaction.cell_edit_set_cursor(cursor);
+            for _ in cursor..content.chars().count() {
+                state
+                    .result_interaction
+                    .edit_cell_text(TextEdit::MoveCursor(CursorMove::Left), None);
+            }
             state
         }
 
