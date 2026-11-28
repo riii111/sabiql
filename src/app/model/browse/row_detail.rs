@@ -1,4 +1,5 @@
 use crate::domain::QueryValue;
+use crate::model::shared::scroll::ScrollOffset;
 use serde_json::Value;
 use unicode_width::UnicodeWidthStr;
 
@@ -6,8 +7,8 @@ use unicode_width::UnicodeWidthStr;
 pub struct RowDetailState {
     display_text: String,
     json_text: String,
-    scroll_offset: usize,
-    horizontal_offset: usize,
+    scroll_offset: ScrollOffset,
+    horizontal_offset: ScrollOffset,
     active: bool,
 }
 
@@ -24,8 +25,8 @@ impl RowDetailState {
         Self {
             display_text,
             json_text,
-            scroll_offset: 0,
-            horizontal_offset: 0,
+            scroll_offset: ScrollOffset::default(),
+            horizontal_offset: ScrollOffset::default(),
             active: true,
         }
     }
@@ -42,8 +43,8 @@ impl RowDetailState {
         Self {
             display_text,
             json_text,
-            scroll_offset: 0,
-            horizontal_offset: 0,
+            scroll_offset: ScrollOffset::default(),
+            horizontal_offset: ScrollOffset::default(),
             active: true,
         }
     }
@@ -73,11 +74,11 @@ impl RowDetailState {
     }
 
     pub fn scroll_offset(&self) -> usize {
-        self.scroll_offset
+        self.scroll_offset.get()
     }
 
     pub fn horizontal_offset(&self) -> usize {
-        self.horizontal_offset
+        self.horizontal_offset.get()
     }
 
     pub fn max_scroll(&self, visible_rows: usize) -> usize {
@@ -89,35 +90,36 @@ impl RowDetailState {
     }
 
     pub fn scroll_up_by(&mut self, delta: usize) {
-        self.scroll_offset = self.scroll_offset.saturating_sub(delta);
+        self.scroll_offset.backward(delta);
     }
 
     pub fn scroll_down_by(&mut self, delta: usize, visible_rows: usize) {
-        self.scroll_offset = (self.scroll_offset + delta).min(self.max_scroll(visible_rows));
+        let max = self.max_scroll(visible_rows);
+        self.scroll_offset.forward(delta, max);
     }
 
     pub fn scroll_to_start(&mut self) {
-        self.scroll_offset = 0;
+        self.scroll_offset.set(0);
     }
 
     pub fn scroll_to_end(&mut self, visible_rows: usize) {
-        self.scroll_offset = self.max_scroll(visible_rows);
+        self.scroll_offset.set(self.max_scroll(visible_rows));
     }
 
     pub fn scroll_left_by(&mut self, delta: usize) {
-        self.horizontal_offset = self.horizontal_offset.saturating_sub(delta);
+        self.horizontal_offset.backward(delta);
     }
 
     pub fn scroll_right_by(&mut self, delta: usize, visible_columns: usize) {
-        self.horizontal_offset =
-            (self.horizontal_offset + delta).min(self.max_horizontal_scroll(visible_columns));
+        let max = self.max_horizontal_scroll(visible_columns);
+        self.horizontal_offset.forward(delta, max);
     }
 
     pub fn clamp_scroll(&mut self, visible_rows: usize, visible_columns: usize) {
-        self.scroll_offset = self.scroll_offset.min(self.max_scroll(visible_rows));
-        self.horizontal_offset = self
-            .horizontal_offset
-            .min(self.max_horizontal_scroll(visible_columns));
+        let max_vertical = self.max_scroll(visible_rows);
+        let max_horizontal = self.max_horizontal_scroll(visible_columns);
+        self.scroll_offset.clamp(max_vertical);
+        self.horizontal_offset.clamp(max_horizontal);
     }
 
     pub fn line_count(&self) -> usize {

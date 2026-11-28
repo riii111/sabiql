@@ -36,35 +36,22 @@ pub(in crate::update) fn select_explorer(
                 }
             }
         }
-        SelectMotion::ViewportMiddle => {
+        SelectMotion::ViewportTop | SelectMotion::ViewportMiddle | SelectMotion::ViewportBottom => {
             if state.ui.focused_pane() == FocusedPane::Explorer {
                 let len = explorer_item_count(state);
                 let visible = state.ui.explorer_visible_items();
-                if len > 0 && visible > 0 {
-                    let displayed =
-                        visible.min(len.saturating_sub(state.ui.explorer_scroll_offset));
-                    let target = state.ui.explorer_scroll_offset + displayed / 2;
-                    state.ui.set_explorer_selection(Some(target));
-                }
-            }
-        }
-        SelectMotion::ViewportTop => {
-            if state.ui.focused_pane() == FocusedPane::Explorer {
-                let len = explorer_item_count(state);
-                if len > 0 {
-                    let target = state.ui.explorer_scroll_offset.min(len.saturating_sub(1));
-                    state.ui.set_explorer_selection(Some(target));
-                }
-            }
-        }
-        SelectMotion::ViewportBottom => {
-            if state.ui.focused_pane() == FocusedPane::Explorer {
-                let len = explorer_item_count(state);
-                let visible = state.ui.explorer_visible_items();
-                if len > 0 && visible > 0 {
-                    let displayed =
-                        visible.min(len.saturating_sub(state.ui.explorer_scroll_offset));
-                    let target = state.ui.explorer_scroll_offset + displayed.saturating_sub(1);
+                if len > 0 && (visible > 0 || motion == SelectMotion::ViewportTop) {
+                    let position = match motion {
+                        SelectMotion::ViewportTop => CursorPosition::Top,
+                        SelectMotion::ViewportMiddle => CursorPosition::Center,
+                        _ => CursorPosition::Bottom,
+                    };
+                    let offset = if position == CursorPosition::Top {
+                        state.ui.explorer_scroll_offset.min(len.saturating_sub(1))
+                    } else {
+                        state.ui.explorer_scroll_offset
+                    };
+                    let target = position.viewport_item(offset, visible, len);
                     state.ui.set_explorer_selection(Some(target));
                 }
             }
@@ -95,40 +82,17 @@ pub(in crate::update) fn scroll_to_cursor_explorer(
     state: &mut AppState,
     position: CursorPosition,
 ) -> Vec<Effect> {
-    match position {
-        CursorPosition::Center => {
-            state.ui.key_sequence = KeySequenceState::Idle;
-            let len = explorer_item_count(state);
-            let visible = state.ui.explorer_visible_items();
-            if len > 0 && visible > 0 {
-                let selected = state.ui.explorer_selected();
-                let max_offset = len.saturating_sub(visible);
-                state.ui.explorer_scroll_offset =
-                    selected.saturating_sub(visible / 2).min(max_offset);
-            }
-        }
-        CursorPosition::Top => {
-            state.ui.key_sequence = KeySequenceState::Idle;
-            let len = explorer_item_count(state);
-            let visible = state.ui.explorer_visible_items();
-            if len > 0 && visible > 0 {
-                let selected = state.ui.explorer_selected();
-                let max_offset = len.saturating_sub(visible);
-                state.ui.explorer_scroll_offset = selected.min(max_offset);
-            }
-        }
-        CursorPosition::Bottom => {
-            state.ui.key_sequence = KeySequenceState::Idle;
-            let len = explorer_item_count(state);
-            let visible = state.ui.explorer_visible_items();
-            if len > 0 && visible > 0 {
-                let selected = state.ui.explorer_selected();
-                let max_offset = len.saturating_sub(visible);
-                state.ui.explorer_scroll_offset = selected
-                    .saturating_sub(visible.saturating_sub(1))
-                    .min(max_offset);
-            }
-        }
+    state.ui.key_sequence = KeySequenceState::Idle;
+    let len = explorer_item_count(state);
+    let visible = state.ui.explorer_visible_items();
+    if len > 0
+        && let Some(offset) = position.scroll_offset(
+            state.ui.explorer_selected(),
+            visible,
+            len.saturating_sub(visible),
+        )
+    {
+        state.ui.explorer_scroll_offset = offset;
     }
     vec![]
 }

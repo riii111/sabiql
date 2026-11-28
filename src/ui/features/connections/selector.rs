@@ -1,6 +1,6 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, ListState};
 
@@ -25,9 +25,7 @@ pub(crate) struct ConnectionSelector;
 
 impl ConnectionSelector {
     pub(crate) fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) -> u16 {
-        let hint = connection_selector_hints(HintSurface::Border, &KeyContext::from_state(state))
-            .into_iter()
-            .map(|hint| (hint.key, hint.short));
+        let hint = connection_selector_hints(HintSurface::Border, &KeyContext::from_state(state));
         let (_outer, inner) = render_modal(
             frame,
             Constraint::Percentage(60),
@@ -147,12 +145,8 @@ pub(crate) fn render_connection_list(
     };
 
     let list = List::new(items)
-        .highlight_style(
-            Style::default()
-                .fg(theme.semantic.text.accent)
-                .add_modifier(Modifier::BOLD),
-        )
-        .highlight_symbol("> ");
+        .highlight_style(theme.picker_selected_style())
+        .highlight_symbol("▸ ");
 
     let mut list_state = ListState::default()
         .with_selected(Some(state.ui.connection_list_selected()))

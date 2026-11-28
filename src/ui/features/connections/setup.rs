@@ -1,5 +1,7 @@
+use crate::app::model::shared::text_input::input_viewport_offset;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::model::app_state::AppState;
@@ -72,11 +74,10 @@ impl ConnectionSetup {
         } else {
             " New Connection "
         };
-        let footer = FooterHintBar::new(
-            connection_setup_hints(HintSurface::Border, &KeyContext::from_state(state))
-                .into_iter()
-                .map(|hint| (hint.key, hint.short)),
-        );
+        let footer = FooterHintBar::new(connection_setup_hints(
+            HintSurface::Border,
+            &KeyContext::from_state(state),
+        ));
 
         let (_, modal_inner) = render_modal(
             frame,
@@ -262,7 +263,7 @@ impl ConnectionSetup {
         frame.render_widget(label_para, chunks[0]);
 
         let display_value = if mask {
-            "*".repeat(value.chars().count())
+            "*".repeat(value.graphemes(true).count())
         } else {
             value.to_string()
         };
@@ -276,23 +277,33 @@ impl ConnectionSetup {
 
         let input_line = if is_focused {
             let input = state.focused_input().unwrap();
-            let viewport = input.viewport_offset();
-            let cursor = input.cursor();
-            let char_count = display_value.chars().count();
-
-            let effective_width = if cursor >= char_count {
-                content_width.saturating_sub(1)
+            let cursor = if mask {
+                value
+                    .chars()
+                    .take(input.cursor())
+                    .collect::<String>()
+                    .graphemes(true)
+                    .count()
             } else {
-                content_width
+                input.cursor()
             };
-
+            let viewport = input_viewport_offset(
+                &display_value,
+                cursor,
+                if mask { 0 } else { input.viewport_offset() },
+                content_width,
+                true,
+            );
             let cursor_spans = if show_placeholder {
-                focused_placeholder_spans(placeholder, effective_width, theme)
+                focused_placeholder_spans(placeholder, content_width, theme)
             } else {
-                text_cursor_spans(&display_value, cursor, viewport, effective_width, theme)
+                text_cursor_spans(&display_value, cursor, viewport, content_width, theme)
             };
 
-            let used_width: usize = cursor_spans.iter().map(|s| s.content.chars().count()).sum();
+            let used_width: usize = cursor_spans
+                .iter()
+                .map(|s| unicode_width::UnicodeWidthStr::width(s.content.as_ref()))
+                .sum();
             let padding = content_width.saturating_sub(used_width);
 
             let mut spans = vec![
@@ -589,6 +600,81 @@ mod tests {
         while state.focused_field() != field {
             state.focus_next_field();
         }
+    }
+
+    #[test]
+    fn masked_wide_password_displays_every_fitting_character() {
+        use crate::theme::DEFAULT_THEME;
+        use ratatui::{Terminal, backend::TestBackend};
+        let mut state = ConnectionSetupState::default();
+        focus_field(&mut state, ConnectionField::Password);
+        let input = state.input_mut(ConnectionField::Password).unwrap();
+        input.set_content("界".repeat(13));
+        input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
+        let mut terminal = Terminal::new(TestBackend::new(80, 1)).unwrap();
+        terminal
+            .draw(|frame| {
+                ConnectionSetup::render_text_field(
+                    frame,
+                    frame.area(),
+                    &state,
+                    ConnectionField::Password,
+                    true,
+                    &DEFAULT_THEME,
+                );
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        let stars = (0..80)
+            .filter(|&x| buffer.cell((x, 0)).unwrap().symbol() == "*")
+            .count();
+        assert_eq!(stars, 13);
+    }
+
+    #[test]
+    fn masked_graphemes_follow_cursor_and_deletion() {
+        use crate::app::model::shared::cursor::CursorMove;
+        use crate::theme::DEFAULT_THEME;
+        use ratatui::{Terminal, backend::TestBackend};
+
+        fn render(state: &ConnectionSetupState) -> (usize, Vec<u16>) {
+            let mut terminal = Terminal::new(TestBackend::new(80, 1)).unwrap();
+            terminal
+                .draw(|frame| {
+                    ConnectionSetup::render_text_field(
+                        frame,
+                        frame.area(),
+                        state,
+                        ConnectionField::Password,
+                        true,
+                        &DEFAULT_THEME,
+                    );
+                })
+                .unwrap();
+            let buffer = terminal.backend().buffer();
+            let stars = (0..80)
+                .filter(|&x| buffer.cell((x, 0)).unwrap().symbol() == "*")
+                .count();
+            let cursor_positions = (0..80)
+                .filter(|&x| buffer.cell((x, 0)).unwrap().bg == DEFAULT_THEME.semantic.cursor.bg)
+                .collect();
+            (stars, cursor_positions)
+        }
+
+        let mut state = ConnectionSetupState::default();
+        focus_field(&mut state, ConnectionField::Password);
+        let input = state.input_mut(ConnectionField::Password).unwrap();
+        input.set_content("👩‍💻e\u{301}x".to_string());
+        input.set_cursor(0);
+        assert_eq!(render(&state), (3, vec![LABEL_WIDTH + 2]));
+        state
+            .focused_input_mut()
+            .unwrap()
+            .move_cursor(CursorMove::Right);
+        assert_eq!(render(&state), (3, vec![LABEL_WIDTH + 3]));
+        state.focused_input_mut().unwrap().delete();
+        assert_eq!(state.focused_input().unwrap().content(), "👩‍💻x");
+        assert_eq!(render(&state), (2, vec![LABEL_WIDTH + 3]));
     }
 
     #[test]

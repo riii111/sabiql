@@ -1,12 +1,15 @@
+use crate::app::model::shared::text_input::input_viewport_offset;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 use crate::app::model::shared::detail_view::DetailSearchState;
 use crate::primitives::atoms::{CursorKind, set_terminal_cursor, text_cursor_spans_with_kind};
+use crate::primitives::utils::text_utils::take_within_width;
 use crate::theme::ThemePalette;
 
 pub(super) fn search_match_status(search: &DetailSearchState) -> String {
@@ -41,7 +44,7 @@ pub(super) fn render_detail_search(
         &visible_input,
         relative_cursor,
         0,
-        visible_input.chars().count(),
+        visible_width,
         CursorKind::Insert,
         theme,
     ));
@@ -55,21 +58,7 @@ pub(super) fn render_detail_search(
 }
 
 fn search_viewport_offset(input: &str, cursor: usize, visible_width: usize) -> usize {
-    if visible_width == 0 {
-        return cursor;
-    }
-
-    let chars: Vec<char> = input.chars().collect();
-    let mut viewport_offset = 0;
-    let mut width_before_cursor = display_width(&chars[..cursor.min(chars.len())]);
-
-    while width_before_cursor > visible_width && viewport_offset < cursor {
-        width_before_cursor =
-            width_before_cursor.saturating_sub(char_width(chars[viewport_offset]));
-        viewport_offset += 1;
-    }
-
-    viewport_offset
+    input_viewport_offset(input, cursor, 0, visible_width, false)
 }
 
 fn slice_chars_fitting_width(input: &str, start: usize, visible_width: usize) -> String {
@@ -77,27 +66,15 @@ fn slice_chars_fitting_width(input: &str, start: usize, visible_width: usize) ->
         return String::new();
     }
 
-    let mut width = 0;
-    let mut visible = String::new();
-
-    for ch in input.chars().skip(start) {
-        let ch_width = char_width(ch);
-        if width + ch_width > visible_width {
-            break;
-        }
-        width += ch_width;
-        visible.push(ch);
-    }
-
-    visible
-}
-
-fn display_width(chars: &[char]) -> usize {
-    chars.iter().map(|&ch| char_width(ch)).sum()
-}
-
-fn char_width(ch: char) -> usize {
-    UnicodeWidthChar::width(ch).unwrap_or(0)
+    let mut char_index = 0;
+    let byte_index = input
+        .grapheme_indices(true)
+        .find_map(|(index, grapheme)| {
+            char_index += grapheme.chars().count();
+            (char_index > start).then_some(index)
+        })
+        .unwrap_or(input.len());
+    take_within_width(&input[byte_index..], visible_width)
 }
 
 #[cfg(test)]
@@ -112,6 +89,12 @@ mod tests {
     #[test]
     fn slice_chars_fitting_width_omits_first_wide_char_when_viewport_is_too_narrow() {
         assert_eq!(slice_chars_fitting_width("界a", 0, 1), "");
+    }
+
+    #[test]
+    fn search_keeps_joined_emoji_intact() {
+        assert_eq!(slice_chars_fitting_width("👩‍💻x", 0, 2), "👩‍💻");
+        assert_eq!(search_viewport_offset("👩‍💻x", 3, 2), 0);
     }
 
     #[test]

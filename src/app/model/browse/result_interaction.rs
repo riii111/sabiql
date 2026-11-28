@@ -1,9 +1,8 @@
 use std::collections::BTreeSet;
-use std::time::Instant;
 
 use super::cell_edit::CellEditState;
 use crate::model::shared::text_input::TextEdit;
-use crate::model::shared::ui_state::{ResultSelection, YankFlash};
+use crate::model::shared::ui_state::ResultSelection;
 use crate::policy::write::write_guardrails::{WriteOperation, WritePreview};
 
 // Invariants:
@@ -14,7 +13,6 @@ use crate::policy::write::write_guardrails::{WriteOperation, WritePreview};
 pub struct ResultInteraction {
     scroll_offset: usize,
     horizontal_offset: usize,
-    yank_flash: Option<YankFlash>,
 
     delete_op_pending: bool,
     yank_op_pending: bool,
@@ -55,20 +53,12 @@ impl ResultInteraction {
         self.horizontal_offset
     }
 
-    pub fn yank_flash(&self) -> Option<YankFlash> {
-        self.yank_flash
-    }
-
     pub fn set_scroll_offset(&mut self, offset: usize) {
         self.scroll_offset = offset;
     }
 
     pub fn set_horizontal_offset(&mut self, offset: usize) {
         self.horizontal_offset = offset;
-    }
-
-    pub fn set_yank_flash(&mut self, flash: Option<YankFlash>) {
-        self.yank_flash = flash;
     }
 
     pub fn activate_cell(&mut self, row: usize, col: usize) {
@@ -202,21 +192,12 @@ impl ResultInteraction {
     pub fn is_yank_operator_pending(&self) -> bool {
         self.yank_op_pending
     }
-
-    pub fn clear_expired_flash(&mut self, now: Instant) {
-        if let Some(flash) = self.yank_flash
-            && now >= flash.until
-        {
-            self.yank_flash = None;
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::model::shared::ui_state::ResultNavMode;
-    use std::time::Duration;
 
     #[test]
     fn reset_view_clears_scroll_and_all_interaction() {
@@ -374,40 +355,6 @@ mod tests {
         assert_eq!(ri.selection().mode(), ResultNavMode::Scroll);
         assert!(!ri.cell_edit().is_active());
         assert!(ri.pending_write_preview().is_none());
-    }
-
-    #[test]
-    fn clear_expired_flash_removes_expired() {
-        let now = Instant::now();
-        let mut ri = ResultInteraction {
-            yank_flash: Some(YankFlash {
-                row: 0,
-                col: None,
-                until: now.checked_sub(Duration::from_millis(1)).unwrap(),
-            }),
-            ..Default::default()
-        };
-
-        ri.clear_expired_flash(now);
-
-        assert!(ri.yank_flash.is_none());
-    }
-
-    #[test]
-    fn clear_expired_flash_keeps_active() {
-        let now = Instant::now();
-        let mut ri = ResultInteraction {
-            yank_flash: Some(YankFlash {
-                row: 0,
-                col: None,
-                until: now + Duration::from_secs(1),
-            }),
-            ..Default::default()
-        };
-
-        ri.clear_expired_flash(now);
-
-        assert!(ri.yank_flash.is_some());
     }
 
     mod operator_pending {

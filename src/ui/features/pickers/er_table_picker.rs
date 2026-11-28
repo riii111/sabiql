@@ -1,16 +1,15 @@
+use super::{PickerModal, render_picker, render_picker_list};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{List, ListItem, ListState, Paragraph};
+use ratatui::widgets::{ListItem, Paragraph};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::render_output::PickerLayout;
 use crate::app::policy::table_kind::{table_display_name, table_key_display_name};
-use crate::app::update::input::keymap::{HintSurface, KeyContext, Picker, picker_hints};
 use crate::domain::er::er_output_filename;
 use crate::primitives::atoms::Icon;
-use crate::primitives::molecules::{FooterHintBar, render_filter_input_line, render_modal};
 use crate::theme::ThemePalette;
 
 pub(crate) struct ErTablePicker;
@@ -62,37 +61,23 @@ impl ErTablePicker {
             let selected_vec: Vec<String> = state.ui.er_selected_tables().iter().cloned().collect();
             er_output_filename(&selected_vec, total_count)
         };
-        let (_, inner) = render_modal(
+        let ((preview_area, list_area), visible_width) = render_picker(
             frame,
-            Constraint::Percentage(60),
-            Constraint::Percentage(70),
-            " ER Diagram ",
-            FooterHintBar::with_prefix(
-                format!("{selected_count}/{total_count} selected"),
-                picker_hints(
-                    Picker::Er,
-                    HintSurface::Border,
-                    &KeyContext::from_state(state),
-                )
-                .into_iter()
-                .map(|hint| (hint.key, hint.short)),
-            ),
+            state,
             theme,
-        );
-
-        let [filter_area, preview_area, list_area] = Layout::vertical([
-            Constraint::Length(1),
-            Constraint::Length(3),
-            Constraint::Min(1),
-        ])
-        .areas(inner);
-
-        let visible_width = render_filter_input_line(
-            frame,
-            filter_area,
-            state.ui.er_picker().filter_input(),
-            None,
-            theme,
+            PickerModal::Er {
+                selected: selected_count,
+                total: total_count,
+            },
+            |inner| {
+                let [filter, preview, list] = Layout::vertical([
+                    Constraint::Length(1),
+                    Constraint::Length(3),
+                    Constraint::Min(1),
+                ])
+                .areas(inner);
+                (filter, (preview, list))
+            },
         );
 
         // 3-line execution preview
@@ -144,19 +129,14 @@ impl ErTablePicker {
             })
             .collect();
 
-        let list = List::new(items)
-            .highlight_style(theme.picker_selected_style())
-            .highlight_symbol("▸ ");
-
-        let selected = if filtered_count > 0 {
-            Some(state.ui.er_picker().selected())
-        } else {
-            None
-        };
-        let mut list_state = ListState::default()
-            .with_selected(selected)
-            .with_offset(state.ui.er_picker().scroll_offset());
-        frame.render_stateful_widget(list, list_area, &mut list_state);
+        render_picker_list(
+            frame,
+            list_area,
+            items,
+            (filtered_count > 0).then_some(state.ui.er_picker().selected()),
+            state.ui.er_picker().scroll_offset(),
+            theme,
+        );
         PickerLayout {
             pane_height: list_area.height,
             filter_visible_width: visible_width,

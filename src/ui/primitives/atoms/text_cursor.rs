@@ -5,6 +5,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
+use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::theme::ThemePalette;
@@ -60,44 +61,50 @@ pub(crate) fn text_cursor_spans_with_kind(
         return vec![];
     }
 
-    let chars: Vec<char> = content.chars().collect();
-    let total = chars.len();
-
-    // Clamp viewport_offset to total length
-    let vp = viewport_offset.min(total);
-
-    // Determine how many chars are visible within the viewport
-    let view_end = vp.saturating_add(visible_width).min(total);
-    let visible: Vec<char> = chars[vp..view_end].to_vec();
-    let cursor_in_view = cursor.checked_sub(vp);
-
+    let total = content.chars().count();
+    let text_width = if matches!(kind, CursorKind::Block) && cursor >= total {
+        visible_width.saturating_sub(1)
+    } else {
+        visible_width
+    };
+    let mut char_index = 0usize;
+    let mut used = 0usize;
+    let mut visible = Vec::new();
+    for grapheme in content.graphemes(true) {
+        let start = char_index;
+        char_index += grapheme.chars().count();
+        if char_index <= viewport_offset.min(total) {
+            continue;
+        }
+        let next = used.saturating_add(UnicodeWidthStr::width(grapheme));
+        if next > text_width {
+            break;
+        }
+        used = next;
+        visible.push((start, char_index, grapheme));
+    }
     let cursor_style = cursor_style_for(kind, theme);
-
+    let text = |slice: &[(usize, usize, &str)]| slice.iter().map(|g| g.2).collect::<String>();
     match kind {
+        CursorKind::Block if cursor >= total => vec![
+            Span::raw(text(&visible)),
+            Span::styled(kind.glyph(), cursor_style),
+        ],
         CursorKind::Block => {
-            if cursor >= total {
-                let text: String = visible.iter().collect();
-                vec![Span::raw(text), Span::styled(kind.glyph(), cursor_style)]
-            } else if let Some(ci) = cursor_in_view.filter(|&i| i < visible.len()) {
-                let before: String = visible[..ci].iter().collect();
-                let cursor_char: String = visible[ci].to_string();
-                let after: String = visible[ci + 1..].iter().collect();
+            if let Some(index) = visible
+                .iter()
+                .position(|&(start, end, _)| start <= cursor && cursor < end)
+            {
                 vec![
-                    Span::raw(before),
-                    Span::styled(cursor_char, cursor_style),
-                    Span::raw(after),
+                    Span::raw(text(&visible[..index])),
+                    Span::styled(visible[index].2.to_string(), cursor_style),
+                    Span::raw(text(&visible[index + 1..])),
                 ]
             } else {
-                let text: String = visible.iter().collect();
-                vec![Span::raw(text)]
+                vec![Span::raw(text(&visible))]
             }
         }
-        CursorKind::Insert => {
-            let _ = cursor_in_view;
-            let _ = cursor_style;
-            let text: String = visible.iter().collect();
-            vec![Span::raw(text)]
-        }
+        CursorKind::Insert => vec![Span::raw(text(&visible))],
     }
 }
 
@@ -406,6 +413,23 @@ mod tests {
             use super::*;
 
             #[test]
+            fn grapheme_cursor_tracks_single_line_edits() {
+                use crate::app::model::shared::cursor::CursorMove;
+                use crate::app::model::shared::text_input::TextInputState;
+                let mut input = TextInputState::new("e\u{301}👩‍💻x", 0);
+                input.move_cursor(CursorMove::Right);
+                let spans =
+                    text_cursor_spans(input.content(), input.cursor(), 0, 10, &DEFAULT_THEME);
+                assert_eq!(spans_to_strings(&spans), vec!["e\u{301}", "👩‍💻", "x"]);
+                input.delete();
+                let spans =
+                    text_cursor_spans(input.content(), input.cursor(), 0, 10, &DEFAULT_THEME);
+                assert_eq!(spans_to_strings(&spans), vec!["e\u{301}", "x", ""]);
+                input.backspace();
+                assert_eq!(input.content(), "x");
+            }
+
+            #[test]
             fn cursor_at_beginning() {
                 let spans = text_cursor_spans("abc", 0, 0, usize::MAX, &DEFAULT_THEME);
 
@@ -477,6 +501,22 @@ mod tests {
 
                 let texts = spans_to_strings(&spans);
                 assert_eq!(texts, vec!["", " "]);
+            }
+
+            #[test]
+            fn wide_characters_and_end_cursor_fit_in_cells() {
+                let spans = text_cursor_spans("日本", 2, 1, 3, &DEFAULT_THEME);
+                assert_eq!(spans_to_strings(&spans), vec!["本", " "]);
+                let spans = text_cursor_spans("日本", 0, 0, 1, &DEFAULT_THEME);
+                assert_eq!(spans_to_strings(&spans), vec![""]);
+            }
+
+            #[test]
+            fn joined_emoji_is_rendered_as_one_grapheme() {
+                let spans = text_cursor_spans("👩‍💻", 3, 0, 3, &DEFAULT_THEME);
+                assert_eq!(spans_to_strings(&spans), vec!["👩‍💻", " "]);
+                let spans = text_cursor_spans("👩‍💻x", 1, 1, 2, &DEFAULT_THEME);
+                assert_eq!(spans_to_strings(&spans), vec!["", "👩‍💻", ""]);
             }
 
             #[test]

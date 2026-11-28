@@ -180,9 +180,21 @@ impl AppState {
     pub fn clear_expired_timers(&mut self, now: Instant) {
         self.messages.clear_expired_at(now);
         self.query.clear_expired_highlight(now);
-        self.result_interaction.clear_expired_flash(now);
         self.flash_timers.clear_expired(now);
         self.connection_error.clear_copied_feedback_if_expired(now);
+    }
+
+    /// Earliest deadline across transient feedback shown by the application.
+    pub fn transient_feedback_deadline(&self) -> Option<Instant> {
+        [
+            self.messages.expires_at(),
+            self.query.result_highlight_until(),
+            self.connection_error.copied_feedback_expires_at(),
+            self.flash_timers.earliest_deadline(),
+        ]
+        .into_iter()
+        .flatten()
+        .min()
     }
 
     /// Applies layout data produced during a draw. Inspector viewport plans are
@@ -237,6 +249,7 @@ impl AppState {
     fn apply_input_layout(&mut self, layout: InputLayout) {
         if let Some(width) = layout.command_line_visible_width {
             self.command_line_visible_width = width;
+            self.command_line_input.update_viewport(width);
         }
     }
 
@@ -1138,7 +1151,7 @@ mod tests {
 
             assert_eq!(state.confirm_dialog.preview_viewport_height, Some(10));
             assert_eq!(state.confirm_dialog.preview_content_height, Some(25));
-            assert_eq!(state.confirm_dialog.preview_scroll, 4);
+            assert_eq!(state.confirm_dialog.preview_scroll(), 4);
         }
 
         #[test]
@@ -1146,13 +1159,13 @@ mod tests {
             let mut state = make_state();
             state.confirm_dialog.preview_viewport_height = Some(10);
             state.confirm_dialog.preview_content_height = Some(25);
-            state.confirm_dialog.preview_scroll = 4;
+            state.confirm_dialog.preview_scroll.set(4);
 
             state.apply_render_output(RenderOutput::default());
 
             assert_eq!(state.confirm_dialog.preview_viewport_height, None);
             assert_eq!(state.confirm_dialog.preview_content_height, None);
-            assert_eq!(state.confirm_dialog.preview_scroll, 0);
+            assert_eq!(state.confirm_dialog.preview_scroll(), 0);
         }
 
         #[test]

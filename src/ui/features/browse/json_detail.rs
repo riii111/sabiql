@@ -45,9 +45,7 @@ impl JsonDetail {
                 state.json_detail.column_name()
             )
         };
-        let hints = border_hints(&KeyContext::from_state(state))
-            .into_iter()
-            .map(|hint| (hint.key, hint.short));
+        let hints = border_hints(&KeyContext::from_state(state));
 
         let (_area, inner) = render_modal(
             frame,

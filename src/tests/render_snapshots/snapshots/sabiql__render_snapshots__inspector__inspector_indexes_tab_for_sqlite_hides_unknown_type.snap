@@ -4,7 +4,7 @@ expression: output
 ---
 ⌂ test_project ▸ Sq test_db ▸ -                                                                                                                    connected | app.db
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]
-│> ▦ users                              │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│▸ ▦ users                              │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │  ▦ posts                              ││Name              Columns   Unique                                                                                        │
 │  ▦ comments                           ││users_pkey        id        ✓                                                                                             │
 │                                       ││idx_users_email   email     ✓                                                                                             │

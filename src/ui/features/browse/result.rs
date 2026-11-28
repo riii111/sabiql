@@ -1,3 +1,4 @@
+use crate::app::model::shared::text_input::input_viewport_offset;
 use std::collections::BTreeSet;
 use std::time::Instant;
 
@@ -113,7 +114,7 @@ impl ResultPane {
                         selection: state.result_interaction.selection(),
                         editing_cell,
                         staged_delete_rows: state.result_interaction.staged_delete_rows(),
-                        yank_flash: state.result_interaction.yank_flash(),
+                        yank_flash: state.flash_timers.result(),
                         now,
                     },
                     theme,
@@ -601,35 +602,14 @@ fn calculate_ideal_widths_with(
         .collect()
 }
 
-// TODO: cursor windowing is char-based; editing a CJK cell can render wider
-// than the column until text_cursor_spans becomes display-width aware
 fn cell_edit_line_with_cursor(
     text: &str,
     cursor: usize,
-    max_chars: usize,
+    max_width: usize,
     theme: &ThemePalette,
 ) -> Line<'static> {
-    let total = text.chars().count();
-
-    // For narrow columns, try to keep cursor visible
-    if max_chars == 0 {
-        return Line::from(vec![]);
-    }
-
-    // Determine viewport window to keep cursor visible
-    let view_start = if cursor >= total {
-        // Cursor at end: need space for block cursor
-        let effective = max_chars.saturating_sub(1);
-        total.saturating_sub(effective)
-    } else if cursor < max_chars {
-        0
-    } else {
-        cursor.saturating_sub(max_chars / 2)
-    };
-
-    Line::from(text_cursor_spans(
-        text, cursor, view_start, max_chars, theme,
-    ))
+    let start = input_viewport_offset(text, cursor, 0, max_width, true);
+    Line::from(text_cursor_spans(text, cursor, start, max_width, theme))
 }
 
 fn truncate_cell(s: &str, max_width: usize) -> String {

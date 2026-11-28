@@ -4,7 +4,7 @@ expression: output
 ---
 ⌂ test_project ▸ Pg test_db ▸ -                                                                                                       connected | localhost:5432/test
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
-│> ▦ public.users                       │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│▸ ▦ public.users                       │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │  ▦ public.posts                       ││Name: audit_users                                                                                                         │
 │  ▦ public.comments                    ││CREATE TRIGGER audit_users AFTER INSERT OR UPDATE                                                                         │
 │                                       ││ON public.users FOR EACH ROW EXECUTE FUNCTION audit_func()                                                                │

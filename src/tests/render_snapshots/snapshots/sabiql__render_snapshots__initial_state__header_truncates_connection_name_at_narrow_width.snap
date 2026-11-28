@@ -4,7 +4,7 @@ expression: output
 ---
 connected | user: app_user | very-long-connection-name-that…
 ┌ [1] Explorer┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]  
-│> ▦ public.u │┌ [2] Inspector ────────────────────────────┐
+│▸ ▦ public.u │┌ [2] Inspector ────────────────────────────┐
 │  ▦ public.p ││(select a table)                           │
 │  ▦ public.c ││                                           │
 │             ││                                           │

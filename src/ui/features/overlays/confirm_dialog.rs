@@ -18,11 +18,10 @@ pub(crate) struct ConfirmDialog;
 
 impl ConfirmDialog {
     fn hint_bar(state: &AppState) -> FooterHintBar {
-        FooterHintBar::new(
-            confirm_hints(HintSurface::Border, &KeyContext::from_state(state))
-                .into_iter()
-                .map(|hint| (hint.key, hint.short)),
-        )
+        FooterHintBar::new(confirm_hints(
+            HintSurface::Border,
+            &KeyContext::from_state(state),
+        ))
     }
 
     pub(crate) fn render(

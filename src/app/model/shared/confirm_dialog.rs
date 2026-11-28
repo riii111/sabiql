@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::domain::connection::ConnectionEndpoint;
 use crate::domain::{ConnectionId, QueryResult};
+use crate::model::shared::scroll::ScrollOffset;
 use crate::update::action::ScrollDirection;
 
 #[derive(Debug, Clone)]
@@ -26,7 +27,7 @@ pub struct ConfirmDialogState {
     pub(crate) title: String,
     pub(crate) message: String,
     pub(crate) intent: Option<ConfirmIntent>,
-    pub(crate) preview_scroll: u16,
+    pub(crate) preview_scroll: ScrollOffset,
     pub(crate) preview_viewport_height: Option<u16>,
     pub(crate) preview_content_height: Option<u16>,
 }
@@ -41,7 +42,7 @@ impl ConfirmDialogState {
         self.title = title.into();
         self.message = message.into();
         self.intent = Some(intent);
-        self.preview_scroll = 0;
+        self.preview_scroll.set(0);
         self.preview_viewport_height = None;
         self.preview_content_height = None;
     }
@@ -54,7 +55,7 @@ impl ConfirmDialogState {
     }
 
     pub fn preview_scroll(&self) -> u16 {
-        self.preview_scroll
+        self.preview_scroll.get() as u16
     }
 
     pub fn apply_preview_metrics(
@@ -65,13 +66,13 @@ impl ConfirmDialogState {
     ) {
         self.preview_viewport_height = viewport_height;
         self.preview_content_height = content_height;
-        self.preview_scroll = scroll.min(self.max_scroll());
+        self.preview_scroll
+            .set(scroll.min(self.max_scroll()) as usize);
     }
 
     pub fn scroll_preview(&mut self, direction: ScrollDirection) {
         let max_scroll = self.max_scroll() as usize;
-        self.preview_scroll =
-            direction.clamp_vertical_offset(self.preview_scroll as usize, max_scroll, 1) as u16;
+        self.preview_scroll.scroll(direction, 1, max_scroll);
     }
 
     pub fn title(&self) -> &str {
@@ -97,7 +98,7 @@ impl Default for ConfirmDialogState {
             title: "Confirm".to_string(),
             message: String::new(),
             intent: None,
-            preview_scroll: 0,
+            preview_scroll: ScrollOffset::default(),
             preview_viewport_height: None,
             preview_content_height: None,
         }

@@ -48,9 +48,7 @@ impl ConnectionError {
         let height = Constraint::Length((FIXED_OVERHEAD + details_height).clamp(9, max_height));
 
         let context = KeyContext::from_state(state);
-        let hints = connection_error_hints(HintSurface::Border, &context)
-            .into_iter()
-            .map(|hint| (hint.key, hint.short));
+        let hints = connection_error_hints(HintSurface::Border, &context);
         let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(70),

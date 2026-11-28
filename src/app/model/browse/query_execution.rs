@@ -1,3 +1,4 @@
+use crate::model::shared::flash_timer::clear_expired;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -194,11 +195,7 @@ impl QueryExecution {
     }
 
     pub fn clear_expired_highlight(&mut self, now: Instant) {
-        if let Some(until) = self.result_highlight_until
-            && now >= until
-        {
-            self.result_highlight_until = None;
-        }
+        clear_expired(&mut self.result_highlight_until, now, |deadline| *deadline);
     }
 
     pub fn result_highlight_until(&self) -> Option<Instant> {

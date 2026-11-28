@@ -4,7 +4,7 @@ expression: output
 ---
 ⌂ test_project ▸ My test_db ▸ -                                                                                                                       connected | app
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]
-│> ▦ users                              │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│▸ ▦ users                              │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │  ▦ posts                              ││Name                    Columns        Type    Unique   Detail                                                            │
 │  ▦ comments                           ││idx_users_email_lower   lower(email)   btree            CREATE INDEX idx_users_email_lower ON users ((lower(`email`)))    │
 │                                       ││                                                                                                                          │

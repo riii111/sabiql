@@ -15,6 +15,7 @@ pub mod motion;
 pub mod multi_line_input;
 pub mod picker;
 pub mod render_output;
+pub mod scroll;
 pub mod settings;
 pub mod text_input;
 pub mod theme_id;

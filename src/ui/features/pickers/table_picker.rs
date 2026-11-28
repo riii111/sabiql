@@ -1,14 +1,13 @@
+use super::{PickerModal, render_picker, render_picker_list};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::Style;
-use ratatui::widgets::{List, ListItem, ListState};
+use ratatui::widgets::ListItem;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::render_output::PickerLayout;
 use crate::app::policy::table_kind::table_display_name;
-use crate::app::update::input::keymap::{HintSurface, KeyContext, Picker, picker_hints};
 use crate::primitives::atoms::Icon;
-use crate::primitives::molecules::{FooterHintBar, render_filter_input_line, render_modal};
 use crate::theme::ThemePalette;
 
 pub(crate) struct TablePicker;
@@ -21,33 +20,18 @@ impl TablePicker {
     ) -> PickerLayout {
         let filtered_tables = state.filtered_tables();
         let filtered_count = filtered_tables.len();
-        let (_, inner) = render_modal(
+        let (list_area, visible_width) = render_picker(
             frame,
-            Constraint::Percentage(60),
-            Constraint::Percentage(70),
-            " Table Picker ",
-            FooterHintBar::with_prefix(
-                format!("{filtered_count} tables"),
-                picker_hints(
-                    Picker::Table,
-                    HintSurface::Border,
-                    &KeyContext::from_state(state),
-                )
-                .into_iter()
-                .map(|hint| (hint.key, hint.short)),
-            ),
+            state,
             theme,
-        );
-
-        let [filter_area, list_area] =
-            Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(inner);
-
-        let visible_width = render_filter_input_line(
-            frame,
-            filter_area,
-            state.ui.table_picker().filter_input(),
-            None,
-            theme,
+            PickerModal::Table {
+                count: filtered_count,
+            },
+            |inner| {
+                let areas: [_; 2] =
+                    Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(inner);
+                areas.into()
+            },
         );
 
         let items: Vec<ListItem> = filtered_tables
@@ -66,19 +50,14 @@ impl TablePicker {
             })
             .collect();
 
-        let list = List::new(items)
-            .highlight_style(theme.picker_selected_style())
-            .highlight_symbol("▸ ");
-
-        let selected = if filtered_count > 0 {
-            Some(state.ui.table_picker().selected())
-        } else {
-            None
-        };
-        let mut list_state = ListState::default()
-            .with_selected(selected)
-            .with_offset(state.ui.table_picker().scroll_offset());
-        frame.render_stateful_widget(list, list_area, &mut list_state);
+        render_picker_list(
+            frame,
+            list_area,
+            items,
+            (filtered_count > 0).then_some(state.ui.table_picker().selected()),
+            state.ui.table_picker().scroll_offset(),
+            theme,
+        );
         PickerLayout {
             pane_height: list_area.height,
             filter_visible_width: visible_width,

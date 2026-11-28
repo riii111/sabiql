@@ -16,7 +16,7 @@ struct MultiLineDerivedState {
     cursor_col: usize,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MultiLineInputState {
     inner: TextInputState,
     scroll_row: usize,
@@ -24,9 +24,15 @@ pub struct MultiLineInputState {
     derived: MultiLineDerivedState,
 }
 
+impl Default for MultiLineInputState {
+    fn default() -> Self {
+        Self::new("", 0)
+    }
+}
+
 impl MultiLineInputState {
     pub fn new(content: impl Into<String>, cursor: usize) -> Self {
-        let inner = TextInputState::new(content, cursor);
+        let inner = TextInputState::new_scalar(content, cursor);
         let derived = MultiLineDerivedState::new(inner.content(), inner.cursor());
         Self {
             inner,
@@ -371,6 +377,16 @@ fn find_cursor_position(line_spans: &[LineSpan], cursor: usize) -> (usize, usize
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn multiline_cursor_retains_scalar_editing_behavior() {
+        let mut input = MultiLineInputState::new("e\u{301}x", 0);
+        input.move_cursor(CursorMove::Right);
+        assert_eq!(input.cursor(), 1);
+        input.backspace();
+        assert_eq!(input.content(), "\u{301}x");
+    }
+
     use rstest::rstest;
 
     fn ml(content: &str, cursor: usize) -> MultiLineInputState {

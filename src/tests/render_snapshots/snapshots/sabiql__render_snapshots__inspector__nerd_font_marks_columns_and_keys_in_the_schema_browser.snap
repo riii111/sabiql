@@ -4,7 +4,7 @@ expression: output
 ---
  test_project ▸  test_db ▸  public.users                                              connected | localhost:5432/test
 ┌ [1] Explorer ──────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]
-│>  public.users            │┌ [2] Inspector ─────────────────────────────────────────────────────────────────────────┐
+│▸  public.users            │┌ [2] Inspector ─────────────────────────────────────────────────────────────────────────┐
 │   public.posts            ││Name              Type           Null   PK   Default   Comment                          │
 │   public.comments         ││ id              integer               ✓              Primary key                      │
 │                            ││ name            varchar(255)                                                          │

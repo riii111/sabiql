@@ -1,5 +1,7 @@
 use ratatui::text::{Line, Span};
+use unicode_width::UnicodeWidthStr;
 
+use crate::app::update::input::keymap::Hint;
 use crate::primitives::atoms::key_text;
 use crate::theme::ThemePalette;
 
@@ -18,7 +20,19 @@ impl FooterHintItem {
     }
 
     fn width(&self) -> usize {
-        self.key.chars().count() + ": ".chars().count() + self.desc.chars().count()
+        UnicodeWidthStr::width(self.key.as_str()) + 2 + UnicodeWidthStr::width(self.desc)
+    }
+}
+
+impl From<Hint> for FooterHintItem {
+    fn from(hint: Hint) -> Self {
+        Self::new(hint.key, hint.short)
+    }
+}
+
+impl From<&Hint> for FooterHintItem {
+    fn from(hint: &Hint) -> Self {
+        Self::new(hint.key.clone(), hint.short)
     }
 }
 
@@ -94,9 +108,9 @@ impl FooterHintBar {
     pub(crate) fn width(&self) -> u16 {
         let mut width = 2usize;
         if let Some(prefix) = &self.prefix {
-            width += prefix.chars().count();
+            width += UnicodeWidthStr::width(prefix.as_str());
             if !self.items.is_empty() {
-                width += " │ ".chars().count();
+                width += UnicodeWidthStr::width(" │ ");
             }
         }
 
@@ -104,7 +118,14 @@ impl FooterHintBar {
             .items
             .iter()
             .enumerate()
-            .map(|(i, item)| item.width() + if i > 0 { " │ ".chars().count() } else { 0 })
+            .map(|(i, item)| {
+                item.width()
+                    + if i > 0 {
+                        UnicodeWidthStr::width(" │ ")
+                    } else {
+                        0
+                    }
+            })
             .sum::<usize>();
 
         width as u16

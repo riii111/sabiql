@@ -1,6 +1,6 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::widgets::{List, ListItem, ListState};
 
 use crate::app::model::app_state::AppState;
@@ -128,12 +128,8 @@ impl Explorer {
 
         let list = List::new(items)
             .style(Style::default().fg(theme.semantic.text.primary))
-            .highlight_style(
-                Style::default()
-                    .fg(theme.semantic.text.accent)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .highlight_symbol("> ");
+            .highlight_style(theme.picker_selected_style())
+            .highlight_symbol("▸ ");
 
         let selected = if has_cached_data {
             Some(state.ui.explorer_selected())

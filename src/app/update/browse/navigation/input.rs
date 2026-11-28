@@ -7,10 +7,11 @@ use crate::update::input::keymap::listed_palette_entries;
 
 pub(in crate::update) fn paste_command_line(state: &mut AppState, text: String) -> Vec<Effect> {
     let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
-    state.command_line_input.insert_str(&clean);
     state
         .command_line_input
-        .update_viewport(state.command_line_visible_width);
+        .edit_with_viewport(state.command_line_visible_width, |input| {
+            input.insert_str(&clean);
+        });
     vec![]
 }
 
@@ -96,11 +97,11 @@ pub(in crate::update) fn edit_command_line(
     edit: TextEdit,
     yank_text: Option<&str>,
 ) -> String {
-    let killed = state.command_line_input.apply_edit(edit, yank_text);
     state
         .command_line_input
-        .update_viewport(state.command_line_visible_width);
-    killed
+        .edit_with_viewport(state.command_line_visible_width, |input| {
+            input.apply_edit(edit, yank_text)
+        })
 }
 
 #[cfg(test)]
@@ -212,7 +213,9 @@ mod tests {
         fn query_history_picker_strips_newlines() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::QueryHistoryPicker);
+            state.query_history_picker.set_pane_height(2);
             state.query_history_picker.set_selection_for_test(3);
+            assert_eq!(state.query_history_picker.scroll_offset(), 2);
 
             route(
                 &mut state,
@@ -225,6 +228,7 @@ mod tests {
 
             assert_eq!(state.query_history_picker.filter_input().content(), "users");
             assert_eq!(state.query_history_picker.selected(), 0);
+            assert_eq!(state.query_history_picker.scroll_offset(), 0);
         }
     }
 

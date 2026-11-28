@@ -24,6 +24,7 @@ use crate::app::model::shared::viewport::{
 use crate::app::policy::column::column_generation_kind_label;
 use crate::primitives::atoms::Icon;
 use crate::primitives::atoms::{apply_yank_flash, panel_block};
+use crate::primitives::molecules::tab_span;
 use crate::primitives::utils::text_utils::{
     MIN_COL_WIDTH, PADDING, calculate_header_min_widths, truncate_to_width, truncate_with_offset,
 };
@@ -83,20 +84,15 @@ impl Inspector {
             .iter()
             .enumerate()
             .flat_map(|(i, tab)| {
-                let is_selected = *tab == active_tab;
-                let style = if is_selected {
-                    Style::default()
-                        .fg(theme.component.navigation.tab_active)
-                        .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
-                } else {
-                    Style::default().fg(theme.component.navigation.tab_inactive)
-                };
-
                 let mut spans = vec![];
                 if i > 0 {
                     spans.push(Span::raw(" "));
                 }
-                spans.push(Span::styled(format!("[{}]", tab.display_name()), style));
+                spans.push(tab_span(
+                    format!("[{}]", tab.display_name()),
+                    *tab == active_tab,
+                    theme,
+                ));
                 spans
             })
             .collect();

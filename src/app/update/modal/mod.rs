@@ -635,13 +635,13 @@ mod tests {
                     Instant::now(),
                 );
 
-                assert_eq!(state.confirm_dialog.preview_scroll, 1);
+                assert_eq!(state.confirm_dialog.preview_scroll(), 1);
             }
 
             #[test]
             fn up_decrements_offset() {
                 let mut state = state_with_scrollable_preview();
-                state.confirm_dialog.preview_scroll = 5;
+                state.confirm_dialog.preview_scroll.set(5);
 
                 route(
                     &mut state,
@@ -653,13 +653,13 @@ mod tests {
                     Instant::now(),
                 );
 
-                assert_eq!(state.confirm_dialog.preview_scroll, 4);
+                assert_eq!(state.confirm_dialog.preview_scroll(), 4);
             }
 
             #[test]
             fn up_clamps_at_zero() {
                 let mut state = state_with_scrollable_preview();
-                state.confirm_dialog.preview_scroll = 0;
+                state.confirm_dialog.preview_scroll.set(0);
 
                 route(
                     &mut state,
@@ -671,13 +671,13 @@ mod tests {
                     Instant::now(),
                 );
 
-                assert_eq!(state.confirm_dialog.preview_scroll, 0);
+                assert_eq!(state.confirm_dialog.preview_scroll(), 0);
             }
 
             #[test]
             fn down_clamps_at_max() {
                 let mut state = state_with_scrollable_preview();
-                state.confirm_dialog.preview_scroll = 15;
+                state.confirm_dialog.preview_scroll.set(15);
 
                 route(
                     &mut state,
@@ -689,13 +689,13 @@ mod tests {
                     Instant::now(),
                 );
 
-                assert_eq!(state.confirm_dialog.preview_scroll, 15);
+                assert_eq!(state.confirm_dialog.preview_scroll(), 15);
             }
 
             #[test]
             fn open_resets_scroll_to_zero() {
                 let mut state = create_test_state();
-                state.confirm_dialog.preview_scroll = 10;
+                state.confirm_dialog.preview_scroll.set(10);
 
                 state.confirm_dialog.open(
                     "",
@@ -706,7 +706,7 @@ mod tests {
                     },
                 );
 
-                assert_eq!(state.confirm_dialog.preview_scroll, 0);
+                assert_eq!(state.confirm_dialog.preview_scroll(), 0);
                 assert!(state.confirm_dialog.preview_viewport_height.is_none());
                 assert!(state.confirm_dialog.preview_content_height.is_none());
             }
@@ -1100,7 +1100,9 @@ mod tests {
             #[test]
             fn filter_input_resets_selection() {
                 let mut state = connected_state();
+                state.query_history_picker.set_pane_height(2);
                 state.query_history_picker.set_selection_for_test(5);
+                assert_eq!(state.query_history_picker.scroll_offset(), 4);
 
                 let effects = edit_text(
                     &mut state,
@@ -1112,6 +1114,7 @@ mod tests {
                 );
 
                 assert_eq!(state.query_history_picker.selected(), 0);
+                assert_eq!(state.query_history_picker.scroll_offset(), 0);
                 assert_eq!(state.query_history_picker.filter_input().content(), "a");
                 assert!(effects.is_empty());
             }

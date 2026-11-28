@@ -1,4 +1,45 @@
 use crate::model::shared::cursor::CursorMove;
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
+
+/// Keep a character-indexed cursor visible in a terminal-cell viewport.
+/// A block cursor needs a cell at the end of the input; an insert cursor may
+/// sit at the right edge without consuming a cell.
+pub fn input_viewport_offset(
+    content: &str,
+    cursor: usize,
+    offset: usize,
+    width: usize,
+    block_cursor: bool,
+) -> usize {
+    let mut char_count = 0usize;
+    let graphemes: Vec<_> = content
+        .graphemes(true)
+        .map(|grapheme| {
+            let start = char_count;
+            char_count += grapheme.chars().count();
+            (start, char_count, UnicodeWidthStr::width(grapheme))
+        })
+        .collect();
+    let cursor = cursor.min(char_count);
+    let cursor_index = graphemes.partition_point(|&(_, end, _)| end <= cursor);
+    let mut start = graphemes.partition_point(|&(_, end, _)| end <= offset.min(cursor));
+    start = start.min(cursor_index);
+    if width == 0 {
+        return graphemes.get(cursor_index).map_or(char_count, |g| g.0);
+    }
+    let cursor_width = if block_cursor {
+        graphemes.get(cursor_index).map_or(1, |g| g.2.max(1))
+    } else {
+        0
+    };
+    let mut used: usize = graphemes[start..cursor_index].iter().map(|g| g.2).sum();
+    while start < cursor_index && used.saturating_add(cursor_width) > width {
+        used = used.saturating_sub(graphemes[start].2);
+        start += 1;
+    }
+    graphemes.get(start).map_or(char_count, |g| g.0)
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TextInputState {
@@ -6,6 +47,7 @@ pub struct TextInputState {
     char_count: usize,
     cursor: usize,
     viewport_offset: usize,
+    scalar_editing: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,15 +68,40 @@ pub enum TextEdit {
     MoveCursor(CursorMove),
 }
 
+/// Apply an edit to a filter and indicate whether dependent selection or
+/// scroll state should be reset. Cursor-only movement keeps that state.
+pub(crate) fn apply_filter_edit(
+    input: &mut TextInputState,
+    edit: TextEdit,
+    yank_text: Option<&str>,
+) -> (String, bool) {
+    let resets_selection = !matches!(edit, TextEdit::MoveCursor(_));
+    (input.apply_edit(edit, yank_text), resets_selection)
+}
+
 impl TextInputState {
     pub fn new(content: impl Into<String>, cursor: usize) -> Self {
-        let content = content.into();
+        Self::with_editing_mode(content.into(), cursor, false)
+    }
+
+    pub(super) fn new_scalar(content: impl Into<String>, cursor: usize) -> Self {
+        Self::with_editing_mode(content.into(), cursor, true)
+    }
+
+    fn with_editing_mode(content: String, cursor: usize, scalar_editing: bool) -> Self {
         let char_count = content.chars().count();
+        let cursor = cursor.min(char_count);
+        let cursor = if scalar_editing {
+            cursor
+        } else {
+            grapheme_floor(&content, cursor)
+        };
         Self {
             content,
             char_count,
-            cursor: cursor.min(char_count),
+            cursor,
             viewport_offset: 0,
+            scalar_editing,
         }
     }
 
@@ -51,7 +118,12 @@ impl TextInputState {
     }
 
     pub fn set_cursor(&mut self, pos: usize) {
-        self.cursor = pos.min(self.char_count);
+        let pos = pos.min(self.char_count);
+        self.cursor = if self.scalar_editing {
+            pos
+        } else {
+            grapheme_floor(&self.content, pos)
+        };
         self.viewport_offset = 0;
     }
 
@@ -60,6 +132,9 @@ impl TextInputState {
         self.content.insert(byte_idx, c);
         self.cursor += 1;
         self.char_count += 1;
+        if !self.scalar_editing {
+            self.cursor = grapheme_ceil(&self.content, self.cursor);
+        }
     }
 
     pub fn insert_str(&mut self, text: &str) {
@@ -68,18 +143,28 @@ impl TextInputState {
         self.content.insert_str(byte_idx, text);
         self.cursor += inserted_chars;
         self.char_count += inserted_chars;
+        if !self.scalar_editing {
+            self.cursor = grapheme_ceil(&self.content, self.cursor);
+        }
     }
 
     pub fn backspace(&mut self) {
         if self.cursor == 0 {
             return;
         }
-        let prev = self.cursor - 1;
+        let prev = if self.scalar_editing {
+            self.cursor - 1
+        } else {
+            previous_grapheme(&self.content, self.cursor)
+        };
         let start = char_to_byte_index(&self.content, prev);
         let end = char_to_byte_index(&self.content, self.cursor);
         self.content.drain(start..end);
+        self.char_count -= self.cursor - prev;
         self.cursor = prev;
-        self.char_count -= 1;
+        if !self.scalar_editing {
+            self.cursor = grapheme_floor(&self.content, self.cursor);
+        }
     }
 
     pub fn delete(&mut self) {
@@ -87,9 +172,17 @@ impl TextInputState {
             return;
         }
         let start = char_to_byte_index(&self.content, self.cursor);
-        let end = char_to_byte_index(&self.content, self.cursor + 1);
+        let next = if self.scalar_editing {
+            self.cursor + 1
+        } else {
+            next_grapheme(&self.content, self.cursor)
+        };
+        let end = char_to_byte_index(&self.content, next);
         self.content.drain(start..end);
-        self.char_count -= 1;
+        self.char_count -= next - self.cursor;
+        if !self.scalar_editing {
+            self.cursor = grapheme_floor(&self.content, self.cursor);
+        }
     }
 
     pub fn kill_to_line_end(&mut self) -> String {
@@ -147,11 +240,19 @@ impl TextInputState {
     pub fn move_cursor(&mut self, movement: CursorMove) {
         match movement {
             CursorMove::Left => {
-                self.cursor = self.cursor.saturating_sub(1);
+                self.cursor = if self.scalar_editing {
+                    self.cursor.saturating_sub(1)
+                } else {
+                    previous_grapheme(&self.content, self.cursor)
+                };
             }
             CursorMove::Right => {
                 if self.cursor < self.char_count {
-                    self.cursor += 1;
+                    self.cursor = if self.scalar_editing {
+                        self.cursor + 1
+                    } else {
+                        next_grapheme(&self.content, self.cursor)
+                    };
                 }
             }
             CursorMove::LineStart | CursorMove::FirstLine => {
@@ -179,6 +280,25 @@ impl TextInputState {
             | CursorMove::ViewportMiddle
             | CursorMove::ViewportBottom => {}
         }
+        if !self.scalar_editing {
+            self.cursor = match movement {
+                CursorMove::WordForward | CursorMove::ReadlineWordEnd => {
+                    grapheme_ceil(&self.content, self.cursor)
+                }
+                _ => grapheme_floor(&self.content, self.cursor),
+            };
+        }
+    }
+
+    /// Recompute the viewport after a single-line edit using the current render width.
+    pub fn edit_with_viewport<R>(
+        &mut self,
+        visible_width: usize,
+        edit: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let result = edit(self);
+        self.update_viewport(visible_width);
+        result
     }
 
     pub fn update_viewport(&mut self, visible_width: usize) {
@@ -187,23 +307,13 @@ impl TextInputState {
             return;
         }
 
-        // █ occupies one terminal cell at end-of-input; shrink effective width to keep it visible
-        let effective_width = if self.cursor == self.char_count {
-            visible_width.saturating_sub(1)
-        } else {
-            visible_width
-        };
-
-        if effective_width == 0 {
-            self.viewport_offset = self.cursor;
-            return;
-        }
-
-        if self.cursor < self.viewport_offset {
-            self.viewport_offset = self.cursor;
-        } else if self.cursor >= self.viewport_offset + effective_width {
-            self.viewport_offset = self.cursor - effective_width + 1;
-        }
+        self.viewport_offset = input_viewport_offset(
+            &self.content,
+            self.cursor,
+            self.viewport_offset,
+            visible_width,
+            true,
+        );
     }
 
     pub fn set_content(&mut self, s: String) {
@@ -231,16 +341,56 @@ impl TextInputState {
         if start >= end {
             return String::new();
         }
+        let (start, end) = if self.scalar_editing {
+            (start, end)
+        } else {
+            (
+                grapheme_floor(&self.content, start),
+                grapheme_ceil(&self.content, end),
+            )
+        };
 
         let start_byte = char_to_byte_index(&self.content, start);
         let end_byte = char_to_byte_index(&self.content, end);
         let removed = self.content[start_byte..end_byte].to_string();
         self.content.replace_range(start_byte..end_byte, "");
         self.char_count -= end - start;
-        self.cursor = start;
+        self.cursor = if self.scalar_editing {
+            start
+        } else {
+            grapheme_floor(&self.content, start)
+        };
         self.viewport_offset = 0;
         removed
     }
+}
+
+fn grapheme_boundaries(content: &str) -> impl Iterator<Item = usize> + '_ {
+    std::iter::once(0).chain(content.graphemes(true).scan(0, |offset, grapheme| {
+        *offset += grapheme.chars().count();
+        Some(*offset)
+    }))
+}
+
+fn grapheme_floor(content: &str, cursor: usize) -> usize {
+    grapheme_boundaries(content)
+        .take_while(|&boundary| boundary <= cursor)
+        .last()
+        .unwrap_or(0)
+}
+
+fn grapheme_ceil(content: &str, cursor: usize) -> usize {
+    grapheme_boundaries(content)
+        .find(|&boundary| boundary >= cursor)
+        .unwrap_or_else(|| content.chars().count())
+}
+
+fn previous_grapheme(content: &str, cursor: usize) -> usize {
+    grapheme_floor(content, cursor.saturating_sub(1))
+}
+
+fn next_grapheme(content: &str, cursor: usize) -> usize {
+    grapheme_ceil(content, cursor.saturating_add(1))
 }
 
 pub(crate) fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
@@ -745,6 +895,32 @@ mod tests {
         }
     }
 
+    mod grapheme_editing {
+        use super::*;
+
+        #[test]
+        fn combining_mark_moves_and_deletes_with_its_base() {
+            let mut input = TextInputState::new("e\u{301}x", 0);
+            input.move_cursor(CursorMove::Right);
+            assert_eq!(input.cursor(), 2);
+            input.backspace();
+            assert_eq!(input.content(), "x");
+            assert_eq!(input.cursor(), 0);
+        }
+
+        #[test]
+        fn joined_emoji_moves_inserts_and_deletes_as_one_unit() {
+            let mut input = TextInputState::new("👩‍💻x", 0);
+            input.move_cursor(CursorMove::Right);
+            assert_eq!(input.cursor(), 3);
+            input.insert_char('!');
+            assert_eq!(input.content(), "👩‍💻!x");
+            input.move_cursor(CursorMove::LineStart);
+            input.delete();
+            assert_eq!(input.content(), "!x");
+        }
+    }
+
     mod viewport_tests {
         use super::*;
 
@@ -776,14 +952,38 @@ mod tests {
         }
 
         #[test]
+        fn wide_input_keeps_end_cursor_in_the_cell_viewport() {
+            let mut input = TextInputState::new("a日本", 3);
+            input.update_viewport(4);
+            assert_eq!(input.viewport_offset(), 2);
+            input.move_cursor(CursorMove::Left);
+            input.update_viewport(4);
+            assert_eq!(input.viewport_offset(), 2);
+        }
+
+        #[test]
+        fn joined_emoji_stays_intact_when_scrolling_and_resizing() {
+            let text = "a👩‍💻b";
+            assert_eq!(input_viewport_offset(text, 4, 0, 3, true), 1);
+            assert_eq!(input_viewport_offset(text, 4, 2, 3, true), 1);
+            assert_eq!(input_viewport_offset(text, 1, 1, 3, true), 1);
+            assert_eq!(input_viewport_offset("👩‍💻", 3, 0, 3, true), 0);
+        }
+
+        #[test]
+        fn insert_cursor_can_sit_at_the_right_edge() {
+            assert_eq!(input_viewport_offset("日本", 2, 0, 4, false), 0);
+            assert_eq!(input_viewport_offset("日本", 2, 0, 4, true), 1);
+        }
+
+        #[test]
         fn cursor_at_end_reserves_space_for_block_cursor() {
             let mut s = state_with_viewport("abcde", 5, 0);
 
             s.update_viewport(5);
 
-            // cursor == char_count, effective_width = 5 - 1 = 4
-            // cursor(5) >= viewport(0) + effective(4), so scroll
-            assert_eq!(s.viewport_offset(), 2);
+            // The cursor itself occupies the final cell.
+            assert_eq!(s.viewport_offset(), 1);
         }
 
         #[test]

@@ -1,3 +1,4 @@
+use crate::model::shared::scroll::ScrollOffset;
 use unicode_width::UnicodeWidthChar;
 
 use crate::model::shared::text_input::TextInputState;
@@ -159,7 +160,7 @@ impl Default for DetailContentState {
 #[derive(Debug, Clone)]
 pub struct ReadOnlyDetailState {
     content: DetailContentState,
-    scroll_offset: usize,
+    scroll_offset: ScrollOffset,
     visible_rows: usize,
     viewport_width: usize,
     search: DetailSearchState,
@@ -170,7 +171,7 @@ impl Default for ReadOnlyDetailState {
     fn default() -> Self {
         Self {
             content: DetailContentState::default(),
-            scroll_offset: 0,
+            scroll_offset: ScrollOffset::default(),
             visible_rows: DEFAULT_VISIBLE_ROWS,
             viewport_width: DEFAULT_VIEWPORT_WIDTH,
             search: DetailSearchState::default(),
@@ -252,7 +253,7 @@ impl ReadOnlyDetailState {
     }
 
     pub fn scroll_offset(&self) -> usize {
-        self.scroll_offset
+        self.scroll_offset.get()
     }
 
     pub fn search(&self) -> &DetailSearchState {
@@ -284,31 +285,33 @@ impl ReadOnlyDetailState {
             ScrollAmount::HalfPage => (self.visible_rows / 2).max(1),
             ScrollAmount::FullPage => self.visible_rows,
             ScrollAmount::ToStart => {
-                self.scroll_offset = 0;
+                self.scroll_offset.set(0);
                 return;
             }
             ScrollAmount::ToEnd => {
-                self.scroll_offset = self.max_scroll_offset();
+                self.scroll_offset.set(self.max_scroll_offset());
                 return;
             }
             _ => return,
         };
 
-        self.scroll_offset =
-            direction.clamp_vertical_offset(self.scroll_offset, self.max_scroll_offset(), delta);
+        let max = self.max_scroll_offset();
+        self.scroll_offset.scroll(direction, delta, max);
     }
 
     pub fn scroll_to_match(&mut self) {
         let Some(&match_pos) = self.search.matches.get(self.search.current_match) else {
             return;
         };
-        self.scroll_offset =
+        let offset =
             visual_row_for_char_offset(self.content.content(), match_pos, self.viewport_width)
                 .min(self.max_scroll_offset());
+        self.scroll_offset.set(offset);
     }
 
     fn clamp_scroll(&mut self) {
-        self.scroll_offset = self.scroll_offset.min(self.max_scroll_offset());
+        let max = self.max_scroll_offset();
+        self.scroll_offset.clamp(max);
     }
 
     fn max_scroll_offset(&self) -> usize {
@@ -318,29 +321,10 @@ impl ReadOnlyDetailState {
 }
 
 fn visual_line_count(content: &str, width: usize) -> usize {
-    content
-        .split('\n')
-        .map(|line| visual_rows_for_line(line, width))
-        .sum::<usize>()
-        .max(1)
-}
-
-fn visual_rows_for_line(line: &str, width: usize) -> usize {
     if width == 0 {
-        return 1;
+        return content.split('\n').count();
     }
-
-    let mut rows = 1;
-    let mut current_width = 0;
-    for ch in line.chars() {
-        let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
-        if current_width > 0 && current_width + ch_width > width {
-            rows += 1;
-            current_width = 0;
-        }
-        current_width += ch_width;
-    }
-    rows
+    visual_row_for_char_offset(content, usize::MAX, width).saturating_add(1)
 }
 
 fn visual_row_for_char_offset(content: &str, target: usize, width: usize) -> usize {
@@ -386,6 +370,16 @@ mod tests {
             state.scroll(ScrollDirection::Down, ScrollAmount::ToEnd);
 
             assert_eq!(state.scroll_offset(), 7);
+        }
+
+        #[test]
+        fn end_scroll_counts_wrapped_and_empty_lines() {
+            let content = "ab界c\n\nx".to_string();
+            let mut state =
+                ReadOnlyDetailState::open(0, 0, "body".to_string(), content.clone(), content);
+            state.set_viewport_metrics(1, 3);
+            state.scroll(ScrollDirection::Down, ScrollAmount::ToEnd);
+            assert_eq!(state.scroll_offset(), 3);
         }
 
         #[test]

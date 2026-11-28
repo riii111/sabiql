@@ -1,17 +1,16 @@
+use super::{PickerModal, render_picker, render_picker_list};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, ListItem, Paragraph, Wrap};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::render_output::PickerLayout;
 use crate::app::model::sql_editor::query_history::GroupedEntry;
-use crate::app::update::input::keymap::{HintSurface, KeyContext, Picker, picker_hints};
 use crate::domain::query_history::{Iso8601Timestamp, QueryResultStatus};
-use crate::primitives::molecules::{FooterHintBar, render_filter_input_line, render_modal};
 use crate::primitives::utils::text_utils::truncate_to_width_with;
 use crate::theme::{StatusTone, ThemePalette};
 
@@ -110,48 +109,30 @@ impl QueryHistoryPicker {
         // border(2) + filter(1) + actual entries + preview — capped at 70%
         let desired_height = (2 + 1 + (grouped_count as u16).max(1) + preview_est).min(max_height);
 
-        let (_, inner) = render_modal(
+        let ((list_area, preview_area), visible_width) = render_picker(
             frame,
-            Constraint::Percentage(70),
-            Constraint::Max(desired_height),
-            " Query History ",
-            FooterHintBar::with_prefix(
-                format!("{grouped_count} entries │ type to filter"),
-                picker_hints(
-                    Picker::QueryHistory,
-                    HintSurface::Border,
-                    &KeyContext::from_state(state),
-                )
-                .into_iter()
-                .map(|hint| (hint.key, hint.short)),
-            ),
+            state,
             theme,
-        );
-
-        let preview_h = compute_preview_height(inner.height);
-        let show_preview = preview_h > 0;
-
-        let areas = if show_preview {
-            let [filter_area, list_area, preview_area] = Layout::vertical([
-                Constraint::Length(1),
-                Constraint::Max(LIST_MAX_HEIGHT),
-                Constraint::Min(preview_h),
-            ])
-            .areas(inner);
-            (filter_area, list_area, Some(preview_area))
-        } else {
-            let [filter_area, list_area] =
-                Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(inner);
-            (filter_area, list_area, None)
-        };
-        let (filter_area, list_area, preview_area) = areas;
-
-        let visible_width = render_filter_input_line(
-            frame,
-            filter_area,
-            state.query_history_picker.filter_input(),
-            Some("type to filter"),
-            theme,
+            PickerModal::QueryHistory {
+                count: grouped_count,
+                height: desired_height,
+            },
+            |inner| {
+                let preview_h = compute_preview_height(inner.height);
+                if preview_h > 0 {
+                    let [filter, list, preview] = Layout::vertical([
+                        Constraint::Length(1),
+                        Constraint::Max(LIST_MAX_HEIGHT),
+                        Constraint::Min(preview_h),
+                    ])
+                    .areas(inner);
+                    (filter, (list, Some(preview)))
+                } else {
+                    let [filter, list] =
+                        Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(inner);
+                    (filter, (list, None))
+                }
+            },
         );
 
         if grouped_count == 0 {
@@ -200,14 +181,14 @@ impl QueryHistoryPicker {
         }
         drop(grouped);
 
-        let list = List::new(items)
-            .highlight_style(theme.picker_selected_style())
-            .highlight_symbol("\u{25b8} ");
-
-        let mut list_state = ListState::default()
-            .with_selected(Some(selected_idx))
-            .with_offset(scroll_offset);
-        frame.render_stateful_widget(list, list_area, &mut list_state);
+        render_picker_list(
+            frame,
+            list_area,
+            items,
+            Some(selected_idx),
+            scroll_offset,
+            theme,
+        );
         PickerLayout {
             pane_height: list_area.height,
             filter_visible_width: visible_width,

@@ -13,7 +13,7 @@ expression: output
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                ╭ Select Connection ──────────────────────────────────────────────────────────────────────────────╮                                │
-│                                │> ● Pg Production                                                                                │                                │
+│                                │▸ ● Pg Production                                                                                │                                │
 │                                │    Pg Staging                                                                                   │                                │
 │                                │    Pg Local Dev                                                                                 │                                │
 │                                │                                                                                                 │                                │

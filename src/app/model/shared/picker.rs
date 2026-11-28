@@ -1,9 +1,7 @@
 use std::borrow::Cow;
 
-use crate::model::shared::cursor::CursorMove;
-
 use super::text_input::TextInputState;
-use crate::model::shared::text_input::TextEdit;
+use crate::model::shared::text_input::{TextEdit, apply_filter_edit};
 
 #[derive(Debug, Clone, Default)]
 pub struct PickerState {
@@ -60,29 +58,26 @@ impl PickerState {
     }
 
     pub fn insert_filter_str(&mut self, text: &str) {
-        self.filter_input.insert_str(&sanitize_filter_text(text));
-        self.filter_input.update_viewport(self.filter_visible_width);
-        self.reset();
+        self.edit_filter(|input| input.insert_str(&sanitize_filter_text(text)));
     }
 
     pub fn edit_filter<R>(&mut self, edit: impl FnOnce(&mut TextInputState) -> R) -> R {
-        let result = edit(&mut self.filter_input);
-        self.filter_input.update_viewport(self.filter_visible_width);
+        let result = self.update_filter(edit);
         self.reset();
         result
     }
 
-    pub fn apply_filter_edit(&mut self, edit: TextEdit, yank_text: Option<&str>) -> String {
-        if let TextEdit::MoveCursor(direction) = edit {
-            self.move_filter_cursor(direction);
-            return String::new();
-        }
-        self.edit_filter(|input| input.apply_edit(edit, yank_text))
+    fn update_filter<R>(&mut self, edit: impl FnOnce(&mut TextInputState) -> R) -> R {
+        self.filter_input
+            .edit_with_viewport(self.filter_visible_width, edit)
     }
 
-    fn move_filter_cursor(&mut self, direction: CursorMove) {
-        self.filter_input.move_cursor(direction);
-        self.filter_input.update_viewport(self.filter_visible_width);
+    pub fn apply_filter_edit(&mut self, edit: TextEdit, yank_text: Option<&str>) -> String {
+        let (result, reset) = self.update_filter(|input| apply_filter_edit(input, edit, yank_text));
+        if reset {
+            self.reset();
+        }
+        result
     }
 }
 

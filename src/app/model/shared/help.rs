@@ -1,5 +1,4 @@
-use crate::model::shared::cursor::CursorMove;
-use crate::model::shared::text_input::{TextEdit, TextInputState};
+use crate::model::shared::text_input::{TextEdit, TextInputState, apply_filter_edit};
 use crate::update::input::keymap::KeyContext;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,15 +85,11 @@ impl HelpState {
     }
 
     pub fn apply_filter_edit(&mut self, edit: TextEdit, yank_text: Option<&str>) -> String {
-        if let TextEdit::MoveCursor(direction) = edit {
-            self.move_filter_cursor(direction);
-            return String::new();
+        let (result, reset) = apply_filter_edit(&mut self.filter, edit, yank_text);
+        if reset {
+            self.reset_offsets();
         }
-        self.edit_filter(|input| input.apply_edit(edit, yank_text))
-    }
-
-    fn move_filter_cursor(&mut self, direction: CursorMove) {
-        self.filter.move_cursor(direction);
+        result
     }
 
     pub fn clamp_offsets(&mut self, max_scroll: usize, max_horizontal_scroll: usize) {
