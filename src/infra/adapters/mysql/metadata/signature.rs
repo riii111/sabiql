@@ -41,6 +41,21 @@ async fn fetch_table_signatures_with_program(
     program: &OsStr,
     timeout: Duration,
 ) -> Result<TableSignatureSnapshot, DbOperationError> {
+    let details = fetch_details_with_program(config, program, timeout).await?;
+    Ok(snapshot_from_details(details))
+}
+
+pub(super) async fn fetch_table_details(
+    config: &MySqlConnectionConfig,
+) -> Result<Vec<Table>, DbOperationError> {
+    fetch_details_with_program(config, OsStr::new("mysql"), MYSQL_QUERY_TIMEOUT).await
+}
+
+async fn fetch_details_with_program(
+    config: &MySqlConnectionConfig,
+    program: &OsStr,
+    timeout: Duration,
+) -> Result<Vec<Table>, DbOperationError> {
     let target = NormalizedMySqlConfig::new(config)?;
     let database = selected_database(&target)?;
     let (capabilities, results) = execute_metadata_queries_in_session_with_program(
@@ -61,7 +76,7 @@ async fn fetch_table_signatures_with_program(
     let lower_case_table_names = capabilities.lower_case_table_names;
     let tables =
         metadata_snapshot_from_result(database, None, &results[0], lower_case_table_names)?;
-    table_signatures_from_metadata(
+    table_details_from_metadata(
         &tables,
         database,
         lower_case_table_names,
@@ -91,14 +106,14 @@ fn parse_signature_column_metadata(
         .collect()
 }
 
-fn table_signatures_from_metadata(
+fn table_details_from_metadata(
     tables: &[MySqlTableMetadata],
     database: &str,
     lower_case_table_names: u8,
     columns: Vec<MySqlSignatureColumnMetadata>,
     foreign_keys: Vec<MySqlForeignKeyMetadata>,
     mut unique_columns_by_table: HashMap<String, HashSet<String>>,
-) -> Result<TableSignatureSnapshot, DbOperationError> {
+) -> Result<Vec<Table>, DbOperationError> {
     let known_tables: HashSet<(String, String)> = tables
         .iter()
         .map(|table| (table.schema.clone(), table.name.clone()))
@@ -146,8 +161,7 @@ fn table_signatures_from_metadata(
         ));
     }
 
-    let mut signatures = Vec::with_capacity(tables.len());
-    let mut prefetched_table_details = Vec::with_capacity(tables.len());
+    let mut details = Vec::with_capacity(tables.len());
     for table in tables {
         let key = (table.schema.clone(), table.name.clone());
         let mut columns = columns_by_table.remove(&key).ok_or_else(|| {
@@ -194,17 +208,40 @@ fn table_signatures_from_metadata(
                 virtual_module: None,
             },
         };
-        signatures.push(TableSignature {
+        details.push(detail);
+    }
+    Ok(details)
+}
+
+fn snapshot_from_details(details: Vec<Table>) -> TableSignatureSnapshot {
+    let signatures = details
+        .iter()
+        .map(|table| TableSignature {
             schema: table.schema.clone(),
             name: table.name.clone(),
-            signature: table_signature(&detail),
-        });
-        prefetched_table_details.push(detail);
-    }
-    Ok(TableSignatureSnapshot {
-        signatures,
-        prefetched_table_details,
-    })
+            signature: table_signature(table),
+        })
+        .collect();
+    TableSignatureSnapshot { signatures }
+}
+
+#[cfg(test)]
+fn table_signatures_from_metadata(
+    tables: &[MySqlTableMetadata],
+    database: &str,
+    lower_case_table_names: u8,
+    columns: Vec<MySqlSignatureColumnMetadata>,
+    foreign_keys: Vec<MySqlForeignKeyMetadata>,
+    unique_columns_by_table: HashMap<String, HashSet<String>>,
+) -> Result<TableSignatureSnapshot, DbOperationError> {
+    Ok(snapshot_from_details(table_details_from_metadata(
+        tables,
+        database,
+        lower_case_table_names,
+        columns,
+        foreign_keys,
+        unique_columns_by_table,
+    )?))
 }
 
 fn table_signature(table: &Table) -> String {
@@ -609,7 +646,7 @@ mod tests {
             ]],
         ))
         .unwrap();
-        let signatures = table_signatures_from_metadata(
+        let details = table_details_from_metadata(
             &tables,
             "App",
             0,
@@ -618,6 +655,7 @@ mod tests {
             unique_columns,
         )
         .unwrap();
+        let signatures = snapshot_from_details(details.clone());
         let signatures_without_unique = table_signatures_from_metadata(
             &tables,
             "App",
@@ -629,7 +667,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(signatures.signatures.len(), 2);
-        assert_eq!(signatures.prefetched_table_details.len(), 2);
+        assert_eq!(details.len(), 2);
         assert_eq!(signatures.signatures[0].qualified_name(), "App.child");
         assert!(signatures.signatures[0].signature.contains("id"));
         assert!(
@@ -637,7 +675,7 @@ mod tests {
                 .signature
                 .contains("fk_child_parent")
         );
-        let child = &signatures.prefetched_table_details[0];
+        let child = &details[0];
         assert_eq!(child.columns.len(), 2);
         assert!(child.columns[1].is_unique());
         assert_eq!(child.foreign_keys.len(), 1);
@@ -760,14 +798,6 @@ done
         });
 
         assert_eq!(snapshot.signatures.len(), 1);
-        assert_eq!(snapshot.prefetched_table_details.len(), 1);
-        assert_eq!(
-            snapshot.prefetched_table_details[0]
-                .storage_attributes
-                .engine
-                .as_deref(),
-            Some("InnoDB")
-        );
         let transcript_text = std::fs::read_to_string(&transcript).unwrap();
         assert_eq!(
             transcript_text

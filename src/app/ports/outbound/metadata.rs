@@ -34,6 +34,21 @@ pub trait MetadataProvider: Send + Sync {
         table: &str,
     ) -> Result<Table, DbOperationError>;
 
+    async fn fetch_table_columns_and_fks_batch(
+        &self,
+        endpoint: &ConnectionEndpoint,
+        tables: &[(String, String)],
+    ) -> Result<Vec<Table>, DbOperationError> {
+        let mut details = Vec::with_capacity(tables.len());
+        for (schema, table) in tables {
+            details.push(
+                self.fetch_table_columns_and_fks(endpoint, schema, table)
+                    .await?,
+            );
+        }
+        Ok(details)
+    }
+
     async fn fetch_table_signatures(
         &self,
         endpoint: &ConnectionEndpoint,

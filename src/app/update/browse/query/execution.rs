@@ -993,10 +993,10 @@ mod tests {
         #[case::alter(CommandTag::Alter("TABLE".to_string()))]
         fn ddl_reloads_metadata_and_clears_stale_table_detail(#[case] command_tag: CommandTag) {
             let mut state = state_with_table("public", "users");
-            let _ = state.table_prefetch.begin_er_prefetch();
-            state
+            let _ = state.table_prefetch.begin(Vec::<String>::new(), true);
+            let _ = state
                 .table_prefetch
-                .queue_table_prefetch("public.users".to_string());
+                .begin(vec!["public.users".to_string()], true);
             state
                 .session
                 .set_table_detail_raw(Some(users_table_detail()));
@@ -1011,7 +1011,7 @@ mod tests {
                     .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
             );
             assert!(state.table_prefetch.active_prefetch_run_id().is_none());
-            assert!(!state.table_prefetch.has_pending_prefetch());
+            assert!(state.table_prefetch.is_complete());
             assert!(state.session.table_detail().is_none());
         }
 
@@ -1038,10 +1038,7 @@ mod tests {
                     run_id: old_er_run_id,
                     outcome: Ok(SmartErRefreshSnapshot {
                         new_metadata: Arc::new(DatabaseMetadata::new("new".to_string())),
-                        signature_snapshot: Arc::new(TableSignatureSnapshot {
-                            signatures: vec![],
-                            prefetched_table_details: vec![],
-                        }),
+                        signature_snapshot: Arc::new(TableSignatureSnapshot { signatures: vec![] }),
                     }),
                 },
                 Instant::now(),

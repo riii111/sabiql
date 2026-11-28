@@ -441,15 +441,10 @@ pub enum Action {
         outcome: Result<Box<Table>, DbOperationError>,
         generation: u64,
     },
-    TableDetailCached {
+    TableDetailsCached {
         endpoint: Arc<ConnectionEndpoint>,
         run_id: u64,
-        schema: String,
-        table: String,
-        outcome: Result<Box<Table>, DbOperationError>,
-    },
-    ProcessPrefetchQueue {
-        run_id: u64,
+        outcome: Result<Vec<Table>, DbOperationError>,
     },
     InspectorNextTab,
     InspectorPrevTab,

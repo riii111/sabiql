@@ -50,15 +50,7 @@ pub enum Effect {
     PrefetchTableColumnsAndFks {
         endpoint: Arc<ConnectionEndpoint>,
         run_id: u64,
-        schema: String,
-        table: String,
-    },
-    SchedulePrefetchQueueProcessing {
-        run_id: u64,
-    },
-    DelayedProcessPrefetchQueue {
-        run_id: u64,
-        delay_secs: u64,
+        tables: Vec<(String, String)>,
     },
 
     ExecutePreview {

@@ -98,6 +98,10 @@ impl PostgresAdapter {
     }
 
     pub(in crate::adapters::postgres) fn columns_query(schema: &str, table: &str) -> String {
+        Self::columns_query_for_sql(&Postgres.quote_text(schema), &Postgres.quote_text(table))
+    }
+
+    fn columns_query_for_sql(schema: &str, table: &str) -> String {
         format!(
             r"
             SELECT COALESCE(json_agg(row_to_json(c) ORDER BY c.ordinal_position), '[]'::json)
@@ -129,14 +133,12 @@ impl PostgresAdapter {
                 JOIN pg_namespace n ON n.oid = cl.relnamespace
                 JOIN pg_attribute a ON a.attrelid = cl.oid
                 LEFT JOIN pg_attrdef d ON d.adrelid = cl.oid AND d.adnum = a.attnum
-                WHERE n.nspname = {}
-                  AND cl.relname = {}
+                WHERE n.nspname = {schema}
+                  AND cl.relname = {table}
                   AND a.attnum > 0
                   AND NOT a.attisdropped
             ) c
-            ",
-            Postgres.quote_text(schema),
-            Postgres.quote_text(table)
+            "
         )
     }
 
@@ -230,6 +232,10 @@ impl PostgresAdapter {
     }
 
     pub(in crate::adapters::postgres) fn foreign_keys_query(schema: &str, table: &str) -> String {
+        Self::foreign_keys_query_for_sql(&Postgres.quote_text(schema), &Postgres.quote_text(table))
+    }
+
+    fn foreign_keys_query_for_sql(schema: &str, table: &str) -> String {
         format!(
             r"
             SELECT COALESCE(json_agg(row_to_json(fk)), '[]'::json)
@@ -252,13 +258,11 @@ impl PostgresAdapter {
                 JOIN pg_attribute a1 ON a1.attrelid = c1.oid AND a1.attnum = ANY(con.conkey)
                 JOIN pg_attribute a2 ON a2.attrelid = c2.oid AND a2.attnum = ANY(con.confkey)
                 WHERE con.contype = 'f'
-                  AND n1.nspname = {}
-                  AND c1.relname = {}
+                  AND n1.nspname = {schema}
+                  AND c1.relname = {table}
                 GROUP BY con.conname, n1.nspname, c1.relname, n2.nspname, c2.relname, con.confdeltype, con.confupdtype
             ) fk
-            ",
-            Postgres.quote_text(schema),
-            Postgres.quote_text(table)
+            "
         )
     }
 
@@ -358,6 +362,37 @@ impl PostgresAdapter {
             table = Postgres.quote_text(table),
             columns = Self::columns_query(schema, table).trim(),
             fks = Self::foreign_keys_query(schema, table).trim(),
+        )
+    }
+
+    pub(in crate::adapters::postgres) fn batch_table_columns_and_fks_query(
+        tables: &[(String, String)],
+    ) -> String {
+        let values = tables
+            .iter()
+            .map(|(schema, table)| {
+                format!(
+                    "({}, {})",
+                    Postgres.quote_text(schema),
+                    Postgres.quote_text(table)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            r"
+            WITH requested(schema_name, table_name) AS (VALUES {values})
+            SELECT COALESCE(json_agg(json_build_object(
+                'schema', r.schema_name, 'name', r.table_name,
+                'detail', json_build_object(
+                    'exists', EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE n.nspname = r.schema_name AND c.relname = r.table_name),
+                    'columns', ({columns}), 'foreign_keys', ({fks})
+                )
+            )), '[]'::json) FROM requested r
+        ",
+            columns = Self::columns_query_for_sql("r.schema_name", "r.table_name"),
+            fks = Self::foreign_keys_query_for_sql("r.schema_name", "r.table_name")
         )
     }
 
@@ -586,6 +621,19 @@ mod tests {
 
     mod table_columns_and_fks_query {
         use super::*;
+
+        #[test]
+        fn batch_uses_one_requested_relation_and_quotes_each_name() {
+            let sql = PostgresAdapter::batch_table_columns_and_fks_query(&[
+                ("public".into(), "users".into()),
+                ("odd'schema".into(), "order's".into()),
+            ]);
+            assert!(sql.contains("('public', 'users')"));
+            assert!(sql.contains("('odd''schema', 'order''s')"));
+            assert!(sql.contains("FROM requested r"));
+            assert!(sql.contains("n.nspname = r.schema_name"));
+            assert!(sql.contains("c1.relname = r.table_name"));
+        }
 
         #[test]
         fn wraps_existence_columns_and_fks_in_json_build_object() {
