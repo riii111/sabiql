@@ -34,26 +34,6 @@ impl ConnectionErrorInfo {
     pub const fn is_retryable(&self) -> bool {
         self.retryable
     }
-
-    #[cfg(test)]
-    fn from_presentation(
-        summary: &'static str,
-        hint: &'static str,
-        retryable: bool,
-        raw_stderr: impl Into<String>,
-    ) -> Self {
-        use crate::policy::password_masking::mask_password;
-
-        let raw_details = raw_stderr.into();
-        let masked_details = mask_password(&raw_details);
-
-        Self {
-            summary,
-            hint,
-            retryable,
-            masked_details,
-        }
-    }
 }
 
 #[cfg(test)]
