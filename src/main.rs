@@ -75,7 +75,6 @@ enum Command {
     reason = "CLI error output before TUI initialization"
 )]
 async fn main() -> Result<()> {
-    dotenvy::dotenv().ok();
     panic_hooks::install_hooks()?;
 
     let args = Args::parse();

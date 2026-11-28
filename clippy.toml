@@ -12,7 +12,6 @@ absolute-paths-allowed-crates = [
     "crossterm",
     "csv",
     "dirs",
-    "dotenvy",
     "futures",
     "insta",
     "lru",
