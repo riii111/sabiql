@@ -14,14 +14,14 @@ class LintTestNamesTest < Minitest::Test
     run_lint_files("fixture.rs" => source)
   end
 
-  def run_lint_files(sources)
+  def run_lint_files(sources, env = {})
     Dir.mktmpdir do |directory|
       sources.each do |name, source|
         path = File.join(directory, name)
         FileUtils.mkdir_p(File.dirname(path))
         File.write(path, source)
       end
-      Open3.capture3(RbConfig.ruby, SCRIPT, directory)
+      Open3.capture3(env, RbConfig.ruby, SCRIPT, directory)
     end
   end
 
@@ -328,7 +328,7 @@ class LintTestNamesTest < Minitest::Test
       #[cfg(test)] struct Fixture;
     RUST
     helper = "#[cfg(test)] fn helper() {}\n"
-    stdout, stderr, status = run_lint_files(
+    stdout, stderr, status = run_lint_files({
       "lib.rs" => entry,
       "tests.rs" => tests,
       "tests/nested/mod.rs" => helper,
@@ -337,7 +337,7 @@ class LintTestNamesTest < Minitest::Test
       "platform.rs" => "fn production() {}\n",
       "conditional_test.rs" => helper,
       "inline/fïxture.rs" => helper,
-    )
+    }, { "LC_ALL" => "C" })
 
     assert status.success?, stderr
     assert_equal "test-name lint passed\n", stdout
@@ -357,6 +357,42 @@ class LintTestNamesTest < Minitest::Test
 
     refute status.success?
     assert_match(/shared\.rs:1 test-only item must be inside a cfg\(test\) module: fn/, stderr)
+  end
+
+  def test_rejects_test_only_items_in_cargo_binary_roots
+    entry = <<~'RUST'
+      #[cfg(test)] #[path = "bin/check.rs"] mod check_support;
+      #[cfg(test)] #[path = "bin/verify/main.rs"] mod verify_support;
+    RUST
+    target = <<~'RUST'
+      fn main() {}
+      #[cfg(test)] fn misplaced() {}
+    RUST
+    _stdout, stderr, status = run_lint_files(
+      "Cargo.toml" => "[package]\nname = 'fixture'\nversion = '0.1.0'\n",
+      "src/lib.rs" => entry,
+      "src/bin/check.rs" => target,
+      "src/bin/verify/main.rs" => target,
+    )
+
+    refute status.success?
+    assert_equal 2, stderr.lines.grep(/test-only item must be inside a cfg\(test\) module/).length
+    assert_match(%r{bin/check\.rs:2 test-only item}, stderr)
+    assert_match(%r{bin/verify/main\.rs:2 test-only item}, stderr)
+  end
+
+  def test_treats_rust_source_prefixes_and_unicode_whitespace_as_trivia
+    test_source = "\uFEFF#!/usr/bin/env rust-script\n#![cfg(test)]\n#[cfg(test)] fn helper() {}\n"
+    inner_attribute = "#! /* ignored */ [cfg(test)]\n#[cfg(test)] fn helper() {}\n"
+    _stdout, stderr, status = run_lint_files(
+      "test_script.rs" => test_source,
+      "inner_attribute.rs" => inner_attribute,
+      "production.rs" => "#[cfg\u200e(test)] fn misplaced() {}\n",
+    )
+
+    refute status.success?
+    assert_equal 1, stderr.lines.grep(/test-only item must be inside a cfg\(test\) module/).length
+    assert_match(/production\.rs:1 test-only item/, stderr)
   end
 
   def test_reports_after_a_test_module_closes_and_preserves_name_checks

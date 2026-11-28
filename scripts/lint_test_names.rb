@@ -13,12 +13,14 @@ def rust_files(paths)
     File.directory?(absolute) ? File.join(absolute, "**/*.rs") : absolute
   end
 
-  patterns.flat_map { |pattern| Dir.glob(pattern) }.sort.uniq
+  patterns.flat_map { |pattern| Dir.glob(pattern) }
+    .map { |file| file.force_encoding(Encoding::UTF_8) }.sort.uniq
 end
 
 # Keep Rust token trees balanced without interpreting Rust expressions or expanding macros.
 class RustTokens
   IDENTIFIER = /(?:r\#)?[_\p{XID_Start}][\p{XID_Continue}]*/u
+  TRIVIA = %r{[\u0009-\u000d\u0020\u0085\u200e\u200f\u2028\u2029]+|//[^\n]*}u
   CHAR_LITERAL = /'(?:\\(?:u\{[\da-fA-F_]+\}|x[\da-fA-F]{2}|[^\r\n])|[^'\\\r\n])'/
   STRING_ESCAPE = /\\(?:u\{([\da-fA-F_]+)\}|x([\da-fA-F]{2})|(\r?\n\s*)|(.))/m
   ESCAPED_CHARACTERS = { "0" => "\0", "n" => "\n", "r" => "\r", "t" => "\t" }.freeze
@@ -28,11 +30,13 @@ class RustTokens
   def initialize(source)
     @tokens = []
     @scanner = StringScanner.new(source)
+    @scanner.skip(/\uFEFF/)
+    skip_shebang
     line = 1
     groups = []
 
     until @scanner.eos?
-      if @scanner.scan(%r{\s+|//[^\n]*})
+      if @scanner.scan(TRIVIA)
         line += @scanner.matched.count("\n")
       elsif @scanner.scan(%r{/\*})
         line += skip_block_comment
@@ -86,6 +90,21 @@ class RustTokens
   end
 
   private
+
+  def skip_shebang
+    start = @scanner.pos
+    return unless @scanner.skip(/#!/)
+
+    loop do
+      next if @scanner.skip(TRIVIA)
+      break unless @scanner.skip(%r{/\*})
+
+      skip_block_comment
+    end
+    inner_attribute = @scanner.peek(1) == "["
+    @scanner.pos = start
+    @scanner.skip(/[^\n]*/) unless inner_attribute
+  end
 
   def scan_token
     if @scanner.scan(/(?:b|c)?r(\#*)"/)
@@ -424,15 +443,30 @@ class RustModuleFiles
   private
 
   def cargo_root?(file)
+    name = File.basename(file)
     directory = File.dirname(file)
-    case File.basename(file)
-    when "lib.rs", "main.rs", "build.rs"
-      File.file?(File.join(directory, "Cargo.toml")) ||
-        (File.basename(directory) == "src" && File.file?(File.join(directory, "..", "Cargo.toml")))
-    else
-      %w[tests examples benches].include?(File.basename(directory)) &&
-        File.file?(File.join(directory, "..", "Cargo.toml"))
+    parent = File.dirname(directory)
+    if %w[lib.rs main.rs build.rs].include?(name)
+      return true if cargo_manifest?(directory)
+      return true if File.basename(directory) == "src" && cargo_manifest?(parent)
     end
+
+    target_dirs = %w[bin tests examples benches]
+    if name == "main.rs" && !target_dirs.include?(File.basename(directory))
+      directory = parent
+      parent = File.dirname(directory)
+    end
+
+    case File.basename(directory)
+    when "bin"
+      File.basename(parent) == "src" && cargo_manifest?(File.dirname(parent))
+    else
+      target_dirs.include?(File.basename(directory)) && cargo_manifest?(parent)
+    end
+  end
+
+  def cargo_manifest?(directory)
+    File.file?(File.join(directory, "Cargo.toml"))
   end
 
   def children(file, directory, test)
@@ -463,7 +497,8 @@ end
 
 paths = ARGV.empty? ? DEFAULT_PATHS : ARGV
 scans = rust_files(paths).to_h do |file|
-  [file, RustTestLint.new(File.read(file), file.delete_prefix("#{ROOT}/")).run]
+  source = File.read(file, encoding: Encoding::UTF_8)
+  [file, RustTestLint.new(source, file.delete_prefix("#{ROOT}/")).run]
 end
 test_only_files = RustModuleFiles.new(scans).test_only_files
 errors = scans.flat_map do |file, scan|
