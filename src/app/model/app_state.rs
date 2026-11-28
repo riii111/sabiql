@@ -1054,6 +1054,29 @@ mod tests {
         }
 
         #[test]
+        fn inspector_horizontal_scroll_offset_clamps_when_viewport_changes() {
+            let mut state = make_state();
+            state.ui.set_inspector_horizontal_offset(500);
+            let output = RenderOutput {
+                browse: BrowseLayout {
+                    inspector: InspectorLayout {
+                        viewport_plan: ViewportPlan {
+                            max_offset: 10,
+                            ..ViewportPlan::default()
+                        },
+                        ..InspectorLayout::default()
+                    },
+                    ..BrowseLayout::default()
+                },
+                ..RenderOutput::default()
+            };
+
+            state.apply_render_output(output);
+
+            assert_eq!(state.ui.inspector_horizontal_offset(), 10);
+        }
+
+        #[test]
         fn focus_mode_preserves_inspector_viewport_plan() {
             let mut state = make_state();
             state.ui.set_inspector_viewport_plan(ViewportPlan {

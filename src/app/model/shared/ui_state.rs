@@ -385,6 +385,7 @@ impl UiState {
     }
 
     pub fn set_inspector_viewport_plan(&mut self, plan: ViewportPlan) {
+        self.inspector_horizontal_offset = self.inspector_horizontal_offset.min(plan.max_offset);
         self.inspector_viewport_plan = plan;
     }
 

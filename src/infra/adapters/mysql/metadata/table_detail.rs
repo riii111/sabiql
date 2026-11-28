@@ -3,6 +3,8 @@ use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::time::Duration;
 
+use tokio::time::Instant;
+
 use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{ForeignKey, Index, IndexAttributes, IndexType, Table, TableKindInfo, Trigger};
 
@@ -16,7 +18,7 @@ use super::super::sql::{
 };
 use super::super::{
     capability::MySqlServerCapabilities,
-    cli::{MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, MySqlResultSet},
+    cli::{MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, MySqlResultSet, is_mysql_missing_trigger},
     dsn::{NormalizedMySqlConfig, map_mysql_tls_failure},
     option_file::MySqlOptionFile,
 };
@@ -148,17 +150,33 @@ async fn fetch_table_detail_with_program(
 ) -> Result<Table, DbOperationError> {
     let target = NormalizedMySqlConfig::new(config)?;
     let database = selected_database(&target)?;
-    let option_file = MySqlOptionFile::create(&target)?;
-    let mut session = MySqlMetadataSession::spawn_with_metadata_program(program, option_file)?;
-    let result = tokio::time::timeout(
-        timeout,
-        fetch_table_detail_with_session(&mut session, database, schema, table),
-    )
-    .await;
-    session
-        .resolve_timed_result(result)
-        .await
-        .map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))
+    let deadline = Instant::now() + timeout;
+    let mut can_retry = true;
+    loop {
+        let option_file = MySqlOptionFile::create(&target)?;
+        let mut session = MySqlMetadataSession::spawn_with_metadata_program(program, option_file)?;
+        let result = tokio::time::timeout_at(
+            deadline,
+            fetch_table_detail_with_session(&mut session, database, schema, table),
+        )
+        .await;
+        let result = session.resolve_timed_result(result).await;
+        if can_retry
+            && (matches!(result, Ok(None)) || result.as_ref().is_err_and(is_mysql_missing_trigger))
+        {
+            can_retry = false;
+            continue;
+        }
+        return result
+            .and_then(|detail| {
+                detail.ok_or_else(|| {
+                    DbOperationError::QueryFailed(
+                        "MySQL triggers changed while loading table detail".to_string(),
+                    )
+                })
+            })
+            .map_err(|error| map_mysql_tls_failure(error, target.ssl_mode));
+    }
 }
 
 async fn fetch_table_detail_with_session(
@@ -166,7 +184,7 @@ async fn fetch_table_detail_with_session(
     database: &str,
     schema: &str,
     table: &str,
-) -> Result<Table, DbOperationError> {
+) -> Result<Option<Table>, DbOperationError> {
     let capabilities = session.prepare_read_only_and_probe().await?;
     let tables_result = session
         .execute_with_expected_columns(&table_query(schema, table), TABLES_RESULT_COLUMNS)
@@ -214,7 +232,12 @@ async fn fetch_table_detail_with_session(
         database,
         capabilities.lower_case_table_names,
     )?;
-    let triggers = fetch_triggers(session, &table_metadata.schema, &table_metadata.name).await?;
+    let Some(triggers) =
+        fetch_triggers(session, &table_metadata.schema, &table_metadata.name).await?
+    else {
+        session.finish().await?;
+        return Ok(None);
+    };
     let ddl_columns = show_create_result_columns(table_metadata.kind);
     let source_ddl = parse_show_create_ddl(
         &session
@@ -230,7 +253,7 @@ async fn fetch_table_detail_with_session(
     detail.indexes = indexes;
     detail.triggers = triggers;
     detail.source_ddl = Some(source_ddl);
-    Ok(detail)
+    Ok(Some(detail))
 }
 
 fn table_metadata_from_result(
@@ -278,7 +301,29 @@ async fn fetch_triggers(
     session: &mut MySqlMetadataSession,
     schema: &str,
     table: &str,
-) -> Result<Vec<Trigger>, DbOperationError> {
+) -> Result<Option<Vec<Trigger>>, DbOperationError> {
+    let names = fetch_trigger_names(session, schema, table).await?;
+    let mut triggers = Vec::with_capacity(names.len());
+    for name in &names {
+        let result = session
+            .execute(&show_create_trigger_query(schema, name))
+            .await?;
+        triggers.push(Trigger {
+            name: name.clone(),
+            definition: parse_show_create_ddl(&result, TRIGGER_SHOW_CREATE_RESULT_COLUMNS)?,
+        });
+    }
+    // A trigger name can be reused on another table between the list and SHOW CREATE.
+    let names_match =
+        names.is_empty() || names == fetch_trigger_names(session, schema, table).await?;
+    Ok(names_match.then_some(triggers))
+}
+
+async fn fetch_trigger_names(
+    session: &mut MySqlMetadataSession,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<String>, DbOperationError> {
     let names = session
         .execute_with_expected_columns(
             &trigger_names_query(schema, table),
@@ -287,21 +332,14 @@ async fn fetch_triggers(
         .await?;
     expect_columns(&names, TRIGGER_NAME_RESULT_COLUMNS)?;
 
-    let mut triggers = Vec::with_capacity(names.values.len());
-    for row in &names.values {
-        let [name] = row.as_slice() else {
-            return Err(metadata_shape_error("TRIGGERS row"));
-        };
-        let name = required_text(name, "TRIGGER_NAME")?;
-        let result = session
-            .execute(&show_create_trigger_query(schema, name))
-            .await?;
-        triggers.push(Trigger {
-            name: name.to_string(),
-            definition: parse_show_create_ddl(&result, TRIGGER_SHOW_CREATE_RESULT_COLUMNS)?,
-        });
-    }
-    Ok(triggers)
+    names
+        .values
+        .iter()
+        .map(|row| match row.as_slice() {
+            [name] => required_text(name, "TRIGGER_NAME").map(str::to_string),
+            _ => Err(metadata_shape_error("TRIGGERS row")),
+        })
+        .collect()
 }
 
 fn parse_show_create_ddl(
@@ -578,14 +616,27 @@ while IFS= read -r line; do
       printf '%s\n' '<resultset><row><field name="CONSTRAINT_NAME">fk_items_self</field><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items</field><field name="COLUMN_NAME">id</field><field name="REFERENCED_TABLE_SCHEMA">app</field><field name="REFERENCED_TABLE_NAME">items</field><field name="REFERENCED_COLUMN_NAME">id</field><field name="ORDINAL_POSITION">1</field><field name="UPDATE_RULE">CASCADE</field><field name="DELETE_RULE">CASCADE</field></row></resultset>'
       ;;
     *TRIGGERS*)
-      if [ "$mode" = "view" ]; then
+      if [ "$mode" = "view" ] || [ -e "$(dirname "$0")/trigger-changed" ]; then
         printf '%s\n' '<resultset></resultset>'
       else
         printf '%s\n' '<resultset><row><field name="TRIGGER_NAME">items_audit</field></row></resultset>'
       fi
       ;;
     *SHOW\ CREATE\ TRIGGER*)
-      printf '%s\n' '<resultset><row><field name="Trigger">items_audit</field><field name="sql_mode">STRICT_TRANS_TABLES</field><field name="SQL Original Statement">CREATE TRIGGER items_audit BEFORE INSERT ON items FOR EACH ROW SET NEW.id = NEW.id</field></row></resultset>'
+      case "$mode" in
+        trigger-dropped)
+          touch "$(dirname "$0")/trigger-changed"
+          printf '%s\n' 'ERROR 1360 (HY000) at line 10: Trigger does not exist' >&2
+          exit 1
+          ;;
+        trigger-moved)
+          touch "$(dirname "$0")/trigger-changed"
+          printf '%s\n' '<resultset><row><field name="Trigger">items_audit</field><field name="sql_mode">STRICT_TRANS_TABLES</field><field name="SQL Original Statement">CREATE TRIGGER items_audit BEFORE INSERT ON other_items FOR EACH ROW SET NEW.id = NEW.id</field></row></resultset>'
+          ;;
+        *)
+          printf '%s\n' '<resultset><row><field name="Trigger">items_audit</field><field name="sql_mode">STRICT_TRANS_TABLES</field><field name="SQL Original Statement">CREATE TRIGGER items_audit BEFORE INSERT ON items FOR EACH ROW SET NEW.id = NEW.id</field></row></resultset>'
+          ;;
+      esac
       ;;
     *SHOW\ CREATE\ VIEW*)
       if [ "$mode" = "view" ]; then
@@ -721,6 +772,29 @@ done
             assert!(positions.windows(2).all(|pair| pair[0] < pair[1]));
             assert_process_stopped(&transcript);
             assert_option_file_removed(&transcript);
+        }
+    }
+
+    #[tokio::test]
+    async fn inspector_detail_retries_when_a_trigger_is_dropped_or_moved() {
+        for mode in ["trigger-dropped", "trigger-moved"] {
+            let (_directory, program, transcript) = fake_metadata_cli(mode);
+            let detail = fetch_table_detail_with_program(
+                &connection_config("user", "password", "app"),
+                "app",
+                "items",
+                OsStr::new(&program),
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap_or_else(|err| panic!("{mode}: {err:?}"));
+
+            assert_eq!(detail.name, "items");
+            assert!(detail.triggers.is_empty());
+            assert!(detail.source_ddl().is_some());
+            let transcript = std::fs::read_to_string(transcript).unwrap();
+            assert_eq!(transcript.matches("process=").count(), 2);
+            assert_eq!(transcript.matches("SHOW CREATE TRIGGER").count(), 1);
         }
     }
 

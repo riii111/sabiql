@@ -16,7 +16,6 @@ use crate::app::model::shared::flash_timer::{FlashId, FlashTimerStore};
 use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::inspector_tab::InspectorTab;
 use crate::app::model::shared::settings::IconMode;
-use crate::app::model::shared::ui_state::text_display_width;
 use crate::app::model::shared::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
     widths_fingerprint,
@@ -643,6 +642,9 @@ impl Inspector {
         horizontal_offset: usize,
         theme: &ThemePalette,
     ) -> ViewportPlan {
+        use unicode_segmentation::UnicodeSegmentation;
+        use unicode_width::UnicodeWidthStr;
+
         use crate::primitives::atoms::scroll_indicator::{
             VerticalScrollParams, clamp_scroll_offset, render_vertical_scroll_indicator_bar,
         };
@@ -656,7 +658,11 @@ impl Inspector {
         let visible_lines = content_area.height as usize;
         let content_width = lines
             .iter()
-            .map(|line| text_display_width(line))
+            .map(|line| {
+                line.graphemes(true)
+                    .map(UnicodeWidthStr::width)
+                    .sum::<usize>()
+            })
             .max()
             .unwrap_or_default();
         let clamped_scroll_offset = clamp_scroll_offset(scroll_offset, visible_lines, total_lines);
@@ -1117,7 +1123,7 @@ mod tests {
             "CREATE TRIGGER audit_changes AFTER UPDATE ON items".to_string(),
             "BEGIN".to_string(),
             format!(
-                "    SELECT '{}'; END",
+                "    SELECT '{}لا'; END",
                 "x".repeat(usize::from(u16::MAX) + 30)
             ),
         ];

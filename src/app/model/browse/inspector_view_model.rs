@@ -280,10 +280,15 @@ impl InspectorViewModel {
                     }
                     lines.extend(
                         format!("Name: {}", trigger.name)
-                            .lines()
-                            .map(str::to_string),
+                            .split_terminator('\n')
+                            .map(escape_trigger_controls),
                     );
-                    lines.extend(trigger.definition.lines().map(str::to_string));
+                    lines.extend(
+                        trigger
+                            .definition
+                            .split_terminator('\n')
+                            .map(escape_trigger_controls),
+                    );
                 }
                 let empty_state = lines.is_empty().then_some(InspectorEmptyState::NoTriggers);
                 (InspectorSection::Triggers { lines }, empty_state, None)
@@ -456,6 +461,18 @@ fn foreign_key_row(fk: &ForeignKey) -> InspectorForeignKeyRow {
         on_update: fk.on_update.to_string(),
         on_delete: fk.on_delete.to_string(),
     }
+}
+
+fn escape_trigger_controls(line: &str) -> String {
+    let mut displayed = String::with_capacity(line.len());
+    for ch in line.chars() {
+        if ch.is_control() {
+            displayed.extend(ch.escape_debug());
+        } else {
+            displayed.push(ch);
+        }
+    }
+    displayed
 }
 
 fn rls_rows(rls: &RlsInfo) -> Vec<InspectorRlsRow> {
@@ -832,9 +849,8 @@ mod tests {
         let mut table = table();
         table.triggers.push(Trigger {
             name: "users_audit".to_string(),
-            definition:
-                "CREATE TRIGGER users_audit AFTER INSERT ON users\n  BEGIN\n    SELECT 1;\n  END"
-                    .to_string(),
+            definition: "CREATE TRIGGER users_audit AFTER INSERT ON users\n  BEGIN\n    SELECT 'one\ttwo';\n  END"
+                .to_string(),
         });
         let model = build_loaded(
             &EngineFeatureProfile::for_database_type(database_type),
@@ -857,7 +873,7 @@ mod tests {
                 "Name: users_audit",
                 "CREATE TRIGGER users_audit AFTER INSERT ON users",
                 "  BEGIN",
-                "    SELECT 1;",
+                "    SELECT 'one\\ttwo';",
                 "  END",
             ]
         );
