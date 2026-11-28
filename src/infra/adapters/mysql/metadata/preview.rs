@@ -163,7 +163,7 @@ fn preview_metadata_from_columns(
         .cloned()
         .collect::<Vec<_>>();
     if visible_columns.is_empty() {
-        return Err(DbOperationError::MetadataParseFailed(format!(
+        return Err(DbOperationError::QueryFailed(format!(
             "MySQL object has no visible columns: {schema}.{table}"
         )));
     }
@@ -205,12 +205,12 @@ pub(in crate::adapters::mysql) fn convert_preview_values_with_binary_charset(
                 identity: (!identity_columns.is_empty()).then(Vec::new),
             });
         }
-        return Err(DbOperationError::MetadataParseFailed(
+        return Err(DbOperationError::QueryFailed(
             "MySQL preview returned an unexpected column count".to_string(),
         ));
     }
     if result_columns != expected_columns {
-        return Err(DbOperationError::MetadataParseFailed(
+        return Err(DbOperationError::QueryFailed(
             "MySQL preview returned unexpected columns".to_string(),
         ));
     }
@@ -218,7 +218,7 @@ pub(in crate::adapters::mysql) fn convert_preview_values_with_binary_charset(
         .into_iter()
         .map(|row| {
             if row.len() != expected_columns.len() {
-                return Err(DbOperationError::MetadataParseFailed(
+                return Err(DbOperationError::QueryFailed(
                     "MySQL preview returned an unexpected row width".to_string(),
                 ));
             }
@@ -591,10 +591,7 @@ done
         )
         .await;
 
-        assert!(matches!(
-            result,
-            Err(DbOperationError::MetadataParseFailed(_))
-        ));
+        assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
         let log = fs::read_to_string(&log_path).expect("fake MySQL transcript");
         assert!(log.contains("INFORMATION_SCHEMA.COLUMNS"));
         assert!(!log.contains("LIMIT 2 OFFSET 1"), "{log}");

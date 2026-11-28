@@ -36,7 +36,7 @@ fn split_outside_sqlite_quotes(input: &str, delimiter: u8) -> Result<Vec<&str>, 
         }
     }
     if in_quote {
-        return Err(DbOperationError::MetadataParseFailed(
+        return Err(DbOperationError::QueryFailed(
             "unterminated SQLite quoted output".to_string(),
         ));
     }
@@ -73,9 +73,7 @@ fn parse_unistr_inner_sql_escapes(value: &str) -> Result<String, DbOperationErro
     while let Some(ch) = chars.next() {
         if ch == '\\' {
             let next = chars.next().ok_or_else(|| {
-                DbOperationError::MetadataParseFailed(
-                    "invalid SQLite unistr escape sequence".to_string(),
-                )
+                DbOperationError::QueryFailed("invalid SQLite unistr escape sequence".to_string())
             })?;
             decoded.push('\\');
             if next != '\\' {
@@ -93,13 +91,13 @@ fn parse_unistr_inner_sql_string(value: &str) -> Result<String, DbOperationError
         .strip_prefix("unistr(")
         .and_then(|rest| rest.strip_suffix(')'))
         .ok_or_else(|| {
-            DbOperationError::MetadataParseFailed("invalid SQLite unistr literal".to_string())
+            DbOperationError::QueryFailed("invalid SQLite unistr literal".to_string())
         })?;
     let inner = inner
         .strip_prefix('\'')
         .and_then(|rest| rest.strip_suffix('\''))
         .ok_or_else(|| {
-            DbOperationError::MetadataParseFailed("invalid SQLite unistr literal".to_string())
+            DbOperationError::QueryFailed("invalid SQLite unistr literal".to_string())
         })?;
 
     let mut decoded = String::new();
@@ -108,12 +106,12 @@ fn parse_unistr_inner_sql_string(value: &str) -> Result<String, DbOperationError
         match ch {
             '\'' => {
                 let next = chars.next().ok_or_else(|| {
-                    DbOperationError::MetadataParseFailed(
+                    DbOperationError::QueryFailed(
                         "invalid SQLite unistr SQL string quote".to_string(),
                     )
                 })?;
                 if next != '\'' {
-                    return Err(DbOperationError::MetadataParseFailed(
+                    return Err(DbOperationError::QueryFailed(
                         "invalid SQLite unistr SQL string quote".to_string(),
                     ));
                 }
@@ -136,9 +134,7 @@ fn decode_unistr_quoted_text(value: &str) -> Result<String, DbOperationError> {
         }
 
         let escape = chars.next().ok_or_else(|| {
-            DbOperationError::MetadataParseFailed(
-                "invalid SQLite unistr escape sequence".to_string(),
-            )
+            DbOperationError::QueryFailed("invalid SQLite unistr escape sequence".to_string())
         })?;
         if escape == '\\' {
             decoded.push('\\');
@@ -150,26 +146,22 @@ fn decode_unistr_quoted_text(value: &str) -> Result<String, DbOperationError> {
             '+' => (6, String::new()),
             escape if escape.is_ascii_hexdigit() => (4, escape.to_string()),
             _ => {
-                return Err(DbOperationError::MetadataParseFailed(
+                return Err(DbOperationError::QueryFailed(
                     "invalid SQLite unistr escape sequence".to_string(),
                 ));
             }
         };
         hex.extend(chars.by_ref().take(length - hex.len()));
         if hex.len() != length {
-            return Err(DbOperationError::MetadataParseFailed(
+            return Err(DbOperationError::QueryFailed(
                 "invalid SQLite unistr escape sequence".to_string(),
             ));
         }
         let codepoint = u32::from_str_radix(&hex, 16).map_err(|_| {
-            DbOperationError::MetadataParseFailed(
-                "invalid SQLite unistr escape sequence".to_string(),
-            )
+            DbOperationError::QueryFailed("invalid SQLite unistr escape sequence".to_string())
         })?;
         let character = char::from_u32(codepoint).ok_or_else(|| {
-            DbOperationError::MetadataParseFailed(
-                "invalid SQLite unistr escape sequence".to_string(),
-            )
+            DbOperationError::QueryFailed("invalid SQLite unistr escape sequence".to_string())
         })?;
         decoded.push(character);
     }
@@ -193,16 +185,16 @@ fn decode_preview_transport_unistr(value: &str) -> Result<Option<String>, DbOper
 
 fn decode_hex_bytes(hex: &str) -> Result<Vec<u8>, DbOperationError> {
     if !hex.len().is_multiple_of(2) {
-        return Err(DbOperationError::MetadataParseFailed(
+        return Err(DbOperationError::QueryFailed(
             "invalid SQLite BLOB hex literal".to_string(),
         ));
     }
     let mut bytes = Vec::with_capacity(hex.len() / 2);
     for pair in hex.as_bytes().as_chunks::<2>().0 {
         let raw = std::str::from_utf8(pair)
-            .map_err(|error| DbOperationError::MetadataParseFailed(error.to_string()))?;
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
         let byte = u8::from_str_radix(raw, 16)
-            .map_err(|error| DbOperationError::MetadataParseFailed(error.to_string()))?;
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
         bytes.push(byte);
     }
     Ok(bytes)
@@ -335,21 +327,17 @@ pub(in crate::adapters::sqlite) fn last_sqlite_result_set(
             && record.values[1].as_str() == Some(marker_col.as_str())
         {
             let value = records.get(index + 1).ok_or_else(|| {
-                DbOperationError::CommandTagParseFailed(
-                    "missing SQLite result marker row".to_string(),
-                )
+                DbOperationError::QueryFailed("missing SQLite result marker row".to_string())
             })?;
             let marker_value = value
                 .values
                 .get(1)
                 .and_then(QueryValue::as_str)
                 .ok_or_else(|| {
-                    DbOperationError::CommandTagParseFailed(
-                        "invalid SQLite result marker".to_string(),
-                    )
+                    DbOperationError::QueryFailed("invalid SQLite result marker".to_string())
                 })?;
             if marker_value != marker {
-                return Err(DbOperationError::CommandTagParseFailed(
+                return Err(DbOperationError::QueryFailed(
                     "mismatched SQLite result marker".to_string(),
                 ));
             }
@@ -388,9 +376,7 @@ pub(in crate::adapters::sqlite) fn strip_sqlite_probes(
         {
             removed_probe = true;
             let value = records.get(index + 1).ok_or_else(|| {
-                DbOperationError::CommandTagParseFailed(
-                    "missing SQLite statement probe row".to_string(),
-                )
+                DbOperationError::QueryFailed("missing SQLite statement probe row".to_string())
             })?;
             let stmt_index = value
                 .values
@@ -398,7 +384,7 @@ pub(in crate::adapters::sqlite) fn strip_sqlite_probes(
                 .and_then(QueryValue::as_str)
                 .and_then(|raw| raw.parse::<usize>().ok())
                 .ok_or_else(|| {
-                    DbOperationError::CommandTagParseFailed(
+                    DbOperationError::QueryFailed(
                         "invalid SQLite statement probe index".to_string(),
                     )
                 })?;
@@ -408,7 +394,7 @@ pub(in crate::adapters::sqlite) fn strip_sqlite_probes(
                 .and_then(QueryValue::as_str)
                 .and_then(|raw| raw.parse::<usize>().ok())
                 .ok_or_else(|| {
-                    DbOperationError::CommandTagParseFailed(
+                    DbOperationError::QueryFailed(
                         "invalid SQLite statement probe changes".to_string(),
                     )
                 })?;
@@ -444,11 +430,11 @@ fn last_csv_cell(stdout: &str) -> Result<Option<String>, DbOperationError> {
 pub(in crate::adapters::sqlite) fn parse_affected_rows(
     stdout: &str,
 ) -> Result<usize, DbOperationError> {
-    let value = last_csv_cell(stdout)?
-        .ok_or_else(|| DbOperationError::CommandTagParseFailed(stdout.to_string()))?;
+    let value =
+        last_csv_cell(stdout)?.ok_or_else(|| DbOperationError::QueryFailed(stdout.to_string()))?;
     value
         .parse::<usize>()
-        .map_err(|error| DbOperationError::CommandTagParseFailed(error.to_string()))
+        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))
 }
 
 #[cfg(test)]
@@ -576,7 +562,7 @@ mod tests {
 
             assert!(matches!(
                 result,
-                Err(DbOperationError::MetadataParseFailed(message))
+                Err(DbOperationError::QueryFailed(message))
                     if message == "unterminated SQLite quoted output"
             ));
         }
@@ -720,7 +706,7 @@ mod tests {
 
             assert!(matches!(
                 error,
-                DbOperationError::CommandTagParseFailed(details) if details.is_empty()
+                DbOperationError::QueryFailed(details) if details.is_empty()
             ));
         }
 
@@ -730,7 +716,7 @@ mod tests {
 
             assert!(matches!(
                 error,
-                DbOperationError::CommandTagParseFailed(details)
+                DbOperationError::QueryFailed(details)
                     if details.contains("invalid digit found in string")
             ));
         }
@@ -741,7 +727,7 @@ mod tests {
 
             assert!(matches!(
                 error,
-                DbOperationError::CommandTagParseFailed(details)
+                DbOperationError::QueryFailed(details)
                     if details.contains("cannot parse integer from empty string")
             ));
         }

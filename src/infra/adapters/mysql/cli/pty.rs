@@ -108,7 +108,7 @@ pub(super) async fn read_one_pty_resultset_with_diagnostics(
                     client_packet_limit_bytes,
                 ));
             }
-            return Err(DbOperationError::EmptyResponse(
+            return Err(DbOperationError::QueryFailed(
                 "mysql query returned no resultset".to_string(),
             ));
         }

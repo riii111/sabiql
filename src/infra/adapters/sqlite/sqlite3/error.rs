@@ -61,14 +61,6 @@ fn classify_by_stderr(details: &str) -> DbOperationError {
         return DbOperationError::PermissionDenied(details.to_string());
     }
 
-    if lower.contains("foreign key constraint failed") {
-        return DbOperationError::ForeignKeyViolation(details.to_string());
-    }
-
-    if lower.contains("unique constraint failed") {
-        return DbOperationError::UniqueViolation(details.to_string());
-    }
-
     if is_missing_object(&lower) {
         return DbOperationError::ObjectMissing(details.to_string());
     }
@@ -140,8 +132,6 @@ mod tests {
     enum ClassifiedKind {
         SafeMode,
         PermissionDenied,
-        ForeignKeyViolation,
-        UniqueViolation,
         LockTimeout,
         ObjectMissing,
         QueryFailed,
@@ -155,8 +145,6 @@ mod tests {
                 ..
             } => ClassifiedKind::SafeMode,
             DbOperationError::PermissionDenied(_) => ClassifiedKind::PermissionDenied,
-            DbOperationError::ForeignKeyViolation(_) => ClassifiedKind::ForeignKeyViolation,
-            DbOperationError::UniqueViolation(_) => ClassifiedKind::UniqueViolation,
             DbOperationError::LockTimeout(_) => ClassifiedKind::LockTimeout,
             DbOperationError::ObjectMissing(_) => ClassifiedKind::ObjectMissing,
             DbOperationError::QueryFailed(_) => ClassifiedKind::QueryFailed,
@@ -182,13 +170,10 @@ mod tests {
             "Error: attempt to write a readonly database",
             ClassifiedKind::PermissionDenied
         )]
-        #[case(
-            "Error: FOREIGN KEY constraint failed",
-            ClassifiedKind::ForeignKeyViolation
-        )]
+        #[case("Error: FOREIGN KEY constraint failed", ClassifiedKind::QueryFailed)]
         #[case(
             "Error: UNIQUE constraint failed: users.email",
-            ClassifiedKind::UniqueViolation
+            ClassifiedKind::QueryFailed
         )]
         #[case(
             "Parse error: near \"SELEKT\": syntax error",
@@ -206,20 +191,7 @@ mod tests {
             let error = classify_query_error(input);
 
             assert_eq!(classified_kind(&error), expected);
-        }
-
-        #[test]
-        fn lock_readonly_and_constraints_use_distinct_summaries() {
-            let lock = classify_query_error("Error: database is locked");
-            let readonly = classify_query_error("Error: attempt to write a readonly database");
-            let foreign_key = classify_query_error("Error: FOREIGN KEY constraint failed");
-            let unique = classify_query_error("Error: UNIQUE constraint failed: users.email");
-
-            assert_ne!(lock.summary(), readonly.summary());
-            assert_ne!(lock.summary(), foreign_key.summary());
-            assert_ne!(lock.summary(), unique.summary());
-            assert_ne!(readonly.summary(), foreign_key.summary());
-            assert_ne!(foreign_key.summary(), unique.summary());
+            assert!(error.masked_details().contains(input));
         }
 
         #[test]

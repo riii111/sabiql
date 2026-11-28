@@ -58,8 +58,6 @@ fn classify_by_sqlstate(sqlstate: &str, details: &str) -> DbOperationError {
         "28000" | "28P01" => connection_failed_with_kind(ConnectionFailureKind::Auth, details),
         "3D000" => connection_failed_with_kind(ConnectionFailureKind::DatabaseNotFound, details),
         "25006" | "42501" => DbOperationError::PermissionDenied(details.to_string()),
-        "23503" => DbOperationError::ForeignKeyViolation(details.to_string()),
-        "23505" => DbOperationError::UniqueViolation(details.to_string()),
         "40001" | "40P01" | "55P03" => DbOperationError::LockTimeout(details.to_string()),
         "57014" => classify_query_canceled(details),
         "42P01" | "42703" => DbOperationError::ObjectMissing(details.to_string()),
@@ -91,18 +89,6 @@ fn classify_by_stderr(details: &str) -> DbOperationError {
 
     if lower.contains("could not connect to server") {
         return DbOperationError::ConnectionFailed(details.to_string());
-    }
-
-    if lower.contains("violates foreign key constraint") || lower.contains("foreign key constraint")
-    {
-        return DbOperationError::ForeignKeyViolation(details.to_string());
-    }
-
-    if lower.contains("duplicate key value")
-        || lower.contains("violates unique constraint")
-        || lower.contains("unique constraint")
-    {
-        return DbOperationError::UniqueViolation(details.to_string());
     }
 
     if lower.contains("lock not available")
@@ -302,8 +288,6 @@ mod tests {
         fn classification_name(error: DbOperationError) -> &'static str {
             match error {
                 DbOperationError::PermissionDenied(_) => "PermissionDenied",
-                DbOperationError::ForeignKeyViolation(_) => "ForeignKeyViolation",
-                DbOperationError::UniqueViolation(_) => "UniqueViolation",
                 DbOperationError::LockTimeout(_) => "LockTimeout",
                 DbOperationError::Timeout(_) => "Timeout",
                 DbOperationError::ObjectMissing(_) => "ObjectMissing",
@@ -329,11 +313,11 @@ mod tests {
         )]
         #[case(
             "ERROR:  23503: insert or update on table violates foreign key constraint",
-            "ForeignKeyViolation"
+            "QueryFailed"
         )]
         #[case(
             "ERROR:  23505: duplicate key value violates unique constraint",
-            "UniqueViolation"
+            "QueryFailed"
         )]
         #[case("ERROR:  55P03: lock not available", "LockTimeout")]
         #[case(
@@ -432,10 +416,7 @@ mod tests {
 
         #[rstest]
         #[case("ERROR: permission denied for table users", "PermissionDenied")]
-        #[case(
-            "ERROR: duplicate key value violates unique constraint",
-            "UniqueViolation"
-        )]
+        #[case("ERROR: duplicate key value violates unique constraint", "QueryFailed")]
         #[case("ERROR: relation \"users\" does not exist", "ObjectMissing")]
         #[case("server closed the connection unexpectedly", "ConnectionLost")]
         #[case("ERROR: canceling statement due to statement timeout", "Timeout")]

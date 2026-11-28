@@ -160,9 +160,7 @@ pub(super) async fn execute_metadata_query(
     let (capabilities, results) =
         execute_metadata_queries_in_session(target, &[(query, expected_columns)]).await?;
     let result = results.into_iter().next().ok_or_else(|| {
-        DbOperationError::MetadataParseFailed(
-            "MySQL metadata query returned no result set".to_string(),
-        )
+        DbOperationError::QueryFailed("MySQL metadata query returned no result set".to_string())
     })?;
     Ok((capabilities.lower_case_table_names, result))
 }
@@ -275,7 +273,7 @@ fn parse_table_metadata(
                 "BASE TABLE" => TableKind::Table,
                 "VIEW" => TableKind::View,
                 value => {
-                    return Err(DbOperationError::MetadataParseFailed(format!(
+                    return Err(DbOperationError::QueryFailed(format!(
                         "unexpected MySQL table type: {value}"
                     )));
                 }
@@ -283,9 +281,7 @@ fn parse_table_metadata(
             let row_count_estimate = optional_text(&row[3], "TABLE_ROWS")?
                 .map(|value| {
                     value.parse::<i64>().map_err(|_| {
-                        DbOperationError::MetadataParseFailed(
-                            "invalid MySQL TABLE_ROWS value".to_string(),
-                        )
+                        DbOperationError::QueryFailed("invalid MySQL TABLE_ROWS value".to_string())
                     })
                 })
                 .transpose()?;
@@ -549,7 +545,7 @@ pub(super) fn parse_boolean_flag(
     match required_text(value, field)? {
         "0" | "NO" => Ok(false),
         "1" | "YES" => Ok(true),
-        _ => Err(DbOperationError::MetadataParseFailed(format!(
+        _ => Err(DbOperationError::QueryFailed(format!(
             "invalid MySQL metadata boolean: {field}"
         ))),
     }
@@ -557,7 +553,7 @@ pub(super) fn parse_boolean_flag(
 
 fn parse_fk_action(value: &QueryValue, field: &str) -> Result<FkAction, DbOperationError> {
     required_text(value, field)?.parse().map_err(|error| {
-        DbOperationError::MetadataParseFailed(format!("invalid MySQL foreign key action: {error}"))
+        DbOperationError::QueryFailed(format!("invalid MySQL foreign key action: {error}"))
     })
 }
 
@@ -588,7 +584,7 @@ pub(super) fn required_text<'a>(
     field: &str,
 ) -> Result<&'a str, DbOperationError> {
     optional_text(value, field)?.ok_or_else(|| {
-        DbOperationError::MetadataParseFailed(format!("MySQL metadata field is NULL: {field}"))
+        DbOperationError::QueryFailed(format!("MySQL metadata field is NULL: {field}"))
     })
 }
 
@@ -599,7 +595,7 @@ pub(super) fn optional_text<'a>(
     match value {
         QueryValue::Null => Ok(None),
         QueryValue::Text(value) | QueryValue::SqlLiteral(value) => Ok(Some(value)),
-        QueryValue::Blob(_) => Err(DbOperationError::MetadataParseFailed(format!(
+        QueryValue::Blob(_) => Err(DbOperationError::QueryFailed(format!(
             "MySQL metadata field is binary: {field}"
         ))),
     }
@@ -625,14 +621,10 @@ pub(super) fn parse_optional_positive_i32(
     optional_text(value, field)?
         .map(|value| {
             let value = value.parse::<i32>().map_err(|_| {
-                DbOperationError::MetadataParseFailed(format!(
-                    "invalid MySQL metadata integer: {field}"
-                ))
+                DbOperationError::QueryFailed(format!("invalid MySQL metadata integer: {field}"))
             })?;
             (value > 0).then_some(value).ok_or_else(|| {
-                DbOperationError::MetadataParseFailed(format!(
-                    "invalid MySQL metadata integer: {field}"
-                ))
+                DbOperationError::QueryFailed(format!("invalid MySQL metadata integer: {field}"))
             })
         })
         .transpose()
@@ -640,19 +632,19 @@ pub(super) fn parse_optional_positive_i32(
 
 fn parse_positive_i32_text(value: &str, field: &str) -> Result<i32, DbOperationError> {
     let value = value.parse::<i32>().map_err(|_| {
-        DbOperationError::MetadataParseFailed(format!("invalid MySQL metadata integer: {field}"))
+        DbOperationError::QueryFailed(format!("invalid MySQL metadata integer: {field}"))
     })?;
     if value > 0 {
         Ok(value)
     } else {
-        Err(DbOperationError::MetadataParseFailed(format!(
+        Err(DbOperationError::QueryFailed(format!(
             "invalid MySQL metadata ordinal: {field}"
         )))
     }
 }
 
 pub(super) fn metadata_shape_error(field: &str) -> DbOperationError {
-    DbOperationError::MetadataParseFailed(format!("unexpected MySQL metadata shape: {field}"))
+    DbOperationError::QueryFailed(format!("unexpected MySQL metadata shape: {field}"))
 }
 
 #[cfg(test)]
@@ -699,7 +691,7 @@ mod tests {
         let error = optional_nonempty_string(&QueryValue::Blob(vec![0xff]), "FIELD").unwrap_err();
         assert!(matches!(
             error,
-            DbOperationError::MetadataParseFailed(message)
+            DbOperationError::QueryFailed(message)
                 if message == "MySQL metadata field is binary: FIELD"
         ));
     }
