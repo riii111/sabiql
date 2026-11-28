@@ -129,6 +129,7 @@ impl EffectRunner {
                 let now = Instant::now();
                 let output = tui.draw(state, services, now)?;
                 state.apply_render_output(output);
+                state.motion.note_frame(now);
                 Ok(vec![])
             }
 

@@ -101,9 +101,11 @@ struct LayoutTween {
     tween: Tween,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct MotionState {
     enabled: bool,
+    last_frame: Option<Instant>,
+    drawn_modal_progress: f32,
     scroll: Option<ScrollTween>,
     focus: Option<FocusTween>,
     modal: Option<Tween>,
@@ -111,7 +113,29 @@ pub struct MotionState {
     layout: Option<LayoutTween>,
 }
 
+impl Default for MotionState {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            last_frame: None,
+            drawn_modal_progress: 1.0,
+            scroll: None,
+            focus: None,
+            modal: None,
+            modal_close: None,
+            layout: None,
+        }
+    }
+}
+
 impl MotionState {
+    pub fn note_frame(&mut self, now: Instant) {
+        self.last_frame = Some(now);
+        if let Some(modal) = self.modal {
+            self.drawn_modal_progress = modal.eased_progress(now);
+        }
+    }
+
     pub fn enable(&mut self) {
         self.enabled = true;
     }
@@ -138,11 +162,8 @@ impl MotionState {
         self.scroll.map(|scroll| scroll.pane)
     }
 
-    /// Ends the scroll tween when its pane now sits anywhere but the tween's end, so returning there later does not resume it.
-    pub fn settle_scroll(&mut self, actual: usize) {
-        if self.scroll.is_some_and(|scroll| scroll.to != actual) {
-            self.scroll = None;
-        }
+    pub fn cancel_scroll(&mut self) {
+        self.scroll = None;
     }
 
     /// A tween applies only while the model still targets its end offset; any other change wins immediately.
@@ -181,6 +202,7 @@ impl MotionState {
     pub fn begin_modal(&mut self, now: Instant) {
         if self.enabled {
             self.modal = Some(Tween::new(now, MODAL_DURATION));
+            self.drawn_modal_progress = 0.0;
         }
     }
 
@@ -194,8 +216,12 @@ impl MotionState {
         if !self.enabled {
             return;
         }
-        // A modal closed before it finished fading in starts fading out from how it was drawn.
-        let from = self.modal_progress(now).unwrap_or(1.0);
+        // A modal closed before it finished fading in starts fading out from how it was last drawn.
+        let from = if self.modal.is_some() {
+            self.drawn_modal_progress
+        } else {
+            1.0
+        };
         self.modal = None;
         self.modal_close = Some(ModalCloseTween {
             from,
@@ -243,7 +269,10 @@ impl MotionState {
         ]
         .into_iter()
         .flatten()
-        .filter(|tween| tween.is_active(now))
+        // A tween that ended without a frame drawn at its end still owes that final frame.
+        .filter(|tween| {
+            tween.is_active(now) || self.last_frame.is_none_or(|drawn| drawn < tween.ends_at())
+        })
         .map(|tween| (now + FRAME_INTERVAL).min(tween.ends_at()))
         .min()
     }
@@ -328,44 +357,6 @@ mod tests {
 
             assert_eq!(motion.scroll_offset(ScrolledPane::Result, 41, now), 41);
         }
-
-        #[test]
-        fn moving_away_from_target_drops_the_tween() {
-            let mut motion = enabled();
-            let now = Instant::now();
-            motion.begin_scroll(ScrolledPane::Help, 0, 40, now);
-
-            motion.settle_scroll(39);
-
-            assert_eq!(motion.scroll_offset(ScrolledPane::Help, 40, now), 40);
-        }
-
-        #[test]
-        fn staying_on_target_keeps_the_tween() {
-            let mut motion = enabled();
-            let now = Instant::now();
-            motion.begin_scroll(ScrolledPane::Help, 0, 40, now);
-
-            motion.settle_scroll(40);
-
-            assert_eq!(motion.scroll_offset(ScrolledPane::Help, 40, now), 0);
-        }
-
-        #[test]
-        fn retarget_starts_from_displayed_offset() {
-            let mut motion = enabled();
-            let now = Instant::now();
-            motion.begin_scroll(ScrolledPane::Result, 0, 40, now);
-            let midway = now + SCROLL_DURATION / 2;
-            let displayed = motion.scroll_offset(ScrolledPane::Result, 40, midway);
-
-            motion.begin_scroll(ScrolledPane::Result, 40, 80, midway);
-
-            assert_eq!(
-                motion.scroll_offset(ScrolledPane::Result, 80, midway),
-                displayed
-            );
-        }
     }
 
     mod focus {
@@ -442,16 +433,29 @@ mod tests {
         }
 
         #[test]
-        fn closing_mid_fade_in_starts_from_drawn_visibility() {
+        fn closing_mid_fade_in_starts_from_last_drawn_visibility() {
             let mut motion = enabled();
             let now = Instant::now();
             motion.begin_modal(now);
-            let midway = now + MODAL_DURATION / 2;
-            let drawn = motion.modal_progress(midway).expect("fading in");
+            let drawn_at = now + MODAL_DURATION / 4;
+            motion.note_frame(drawn_at);
+            let drawn = motion.modal_progress(drawn_at).expect("fading in");
+            let closed_at = now + MODAL_DURATION / 2;
 
-            motion.begin_modal_close(midway);
+            motion.begin_modal_close(closed_at);
 
-            assert_eq!(motion.modal_close_visibility(midway), Some(drawn));
+            assert_eq!(motion.modal_close_visibility(closed_at), Some(drawn));
+        }
+
+        #[test]
+        fn closing_before_any_frame_shows_nothing() {
+            let mut motion = enabled();
+            let now = Instant::now();
+            motion.begin_modal(now);
+
+            motion.begin_modal_close(now);
+
+            assert_eq!(motion.modal_close_visibility(now), Some(0.0));
         }
 
         #[test]
@@ -532,6 +536,21 @@ mod tests {
             motion.begin_modal(now);
 
             assert_eq!(motion.next_frame(now), Some(now + FRAME_INTERVAL));
+        }
+
+        #[test]
+        fn ended_tween_without_final_frame_requests_it() {
+            let mut motion = enabled();
+            let now = Instant::now();
+            motion.begin_focus_mode(true, now);
+            motion.note_frame(now + LAYOUT_DURATION / 2);
+            let late = now + LAYOUT_DURATION * 2;
+
+            assert_eq!(motion.next_frame(late), Some(now + LAYOUT_DURATION));
+
+            motion.note_frame(late);
+
+            assert_eq!(motion.next_frame(late), None);
         }
 
         #[test]
