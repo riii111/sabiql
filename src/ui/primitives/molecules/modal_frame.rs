@@ -4,9 +4,7 @@ use ratatui::style::Color;
 use ratatui::widgets::Clear;
 
 use crate::primitives::molecules::FooterHintBar;
-use crate::primitives::molecules::overlay::{
-    centered_rect, modal_block, render_modal_shadow, render_scrim,
-};
+use crate::primitives::molecules::overlay::{centered_rect, modal_block, render_scrim};
 use crate::theme::ThemePalette;
 
 pub fn render_modal(
@@ -40,7 +38,6 @@ pub fn render_modal_with_border_color(
     let area = centered_rect(frame.area(), width, height);
 
     render_scrim(frame, theme);
-    render_modal_shadow(frame, area, theme);
     frame.render_widget(Clear, area);
 
     let block = modal_block(title.to_string(), hint.line(theme), border_color, theme);

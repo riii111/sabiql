@@ -5,7 +5,7 @@ use crate::app::model::shared::motion::FocusTransition;
 use crate::app::model::shared::render_output::{PaneArea, PaneAreas};
 use crate::theme::ThemePalette;
 
-// The scrim's DIM and the modal shadow cannot be interpolated, so they switch on halfway through the fade.
+// The scrim's DIM cannot be interpolated, so it switches on halfway through the fade.
 const SCRIM_SWITCH_PROGRESS: f32 = 0.5;
 
 pub(super) fn apply_focus_transition(
@@ -71,12 +71,12 @@ pub(super) fn apply_modal_fade(
 }
 
 fn is_scrim_cell(cell: &Cell, under: &Cell, theme: &ThemePalette) -> bool {
-    // The scrim only recolors and dims what was drawn before, and the shadow only adds a background.
+    // The scrim only recolors and dims what was drawn before.
     // Any other change, such as a blank cell cleared inside the modal, belongs to the modal itself.
     cell.symbol() == under.symbol()
         && cell.fg == theme.semantic.text.muted
         && cell.modifier == under.modifier | Modifier::DIM
-        && (cell.bg == under.bg || cell.bg == theme.component.modal.shadow)
+        && cell.bg == under.bg
 }
 
 fn fade_scrim_cell(cell: &mut Cell, under: &Cell, progress: f32, theme: &ThemePalette) {
@@ -87,7 +87,6 @@ fn fade_scrim_cell(cell: &mut Cell, under: &Cell, progress: f32, theme: &ThemePa
         progress,
     );
     if progress < SCRIM_SWITCH_PROGRESS {
-        cell.bg = under.bg;
         cell.modifier = under.modifier;
     }
     cell.fg = fg;
@@ -326,21 +325,6 @@ mod tests {
             apply_modal_fade(&mut buf, &background, 0.0, THEME);
 
             assert_eq!(buf[(3, 2)], Cell::default());
-        }
-
-        #[test]
-        fn shadow_appears_with_the_dim() {
-            let background = background();
-            let mut buf = scrimmed(&background);
-            buf[(0, 0)].bg = THEME.component.modal.shadow;
-
-            apply_modal_fade(&mut buf, &background, 0.0, THEME);
-            assert_eq!(buf[(0, 0)].bg, background[(0, 0)].bg);
-
-            let mut buf = scrimmed(&background);
-            buf[(0, 0)].bg = THEME.component.modal.shadow;
-            apply_modal_fade(&mut buf, &background, 0.9, THEME);
-            assert_eq!(buf[(0, 0)].bg, THEME.component.modal.shadow);
         }
 
         #[test]
