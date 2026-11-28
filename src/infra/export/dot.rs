@@ -2,7 +2,8 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::app::ports::outbound::{ErDiagramExporter, ErExportResult};
+use crate::app::ports::outbound::{ErDiagramExporter, ErExportError, ErExportResult};
+use crate::config::get_cache_dir;
 use crate::domain::ErTableInfo;
 use crate::export::graphviz::{GraphvizError, GraphvizRunner, ViewerError, ViewerLauncher};
 
@@ -46,12 +47,101 @@ fn open_with_default_viewer(path: &Path) -> Result<(), ViewerError> {
 
 #[cfg(any(target_os = "freebsd", target_os = "linux"))]
 fn open_with_default_viewer(path: &Path) -> Result<(), ViewerError> {
-    spawn_viewer("xdg-open", &[], path)
+    // gio reads the desktop entry and passes the path as a separate argument; it never
+    // consults the SVG file association or invokes a shell with user-controlled text.
+    let mut data_dirs = Vec::new();
+    if let Some(path) = std::env::var_os("XDG_DATA_HOME").filter(|v| !v.is_empty()) {
+        data_dirs.push(PathBuf::from(path));
+    } else if let Some(home) = std::env::var_os("HOME") {
+        data_dirs.push(PathBuf::from(home).join(".local/share"));
+    }
+    let system_dirs = std::env::var_os("XDG_DATA_DIRS")
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "/usr/local/share:/usr/share".into());
+    data_dirs.extend(std::env::split_paths(&system_dirs));
+    launch_linux_browser(
+        path,
+        std::ffi::OsStr::new("xdg-settings"),
+        std::ffi::OsStr::new("gio"),
+        &data_dirs,
+    )
+}
+
+#[cfg(any(target_os = "freebsd", target_os = "linux"))]
+fn launch_linux_browser(
+    path: &Path,
+    settings_program: &std::ffi::OsStr,
+    gio: &std::ffi::OsStr,
+    data_dirs: &[PathBuf],
+) -> Result<(), ViewerError> {
+    let output = Command::new(settings_program)
+        .args(["get", "default-web-browser"])
+        .output()?;
+    if !output.status.success() {
+        return Err(ViewerError::DefaultBrowserUnavailable);
+    }
+    let desktop_id =
+        String::from_utf8(output.stdout).map_err(|_| ViewerError::DefaultBrowserUnavailable)?;
+    let desktop_id = desktop_id.trim();
+    if desktop_id.is_empty()
+        || desktop_id.contains(['/', '\\'])
+        || !desktop_id.ends_with(".desktop")
+    {
+        return Err(ViewerError::DefaultBrowserUnavailable);
+    }
+    let desktop = data_dirs
+        .iter()
+        .map(|dir| dir.join("applications").join(desktop_id))
+        .find(|candidate| candidate.is_file())
+        .ok_or(ViewerError::DefaultBrowserUnavailable)?;
+    Command::new(gio)
+        .arg("launch")
+        .arg(desktop)
+        .arg(path)
+        .spawn()?;
+    Ok(())
 }
 
 #[cfg(target_os = "windows")]
 fn open_with_default_viewer(path: &Path) -> Result<(), ViewerError> {
-    spawn_viewer("cmd", &["/C", "start", ""], path)
+    use std::os::windows::ffi::OsStringExt;
+    use windows_sys::Win32::UI::Shell::{ASSOCF_NONE, ASSOCSTR_EXECUTABLE, AssocQueryStringW};
+
+    let scheme: Vec<u16> = "https\0".encode_utf16().collect();
+    let mut length = 0u32;
+    // The first call asks Windows for the buffer size of the current HTTPS handler.
+    unsafe {
+        AssocQueryStringW(
+            ASSOCF_NONE,
+            ASSOCSTR_EXECUTABLE,
+            scheme.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null_mut(),
+            &mut length,
+        )
+    };
+    if length == 0 {
+        return Err(ViewerError::DefaultBrowserUnavailable);
+    }
+    let mut executable = vec![0u16; length as usize];
+    let status = unsafe {
+        AssocQueryStringW(
+            ASSOCF_NONE,
+            ASSOCSTR_EXECUTABLE,
+            scheme.as_ptr(),
+            std::ptr::null(),
+            executable.as_mut_ptr(),
+            &mut length,
+        )
+    };
+    if status < 0 || length <= 1 {
+        return Err(ViewerError::DefaultBrowserUnavailable);
+    }
+    executable.truncate(length as usize - 1);
+    Command::new(std::ffi::OsString::from_wide(&executable))
+        .arg(path)
+        .spawn()?;
+    Ok(())
 }
 
 #[cfg(not(any(
@@ -71,7 +161,7 @@ fn open_with_default_browser(path: &Path) -> Result<(), ViewerError> {
     if let Some(bundle_id) = default_web_browser_bundle_id() {
         return spawn_viewer("open", &["-b", &bundle_id], path);
     }
-    spawn_viewer("open", &[], path)
+    Err(ViewerError::DefaultBrowserUnavailable)
 }
 
 #[cfg(target_os = "macos")]
@@ -130,6 +220,7 @@ fn handler_bundle_id(handler: &serde_json::Value) -> Option<String> {
         .map(str::to_string)
 }
 
+#[cfg(target_os = "macos")]
 fn spawn_viewer(program: &str, args: &[&str], path: &Path) -> Result<(), ViewerError> {
     Command::new(program).args(args).arg(path).spawn()?;
     Ok(())
@@ -264,9 +355,8 @@ impl ErDiagramExporter for DotExporter {
         project_name: &str,
     ) -> ErExportResult<PathBuf> {
         let dot_content = Self::generate_full_dot(tables);
-        let cache_dir = crate::config::get_cache_dir(project_name).map_err(|error| {
-            crate::app::ports::outbound::ErExportError::Export(error.to_string())
-        })?;
+        let cache_dir = get_cache_dir(project_name)
+            .map_err(|error| ErExportError::Export(error.to_string()))?;
         self.export(&dot_content, filename, &cache_dir)
     }
 }
@@ -307,6 +397,50 @@ mod tests {
                 }],
             },
         ]
+    }
+
+    #[cfg(any(target_os = "freebsd", target_os = "linux"))]
+    #[test]
+    fn linux_uses_default_browser_desktop_entry_for_svg() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let applications = dir.path().join("applications");
+        std::fs::create_dir(&applications).unwrap();
+        std::fs::write(applications.join("browser.desktop"), "browser").unwrap();
+        std::fs::write(applications.join("image-editor.desktop"), "editor").unwrap();
+        let settings = dir.path().join("settings");
+        let gio = dir.path().join("gio");
+        let transcript = dir.path().join("transcript");
+        std::fs::write(&settings, "#!/bin/sh\nprintf 'browser.desktop\\n'\n").unwrap();
+        std::fs::write(
+            &gio,
+            format!(
+                "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\n",
+                transcript.display()
+            ),
+        )
+        .unwrap();
+        for program in [&settings, &gio] {
+            std::fs::set_permissions(program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let svg = dir.path().join("diagram.svg");
+        launch_linux_browser(
+            &svg,
+            settings.as_os_str(),
+            gio.as_os_str(),
+            &[dir.path().into()],
+        )
+        .unwrap();
+        for _ in 0..100 {
+            if let Ok(record) = std::fs::read_to_string(&transcript) {
+                assert!(record.contains("browser.desktop"));
+                assert!(!record.contains("image-editor.desktop"));
+                assert!(record.contains("diagram.svg"));
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        panic!("gio was not invoked");
     }
 
     mod generate_full_dot {

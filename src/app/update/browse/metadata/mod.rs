@@ -6,6 +6,8 @@ pub(in crate::update) mod table_detail;
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::er_state::ErStatus;
+use crate::model::shared::detail_view::ReadOnlyDetailState;
+use crate::model::shared::input_mode::InputMode;
 use crate::update::er::diagram::er_generate_from_cache;
 
 pub(super) fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
@@ -32,10 +34,15 @@ pub(super) fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
         .iter()
         .map(|(name, _)| name.as_str())
         .collect::<Vec<_>>()
-        .join(", ");
+        .join("\n");
     state
         .messages
-        .set_error(format!("ER failed for: {names}. 'e' to retry."));
+        .set_error("ER failed. Close details and press 'e' to retry.".to_string());
+    let content = format!("Close this view and press 'e' to retry.\n\nFailed tables:\n{names}");
+    let detail =
+        ReadOnlyDetailState::open(0, 0, "ER failures".to_string(), content.clone(), content);
+    state.er_failure_previous_detail = Some(std::mem::replace(&mut state.cell_detail, detail));
+    state.modal.push_mode(InputMode::CellDetail);
     vec![]
 }
 
@@ -51,7 +58,7 @@ mod tests {
     use crate::model::browse::session::TableDetailState;
     use crate::model::shared::input_mode::InputMode;
     use crate::ports::outbound::DbOperationError;
-    use crate::update::action::Action;
+    use crate::update::action::{Action, ModalKind};
     use crate::update::reducer::route;
     use std::sync::Arc;
     use std::time::Instant;
@@ -101,11 +108,46 @@ mod tests {
 
         assert!(check_er_completion(&mut state).is_empty());
         let message = state.messages.last_error().unwrap();
-        assert!(message.contains("public.orders, public.users"));
         assert!(message.contains("'e' to retry"));
+        assert_eq!(state.input_mode(), InputMode::CellDetail);
+        assert!(
+            state
+                .cell_detail
+                .content()
+                .contains("public.orders\npublic.users")
+        );
         assert!(state.table_prefetch.failed_prefetch("public.users"));
         assert!(state.table_prefetch.failed_prefetch("public.orders"));
         assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+        route(
+            &mut state,
+            Action::CloseModal(ModalKind::CellDetail),
+            Instant::now(),
+        );
+        assert_eq!(state.input_mode(), InputMode::Normal);
+        assert!(state.er_failure_previous_detail.is_none());
+    }
+
+    #[test]
+    fn er_failure_details_return_to_an_existing_cell_detail() {
+        let mut state = state_with_dsn("postgres://localhost/test");
+        state.cell_detail =
+            ReadOnlyDetailState::open(1, 2, "name".into(), "before".into(), "before".into());
+        state.modal.push_mode(InputMode::CellDetail);
+        let _ = state.er_preparation.start_waiting_run();
+        state.er_preparation.mark_fk_expanded();
+        state
+            .table_prefetch
+            .fail("public.users".into(), "denied".into());
+        check_er_completion(&mut state);
+        route(
+            &mut state,
+            Action::CloseModal(ModalKind::CellDetail),
+            Instant::now(),
+        );
+        assert_eq!(state.input_mode(), InputMode::CellDetail);
+        assert_eq!(state.cell_detail.content(), "before");
+        assert!(state.cell_detail.is_active());
     }
 
     mod freshness_guards {

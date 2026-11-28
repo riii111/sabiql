@@ -401,15 +401,9 @@ mod tests {
             ]],
         ))
         .unwrap();
-        let details = table_details_from_metadata(
-            &tables,
-            "App",
-            0,
-            columns.clone(),
-            foreign_keys.clone(),
-            unique_columns,
-        )
-        .unwrap();
+        let details =
+            table_details_from_metadata(&tables, "App", 0, columns, foreign_keys, unique_columns)
+                .unwrap();
         assert_eq!(details.len(), 2);
         let child = &details[0];
         assert_eq!(child.columns.len(), 2);

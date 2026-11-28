@@ -581,6 +581,32 @@ fn settings_overlay_keymap() {
 }
 
 #[test]
+fn er_failure_details_scroll_to_the_last_table() {
+    use sabiql_app::model::shared::detail_view::ReadOnlyDetailState;
+    use sabiql_app::update::action::{ScrollAmount, ScrollDirection};
+
+    let mut state = postgres_connected_state();
+    let names = (0..40)
+        .map(|i| format!("public.failed_table_{i:02}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let content = format!("Close this view and press 'e' to retry.\n\nFailed tables:\n{names}");
+    state.er_failure_previous_detail = Some(ReadOnlyDetailState::default());
+    state.cell_detail =
+        ReadOnlyDetailState::open(0, 0, "ER failures".into(), content.clone(), content);
+    state.modal.push_mode(InputMode::CellDetail);
+    let mut terminal = create_test_terminal_sized(60, 20);
+    let first = render_to_string(&mut terminal, &mut state);
+    assert!(first.contains("ER diagram failures"));
+    assert!(first.contains("failed_table_00"));
+    state
+        .cell_detail
+        .scroll(ScrollDirection::Down, ScrollAmount::ToEnd);
+    let last = render_to_string(&mut terminal, &mut state);
+    assert!(last.contains("failed_table_39"));
+}
+
+#[test]
 fn table_picker_overlay() {
     let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();

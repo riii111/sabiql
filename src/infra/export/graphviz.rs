@@ -18,6 +18,8 @@ pub enum ViewerError {
     LaunchFailed(#[from] std::io::Error),
     #[error("{operation} is unsupported on this platform")]
     UnsupportedPlatform { operation: String },
+    #[error("Could not determine the system default browser")]
+    DefaultBrowserUnavailable,
 }
 
 impl From<GraphvizError> for ErExportError {
