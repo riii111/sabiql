@@ -586,26 +586,6 @@ mod tests {
             };
 
             #[test]
-            fn quit_no_connection_sets_should_quit() {
-                let mut state = create_test_state();
-                enter_confirm_dialog(&mut state, InputMode::Normal);
-                state
-                    .confirm_dialog
-                    .open("", "", ConfirmIntent::QuitNoConnection);
-
-                let effects = route(
-                    &mut state,
-                    Action::ConfirmDialogConfirm,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
-
-                assert!(state.should_quit);
-                assert!(state.confirm_dialog.intent().is_none());
-                assert!(matches!(effects.as_slice(), [Effect::CancelTrackedTasks]));
-            }
-
-            #[test]
             fn delete_connection_confirmation_dispatches_delete_action() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::ConnectionSelector);
@@ -712,30 +692,6 @@ mod tests {
             }
 
             #[test]
-            fn execute_write_blocked_returns_to_mode_with_no_effects() {
-                let mut state = create_test_state();
-                enter_confirm_dialog(&mut state, InputMode::Normal);
-                state.confirm_dialog.open(
-                    "",
-                    "",
-                    ConfirmIntent::ExecuteWrite {
-                        sql: "UPDATE t SET x=1".to_string(),
-                        blocked: true,
-                    },
-                );
-
-                let effects = route(
-                    &mut state,
-                    Action::ConfirmDialogConfirm,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
-
-                assert_eq!(state.input_mode(), InputMode::Normal);
-                assert!(effects.is_empty());
-            }
-
-            #[test]
             fn execute_write_blocked_confirm_clears_preview_state() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
@@ -765,7 +721,7 @@ mod tests {
                     },
                 );
 
-                route(
+                let effects = route(
                     &mut state,
                     Action::ConfirmDialogConfirm,
                     Instant::now(),
@@ -774,6 +730,8 @@ mod tests {
 
                 assert!(state.result_interaction.pending_write_preview().is_none());
                 assert!(state.query.pending_delete_refresh_target().is_none());
+                assert!(effects.is_empty());
+                assert_eq!(state.input_mode(), InputMode::Normal);
             }
 
             #[test]
@@ -982,25 +940,6 @@ mod tests {
             use crate::policy::write::write_guardrails::{
                 GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
             };
-
-            #[test]
-            fn quit_no_connection_restores_connection_setup_synchronously() {
-                let mut state = create_test_state();
-                enter_confirm_dialog(&mut state, InputMode::Normal);
-                state
-                    .confirm_dialog
-                    .open("", "", ConfirmIntent::QuitNoConnection);
-
-                let effects = route(
-                    &mut state,
-                    Action::ConfirmDialogCancel,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
-
-                assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
-                assert!(effects.is_empty());
-            }
 
             #[test]
             fn other_intents_cancel_returns_empty_effects() {

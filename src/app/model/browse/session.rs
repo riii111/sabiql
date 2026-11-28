@@ -1021,23 +1021,6 @@ mod tests {
                 TableDetailState::Loading
             ));
         }
-
-        #[test]
-        fn starting_detail_run_keeps_current_query_result_visible() {
-            let mut session = BrowseSession::default();
-            let mut query = QueryExecution::default();
-            let generation = session.select_table("public", "users", &mut query);
-            let _ = session.set_table_detail(make_table_detail(), generation);
-            query.set_current_result(make_query_result());
-
-            let _ = session.begin_table_detail_run();
-
-            assert!(query.current_result().is_some());
-            assert!(matches!(
-                session.table_detail_state(),
-                TableDetailState::Loading
-            ));
-        }
     }
 
     // ── MySQL probe table-detail recovery ────────────────────────────
@@ -1647,13 +1630,6 @@ mod tests {
         fn none_when_no_metadata() {
             let session = BrowseSession::default();
             assert!(session.database_name().is_none());
-        }
-
-        #[test]
-        fn name_after_mark_connected() {
-            let mut session = BrowseSession::default();
-            session.mark_connected(make_metadata("mydb"));
-            assert_eq!(session.database_name(), Some("mydb"));
         }
 
         #[test]

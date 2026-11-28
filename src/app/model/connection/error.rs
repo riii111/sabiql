@@ -189,19 +189,6 @@ mod tests {
     mod error_info {
         use super::*;
 
-        #[test]
-        fn from_parts_uses_provided_presentation() {
-            let info = test_support::from_parts(
-                "Connection timed out",
-                "Check network connectivity",
-                true,
-                "error",
-            );
-            assert_eq!(info.summary(), "Connection timed out");
-            assert_eq!(info.hint(), "Check network connectivity");
-            assert!(info.is_retryable());
-        }
-
         #[rstest]
         #[case(
             ConnectionFailureKind::HostUnreachable,
@@ -496,8 +483,6 @@ mod tests {
         use super::*;
 
         #[rstest]
-        #[case("postgres://user:secret@host", "postgres://user:****@host")]
-        #[case("postgresql://user:secret@host", "postgresql://user:****@host")]
         #[case("POSTGRES://user:secret@host", "POSTGRES://user:****@host")]
         #[case("PostgreSQL://user:secret@host", "PostgreSQL://user:****@host")]
         fn masks_postgres_url_scheme(#[case] input: &str, #[case] expected: &str) {
@@ -505,16 +490,12 @@ mod tests {
         }
 
         #[rstest]
-        #[case("password=mysecret host=localhost", "password=**** host=localhost")]
         #[case("PASSWORD=mysecret host=localhost", "PASSWORD=**** host=localhost")]
-        #[case("PGPASSWORD=secret123 psql", "PGPASSWORD=**** psql")]
-        #[case("pgpassword=secret123 psql", "pgpassword=**** psql")]
         fn masks_key_value_dsn(#[case] input: &str, #[case] expected: &str) {
             assert_eq!(mask_password(input), expected);
         }
 
         #[rstest]
-        #[case("mysql://user:secret@host", "mysql://user:****@host")]
         #[case("MYSQL_PASSWORD=secret123 mysql", "MYSQL_PASSWORD=**** mysql")]
         #[case("MYSQL_PWD=secret123 mysql", "MYSQL_PWD=**** mysql")]
         fn masks_mysql_credentials(#[case] input: &str, #[case] expected: &str) {

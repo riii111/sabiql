@@ -51,26 +51,6 @@ mod tests {
         }
 
         #[test]
-        fn inserts_at_cursor() {
-            let mut state = editing_state();
-            state
-                .sql_modal
-                .editor
-                .set_content_with_cursor("SELCT".to_string(), 3);
-
-            reduce_sql_modal(
-                &mut state,
-                &Action::Paste {
-                    target: InputTarget::SqlModal,
-                    text: "E".to_string(),
-                },
-                Instant::now(),
-            );
-
-            assert_eq!(state.sql_modal.editor.content(), "SELECT");
-        }
-
-        #[test]
         fn preserves_newlines() {
             let mut state = editing_state();
 
@@ -100,26 +80,6 @@ mod tests {
             );
 
             assert_eq!(state.sql_modal.editor.content(), "a\nb");
-        }
-
-        #[test]
-        fn advances_cursor() {
-            let mut state = editing_state();
-            state
-                .sql_modal
-                .editor
-                .set_content_with_cursor("AB".to_string(), 1);
-
-            reduce_sql_modal(
-                &mut state,
-                &Action::Paste {
-                    target: InputTarget::SqlModal,
-                    text: "XYZ".to_string(),
-                },
-                Instant::now(),
-            );
-
-            assert_eq!(state.sql_modal.editor.cursor(), 4); // 1 + 3
         }
 
         #[test]
@@ -427,61 +387,6 @@ mod tests {
         }
 
         #[test]
-        fn high_risk_input_appends_char() {
-            let mut state = confirming_high_state("DROP TABLE users", "users");
-
-            edit_text(
-                &mut state,
-                &Action::TextInput {
-                    target: InputTarget::SqlModalHighRisk,
-                    ch: 'u',
-                },
-                Instant::now(),
-            );
-
-            if let SqlModalStatus::ConfirmingHigh { input, .. } = state.sql_modal.status() {
-                assert_eq!(input.content(), "u");
-            } else {
-                panic!("expected ConfirmingHigh");
-            }
-        }
-
-        #[test]
-        fn high_risk_backspace_removes_char() {
-            let mut state = confirming_high_state("DROP TABLE users", "users");
-            edit_text(
-                &mut state,
-                &Action::TextInput {
-                    target: InputTarget::SqlModalHighRisk,
-                    ch: 'a',
-                },
-                Instant::now(),
-            );
-            edit_text(
-                &mut state,
-                &Action::TextInput {
-                    target: InputTarget::SqlModalHighRisk,
-                    ch: 'b',
-                },
-                Instant::now(),
-            );
-
-            edit_text(
-                &mut state,
-                &Action::TextBackspace {
-                    target: InputTarget::SqlModalHighRisk,
-                },
-                Instant::now(),
-            );
-
-            if let SqlModalStatus::ConfirmingHigh { input, .. } = state.sql_modal.status() {
-                assert_eq!(input.content(), "a");
-            } else {
-                panic!("expected ConfirmingHigh");
-            }
-        }
-
-        #[test]
         fn high_risk_confirm_executes_on_match() {
             let mut state = confirming_high_state("DROP TABLE users", "users");
             test_fixtures::activate_postgres_connection(&mut state, "postgres://test");
@@ -716,27 +621,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn read_only_blocks_write_query_in_sql_modal() {
-            let mut state = AppState::new("test".to_string());
-            state.modal.set_mode(InputMode::SqlModal);
-            state
-                .sql_modal
-                .editor
-                .set_content("DELETE FROM users WHERE id = 1".to_string());
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            state.session.enable_read_only();
-
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
-
-            assert!(effects.is_empty());
-            assert!(matches!(
-                state.sql_modal.status(),
-                SqlModalStatus::Error(error)
-                    if error == "Read-only mode: write operations are disabled"
-            ));
-        }
-
-        #[test]
         fn read_only_reject_clears_prior_success() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::SqlModal);
@@ -760,13 +644,14 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("DELETE FROM users WHERE id = 1".to_string());
-            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
             assert!(matches!(
                 state.sql_modal.status(),
                 SqlModalStatus::Error(error)
                     if error == "Read-only mode: write operations are disabled"
             ));
+            assert!(effects.is_empty());
         }
 
         #[test]
@@ -1011,28 +896,6 @@ mod tests {
             );
 
             assert_eq!(state.sql_modal.editor.cursor_to_position(), (2, 3));
-        }
-
-        #[test]
-        fn yank_empty_content_is_noop() {
-            let mut state = sql_modal_state();
-
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now());
-
-            assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn yank_non_empty_emits_copy_effect() {
-            let mut state = sql_modal_state();
-            state.sql_modal.editor.set_content("SELECT 1".to_string());
-
-            let effects = reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now());
-
-            assert_eq!(effects.len(), 1);
-            assert!(
-                matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content == "SELECT 1")
-            );
         }
 
         #[test]

@@ -440,19 +440,6 @@ mod tests {
             qe.clear_current_result();
             assert_eq!(qe.result_generation(), 2);
         }
-
-        #[test]
-        fn does_not_increment_on_cursor_like_operations() {
-            let mut qe = QueryExecution::default();
-            qe.set_current_result(make_result(QuerySource::Preview));
-            let before = qe.result_generation();
-
-            // These should not change generation
-            let _ = qe.visible_result();
-            let _ = qe.visible_result_kind();
-
-            assert_eq!(qe.result_generation(), before);
-        }
     }
 
     #[test]

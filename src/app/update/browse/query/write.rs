@@ -652,15 +652,6 @@ mod tests {
         }
 
         #[test]
-        fn submit_write_opens_confirm_dialog() {
-            let mut state = editable_state();
-
-            let preview = submit_write_preview(&mut state);
-
-            assert!(preview.sql.contains("UPDATE"));
-        }
-
-        #[test]
         fn mysql_unchanged_grid_values_return_no_changes_before_update_preview() {
             let cases = [
                 ("text", QueryValue::text("Alice"), "Alice"),
@@ -1207,6 +1198,7 @@ mod tests {
             let mut state = editable_state();
 
             let expected_sql = submit_write_preview(&mut state).sql;
+            assert!(expected_sql.contains("UPDATE"));
 
             assert_eq!(
                 state

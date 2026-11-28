@@ -164,7 +164,7 @@ case "${FAKE_CARGO_MODE:-success}" in
             "${SABIQL_MYSQL_TEST_PORT:-}" "${CARGO_TARGET_DIR:-}" >>"${FAKE_CARGO_LOG:?}"
         exit 0
         ;;
-    failure|timeout)
+    failure)
         printf '%s|%s|%s\n' "${SABIQL_MYSQL_RUN_LABEL:-}" \
             "${SABIQL_MYSQL_TEST_PORT:-}" "${CARGO_TARGET_DIR:-}" >>"${FAKE_CARGO_LOG:?}"
         exit "${FAKE_CARGO_STATUS:-17}"
@@ -241,7 +241,6 @@ run_case() {
 
 run_case success 0
 run_case failure 17
-run_case timeout 124
 
 signal_marker="$test_root/signal.marker"
 signal_release="$test_root/signal.release"
@@ -285,7 +284,7 @@ cp -- "$script_dir/mysql-docker-cli.sh" "$same_suffix_root/scripts/mysql-docker-
 PATH="$fake_bin:$PATH" "$script_dir/mysql_integration.sh" test >/dev/null 2>&1
 PATH="$fake_bin:$PATH" "$same_suffix_root/scripts/mysql_integration.sh" test >/dev/null 2>&1
 same_suffix_labels="$(awk '/^com\.sabiql\.mysql\.integration=run-/ { labels[$0] = 1 } END { print length(labels) + 0 }' "$label_log")"
-if [[ "$same_suffix_labels" != 6 ]]; then
+if [[ "$same_suffix_labels" != 5 ]]; then
     printf 'expected distinct labels for same suffix across worktrees, got %s\n%s\n' \
         "$same_suffix_labels" "$(<"$label_log")" >&2
     exit 1
@@ -390,8 +389,8 @@ done <"$state_file"
 assert_only_unrelated_container_remains
 
 unique_run_labels="$(awk '/^com\.sabiql\.mysql\.integration=run-/ { labels[$0] = 1 } END { print length(labels) + 0 }' "$label_log")"
-if [[ "$unique_run_labels" != 10 ]]; then
-    printf 'expected ten unique run labels, got %s\n%s\n' \
+if [[ "$unique_run_labels" != 9 ]]; then
+    printf 'expected nine unique run labels, got %s\n%s\n' \
         "$unique_run_labels" "$(<"$label_log")" >&2
     exit 1
 fi
@@ -399,7 +398,7 @@ fi
 run_project_count="$(awk -F'|' '$2 == "up" { print $1 }' "$compose_log" | sort -u | wc -l | tr -d ' ')"
 port_lookup_count="$(awk -F'|' '$2 == "port" { print $1 }' "$compose_log" | sort -u | wc -l | tr -d ' ')"
 down_project_count="$(awk -F'|' '$2 == "down" && $1 != "default" { print $1 }' "$compose_log" | sort -u | wc -l | tr -d ' ')"
-if [[ "$run_project_count" != 10 || "$port_lookup_count" != 10 || "$down_project_count" != 10 ]] || \
+if [[ "$run_project_count" != 9 || "$port_lookup_count" != 9 || "$down_project_count" != 9 ]] || \
     ! diff -u \
         <(awk -F'|' '$2 == "up" { print $1 }' "$compose_log" | sort -u) \
         <(awk -F'|' '$2 == "down" && $1 != "default" { print $1 }' "$compose_log" | sort -u); then

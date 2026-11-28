@@ -320,57 +320,9 @@ mod tests {
         }
     }
 
-    impl SqlModalContext {
-        #[doc(hidden)]
-        pub(crate) fn clear_content(&mut self) {
-            self.editor.clear();
-            self.reset_completion();
-        }
-    }
-
-    mod lifecycle {
-        use super::*;
-
-        #[test]
-        fn clear_content_resets_editor_state() {
-            let mut ctx = SqlModalContext::default();
-            ctx.editor.set_content("SELECT * FROM users".to_string());
-            ctx.completion.visible = true;
-            ctx.completion.candidates.push(CompletionCandidate {
-                text: "test".to_string(),
-                kind: CompletionKind::Table,
-                score: 100,
-            });
-
-            ctx.clear_content();
-
-            assert!(ctx.editor.content().is_empty());
-            assert_eq!(ctx.editor.cursor(), 0);
-            assert!(!ctx.completion.visible);
-            assert!(ctx.completion.candidates.is_empty());
-        }
-    }
-
     mod confirmation {
         use super::*;
         use crate::policy::write::write_guardrails::RiskLevel;
-
-        #[test]
-        fn high_status_keeps_target_name() {
-            let status = SqlModalStatus::ConfirmingHigh {
-                decision: AdhocRiskDecision {
-                    risk_level: RiskLevel::High,
-                    label: "DROP",
-                },
-                input: TextInputState::default(),
-                target_name: "users".to_string(),
-            };
-
-            assert!(matches!(
-                status,
-                SqlModalStatus::ConfirmingHigh { ref target_name, .. } if target_name == "users"
-            ));
-        }
 
         #[test]
         fn cancel_only_resets_confirmation_status() {

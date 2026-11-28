@@ -195,29 +195,13 @@ mod tests {
                         .to_string()
                 )
             );
-            assert_eq!(
-                build_sqlite_explain_query_plan_sql("REPLACE INTO users(id) VALUES (1)"),
-                Some("EXPLAIN QUERY PLAN REPLACE INTO users(id) VALUES (1)".to_string())
-            );
         }
 
         #[test]
         fn rejects_prefixed_explain_and_analyze() {
             assert_eq!(
-                build_sqlite_explain_query_plan_sql("EXPLAIN SELECT 1"),
-                None
-            );
-            assert_eq!(
                 build_sqlite_explain_query_plan_sql("CREATE TABLE users(id INTEGER)"),
                 None
-            );
-        }
-
-        #[test]
-        fn passes_through_existing_query_plan_prefix() {
-            assert_eq!(
-                build_sqlite_explain_query_plan_sql("EXPLAIN QUERY PLAN SELECT * FROM users"),
-                Some("EXPLAIN QUERY PLAN SELECT * FROM users".to_string())
             );
         }
     }

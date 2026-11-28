@@ -102,7 +102,6 @@ mod tests {
                 "--quick",
             ]
         );
-        assert!(args.iter().all(|argument| !argument.contains("password")));
     }
 
     #[test]
@@ -126,8 +125,6 @@ mod tests {
                 "--prompt=",
             ]
         );
-        assert!(!args.iter().any(|argument| argument == "--quick"));
-        assert!(args.iter().all(|argument| !argument.contains("password")));
     }
 
     #[test]
@@ -150,11 +147,6 @@ mod tests {
                 "--silent",
                 "--prompt=",
             ]
-        );
-        assert!(!args.iter().any(|argument| argument == "--quick"));
-        assert!(
-            args.iter()
-                .all(|argument| !argument.starts_with("--max-allowed-packet="))
         );
     }
 

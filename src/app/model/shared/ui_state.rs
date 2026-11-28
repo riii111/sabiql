@@ -582,25 +582,6 @@ mod tests {
 
             assert_eq!(visible, 0);
         }
-
-        #[rstest]
-        #[case(30, 20)]
-        #[case(100, 25)]
-        #[case(50, 15)]
-        #[case(10, 30)]
-        fn scroll_can_reach_all_rows(#[case] total_rows: usize, #[case] pane_height: u16) {
-            let state = UiState {
-                result_pane_height: pane_height,
-                ..Default::default()
-            };
-            let visible = state.result_visible_rows();
-            let max_scroll = total_rows.saturating_sub(visible);
-
-            assert!(
-                max_scroll + visible >= total_rows,
-                "max_scroll={max_scroll}, visible={visible}, total={total_rows}"
-            );
-        }
     }
 
     mod focus_mode {

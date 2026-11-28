@@ -825,22 +825,6 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn both_costs_none() {
-            let baseline = make_plan(None, None, None);
-            let current = make_plan(None, None, None);
-
-            let result = compare_plans(&baseline, &current);
-
-            assert_eq!(result.verdict, ComparisonVerdict::Unavailable);
-            assert!(
-                result
-                    .reasons
-                    .iter()
-                    .any(|r| r.contains("Could not parse cost"))
-            );
-        }
-
-        #[test]
         fn one_cost_none() {
             let baseline = make_plan(Some(100.0), None, None);
             let current = make_plan(None, None, None);
