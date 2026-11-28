@@ -4,17 +4,16 @@ use std::time::{Duration, Instant};
 use crate::cmd::effect::Effect;
 use crate::domain::{QueryResult, QuerySource, RefreshScope};
 use crate::model::app_state::AppState;
-use crate::model::browse::query_execution::{
-    PREVIEW_PAGE_SIZE, PendingPreview, PostDeleteRowSelection,
-};
+use crate::model::browse::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
 use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::AdhocSuccessSnapshot;
 use crate::ports::outbound::DbOperationError;
-use crate::update::action::{Action, QueryCompletionContext, QueryFailureContext, TableTarget};
+use crate::update::action::QueryContext;
 use crate::update::browse::query::preview_effect_for_current_table;
-use crate::update::helpers::reject_pending_mysql_connection_probe;
+use crate::update::helpers::fetch_metadata_effects;
 use crate::update::input::keymap::{KeyContext, LineCommand, parse_command};
 use crate::update::reducer::quit;
+use crate::update::target_routing::open_modal;
 
 use super::write;
 
@@ -22,30 +21,15 @@ pub(in crate::update) fn query_completed(
     state: &mut AppState,
     run_id: u64,
     result: Arc<QueryResult>,
-    context: QueryCompletionContext,
+    context: QueryContext,
     now: Instant,
 ) -> Vec<Effect> {
     if !state.query.is_current_run(run_id) {
         return vec![];
     }
-    if let QueryCompletionContext::Preview { generation, .. } = context
+    if let QueryContext::Preview { generation, .. } = context
         && generation != state.session.selection_generation()
     {
-        return vec![];
-    }
-
-    if let QueryCompletionContext::Preview {
-        generation,
-        target_page,
-    } = context
-        && result.source == QuerySource::Preview
-        && state.session.selected_table_key().is_some()
-        && !state.session.is_table_detail_terminal(generation)
-    {
-        state.query.mark_idle();
-        state
-            .query
-            .defer_preview(Arc::clone(&result), generation, Some(target_page), true);
         return vec![];
     }
 
@@ -79,10 +63,10 @@ pub(in crate::update) fn query_completed(
         // Result pane like any other preview.
         (QuerySource::Preview, _) => {
             let target_page = match context {
-                QueryCompletionContext::Adhoc => None,
-                QueryCompletionContext::Preview { target_page, .. } => Some(target_page),
+                QueryContext::Adhoc => None,
+                QueryContext::Preview { target_page, .. } => Some(target_page),
             };
-            apply_preview_result(state, &result, target_page, now, true);
+            apply_preview_result(state, &result, target_page, now);
         }
     }
 
@@ -93,34 +77,23 @@ pub(in crate::update) fn query_failed(
     state: &mut AppState,
     run_id: u64,
     error: DbOperationError,
-    context: QueryFailureContext,
+    context: QueryContext,
     now: Instant,
 ) -> Vec<Effect> {
     if !state.query.is_current_run(run_id) {
         return vec![];
     }
 
-    let is_preview = matches!(context, QueryFailureContext::Preview { .. });
+    let is_preview = matches!(context, QueryContext::Preview { .. });
     if is_preview && matches!(error, DbOperationError::PreviewSizeExceeded(_)) {
         state.query.mark_idle();
         state.messages.set_error(error.user_message());
         return vec![];
     }
 
-    if let QueryFailureContext::Preview { generation } = context
-        && generation == state.session.selection_generation()
-        && state.session.selected_table_key().is_some()
-        && !state.session.is_table_detail_terminal(generation)
-    {
-        let result = Arc::new(preview_error_result(state, &error));
-        state.query.mark_idle();
-        state.query.defer_preview(result, generation, None, false);
-        return vec![];
-    }
-
     if !matches!(
         context,
-        QueryFailureContext::Preview { generation }
+        QueryContext::Preview { generation, .. }
             if generation != state.session.selection_generation()
     ) {
         state.query.mark_idle();
@@ -148,32 +121,7 @@ pub(in crate::update) fn query_failed(
     }
 }
 
-pub(in crate::update) fn reveal_pending_preview(
-    state: &mut AppState,
-    generation: u64,
-    now: Instant,
-) -> Vec<Effect> {
-    if !state.session.is_table_detail_terminal(generation) {
-        return vec![];
-    }
-
-    let Some(pending) = state.query.take_pending_preview(generation) else {
-        return vec![];
-    };
-    let PendingPreview {
-        result,
-        generation: _,
-        target_page,
-        highlight,
-    } = pending;
-    if result.is_error() && !highlight {
-        state.query.clear_delete_refresh_target();
-    }
-    apply_preview_result(state, &result, target_page, now, highlight);
-    vec![]
-}
-
-pub(in crate::update) fn command_line_submit(state: &mut AppState) -> Vec<Effect> {
+pub(in crate::update) fn command_line_submit(state: &mut AppState, now: Instant) -> Vec<Effect> {
     let command = parse_command(state.command_line_input.content());
     let context = KeyContext::from_state(state);
     state.modal.pop_mode();
@@ -186,37 +134,8 @@ pub(in crate::update) fn command_line_submit(state: &mut AppState) -> Vec<Effect
             state.modal.push_mode(InputMode::Help);
             vec![]
         }
-        Some(LineCommand::Open(kind)) => {
-            vec![Effect::DispatchActions(vec![Action::OpenModal(kind)])]
-        }
+        Some(LineCommand::Open(kind)) => open_modal(state, kind, now),
         Some(LineCommand::Write) => write::submit_cell_edit_write(state),
-        None => vec![],
-    }
-}
-
-pub(in crate::update) fn execute_preview(
-    state: &mut AppState,
-    TableTarget {
-        schema,
-        table,
-        generation,
-    }: TableTarget,
-    now: Instant,
-) -> Vec<Effect> {
-    if reject_pending_mysql_connection_probe(state) {
-        return vec![];
-    }
-    if state.session.endpoint().is_none() {
-        return vec![];
-    }
-
-    state.query.pagination.reset_for_table(&schema, &table);
-
-    // Keep the generation captured at selection time, not the current
-    // one: the selection may have been cleared between dispatch and
-    // now, and such a completion must fail the stale check.
-    match preview_effect_for_current_table(state, now, 0, generation) {
-        Some(effect) => vec![effect],
         None => vec![],
     }
 }
@@ -243,8 +162,7 @@ pub(super) fn refresh_effects_for_scope(
 
         state.table_detail_cache.clear();
 
-        effects.push(Effect::CancelMetadataTasks);
-        effects.push(Effect::FetchMetadata { endpoint, run_id });
+        effects.extend(fetch_metadata_effects(endpoint, run_id));
     } else if !state.query.pagination.table().is_empty() {
         let page = state.query.pagination.current_page();
         let generation = state.session.selection_generation();
@@ -277,16 +195,13 @@ fn apply_preview_result(
     result: &Arc<QueryResult>,
     target_page: Option<usize>,
     now: Instant,
-    highlight: bool,
 ) {
     let preserved_result_col = state.result_interaction.selection().cell();
     let preserved_horizontal_offset = state.result_interaction.horizontal_offset();
     state.result_interaction.reset_view();
-    if highlight {
-        state
-            .query
-            .set_result_highlight(now + Duration::from_millis(500));
-    }
+    state
+        .query
+        .set_result_highlight(now + Duration::from_millis(500));
 
     let should_apply_result = match target_page {
         Some(page)
@@ -345,135 +260,18 @@ fn apply_preview_result(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::runner::EffectRunner;
-    use crate::cmd::test_fixtures;
+
     use crate::domain::TableSignatureSnapshot;
     use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType};
     use crate::model::er_state::ErStatus;
-    use crate::ports::outbound::connection_store::MockConnectionStore;
-    use crate::ports::outbound::metadata::MockMetadataProvider;
-    use crate::ports::outbound::query_executor::MockQueryExecutor;
-    use crate::ports::outbound::{DbOperationError, RenderOutput, RenderResult, Renderer};
+
+    use crate::ports::outbound::DbOperationError;
     use crate::test_support::endpoint;
-    use crate::update::action::{ModalKind, SmartErRefreshFetched};
+    use crate::update::action::Action;
+    use crate::update::action::SmartErRefreshSnapshot;
     use crate::update::browse::query::tests::*;
     use crate::update::reducer::{reduce, route};
     use crate::update::test_fixtures as update_test_fixtures;
-    use tokio::sync::mpsc;
-
-    #[derive(Debug, PartialEq)]
-    struct RenderFrame {
-        inspector_terminal: bool,
-        result_visible: bool,
-    }
-
-    struct RecordingRenderer {
-        frames: Vec<RenderFrame>,
-    }
-
-    impl Renderer for RecordingRenderer {
-        fn draw(&mut self, state: &AppState, _now: Instant) -> RenderResult<RenderOutput> {
-            self.frames.push(RenderFrame {
-                inspector_terminal: state
-                    .session
-                    .is_table_detail_terminal(state.session.selection_generation()),
-                result_visible: state.query.current_result().is_some(),
-            });
-            Ok(RenderOutput::default())
-        }
-    }
-
-    fn append_runtime_render(state: &AppState, effects: &mut Vec<Effect>) {
-        if state.render_dirty {
-            effects.push(Effect::Render);
-        }
-    }
-
-    async fn run_effects_and_clear_dirty<T: Renderer>(
-        runner: &EffectRunner,
-        effects: Vec<Effect>,
-        renderer: &mut T,
-        state: &mut AppState,
-    ) -> Vec<Action> {
-        let pending = runner
-            .execute_effects(effects, renderer, state)
-            .await
-            .unwrap();
-        state.clear_dirty();
-        pending
-    }
-
-    async fn render_frames_after_inspector_terminal(inspector_failed: bool) -> Vec<RenderFrame> {
-        let (mut state, generation, detail_run_id) =
-            state_with_selected_table(DatabaseType::PostgreSQL);
-        let (tx, _rx) = mpsc::channel(8);
-        let runner = test_fixtures::make_runner(
-            Arc::new(MockMetadataProvider::new()),
-            Arc::new(MockQueryExecutor::new()),
-            Arc::new(MockConnectionStore::new()),
-            tx,
-        );
-        let mut renderer = RecordingRenderer { frames: vec![] };
-        let query_action =
-            query_completed_action(&mut state, preview_result(1), generation, Some(0));
-        let mut query_effects = reduce(&mut state, query_action, Instant::now());
-        append_runtime_render(&state, &mut query_effects);
-        assert!(
-            run_effects_and_clear_dirty(&runner, query_effects, &mut renderer, &mut state,)
-                .await
-                .is_empty()
-        );
-        assert_eq!(
-            renderer.frames,
-            [RenderFrame {
-                inspector_terminal: false,
-                result_visible: false,
-            }]
-        );
-        renderer.frames.clear();
-
-        let inspector_action = if inspector_failed {
-            Action::TableDetailLoaded {
-                endpoint: active_endpoint(&state),
-                run_id: detail_run_id,
-                outcome: Err(DbOperationError::QueryFailed(
-                    "inspector failed".to_string(),
-                )),
-                generation,
-            }
-        } else {
-            Action::TableDetailLoaded {
-                endpoint: active_endpoint(&state),
-                run_id: detail_run_id,
-                outcome: Ok(Box::new(users_table_detail())),
-                generation,
-            }
-        };
-        let mut effects = reduce(&mut state, inspector_action, Instant::now());
-        append_runtime_render(&state, &mut effects);
-        let pending =
-            run_effects_and_clear_dirty(&runner, effects, &mut renderer, &mut state).await;
-        assert_eq!(
-            renderer.frames,
-            [RenderFrame {
-                inspector_terminal: true,
-                result_visible: false,
-            }]
-        );
-
-        let mut next_effects = Vec::new();
-        for action in pending {
-            next_effects.extend(reduce(&mut state, action, Instant::now()));
-        }
-        append_runtime_render(&state, &mut next_effects);
-        assert!(
-            run_effects_and_clear_dirty(&runner, next_effects, &mut renderer, &mut state,)
-                .await
-                .is_empty()
-        );
-
-        renderer.frames
-    }
 
     fn query_failed_action(
         state: &mut AppState,
@@ -482,13 +280,16 @@ mod tests {
         source: QuerySource,
     ) -> Action {
         let run_id = begin_query_run(state);
-        Action::QueryFailed {
+        Action::QueryCompleted {
             run_id,
-            error,
             context: match source {
-                QuerySource::Adhoc => QueryFailureContext::Adhoc,
-                QuerySource::Preview => QueryFailureContext::Preview { generation },
+                QuerySource::Adhoc => QueryContext::Adhoc,
+                QuerySource::Preview => QueryContext::Preview {
+                    generation,
+                    target_page: 0,
+                },
             },
+            outcome: Err(error),
         }
     }
 
@@ -582,97 +383,36 @@ mod tests {
         }
 
         #[test]
-        fn submit_erd_dispatches_open_er_table_picker() {
-            let mut state = create_test_state();
+        fn submit_erd_is_ignored_when_engine_lacks_er_diagrams() {
+            let mut state = AppState::new("test".to_string());
+            update_test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/test.db");
             state.modal.push_mode(InputMode::CommandLine);
             state.command_line_input.set_content("erd".to_string());
 
             let effects = route(&mut state, Action::CommandLineSubmit, Instant::now());
 
+            assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(state.command_line_input.content().is_empty());
-            assert_eq!(effects.len(), 1);
-            match &effects[0] {
-                Effect::DispatchActions(actions) => {
-                    assert!(matches!(
-                        actions[0],
-                        Action::OpenModal(ModalKind::ErTablePicker)
-                    ));
-                }
-                other => panic!("expected DispatchActions, got {other:?}"),
-            }
+            assert!(!state.ui.pending_er_picker());
+            assert!(state.messages.last_success().is_none());
         }
 
         #[test]
-        fn submit_settings_dispatches_open_settings() {
+        fn submit_settings_opens_settings() {
             let mut state = create_test_state();
             state.modal.push_mode(InputMode::CommandLine);
             state.command_line_input.set_content("settings".to_string());
 
             let effects = route(&mut state, Action::CommandLineSubmit, Instant::now());
 
-            assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.command_line_input.content().is_empty());
-            assert_eq!(effects.len(), 1);
-            match &effects[0] {
-                Effect::DispatchActions(actions) => {
-                    assert!(matches!(actions[0], Action::OpenModal(ModalKind::Settings)));
-                }
-                other => panic!("expected DispatchActions, got {other:?}"),
-            }
-        }
-
-        #[test]
-        fn submit_palette_dispatches_open_command_palette() {
-            let mut state = create_test_state();
-            state.modal.push_mode(InputMode::CommandLine);
-            state.command_line_input.set_content("palette".to_string());
-
-            let effects = route(&mut state, Action::CommandLineSubmit, Instant::now());
-
-            assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(state.command_line_input.content().is_empty());
-            assert_eq!(effects.len(), 1);
-            match &effects[0] {
-                Effect::DispatchActions(actions) => {
-                    assert!(matches!(
-                        actions[0],
-                        Action::OpenModal(ModalKind::CommandPalette)
-                    ));
-                }
-                other => panic!("expected DispatchActions, got {other:?}"),
-            }
+            assert_eq!(state.input_mode(), InputMode::Settings);
+            assert!(effects.is_empty());
         }
     }
 
-    mod execute_preview {
+    mod preview_after_delete {
         use super::*;
-
-        #[test]
-        fn resets_pagination() {
-            let mut state = create_test_state();
-            state
-                .query
-                .pagination
-                .reset_for_table("old_schema", "old_table");
-            state.query.pagination.set_page_result(5, true);
-            let now = Instant::now();
-
-            route(
-                &mut state,
-                Action::ExecutePreview(TableTarget {
-                    schema: "public".to_string(),
-                    table: "users".to_string(),
-                    generation: 1,
-                }),
-                now,
-            );
-
-            assert_eq!(state.query.pagination.current_page(), 0);
-            assert!(!state.query.pagination.reached_end());
-            assert_eq!(state.query.pagination.schema(), "public");
-            assert_eq!(state.query.pagination.table(), "users");
-        }
 
         #[test]
         fn delete_success_then_adhoc_then_preview_completion_clears_selection() {
@@ -691,29 +431,6 @@ mod tests {
             update_test_fixtures::complete_table_preview(&mut state, now);
             assert!(state.result_interaction.selection().row().is_none());
             assert!(state.result_interaction.selection().cell().is_none());
-        }
-
-        #[test]
-        fn pending_probe_blocks_preview_on_old_connection() {
-            let mut state = create_test_state();
-            let _ = state.session.begin_mysql_connection_probe(
-                &ConnectionId::new(),
-                "target",
-                &endpoint::mysql("mysql://target", Some("app")),
-            );
-
-            let preview_effects = route(
-                &mut state,
-                Action::ExecutePreview(TableTarget {
-                    schema: "public".to_string(),
-                    table: "users".to_string(),
-                    generation: 1,
-                }),
-                Instant::now(),
-            );
-
-            assert!(preview_effects.is_empty());
-            assert!(!state.query.is_running());
         }
     }
 
@@ -812,169 +529,6 @@ mod tests {
             route(&mut state, action, now);
 
             assert_eq!(state.query.pagination.current_page(), 3);
-        }
-
-        #[rstest::rstest]
-        #[case(DatabaseType::PostgreSQL)]
-        #[case(DatabaseType::MySQL)]
-        #[case(DatabaseType::SQLite)]
-        fn inspector_terminal_state_precedes_preview_for_all_engines(
-            #[case] database_type: DatabaseType,
-        ) {
-            let (mut state, generation, detail_run_id) = state_with_selected_table(database_type);
-            let now = Instant::now();
-            let endpoint = active_endpoint(&state);
-
-            let inspector_effects = route(
-                &mut state,
-                Action::TableDetailLoaded {
-                    endpoint,
-                    run_id: detail_run_id,
-                    outcome: Ok(Box::new(users_table_detail())),
-                    generation,
-                },
-                now,
-            );
-
-            assert!(inspector_effects.is_empty());
-            assert!(state.session.is_table_detail_terminal(generation));
-            assert!(state.query.current_result().is_none());
-
-            let query_action =
-                query_completed_action(&mut state, preview_result(1), generation, Some(0));
-            route(&mut state, query_action, now);
-
-            assert!(state.query.current_result().is_some());
-            assert!(!state.query.has_pending_preview(generation));
-        }
-
-        #[tokio::test]
-        async fn preview_reveal_follows_inspector_render_for_success_and_failure() {
-            for inspector_failed in [false, true] {
-                assert_eq!(
-                    render_frames_after_inspector_terminal(inspector_failed).await,
-                    [
-                        RenderFrame {
-                            inspector_terminal: true,
-                            result_visible: false,
-                        },
-                        RenderFrame {
-                            inspector_terminal: true,
-                            result_visible: true,
-                        },
-                    ]
-                );
-            }
-        }
-
-        #[test]
-        fn later_adhoc_run_drops_pending_preview_before_inspector_finishes() {
-            let (mut state, generation, detail_run_id) =
-                state_with_selected_table(DatabaseType::PostgreSQL);
-            let preview_action =
-                query_completed_action(&mut state, preview_result(1), generation, Some(0));
-
-            route(&mut state, preview_action, Instant::now());
-            assert!(state.query.has_pending_preview(generation));
-
-            let adhoc_action = query_completed_action(&mut state, adhoc_result(), 0, None);
-            route(&mut state, adhoc_action, Instant::now());
-
-            assert_eq!(
-                state.query.current_result().map(|result| result.source),
-                Some(QuerySource::Adhoc)
-            );
-            assert!(!state.query.has_pending_preview(generation));
-
-            let effects = route(
-                &mut state,
-                Action::TableDetailLoaded {
-                    endpoint: endpoint::postgres("postgres://localhost/test"),
-                    run_id: detail_run_id,
-                    outcome: Ok(Box::new(users_table_detail())),
-                    generation,
-                },
-                Instant::now(),
-            );
-
-            assert!(effects.is_empty());
-            assert_eq!(
-                state.query.current_result().map(|result| result.source),
-                Some(QuerySource::Adhoc)
-            );
-        }
-
-        #[test]
-        fn stale_selection_drops_old_pending_preview_before_new_one_is_released() {
-            let (mut state, old_generation, old_detail_run_id) =
-                state_with_selected_table(DatabaseType::PostgreSQL);
-            let old_query_action =
-                query_completed_action(&mut state, preview_result(1), old_generation, Some(0));
-            route(&mut state, old_query_action.clone(), Instant::now());
-            assert!(state.query.has_pending_preview(old_generation));
-
-            let new_generation = state
-                .session
-                .select_table("public", "orders", &mut state.query);
-            let new_detail_run_id = state.session.begin_table_detail_run();
-
-            assert_ne!(old_generation, new_generation);
-            assert!(!state.query.has_pending_preview(old_generation));
-            assert!(state.query.current_result().is_none());
-
-            route(&mut state, old_query_action, Instant::now());
-            assert!(state.query.current_result().is_none());
-
-            let stale_inspector_effects = route(
-                &mut state,
-                Action::TableDetailLoaded {
-                    endpoint: endpoint::postgres("postgres://localhost/test"),
-                    run_id: old_detail_run_id,
-                    outcome: Ok(Box::new(users_table_detail())),
-                    generation: old_generation,
-                },
-                Instant::now(),
-            );
-            assert!(stale_inspector_effects.is_empty());
-            assert!(!state.session.is_table_detail_terminal(new_generation));
-
-            let new_query_action =
-                query_completed_action(&mut state, preview_result(1), new_generation, Some(0));
-            route(&mut state, new_query_action, Instant::now());
-            assert!(state.query.current_result().is_none());
-            assert!(state.query.has_pending_preview(new_generation));
-
-            route(
-                &mut state,
-                Action::RevealPendingPreview {
-                    generation: old_generation,
-                },
-                Instant::now(),
-            );
-            assert!(state.query.current_result().is_none());
-            assert!(state.query.has_pending_preview(new_generation));
-
-            let effects = route(
-                &mut state,
-                Action::TableDetailLoaded {
-                    endpoint: endpoint::postgres("postgres://localhost/test"),
-                    run_id: new_detail_run_id,
-                    outcome: Ok(Box::new(users_table_detail())),
-                    generation: new_generation,
-                },
-                Instant::now(),
-            );
-            assert!(matches!(effects.as_slice(), [Effect::DispatchActions(_)]));
-
-            route(
-                &mut state,
-                Action::RevealPendingPreview {
-                    generation: new_generation,
-                },
-                Instant::now(),
-            );
-            assert!(state.query.current_result().is_some());
-            assert!(!state.query.has_pending_preview(new_generation));
         }
 
         #[test]
@@ -1085,8 +639,8 @@ mod tests {
                 &mut state,
                 Action::QueryCompleted {
                     run_id: old_run_id,
-                    result: adhoc_result(),
-                    context: QueryCompletionContext::Adhoc,
+                    context: QueryContext::Adhoc,
+                    outcome: Ok(adhoc_result()),
                 },
                 Instant::now(),
             );
@@ -1110,8 +664,8 @@ mod tests {
 
             let action = Action::QueryCompleted {
                 run_id: stale_run_id,
-                result: adhoc_result(),
-                context: QueryCompletionContext::Adhoc,
+                context: QueryContext::Adhoc,
+                outcome: Ok(adhoc_result()),
             };
             assert!(!format!("{action:?}").contains("dsn:"));
             route(&mut state, action, Instant::now());
@@ -1133,8 +687,8 @@ mod tests {
                 &mut state,
                 Action::QueryCompleted {
                     run_id: stale_run_id,
-                    result: adhoc_result(),
-                    context: QueryCompletionContext::Adhoc,
+                    context: QueryContext::Adhoc,
+                    outcome: Ok(adhoc_result()),
                 },
                 Instant::now(),
             );
@@ -1250,61 +804,6 @@ mod tests {
         }
 
         #[test]
-        fn preview_failure_waits_for_inspector_then_releases_error_result() {
-            let (mut state, generation, detail_run_id) =
-                state_with_selected_table(DatabaseType::PostgreSQL);
-            state.query.set_delete_refresh_target(1, None, 1);
-            let query_action = query_failed_action(
-                &mut state,
-                DbOperationError::PermissionDenied("forbidden".to_string()),
-                generation,
-                QuerySource::Preview,
-            );
-
-            route(&mut state, query_action, Instant::now());
-
-            assert!(state.query.current_result().is_none());
-            assert!(state.query.has_pending_preview(generation));
-
-            let effects = route(
-                &mut state,
-                Action::TableDetailLoaded {
-                    endpoint: endpoint::postgres("postgres://localhost/test"),
-                    run_id: detail_run_id,
-                    outcome: Err(DbOperationError::QueryFailed(
-                        "inspector failed".to_string(),
-                    )),
-                    generation,
-                },
-                Instant::now(),
-            );
-
-            assert!(state.session.is_table_detail_terminal(generation));
-            assert!(state.messages.last_error().is_some());
-            assert!(state.query.current_result().is_none());
-            assert!(matches!(
-                effects.as_slice(),
-                [Effect::DispatchActions(actions)]
-                    if matches!(
-                        actions.as_slice(),
-                        [Action::RevealPendingPreview { generation: action_generation }]
-                            if *action_generation == generation
-                    )
-            ));
-
-            route(
-                &mut state,
-                Action::RevealPendingPreview { generation },
-                Instant::now(),
-            );
-
-            let result = state.query.current_result().expect("released result");
-            assert!(result.is_error());
-            assert!(state.query.pending_delete_refresh_target().is_none());
-            assert!(!state.query.has_pending_preview(generation));
-        }
-
-        #[test]
         fn adhoc_failure_after_data_change_refreshes_preview() {
             let mut state = state_with_table("public", "users");
             let action = query_failed_action(
@@ -1416,6 +915,32 @@ mod tests {
         use crate::domain::CommandTag;
 
         #[test]
+        fn dml_refresh_waits_for_loading_detail_in_the_same_task() {
+            let (mut state, generation, stale_detail_run_id) =
+                state_with_selected_table(DatabaseType::PostgreSQL);
+            let action = query_completed_action(
+                &mut state,
+                adhoc_result_with_tag(CommandTag::Update(1)),
+                0,
+                None,
+            );
+
+            let effects = route(&mut state, action, Instant::now());
+
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::LoadTable {
+                    generation: load_generation,
+                    detail_run_id,
+                    table,
+                    ..
+                }] if *load_generation == generation
+                    && *detail_run_id != stale_detail_run_id
+                    && table == "users"
+            ));
+        }
+
+        #[test]
         fn dml_without_table_selected_emits_no_effects() {
             let mut state = create_test_state();
             let action = query_completed_action(
@@ -1505,15 +1030,17 @@ mod tests {
             let endpoint = active_endpoint(&state);
             let effects = route(
                 &mut state,
-                Action::SmartErRefreshFetched(SmartErRefreshFetched {
+                Action::SmartErRefreshFetched {
                     endpoint,
                     run_id: old_er_run_id,
-                    new_metadata: Arc::new(DatabaseMetadata::new("new".to_string())),
-                    signature_snapshot: Arc::new(TableSignatureSnapshot {
-                        signatures: vec![],
-                        prefetched_table_details: vec![],
+                    outcome: Ok(SmartErRefreshSnapshot {
+                        new_metadata: Arc::new(DatabaseMetadata::new("new".to_string())),
+                        signature_snapshot: Arc::new(TableSignatureSnapshot {
+                            signatures: vec![],
+                            prefetched_table_details: vec![],
+                        }),
                     }),
-                }),
+                },
                 Instant::now(),
             );
 
@@ -1647,7 +1174,10 @@ mod tests {
 
             let metadata = make_metadata(vec![("public", "orders"), ("public", "users")]);
             let run_id = state.session.begin_metadata_refresh();
-            let action = Action::MetadataLoaded { run_id, metadata };
+            let action = Action::MetadataLoaded {
+                run_id,
+                outcome: Ok(metadata),
+            };
             let meta_effects = route(&mut state, action, Instant::now());
 
             assert_eq!(state.ui.explorer_selected(), 1);
@@ -1655,7 +1185,7 @@ mod tests {
             assert!(
                 meta_effects
                     .iter()
-                    .any(|e| matches!(e, Effect::ExecutePreview { table, .. } if table == "users"))
+                    .any(|e| matches!(e, Effect::LoadTable { table, .. } if table == "users"))
             );
         }
 
@@ -1680,7 +1210,10 @@ mod tests {
 
             let metadata = make_metadata(vec![("public", "orders")]);
             let run_id = state.session.begin_metadata_refresh();
-            let action = Action::MetadataLoaded { run_id, metadata };
+            let action = Action::MetadataLoaded {
+                run_id,
+                outcome: Ok(metadata),
+            };
             route(&mut state, action, Instant::now());
 
             assert!(state.query.pagination.table().is_empty());

@@ -56,9 +56,16 @@ pub(in crate::update) fn delete_connection(state: &mut AppState, id: ConnectionI
 
 pub(in crate::update) fn connection_deleted(
     state: &mut AppState,
-    id: ConnectionId,
+    outcome: Result<ConnectionId, String>,
     now: Instant,
 ) -> Vec<Effect> {
+    let id = match outcome {
+        Ok(id) => id,
+        Err(error) => {
+            state.messages.set_error(error);
+            return vec![];
+        }
+    };
     let was_active = state.session.active_connection_id() == Some(&id);
     if state
         .session
@@ -284,7 +291,7 @@ mod tests {
 
             route(
                 &mut state,
-                Action::ConnectionDeleted(id_to_delete),
+                Action::ConnectionDeleted(Ok(id_to_delete)),
                 Instant::now(),
             );
 
@@ -321,15 +328,15 @@ mod tests {
 
             route(
                 &mut state,
-                Action::ConnectionDeleted(deleted_id),
+                Action::ConnectionDeleted(Ok(deleted_id)),
                 Instant::now(),
             );
             route(
                 &mut state,
-                Action::MySqlConnectionProbeCompleted {
+                Action::MySqlConnectionProbed {
                     target,
                     run_id: probe_run_id,
-                    lower_case_table_names: 0,
+                    outcome: Ok(0),
                 },
                 Instant::now(),
             );
@@ -364,23 +371,19 @@ mod tests {
                 &target.endpoint,
             );
 
+            delete_connection(&mut state, deleted_id.clone());
             route(
                 &mut state,
-                Action::DeleteConnection(deleted_id.clone()),
-                Instant::now(),
-            );
-            route(
-                &mut state,
-                Action::MySqlConnectionProbeFailed {
+                Action::MySqlConnectionProbed {
                     target,
                     run_id: probe_run_id,
-                    error: DbOperationError::ConnectionFailed("refused".to_string()),
+                    outcome: Err(DbOperationError::ConnectionFailed("refused".to_string())),
                 },
                 Instant::now(),
             );
             route(
                 &mut state,
-                Action::ConnectionDeleted(deleted_id),
+                Action::ConnectionDeleted(Ok(deleted_id)),
                 Instant::now(),
             );
 
@@ -437,7 +440,7 @@ mod tests {
 
             route(
                 &mut state,
-                Action::ConnectionDeleted(profile_id),
+                Action::ConnectionDeleted(Ok(profile_id)),
                 Instant::now(),
             );
 
@@ -499,7 +502,7 @@ mod tests {
 
             route(
                 &mut state,
-                Action::ConnectionDeleted(profile_id),
+                Action::ConnectionDeleted(Ok(profile_id)),
                 Instant::now(),
             );
 
@@ -522,7 +525,7 @@ mod tests {
 
             route(
                 &mut state,
-                Action::ConnectionDeleted(id_to_delete),
+                Action::ConnectionDeleted(Ok(id_to_delete)),
                 Instant::now(),
             );
 
@@ -538,7 +541,7 @@ mod tests {
 
             route(
                 &mut state,
-                Action::ConnectionDeleted(profile_id),
+                Action::ConnectionDeleted(Ok(profile_id)),
                 Instant::now(),
             );
 
@@ -563,7 +566,7 @@ mod tests {
 
             route(
                 &mut state,
-                Action::ConnectionDeleted(profile_id),
+                Action::ConnectionDeleted(Ok(profile_id)),
                 Instant::now(),
             );
 

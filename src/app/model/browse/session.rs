@@ -649,14 +649,6 @@ impl BrowseSession {
         &self.table_detail_state
     }
 
-    pub(crate) fn is_table_detail_terminal(&self, generation: u64) -> bool {
-        generation == self.selection_generation
-            && matches!(
-                self.table_detail_state,
-                TableDetailState::Loaded(_) | TableDetailState::Error(_)
-            )
-    }
-
     pub fn selection_generation(&self) -> u64 {
         self.selection_generation
     }
@@ -771,11 +763,19 @@ impl BrowseSession {
 
 #[cfg(test)]
 mod test_support {
-    use super::BrowseSession;
+    use super::{BrowseSession, TableDetailState};
     use crate::domain::MetadataState;
     use crate::model::connection::state::ConnectionState;
 
     impl BrowseSession {
+        pub(crate) fn is_table_detail_terminal(&self, generation: u64) -> bool {
+            generation == self.selection_generation
+                && matches!(
+                    self.table_detail_state,
+                    TableDetailState::Loaded(_) | TableDetailState::Error(_)
+                )
+        }
+
         pub(crate) fn metadata_generation(&self) -> u64 {
             self.metadata_run.last_id()
         }

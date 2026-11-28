@@ -903,15 +903,10 @@ mod tests {
             assert_eq!(effects.len(), 1);
             match &effects[0] {
                 Effect::CopyToClipboard {
-                    content,
-                    on_success,
-                    ..
+                    content, target, ..
                 } => {
                     assert!(content.contains("theme"));
-                    assert!(matches!(
-                        on_success.as_ref(),
-                        Action::CopySucceeded(CopyTarget::Panel(FlashId::JsonDetail))
-                    ));
+                    assert_eq!(*target, CopyTarget::Panel(FlashId::JsonDetail));
                 }
                 other => panic!("expected CopyToClipboard, got {other:?}"),
             }

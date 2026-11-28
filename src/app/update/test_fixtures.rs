@@ -9,7 +9,9 @@ use crate::policy::write::write_guardrails::{
 };
 use crate::test_support::endpoint;
 use crate::test_support::table::minimal as minimal_table;
-use crate::update::action::{Action, QueryCompletionContext, TableTarget};
+use crate::update::action::WriteOutcome;
+use crate::update::action::{Action, ConnectionTarget, QueryContext};
+use crate::update::connection::lifecycle;
 use crate::update::reducer::{reduce, route};
 use std::sync::Arc;
 use std::time::Instant;
@@ -70,10 +72,12 @@ pub fn state_after_delete_success() -> AppState {
     };
     let effects = reduce(
         &mut state,
-        Action::ExecuteWriteSucceeded {
+        Action::WriteExecuted {
             run_id,
-            affected_rows: 1,
-            diagnostics: Vec::new(),
+            outcome: Ok(WriteOutcome {
+                affected_rows: 1,
+                diagnostics: Vec::new(),
+            }),
         },
         now,
     );
@@ -91,34 +95,23 @@ pub fn state_after_delete_success() -> AppState {
 
 pub fn complete_table_preview(state: &mut AppState, now: Instant) {
     let generation = state.session.selection_generation();
-    let effects = reduce(
-        state,
-        Action::ExecutePreview(TableTarget {
-            schema: "public".to_string(),
-            table: "users".to_string(),
-            generation,
-        }),
-        now,
-    );
-    let run_id = match effects.as_slice() {
-        [Effect::ExecutePreview { run_id, .. }] => *run_id,
-        other => panic!("expected ExecutePreview, got {other:?}"),
-    };
+    state.query.pagination.reset_for_table("public", "users");
+    let run_id = state.query.begin_running(now);
     reduce(
         state,
         Action::QueryCompleted {
             run_id,
-            result: Arc::new(QueryResult::success(
+            context: QueryContext::Preview {
+                generation,
+                target_page: 0,
+            },
+            outcome: Ok(Arc::new(QueryResult::success(
                 "SELECT * FROM users".to_string(),
                 vec!["id".to_string()],
                 vec![vec!["1".to_string()]],
                 1,
                 QuerySource::Preview,
-            )),
-            context: QueryCompletionContext::Preview {
-                generation,
-                target_page: 0,
-            },
+            ))),
         },
         now,
     );
@@ -134,11 +127,7 @@ pub fn assert_connection_save_fetch_effects(effects: &[Effect], database_type: D
         DatabaseType::PostgreSQL => {
             assert_eq!(effects.len(), 2);
             assert!(matches!(effects[0], Effect::CancelTrackedTasks));
-            assert!(matches!(
-                &effects[1],
-                Effect::DispatchActions(actions)
-                    if matches!(actions.as_slice(), [Action::MetadataLoaded { .. }])
-            ));
+            assert!(matches!(effects[1], Effect::FetchEffectiveUser { .. }));
         }
         DatabaseType::MySQL => {
             assert!(effects.is_empty());
@@ -157,4 +146,8 @@ pub fn seed_table_detail_cache(state: &mut AppState, qualified_name: &str) {
 
 pub fn edit_text(state: &mut AppState, action: &Action, now: Instant) -> Vec<Effect> {
     route(state, action.clone(), now)
+}
+
+pub fn switch_connection(state: &mut AppState, target: ConnectionTarget) -> Vec<Effect> {
+    lifecycle::switch_connection(state, target)
 }

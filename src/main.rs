@@ -288,7 +288,6 @@ fn self_update_disabled_message() -> String {
     )
 }
 
-const MAX_DEPTH: usize = 16;
 const MAX_DRAIN: usize = 32;
 
 struct Runtime {
@@ -391,6 +390,9 @@ impl Runtime {
         }
 
         self.tui.exit()?;
+        // Nothing reads the action queue after the loop, so it is closed first and pending saves can write without blocking on a full queue.
+        drop(self.action_rx);
+        self.effect_runner.finish_settings_saves().await;
         Ok(())
     }
 
@@ -469,37 +471,12 @@ impl Runtime {
     }
 
     async fn flush_effects(&mut self, effects: Vec<Effect>) -> Result<()> {
-        let mut pending = self.run_effects(effects).await?;
-
-        let mut depth = 0;
-        while !pending.is_empty() && depth < MAX_DEPTH {
-            depth += 1;
-            let mut next = Vec::new();
-            for action in pending {
-                let now = Instant::now();
-                let mut effects = reduce(&mut self.state, action, now);
-                self.append_render_if_dirty(&mut effects, now);
-                next.extend(self.run_effects(effects).await?);
-            }
-            pending = next;
-        }
-        if depth >= MAX_DEPTH && !pending.is_empty() {
-            dispatch_overflow_fallback(&mut self.state, self.effect_runner.action_tx(), pending);
-            // Render immediately so the overflow error is visible before the next
-            // event-loop pass; errors do not have an expiry wake-up anymore.
-            self.run_effects(vec![Effect::Render]).await?;
-        }
-        Ok(())
-    }
-
-    async fn run_effects(&mut self, effects: Vec<Effect>) -> Result<Vec<Action>> {
         let mut tui_adapter = TuiAdapter::new(&mut self.tui);
-        let pending = self
-            .effect_runner
+        self.effect_runner
             .execute_effects(effects, &mut tui_adapter, &mut self.state)
             .await?;
         self.state.clear_dirty();
-        Ok(pending)
+        Ok(())
     }
 
     fn append_render_if_dirty(&mut self, effects: &mut Vec<Effect>, now: Instant) {
@@ -508,31 +485,4 @@ impl Runtime {
             effects.push(Effect::Render);
         }
     }
-}
-
-/// Last-resort handling when DispatchActions recursion exceeds the depth
-/// limit: re-queue through the action channel and surface the failure as a
-/// UI error message (stderr would corrupt the TUI-owned screen).
-fn dispatch_overflow_fallback(
-    state: &mut AppState,
-    action_tx: &mpsc::Sender<Action>,
-    pending: Vec<Action>,
-) {
-    let deferred = pending.len();
-    let mut dropped = 0usize;
-    for action in pending {
-        if action_tx.try_send(action).is_err() {
-            dropped += 1;
-        }
-    }
-    let message = if dropped > 0 {
-        format!(
-            "Internal error: action dispatch depth exceeded ({MAX_DEPTH}); {dropped} actions dropped"
-        )
-    } else {
-        format!(
-            "Internal error: action dispatch depth exceeded ({MAX_DEPTH}); {deferred} actions deferred"
-        )
-    };
-    state.messages.set_error(message);
 }

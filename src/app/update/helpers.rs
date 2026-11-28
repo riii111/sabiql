@@ -17,8 +17,7 @@ use crate::policy::write::write_guardrails::{
     PreviewWriteability, StableRowIdentity, TargetSummary, WriteOperation, WritePreview,
     evaluate_guardrails, preview_writeability_for_result, stable_row_identity_for_preview,
 };
-use crate::ports::outbound::ClipboardError;
-use crate::update::action::Action;
+use crate::update::action::ConnectionTarget;
 
 pub(in crate::update) fn reject_pending_mysql_connection_probe(state: &mut AppState) -> bool {
     if state.session.pending_mysql_connection_probe().is_none() {
@@ -31,23 +30,32 @@ pub(in crate::update) fn reject_pending_mysql_connection_probe(state: &mut AppSt
     true
 }
 
-pub(in crate::update) fn clipboard_unavailable() -> Action {
-    Action::CopyFailed(ClipboardError::Unavailable("Clipboard unavailable".into()))
-}
-
 pub(in crate::update) fn metadata_reload_effects(
     state: &mut AppState,
     endpoint: &Arc<ConnectionEndpoint>,
 ) -> Vec<Effect> {
     let run_id = state.session.begin_reload();
     state.table_detail_cache.clear();
+    fetch_metadata_effects(Arc::clone(endpoint), run_id)
+}
 
+pub(in crate::update) fn fetch_metadata_effects(
+    endpoint: Arc<ConnectionEndpoint>,
+    run_id: u64,
+) -> Vec<Effect> {
     vec![
+        // Fetches in flight belong to a replaced run, so they are stopped before the new one starts.
         Effect::CancelMetadataTasks,
-        Effect::FetchMetadata {
-            endpoint: Arc::clone(endpoint),
-            run_id,
-        },
+        Effect::FetchMetadata { endpoint, run_id },
+    ]
+}
+
+pub(in crate::update) fn probe_mysql_effects(target: ConnectionTarget, run_id: u64) -> Vec<Effect> {
+    vec![
+        // The probe decides which database the session reads, so fetches started before it are stopped.
+        Effect::CancelMetadataTasks,
+        Effect::CancelTableDetail,
+        Effect::ProbeMySqlConnection { target, run_id },
     ]
 }
 

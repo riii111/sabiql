@@ -1,13 +1,10 @@
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use tokio::sync::mpsc;
-
-use crate::cmd::effect::Effect;
-use crate::cmd::single_task_owner::SingleTaskOwner;
 use crate::domain::command_tag::CommandTag;
+use crate::domain::connection::ConnectionEndpoint;
 use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope, QueryResultStatus};
-use crate::domain::{DatabaseDiagnostic, DatabaseType};
+use crate::domain::{DatabaseDiagnostic, DatabaseType, QueryResult};
 use crate::domain::{
     mysql_explain_plan_text_from_result, postgres_explain_plan_text_from_result,
     sqlite_explain_query_plan_text_from_result,
@@ -15,9 +12,9 @@ use crate::domain::{
 use crate::model::app_state::AppState;
 use crate::policy::mask_password;
 use crate::ports::outbound::{
-    CachedResultExporter, DbOperationError, QueryExecutor, QueryHistoryStore,
+    AccessMode, CachedResultExporter, DbOperationError, QueryExecutor, QueryHistoryStore,
 };
-use crate::update::action::{Action, QueryCompletionContext, QueryFailureContext};
+use crate::update::action::{Action, CsvExport, ExplainPlan, QueryContext, WriteOutcome};
 
 fn mask_mysql_diagnostics(diagnostics: &mut [DatabaseDiagnostic]) {
     for diagnostic in diagnostics {
@@ -54,311 +51,183 @@ fn utc_now_iso8601() -> String {
     format!("{y:04}-{m:02}-{d:02}T{hours:02}:{minutes:02}:{seconds:02}Z")
 }
 
-fn spawn_query_history_append(
-    query_history_store: Arc<dyn QueryHistoryStore>,
+pub(in crate::cmd) struct QueryHistoryTarget {
+    store: Arc<dyn QueryHistoryStore>,
     project_name: String,
     scope: QueryHistoryScope,
-    query: String,
-    result_status: QueryResultStatus,
-    affected_rows: Option<u64>,
-) {
-    let entry = QueryHistoryEntry::new_with_database(
-        query,
-        utc_now_iso8601(),
-        scope.connection_id.clone(),
-        scope.database.clone(),
-        result_status,
-        affected_rows,
-    );
-    tokio::spawn(async move {
-        let _ = query_history_store
-            .append(&project_name, &scope, &entry)
-            .await;
-    });
 }
 
-pub(in crate::cmd) async fn run(
-    effect: Effect,
-    action_tx: &mpsc::Sender<Action>,
-    query_executor: &Arc<dyn QueryExecutor>,
-    query_history_store: &Arc<dyn QueryHistoryStore>,
-    cached_result_exporter: &Arc<dyn CachedResultExporter>,
-    query_tasks: &SingleTaskOwner,
-    state: &AppState,
-) {
-    match effect {
-        Effect::ExecutePreview {
-            endpoint,
-            schema,
-            table,
-            generation,
-            run_id,
-            limit,
-            offset,
-            target_page,
-        } => {
-            let executor = Arc::clone(query_executor);
-            let tx = action_tx.clone();
-
-            query_tasks
-                .replace(async move {
-                    match executor
-                        .execute_preview(&endpoint, &schema, &table, limit, offset)
-                        .await
-                    {
-                        Ok(result) => {
-                            tx.send(Action::QueryCompleted {
-                                run_id,
-                                result: Arc::new(result),
-                                context: QueryCompletionContext::Preview {
-                                    generation,
-                                    target_page,
-                                },
-                            })
-                            .await
-                            .ok();
-                        }
-                        Err(e) => {
-                            tx.send(Action::QueryFailed {
-                                run_id,
-                                error: e,
-                                context: QueryFailureContext::Preview { generation },
-                            })
-                            .await
-                            .ok();
-                        }
-                    }
-                })
-                .await;
-        }
-
-        Effect::ExecuteExplain {
-            endpoint,
-            database_generation,
-            run_id,
-            query,
-            source_query,
-            is_analyze,
-            access_mode,
-        } => {
-            let database_type = endpoint.engine();
-            let executor = Arc::clone(query_executor);
-            let tx = action_tx.clone();
-
-            query_tasks
-                .replace(async move {
-                    match executor.execute_adhoc(&endpoint, &query, access_mode).await {
-                        Ok(result) => {
-                            let plan_result = match database_type {
-                                DatabaseType::SQLite => sqlite_explain_query_plan_text_from_result(
-                                    &result,
-                                )
-                                .map_err(|error| DbOperationError::QueryFailed(error.to_string())),
-                                DatabaseType::PostgreSQL => {
-                                    Ok(postgres_explain_plan_text_from_result(&result))
-                                }
-                                DatabaseType::MySQL => {
-                                    Ok(mysql_explain_plan_text_from_result(&result))
-                                }
-                            };
-                            match plan_result {
-                                Ok(plan_text) => {
-                                    tx.send(Action::ExplainCompleted {
-                                        database_type,
-                                        database_generation,
-                                        run_id,
-                                        query: source_query,
-                                        plan_text,
-                                        is_analyze,
-                                        execution_time_ms: result.execution_time_ms,
-                                    })
-                                    .await
-                                    .ok();
-                                }
-                                Err(error) => {
-                                    tx.send(Action::ExplainFailed {
-                                        database_generation,
-                                        run_id,
-                                        error,
-                                        is_analyze,
-                                    })
-                                    .await
-                                    .ok();
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            tx.send(Action::ExplainFailed {
-                                database_generation,
-                                run_id,
-                                error: e,
-                                is_analyze,
-                            })
-                            .await
-                            .ok();
-                        }
-                    }
-                })
-                .await;
-        }
-
-        Effect::ExecuteAdhoc {
-            endpoint,
-            run_id,
-            query,
-            access_mode,
-        } => {
-            let executor = Arc::clone(query_executor);
-            let tx = action_tx.clone();
-            let history_store = Arc::clone(query_history_store);
-            let project = state.project_name().to_string();
-            let history_scope = state.session.query_history_scope();
-            query_tasks
-                .replace(async move {
-                    let result = executor.execute_adhoc(&endpoint, &query, access_mode).await;
-                    match result {
-                        Ok(result) => {
-                            let mut result = result;
-                            mask_mysql_diagnostics(&mut result.mysql_diagnostics);
-                            if let Some(scope) = history_scope {
-                                let rows = result
-                                    .command_tag
-                                    .as_ref()
-                                    .and_then(CommandTag::affected_rows);
-                                spawn_query_history_append(
-                                    history_store,
-                                    project,
-                                    scope,
-                                    query,
-                                    QueryResultStatus::Success,
-                                    rows,
-                                );
-                            }
-                            tx.send(Action::QueryCompleted {
-                                run_id,
-                                result: Arc::new(result),
-                                context: QueryCompletionContext::Adhoc,
-                            })
-                            .await
-                            .ok();
-                        }
-                        Err(e) => {
-                            if let Some(scope) = history_scope {
-                                spawn_query_history_append(
-                                    history_store,
-                                    project,
-                                    scope,
-                                    query,
-                                    QueryResultStatus::Failed,
-                                    None,
-                                );
-                            }
-                            tx.send(Action::QueryFailed {
-                                run_id,
-                                error: e,
-                                context: QueryFailureContext::Adhoc,
-                            })
-                            .await
-                            .ok();
-                        }
-                    }
-                })
-                .await;
-        }
-
-        Effect::ExecuteWrite {
-            endpoint,
-            run_id,
-            query,
-            access_mode,
-        } => {
-            let executor = Arc::clone(query_executor);
-            let tx = action_tx.clone();
-            let history_store = Arc::clone(query_history_store);
-            let project = state.project_name().to_string();
-            let history_scope = state.session.query_history_scope();
-
-            query_tasks
-                .replace(async move {
-                    match executor.execute_write(&endpoint, &query, access_mode).await {
-                        Ok(result) => {
-                            let mut result = result;
-                            mask_mysql_diagnostics(&mut result.diagnostics);
-                            if let Some(scope) = history_scope {
-                                spawn_query_history_append(
-                                    history_store,
-                                    project,
-                                    scope,
-                                    query,
-                                    QueryResultStatus::Success,
-                                    Some(result.affected_rows as u64),
-                                );
-                            }
-                            tx.send(Action::ExecuteWriteSucceeded {
-                                run_id,
-                                affected_rows: result.affected_rows,
-                                diagnostics: result.diagnostics,
-                            })
-                            .await
-                            .ok();
-                        }
-                        Err(e) => {
-                            if let Some(scope) = history_scope {
-                                spawn_query_history_append(
-                                    history_store,
-                                    project,
-                                    scope,
-                                    query,
-                                    QueryResultStatus::Failed,
-                                    None,
-                                );
-                            }
-                            tx.send(Action::ExecuteWriteFailed { run_id, error: e })
-                                .await
-                                .ok();
-                        }
-                    }
-                })
-                .await;
-        }
-
-        Effect::ExportCsvFromCache {
-            run_id,
-            file_name,
-            result,
-        } => {
-            let tx = action_tx.clone();
-            let exporter = Arc::clone(cached_result_exporter);
-
-            query_tasks
-                .replace(async move {
-                    let row_count = result.data_row_count();
-                    let result = exporter
-                        .export_cached_result_to_csv(file_name, result)
-                        .await;
-
-                    match result {
-                        Ok(path) => {
-                            tx.send(Action::CsvExportSucceeded {
-                                run_id,
-                                path: path.display().to_string(),
-                                row_count,
-                            })
-                            .await
-                            .ok();
-                        }
-                        Err(error) => {
-                            tx.send(Action::CsvExportFailed { run_id, error })
-                                .await
-                                .ok();
-                        }
-                    }
-                })
-                .await;
-        }
-
-        _ => unreachable!("query::run called with non-query effect"),
+impl QueryHistoryTarget {
+    pub(in crate::cmd) fn for_state(
+        store: &Arc<dyn QueryHistoryStore>,
+        state: &AppState,
+    ) -> Option<Self> {
+        Some(Self {
+            store: Arc::clone(store),
+            project_name: state.project_name().to_string(),
+            scope: state.session.query_history_scope()?,
+        })
     }
+
+    fn spawn_append(self, query: String, result_status: QueryResultStatus, rows: Option<u64>) {
+        let entry = QueryHistoryEntry::new_with_database(
+            query,
+            utc_now_iso8601(),
+            self.scope.connection_id.clone(),
+            self.scope.database.clone(),
+            result_status,
+            rows,
+        );
+        tokio::spawn(async move {
+            let _ = self
+                .store
+                .append(&self.project_name, &self.scope, &entry)
+                .await;
+        });
+    }
+}
+
+fn record_history<T>(
+    history: Option<QueryHistoryTarget>,
+    query: String,
+    outcome: &Result<T, DbOperationError>,
+    affected_rows: impl FnOnce(&T) -> Option<u64>,
+) {
+    let Some(history) = history else {
+        return;
+    };
+    match outcome {
+        Ok(value) => {
+            history.spawn_append(query, QueryResultStatus::Success, affected_rows(value));
+        }
+        Err(_) => history.spawn_append(query, QueryResultStatus::Failed, None),
+    }
+}
+
+pub(in crate::cmd) async fn execute_preview(
+    executor: Arc<dyn QueryExecutor>,
+    endpoint: Arc<ConnectionEndpoint>,
+    schema: String,
+    table: String,
+    run_id: u64,
+    context: QueryContext,
+    limit: usize,
+    offset: usize,
+) -> Action {
+    let outcome = executor
+        .execute_preview(&endpoint, &schema, &table, limit, offset)
+        .await
+        .map(Arc::new);
+    Action::QueryCompleted {
+        run_id,
+        context,
+        outcome,
+    }
+}
+
+pub(in crate::cmd) async fn execute_explain(
+    executor: Arc<dyn QueryExecutor>,
+    endpoint: Arc<ConnectionEndpoint>,
+    database_generation: u64,
+    run_id: u64,
+    query: String,
+    source_query: String,
+    is_analyze: bool,
+    access_mode: AccessMode,
+) -> Action {
+    let database_type = endpoint.engine();
+    let outcome = executor
+        .execute_adhoc(&endpoint, &query, access_mode)
+        .await
+        .and_then(|result| {
+            let plan_text = match database_type {
+                DatabaseType::SQLite => sqlite_explain_query_plan_text_from_result(&result)
+                    .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?,
+                DatabaseType::PostgreSQL => postgres_explain_plan_text_from_result(&result),
+                DatabaseType::MySQL => mysql_explain_plan_text_from_result(&result),
+            };
+            Ok(ExplainPlan {
+                database_type,
+                query: source_query,
+                plan_text,
+                execution_time_ms: result.execution_time_ms,
+            })
+        });
+    Action::ExplainCompleted {
+        database_generation,
+        run_id,
+        is_analyze,
+        outcome,
+    }
+}
+
+pub(in crate::cmd) async fn execute_adhoc(
+    executor: Arc<dyn QueryExecutor>,
+    history: Option<QueryHistoryTarget>,
+    endpoint: Arc<ConnectionEndpoint>,
+    run_id: u64,
+    query: String,
+    access_mode: AccessMode,
+) -> Action {
+    let outcome = executor
+        .execute_adhoc(&endpoint, &query, access_mode)
+        .await
+        .map(|mut result| {
+            mask_mysql_diagnostics(&mut result.mysql_diagnostics);
+            result
+        });
+    record_history(history, query, &outcome, |result| {
+        result
+            .command_tag
+            .as_ref()
+            .and_then(CommandTag::affected_rows)
+    });
+    Action::QueryCompleted {
+        run_id,
+        context: QueryContext::Adhoc,
+        outcome: outcome.map(Arc::new),
+    }
+}
+
+pub(in crate::cmd) async fn execute_write(
+    executor: Arc<dyn QueryExecutor>,
+    history: Option<QueryHistoryTarget>,
+    endpoint: Arc<ConnectionEndpoint>,
+    run_id: u64,
+    query: String,
+    access_mode: AccessMode,
+) -> Action {
+    let outcome = executor
+        .execute_write(&endpoint, &query, access_mode)
+        .await
+        .map(|mut result| {
+            mask_mysql_diagnostics(&mut result.diagnostics);
+            WriteOutcome {
+                affected_rows: result.affected_rows,
+                diagnostics: result.diagnostics,
+            }
+        });
+    record_history(history, query, &outcome, |result| {
+        Some(result.affected_rows as u64)
+    });
+    Action::WriteExecuted { run_id, outcome }
+}
+
+pub(in crate::cmd) async fn export_csv(
+    exporter: Arc<dyn CachedResultExporter>,
+    run_id: u64,
+    file_name: String,
+    result: Arc<QueryResult>,
+) -> Action {
+    let row_count = result.data_row_count();
+    let outcome = exporter
+        .export_cached_result_to_csv(file_name, result)
+        .await
+        .map(|path| CsvExport {
+            path: path.display().to_string(),
+            row_count,
+        });
+    Action::CsvExported { run_id, outcome }
 }
 
 #[cfg(test)]
@@ -401,18 +270,18 @@ mod tests {
     }
 
     mod query_history_append {
+        use crate::update::action::WriteOutcome;
         use tokio::sync::{Barrier, Mutex, oneshot};
 
         use super::*;
-        use crate::cmd::single_task_owner::SingleTaskOwner;
+        use crate::cmd::browse::query::{QueryHistoryTarget, execute_adhoc, execute_write};
         use crate::domain::CommandTag;
         use crate::domain::connection::ConnectionId;
         use crate::domain::query_history::{
             QueryHistoryEntry, QueryHistoryScope, QueryResultStatus,
         };
         use crate::ports::outbound::{
-            CachedResultExporter, DbOperationError, QueryExecutor, QueryHistoryError,
-            QueryHistoryStore,
+            DbOperationError, QueryExecutor, QueryHistoryError, QueryHistoryStore,
         };
 
         #[derive(Clone)]
@@ -502,26 +371,45 @@ mod tests {
             append_finished_rx: oneshot::Receiver<()>,
             expect_append: bool,
         ) -> (Action, Vec<HistoryCall>) {
-            let (tx, mut rx) = mpsc::channel(8);
             let query_executor: Arc<dyn QueryExecutor> = Arc::new(executor);
             let query_history_store: Arc<dyn QueryHistoryStore> = Arc::new(store.clone());
-            let cached_result_exporter: Arc<dyn CachedResultExporter> =
-                Arc::new(test_fixtures::TestCachedResultExporter);
-            let query_tasks = SingleTaskOwner::default();
+            let history = QueryHistoryTarget::for_state(&query_history_store, &state);
 
-            super::super::run(
-                effect,
-                &tx,
-                &query_executor,
-                &query_history_store,
-                &cached_result_exporter,
-                &query_tasks,
-                &state,
-            )
-            .await;
-
-            let action =
-                test_fixtures::recv_action_with_timeout(&mut rx, Duration::from_secs(1)).await;
+            let action = match effect {
+                Effect::ExecuteAdhoc {
+                    endpoint,
+                    run_id,
+                    query,
+                    access_mode,
+                } => {
+                    execute_adhoc(
+                        query_executor,
+                        history,
+                        endpoint,
+                        run_id,
+                        query,
+                        access_mode,
+                    )
+                    .await
+                }
+                Effect::ExecuteWrite {
+                    endpoint,
+                    run_id,
+                    query,
+                    access_mode,
+                } => {
+                    execute_write(
+                        query_executor,
+                        history,
+                        endpoint,
+                        run_id,
+                        query,
+                        access_mode,
+                    )
+                    .await
+                }
+                other => panic!("unexpected history effect: {other:?}"),
+            };
             if expect_append {
                 drop(append_started_rx);
                 let append_release = Arc::clone(&store.append_barrier);
@@ -587,7 +475,14 @@ mod tests {
             )
             .await;
 
-            assert!(matches!(action, Action::QueryCompleted { run_id: 1, .. }));
+            assert!(matches!(
+                action,
+                Action::QueryCompleted {
+                    run_id: 1,
+                    outcome: Ok(_),
+                    ..
+                }
+            ));
             assert_history_call(
                 &calls,
                 "UPDATE users SET active = true",
@@ -620,7 +515,14 @@ mod tests {
             )
             .await;
 
-            assert!(matches!(action, Action::QueryFailed { run_id: 2, .. }));
+            assert!(matches!(
+                action,
+                Action::QueryCompleted {
+                    run_id: 2,
+                    outcome: Err(_),
+                    ..
+                }
+            ));
             assert_history_call(&calls, "SELECT broken", QueryResultStatus::Failed, None);
         }
 
@@ -653,9 +555,12 @@ mod tests {
 
             assert!(matches!(
                 action,
-                Action::ExecuteWriteSucceeded {
+                Action::WriteExecuted {
                     run_id: 3,
-                    affected_rows: 7,
+                    outcome: Ok(WriteOutcome {
+                        affected_rows: 7,
+                        ..
+                    }),
                     ..
                 }
             ));
@@ -693,7 +598,11 @@ mod tests {
 
             assert!(matches!(
                 action,
-                Action::ExecuteWriteFailed { run_id: 4, .. }
+                Action::WriteExecuted {
+                    run_id: 4,
+                    outcome: Err(_),
+                    ..
+                }
             ));
             assert_history_call(
                 &calls,
@@ -728,7 +637,14 @@ mod tests {
             )
             .await;
 
-            assert!(matches!(action, Action::QueryCompleted { run_id: 5, .. }));
+            assert!(matches!(
+                action,
+                Action::QueryCompleted {
+                    run_id: 5,
+                    outcome: Ok(_),
+                    ..
+                }
+            ));
             assert!(calls.is_empty());
         }
 
@@ -756,7 +672,14 @@ mod tests {
             )
             .await;
 
-            assert!(matches!(action, Action::QueryFailed { run_id: 8, .. }));
+            assert!(matches!(
+                action,
+                Action::QueryCompleted {
+                    run_id: 8,
+                    outcome: Err(_),
+                    ..
+                }
+            ));
             assert!(calls.is_empty());
         }
 
@@ -789,9 +712,12 @@ mod tests {
 
             assert!(matches!(
                 action,
-                Action::ExecuteWriteSucceeded {
+                Action::WriteExecuted {
                     run_id: 6,
-                    affected_rows: 7,
+                    outcome: Ok(WriteOutcome {
+                        affected_rows: 7,
+                        ..
+                    }),
                     ..
                 }
             ));
@@ -824,7 +750,11 @@ mod tests {
 
             assert!(matches!(
                 action,
-                Action::ExecuteWriteFailed { run_id: 7, .. }
+                Action::WriteExecuted {
+                    run_id: 7,
+                    outcome: Err(_),
+                    ..
+                }
             ));
             assert!(calls.is_empty());
         }
@@ -1001,6 +931,7 @@ mod tests {
         }
     }
     mod cached_csv_export_effect {
+        use crate::update::action::CsvExport;
         use std::sync::Arc;
         use std::time::Duration;
 
@@ -1066,8 +997,9 @@ mod tests {
             .unwrap();
 
             let action = run.actions.into_iter().next().expect("action dispatched");
-            let Action::CsvExportSucceeded {
-                path, row_count, ..
+            let Action::CsvExported {
+                outcome: Ok(CsvExport { path, row_count }),
+                ..
             } = action
             else {
                 panic!("expected CSV export success action");
@@ -1108,7 +1040,14 @@ mod tests {
             .unwrap();
 
             let action = run.actions.into_iter().next().expect("action dispatched");
-            assert!(matches!(action, Action::CsvExportFailed { run_id: 8, .. }));
+            assert!(matches!(
+                action,
+                Action::CsvExported {
+                    run_id: 8,
+                    outcome: Err(_),
+                    ..
+                }
+            ));
         }
     }
 
@@ -1127,7 +1066,7 @@ mod tests {
         use crate::ports::outbound::metadata::MockMetadataProvider;
         use crate::ports::outbound::query_executor::MockQueryExecutor;
         use crate::test_support::endpoint;
-        use crate::update::action::{Action, QueryFailureContext};
+        use crate::update::action::{Action, QueryContext};
 
         #[tokio::test]
         async fn success_returns_query_completed() {
@@ -1166,7 +1105,7 @@ mod tests {
 
             let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
-                matches!(action, Action::QueryCompleted { .. }),
+                matches!(action, Action::QueryCompleted { outcome: Ok(_), .. }),
                 "expected QueryCompleted, got {action:?}"
             );
         }
@@ -1212,8 +1151,9 @@ mod tests {
             assert!(
                 matches!(
                     action,
-                    Action::QueryFailed {
-                        context: QueryFailureContext::Preview { .. },
+                    Action::QueryCompleted {
+                        context: QueryContext::Preview { .. },
+                        outcome: Err(_),
                         ..
                     }
                 ),
@@ -1225,6 +1165,7 @@ mod tests {
     mod diagnostic_masking {
         use super::*;
         use crate::cmd::browse::query::mask_mysql_diagnostics;
+        use crate::update::action::WriteOutcome;
 
         #[test]
         fn masks_credentials_in_success_diagnostic_messages() {
@@ -1297,7 +1238,10 @@ mod tests {
             .await;
 
             match action {
-                Action::QueryCompleted { result, .. } => assert_eq!(
+                Action::QueryCompleted {
+                    outcome: Ok(result),
+                    ..
+                } => assert_eq!(
                     result.mysql_diagnostics,
                     vec![DatabaseDiagnostic {
                         level: DiagnosticLevel::Warning,
@@ -1335,7 +1279,10 @@ mod tests {
             .await;
 
             match action {
-                Action::ExecuteWriteSucceeded { diagnostics, .. } => assert_eq!(
+                Action::WriteExecuted {
+                    outcome: Ok(WriteOutcome { diagnostics, .. }),
+                    ..
+                } => assert_eq!(
                     diagnostics,
                     vec![DatabaseDiagnostic {
                         level: DiagnosticLevel::Warning,
@@ -1352,6 +1299,8 @@ mod tests {
         use super::*;
         use crate::domain::{QueryResult, QuerySource, QueryValue};
         use crate::ports::outbound::DbOperationError;
+        use crate::update::action::ExplainPlan;
+        use crate::update::action::WriteOutcome;
 
         #[tokio::test]
         async fn execute_adhoc_forwards_access_mode() {
@@ -1373,7 +1322,14 @@ mod tests {
             )
             .await;
 
-            assert!(matches!(action, Action::QueryCompleted { run_id: 1, .. }));
+            assert!(matches!(
+                action,
+                Action::QueryCompleted {
+                    run_id: 1,
+                    outcome: Ok(_),
+                    ..
+                }
+            ));
         }
 
         #[tokio::test]
@@ -1399,7 +1355,14 @@ mod tests {
             )
             .await;
 
-            assert!(matches!(action, Action::ExplainCompleted { run_id: 2, .. }));
+            assert!(matches!(
+                action,
+                Action::ExplainCompleted {
+                    run_id: 2,
+                    outcome: Ok(_),
+                    ..
+                }
+            ));
         }
 
         #[tokio::test]
@@ -1429,7 +1392,12 @@ mod tests {
             )
             .await;
 
-            let Action::ExplainFailed { error, run_id, .. } = action else {
+            let Action::ExplainCompleted {
+                run_id,
+                outcome: Err(error),
+                ..
+            } = action
+            else {
                 panic!("expected ExplainFailed action");
             };
             assert_eq!(run_id, 2);
@@ -1479,11 +1447,7 @@ mod tests {
 
             assert!(matches!(
                 action,
-                Action::ExplainCompleted {
-                    run_id: 3,
-                    plan_text,
-                    ..
-                } if plan_text == "SCAN users"
+                Action::ExplainCompleted { run_id: 3, outcome: Ok(ExplainPlan { plan_text, .. }), .. } if plan_text == "SCAN users"
             ));
         }
 
@@ -1526,11 +1490,7 @@ mod tests {
 
             assert!(matches!(
                 action,
-                Action::ExplainFailed {
-                    run_id: 4,
-                    error: DbOperationError::QueryFailed(details),
-                    ..
-                } if details.contains("invalid detail value: NULL")
+                Action::ExplainCompleted { run_id: 4, outcome: Err(DbOperationError::QueryFailed(details)), .. } if details.contains("invalid detail value: NULL")
             ));
         }
 
@@ -1564,10 +1524,13 @@ mod tests {
             .await;
 
             match action {
-                Action::ExecuteWriteSucceeded {
+                Action::WriteExecuted {
                     run_id: 3,
-                    affected_rows: 1,
-                    diagnostics,
+                    outcome:
+                        Ok(WriteOutcome {
+                            affected_rows: 1,
+                            diagnostics,
+                        }),
                     ..
                 } => assert_eq!(
                     diagnostics,

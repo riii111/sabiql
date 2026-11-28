@@ -2,15 +2,26 @@ use std::time::{Duration, Instant};
 
 use crate::model::app_state::AppState;
 use crate::model::shared::ui_state::YankFlash;
+use crate::ports::outbound::clipboard::ClipboardError;
 use crate::update::action::CopyTarget;
 
 const RESULT_YANK_FLASH: Duration = Duration::from_millis(200);
 
-pub(in crate::update) fn show_copy_feedback(
+pub(in crate::update) fn copied(
     state: &mut AppState,
     target: CopyTarget,
+    outcome: Result<(), ClipboardError>,
     now: Instant,
 ) {
+    if let Err(error) = outcome {
+        let message = if target == CopyTarget::ConnectionError {
+            error.to_string()
+        } else {
+            "Clipboard unavailable".to_string()
+        };
+        state.messages.set_error(message);
+        return;
+    }
     match target {
         CopyTarget::Panel(flash_id) => state.flash_timers.set(flash_id, now),
         CopyTarget::ResultCell { row, col } => {
@@ -37,12 +48,18 @@ mod tests {
 
     use super::*;
     use crate::model::shared::flash_timer::FlashId;
-    use crate::ports::outbound::clipboard::ClipboardError;
     use crate::update::action::Action;
     use crate::update::reducer::route;
 
     fn copied(state: &mut AppState, target: CopyTarget, now: Instant) {
-        route(state, Action::CopySucceeded(target), now);
+        route(
+            state,
+            Action::Copied {
+                target,
+                outcome: Ok(()),
+            },
+            now,
+        );
     }
 
     #[rstest]
@@ -86,19 +103,25 @@ mod tests {
         assert_eq!(flash.col, None);
     }
 
-    #[test]
-    fn copy_failure_shows_error() {
+    #[rstest]
+    #[case(CopyTarget::ResultRow { row: 0 }, "Clipboard unavailable")]
+    #[case(CopyTarget::ConnectionError, "no display")]
+    fn copy_failure_shows_error_without_feedback(
+        #[case] target: CopyTarget,
+        #[case] expected: &str,
+    ) {
         let mut state = AppState::new("test".to_string());
 
         route(
             &mut state,
-            Action::CopyFailed(ClipboardError::Unavailable("Clipboard unavailable".into())),
+            Action::Copied {
+                target,
+                outcome: Err(ClipboardError::Unavailable("no display".into())),
+            },
             Instant::now(),
         );
 
-        assert_eq!(
-            state.messages.last_error.as_deref(),
-            Some("Clipboard unavailable")
-        );
+        assert_eq!(state.messages.last_error.as_deref(), Some(expected));
+        assert!(state.result_interaction.yank_flash().is_none());
     }
 }

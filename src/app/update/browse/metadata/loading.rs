@@ -1,3 +1,4 @@
+use crate::update::target_routing::open_modal;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -8,20 +9,24 @@ use crate::model::connection::error::ConnectionErrorInfo;
 use crate::model::er_state::ErStatus;
 use crate::model::shared::input_mode::InputMode;
 use crate::ports::outbound::DbOperationError;
-use crate::update::action::{Action, ModalKind};
-use crate::update::browse::query::preview_effect_for_current_table;
+use crate::update::action::ModalKind;
+use crate::update::browse::query::table_load_effect;
 use crate::update::helpers::{metadata_reload_effects, reject_pending_mysql_connection_probe};
 use crate::update::query_context::termination_effects;
 
 pub(in crate::update) fn metadata_loaded(
     state: &mut AppState,
     run_id: u64,
-    metadata: Arc<DatabaseMetadata>,
+    outcome: Result<Arc<DatabaseMetadata>, DbOperationError>,
     now: Instant,
 ) -> Vec<Effect> {
     if !state.session.is_current_metadata_run(run_id) {
         return vec![];
     }
+    let metadata = match outcome {
+        Ok(metadata) => metadata,
+        Err(error) => return metadata_failed(state, &error),
+    };
     let Some(endpoint) = state.session.endpoint().cloned() else {
         return vec![];
     };
@@ -50,19 +55,7 @@ pub(in crate::update) fn metadata_loaded(
             state.ui.set_explorer_selection(Some(idx));
             // Refresh preview and detail: DDL or reload may have changed
             // data/schema even though the table still exists.
-            let page = state.query.pagination.current_page();
-            let generation = state.session.selection_generation();
-            effects.extend(preview_effect_for_current_table(
-                state, now, page, generation,
-            ));
-            let detail_run_id = state.session.begin_table_detail_run();
-            effects.push(Effect::FetchTableDetail {
-                endpoint,
-                schema: state.query.pagination.schema().to_string(),
-                table: state.query.pagination.table().to_string(),
-                generation,
-                run_id: detail_run_id,
-            });
+            effects.push(table_load_effect(state, endpoint, now));
         } else {
             // The previously selected table was removed (e.g. via DROP TABLE).
             // Clear all selection state to avoid stale references.
@@ -82,9 +75,7 @@ pub(in crate::update) fn metadata_loaded(
     }
 
     if state.ui.take_pending_er_picker() && state.modal.active_mode() == InputMode::Normal {
-        effects.push(Effect::DispatchActions(vec![Action::OpenModal(
-            ModalKind::ErTablePicker,
-        )]));
+        effects.extend(open_modal(state, ModalKind::ErTablePicker, now));
     }
 
     effects
@@ -103,16 +94,8 @@ pub(in crate::update) fn effective_user_loaded(
     vec![]
 }
 
-pub(in crate::update) fn metadata_failed(
-    state: &mut AppState,
-    run_id: u64,
-    error: DbOperationError,
-) -> Vec<Effect> {
-    if !state.session.is_current_metadata_run(run_id) {
-        return vec![];
-    }
-
-    let error_info = ConnectionErrorInfo::from_db_operation_error(&error);
+fn metadata_failed(state: &mut AppState, error: &DbOperationError) -> Vec<Effect> {
+    let error_info = ConnectionErrorInfo::from_db_operation_error(error);
     state.connection_error.set_error(error_info);
     let was_connected = state.session.connection_state().is_connected();
     state.session.mark_connection_failed();
@@ -127,14 +110,10 @@ pub(in crate::update) fn metadata_failed(
         state.er_preparation.mark_idle();
     }
     if was_connected {
-        if state
+        state
             .session
-            .mark_metadata_detail_failed(error.user_message())
-        {
-            super::table_detail::reveal_pending_preview(state, state.session.selection_generation())
-        } else {
-            vec![]
-        }
+            .mark_metadata_detail_failed(error.user_message());
+        vec![]
     } else {
         termination_effects(&state.query, vec![])
     }
@@ -163,6 +142,7 @@ mod tests {
     use crate::model::browse::session::TableDetailState;
     use crate::test_support::endpoint;
     use crate::test_support::table;
+    use crate::update::action::Action;
     use crate::update::reducer::route;
 
     fn connected_state(database_type: DatabaseType) -> AppState {
@@ -192,9 +172,11 @@ mod tests {
     }
 
     fn metadata_failed(run_id: u64) -> Action {
-        Action::MetadataFailed {
+        Action::MetadataLoaded {
             run_id,
-            error: DbOperationError::PermissionDenied("metadata refresh failed".to_string()),
+            outcome: Err(DbOperationError::PermissionDenied(
+                "metadata refresh failed".to_string(),
+            )),
         }
     }
 
@@ -267,57 +249,9 @@ mod tests {
     }
 
     #[test]
-    fn metadata_failure_reveals_pending_preview_after_terminalizing_detail() {
-        let mut state = connected_state(DatabaseType::SQLite);
-        let (generation, run_id) = loading_detail_and_metadata_run(&mut state);
-        state.query.defer_preview(
-            Arc::new(QueryResult::error(
-                "SELECT * FROM public.users".to_string(),
-                "preview failed".to_string(),
-                0,
-                QuerySource::Preview,
-            )),
-            generation,
-            None,
-            false,
-        );
-
-        let effects = route(&mut state, metadata_failed(run_id), Instant::now());
-
-        assert!(matches!(
-            effects.as_slice(),
-            [Effect::DispatchActions(actions)]
-                if matches!(
-                    actions.as_slice(),
-                    [Action::RevealPendingPreview { generation: action_generation }]
-                        if *action_generation == generation
-                )
-        ));
-        assert!(state.session.is_table_detail_terminal(generation));
-        route(
-            &mut state,
-            Action::RevealPendingPreview { generation },
-            Instant::now(),
-        );
-        assert!(state.query.current_result().is_some());
-        assert!(!state.query.has_pending_preview(generation));
-    }
-
-    #[test]
     fn reload_failure_terminates_detail_owned_by_metadata_refresh() {
         let mut state = connected_state(DatabaseType::PostgreSQL);
-        let (generation, _) = loading_detail_and_metadata_run(&mut state);
-        state.query.defer_preview(
-            Arc::new(QueryResult::error(
-                "SELECT * FROM public.users".to_string(),
-                "preview failed".to_string(),
-                0,
-                QuerySource::Preview,
-            )),
-            generation,
-            None,
-            false,
-        );
+        let _ = loading_detail_and_metadata_run(&mut state);
 
         route(&mut state, Action::ReloadMetadata, Instant::now());
         let run_id = state.session.metadata_generation();
@@ -328,15 +262,7 @@ mod tests {
             state.session.table_detail_state(),
             TableDetailState::Error(_)
         ));
-        assert!(matches!(
-            effects.as_slice(),
-            [Effect::DispatchActions(actions)]
-                if matches!(
-                    actions.as_slice(),
-                    [Action::RevealPendingPreview { generation: action_generation }]
-                        if *action_generation == generation
-                )
-        ));
+        assert!(effects.is_empty());
     }
 
     #[test]
@@ -409,21 +335,10 @@ mod tests {
     }
 
     #[test]
-    fn reload_failure_during_detail_fetch_preserves_loading_detail_and_pending_preview() {
+    fn reload_failure_during_detail_fetch_preserves_loading_detail() {
         let mut state = connected_state(DatabaseType::MySQL);
-        let generation = state.session.select_table("app", "users", &mut state.query);
+        let _ = state.session.select_table("app", "users", &mut state.query);
         let detail_run_id = state.session.begin_table_detail_run();
-        state.query.defer_preview(
-            Arc::new(QueryResult::error(
-                "SELECT * FROM app.users".to_string(),
-                "preview failed".to_string(),
-                0,
-                QuerySource::Preview,
-            )),
-            generation,
-            None,
-            false,
-        );
 
         route(&mut state, Action::ReloadMetadata, Instant::now());
         let metadata_run_id = state.session.metadata_generation();
@@ -436,7 +351,6 @@ mod tests {
             TableDetailState::Loading
         ));
         assert!(state.session.is_current_table_detail_run(detail_run_id));
-        assert!(state.query.has_pending_preview(generation));
     }
 
     #[test]

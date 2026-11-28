@@ -2,8 +2,8 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::detail_view::DetailSearchState;
 use crate::model::shared::flash_timer::FlashId;
-use crate::update::action::{Action, CopyTarget, DetailTarget, SearchStep};
-use crate::update::helpers::{clipboard_unavailable, find_text_matches};
+use crate::update::action::{CopyTarget, DetailTarget, SearchStep};
+use crate::update::helpers::find_text_matches;
 
 use super::json::jump_to_current_match;
 use crate::model::shared::text_input::TextEdit;
@@ -20,8 +20,7 @@ pub(in crate::update) fn detail_search(
 pub(in crate::update) fn detail_yank_all(state: &AppState, target: DetailTarget) -> Vec<Effect> {
     vec![Effect::CopyToClipboard {
         content: yank_content(state, target),
-        on_success: Box::new(Action::CopySucceeded(CopyTarget::Panel(flash_id(target)))),
-        on_failure: Some(Box::new(clipboard_unavailable())),
+        target: CopyTarget::Panel(flash_id(target)),
     }]
 }
 

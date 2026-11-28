@@ -19,7 +19,8 @@ use crate::model::shared::key_sequence::KeySequenceState;
 use crate::model::shared::text_input::TextEdit;
 use crate::model::sql_editor::modal::sql_modal_visible_rows;
 use crate::policy::FeaturePolicy;
-use crate::update::action::{Action, ListMotion, TableTarget};
+use crate::update::action::{Action, ListMotion};
+use crate::update::browse::query::table_load_effect;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 use crate::update::input::keymap::{KeyContext, listed_palette_entries, palette_action};
 use crate::update::motion::MotionProbe;
@@ -133,9 +134,8 @@ pub(in crate::update) fn route(state: &mut AppState, action: Action, now: Instan
             state.modal.pop_mode();
             vec![]
         }
-        Action::CommandLineSubmit => browse::query::execution::command_line_submit(state),
+        Action::CommandLineSubmit => browse::query::execution::command_line_submit(state, now),
         Action::TryConnect => connection::lifecycle::try_connect(state),
-        Action::SwitchConnection(target) => connection::lifecycle::switch_connection(state, target),
         Action::ConnectionsLoaded(payload) => {
             browse::navigation::connection_list::connections_loaded(state, payload)
         }
@@ -166,42 +166,18 @@ pub(in crate::update) fn route(state: &mut AppState, action: Action, now: Instan
         }
         Action::ConnectionSetupSave => connection::setup::connection_setup_save(state),
         Action::ConnectionSetupCancel => connection::setup::connection_setup_cancel(state),
-        Action::ConnectionSaveCompleted {
-            target,
-            run_id,
-            mysql_lower_case_table_names,
-            metadata,
-        } => connection::setup::connection_save_completed(
-            state,
-            target,
-            run_id,
-            mysql_lower_case_table_names,
-            metadata,
-        ),
-        Action::ConnectionSaveFailed { error, run_id } => {
-            connection::setup::connection_save_failed(state, error, run_id)
+        Action::ConnectionSaved { run_id, outcome } => {
+            connection::setup::connection_saved(state, run_id, outcome, now)
         }
-        Action::MySqlConnectionProbeCompleted {
+        Action::MySqlConnectionProbed {
             target,
             run_id,
-            lower_case_table_names,
-        } => connection::lifecycle::mysql_connection_probe_completed(
-            state,
-            target,
-            run_id,
-            lower_case_table_names,
-        ),
-        Action::MySqlConnectionProbeFailed {
-            target,
-            run_id,
-            error,
-        } => connection::lifecycle::mysql_connection_probe_failed(state, target, run_id, error),
-        Action::ConnectionEditLoaded(profile) => {
-            connection::setup::connection_edit_loaded(state, profile)
+            outcome,
+        } => connection::lifecycle::mysql_connection_probed(state, target, run_id, outcome),
+        Action::ConnectionEditLoaded(outcome) => {
+            connection::setup::connection_edit_loaded(state, outcome)
         }
-        Action::ConnectionEditLoadFailed(error)
-        | Action::ConnectionDeleteFailed(error)
-        | Action::ErLogWriteFailed(error) => {
+        Action::ErLogWriteFailed(error) => {
             state.messages.set_error(error);
             vec![]
         }
@@ -216,8 +192,9 @@ pub(in crate::update) fn route(state: &mut AppState, action: Action, now: Instan
         Action::RequestDeleteSelectedConnection => {
             connection::selector::request_delete_selected_connection(state)
         }
-        Action::DeleteConnection(id) => connection::selector::delete_connection(state, id),
-        Action::ConnectionDeleted(id) => connection::selector::connection_deleted(state, id, now),
+        Action::ConnectionDeleted(outcome) => {
+            connection::selector::connection_deleted(state, outcome, now)
+        }
         Action::RequestEditSelectedConnection => {
             connection::selector::request_edit_selected_connection(state)
         }
@@ -261,19 +238,10 @@ pub(in crate::update) fn route(state: &mut AppState, action: Action, now: Instan
         }
         Action::SettingsApply => modal::settings::settings_apply(state),
         Action::SettingsCancel => modal::settings::settings_cancel(state),
-        Action::SettingsSaved(settings) => modal::settings::settings_saved(state, settings, now),
-        Action::SettingsSaveFailed(error) => {
-            state
-                .messages
-                .set_error(format!("Failed to save settings: {error}"));
-            vec![]
-        }
+        Action::SettingsSaved(outcome) => modal::settings::settings_saved(state, outcome, now),
         Action::ReloadMetadata => browse::metadata::loading::reload_metadata(state),
-        Action::MetadataLoaded { run_id, metadata } => {
-            browse::metadata::loading::metadata_loaded(state, run_id, metadata, now)
-        }
-        Action::MetadataFailed { run_id, error } => {
-            browse::metadata::loading::metadata_failed(state, run_id, error)
+        Action::MetadataLoaded { run_id, outcome } => {
+            browse::metadata::loading::metadata_loaded(state, run_id, outcome, now)
         }
         Action::EffectiveUserLoaded {
             run_id,
@@ -287,36 +255,15 @@ pub(in crate::update) fn route(state: &mut AppState, action: Action, now: Instan
         } => browse::metadata::table_detail::table_detail_loaded(
             state, endpoint, run_id, outcome, generation,
         ),
-        Action::PrefetchTableDetail {
-            run_id,
-            schema,
-            table,
-        } => browse::metadata::prefetch::prefetch_table_detail(state, run_id, schema, table, now),
         Action::TableDetailCached {
             endpoint,
             run_id,
             schema,
             table,
-            detail,
+            outcome,
         } => browse::metadata::prefetch::table_detail_cached(
-            state, endpoint, run_id, schema, table, detail,
+            state, endpoint, run_id, schema, table, outcome, now,
         ),
-        Action::TableDetailCacheFailed {
-            endpoint,
-            run_id,
-            schema,
-            table,
-            error,
-        } => browse::metadata::prefetch::table_detail_cache_failed(
-            state, endpoint, run_id, schema, table, error, now,
-        ),
-        Action::StartErPrefetchAll => browse::metadata::prefetch::start_er_prefetch_all(state),
-        Action::StartErPrefetchScoped { tables } => {
-            browse::metadata::prefetch::start_er_prefetch_scoped(state, tables)
-        }
-        Action::StartCompletionPrefetch { tables } => {
-            browse::metadata::prefetch::start_completion_prefetch(state, tables)
-        }
         Action::ProcessPrefetchQueue { run_id } => {
             browse::metadata::prefetch::process_prefetch_queue(state, run_id, now)
         }
@@ -346,7 +293,7 @@ pub(in crate::update) fn route(state: &mut AppState, action: Action, now: Instan
         }
         Action::SqlModalNextTab => explain::tabs::sql_modal_next_tab(state),
         Action::SqlModalPrevTab => explain::tabs::sql_modal_prev_tab(state),
-        Action::CompletionRequest => sql_editor::completion::completion_request(state),
+        Action::CompletionRequest => sql_editor::completion::completion_request(state, now),
         Action::CompletionAccept => {
             state
                 .sql_modal
@@ -370,60 +317,36 @@ pub(in crate::update) fn route(state: &mut AppState, action: Action, now: Instan
         Action::ExplainAnalyzeConfirm => explain::analyze::explain_analyze_confirm(state, now),
         Action::ExplainAnalyzeCancel => explain::analyze::explain_analyze_cancel(state),
         Action::ExplainCompleted {
-            database_type,
             database_generation,
             run_id,
-            query,
-            plan_text,
             is_analyze,
-            execution_time_ms,
+            outcome,
         } => explain::output::explain_completed(
             state,
-            database_type,
             database_generation,
             run_id,
-            query,
-            plan_text,
             is_analyze,
-            execution_time_ms,
+            outcome,
         ),
-        Action::ExplainFailed {
-            database_generation,
-            run_id,
-            error,
-            ..
-        } => explain::output::explain_failed(state, database_generation, run_id, error),
         Action::CompareEditQuery => explain::tabs::compare_edit_query(state),
-        Action::ExecutePreview(target) => {
-            browse::query::execution::execute_preview(state, target, now)
-        }
         Action::QueryCompleted {
             run_id,
-            result,
             context,
+            outcome: Ok(result),
         } => browse::query::execution::query_completed(state, run_id, result, context, now),
-        Action::QueryFailed {
+        Action::QueryCompleted {
             run_id,
-            error,
             context,
+            outcome: Err(error),
         } => browse::query::execution::query_failed(state, run_id, error, context, now),
-        Action::RevealPendingPreview { generation } => {
-            browse::query::execution::reveal_pending_preview(state, generation, now)
-        }
-        Action::ExecuteWriteSucceeded {
+        Action::WriteExecuted {
             run_id,
-            affected_rows,
-            diagnostics,
-        } => browse::query::write::execute_write_succeeded(
-            state,
+            outcome: Ok(outcome),
+        } => browse::query::write::execute_write_succeeded(state, run_id, outcome, now),
+        Action::WriteExecuted {
             run_id,
-            affected_rows,
-            diagnostics,
-            now,
-        ),
-        Action::ExecuteWriteFailed { run_id, error } => {
-            browse::query::write::execute_write_failed(state, run_id, error, now)
-        }
+            outcome: Err(error),
+        } => browse::query::write::execute_write_failed(state, run_id, error, now),
         Action::ResultNextPage => browse::query::pagination::result_next_page(state, now),
         Action::ResultPrevPage => browse::query::pagination::result_prev_page(state, now),
         Action::ResultActivateCell => browse::result::selection::result_activate_cell(state),
@@ -453,17 +376,15 @@ pub(in crate::update) fn route(state: &mut AppState, action: Action, now: Instan
             state.result_interaction.clear_staged_deletes();
             vec![]
         }
-        Action::ResultEnterCellEdit => browse::result::edit::result_enter_cell_edit(state),
-        Action::ResultOpenCellDetail => browse::result::cell_detail::result_open_cell_detail(state),
+        Action::ResultEnterCellEdit => browse::result::edit::result_enter_cell_edit(state, now),
+        Action::ResultOpenCellDetail => {
+            browse::result::cell_detail::result_open_cell_detail(state, now)
+        }
         Action::ResultCancelCellEdit => browse::result::edit::result_cancel_cell_edit(state),
         Action::ResultDiscardCellEdit => browse::result::edit::result_discard_cell_edit(state),
         Action::SubmitCellEditWrite => browse::query::write::submit_cell_edit_write(state),
-        Action::CopySucceeded(target) => {
-            clipboard::show_copy_feedback(state, target, now);
-            vec![]
-        }
-        Action::CopyFailed(error) => {
-            state.messages.set_error(error.to_string());
+        Action::Copied { target, outcome } => {
+            clipboard::copied(state, target, outcome, now);
             vec![]
         }
         Action::OpenFolderFailed(error) => {
@@ -478,23 +399,15 @@ pub(in crate::update) fn route(state: &mut AppState, action: Action, now: Instan
             vec![]
         }
         Action::ToggleReadOnly => browse::navigation::focus::toggle_read_only(state),
-        Action::QueryHistoryLoaded(scope, entries) => {
-            modal::query_history::query_history_loaded(state, scope, entries)
-        }
-        Action::QueryHistoryLoadFailed(scope, error) => {
-            modal::query_history::query_history_load_failed(state, scope, error)
+        Action::QueryHistoryLoaded(scope, outcome) => {
+            modal::query_history::query_history_loaded(state, scope, outcome)
         }
         Action::QueryHistoryConfirmSelection => {
             modal::query_history::query_history_confirm_selection(state)
         }
         Action::RequestCsvExport => browse::query::pagination::request_csv_export(state, now),
-        Action::CsvExportSucceeded {
-            run_id,
-            path,
-            row_count,
-        } => browse::query::pagination::csv_export_succeeded(state, run_id, path, row_count, now),
-        Action::CsvExportFailed { run_id, error } => {
-            browse::query::pagination::csv_export_failed(state, run_id, error)
+        Action::CsvExported { run_id, outcome } => {
+            browse::query::pagination::csv_exported(state, run_id, outcome, now)
         }
         Action::DetailSearch { target, step } => {
             browse::result::detail_search::detail_search(state, target, step)
@@ -509,18 +422,16 @@ pub(in crate::update) fn route(state: &mut AppState, action: Action, now: Instan
         Action::RowDetailYankJson => browse::result::row_detail::row_detail_yank_json(state),
         Action::ErToggleSelection => modal::er_picker::er_toggle_selection(state),
         Action::ErSelectAll => modal::er_picker::er_select_all(state),
-        Action::ErConfirmSelection => modal::er_picker::er_confirm_selection(state),
-        Action::ErOpenDiagram => er::diagram::er_open_diagram(state, now),
-        Action::ErGenerateFromCache => er::diagram::er_generate_from_cache(state),
-        Action::SmartErRefreshFetched(fetched) => {
-            er::smart_refresh_fetched::smart_er_refresh_fetched(state, fetched, now)
-        }
-        Action::SmartErRefreshFailed(failure) => {
-            er::smart_refresh_failed::smart_er_refresh_failed(state, failure)
-        }
-        Action::ErDiagramOpened(info) => er::diagram::er_diagram_opened(state, info, now),
-        Action::ErDiagramFailed { run_id, error } => {
-            er::diagram::er_diagram_failed(state, run_id, error)
+        Action::ErConfirmSelection => modal::er_picker::er_confirm_selection(state, now),
+        Action::SmartErRefreshFetched {
+            endpoint,
+            run_id,
+            outcome,
+        } => er::smart_refresh_fetched::smart_er_refresh_fetched(
+            state, &endpoint, run_id, outcome, now,
+        ),
+        Action::ErDiagramOpened { run_id, outcome } => {
+            er::diagram::er_diagram_opened(state, run_id, outcome, now)
         }
     }
 }
@@ -550,7 +461,7 @@ fn confirm_selection(state: &mut AppState, now: Instant) -> Vec<Effect> {
             .copied()
             .cloned();
         if let Some(table) = table {
-            return select_table(state, &table);
+            return select_table(state, &table, now);
         }
     } else if state.modal.active_mode() == InputMode::Normal {
         if state.connection_error.has_error() {
@@ -562,7 +473,7 @@ fn confirm_selection(state: &mut AppState, now: Instant) -> Vec<Effect> {
         }
         let table = state.tables().get(state.ui.explorer_selected()).cloned();
         if let Some(table) = table {
-            return select_table(state, &table);
+            return select_table(state, &table, now);
         }
     } else if state.modal.active_mode() == InputMode::CommandPalette {
         let Some(entry_id) = listed_palette_entries(state)
@@ -582,7 +493,7 @@ fn confirm_selection(state: &mut AppState, now: Instant) -> Vec<Effect> {
     vec![]
 }
 
-fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
+fn select_table(state: &mut AppState, table: &TableSummary, now: Instant) -> Vec<Effect> {
     if reject_pending_mysql_connection_probe(state) {
         return vec![];
     }
@@ -592,33 +503,16 @@ fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
         .select_table(&table.schema, &table.name, &mut state.query);
     state.result_interaction.reset_interaction();
 
-    let schema = table.schema.clone();
-    let table_name = table.name.clone();
-
     let mut effects = termination_effects(&state.query, vec![]);
-    if let Some(endpoint) = state.session.endpoint().cloned() {
-        let run_id = state.session.begin_table_detail_run();
-        effects.push(Effect::FetchTableDetail {
-            endpoint,
-            schema: schema.clone(),
-            table: table_name.clone(),
-            generation,
-            run_id,
-        });
-    } else {
+    let Some(endpoint) = state.session.endpoint().cloned() else {
         let message = "No active connection".to_string();
         state
             .session
             .mark_table_detail_failed(generation, message.clone());
         state.messages.set_error(message);
-    }
-    effects.push(Effect::DispatchActions(vec![Action::ExecutePreview(
-        TableTarget {
-            schema,
-            table: table_name,
-            generation,
-        },
-    )]));
+        return effects;
+    };
+    effects.push(table_load_effect(state, endpoint, now));
     effects
 }
 
@@ -635,7 +529,7 @@ mod tests {
     use crate::test_support::endpoint;
     use crate::update::action::CopyTarget;
     use crate::update::action::ModalKind;
-    use crate::update::action::QueryCompletionContext;
+    use crate::update::action::QueryContext;
     use crate::update::action::{ConnectionSaveError, ConnectionTarget, SmartErRefreshError};
     use crate::update::action::{InputTarget, SelectMotion};
     use crate::update::test_fixtures;
@@ -775,7 +669,7 @@ mod tests {
             let mut state = create_test_state();
             let table = TableSummary::new("public".to_string(), "users".to_string(), None);
 
-            let effects = select_table(&mut state, &table);
+            let effects = select_table(&mut state, &table, Instant::now());
 
             assert!(matches!(
                 state.session.table_detail_state(),
@@ -821,6 +715,7 @@ mod tests {
         use crate::domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
         use crate::model::er_state::ErStatus;
         use crate::model::shared::flash_timer::FlashId;
+        use crate::update::action::ExplainPlan;
         use crate::update::action::{ErDiagramInfo, ScrollAmount, ScrollDirection, ScrollTarget};
 
         fn sqlite_state() -> AppState {
@@ -866,12 +761,14 @@ mod tests {
 
             assert_unsupported_action_is_a_noop(
                 &mut state,
-                Action::ErDiagramOpened(ErDiagramInfo {
+                Action::ErDiagramOpened {
                     run_id: 0,
-                    path: "diagram.svg".to_string(),
-                    table_count: 1,
-                    total_tables: 1,
-                }),
+                    outcome: Ok(ErDiagramInfo {
+                        path: "diagram.svg".to_string(),
+                        table_count: 1,
+                        total_tables: 1,
+                    }),
+                },
             );
             assert_eq!(state.er_preparation.status(), ErStatus::Rendering);
         }
@@ -881,7 +778,10 @@ mod tests {
             let mut json_state = sqlite_state();
             assert_unsupported_action_is_a_noop(
                 &mut json_state,
-                Action::CopySucceeded(CopyTarget::Panel(FlashId::JsonDetail)),
+                Action::Copied {
+                    target: CopyTarget::Panel(FlashId::JsonDetail),
+                    outcome: Ok(()),
+                },
             );
             assert_unsupported_action_is_a_noop(&mut json_state, Action::JsonEnterEdit);
 
@@ -949,23 +849,25 @@ mod tests {
             assert_unsupported_action_is_a_noop(
                 &mut explain_state,
                 Action::ExplainCompleted {
-                    database_type: DatabaseType::SQLite,
                     database_generation: 0,
                     run_id: 1,
-                    query: "SELECT 1".to_string(),
-                    plan_text: "QUERY PLAN".to_string(),
                     is_analyze: true,
-                    execution_time_ms: 1,
+                    outcome: Ok(ExplainPlan {
+                        database_type: DatabaseType::SQLite,
+                        query: "SELECT 1".to_string(),
+                        plan_text: "QUERY PLAN".to_string(),
+                        execution_time_ms: 1,
+                    }),
                 },
             );
             assert!(explain_state.explain.plan_text().is_none());
             assert_unsupported_action_is_a_noop(
                 &mut explain_state,
-                Action::ExplainFailed {
+                Action::ExplainCompleted {
                     database_generation: 0,
                     run_id: 1,
-                    error: DbOperationError::QueryFailed("error".to_string()),
                     is_analyze: true,
+                    outcome: Err(DbOperationError::QueryFailed("error".to_string())),
                 },
             );
 
@@ -1455,14 +1357,17 @@ mod tests {
             let run_id = state.session.begin_metadata_refresh();
             Action::MetadataLoaded {
                 run_id,
-                metadata: Arc::new(metadata),
+                outcome: Ok(Arc::new(metadata)),
             }
         }
 
         fn metadata_failed_action(state: &mut AppState, error: DbOperationError) -> Action {
             test_fixtures::activate_postgres_connection(state, "postgres://localhost/test");
             let run_id = state.session.begin_metadata_refresh();
-            Action::MetadataFailed { run_id, error }
+            Action::MetadataLoaded {
+                run_id,
+                outcome: Err(error),
+            }
         }
 
         #[test]
@@ -1541,9 +1446,11 @@ mod tests {
 
             reduce(
                 &mut state,
-                Action::MetadataFailed {
+                Action::MetadataLoaded {
                     run_id: reload_run_id,
-                    error: DbOperationError::ConnectionFailed("reload failed".to_string()),
+                    outcome: Err(DbOperationError::ConnectionFailed(
+                        "reload failed".to_string(),
+                    )),
                 },
                 Instant::now(),
             );
@@ -1620,9 +1527,11 @@ mod tests {
 
             reduce(
                 &mut state,
-                Action::MetadataFailed {
+                Action::MetadataLoaded {
                     run_id,
-                    error: DbOperationError::ConnectionFailed("connection refused".to_string()),
+                    outcome: Err(DbOperationError::ConnectionFailed(
+                        "connection refused".to_string(),
+                    )),
                 },
                 now,
             );
@@ -1756,10 +1665,10 @@ mod tests {
 
             let effects = reduce(&mut state, Action::CopyConnectionError, now);
 
-            let [Effect::CopyToClipboard { on_failure, .. }] = effects.as_slice() else {
+            let [Effect::CopyToClipboard { target, .. }] = effects.as_slice() else {
                 panic!("expected clipboard effect");
             };
-            assert!(on_failure.is_none());
+            assert_eq!(*target, CopyTarget::ConnectionError);
             assert!(
                 state
                     .connection_error
@@ -1775,7 +1684,10 @@ mod tests {
 
             reduce(
                 &mut state,
-                Action::CopySucceeded(CopyTarget::ConnectionError),
+                Action::Copied {
+                    target: CopyTarget::ConnectionError,
+                    outcome: Ok(()),
+                },
                 now,
             );
 
@@ -1882,7 +1794,7 @@ mod tests {
             let metadata = DatabaseMetadata::new("test".to_string());
             let action = Action::MetadataLoaded {
                 run_id: 1,
-                metadata: Arc::new(metadata),
+                outcome: Ok(Arc::new(metadata)),
             };
             reduce(&mut state, action, now);
 
@@ -1907,32 +1819,11 @@ mod tests {
             state.er_preparation.mark_rendering();
             let now = Instant::now();
 
-            let effects = reduce(&mut state, Action::ErOpenDiagram, now);
+            let effects = er::diagram::er_open_diagram(&mut state, now);
 
             assert!(effects.is_empty());
             assert_eq!(state.er_preparation.status(), ErStatus::Rendering);
             assert!(state.messages.last_error.is_none());
-        }
-
-        #[test]
-        fn unsupported_er_open_direct_dispatch_has_no_side_effect() {
-            let mut state = create_test_state();
-            test_fixtures::activate_sqlite_connection(&mut state, "sqlite://test.db");
-            let now = Instant::now();
-            state.clear_dirty();
-            state
-                .messages
-                .set_success_at("existing message".to_string(), now);
-            state.result_interaction.start_yank_operator();
-
-            let effects = reduce(&mut state, Action::ErOpenDiagram, now);
-
-            assert!(effects.is_empty());
-            assert!(!state.render_dirty);
-            assert_eq!(state.messages.last_success(), Some("existing message"));
-            assert!(state.messages.last_error().is_none());
-            assert!(state.result_interaction.is_yank_operator_pending());
-            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
         }
 
         #[test]
@@ -1948,7 +1839,7 @@ mod tests {
                 .queue_table_prefetch("public.users".to_string());
             let now = Instant::now();
 
-            let effects = reduce(&mut state, Action::ErOpenDiagram, now);
+            let effects = er::diagram::er_open_diagram(&mut state, now);
 
             assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
             assert!(state.table_prefetch.active_prefetch_run_id().is_none());
@@ -1966,7 +1857,7 @@ mod tests {
             let _ = state.table_prefetch.begin_er_prefetch();
             let now = Instant::now();
 
-            let effects = reduce(&mut state, Action::ErOpenDiagram, now);
+            let effects = er::diagram::er_open_diagram(&mut state, now);
 
             assert!(state.table_prefetch.active_prefetch_run_id().is_none());
             assert_eq!(effects.len(), 1);
@@ -1983,7 +1874,7 @@ mod tests {
                 .set_metadata(Some(Arc::new(DatabaseMetadata::new("test".to_string()))));
             let now = Instant::now();
 
-            let effects = reduce(&mut state, Action::ErOpenDiagram, now);
+            let effects = er::diagram::er_open_diagram(&mut state, now);
 
             assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
             assert_eq!(state.er_preparation.run_id(), 1);
@@ -2000,7 +1891,7 @@ mod tests {
             let _ = state.table_prefetch.begin_er_prefetch();
             let now = Instant::now();
 
-            let effects = reduce(&mut state, Action::ErOpenDiagram, now);
+            let effects = er::diagram::er_open_diagram(&mut state, now);
 
             assert!(state.messages.last_error.is_some());
             assert!(effects.is_empty());
@@ -2013,9 +1904,11 @@ mod tests {
             let now = Instant::now();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             let run_id = state.session.begin_metadata_refresh();
-            let action = Action::MetadataFailed {
+            let action = Action::MetadataLoaded {
                 run_id,
-                error: DbOperationError::ConnectionFailed("connection refused".to_string()),
+                outcome: Err(DbOperationError::ConnectionFailed(
+                    "connection refused".to_string(),
+                )),
             };
 
             reduce(&mut state, action, now);
@@ -2055,7 +1948,7 @@ mod tests {
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    detail: make_test_table(),
+                    outcome: Ok(make_test_table()),
                 },
                 now,
             );
@@ -2081,7 +1974,7 @@ mod tests {
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    detail: make_test_table(),
+                    outcome: Ok(make_test_table()),
                 },
                 now,
             );
@@ -2214,9 +2107,10 @@ mod tests {
         use super::*;
         use crate::domain::{DatabaseMetadata, MetadataState};
         use crate::model::shared::confirm_dialog::ConfirmIntent;
+        use crate::update::action::SavedConnection;
 
         #[test]
-        fn save_completed_sets_dsn_and_returns_fetch_effect() {
+        fn save_completed_sets_dsn_and_applies_validated_metadata() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConnectionSetup);
             state.connection_setup.set_first_run(true);
@@ -2234,15 +2128,17 @@ mod tests {
 
             let effects = reduce(
                 &mut state,
-                Action::ConnectionSaveCompleted {
-                    target: ConnectionTarget {
-                        id: ConnectionId::new(),
-                        name: "Test Connection".to_string(),
-                        endpoint: endpoint::postgres("postgres://db.example.com/mydb"),
-                    },
+                Action::ConnectionSaved {
                     run_id,
-                    mysql_lower_case_table_names: None,
-                    metadata: Some(Arc::new(DatabaseMetadata::new("validated".to_string()))),
+                    outcome: Ok(SavedConnection {
+                        target: ConnectionTarget {
+                            id: ConnectionId::new(),
+                            name: "Test Connection".to_string(),
+                            endpoint: endpoint::postgres("postgres://db.example.com/mydb"),
+                        },
+                        mysql_lower_case_table_names: None,
+                        metadata: Some(Arc::new(DatabaseMetadata::new("validated".to_string()))),
+                    }),
                 },
                 now,
             );
@@ -2258,10 +2154,10 @@ mod tests {
             );
             assert_eq!(state.input_mode(), InputMode::Normal);
             test_fixtures::assert_connection_save_fetch_effects(&effects, DatabaseType::PostgreSQL);
-            assert!(state.session.connection_state().is_connecting());
+            assert!(state.session.connection_state().is_connected());
             assert!(matches!(
                 state.session.metadata_state(),
-                MetadataState::Loading
+                MetadataState::Loaded
             ));
         }
 
@@ -2274,9 +2170,11 @@ mod tests {
 
             let effects = reduce(
                 &mut state,
-                Action::ConnectionSaveFailed {
-                    error: ConnectionSaveError::Store("IO error: Write error".to_string()),
+                Action::ConnectionSaved {
                     run_id,
+                    outcome: Err(ConnectionSaveError::Store(
+                        "IO error: Write error".to_string(),
+                    )),
                 },
                 now,
             );
@@ -2324,6 +2222,7 @@ mod tests {
         use crate::policy::write::write_guardrails::{
             GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
         };
+        use crate::update::action::WriteOutcome;
 
         #[test]
         fn confirm_quit_no_connection_sets_should_quit() {
@@ -2402,10 +2301,12 @@ mod tests {
             // Simulate success
             let effects = reduce(
                 &mut state,
-                Action::ExecuteWriteSucceeded {
+                Action::WriteExecuted {
                     run_id: 1,
-                    affected_rows: 1,
-                    diagnostics: Vec::new(),
+                    outcome: Ok(WriteOutcome {
+                        affected_rows: 1,
+                        diagnostics: Vec::new(),
+                    }),
                 },
                 now,
             );
@@ -2468,9 +2369,9 @@ mod tests {
             // Simulate failure — must detect Delete and return to Normal (not CellEdit)
             reduce(
                 &mut state,
-                Action::ExecuteWriteFailed {
+                Action::WriteExecuted {
                     run_id: 1,
-                    error: DbOperationError::QueryFailed("connection lost".to_string()),
+                    outcome: Err(DbOperationError::QueryFailed("connection lost".to_string())),
                 },
                 now,
             );
@@ -2508,8 +2409,10 @@ mod tests {
                 state.session.metadata_state(),
                 MetadataState::Loading
             ));
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::CancelMetadataTasks, Effect::FetchMetadata { .. }]
+            ));
         }
 
         #[test]
@@ -2591,7 +2494,7 @@ mod tests {
                 &mut state,
                 Action::MetadataLoaded {
                     run_id,
-                    metadata: Arc::new(metadata),
+                    outcome: Ok(Arc::new(metadata)),
                 },
                 now,
             );
@@ -2622,9 +2525,11 @@ mod tests {
 
             reduce(
                 &mut state,
-                Action::MetadataFailed {
+                Action::MetadataLoaded {
                     run_id,
-                    error: DbOperationError::QueryFailed("permission denied".to_string()),
+                    outcome: Err(DbOperationError::QueryFailed(
+                        "permission denied".to_string(),
+                    )),
                 },
                 now,
             );
@@ -2690,18 +2595,17 @@ mod tests {
                 .session
                 .set_connection_state(ConnectionState::Connected);
             state.ui.set_explorer_selected_raw(5);
-            let now = Instant::now();
+            let _now = Instant::now();
 
             test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
 
-            let effects = reduce(
+            let effects = test_fixtures::switch_connection(
                 &mut state,
-                Action::SwitchConnection(ConnectionTarget {
+                ConnectionTarget {
                     id: conn_b.clone(),
                     name: "Other".to_string(),
                     endpoint: endpoint::postgres("postgres://localhost/other"),
-                }),
-                now,
+                },
             );
 
             assert_eq!(state.session.active_connection_id(), Some(&conn_b));
@@ -2743,18 +2647,17 @@ mod tests {
                 ..Default::default()
             };
             state.connection_caches.insert(conn_b.clone(), cached);
-            let now = Instant::now();
+            let _now = Instant::now();
 
             test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
 
-            let effects = reduce(
+            let effects = test_fixtures::switch_connection(
                 &mut state,
-                Action::SwitchConnection(ConnectionTarget {
+                ConnectionTarget {
                     id: conn_b.clone(),
                     name: "Cached".to_string(),
                     endpoint: endpoint::postgres("postgres://localhost/cached"),
-                }),
-                now,
+                },
             );
 
             assert_eq!(state.session.active_connection_id(), Some(&conn_b));
@@ -2799,7 +2702,7 @@ mod tests {
                 endpoint: endpoint::mysql("mysql://localhost/other", Some("other")),
             };
 
-            let effects = reduce(&mut state, Action::SwitchConnection(target), Instant::now());
+            let effects = test_fixtures::switch_connection(&mut state, target);
 
             assert!(matches!(
                 effects.as_slice(),
@@ -2830,24 +2733,22 @@ mod tests {
                 .mark_connected(Arc::new(DatabaseMetadata::new("a".to_string())));
             let old_a_run_id = state.session.begin_effective_user_fetch();
 
-            reduce(
+            test_fixtures::switch_connection(
                 &mut state,
-                Action::SwitchConnection(ConnectionTarget {
+                ConnectionTarget {
                     id: conn_b,
                     name: "B".to_string(),
                     endpoint: endpoint::postgres("postgres://localhost/b"),
-                }),
-                Instant::now(),
+                },
             );
 
-            let effects = reduce(
+            let effects = test_fixtures::switch_connection(
                 &mut state,
-                Action::SwitchConnection(ConnectionTarget {
+                ConnectionTarget {
                     id: conn_a,
                     name: "A".to_string(),
                     endpoint: endpoint::postgres(&dsn_a),
-                }),
-                Instant::now(),
+                },
             );
 
             let new_a_run_id = effects
@@ -2954,19 +2855,12 @@ mod tests {
             let run_id = state.session.begin_metadata_refresh();
             Action::MetadataLoaded {
                 run_id,
-                metadata: sample_metadata(),
+                outcome: Ok(sample_metadata()),
             }
         }
 
-        fn has_open_er_dispatch(effects: &[Effect]) -> bool {
-            effects.iter().any(|e| {
-                matches!(e, Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::OpenModal(ModalKind::ErTablePicker))))
-            })
-        }
-
         #[test]
-        fn metadata_loaded_with_pending_dispatches_open() {
+        fn metadata_loaded_with_pending_opens_er_picker() {
             let mut state = create_test_state();
             state.ui.request_er_picker_after_metadata();
             state.modal.set_mode(InputMode::Normal);
@@ -2976,19 +2870,24 @@ mod tests {
             let effects = reduce(&mut state, action, now);
 
             assert!(!state.ui.pending_er_picker());
-            assert!(has_open_er_dispatch(&effects));
+            assert_eq!(state.input_mode(), InputMode::ErTablePicker);
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::FetchEffectiveUser { .. }))
+            );
         }
 
         #[test]
-        fn metadata_loaded_without_pending_does_not_dispatch_open() {
+        fn metadata_loaded_without_pending_keeps_normal_mode() {
             let mut state = create_test_state();
             state.ui.reset_er_picker_request();
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state);
 
-            let effects = reduce(&mut state, action, now);
+            reduce(&mut state, action, now);
 
-            assert!(!has_open_er_dispatch(&effects));
+            assert_eq!(state.input_mode(), InputMode::Normal);
         }
 
         #[test]
@@ -2999,10 +2898,10 @@ mod tests {
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state);
 
-            let effects = reduce(&mut state, action, now);
+            reduce(&mut state, action, now);
 
             assert!(!state.ui.pending_er_picker());
-            assert!(!has_open_er_dispatch(&effects));
+            assert_eq!(state.input_mode(), InputMode::SqlModal);
         }
 
         #[test]
@@ -3025,7 +2924,7 @@ mod tests {
         }
 
         #[test]
-        fn confirm_with_selected_tables_sets_target_and_returns_dispatch() {
+        fn confirm_with_selected_tables_sets_target_and_opens_diagram() {
             let mut state = state_with_metadata();
             state.modal.set_mode(InputMode::ErTablePicker);
 
@@ -3041,8 +2940,8 @@ mod tests {
                 vec!["public.users".to_string()]
             );
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(effects[0], Effect::DispatchActions(_)));
+            assert!(state.er_preparation.is_busy());
+            assert!(!effects.is_empty());
         }
 
         #[test]
@@ -3069,7 +2968,7 @@ mod tests {
                 .set_targets(vec!["public.users".to_string()]);
             let now = Instant::now();
 
-            let effects = reduce(&mut state, Action::ErOpenDiagram, now);
+            let effects = er::diagram::er_open_diagram(&mut state, now);
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
@@ -3089,30 +2988,29 @@ mod tests {
 
             let effects = reduce(
                 &mut state,
-                Action::SmartErRefreshFailed(SmartErRefreshError {
+                Action::SmartErRefreshFetched {
                     endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id,
-                    error: DbOperationError::Timeout("timed out".to_string()),
-                    new_metadata: None,
-                }),
+                    outcome: Err(SmartErRefreshError {
+                        error: DbOperationError::Timeout("timed out".to_string()),
+                        new_metadata: None,
+                    }),
+                },
                 Instant::now(),
             );
 
-            assert!(effects.iter().any(|effect| matches!(
-                effect,
-                Effect::DispatchActions(actions)
-                    if actions.iter().any(|action| matches!(action, Action::StartErPrefetchAll))
-            )));
-
-            reduce(&mut state, Action::StartErPrefetchAll, Instant::now());
-
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::SchedulePrefetchQueueProcessing { .. }))
+            );
             assert!(state.table_prefetch.is_prefetch_queued("public.users"));
             assert!(state.table_prefetch.is_prefetch_queued("public.posts"));
             assert!(state.er_preparation.fk_expanded());
         }
 
         #[test]
-        fn prefetch_complete_dispatches_er_generate() {
+        fn prefetch_complete_generates_er_diagram() {
             let mut state = state_with_metadata();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             let run_id = state.table_prefetch.begin_er_prefetch();
@@ -3130,17 +3028,18 @@ mod tests {
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    detail: Box::new(crate_table_fixture::minimal("public", "users")),
+                    outcome: Ok(Box::new(crate_table_fixture::minimal("public", "users"))),
                 },
                 now,
             );
 
-            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+            assert_eq!(state.er_preparation.status(), ErStatus::Rendering);
             assert!(state.table_detail_cache.contains("public.users"));
-            assert!(effects.iter().any(|e| {
-                matches!(e, Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache)))
-            }));
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::GenerateErDiagram { .. }))
+            );
         }
 
         #[test]
@@ -3169,16 +3068,17 @@ mod tests {
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    detail: Box::new(crate_table_fixture::minimal("public", "users")),
+                    outcome: Ok(Box::new(crate_table_fixture::minimal("public", "users"))),
                 },
                 now,
             );
 
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
-            assert!(!effects.iter().any(|e| {
-                matches!(e, Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::ErOpenDiagram)))
-            }));
+            assert!(
+                !effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::GenerateErDiagram { .. }))
+            );
             assert!(state.messages.last_error.is_some());
         }
     }
@@ -3209,7 +3109,7 @@ mod tests {
                 &mut state,
                 Action::MetadataLoaded {
                     run_id,
-                    metadata: Arc::new(metadata),
+                    outcome: Ok(Arc::new(metadata)),
                 },
                 now,
             );
@@ -3220,21 +3120,15 @@ mod tests {
             state.ui.set_explorer_selected_raw(0);
             let effects = reduce(&mut state, Action::ConfirmSelection, now);
 
-            // Extract the dispatched ExecutePreview action and run it
-            let dispatch_actions: Vec<Action> = effects
-                .into_iter()
-                .filter_map(|e| match e {
-                    Effect::DispatchActions(actions) => Some(actions),
-                    _ => None,
-                })
-                .flatten()
-                .collect();
-            for action in dispatch_actions {
-                reduce(&mut state, action, now);
-            }
-
-            let generation = state.session.selection_generation();
-            let detail_run_id = state.session.begin_table_detail_run();
+            let Some(Effect::LoadTable {
+                detail_run_id,
+                preview_run_id: run_id,
+                generation,
+                ..
+            }) = effects.last().cloned()
+            else {
+                panic!("expected LoadTable, got {effects:?}");
+            };
             reduce(
                 &mut state,
                 Action::TableDetailLoaded {
@@ -3247,7 +3141,6 @@ mod tests {
             );
 
             // Simulate QueryCompleted with a full page of results
-            let current_gen = state.session.selection_generation();
             let result = Arc::new(QueryResult::success(
                 String::new(),
                 vec!["id".to_string()],
@@ -3255,16 +3148,15 @@ mod tests {
                 10,
                 QuerySource::Preview,
             ));
-            let run_id = state.query.begin_running(now);
             reduce(
                 &mut state,
                 Action::QueryCompleted {
                     run_id,
-                    result,
-                    context: QueryCompletionContext::Preview {
-                        generation: current_gen,
+                    context: QueryContext::Preview {
+                        generation,
                         target_page: 0,
                     },
+                    outcome: Ok(result),
                 },
                 now,
             );
@@ -3591,14 +3483,13 @@ mod tests {
             let export_id = captured[selected];
             state.ui.table_picker_mut().set_selection(selected);
             let now = Instant::now();
-            let effects = reduce(
+            let effects = test_fixtures::switch_connection(
                 &mut state,
-                Action::SwitchConnection(ConnectionTarget {
+                ConnectionTarget {
                     id: ConnectionId::new(),
                     name: "mysql-b".to_string(),
                     endpoint: endpoint::mysql("mysql://localhost/b", Some("b")),
-                }),
-                now,
+                },
             );
             assert!(
                 effects

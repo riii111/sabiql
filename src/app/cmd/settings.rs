@@ -1,15 +1,12 @@
 use crate::ports::outbound::{AppSettings, SettingsStore};
 use crate::update::action::Action;
 
-pub(in crate::cmd) fn run(
-    settings: AppSettings,
-    settings_store: &std::sync::Arc<dyn SettingsStore>,
-) -> Action {
-    let result = settings_store.save(settings.clone());
-    match result {
-        Ok(()) => Action::SettingsSaved(settings),
-        Err(error) => Action::SettingsSaveFailed(error.to_string()),
-    }
+pub(in crate::cmd) fn save(settings: AppSettings, settings_store: &dyn SettingsStore) -> Action {
+    let outcome = settings_store
+        .save(settings.clone())
+        .map(|()| settings)
+        .map_err(|error| error.to_string());
+    Action::SettingsSaved(outcome)
 }
 
 #[cfg(test)]
@@ -48,14 +45,14 @@ mod tests {
             saved: Mutex::new(Vec::new()),
         });
 
-        let action = run(
+        let action = save(
             AppSettings {
                 theme_id: ThemeId::Light,
                 icon_mode: IconMode::default(),
                 keymap_preset: KeymapPreset::Ide,
                 er_browser: Some("Firefox".to_string()),
             },
-            &(store.clone() as Arc<dyn SettingsStore>),
+            store.as_ref(),
         );
 
         assert_eq!(store.saved.lock().unwrap()[0].theme_id, ThemeId::Light);
@@ -69,7 +66,7 @@ mod tests {
         );
         assert!(matches!(
             action,
-            Action::SettingsSaved(settings)
+            Action::SettingsSaved(Ok(settings))
                 if settings.theme_id == ThemeId::Light
                     && settings.keymap_preset == KeymapPreset::Ide
                     && settings.er_browser.as_deref() == Some("Firefox")
@@ -78,21 +75,21 @@ mod tests {
 
     #[test]
     fn save_settings_dispatches_save_failed_action() {
-        let store = Arc::new(FailingSettingsStore);
+        let store = FailingSettingsStore;
 
-        let action = run(
+        let action = save(
             AppSettings {
                 theme_id: ThemeId::Light,
                 icon_mode: IconMode::default(),
                 keymap_preset: KeymapPreset::default(),
                 er_browser: None,
             },
-            &(store as Arc<dyn SettingsStore>),
+            &store,
         );
 
         assert!(matches!(
             action,
-            Action::SettingsSaveFailed(error) if error == "I/O error: disk full"
+            Action::SettingsSaved(Err(error)) if error == "I/O error: disk full"
         ));
     }
 }

@@ -4,8 +4,7 @@ use crate::model::browse::row_detail::RowDetailState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::CopyTarget;
-use crate::update::action::{Action, ScrollAmount, ScrollDirection};
-use crate::update::helpers::clipboard_unavailable;
+use crate::update::action::{ScrollAmount, ScrollDirection};
 
 pub(in crate::update) fn open_modal_row_detail(state: &mut AppState) -> Vec<Effect> {
     let result = match state.query.visible_result() {
@@ -42,8 +41,7 @@ pub(in crate::update) fn row_detail_yank(state: &AppState) -> Vec<Effect> {
     let content = state.row_detail.content_for_yank();
     vec![Effect::CopyToClipboard {
         content,
-        on_success: Box::new(Action::CopySucceeded(CopyTarget::Panel(FlashId::RowDetail))),
-        on_failure: Some(Box::new(clipboard_unavailable())),
+        target: CopyTarget::Panel(FlashId::RowDetail),
     }]
 }
 
@@ -51,8 +49,7 @@ pub(in crate::update) fn row_detail_yank_json(state: &AppState) -> Vec<Effect> {
     let content = state.row_detail.json_for_yank();
     vec![Effect::CopyToClipboard {
         content,
-        on_success: Box::new(Action::CopySucceeded(CopyTarget::Panel(FlashId::RowDetail))),
-        on_failure: Some(Box::new(clipboard_unavailable())),
+        target: CopyTarget::Panel(FlashId::RowDetail),
     }]
 }
 
@@ -106,6 +103,7 @@ pub(in crate::update) fn scroll_row_detail(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::update::action::Action;
     use std::sync::Arc;
     use std::time::Instant;
 
@@ -237,8 +235,8 @@ mod tests {
         assert_eq!(effects.len(), 1);
         assert!(matches!(
             &effects[0],
-            Effect::CopyToClipboard { content, on_success, .. }
-            if content.contains("id\n  1") && matches!(on_success.as_ref(), Action::CopySucceeded(CopyTarget::Panel(FlashId::RowDetail)))
+            Effect::CopyToClipboard { content, target }
+            if content.contains("id\n  1") && *target == CopyTarget::Panel(FlashId::RowDetail)
         ));
     }
 
@@ -251,8 +249,8 @@ mod tests {
         assert_eq!(effects.len(), 1);
         assert!(matches!(
             &effects[0],
-            Effect::CopyToClipboard { content, on_success, .. }
-            if content.contains("\"name\": \"alice\"") && matches!(on_success.as_ref(), Action::CopySucceeded(CopyTarget::Panel(FlashId::RowDetail)))
+            Effect::CopyToClipboard { content, target }
+            if content.contains("\"name\": \"alice\"") && *target == CopyTarget::Panel(FlashId::RowDetail)
         ));
     }
 

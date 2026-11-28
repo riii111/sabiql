@@ -1,12 +1,14 @@
 use crate::cmd::effect::Effect;
+use crate::update::browse::metadata::loading::metadata_loaded;
 use std::sync::Arc;
+use std::time::Instant;
 
 use crate::domain::DatabaseMetadata;
 use crate::domain::connection::ConnectionEndpoint;
 use crate::model::app_state::AppState;
 use crate::model::connection::cache::ConnectionCache;
 use crate::model::shared::inspector_tab::InspectorTab;
-use crate::update::action::{Action, ConnectionTarget};
+use crate::update::action::ConnectionTarget;
 use crate::update::query_context::termination_effects;
 
 fn reset_connection_scoped_state(state: &mut AppState) {
@@ -47,18 +49,18 @@ pub(super) fn connection_save_fetch_effects(
     endpoint: &Arc<ConnectionEndpoint>,
     run_id: u64,
     metadata: Option<Arc<DatabaseMetadata>>,
+    now: Instant,
 ) -> Vec<Effect> {
-    let metadata_effect = if let Some(metadata) = metadata {
-        Effect::DispatchActions(vec![Action::MetadataLoaded { run_id, metadata }])
-    } else {
-        Effect::FetchMetadata {
+    state.table_detail_cache.clear();
+    let mut effects = termination_effects(&state.query, vec![]);
+    match metadata {
+        Some(metadata) => effects.extend(metadata_loaded(state, run_id, Ok(metadata), now)),
+        None => effects.push(Effect::FetchMetadata {
             endpoint: Arc::clone(endpoint),
             run_id,
-        }
-    };
-
-    state.table_detail_cache.clear();
-    termination_effects(&state.query, vec![metadata_effect])
+        }),
+    }
+    effects
 }
 
 pub(super) fn mysql_connection_completion_effects(

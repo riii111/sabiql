@@ -2,7 +2,9 @@ use crate::cmd::effect::Effect;
 use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
-use crate::update::action::{Action, ModalKind};
+use crate::update::action::ModalKind;
+use crate::update::target_routing::open_modal;
+use std::time::Instant;
 
 use crate::policy::preview_cell_text::CellPresentationPolicy;
 use crate::policy::write::inline_cell_edit::text_for_inline_edit;
@@ -75,7 +77,7 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Edi
     Ok((row_idx, col_idx, cell_value))
 }
 
-pub(in crate::update) fn result_enter_cell_edit(state: &mut AppState) -> Vec<Effect> {
+pub(in crate::update) fn result_enter_cell_edit(state: &mut AppState, now: Instant) -> Vec<Effect> {
     if state.session.is_read_only() {
         state
             .messages
@@ -84,9 +86,7 @@ pub(in crate::update) fn result_enter_cell_edit(state: &mut AppState) -> Vec<Eff
     }
 
     if cell_uses_json_detail_modal(state) {
-        return vec![Effect::DispatchActions(vec![Action::OpenModal(
-            ModalKind::JsonDetail,
-        )])];
+        return open_modal(state, ModalKind::JsonDetail, now);
     }
 
     match editable_cell_context(state) {
@@ -120,6 +120,7 @@ pub(in crate::update) fn result_discard_cell_edit(state: &mut AppState) -> Vec<E
 mod tests {
     use crate::domain::Column;
     use crate::domain::ColumnAttributes;
+    use crate::update::action::Action;
 
     use super::*;
     use crate::domain::connection::ConnectionId;
@@ -463,28 +464,23 @@ mod tests {
         }
 
         #[test]
-        fn json_cell_returns_dispatch_to_open_json_detail() {
+        fn json_cell_routes_to_json_detail_instead_of_cell_edit() {
             let mut state = state_with_json_column();
 
             let effects = route(&mut state, Action::ResultEnterCellEdit, Instant::now());
 
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(
-                &effects[0],
-                Effect::DispatchActions(actions) if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonDetail)])
-            ));
+            assert!(effects.is_empty());
+            assert_ne!(state.input_mode(), InputMode::CellEdit);
         }
 
         #[test]
-        fn json_cell_after_hidden_primary_key_dispatches_to_detail() {
+        fn json_cell_after_hidden_primary_key_opens_json_detail() {
             let mut state = state_with_hidden_primary_key_json_column();
 
             let effects = route(&mut state, Action::ResultEnterCellEdit, Instant::now());
 
-            assert!(matches!(
-                &effects[0],
-                Effect::DispatchActions(actions) if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonDetail)])
-            ));
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::JsonDetail);
         }
 
         #[test]

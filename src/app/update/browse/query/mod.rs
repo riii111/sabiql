@@ -2,32 +2,55 @@ pub(in crate::update) mod execution;
 pub(in crate::update) mod pagination;
 pub(in crate::update) mod write;
 
+use std::sync::Arc;
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::connection::ConnectionEndpoint;
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::PREVIEW_PAGE_SIZE;
+use crate::model::browse::session::TableDetailState;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
+
+fn begin_preview_run(state: &mut AppState, now: Instant) -> Option<(Arc<ConnectionEndpoint>, u64)> {
+    if reject_pending_mysql_connection_probe(state) {
+        return None;
+    }
+    let endpoint = state.session.endpoint().cloned()?;
+    Some((endpoint, state.query.begin_running(now)))
+}
 
 /// Builds the preview effect for the table currently held in pagination state,
 /// issuing a fresh run_id. Returns `None` when no connection is active.
 ///
-/// `generation` is the selection snapshot the eventual completion is validated
-/// against. Refreshes of the active selection pass
-/// `state.session.selection_generation()`; `Action::ExecutePreview` instead
-/// passes the generation captured at selection time, so that results for a
-/// selection cleared in the meantime (e.g. DROP TABLE + reload) are rejected.
+/// `generation` is the selection snapshot the eventual completion is validated against.
 pub(super) fn preview_effect_for_current_table(
     state: &mut AppState,
     now: Instant,
     target_page: usize,
     generation: u64,
 ) -> Option<Effect> {
-    if reject_pending_mysql_connection_probe(state) {
-        return None;
+    let (endpoint, run_id) = begin_preview_run(state, now)?;
+    // A preview shown before the selected table's detail settles would be read without its columns, so the detail is fetched again in the same ordered task.
+    if generation == state.session.selection_generation()
+        && state.session.selected_table_key().is_some()
+        && matches!(
+            state.session.table_detail_state(),
+            TableDetailState::Loading
+        )
+    {
+        return Some(Effect::LoadTable {
+            endpoint,
+            schema: state.query.pagination.schema().to_string(),
+            table: state.query.pagination.table().to_string(),
+            generation,
+            detail_run_id: state.session.begin_table_detail_run(),
+            preview_run_id: run_id,
+            limit: PREVIEW_PAGE_SIZE,
+            offset: target_page * PREVIEW_PAGE_SIZE,
+            target_page,
+        });
     }
-    let endpoint = state.session.endpoint().cloned()?;
-    let run_id = state.query.begin_running(now);
     Some(Effect::ExecutePreview {
         endpoint,
         schema: state.query.pagination.schema().to_string(),
@@ -38,6 +61,39 @@ pub(super) fn preview_effect_for_current_table(
         offset: target_page * PREVIEW_PAGE_SIZE,
         target_page,
     })
+}
+
+pub(in crate::update) fn table_load_effect(
+    state: &mut AppState,
+    endpoint: Arc<ConnectionEndpoint>,
+    now: Instant,
+) -> Effect {
+    let generation = state.session.selection_generation();
+    let detail_run_id = state.session.begin_table_detail_run();
+    let schema = state.query.pagination.schema().to_string();
+    let table = state.query.pagination.table().to_string();
+    let target_page = state.query.pagination.current_page();
+    match begin_preview_run(state, now) {
+        Some((_, preview_run_id)) => Effect::LoadTable {
+            endpoint,
+            schema,
+            table,
+            generation,
+            detail_run_id,
+            preview_run_id,
+            limit: PREVIEW_PAGE_SIZE,
+            offset: target_page * PREVIEW_PAGE_SIZE,
+            target_page,
+        },
+        // A pending MySQL probe rejects previews, so only the detail is reloaded.
+        None => Effect::FetchTableDetail {
+            endpoint,
+            schema,
+            table,
+            generation,
+            run_id: detail_run_id,
+        },
+    }
 }
 
 #[cfg(test)]
@@ -54,8 +110,35 @@ pub(super) mod tests {
         Table, Trigger,
     };
     use crate::model::app_state::AppState;
-    use crate::update::action::{Action, QueryCompletionContext};
+    use crate::update::action::{Action, QueryContext};
     use crate::update::test_fixtures;
+
+    #[test]
+    fn table_load_reloads_only_detail_while_mysql_probe_is_pending() {
+        use crate::cmd::effect::Effect;
+        use crate::domain::ConnectionId;
+        use crate::test_support::endpoint;
+
+        let mut state = create_test_state();
+        let generation = state
+            .session
+            .select_table("public", "users", &mut state.query);
+        let _ = state.session.begin_mysql_connection_probe(
+            &ConnectionId::new(),
+            "target",
+            &endpoint::mysql("mysql://localhost/target", Some("target")),
+        );
+        let endpoint = state.session.endpoint().cloned().unwrap();
+
+        let effect = super::table_load_effect(&mut state, endpoint, Instant::now());
+
+        assert!(matches!(
+            effect,
+            Effect::FetchTableDetail { generation: fetched, ref table, .. }
+                if fetched == generation && table == "users"
+        ));
+        assert!(!state.query.is_running());
+    }
 
     pub fn create_test_state() -> AppState {
         let mut state = AppState::new("test_project".to_string());
@@ -84,14 +167,14 @@ pub(super) mod tests {
         let run_id = begin_query_run(state);
         Action::QueryCompleted {
             run_id,
-            result,
             context: match target_page {
-                Some(target_page) => QueryCompletionContext::Preview {
+                Some(target_page) => QueryContext::Preview {
                     generation,
                     target_page,
                 },
-                None => QueryCompletionContext::Adhoc,
+                None => QueryContext::Adhoc,
             },
+            outcome: Ok(result),
         }
     }
 
