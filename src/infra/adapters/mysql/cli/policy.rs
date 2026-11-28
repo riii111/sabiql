@@ -6,7 +6,7 @@ use crate::domain::{
     mysql_sql::{
         MySqlStatement, MySqlStatementKind, classify_mysql_multi_statement,
         classify_mysql_multi_statement_with_lower_case_table_names,
-        has_mysql_read_only_side_effect, mysql_export_plan, mysql_statement_is_data_modifying,
+        has_mysql_read_only_side_effect, mysql_statement_is_data_modifying,
         mysql_statement_is_persistent_schema_change,
     },
 };
@@ -80,19 +80,6 @@ fn mysql_statement_is_read_only_allowed(statement: &MySqlStatement) -> bool {
             | MySqlStatementKind::Show
             | MySqlStatementKind::Describe
     ) && !has_mysql_read_only_side_effect(statement.sql()).unwrap_or(true)
-}
-
-pub(in crate::adapters::mysql) fn validate_mysql_export_query(
-    query: &str,
-    selected_database: Option<&str>,
-) -> Result<(), DbOperationError> {
-    validate_mysql_multi_query(query, selected_database, AccessMode::ReadOnly)?;
-    if mysql_export_plan(query).is_none() {
-        return Err(DbOperationError::UnsupportedOperation(
-            "MySQL CSV export supports a single read-only result query".to_string(),
-        ));
-    }
-    Ok(())
 }
 
 pub(super) fn mysql_metadata_fallback_kind(
@@ -517,30 +504,6 @@ mod tests {
             marker_alias,
             MySqlServerCapabilities::default(),
         )
-    }
-
-    #[test]
-    fn csv_export_accepts_one_read_only_result_query() {
-        assert!(validate_mysql_export_query("SELECT 1", Some("app")).is_ok());
-        for query in ["TABLE users", "SHOW TABLES", "DESCRIBE users"] {
-            assert!(
-                validate_mysql_export_query(query, Some("app")).is_ok(),
-                "{query}"
-            );
-        }
-        assert!(matches!(
-            validate_mysql_export_query("INSERT INTO users VALUES (1)", Some("app")),
-            Err(DbOperationError::PermissionDenied(_))
-        ));
-        assert!(matches!(
-            validate_mysql_export_query("SELECT 1; SELECT 2", Some("app")),
-            Err(DbOperationError::UnsupportedOperation(details))
-                if details.contains("single read-only result")
-        ));
-        assert!(matches!(
-            validate_mysql_export_query("SELECT GET_LOCK('sabiql', 0)", Some("app")),
-            Err(DbOperationError::PermissionDenied(_))
-        ));
     }
 
     #[test]

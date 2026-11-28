@@ -2,20 +2,15 @@ use crate::domain::connection::MySqlConnectionConfig;
 #[cfg(unix)]
 use std::ffi::OsStr;
 use std::io;
-use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
 
-use crate::adapters::csv_export::export_to_path;
 use crate::app::ports::outbound::{AccessMode, DatabaseCli, DbOperationError};
 use tokio::process::Command;
 use tokio::time::timeout;
 
 use super::cli::process::test_support::run_mysql_adhoc_with_timeout_for_test;
-use super::cli::{
-    export_mysql_csv_to_file, run_mysql_adhoc, sanitize_mysql_command_environment,
-    validate_mysql_multi_query,
-};
+use super::cli::{run_mysql_adhoc, sanitize_mysql_command_environment, validate_mysql_multi_query};
 use super::dsn::NormalizedMySqlConfig;
 use super::option_file::MySqlOptionFile;
 
@@ -121,21 +116,5 @@ pub async fn run_mysql_cli_script_for_test(
         script,
         MYSQL_QUERY_TIMEOUT,
     )
-    .await
-}
-
-#[doc(hidden)]
-/// Runs CSV export without client-side query policy validation so integration tests can verify
-/// the MySQL read-only session at the server boundary.
-pub async fn export_mysql_csv_to_path_for_test(
-    config: &MySqlConnectionConfig,
-    query: &str,
-    path: PathBuf,
-) -> Result<PathBuf, DbOperationError> {
-    let target = NormalizedMySqlConfig::new(config)?;
-    let query = query.to_string();
-    export_to_path(path, move |temporary_path| async move {
-        export_mysql_csv_to_file(target, &query, temporary_path).await
-    })
     .await
 }

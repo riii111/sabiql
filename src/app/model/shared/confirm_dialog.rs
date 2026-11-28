@@ -1,14 +1,8 @@
 use std::sync::Arc;
 
 use crate::domain::connection::ConnectionEndpoint;
-use crate::domain::{ConnectionId, QueryValue};
+use crate::domain::{ConnectionId, QueryResult};
 use crate::update::action::ScrollDirection;
-
-#[derive(Debug, Clone)]
-pub struct CsvExportCacheSnapshot {
-    pub columns: Vec<String>,
-    pub values: Vec<Vec<QueryValue>>,
-}
 
 #[derive(Debug, Clone)]
 pub enum ConfirmIntent {
@@ -18,18 +12,11 @@ pub enum ConfirmIntent {
         sql: String,
         blocked: bool,
     },
-    CsvExportRerunnable {
-        endpoint: Arc<ConnectionEndpoint>,
-        run_id: u64,
-        export_query: String,
-        file_name: String,
-    },
     CsvExportCached {
         endpoint: Arc<ConnectionEndpoint>,
         run_id: u64,
         file_name: String,
-        row_count: Option<usize>,
-        snapshot: CsvExportCacheSnapshot,
+        result: Arc<QueryResult>,
     },
     DisableReadOnly,
 }

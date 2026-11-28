@@ -11,7 +11,6 @@ use crate::domain::{
     TableSignatureSnapshot, WriteExecutionResult,
 };
 use async_trait::async_trait;
-use std::path::PathBuf;
 
 use super::mysql::{MySqlAdapter, build_mysql_dsn};
 use super::postgres::{PostgresAdapter, postgres_conninfo};
@@ -194,25 +193,6 @@ impl QueryExecutor for DbAdapterRegistry {
             }
             AdapterRoute::MySQL(adapter, config) => {
                 adapter.execute_write(config, query, access_mode).await
-            }
-        }
-    }
-
-    async fn export_to_csv(
-        &self,
-        endpoint: &ConnectionEndpoint,
-        query: &str,
-        file_name: &str,
-    ) -> Result<PathBuf, DbOperationError> {
-        match self.route(endpoint) {
-            AdapterRoute::PostgreSQL(adapter, endpoint) => {
-                adapter.export_to_csv(endpoint, query, file_name).await
-            }
-            AdapterRoute::SQLite(adapter, config) => {
-                adapter.export_to_csv(config, query, file_name).await
-            }
-            AdapterRoute::MySQL(adapter, config) => {
-                adapter.export_to_csv(config, query, file_name).await
             }
         }
     }

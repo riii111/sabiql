@@ -322,52 +322,19 @@ pub(in crate::cmd) async fn run(
                 .await;
         }
 
-        Effect::ExportCsv {
-            endpoint,
-            run_id,
-            query,
-            file_name,
-        } => {
-            let executor = Arc::clone(query_executor);
-            let tx = action_tx.clone();
-
-            query_tasks
-                .replace(async move {
-                    let result = executor.export_to_csv(&endpoint, &query, &file_name).await;
-                    match result {
-                        Ok(path) => {
-                            tx.send(Action::CsvExportSucceeded {
-                                run_id,
-                                path: path.display().to_string(),
-                                row_count: None,
-                            })
-                            .await
-                            .ok();
-                        }
-                        Err(e) => {
-                            tx.send(Action::CsvExportFailed { run_id, error: e })
-                                .await
-                                .ok();
-                        }
-                    }
-                })
-                .await;
-        }
-
         Effect::ExportCsvFromCache {
             run_id,
             file_name,
-            columns,
-            values,
-            row_count,
+            result,
         } => {
             let tx = action_tx.clone();
             let exporter = Arc::clone(cached_result_exporter);
 
             query_tasks
                 .replace(async move {
+                    let row_count = result.data_row_count();
                     let result = exporter
-                        .export_cached_result_to_csv(file_name, columns, values)
+                        .export_cached_result_to_csv(file_name, result)
                         .await;
 
                     match result {
@@ -1041,7 +1008,7 @@ mod tests {
 
         use crate::cmd::effect::Effect;
         use crate::cmd::test_fixtures;
-        use crate::domain::QueryValue;
+        use crate::domain::{QueryResult, QuerySource, QueryValue};
         use crate::model::app_state::AppState;
         use crate::ports::outbound::connection_store::MockConnectionStore;
         use crate::ports::outbound::metadata::MockMetadataProvider;
@@ -1060,8 +1027,7 @@ mod tests {
             async fn export_cached_result_to_csv(
                 &self,
                 _file_name: String,
-                _columns: Vec<String>,
-                _values: Vec<Vec<QueryValue>>,
+                _result: Arc<QueryResult>,
             ) -> Result<std::path::PathBuf, DbOperationError> {
                 Err(DbOperationError::QueryFailed("export failed".to_string()))
             }
@@ -1081,12 +1047,16 @@ mod tests {
                 Effect::ExportCsvFromCache {
                     run_id: 7,
                     file_name: test_file_name("success"),
-                    columns: vec!["id".to_string(), "payload".to_string()],
-                    values: vec![vec![
-                        QueryValue::SqlLiteral("1".to_string()),
-                        QueryValue::Blob(vec![0xAB, 0xCD]),
-                    ]],
-                    row_count: Some(1),
+                    result: Arc::new(QueryResult::success_with_values(
+                        "SELECT id, payload FROM files".to_string(),
+                        vec!["id".to_string(), "payload".to_string()],
+                        vec![vec![
+                            QueryValue::SqlLiteral("1".to_string()),
+                            QueryValue::Blob(vec![0xAB, 0xCD]),
+                        ]],
+                        1,
+                        QuerySource::Adhoc,
+                    )),
                 },
                 AppState::new("test".to_string()),
                 &mut rx,
@@ -1103,7 +1073,7 @@ mod tests {
                 panic!("expected CSV export success action");
             };
 
-            assert_eq!(row_count, Some(1));
+            assert_eq!(row_count, 1);
             assert!(path.contains("cached_success"));
         }
 
@@ -1122,9 +1092,13 @@ mod tests {
                 Effect::ExportCsvFromCache {
                     run_id: 8,
                     file_name: test_file_name("failure"),
-                    columns: vec!["id".to_string()],
-                    values: vec![vec![QueryValue::SqlLiteral("1".to_string())]],
-                    row_count: Some(1),
+                    result: Arc::new(QueryResult::success_with_values(
+                        "SELECT id FROM files".to_string(),
+                        vec!["id".to_string()],
+                        vec![vec![QueryValue::SqlLiteral("1".to_string())]],
+                        1,
+                        QuerySource::Adhoc,
+                    )),
                 },
                 AppState::new("test".to_string()),
                 &mut rx,

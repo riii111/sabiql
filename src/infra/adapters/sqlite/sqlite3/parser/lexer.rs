@@ -1,7 +1,5 @@
 use crate::app::ports::outbound::DbOperationError;
-use crate::domain::sqlite_sql::{
-    SqliteStatementSplitError, is_sqlite_rerunnable_export_statement, split_sqlite_statements,
-};
+use crate::domain::sqlite_sql::{SqliteStatementSplitError, split_sqlite_statements};
 
 fn is_ident_char(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'_'
@@ -394,23 +392,6 @@ fn contains_sqlite_meta_command(sql: &str) -> bool {
     false
 }
 
-pub(in crate::adapters::sqlite) fn is_sqlite_rerunnable_export_query(
-    query: &str,
-) -> Result<bool, DbOperationError> {
-    let statements = try_split_sqlite_statements(query)?;
-    Ok(statements.len() == 1
-        && statements
-            .iter()
-            .all(|statement| is_sqlite_rerunnable_export_statement(statement)))
-}
-
-pub(in crate::adapters::sqlite) fn sqlite_export_not_rerunnable_error() -> DbOperationError {
-    DbOperationError::UnsupportedOperation(
-        "Cannot re-execute this query for CSV export because it contains write or DDL statements"
-            .to_string(),
-    )
-}
-
 fn rollback_has_to_clause(statement: &str) -> bool {
     if !first_keyword(statement).eq_ignore_ascii_case("ROLLBACK") {
         return false;
@@ -693,30 +674,6 @@ END";
                 try_split_sqlite_statements("CREATE TRIGGER t AFTER INSERT ON users").unwrap_err();
 
             assert!(matches!(error, DbOperationError::QueryFailed(_)));
-        }
-    }
-
-    mod export_guard {
-        use super::*;
-
-        #[test]
-        fn rejects_non_rerunnable_sql() {
-            for sql in [
-                "SELECT 1; SELECT 2",
-                "WITH payload(id) AS (VALUES (1)) INSERT INTO users(id) SELECT id FROM payload",
-                "PRAGMA foreign_keys=OFF",
-                "PRAGMA journal_mode=WAL",
-                "PRAGMA wal_checkpoint(TRUNCATE)",
-            ] {
-                assert!(!is_sqlite_rerunnable_export_query(sql).unwrap(), "{sql}");
-            }
-        }
-
-        #[test]
-        fn allows_read_only_sql() {
-            for sql in ["SELECT 1", "PRAGMA table_info(users)"] {
-                assert!(is_sqlite_rerunnable_export_query(sql).unwrap(), "{sql}");
-            }
         }
     }
 

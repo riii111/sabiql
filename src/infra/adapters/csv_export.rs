@@ -85,26 +85,6 @@ impl Drop for RemoveOnDropGuard {
     }
 }
 
-pub(super) enum CsvOutputError {
-    File(std::io::Error),
-    Process(std::io::Error),
-}
-
-impl From<std::io::Error> for CsvOutputError {
-    fn from(error: std::io::Error) -> Self {
-        Self::Process(error)
-    }
-}
-
-impl CsvOutputError {
-    pub(super) fn into_db_operation_error(self) -> DbOperationError {
-        match self {
-            Self::File(error) => DbOperationError::ExportIo(Arc::new(error)),
-            Self::Process(error) => DbOperationError::QueryFailed(error.to_string()),
-        }
-    }
-}
-
 pub(super) async fn export_to_downloads<F, Fut>(
     file_name: &str,
     write: F,
@@ -246,21 +226,6 @@ mod tests {
             file: BufWriter::new(file),
             csv_writer: new_csv_writer(),
         }
-    }
-
-    #[test]
-    fn csv_output_errors_keep_file_and_process_failures_distinct() {
-        let file_error =
-            CsvOutputError::File(std::io::Error::other("disk full")).into_db_operation_error();
-        assert_export_io_source(&file_error);
-
-        let process_error =
-            CsvOutputError::Process(std::io::Error::other("pipe closed")).into_db_operation_error();
-        assert!(matches!(
-            &process_error,
-            DbOperationError::QueryFailed(details) if details == "pipe closed"
-        ));
-        assert!(std::error::Error::source(&process_error).is_none());
     }
 
     #[cfg(unix)]

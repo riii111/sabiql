@@ -1,6 +1,5 @@
 use std::path::Path;
 use std::process::{ExitStatus, Stdio};
-use std::sync::Arc;
 use std::time::Duration;
 
 use serde::de::DeserializeOwned;
@@ -8,7 +7,6 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::time::timeout;
 
-use crate::adapters::csv_export::CsvOutputError;
 use crate::app::ports::outbound::DbOperationError;
 
 use super::super::path_validation;
@@ -24,12 +22,6 @@ struct SqliteOutput {
     status: ExitStatus,
     stdout: String,
     stderr: String,
-}
-
-#[cfg(any(windows, test))]
-#[derive(Default)]
-struct WindowsCsvNewlineNormalizer {
-    pending_carriage_return: bool,
 }
 
 impl SqliteCli {
@@ -92,142 +84,6 @@ impl SqliteCli {
             return Err(classify_query_error(&output.stderr));
         }
         Ok(output.stdout)
-    }
-
-    pub(in crate::adapters::sqlite) async fn export_csv(
-        &self,
-        path: &str,
-        sql: &str,
-        output_path: &std::path::Path,
-        read_only: bool,
-    ) -> Result<(), DbOperationError> {
-        self.export_csv_with_command(
-            "sqlite3",
-            path,
-            sql,
-            output_path,
-            read_only,
-            Duration::from_secs(self.timeout_secs * 10),
-        )
-        .await
-    }
-
-    async fn export_csv_with_command(
-        &self,
-        command: &str,
-        path: &str,
-        sql: &str,
-        output_path: &std::path::Path,
-        read_only: bool,
-        timeout_duration: Duration,
-    ) -> Result<(), DbOperationError> {
-        let mut cmd = Self::build_command(
-            command,
-            path,
-            &["-batch", "-bail", "-csv", "-header", "-newline", "\n"],
-            read_only,
-        )?;
-        let sql = sqlite_session_sql(sql, read_only);
-
-        #[cfg(test)]
-        super::tests::record_process_start(path);
-        let mut child = cmd
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(classify_cli_spawn_error)?;
-
-        let stdin = child.stdin.take().expect("piped sqlite stdin");
-        let mut stdout = child.stdout.take().expect("piped sqlite stdout");
-        let mut stderr_handle = child.stderr.take().expect("piped sqlite stderr");
-
-        let file = match tokio::fs::File::create(output_path).await {
-            Ok(file) => file,
-            Err(error) => {
-                kill_and_wait(&mut child).await;
-                return Err(DbOperationError::ExportIo(Arc::new(error)));
-            }
-        };
-        let mut writer = tokio::io::BufWriter::new(file);
-
-        let result = timeout(timeout_duration, async {
-            let (stdin_result, stdout_result, stderr_result) = tokio::join!(
-                async { Ok::<_, CsvOutputError>(write_sql_to_stdin(stdin, &sql).await?) },
-                async {
-                    let mut buf = [0u8; 8192];
-                    #[cfg(windows)]
-                    let mut newline_normalizer = WindowsCsvNewlineNormalizer::default();
-                    #[cfg(windows)]
-                    let mut normalized_buf = Vec::with_capacity(buf.len());
-                    loop {
-                        let n = stdout.read(&mut buf).await?;
-                        if n == 0 {
-                            break;
-                        }
-                        #[cfg(windows)]
-                        {
-                            let output =
-                                newline_normalizer.normalize(&buf[..n], &mut normalized_buf);
-                            writer
-                                .write_all(output)
-                                .await
-                                .map_err(CsvOutputError::File)?;
-                        }
-                        #[cfg(not(windows))]
-                        writer
-                            .write_all(&buf[..n])
-                            .await
-                            .map_err(CsvOutputError::File)?;
-                    }
-                    #[cfg(windows)]
-                    if let Some(trailing_carriage_return) = newline_normalizer.finish() {
-                        writer
-                            .write_all(&[trailing_carriage_return])
-                            .await
-                            .map_err(CsvOutputError::File)?;
-                    }
-                    writer.flush().await.map_err(CsvOutputError::File)?;
-                    Ok::<_, CsvOutputError>(())
-                },
-                async {
-                    let mut buf = Vec::new();
-                    stderr_handle.read_to_end(&mut buf).await?;
-                    Ok::<_, CsvOutputError>(String::from_utf8_lossy(&buf).into_owned())
-                }
-            );
-
-            stdin_result?;
-            stdout_result?;
-            let stderr = stderr_result?;
-            let status = child.wait().await?;
-            Ok::<_, CsvOutputError>((status, stderr))
-        })
-        .await;
-
-        let (status, stderr) = match result {
-            Ok(inner) => match inner {
-                Ok(values) => values,
-                Err(error) => {
-                    kill_and_wait(&mut child).await;
-                    let _ = tokio::fs::remove_file(output_path).await;
-                    return Err(error.into_db_operation_error());
-                }
-            },
-            Err(error) => {
-                kill_and_wait(&mut child).await;
-                let _ = tokio::fs::remove_file(output_path).await;
-                return Err(DbOperationError::Timeout(error.to_string()));
-            }
-        };
-
-        if !status.success() {
-            let _ = tokio::fs::remove_file(output_path).await;
-            return Err(classify_query_error(&stderr));
-        }
-
-        Ok(())
     }
 
     async fn run(
@@ -344,38 +200,6 @@ async fn kill_and_wait(child: &mut tokio::process::Child) {
     let _ = child.wait().await;
 }
 
-#[cfg(any(windows, test))]
-impl WindowsCsvNewlineNormalizer {
-    fn normalize<'a>(&mut self, input: &[u8], output: &'a mut Vec<u8>) -> &'a [u8] {
-        output.clear();
-        output.reserve(input.len());
-
-        for &byte in input {
-            if self.pending_carriage_return {
-                if byte == b'\n' {
-                    output.push(b'\n');
-                    self.pending_carriage_return = false;
-                    continue;
-                }
-                output.push(b'\r');
-                self.pending_carriage_return = false;
-            }
-
-            if byte == b'\r' {
-                self.pending_carriage_return = true;
-            } else {
-                output.push(byte);
-            }
-        }
-
-        output
-    }
-
-    fn finish(&self) -> Option<u8> {
-        self.pending_carriage_return.then_some(b'\r')
-    }
-}
-
 async fn write_sql_to_stdin(
     mut stdin: tokio::process::ChildStdin,
     sql: &str,
@@ -443,93 +267,12 @@ mod tests {
     use std::ffi::OsString;
     use std::path::PathBuf;
 
-    use crate::adapters::csv_export::export_to_path;
     use crate::adapters::sqlite::SqliteAdapter;
     use crate::adapters::test_support;
     use crate::app::ports::outbound::AccessMode;
     use crate::domain::connection::SqliteConnectionConfig;
 
     use super::*;
-
-    #[test]
-    fn windows_csv_newline_normalizer_handles_chunk_boundaries() {
-        let mut normalizer = WindowsCsvNewlineNormalizer::default();
-        let mut normalized_buf = Vec::new();
-        let mut output = Vec::new();
-
-        for chunk in [
-            b"id,message\r".as_slice(),
-            b"\n1,\"hello\r\n".as_slice(),
-            b"world\"\r".as_slice(),
-            b"\n2,done\r\n".as_slice(),
-        ] {
-            output.extend(normalizer.normalize(chunk, &mut normalized_buf));
-        }
-        if let Some(trailing_carriage_return) = normalizer.finish() {
-            output.push(trailing_carriage_return);
-        }
-
-        assert_eq!(output, b"id,message\n1,\"hello\nworld\"\n2,done\n");
-    }
-
-    #[test]
-    fn windows_csv_newline_normalizer_preserves_embedded_crlf() {
-        let mut normalizer = WindowsCsvNewlineNormalizer::default();
-        let mut normalized_buf = Vec::new();
-        let mut output = Vec::new();
-
-        for chunk in [
-            b"id,message\r\n1,\"first\r".as_slice(),
-            b"\r\nsecond\"\r\n".as_slice(),
-        ] {
-            output.extend(normalizer.normalize(chunk, &mut normalized_buf));
-        }
-        if let Some(trailing_carriage_return) = normalizer.finish() {
-            output.push(trailing_carriage_return);
-        }
-
-        assert_eq!(output, b"id,message\n1,\"first\r\nsecond\"\n");
-    }
-
-    mod export {
-        use super::*;
-
-        #[tokio::test]
-        async fn spawn_failure_leaves_no_output_files() {
-            let (dir, dsn) =
-                test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-            let final_path = dir.path().join("export.csv");
-            let adapter = SqliteAdapter::new();
-
-            let result = export_to_path(final_path.clone(), |temporary_path| async move {
-                adapter
-                    .cli
-                    .export_csv_with_command(
-                        "sabiql-missing-sqlite3",
-                        dsn.path(),
-                        "SELECT id FROM users",
-                        &temporary_path,
-                        true,
-                        Duration::from_secs(30),
-                    )
-                    .await
-            })
-            .await;
-
-            assert!(matches!(
-                result,
-                Err(DbOperationError::CommandNotFound { .. })
-            ));
-            assert!(!final_path.exists());
-            assert!(!dir.path().read_dir().unwrap().any(|entry| {
-                entry
-                    .unwrap()
-                    .file_name()
-                    .to_string_lossy()
-                    .contains(".export.csv")
-            }));
-        }
-    }
 
     #[cfg(unix)]
     mod process_lifecycle {
@@ -635,69 +378,6 @@ esac
                         "result={result:?}"
                     ),
                     "timeout" => assert!(matches!(result, Err(DbOperationError::Timeout(_)))),
-                    _ => unreachable!(),
-                }
-                assert_process_reaped(&pid_file);
-            }
-        }
-
-        #[tokio::test]
-        async fn export_reaps_fake_sqlite_before_temporary_cleanup_and_returning() {
-            for mode in ["normal", "error", "timeout"] {
-                let (_database_dir, dsn) = test_support::make_sqlite_db("");
-                let (fake_dir, program, pid_file) = fake_sqlite();
-                let (adapter, _command_context) = SqliteAdapter::with_test_environment(
-                    &dsn,
-                    command_environment(&fake_dir, mode, &pid_file),
-                );
-                let output_dir = tempfile::tempdir().unwrap();
-                let final_path = output_dir.path().join("export.csv");
-                let database_path = dsn.path().to_string();
-                let program = program.to_str().unwrap().to_string();
-                let timeout_duration = if mode == "timeout" {
-                    Duration::from_secs(1)
-                } else {
-                    Duration::from_secs(30)
-                };
-
-                let result = export_to_path(final_path.clone(), |temporary_path| async move {
-                    adapter
-                        .cli
-                        .export_csv_with_command(
-                            &program,
-                            &database_path,
-                            "SELECT 1",
-                            &temporary_path,
-                            true,
-                            timeout_duration,
-                        )
-                        .await
-                })
-                .await;
-
-                match mode {
-                    "normal" => {
-                        assert_eq!(result.unwrap(), final_path);
-                        assert_eq!(fs::read_to_string(&final_path).unwrap(), "value\n1\n");
-                        assert_eq!(output_dir.path().read_dir().unwrap().count(), 1);
-                    }
-                    "error" => {
-                        assert!(
-                            matches!(
-                                &result,
-                                Err(DbOperationError::QueryFailed(details))
-                                    if details == "fake sqlite error"
-                            ),
-                            "result={result:?}"
-                        );
-                        assert!(!final_path.exists());
-                        assert_eq!(output_dir.path().read_dir().unwrap().count(), 0);
-                    }
-                    "timeout" => {
-                        assert!(matches!(result, Err(DbOperationError::Timeout(_))));
-                        assert!(!final_path.exists());
-                        assert_eq!(output_dir.path().read_dir().unwrap().count(), 0);
-                    }
                     _ => unreachable!(),
                 }
                 assert_process_reaped(&pid_file);
@@ -935,27 +615,6 @@ esac
                     )
                 );
                 assert!(diagnostics.sqlite_version.is_ok());
-                assert_initialization_was_not_loaded(&artifacts);
-            }
-
-            #[tokio::test]
-            async fn export_preserves_csv_protocol() {
-                let (dir, dsn) = test_support::make_sqlite_db(
-                    "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT); INSERT INTO users VALUES (1, 'Ada');",
-                );
-                let export_path = dir.path().join("users.csv");
-                let (adapter, artifacts) = adapter_with_malicious_initialization(&dir, &dsn);
-
-                adapter
-                    .cli
-                    .export_csv(dsn.path(), "SELECT id, name FROM users", &export_path, true)
-                    .await
-                    .unwrap();
-
-                assert_eq!(
-                    std::fs::read_to_string(export_path).unwrap(),
-                    "id,name\n1,Ada\n"
-                );
                 assert_initialization_was_not_loaded(&artifacts);
             }
         }

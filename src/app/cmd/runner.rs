@@ -224,7 +224,6 @@ impl EffectRunner {
             | Effect::ExecuteAdhoc { .. }
             | Effect::ExecuteExplain { .. }
             | Effect::ExecuteWrite { .. }
-            | Effect::ExportCsv { .. }
             | Effect::ExportCsvFromCache { .. }) => {
                 cmd_browse::query::run(
                     e,
@@ -783,7 +782,6 @@ mod tests {
 
     mod query_context_termination {
         use std::future::pending;
-        use std::path::PathBuf;
         use std::sync::Mutex;
         use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -839,15 +837,6 @@ mod tests {
                 _query: &str,
                 _access_mode: AccessMode,
             ) -> Result<WriteExecutionResult, DbOperationError> {
-                unreachable!("test only starts a preview")
-            }
-
-            async fn export_to_csv(
-                &self,
-                _endpoint: &ConnectionEndpoint,
-                _query: &str,
-                _file_name: &str,
-            ) -> Result<PathBuf, DbOperationError> {
                 unreachable!("test only starts a preview")
             }
         }
