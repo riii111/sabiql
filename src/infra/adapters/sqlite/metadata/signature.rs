@@ -53,20 +53,12 @@ pub(super) fn signature_for_table(detail: &Table) -> TableSignature {
             fk.reference_resolved
         )
     }));
-    parts.extend(detail.triggers.iter().map(|trigger| {
-        format!(
-            "trg={}:{}:{}:{}",
-            trigger.name,
-            trigger.timing,
-            trigger
-                .events
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join(","),
-            trigger.definition
-        )
-    }));
+    parts.extend(
+        detail
+            .triggers
+            .iter()
+            .map(|trigger| format!("trg={}:{}", trigger.name, trigger.definition)),
+    );
 
     TableSignature {
         schema: MAIN_SCHEMA.to_string(),

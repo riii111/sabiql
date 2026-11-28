@@ -4,16 +4,15 @@ use std::ffi::OsStr;
 use std::time::Duration;
 
 use crate::app::ports::outbound::DbOperationError;
-use crate::domain::{
-    ForeignKey, Index, IndexAttributes, IndexType, Table, TableKind, TableKindInfo, Trigger,
-    TriggerCreationContext, TriggerEvent, TriggerTiming,
-};
+use crate::domain::{ForeignKey, Index, IndexAttributes, IndexType, Table, TableKindInfo, Trigger};
 
 use super::super::sql::{
-    FOREIGN_KEY_RESULT_COLUMNS, TABLES_RESULT_COLUMNS, TRIGGER_RESULT_COLUMNS,
-    UNIQUE_COLUMN_RESULT_COLUMNS, column_metadata_result_columns, columns_query_for_capabilities,
-    foreign_keys_query, index_result_columns, indexes_query_for_capabilities, show_create_query,
-    show_create_result_columns, table_query, triggers_query, unique_columns_query,
+    FOREIGN_KEY_RESULT_COLUMNS, TABLES_RESULT_COLUMNS, TRIGGER_NAME_RESULT_COLUMNS,
+    TRIGGER_SHOW_CREATE_RESULT_COLUMNS, UNIQUE_COLUMN_RESULT_COLUMNS,
+    column_metadata_result_columns, columns_query_for_capabilities, foreign_keys_query,
+    index_result_columns, indexes_query_for_capabilities, show_create_query,
+    show_create_result_columns, show_create_trigger_query, table_query, trigger_names_query,
+    unique_columns_query,
 };
 use super::super::{
     capability::MySqlServerCapabilities,
@@ -215,19 +214,16 @@ async fn fetch_table_detail_with_session(
         database,
         capabilities.lower_case_table_names,
     )?;
-    let triggers = parse_trigger_metadata(
-        &session
-            .execute_with_expected_columns(&triggers_query(schema, table), TRIGGER_RESULT_COLUMNS)
-            .await?,
-    )?;
-    let source_ddl = parse_source_ddl(
+    let triggers = fetch_triggers(session, &table_metadata.schema, &table_metadata.name).await?;
+    let ddl_columns = show_create_result_columns(table_metadata.kind);
+    let source_ddl = parse_show_create_ddl(
         &session
             .execute_show_create_with_completion_marker(
                 &show_create_query(table, table_metadata.kind),
-                show_create_result_columns(table_metadata.kind),
+                ddl_columns,
             )
             .await?,
-        table_metadata.kind,
+        ddl_columns,
     )?;
 
     let mut detail = table_from_columns_and_foreign_keys(table_metadata, columns, foreign_keys);
@@ -278,57 +274,54 @@ fn table_from_columns_and_foreign_keys(
     }
 }
 
-fn parse_trigger_metadata(result: &MySqlResultSet) -> Result<Vec<Trigger>, DbOperationError> {
-    expect_columns(result, TRIGGER_RESULT_COLUMNS)?;
-    result
-        .values
-        .iter()
-        .map(|row| {
-            if row.len() != TRIGGER_RESULT_COLUMNS.len() {
-                return Err(metadata_shape_error("TRIGGERS row"));
-            }
-            let timing = required_text(&row[2], "ACTION_TIMING")?
-                .parse::<TriggerTiming>()
-                .map_err(|error| DbOperationError::MetadataParseFailed(error.to_string()))?;
-            let event = required_text(&row[3], "EVENT_MANIPULATION")?
-                .parse::<TriggerEvent>()
-                .map_err(|error| DbOperationError::MetadataParseFailed(error.to_string()))?;
-            Ok(Trigger {
-                name: required_text(&row[0], "TRIGGER_NAME")?.to_string(),
-                timing,
-                events: vec![event],
-                action_order: Some(parse_positive_i32(&row[1], "ACTION_ORDER")?),
-                definition: required_text(&row[4], "ACTION_STATEMENT")?.to_string(),
-                security_context: optional_text(&row[5], "DEFINER")?.map(str::to_string),
-                creation_context: Some(TriggerCreationContext {
-                    sql_mode: optional_text(&row[6], "SQL_MODE")?.map(str::to_string),
-                    character_set_client: optional_text(&row[7], "CHARACTER_SET_CLIENT")?
-                        .map(str::to_string),
-                    collation_connection: optional_text(&row[8], "COLLATION_CONNECTION")?
-                        .map(str::to_string),
-                    database_collation: optional_text(&row[9], "DATABASE_COLLATION")?
-                        .map(str::to_string),
-                    created: optional_text(&row[10], "CREATED")?.map(str::to_string),
-                }),
-            })
-        })
-        .collect()
+async fn fetch_triggers(
+    session: &mut MySqlMetadataSession,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<Trigger>, DbOperationError> {
+    let names = session
+        .execute_with_expected_columns(
+            &trigger_names_query(schema, table),
+            TRIGGER_NAME_RESULT_COLUMNS,
+        )
+        .await?;
+    expect_columns(&names, TRIGGER_NAME_RESULT_COLUMNS)?;
+
+    let mut triggers = Vec::with_capacity(names.values.len());
+    for row in &names.values {
+        let [name] = row.as_slice() else {
+            return Err(metadata_shape_error("TRIGGERS row"));
+        };
+        let name = required_text(name, "TRIGGER_NAME")?;
+        let result = session
+            .execute(&show_create_trigger_query(schema, name))
+            .await?;
+        triggers.push(Trigger {
+            name: name.to_string(),
+            definition: parse_show_create_ddl(&result, TRIGGER_SHOW_CREATE_RESULT_COLUMNS)?,
+        });
+    }
+    Ok(triggers)
 }
 
-fn parse_source_ddl(result: &MySqlResultSet, kind: TableKind) -> Result<String, DbOperationError> {
-    let expected_columns = show_create_result_columns(kind);
-    if result.columns.len() < 2
-        || result.columns[0] != expected_columns[0]
-        || result.columns[1] != expected_columns[1]
-        || result.values.len() != 1
+fn parse_show_create_ddl(
+    result: &MySqlResultSet,
+    expected_columns: &[&str],
+) -> Result<String, DbOperationError> {
+    let (Some(ddl_column), [row]) = (expected_columns.last(), result.values.as_slice()) else {
+        return Err(metadata_shape_error("SHOW CREATE result"));
+    };
+    if !result
+        .columns
+        .iter()
+        .map(String::as_str)
+        .take(expected_columns.len())
+        .eq(expected_columns.iter().copied())
+        || row.len() != result.columns.len()
     {
         return Err(metadata_shape_error("SHOW CREATE result"));
     }
-    let row = &result.values[0];
-    if row.len() != result.columns.len() {
-        return Err(metadata_shape_error("SHOW CREATE row"));
-    }
-    let ddl = required_text(&row[1], expected_columns[1])?;
+    let ddl = required_text(&row[expected_columns.len() - 1], ddl_column)?;
     if ddl.is_empty() {
         return Err(DbOperationError::MetadataParseFailed(
             "MySQL SHOW CREATE returned empty DDL".to_string(),
@@ -585,7 +578,14 @@ while IFS= read -r line; do
       printf '%s\n' '<resultset><row><field name="CONSTRAINT_NAME">fk_items_self</field><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items</field><field name="COLUMN_NAME">id</field><field name="REFERENCED_TABLE_SCHEMA">app</field><field name="REFERENCED_TABLE_NAME">items</field><field name="REFERENCED_COLUMN_NAME">id</field><field name="ORDINAL_POSITION">1</field><field name="UPDATE_RULE">CASCADE</field><field name="DELETE_RULE">CASCADE</field></row></resultset>'
       ;;
     *TRIGGERS*)
-      printf '%s\n' '<resultset><row><field name="TRIGGER_NAME">items_audit</field><field name="ACTION_ORDER">1</field><field name="ACTION_TIMING">BEFORE</field><field name="EVENT_MANIPULATION">INSERT</field><field name="ACTION_STATEMENT">SET NEW.id = NEW.id</field><field name="DEFINER">app@localhost</field><field name="SQL_MODE">STRICT_TRANS_TABLES</field><field name="CHARACTER_SET_CLIENT">utf8mb4</field><field name="COLLATION_CONNECTION">utf8mb4_0900_ai_ci</field><field name="DATABASE_COLLATION">utf8mb4_0900_ai_ci</field><field name="CREATED">2026-08-21 10:20:30.00</field></row></resultset>'
+      if [ "$mode" = "view" ]; then
+        printf '%s\n' '<resultset></resultset>'
+      else
+        printf '%s\n' '<resultset><row><field name="TRIGGER_NAME">items_audit</field></row></resultset>'
+      fi
+      ;;
+    *SHOW\ CREATE\ TRIGGER*)
+      printf '%s\n' '<resultset><row><field name="Trigger">items_audit</field><field name="sql_mode">STRICT_TRANS_TABLES</field><field name="SQL Original Statement">CREATE TRIGGER items_audit BEFORE INSERT ON items FOR EACH ROW SET NEW.id = NEW.id</field></row></resultset>'
       ;;
     *SHOW\ CREATE\ VIEW*)
       if [ "$mode" = "view" ]; then
@@ -644,6 +644,12 @@ done
             assert_eq!(detail.columns.len(), 1);
             assert!(detail.source_ddl().is_some());
             if mode == "table" {
+                assert_eq!(detail.triggers.len(), 1);
+                assert_eq!(detail.triggers[0].name, "items_audit");
+                assert_eq!(
+                    detail.triggers[0].definition,
+                    "CREATE TRIGGER items_audit BEFORE INSERT ON items FOR EACH ROW SET NEW.id = NEW.id"
+                );
                 assert_eq!(detail.storage_attributes.engine.as_deref(), Some("InnoDB"));
                 assert_eq!(
                     detail.storage_attributes.row_format.as_deref(),
@@ -658,6 +664,7 @@ done
                     Some("partitioned")
                 );
             } else {
+                assert!(detail.triggers.is_empty());
                 assert!(detail.storage_attributes.engine.is_none());
                 assert!(detail.storage_attributes.row_format.is_none());
                 assert!(detail.storage_attributes.table_collation.is_none());
@@ -665,14 +672,18 @@ done
             }
             let transcript_text = std::fs::read_to_string(&transcript).unwrap();
             assert_eq!(
+                transcript_text.contains("SHOW CREATE TRIGGER"),
+                mode == "table"
+            );
+            assert_eq!(
                 transcript_text
                     .lines()
                     .filter(|line| line.starts_with("process="))
                     .count(),
                 1
             );
-            let labels = if mode == "view" {
-                [
+            let labels: &[&str] = if mode == "view" {
+                &[
                     "SET SESSION autocommit=1, completion_type=NO_CHAIN",
                     "SET SESSION TRANSACTION READ ONLY",
                     "__sabiql_session_marker",
@@ -687,7 +698,7 @@ done
                     "__sabiql_inspector_completion",
                 ]
             } else {
-                [
+                &[
                     "SET SESSION autocommit=1, completion_type=NO_CHAIN",
                     "SET SESSION TRANSACTION READ ONLY",
                     "__sabiql_session_marker",
@@ -698,12 +709,13 @@ done
                     "INFORMATION_SCHEMA.STATISTICS",
                     "REFERENTIAL_CONSTRAINTS",
                     "INFORMATION_SCHEMA.TRIGGERS",
+                    "SHOW CREATE TRIGGER `app`.`items_audit`",
                     "SHOW CREATE TABLE",
                     "__sabiql_inspector_completion",
                 ]
             };
             let positions = labels
-                .into_iter()
+                .iter()
                 .map(|label| transcript_text.find(label).unwrap())
                 .collect::<Vec<_>>();
             assert!(positions.windows(2).all(|pair| pair[0] < pair[1]));
@@ -918,88 +930,12 @@ mod tests {
 
     use super::super::test_support::result;
     use super::*;
-    use crate::domain::QueryValue;
+    use crate::domain::{QueryValue, TableKind};
 
     fn parse_index_metadata(
         result: &MySqlResultSet,
     ) -> Result<Vec<MySqlIndexMetadata>, DbOperationError> {
         super::parse_index_metadata_with_capabilities(result, MySqlServerCapabilities::default())
-    }
-
-    #[test]
-    fn trigger_metadata_preserves_action_order_context_and_definition() {
-        let result = result(
-            &[
-                "TRIGGER_NAME",
-                "ACTION_ORDER",
-                "ACTION_TIMING",
-                "EVENT_MANIPULATION",
-                "ACTION_STATEMENT",
-                "DEFINER",
-                "SQL_MODE",
-                "CHARACTER_SET_CLIENT",
-                "COLLATION_CONNECTION",
-                "DATABASE_COLLATION",
-                "CREATED",
-            ],
-            vec![
-                vec![
-                    QueryValue::Text("z_add".to_string()),
-                    QueryValue::Text("1".to_string()),
-                    QueryValue::Text("BEFORE".to_string()),
-                    QueryValue::Text("UPDATE".to_string()),
-                    QueryValue::Text("SET @seen = 1".to_string()),
-                    QueryValue::Text("sabiql@%".to_string()),
-                    QueryValue::Text("STRICT_TRANS_TABLES".to_string()),
-                    QueryValue::Text("utf8mb4".to_string()),
-                    QueryValue::Text("utf8mb4_0900_ai_ci".to_string()),
-                    QueryValue::Text("utf8mb4_0900_ai_ci".to_string()),
-                    QueryValue::Text("2026-08-21 10:20:30.00".to_string()),
-                ],
-                vec![
-                    QueryValue::Text("a_double".to_string()),
-                    QueryValue::Text("2".to_string()),
-                    QueryValue::Text("BEFORE".to_string()),
-                    QueryValue::Text("UPDATE".to_string()),
-                    QueryValue::Text("SET @seen = 2".to_string()),
-                    QueryValue::Text("sabiql@%".to_string()),
-                    QueryValue::Text("STRICT_TRANS_TABLES".to_string()),
-                    QueryValue::Text("utf8mb4".to_string()),
-                    QueryValue::Text("utf8mb4_0900_ai_ci".to_string()),
-                    QueryValue::Text("utf8mb4_0900_ai_ci".to_string()),
-                    QueryValue::Text("2026-08-21 10:20:31.00".to_string()),
-                ],
-            ],
-        );
-
-        let triggers = parse_trigger_metadata(&result).unwrap();
-
-        assert_eq!(triggers.len(), 2);
-        assert_eq!(triggers[0].name, "z_add");
-        assert_eq!(triggers[0].action_order, Some(1));
-        assert_eq!(triggers[0].events, [TriggerEvent::Update]);
-        assert_eq!(triggers[0].definition, "SET @seen = 1");
-        assert_eq!(triggers[0].security_context.as_deref(), Some("sabiql@%"));
-        assert_eq!(
-            triggers[0].creation_context,
-            Some(TriggerCreationContext {
-                sql_mode: Some("STRICT_TRANS_TABLES".to_string()),
-                character_set_client: Some("utf8mb4".to_string()),
-                collation_connection: Some("utf8mb4_0900_ai_ci".to_string()),
-                database_collation: Some("utf8mb4_0900_ai_ci".to_string()),
-                created: Some("2026-08-21 10:20:30.00".to_string()),
-            })
-        );
-        assert_eq!(triggers[1].name, "a_double");
-        assert_eq!(triggers[1].action_order, Some(2));
-        assert_eq!(triggers[1].events, [TriggerEvent::Update]);
-    }
-
-    #[test]
-    fn empty_trigger_result_returns_no_triggers() {
-        let result = result(TRIGGER_RESULT_COLUMNS, Vec::new());
-
-        assert!(parse_trigger_metadata(&result).unwrap().is_empty());
     }
 
     #[test]
@@ -1020,7 +956,10 @@ mod tests {
             ]],
         );
 
-        assert_eq!(parse_source_ddl(&result, TableKind::View).unwrap(), ddl);
+        assert_eq!(
+            parse_show_create_ddl(&result, show_create_result_columns(TableKind::View)).unwrap(),
+            ddl
+        );
     }
 
     #[test]

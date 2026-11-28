@@ -1,6 +1,5 @@
 use crate::domain::{
     ColumnGenerationKind, DatabaseType, ForeignKey, Index, IndexType, RlsInfo, Table,
-    TriggerCreationContext,
 };
 use crate::model::browse::session::TableDetailState;
 use crate::model::shared::engine_feature_profile::{EngineFeatureProfile, InspectorInfoField};
@@ -9,8 +8,6 @@ use crate::policy::column::column_read_only_reason;
 use crate::policy::table_kind::{inspector_flags_label, inspector_kind_label};
 use crate::ports::outbound::DdlGenerator;
 
-pub const MYSQL_TRIGGER_DETAIL_LINES_PER_ROW: usize = 12;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InspectorViewModel {
     active_tab: InspectorTab,
@@ -18,7 +15,6 @@ pub struct InspectorViewModel {
     section: Option<InspectorSection>,
     empty_state: Option<InspectorEmptyState>,
     unavailable_reason: Option<InspectorUnavailableReason>,
-    mysql_trigger_details: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,7 +50,7 @@ pub enum InspectorSection {
         rows: Vec<InspectorRlsRow>,
     },
     Triggers {
-        rows: Vec<InspectorTriggerRow>,
+        lines: Vec<String>,
     },
     Ddl {
         rows: Vec<String>,
@@ -100,17 +96,6 @@ pub struct InspectorForeignKeyRow {
     pub references: String,
     pub on_update: String,
     pub on_delete: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InspectorTriggerRow {
-    pub name: String,
-    pub timing: String,
-    pub events: String,
-    pub action_order: Option<i32>,
-    pub definition: String,
-    pub security_context: Option<String>,
-    pub creation_context: Option<TriggerCreationContext>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -164,7 +149,6 @@ impl InspectorViewModel {
                 section: None,
                 empty_state: None,
                 unavailable_reason: None,
-                mysql_trigger_details: false,
             };
         };
 
@@ -289,32 +273,20 @@ impl InspectorViewModel {
                 ),
             },
             InspectorTab::Triggers => {
-                let rows = table
-                    .triggers
-                    .iter()
-                    .map(|trigger| InspectorTriggerRow {
-                        name: trigger.name.clone(),
-                        timing: trigger.timing.to_string(),
-                        events: trigger
-                            .events
-                            .iter()
-                            .map(ToString::to_string)
-                            .collect::<Vec<_>>()
-                            .join("/"),
-                        action_order: trigger.action_order,
-                        definition: trigger.definition.clone(),
-                        security_context: trigger.security_context.clone(),
-                        creation_context: trigger.creation_context.clone(),
-                    })
-                    .collect();
-                (
-                    InspectorSection::Triggers { rows },
-                    table
-                        .triggers
-                        .is_empty()
-                        .then_some(InspectorEmptyState::NoTriggers),
-                    None,
-                )
+                let mut lines = Vec::new();
+                for trigger in &table.triggers {
+                    if !lines.is_empty() {
+                        lines.push(String::new());
+                    }
+                    lines.extend(
+                        format!("Name: {}", trigger.name)
+                            .lines()
+                            .map(str::to_string),
+                    );
+                    lines.extend(trigger.definition.lines().map(str::to_string));
+                }
+                let empty_state = lines.is_empty().then_some(InspectorEmptyState::NoTriggers);
+                (InspectorSection::Triggers { lines }, empty_state, None)
             }
             InspectorTab::Ddl => (
                 InspectorSection::Ddl {
@@ -335,10 +307,6 @@ impl InspectorViewModel {
             section: Some(section),
             empty_state,
             unavailable_reason,
-            mysql_trigger_details: match database_type {
-                DatabaseType::MySQL => active_tab == InspectorTab::Triggers,
-                DatabaseType::PostgreSQL | DatabaseType::SQLite => false,
-            },
         }
     }
 
@@ -363,31 +331,15 @@ impl InspectorViewModel {
     }
 
     pub fn row_count(&self) -> usize {
-        if self.mysql_trigger_details {
-            return self
-                .section
-                .as_ref()
-                .and_then(|section| match section {
-                    InspectorSection::Triggers { rows } => {
-                        Some(rows.len() * MYSQL_TRIGGER_DETAIL_LINES_PER_ROW)
-                    }
-                    _ => None,
-                })
-                .unwrap_or_default();
-        }
-
         self.section.as_ref().map_or(0, InspectorSection::row_count)
     }
 
     pub fn visible_rows(&self, pane_height: u16) -> usize {
-        if self.mysql_trigger_details {
-            return pane_height.saturating_sub(3) as usize;
-        }
-
         match self.section.as_ref() {
             Some(
                 InspectorSection::Info { .. }
                 | InspectorSection::Rls { .. }
+                | InspectorSection::Triggers { .. }
                 | InspectorSection::Ddl { .. },
             ) => pane_height.saturating_sub(3) as usize,
             _ => pane_height.saturating_sub(5) as usize,
@@ -408,7 +360,7 @@ impl InspectorSection {
             Self::Indexes { rows, .. } => rows.len(),
             Self::ForeignKeys { rows } => rows.len(),
             Self::Rls { rows } => rows.len(),
-            Self::Triggers { rows } => rows.len(),
+            Self::Triggers { lines } => lines.len(),
             Self::Ddl { rows } => rows.len(),
         }
     }
@@ -533,7 +485,7 @@ mod tests {
     use super::*;
     use crate::domain::{
         Column, ColumnAttributes, FkAction, IndexAttributes, RlsCommand, RlsPolicy, TableKindInfo,
-        TableStorageAttributes, Trigger, TriggerEvent, TriggerTiming,
+        TableStorageAttributes, Trigger,
     };
 
     struct TestDdlGenerator;
@@ -595,12 +547,7 @@ mod tests {
             }),
             triggers: vec![Trigger {
                 name: "users_updated".to_string(),
-                timing: TriggerTiming::Before,
-                events: vec![TriggerEvent::Update],
-                action_order: None,
-                definition: "set_updated_at".to_string(),
-                security_context: Some("INVOKER".to_string()),
-                creation_context: None,
+                definition: "CREATE TRIGGER users_updated BEFORE UPDATE ON users\nFOR EACH ROW EXECUTE FUNCTION set_updated_at()".to_string(),
             }],
             row_count_estimate: Some(3),
             comment: Some("Users".to_string()),
@@ -851,38 +798,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn mysql_trigger_rows_preserve_action_order_and_creation_context() {
-        let mut table = table();
-        table.triggers[0].action_order = Some(2);
-        table.triggers[0].creation_context = Some(TriggerCreationContext {
-            sql_mode: Some("STRICT_TRANS_TABLES".to_string()),
-            character_set_client: Some("utf8mb4".to_string()),
-            collation_connection: Some("utf8mb4_0900_ai_ci".to_string()),
-            database_collation: Some("utf8mb4_0900_ai_ci".to_string()),
-            created: Some("2026-08-21 10:20:30.00".to_string()),
-        });
-
-        let model = build_loaded(
-            &EngineFeatureProfile::mysql_like(),
-            InspectorTab::Triggers,
-            &table,
-            DatabaseType::MySQL,
-            &TestDdlGenerator,
-        );
-
-        match model.section() {
-            Some(InspectorSection::Triggers { rows }) => {
-                assert_eq!(rows[0].action_order, Some(2));
-                assert_eq!(rows[0].creation_context, table.triggers[0].creation_context);
-            }
-            section => panic!("expected trigger section, got {section:?}"),
-        }
-        assert_eq!(model.row_count(), MYSQL_TRIGGER_DETAIL_LINES_PER_ROW);
-        assert_eq!(model.visible_rows(8), 5);
-        assert_eq!(model.max_scroll(8), 7);
-    }
-
     #[rstest::rstest]
     #[case::postgres(DatabaseType::PostgreSQL, true)]
     #[case::mysql(DatabaseType::MySQL, false)]
@@ -908,25 +823,47 @@ mod tests {
     }
 
     #[rstest::rstest]
-    #[case::postgres(DatabaseType::PostgreSQL, 1, 3)]
-    #[case::mysql(DatabaseType::MySQL, MYSQL_TRIGGER_DETAIL_LINES_PER_ROW, 5)]
-    #[case::sqlite(DatabaseType::SQLite, 1, 3)]
-    fn trigger_rows_scroll_by_detail_lines_only_for_mysql(
+    #[case::postgres(DatabaseType::PostgreSQL)]
+    #[case::mysql(DatabaseType::MySQL)]
+    #[case::sqlite(DatabaseType::SQLite)]
+    fn trigger_section_preserves_sql_lines_and_scrolls_to_the_last_line(
         #[case] database_type: DatabaseType,
-        #[case] expected_rows: usize,
-        #[case] expected_visible_rows: usize,
     ) {
+        let mut table = table();
+        table.triggers.push(Trigger {
+            name: "users_audit".to_string(),
+            definition:
+                "CREATE TRIGGER users_audit AFTER INSERT ON users\n  BEGIN\n    SELECT 1;\n  END"
+                    .to_string(),
+        });
         let model = build_loaded(
             &EngineFeatureProfile::for_database_type(database_type),
             InspectorTab::Triggers,
-            &table(),
+            &table,
             database_type,
             &TestDdlGenerator,
         );
 
-        assert_eq!(model.active_tab(), InspectorTab::Triggers);
-        assert_eq!(model.row_count(), expected_rows);
-        assert_eq!(model.visible_rows(8), expected_visible_rows);
+        let Some(InspectorSection::Triggers { lines }) = model.section() else {
+            panic!("expected trigger section");
+        };
+        assert_eq!(
+            lines,
+            &[
+                "Name: users_updated",
+                "CREATE TRIGGER users_updated BEFORE UPDATE ON users",
+                "FOR EACH ROW EXECUTE FUNCTION set_updated_at()",
+                "",
+                "Name: users_audit",
+                "CREATE TRIGGER users_audit AFTER INSERT ON users",
+                "  BEGIN",
+                "    SELECT 1;",
+                "  END",
+            ]
+        );
+        assert_eq!(model.row_count(), 9);
+        assert_eq!(model.visible_rows(7), 4);
+        assert_eq!(model.max_scroll(7), 5);
     }
 
     #[test]
@@ -938,7 +875,7 @@ mod tests {
             (InspectorTab::Indexes, 1),
             (InspectorTab::ForeignKeys, 1),
             (InspectorTab::Rls, 5),
-            (InspectorTab::Triggers, 1),
+            (InspectorTab::Triggers, 3),
             (InspectorTab::Ddl, 3),
         ];
 
