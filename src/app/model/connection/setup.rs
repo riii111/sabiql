@@ -937,17 +937,10 @@ mod tests {
         }
 
         #[test]
-        fn has_errors_returns_false_when_empty() {
-            let state = ConnectionSetupState::default();
-            assert!(!state.has_validation_errors());
-        }
-
-        #[test]
-        fn has_errors_returns_true_when_errors_exist() {
+        fn validation_errors_reflect_field_errors() {
             let mut state = ConnectionSetupState::default();
-            state
-                .validation_errors
-                .insert(ConnectionField::Host, "Required".to_string());
+            assert!(!state.has_validation_errors());
+            state.set_validation_error(ConnectionField::Host, "Required");
             assert!(state.has_validation_errors());
         }
 

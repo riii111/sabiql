@@ -735,20 +735,6 @@ mod tests {
         }
 
         #[test]
-        fn does_not_set_reached_end_for_full_page() {
-            let mut state = create_test_state();
-            state.session.set_selection_generation(1);
-            let result = preview_result(PREVIEW_PAGE_SIZE);
-            let now = Instant::now();
-            let action = query_completed_action(&mut state, result, 1, Some(0));
-
-            route(&mut state, action, now);
-
-            assert_eq!(state.query.pagination.current_page(), 0);
-            assert!(!state.query.pagination.reached_end());
-        }
-
-        #[test]
         fn applies_empty_initial_preview_at_page_zero() {
             let mut state = create_test_state();
             state.session.set_selection_generation(1);
@@ -778,30 +764,6 @@ mod tests {
         }
 
         #[test]
-        fn preserves_last_page_when_forward_preview_is_empty() {
-            let mut state = create_test_state();
-            state.session.set_selection_generation(1);
-            let last_page = preview_result(PREVIEW_PAGE_SIZE);
-            let first_action =
-                query_completed_action(&mut state, Arc::clone(&last_page), 1, Some(0));
-            route(&mut state, first_action, Instant::now());
-
-            let empty_action = query_completed_action(&mut state, preview_result(0), 1, Some(1));
-            route(&mut state, empty_action, Instant::now());
-
-            assert_eq!(state.query.pagination.current_page(), 0);
-            assert!(state.query.pagination.reached_end());
-            assert!(Arc::ptr_eq(
-                state.query.current_result().unwrap(),
-                &last_page
-            ));
-            assert_eq!(
-                state.query.visible_result().unwrap().data_row_count(),
-                PREVIEW_PAGE_SIZE
-            );
-        }
-
-        #[test]
         fn exact_page_boundaries_keep_next_available_until_empty() {
             for total_rows in [PREVIEW_PAGE_SIZE, PREVIEW_PAGE_SIZE * 2] {
                 let mut state = create_test_state();
@@ -820,6 +782,7 @@ mod tests {
                     assert!(state.query.pagination.can_next());
                 }
 
+                let last_page = Arc::clone(state.query.current_result().unwrap());
                 let empty_action =
                     query_completed_action(&mut state, preview_result(0), 1, Some(page_count));
                 route(&mut state, empty_action, Instant::now());
@@ -827,6 +790,10 @@ mod tests {
                 assert_eq!(state.query.pagination.current_page(), page_count - 1);
                 assert!(state.query.pagination.reached_end());
                 assert!(!state.query.pagination.can_next());
+                assert!(Arc::ptr_eq(
+                    state.query.current_result().unwrap(),
+                    &last_page
+                ));
                 assert_eq!(
                     state.query.visible_result().unwrap().data_row_count(),
                     PREVIEW_PAGE_SIZE
@@ -1449,24 +1416,6 @@ mod tests {
         use crate::domain::CommandTag;
 
         #[test]
-        fn dml_with_table_selected_emits_execute_preview() {
-            let mut state = state_with_table("public", "users");
-            let action = query_completed_action(
-                &mut state,
-                adhoc_result_with_tag(CommandTag::Update(3)),
-                0,
-                None,
-            );
-
-            let effects = route(&mut state, action, Instant::now());
-
-            assert_eq!(effects.len(), 1);
-            assert!(
-                matches!(&effects[0], Effect::ExecutePreview { table, .. } if table == "users")
-            );
-        }
-
-        #[test]
         fn dml_without_table_selected_emits_no_effects() {
             let mut state = create_test_state();
             let action = query_completed_action(
@@ -1656,7 +1605,9 @@ mod tests {
             let effects = route(&mut state, action, Instant::now());
 
             assert_eq!(effects.len(), 1);
-            assert!(matches!(&effects[0], Effect::ExecutePreview { .. }));
+            assert!(
+                matches!(&effects[0], Effect::ExecutePreview { table, .. } if table == "users")
+            );
 
             let new_preview = preview_result(5);
             let action = query_completed_action(&mut state, Arc::clone(&new_preview), 0, Some(0));

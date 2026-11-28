@@ -77,13 +77,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn diagnostic_field_rejects_invalid_public_construction() {
-        let field = DiagnosticField::ok("value");
-
-        assert_eq!(field.ok_value(), Some("value"));
-    }
-
-    #[test]
     fn diagnostic_field_pending_contract() {
         let field = DiagnosticField::Pending;
 
@@ -101,6 +94,7 @@ mod tests {
         };
 
         assert_eq!(snapshot.quick_check_is_ok(), Some(true));
+        assert_eq!(snapshot.quick_check.ok_value(), Some("ok"));
     }
 
     #[test]

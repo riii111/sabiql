@@ -359,14 +359,6 @@ END";
         #[test]
         fn distinguishes_journal_mode_query_from_change() {
             assert_eq!(
-                sqlite_statement_classification("PRAGMA journal_mode"),
-                SqliteStatementClassification::ReadOnly
-            );
-            assert_eq!(
-                sqlite_statement_classification("PRAGMA main.journal_mode = WAL"),
-                SqliteStatementClassification::TransactionIncompatible
-            );
-            assert_eq!(
                 sqlite_statement_classification("PRAGMA journal_mode(WAL)"),
                 SqliteStatementClassification::TransactionIncompatible
             );

@@ -199,6 +199,8 @@ mod tests {
                 .query
                 .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
             state.query.pagination.reset_for_table("public", "users");
+            state.result_interaction.activate_cell(3, 1);
+            state.result_interaction.stage_row(3);
             let now = Instant::now();
 
             let effects = route(&mut state, Action::ResultNextPage, now);
@@ -215,6 +217,9 @@ mod tests {
                 }
                 other => panic!("expected ExecutePreview, got {other:?}"),
             }
+            assert!(state.result_interaction.selection().row().is_none());
+            assert!(state.result_interaction.selection().cell().is_none());
+            assert!(state.result_interaction.staged_delete_rows().is_empty());
         }
 
         #[test]
@@ -258,23 +263,6 @@ mod tests {
             assert_eq!(state.result_interaction.selection().row(), Some(2));
             assert_eq!(state.result_interaction.selection().cell(), Some(1));
             assert!(state.result_interaction.staged_delete_rows().contains(&2));
-        }
-
-        #[test]
-        fn transition_resets_view_state() {
-            let mut state = create_test_state();
-            state
-                .query
-                .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
-            state.query.pagination.reset_for_table("public", "users");
-            state.result_interaction.activate_cell(3, 1);
-            state.result_interaction.stage_row(3);
-
-            route(&mut state, Action::ResultNextPage, Instant::now());
-
-            assert!(state.result_interaction.selection().row().is_none());
-            assert!(state.result_interaction.selection().cell().is_none());
-            assert!(state.result_interaction.staged_delete_rows().is_empty());
         }
 
         #[test]

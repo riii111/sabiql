@@ -303,63 +303,6 @@ mod tests {
         }
 
         #[test]
-        fn different_connection_dispatches_switch_effect() {
-            let mut state = AppState::new("test".to_string());
-            let active_id = ConnectionId::new();
-            let other_id = ConnectionId::new();
-
-            state.set_connections(vec![
-                create_test_profile_with_id("active", active_id.clone()),
-                create_test_profile_with_id("other", other_id),
-            ]);
-            state.session.activate_connection(
-                &active_id,
-                "active",
-                &endpoint::postgres("postgres://localhost/test"),
-            );
-            state.ui.set_connection_list_selection(Some(1));
-
-            let effects = route(
-                &mut state,
-                Action::ConfirmConnectionSelection,
-                Instant::now(),
-            );
-
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(
-                &effects[0],
-                Effect::SwitchConnection {
-                    connection_index: 1
-                }
-            ));
-        }
-
-        #[test]
-        fn stays_on_same_connection_returns_to_tables() {
-            let mut state = AppState::new("test".to_string());
-            let active_id = ConnectionId::new();
-
-            state.set_connections(vec![create_test_profile_with_id(
-                "active",
-                active_id.clone(),
-            )]);
-            state.session.activate_connection(
-                &active_id,
-                "active",
-                &endpoint::postgres("postgres://localhost/test"),
-            );
-            state.ui.set_connection_list_selection(Some(0));
-
-            let effects = route(
-                &mut state,
-                Action::ConfirmConnectionSelection,
-                Instant::now(),
-            );
-
-            assert!(effects.is_empty());
-        }
-
-        #[test]
         fn empty_connections_returns_empty_effects() {
             let mut state = AppState::new("test".to_string());
 
@@ -397,9 +340,12 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(effects
-                .iter()
-                .any(|e| matches!(e, Effect::SwitchConnection { connection_index } if *connection_index == 1)));
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::SwitchConnection {
+                    connection_index: 1
+                }]
+            ));
         }
 
         #[test]

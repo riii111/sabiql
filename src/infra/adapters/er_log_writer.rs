@@ -57,6 +57,7 @@ mod tests {
             assert!(content.contains("Failed tables (2):"));
             assert!(content.contains("public.users: connection timeout"));
             assert!(content.contains("public.orders: permission denied"));
+            assert!(content.contains("Timestamp:"));
         }
 
         #[test]
@@ -67,20 +68,6 @@ mod tests {
 
             let content = std::fs::read_to_string(temp_dir.path().join("er_diagram.log")).unwrap();
             assert!(content.contains("Failed tables (0):"));
-        }
-
-        #[test]
-        fn output_includes_timestamp() {
-            let temp_dir = tempfile::tempdir().unwrap();
-
-            write_er_failure_log_blocking(
-                vec![("t".to_string(), "e".to_string())],
-                temp_dir.path().to_path_buf(),
-            )
-            .unwrap();
-
-            let content = std::fs::read_to_string(temp_dir.path().join("er_diagram.log")).unwrap();
-            assert!(content.contains("Timestamp:"));
         }
     }
 }

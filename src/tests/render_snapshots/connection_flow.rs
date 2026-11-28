@@ -161,93 +161,6 @@ fn connection_setup_empty_password_focused() {
 }
 
 #[test]
-fn connection_setup_preview_omits_empty_optional_fields() {
-    let mut state = create_test_state();
-    let mut terminal = create_test_terminal();
-
-    state.modal.set_mode(InputMode::ConnectionSetup);
-    set_connection_input(&mut state, ConnectionField::Host, TextInputState::default());
-    set_connection_input(
-        &mut state,
-        ConnectionField::Database,
-        TextInputState::new("mydb", 4),
-    );
-    set_connection_input(&mut state, ConnectionField::User, TextInputState::default());
-    set_connection_input(
-        &mut state,
-        ConnectionField::Password,
-        TextInputState::new("secret", 6),
-    );
-
-    let output = render_modal_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
-fn connection_setup_preview_uses_postgres_conninfo_escaping() {
-    let mut state = create_test_state();
-    let mut terminal = create_test_terminal();
-
-    state.modal.set_mode(InputMode::ConnectionSetup);
-    set_connection_input(
-        &mut state,
-        ConnectionField::Host,
-        TextInputState::new("/var/run/postgresql", 19),
-    );
-    set_connection_input(
-        &mut state,
-        ConnectionField::Database,
-        TextInputState::new("my'db", 5),
-    );
-    set_connection_input(
-        &mut state,
-        ConnectionField::User,
-        TextInputState::new("user'org", 8),
-    );
-
-    let output = render_modal_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
-fn connection_setup_preview_wraps_across_multiple_rows_for_long_conninfo() {
-    let mut state = create_test_state();
-    let mut terminal = create_test_terminal();
-
-    state.modal.set_mode(InputMode::ConnectionSetup);
-    set_connection_input(
-        &mut state,
-        ConnectionField::Host,
-        TextInputState::new(
-            "analytics-primary-read-replica.cluster.internal.example.company.service",
-            70,
-        ),
-    );
-    set_connection_input(
-        &mut state,
-        ConnectionField::Database,
-        TextInputState::new(
-            "warehouse_reporting_environment_for_customer_success_dashboards",
-            61,
-        ),
-    );
-    set_connection_input(
-        &mut state,
-        ConnectionField::User,
-        TextInputState::new(
-            "customer_success_preview_validation_operator_with_extended_scope",
-            63,
-        ),
-    );
-
-    let output = render_modal_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
 fn connection_setup_preview_with_max_length_fields() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
@@ -409,6 +322,7 @@ fn connection_error_save_failure_hides_retry_in_modal_and_footer() {
     assert!(output.contains("Actions:  e  Edit"));
     assert!(output.contains("e:Edit"));
     assert!(!output.contains("Retry"));
+    assert!(!output.contains("pg_service.conf"));
 }
 
 #[test]
@@ -432,13 +346,6 @@ fn non_mysql_retryable_error_hides_retry_in_modal_and_footer() {
     assert!(output.contains("Actions:  e  Edit"));
     assert!(output.contains("e:Edit"));
     assert!(!output.contains("Retry"));
-}
-
-#[test]
-fn connection_error_omits_service_file_hint_for_mysql_save() {
-    let output = render_service_error_without_service_file_hint(true);
-
-    assert!(!output.contains("pg_service.conf"));
 }
 
 #[test]

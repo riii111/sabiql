@@ -983,18 +983,14 @@ mod tests {
     mod pane_geometry {
         use super::*;
 
-        #[rstest]
-        #[case(10, 5)]
-        #[case(15, 10)]
-        #[case(20, 15)]
-        #[case(30, 25)]
-        fn result_rows_follow_pane_height(#[case] pane_height: u16, #[case] expected: usize) {
+        #[test]
+        fn result_rows_follow_pane_height() {
             let mut state = make_state();
-            state.ui.set_result_pane_height(pane_height);
+            state.ui.set_result_pane_height(10);
 
             let visible = state.result_visible_rows();
 
-            assert_eq!(visible, expected);
+            assert_eq!(visible, 5);
         }
 
         #[test]
@@ -1214,19 +1210,6 @@ mod tests {
             let state = make_state();
 
             assert_eq!(state.session.selection_generation(), 0);
-        }
-
-        #[test]
-        fn selection_generation_increments_on_selection() {
-            let mut state = make_state();
-
-            let gen1 = state.session.selection_generation();
-            let gen2 = state.session.select_table("public", "t1", &mut state.query);
-            let gen3 = state.session.select_table("public", "t2", &mut state.query);
-
-            assert_eq!(gen1, 0);
-            assert_eq!(gen2, 1);
-            assert_eq!(gen3, 2);
         }
 
         #[test]

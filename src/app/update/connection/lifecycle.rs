@@ -356,6 +356,11 @@ mod tests {
                 Some(retry_run_id)
             );
 
+            assert_eq!(
+                state.messages.last_error(),
+                Some("Connection switch in progress")
+            );
+
             let completion_effects = reduce_app(
                 &mut state,
                 Action::MySqlConnectionProbeCompleted {
@@ -901,6 +906,7 @@ mod tests {
         fn fetches_metadata_when_no_cache_exists() {
             let mut state = AppState::new("test".to_string());
             let new_id = ConnectionId::new();
+            state.session.enable_read_only();
 
             let action = create_postgres_switch_action(&new_id, "fresh_db");
             let effects = reduce(&mut state, &action);
@@ -924,6 +930,7 @@ mod tests {
                 state.session.active_database_type(),
                 Some(DatabaseType::PostgreSQL)
             );
+            assert!(!state.session.is_read_only());
         }
 
         #[test]
@@ -1386,9 +1393,11 @@ mod tests {
         use super::*;
 
         #[test]
-        fn switch_without_cache_clears_pending_er_picker() {
+        fn uncached_switch_resets_selection_and_er_preparation() {
             let mut state = AppState::new("test".to_string());
             let new_id = ConnectionId::new();
+            state.result_interaction.activate_cell(5, 0);
+            let _ = state.table_prefetch.begin_er_prefetch();
             state.ui.request_er_picker_after_metadata();
             let _ = state.er_preparation.start_waiting_run();
             state
@@ -1401,12 +1410,19 @@ mod tests {
             assert!(!state.ui.pending_er_picker());
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
             assert!(!state.table_prefetch.has_pending_prefetch());
+            assert!(state.table_prefetch.active_prefetch_run_id().is_none());
+            assert_eq!(
+                state.result_interaction.selection().mode(),
+                ResultNavMode::Scroll
+            );
         }
 
         #[test]
-        fn cached_switch_clears_pending_er_picker() {
+        fn cached_switch_resets_selection_and_er_preparation() {
             let mut state = AppState::new("test".to_string());
             let target_id = ConnectionId::new();
+            state.result_interaction.activate_cell(3, 2);
+            let _ = state.table_prefetch.begin_er_prefetch();
             state.ui.request_er_picker_after_metadata();
             let _ = state.er_preparation.start_waiting_run();
             state
@@ -1422,6 +1438,11 @@ mod tests {
             assert!(!state.ui.pending_er_picker());
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
             assert!(!state.table_prefetch.has_pending_prefetch());
+            assert!(state.table_prefetch.active_prefetch_run_id().is_none());
+            assert_eq!(
+                state.result_interaction.selection().mode(),
+                ResultNavMode::Scroll
+            );
         }
     }
 
@@ -2257,96 +2278,6 @@ mod tests {
                 state.connection_error.error_info().unwrap().summary(),
                 "Authentication failed"
             );
-        }
-    }
-
-    mod reset_tests {
-        use super::*;
-
-        #[test]
-        fn resets_result_selection_when_restoring_cache() {
-            let mut state = AppState::new("test".to_string());
-            let target_id = ConnectionId::new();
-
-            state
-                .connection_caches
-                .insert(target_id.clone(), ConnectionCache::default());
-            state.result_interaction.activate_cell(3, 2);
-
-            let action = create_postgres_switch_action(&target_id, "cached_db");
-            reduce(&mut state, &action);
-
-            assert_eq!(
-                state.result_interaction.selection().mode(),
-                ResultNavMode::Scroll
-            );
-        }
-
-        #[test]
-        fn switch_with_cache_resets_sql_prefetch() {
-            let mut state = AppState::new("test".to_string());
-            let target_id = ConnectionId::new();
-            state
-                .connection_caches
-                .insert(target_id.clone(), ConnectionCache::default());
-            let _ = state.table_prefetch.begin_er_prefetch();
-            state
-                .table_prefetch
-                .queue_table_prefetch("public.users".to_string());
-
-            let action = create_postgres_switch_action(&target_id, "cached_db");
-            reduce(&mut state, &action);
-
-            assert!(state.table_prefetch.active_prefetch_run_id().is_none());
-            assert!(!state.table_prefetch.has_pending_prefetch());
-        }
-
-        #[test]
-        fn switch_without_cache_resets_sql_prefetch() {
-            let mut state = AppState::new("test".to_string());
-            let new_id = ConnectionId::new();
-            let _ = state.table_prefetch.begin_er_prefetch();
-            state
-                .table_prefetch
-                .queue_table_prefetch("public.users".to_string());
-
-            let action = create_postgres_switch_action(&new_id, "fresh_db");
-            reduce(&mut state, &action);
-
-            assert!(state.table_prefetch.active_prefetch_run_id().is_none());
-            assert!(!state.table_prefetch.has_pending_prefetch());
-        }
-
-        #[test]
-        fn resets_result_selection_when_no_cache() {
-            let mut state = AppState::new("test".to_string());
-            let new_id = ConnectionId::new();
-
-            state.result_interaction.activate_cell(5, 0);
-
-            let action = create_postgres_switch_action(&new_id, "fresh_db");
-            reduce(&mut state, &action);
-
-            assert_eq!(
-                state.result_interaction.selection().mode(),
-                ResultNavMode::Scroll
-            );
-        }
-    }
-
-    mod switch_effect_tests {
-        use super::*;
-
-        #[test]
-        fn resets_read_only_on_switch() {
-            let mut state = AppState::new("test".to_string());
-            let new_id = ConnectionId::new();
-            state.session.enable_read_only();
-
-            let action = create_postgres_switch_action(&new_id, "fresh_db");
-            reduce(&mut state, &action);
-
-            assert!(!state.session.is_read_only());
         }
     }
 }

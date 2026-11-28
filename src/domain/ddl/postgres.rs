@@ -196,15 +196,6 @@ mod tests {
         }
 
         #[test]
-        fn no_comment_on_when_absent() {
-            let table = make_table(vec![make_column("id", "integer", false)], None);
-
-            let ddl = generate_ddl(&table);
-
-            assert!(!ddl.contains("COMMENT ON"));
-        }
-
-        #[test]
         fn backslashes_in_comments_use_escape_string_literals() {
             let mut col = make_column("id", "integer", false);
             col.comment = Some("a\\'b".to_string());

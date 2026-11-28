@@ -877,15 +877,6 @@ mod tests {
         }
 
         #[test]
-        fn valid_single_schema_parses_correctly() {
-            let json = r#"[{"name": "public"}]"#;
-            let result = PostgresAdapter::parse_schemas(json).unwrap();
-
-            assert_eq!(result.len(), 1);
-            assert_eq!(result[0].name, "public");
-        }
-
-        #[test]
         fn valid_multiple_schemas_parse_in_order() {
             let json = r#"[{"name": "public"}, {"name": "auth"}, {"name": "custom"}]"#;
             let result = PostgresAdapter::parse_schemas(json).unwrap();

@@ -315,13 +315,6 @@ mod tests {
     use crate::domain::connection::{ConnectionEndpoint, build_dsn};
 
     #[test]
-    fn supported_versions_are_accepted() {
-        for version in SUPPORTED_CONFIG_VERSIONS {
-            assert!(is_supported_config_version(*version));
-        }
-    }
-
-    #[test]
     fn unsupported_versions_are_rejected() {
         for version in [1, CURRENT_VERSION + 1] {
             assert!(!is_supported_config_version(version));

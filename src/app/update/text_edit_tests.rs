@@ -500,8 +500,11 @@ mod paste {
             dispatch(&mut state, action);
 
             assert_eq!(
-                edited_text(&state, target).map(|(content, _)| content.to_string()),
-                Some(inserted_at_cursor(&content, cursor)),
+                edited_text(&state, target),
+                Some((
+                    inserted_at_cursor(&content, cursor).as_str(),
+                    cursor + PASTED.chars().count()
+                )),
                 "{target:?}"
             );
             match target {

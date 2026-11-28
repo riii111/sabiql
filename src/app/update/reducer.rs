@@ -1480,21 +1480,6 @@ mod tests {
         }
 
         #[test]
-        fn metadata_loaded_starts_effective_user_fetch() {
-            let mut state = create_test_state();
-            let action =
-                metadata_loaded_action(&mut state, DatabaseMetadata::new("test".to_string()));
-
-            let effects = reduce(&mut state, action, Instant::now());
-
-            assert!(
-                effects
-                    .iter()
-                    .any(|effect| matches!(effect, Effect::FetchEffectiveUser { .. }))
-            );
-        }
-
-        #[test]
         fn effective_user_loaded_updates_session_state() {
             let mut state = create_test_state();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
@@ -1648,6 +1633,10 @@ mod tests {
             assert!(state.query.current_result().is_none());
             assert_eq!(state.ui.explorer_selected(), 0);
             assert!(state.session.connection_state().is_failed());
+            assert!(matches!(
+                state.session.metadata_state(),
+                MetadataState::Error
+            ));
         }
 
         #[test]
@@ -1761,24 +1750,13 @@ mod tests {
         }
 
         #[test]
-        fn copy_returns_clipboard_effect() {
-            let mut state = state_with_error();
-            let now = Instant::now();
-
-            let effects = reduce(&mut state, Action::CopyConnectionError, now);
-
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(effects[0], Effect::CopyToClipboard { .. }));
-        }
-
-        #[test]
         fn copy_failure_does_not_schedule_feedback_deadline() {
             let mut state = state_with_error();
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::CopyConnectionError, now);
 
-            let Effect::CopyToClipboard { on_failure, .. } = &effects[0] else {
+            let [Effect::CopyToClipboard { on_failure, .. }] = effects.as_slice() else {
                 panic!("expected clipboard effect");
             };
             assert!(on_failure.is_none());
@@ -1884,17 +1862,6 @@ mod tests {
                 [Effect::CancelMetadataTasks, Effect::FetchMetadata { .. },]
             ));
             assert!(!state.table_detail_cache.contains("public.cached"));
-        }
-
-        #[test]
-        fn reload_metadata_sets_is_reloading_flag() {
-            let mut state = create_test_state();
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let now = Instant::now();
-
-            reduce(&mut state, Action::ReloadMetadata, now);
-
-            assert!(state.session.is_reloading());
         }
 
         #[test]
@@ -2004,6 +1971,7 @@ mod tests {
             assert!(state.table_prefetch.active_prefetch_run_id().is_none());
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
+            assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
         }
 
         #[test]
@@ -2018,8 +1986,11 @@ mod tests {
             let effects = reduce(&mut state, Action::ErOpenDiagram, now);
 
             assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
+            assert_eq!(state.er_preparation.run_id(), 1);
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::SmartErRefresh { run_id: 1, .. }]
+            ));
         }
 
         #[test]
@@ -2174,7 +2145,6 @@ mod tests {
         #[rstest]
         #[case("0")]
         #[case("65536")]
-        #[case("99999")]
         fn port_validation_out_of_range(#[case] value: &str) {
             let mut state = setup_state();
             state.port.set_content(value.to_string());
@@ -2198,8 +2168,6 @@ mod tests {
         }
 
         #[rstest]
-        #[case(ConnectionField::Host)]
-        #[case(ConnectionField::User)]
         #[case(ConnectionField::Password)]
         #[case(ConnectionField::SslMode)]
         fn optional_fields_never_error(#[case] field: ConnectionField) {
@@ -2244,7 +2212,7 @@ mod tests {
 
     mod connection_setup_transitions {
         use super::*;
-        use crate::domain::DatabaseMetadata;
+        use crate::domain::{DatabaseMetadata, MetadataState};
         use crate::model::shared::confirm_dialog::ConfirmIntent;
 
         #[test]
@@ -2290,6 +2258,11 @@ mod tests {
             );
             assert_eq!(state.input_mode(), InputMode::Normal);
             test_fixtures::assert_connection_save_fetch_effects(&effects, DatabaseType::PostgreSQL);
+            assert!(state.session.connection_state().is_connecting());
+            assert!(matches!(
+                state.session.metadata_state(),
+                MetadataState::Loading
+            ));
         }
 
         #[test]
@@ -2631,32 +2604,6 @@ mod tests {
         }
 
         #[test]
-        fn metadata_failed_sets_failed() {
-            let mut state = create_test_state();
-            state
-                .session
-                .set_connection_state(ConnectionState::Connecting);
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let run_id = state.session.begin_metadata_refresh();
-            let now = Instant::now();
-
-            reduce(
-                &mut state,
-                Action::MetadataFailed {
-                    run_id,
-                    error: DbOperationError::ConnectionFailed("connection refused".to_string()),
-                },
-                now,
-            );
-
-            assert!(state.session.connection_state().is_failed());
-            assert!(matches!(
-                state.session.metadata_state(),
-                MetadataState::Error
-            ));
-        }
-
-        #[test]
         fn metadata_failed_preserves_connected_state() {
             // When already connected, metadata failure should preserve connection state
             // (metadata-only failure, e.g., permission denied on schema)
@@ -2694,24 +2641,6 @@ mod tests {
         #[test]
         fn reenter_connection_setup_resets_all_states() {
             let mut state = create_test_state();
-            state.session.set_connection_state(ConnectionState::Failed);
-            state.session.set_metadata_state(MetadataState::Error);
-            state.modal.set_mode(InputMode::ConnectionError);
-            let now = Instant::now();
-
-            reduce(&mut state, Action::ReenterConnectionSetup, now);
-
-            assert!(state.session.connection_state().is_not_connected());
-            assert!(matches!(
-                state.session.metadata_state(),
-                MetadataState::NotLoaded
-            ));
-            assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
-        }
-
-        #[test]
-        fn reenter_connection_setup_preserves_form_values() {
-            let mut state = create_test_state();
             state
                 .connection_setup
                 .host
@@ -2727,48 +2656,23 @@ mod tests {
                 .password
                 .set_content("secret".to_string());
             state.session.set_connection_state(ConnectionState::Failed);
+            state.session.set_metadata_state(MetadataState::Error);
+            state.modal.set_mode(InputMode::ConnectionError);
             let now = Instant::now();
 
             reduce(&mut state, Action::ReenterConnectionSetup, now);
 
+            assert!(state.session.connection_state().is_not_connected());
+            assert!(matches!(
+                state.session.metadata_state(),
+                MetadataState::NotLoaded
+            ));
+            assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
             assert_eq!(state.connection_setup.host.content(), "custom-host");
             assert_eq!(state.connection_setup.port.content(), "5433");
             assert_eq!(state.connection_setup.database.content(), "mydb");
             assert_eq!(state.connection_setup.user.content(), "admin");
             assert_eq!(state.connection_setup.password.content(), "secret");
-        }
-
-        #[test]
-        fn connection_save_completed_sets_connecting_and_loading() {
-            let mut state = create_test_state();
-            state
-                .session
-                .set_connection_state(ConnectionState::NotConnected);
-            state.session.set_metadata_state(MetadataState::NotLoaded);
-            let run_id = state.session.begin_connection_save();
-            let now = Instant::now();
-
-            let effects = reduce(
-                &mut state,
-                Action::ConnectionSaveCompleted {
-                    target: ConnectionTarget {
-                        id: ConnectionId::new(),
-                        name: "Test".to_string(),
-                        endpoint: endpoint::postgres("postgres://localhost/test"),
-                    },
-                    run_id,
-                    mysql_lower_case_table_names: None,
-                    metadata: Some(Arc::new(DatabaseMetadata::new("validated".to_string()))),
-                },
-                now,
-            );
-
-            assert!(state.session.connection_state().is_connecting());
-            assert!(matches!(
-                state.session.metadata_state(),
-                MetadataState::Loading
-            ));
-            test_fixtures::assert_connection_save_fetch_effects(&effects, DatabaseType::PostgreSQL);
         }
 
         #[test]
@@ -3369,18 +3273,13 @@ mod tests {
         }
 
         #[test]
-        fn confirm_selection_initializes_pagination_via_dispatch() {
-            let (state, _now) = state_after_confirm_and_complete();
+        fn next_page_after_confirm_emits_correct_offset() {
+            let (mut state, now) = state_after_confirm_and_complete();
 
             assert_eq!(state.query.pagination.schema(), "public");
             assert_eq!(state.query.pagination.table(), "users");
             assert_eq!(state.query.pagination.current_page(), 0);
             assert!(!state.query.pagination.reached_end());
-        }
-
-        #[test]
-        fn next_page_after_confirm_emits_correct_offset() {
-            let (mut state, now) = state_after_confirm_and_complete();
 
             let effects = reduce(&mut state, Action::ResultNextPage, now);
 

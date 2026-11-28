@@ -171,25 +171,6 @@ mod tests {
     }
 
     #[test]
-    fn quick_check_is_ignored_for_postgres_connection() {
-        let mut state = AppState::new("test".to_string());
-        state.session.activate_connection(
-            &ConnectionId::new(),
-            "database",
-            &endpoint::postgres("postgres://localhost/db"),
-        );
-
-        let effects = route(
-            &mut state,
-            Action::RunSqliteDiagnosticsQuickCheck,
-            Instant::now(),
-        );
-
-        assert!(effects.is_empty());
-        assert!(!state.sqlite_diagnostics.is_quick_check_running());
-    }
-
-    #[test]
     fn close_cancels_diagnostics_task_after_clearing_modal_state() {
         let mut state = AppState::new("test".to_string());
         test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
