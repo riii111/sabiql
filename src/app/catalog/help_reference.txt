@@ -73,10 +73,6 @@ type | Edit cell value
 ← / → | Move cursor
 Home / End | Jump to start/end
 Esc | Exit to Cell Active (draft preserved)
-i | Edit custom browser
-Enter | Apply setting
-Esc | Finish editing
-type | Edit custom browser
 Alt+Enter / F5 | Execute query
 y | Copy query to clipboard
 i / A | Enter Insert mode / append at line end
@@ -236,10 +232,6 @@ type | Edit cell value
 ← / → | Move cursor
 Home / End | Jump to start/end
 Esc | Exit to Cell Active (draft preserved)
-i | Edit custom browser
-Enter | Apply setting
-Esc | Finish editing
-type | Edit custom browser
 Alt+Enter / F5 | Execute query
 y | Copy query to clipboard
 i / A | Enter Insert mode / append at line end
@@ -351,10 +343,6 @@ type | Edit cell value
 ← / → | Move cursor
 Home / End | Jump to start/end
 Esc | Exit to Cell Active (draft preserved)
-i | Edit custom browser
-Enter | Apply setting
-Esc | Finish editing
-type | Edit custom browser
 Alt+Enter / F5 | Execute query
 y | Copy query to clipboard
 i / A | Enter Insert mode / append at line end
@@ -465,10 +453,6 @@ type | Edit cell value
 ← / → | Move cursor
 Home / End | Jump to start/end
 Esc | Exit to Cell Active (draft preserved)
-i | Edit custom browser
-Enter | Apply setting
-Esc | Finish editing
-type | Edit custom browser
 Alt+Enter / F5 | Execute query
 y | Copy query to clipboard
 i / A | Enter Insert mode / append at line end

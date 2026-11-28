@@ -265,6 +265,28 @@ mod tests {
     use crate::domain::{QueryValue, TableKind};
 
     #[test]
+    fn signature_rows_require_schema_name_and_digest() {
+        let rows = result(
+            TABLE_SIGNATURES_RESULT_COLUMNS,
+            vec![vec![
+                QueryValue::text("app"),
+                QueryValue::text("users"),
+                QueryValue::text("0123456789abcdef0123456789abcdef"),
+            ]],
+        );
+        let snapshot = parse_table_signatures(&rows).unwrap();
+        assert_eq!(snapshot.signatures[0].qualified_name(), "app.users");
+        let malformed = result(
+            TABLE_SIGNATURES_RESULT_COLUMNS,
+            vec![vec![QueryValue::text("app")]],
+        );
+        assert!(matches!(
+            parse_table_signatures(&malformed),
+            Err(DbOperationError::MetadataParseFailed(_))
+        ));
+    }
+
+    #[test]
     fn signature_metadata_batches_columns_and_foreign_keys_by_server_table() {
         let tables = vec![
             MySqlTableMetadata {
