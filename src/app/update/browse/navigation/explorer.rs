@@ -148,7 +148,7 @@ pub(in crate::update) fn scroll_explorer(
     state: &mut AppState,
     direction: ScrollDirection,
     amount: ScrollAmount,
-) -> Vec<Effect> {
+) {
     match (direction, amount) {
         (ScrollDirection::Left, ScrollAmount::Line) => {
             state.ui.set_explorer_horizontal_offset(
@@ -172,7 +172,6 @@ pub(in crate::update) fn scroll_explorer(
             "unsupported Explorer scroll: {direction:?} {amount:?}"
         ),
     }
-    vec![]
 }
 
 #[cfg(test)]

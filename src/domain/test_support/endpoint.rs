@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use crate::domain::DatabaseType;
-use crate::domain::connection::{
+use crate::DatabaseType;
+use crate::connection::{
     ConnectionEndpoint, MySqlConnectionConfig, MySqlSslMode, PostgresConnectionConfig,
     PostgresEndpoint, SqliteConnectionConfig, SslMode,
 };

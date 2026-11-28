@@ -200,8 +200,7 @@ mod tests {
     use super::*;
     use crate::domain::connection::{ConnectionEndpoint, DatabaseType};
     use crate::domain::{
-        ConnectionId, DatabaseMetadata, MetadataState, QueryResult, QuerySource, Table,
-        TableKindInfo, TableStorageAttributes, TableSummary,
+        ConnectionId, DatabaseMetadata, MetadataState, QueryResult, QuerySource, TableSummary,
     };
     use crate::model::browse::query_execution::PaginationState;
     use crate::model::browse::session::TableDetailState;
@@ -219,7 +218,7 @@ mod tests {
     use crate::test_support::connection::{
         assert_explain_state_cleared, assert_sqlite_diagnostics_cleared,
     };
-    use crate::test_support::endpoint;
+    use crate::test_support::{endpoint, table};
     use crate::update::action::Action;
     use crate::update::reducer::reduce as reduce_app;
     use crate::update::reducer::route;
@@ -1811,22 +1810,7 @@ mod tests {
             let generation = state
                 .session
                 .select_table("public", "users", &mut state.query);
-            let detail = Table {
-                schema: "public".to_string(),
-                name: "users".to_string(),
-                owner: None,
-                columns: Vec::new(),
-                primary_key: None,
-                foreign_keys: Vec::new(),
-                indexes: Vec::new(),
-                rls: None,
-                triggers: Vec::new(),
-                row_count_estimate: None,
-                comment: None,
-                source_ddl: None,
-                storage_attributes: TableStorageAttributes::default(),
-                kind_info: TableKindInfo::default(),
-            };
+            let detail = table::minimal("public", "users");
             assert!(state.session.set_table_detail(detail, generation));
             state
                 .query

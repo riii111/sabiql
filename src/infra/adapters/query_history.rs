@@ -276,32 +276,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn append_trims_to_1000_when_exceeded() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = ConnectionId::from_string("test-conn");
-
-        // Write 1001 entries
-        for i in 0..1001 {
-            store
-                .append(
-                    "test",
-                    &scope(&conn_id),
-                    &make_entry(&format!("SELECT {i}")),
-                )
-                .await
-                .unwrap();
-        }
-
-        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
-
-        assert_eq!(entries.len(), MAX_HISTORY_ENTRIES);
-        // Oldest entry (SELECT 0) should be trimmed, newest (SELECT 1000) should remain
-        assert_eq!(entries[0].query, "SELECT 1");
-        assert_eq!(entries[MAX_HISTORY_ENTRIES - 1].query, "SELECT 1000");
-    }
-
-    #[tokio::test]
     async fn load_nonexistent_file_returns_empty_vec() {
         let tmp = TempDir::new().unwrap();
         let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
@@ -345,116 +319,64 @@ mod tests {
         assert_eq!(entries[1].query, "SELECT 2");
     }
 
-    #[tokio::test]
-    async fn below_limit_entries_are_preserved_without_trim() {
+    #[test]
+    fn trim_keeps_the_newest_lines_in_order_only_above_limit() {
         let tmp = TempDir::new().unwrap();
-        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = ConnectionId::from_string("test-conn");
+        let path = tmp.path().join("history.jsonl");
+        let limit = 2;
 
-        for i in 0..5 {
-            store
-                .append(
-                    "test",
-                    &scope(&conn_id),
-                    &make_entry(&format!("SELECT {i}")),
-                )
-                .await
-                .unwrap();
+        for content in ["first", "first\nsecond"] {
+            std::fs::write(&path, content).unwrap();
+            trim_if_exceeded(&path, limit).unwrap();
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), content);
         }
 
-        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
-        assert_eq!(entries.len(), 5);
-        assert_eq!(entries[0].query, "SELECT 0");
-        assert_eq!(entries[4].query, "SELECT 4");
+        std::fs::write(&path, "first\nsecond\nthird\nfourth\n").unwrap();
+        trim_if_exceeded(&path, limit).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "third\nfourth\n");
     }
 
     #[tokio::test]
-    async fn trim_does_not_trigger_at_exact_limit() {
+    async fn append_keeps_new_entries_when_trim_fails_and_retries_on_next_append() {
+        use std::fmt::Write as _;
+
         let tmp = TempDir::new().unwrap();
         let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = ConnectionId::from_string("test-conn");
-
-        for i in 0..MAX_HISTORY_ENTRIES {
-            store
-                .append(
-                    "test",
-                    &scope(&conn_id),
-                    &make_entry(&format!("SELECT {i}")),
-                )
-                .await
-                .unwrap();
-        }
-
-        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
-        assert_eq!(entries.len(), MAX_HISTORY_ENTRIES);
-        assert_eq!(entries[0].query, "SELECT 0");
-        assert_eq!(
-            entries[MAX_HISTORY_ENTRIES - 1].query,
-            format!("SELECT {}", MAX_HISTORY_ENTRIES - 1)
-        );
-    }
-
-    #[tokio::test]
-    async fn multiple_appends_beyond_limit_preserves_latest() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = ConnectionId::from_string("test-conn");
-
-        let total = MAX_HISTORY_ENTRIES + 5;
-        for i in 0..total {
-            store
-                .append(
-                    "test",
-                    &scope(&conn_id),
-                    &make_entry(&format!("SELECT {i}")),
-                )
-                .await
-                .unwrap();
-        }
-
-        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
-        assert_eq!(entries.len(), MAX_HISTORY_ENTRIES);
-        // Oldest 5 entries (0..5) should be trimmed
-        assert_eq!(entries[0].query, "SELECT 5");
-        assert_eq!(
-            entries[MAX_HISTORY_ENTRIES - 1].query,
-            format!("SELECT {}", total - 1)
-        );
-    }
-
-    #[tokio::test]
-    async fn append_succeeds_even_when_trim_would_fail() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = ConnectionId::from_string("test-conn");
-
-        // Fill to just above the limit so trim fires on next append
-        for i in 0..MAX_HISTORY_ENTRIES {
-            store
-                .append(
-                    "test",
-                    &scope(&conn_id),
-                    &make_entry(&format!("SELECT {i}")),
-                )
-                .await
-                .unwrap();
-        }
-
-        // Make the .tmp path a directory so fs::write in trim_if_exceeded fails
+        let scope = scope(&ConnectionId::from_string("test-conn"));
         let history_dir = tmp.path().join("history");
-        let tmp_path = history_dir.join(format!("{conn_id}.jsonl.tmp"));
+        let path = history_dir.join("test-conn.jsonl");
+        let tmp_path = path.with_extension("jsonl.tmp");
+        let mut content = String::new();
+        for i in 0..MAX_HISTORY_ENTRIES {
+            let entry = make_entry(&format!("SELECT {i}"));
+            writeln!(content, "{}", serde_json::to_string(&entry).unwrap()).unwrap();
+        }
         std::fs::create_dir_all(&tmp_path).unwrap();
+        std::fs::write(&path, content).unwrap();
 
-        // append should still succeed (trim failure is best-effort)
-        let result = store
-            .append("test", &scope(&conn_id), &make_entry("SELECT final"))
-            .await;
-        assert!(result.is_ok());
+        store
+            .append("test", &scope, &make_entry("SELECT first_append"))
+            .await
+            .unwrap();
 
-        // The entry was written even though trim failed
-        let entries = store.load("test", &scope(&conn_id)).await.unwrap();
-        assert!(entries.len() > MAX_HISTORY_ENTRIES);
-        assert_eq!(entries.last().unwrap().query, "SELECT final");
+        let entries = store.load("test", &scope).await.unwrap();
+        assert_eq!(entries.len(), MAX_HISTORY_ENTRIES + 1);
+        assert_eq!(entries.last().unwrap().query, "SELECT first_append");
+
+        std::fs::remove_dir(&tmp_path).unwrap();
+        store
+            .append("test", &scope, &make_entry("SELECT second_append"))
+            .await
+            .unwrap();
+
+        let entries = store.load("test", &scope).await.unwrap();
+        assert_eq!(entries.len(), MAX_HISTORY_ENTRIES);
+        assert_eq!(entries[0].query, "SELECT 2");
+        assert_eq!(
+            entries[MAX_HISTORY_ENTRIES - 2].query,
+            "SELECT first_append"
+        );
+        assert_eq!(entries.last().unwrap().query, "SELECT second_append");
     }
 
     #[tokio::test]

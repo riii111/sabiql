@@ -21,6 +21,7 @@ use sabiql_app::ports::outbound::DbOperationError;
 use sabiql_app::update::action::Action;
 use sabiql_app::update::input::handle_event;
 use sabiql_app::update::input::keymap::{KeyContext, palette_available};
+use sabiql_domain::test_support::endpoint;
 use sabiql_domain::{ConnectionId, DatabaseType};
 use sabiql_ui::event::key_translator::translate;
 use sabiql_ui::shell::footer::Footer;
@@ -69,7 +70,7 @@ fn state(engine: DatabaseType, preset: KeymapPreset, mode: InputMode) -> AppStat
     state.session.activate_connection(
         &ConnectionId::from_string("keymap-baseline"),
         "keymap",
-        &super::harness::endpoint::for_engine(engine, "test://keymap"),
+        &endpoint::for_engine(engine, "test://keymap"),
     );
     state.settings.load_keymap_preset(preset);
     if mode == InputMode::CommandPalette {

@@ -1,34 +1,8 @@
+use sabiql_domain::test_support::table;
 use sabiql_domain::{
     Column, ColumnAttributes, DatabaseMetadata, FkAction, ForeignKey, Index, IndexAttributes,
-    IndexType, QueryResult, QuerySource, Table, TableKind, TableKindInfo, TableStorageAttributes,
-    TableSummary, Trigger,
+    IndexType, QueryResult, QuerySource, Table, TableSummary, Trigger,
 };
-
-pub fn minimal_table(schema: &str, name: &str) -> Table {
-    Table {
-        schema: schema.to_string(),
-        name: name.to_string(),
-        owner: None,
-        columns: Vec::new(),
-        primary_key: None,
-        foreign_keys: Vec::new(),
-        indexes: Vec::new(),
-        rls: None,
-        triggers: Vec::new(),
-        row_count_estimate: None,
-        comment: None,
-        source_ddl: None,
-        storage_attributes: TableStorageAttributes::default(),
-        kind_info: TableKindInfo::default(),
-    }
-}
-
-pub fn view_kind_info() -> TableKindInfo {
-    TableKindInfo {
-        kind: TableKind::View,
-        ..TableKindInfo::default()
-    }
-}
 
 pub fn sample_metadata() -> DatabaseMetadata {
     let mut metadata = DatabaseMetadata::new("test_db".to_string());
@@ -46,7 +20,7 @@ pub fn sample_metadata() -> DatabaseMetadata {
 }
 
 pub fn sample_postgres_table_detail() -> Table {
-    let mut table = minimal_table("public", "users");
+    let mut table = table::minimal("public", "users");
     table.owner = Some("postgres".to_string());
     table.columns = vec![
         Column {

@@ -61,7 +61,7 @@ pub(in crate::update) fn scroll_sqlite_diagnostics(
     state: &mut AppState,
     direction: ScrollDirection,
     amount: ScrollAmount,
-) -> Vec<Effect> {
+) {
     match (direction, amount) {
         (ScrollDirection::Up, ScrollAmount::Line) => {
             state.sqlite_diagnostics.scroll_up();
@@ -74,7 +74,6 @@ pub(in crate::update) fn scroll_sqlite_diagnostics(
             "unsupported SqliteDiagnostics scroll: {direction:?} {amount:?}"
         ),
     }
-    vec![]
 }
 
 #[cfg(test)]

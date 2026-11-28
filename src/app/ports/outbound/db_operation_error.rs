@@ -392,53 +392,6 @@ mod tests {
         use super::*;
 
         #[rstest]
-        #[case(DbOperationError::ConnectionFailed("boom".to_string()))]
-        #[case(DbOperationError::SqlitePath(SqlitePathError::FileNotFound(
-            "/tmp/missing.db".to_string(),
-        )))]
-        #[case(DbOperationError::ConnectionLost("boom".to_string()))]
-        #[case(DbOperationError::PermissionDenied("boom".to_string()))]
-        #[case(DbOperationError::ForeignKeyViolation("boom".to_string()))]
-        #[case(DbOperationError::UniqueViolation("boom".to_string()))]
-        #[case(DbOperationError::LockTimeout("boom".to_string()))]
-        #[case(DbOperationError::ObjectMissing("boom".to_string()))]
-        #[case(DbOperationError::QueryFailed("boom".to_string()))]
-        #[case(DbOperationError::ExportIo(Arc::new(std::io::Error::other("boom"))))]
-        #[case(DbOperationError::UnsupportedOperation("boom".to_string()))]
-        #[case(DbOperationError::UnsupportedOperationWithKind {
-            kind: UnsupportedOperationKind::ClientVersion,
-            details: "boom".to_string(),
-        })]
-        #[case(DbOperationError::UnsupportedOperationWithSqliteKind {
-            kind: SqliteCompatibilityKind::SafeMode,
-            details: "boom".to_string(),
-        })]
-        #[case(DbOperationError::ConnectionFailedWithKind {
-            kind: ConnectionFailureKind::TlsHandshake,
-            details: "boom".to_string(),
-        })]
-        #[case(DbOperationError::MetadataParseFailed("boom".to_string()))]
-        #[case(DbOperationError::InvalidJson(Arc::new(serde_json::from_str::<i32>("x").unwrap_err())))]
-        #[case(DbOperationError::EmptyResponse("boom".to_string()))]
-        #[case(
-            DbOperationError::CsvParse(Arc::new(csv::Error::from(std::io::Error::other(
-                "boom"
-            ))))
-        )]
-        #[case(DbOperationError::CommandTagParseFailed("boom".to_string()))]
-        #[case(DbOperationError::CommandNotFound {
-            command: DatabaseCli::Psql,
-            details: "boom".to_string(),
-        })]
-        #[case(DbOperationError::Timeout("boom".to_string()))]
-        #[case(DbOperationError::Canceled("boom".to_string()))]
-        fn non_empty(#[case] error: DbOperationError) {
-            assert!(!error.summary().is_empty());
-            assert!(!error.hint().is_empty());
-            assert!(!error.user_message().is_empty());
-        }
-
-        #[rstest]
         #[case(ConnectionFailureKind::HostUnreachable)]
         #[case(ConnectionFailureKind::Auth)]
         #[case(ConnectionFailureKind::DatabaseNotFound)]

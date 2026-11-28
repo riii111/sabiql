@@ -1,4 +1,3 @@
-use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::explain_context::ExplainContext;
 use crate::update::action::{ScrollAmount, ScrollDirection};
@@ -7,7 +6,7 @@ pub(in crate::update) fn scroll_explain_confirm(
     state: &mut AppState,
     direction: ScrollDirection,
     amount: ScrollAmount,
-) -> Vec<Effect> {
+) {
     match amount {
         ScrollAmount::Line => {
             // blank + title + blank + separator + blank + warning(2) + blank = 8
@@ -24,14 +23,13 @@ pub(in crate::update) fn scroll_explain_confirm(
             "unsupported ExplainConfirm scroll: {direction:?} {amount:?}"
         ),
     }
-    vec![]
 }
 
 pub(in crate::update) fn scroll_explain_plan(
     state: &mut AppState,
     direction: ScrollDirection,
     amount: ScrollAmount,
-) -> Vec<Effect> {
+) {
     match amount {
         ScrollAmount::Line => {
             let modal_inner = ExplainContext::modal_inner_height(state.ui.terminal_height());
@@ -44,14 +42,13 @@ pub(in crate::update) fn scroll_explain_plan(
             "unsupported ExplainPlan scroll: {direction:?} {amount:?}"
         ),
     }
-    vec![]
 }
 
 pub(in crate::update) fn scroll_explain_compare(
     state: &mut AppState,
     direction: ScrollDirection,
     amount: ScrollAmount,
-) -> Vec<Effect> {
+) {
     match amount {
         ScrollAmount::Line => {
             let max = state.explain.compare_max_scroll(state.ui.terminal_height());
@@ -63,5 +60,4 @@ pub(in crate::update) fn scroll_explain_compare(
             "unsupported ExplainCompare scroll: {direction:?} {amount:?}"
         ),
     }
-    vec![]
 }

@@ -180,7 +180,7 @@ fn mysql_header_and_explorer_show_table_names() {
     assert!(
         state
             .session
-            .set_table_detail(fixtures::minimal_table("app", "users"), generation)
+            .set_table_detail(table::minimal("app", "users"), generation)
     );
     state.ui.set_explorer_selection(Some(0));
 
@@ -226,7 +226,7 @@ fn header_marks_the_selected_view_in_each_icon_mode_while_detail_loads() {
     let mut metadata = DatabaseMetadata::new("test_db".into());
     metadata.table_summaries = vec![
         TableSummary::new("public".into(), "active_users".into(), None, false)
-            .with_kind_info(fixtures::view_kind_info()),
+            .with_kind_info(table::view_kind_info()),
     ];
     state.session.mark_connected(Arc::new(metadata));
     let _ = state

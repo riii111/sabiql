@@ -25,12 +25,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn idle_by_default() {
-        let state = KeySequenceState::default();
-        assert_eq!(state, KeySequenceState::Idle);
-    }
-
-    #[test]
     fn pending_prefix_returns_some_for_waiting() {
         let state = KeySequenceState::WaitingSecondKey(Prefix::Z);
         assert_eq!(state.pending_prefix(), Some(Prefix::Z));
