@@ -88,10 +88,8 @@ impl RowDetail {
             })
             .collect();
 
-        let flash = state
-            .flash_timers
-            .phase(FlashId::RowDetail, now, state.motion.is_enabled());
-        apply_yank_flash(&mut lines, flash, theme);
+        let flash_active = state.flash_timers.is_active(FlashId::RowDetail, now);
+        apply_yank_flash(&mut lines, flash_active, theme);
 
         let paragraph = Paragraph::new(lines)
             .scroll((0, to_u16(horizontal_offset)))

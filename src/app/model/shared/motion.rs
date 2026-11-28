@@ -8,7 +8,7 @@ const MODAL_DURATION: Duration = Duration::from_millis(140);
 const MODAL_CLOSE_DURATION: Duration = Duration::from_millis(100);
 
 // About 60 fps; terminals redraw only changed cells, so short tweens stay cheap.
-pub const FRAME_INTERVAL: Duration = Duration::from_millis(16);
+const FRAME_INTERVAL: Duration = Duration::from_millis(16);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScrolledPane {
@@ -103,10 +103,6 @@ impl MotionState {
 
     pub fn enable(&mut self) {
         self.enabled = true;
-    }
-
-    pub fn is_enabled(&self) -> bool {
-        self.enabled
     }
 
     pub fn begin_scroll(&mut self, pane: ScrolledPane, from: usize, to: usize, now: Instant) {

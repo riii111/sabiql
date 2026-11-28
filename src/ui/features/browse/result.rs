@@ -3,16 +3,15 @@ use std::time::Instant;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
-use ratatui::style::{Modifier, Style, Stylize};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, Wrap};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use crate::primitives::atoms::{afterglow_fg, panel_block_highlight, text_cursor_spans};
+use crate::primitives::atoms::{panel_block_highlight, text_cursor_spans};
 
 use crate::app::model::app_state::AppState;
-use crate::app::model::shared::flash_timer::{FlashPhase, flash_phase};
 use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::motion::ScrolledPane;
@@ -47,7 +46,6 @@ struct ResultTableParams<'a> {
     editing_cell: Option<EditingCellView<'a>>,
     staged_delete_rows: &'a BTreeSet<usize>,
     yank_flash: Option<YankFlash>,
-    animate_flash: bool,
     now: Instant,
 }
 
@@ -107,7 +105,6 @@ impl ResultPane {
                         editing_cell,
                         staged_delete_rows: state.result_interaction.staged_delete_rows(),
                         yank_flash: state.result_interaction.yank_flash(),
-                        animate_flash: state.motion.is_enabled(),
                         now,
                     },
                     theme,
@@ -193,7 +190,6 @@ impl ResultPane {
             editing_cell,
             staged_delete_rows,
             yank_flash,
-            animate_flash,
             now,
         } = params;
         let inner = block.inner(area);
@@ -274,9 +270,7 @@ impl ResultPane {
         let active_row = selection.row();
         let active_cell = selection.cell();
 
-        let flash = yank_flash.map_or(FlashPhase::Off, |f| {
-            flash_phase(f.until, now, animate_flash)
-        });
+        let yank_flash_active = yank_flash.is_some_and(|f| now < f.until);
 
         let rows: Vec<Row> = (scroll_offset..result.data_row_count())
             .take(data_rows_visible)
@@ -285,9 +279,9 @@ impl ResultPane {
                 let is_active_row = active_row == Some(abs_row_idx);
                 // None = no flash; Some(None) = full row; Some(Some(c)) = cell c
                 let flash_scope = yank_flash
-                    .filter(|f| flash != FlashPhase::Off && f.row == abs_row_idx)
+                    .filter(|f| yank_flash_active && f.row == abs_row_idx)
                     .map(|f| f.col);
-                let is_row_flash = flash == FlashPhase::Solid && flash_scope == Some(None);
+                let is_row_flash = flash_scope == Some(None);
                 let row_bg = if is_row_flash {
                     Some(theme.component.feedback.yank_flash_bg)
                 } else if is_staged_for_delete {
@@ -341,10 +335,8 @@ impl ResultPane {
                             .unwrap_or_default();
                             cell = Cell::from(display);
                         }
-                        let in_flash =
-                            flash_scope == Some(None) || flash_scope == Some(Some(orig_idx));
                         if !is_editing_cell {
-                            if flash == FlashPhase::Solid && in_flash {
+                            if is_row_flash || flash_scope == Some(Some(orig_idx)) {
                                 cell = cell.style(
                                     Style::default()
                                         .fg(theme.component.feedback.yank_flash_fg)
@@ -360,17 +352,6 @@ impl ResultPane {
                                         .bg(theme.component.table.result_cell_active_bg),
                                 );
                             }
-                        }
-                        if let FlashPhase::Afterglow(progress) = flash
-                            && in_flash
-                            && !is_editing_cell
-                        {
-                            let settled = if is_staged_for_delete {
-                                theme.component.table.staged_delete_fg
-                            } else {
-                                theme.semantic.text.primary
-                            };
-                            cell = cell.fg(afterglow_fg(settled, progress, theme));
                         }
                         cell
                     })

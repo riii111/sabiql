@@ -8,7 +8,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::explain_context::CompareSlot;
-use crate::app::model::shared::flash_timer::{FlashId, FlashPhase};
+use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::shared::motion::ScrolledPane;
 use crate::app::update::input::keymap::{HintSurface, KeyContext, sql_view_hints};
 use crate::domain::DatabaseType;
@@ -65,14 +65,8 @@ pub(super) fn render(
     let mut visible: Vec<Line> = lines.into_iter().skip(clamped).collect();
     let visible_mask: Vec<bool> = flash_mask.into_iter().skip(clamped).collect();
 
-    let flash = if can_yank {
-        state
-            .flash_timers
-            .phase(FlashId::SqlModal, now, state.motion.is_enabled())
-    } else {
-        FlashPhase::Off
-    };
-    apply_yank_flash_masked(&mut visible, flash, &visible_mask, theme);
+    let flash_active = can_yank && state.flash_timers.is_active(FlashId::SqlModal, now);
+    apply_yank_flash_masked(&mut visible, flash_active, &visible_mask, theme);
 
     frame.render_widget(
         Paragraph::new(visible)

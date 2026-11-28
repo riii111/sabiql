@@ -241,7 +241,6 @@ impl Inspector {
                     rows,
                     scroll_offset,
                     &state.flash_timers,
-                    state.motion.is_enabled(),
                     now,
                     theme,
                 );
@@ -759,7 +758,6 @@ impl Inspector {
         rows: &[String],
         scroll_offset: usize,
         flash_timers: &FlashTimerStore,
-        animated: bool,
         now: Instant,
         theme: &ThemePalette,
     ) {
@@ -771,7 +769,7 @@ impl Inspector {
         };
         let clamped_scroll_offset = clamp_scroll_offset(scroll_offset, visible_lines, total_lines);
 
-        let flash = flash_timers.phase(FlashId::Ddl, now, animated);
+        let flash_active = flash_timers.is_active(FlashId::Ddl, now);
 
         let mut lines: Vec<Line> = rows
             .iter()
@@ -780,7 +778,7 @@ impl Inspector {
             })
             .collect();
 
-        apply_yank_flash(&mut lines, flash, theme);
+        apply_yank_flash(&mut lines, flash_active, theme);
 
         let paragraph = Paragraph::new(lines)
             .wrap(Wrap { trim: false })

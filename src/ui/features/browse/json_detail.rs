@@ -131,10 +131,8 @@ impl JsonDetail {
             .collect();
         let mut lines = build_modal_text_surface_lines(surface, line_spans, theme);
 
-        let flash = state
-            .flash_timers
-            .phase(FlashId::JsonDetail, now, state.motion.is_enabled());
-        apply_yank_flash(&mut lines, flash, theme);
+        let flash_active = state.flash_timers.is_active(FlashId::JsonDetail, now);
+        apply_yank_flash(&mut lines, flash_active, theme);
 
         render_modal_text_surface(frame, content_area, surface, lines);
 

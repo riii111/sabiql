@@ -133,15 +133,13 @@ pub(super) fn render(
                 .map(|line| super::plan_highlight::highlight_plan_line(line, theme)),
         );
 
-        let flash = state
-            .flash_timers
-            .phase(FlashId::SqlModal, now, state.motion.is_enabled());
+        let flash_active = state.flash_timers.is_active(FlashId::SqlModal, now);
         let content_start = lines
             .iter()
             .position(|line| line == &Line::raw(""))
             .unwrap_or(0)
             + 1;
-        apply_yank_flash(&mut lines[content_start..], flash, theme);
+        apply_yank_flash(&mut lines[content_start..], flash_active, theme);
 
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
         area.height

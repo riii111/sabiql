@@ -83,10 +83,8 @@ impl CellDetail {
         theme: &ThemePalette,
     ) {
         let mut lines = content_lines(state, theme);
-        let flash = state
-            .flash_timers
-            .phase(FlashId::CellDetail, now, state.motion.is_enabled());
-        apply_yank_flash(&mut lines, flash, theme);
+        let flash_active = state.flash_timers.is_active(FlashId::CellDetail, now);
+        apply_yank_flash(&mut lines, flash_active, theme);
 
         frame.render_widget(
             Paragraph::new(lines)
