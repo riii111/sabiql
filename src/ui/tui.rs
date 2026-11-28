@@ -23,7 +23,6 @@ use tokio_util::sync::CancellationToken;
 use crate::app::model::app_state::AppState;
 use crate::app::ports::inbound::InputEvent;
 use crate::program_status::{CLEAR_SEQUENCE, ProgramStatusReporter};
-use crate::shell::ModalAfterimage;
 
 pub type Tui = Terminal<CrosstermBackend<Stdout>>;
 type TerminalEvent = Result<InputEvent, io::Error>;
@@ -78,7 +77,6 @@ pub struct TuiRunner {
     cancellation_token: CancellationToken,
     terminal_state: TerminalState,
     program_status: ProgramStatusReporter,
-    modal_afterimage: ModalAfterimage,
 }
 
 impl TuiRunner {
@@ -95,7 +93,6 @@ impl TuiRunner {
             cancellation_token,
             terminal_state: TerminalState::default(),
             program_status: ProgramStatusReporter::default(),
-            modal_afterimage: ModalAfterimage::default(),
         })
     }
 
@@ -194,15 +191,6 @@ impl TuiRunner {
 
     pub fn terminal(&mut self) -> &mut Tui {
         &mut self.terminal
-    }
-
-    pub fn draw(
-        &mut self,
-        render: impl FnOnce(&mut ratatui::Frame, &mut ModalAfterimage),
-    ) -> io::Result<()> {
-        let afterimage = &mut self.modal_afterimage;
-        self.terminal.draw(|frame| render(frame, afterimage))?;
-        Ok(())
     }
 
     pub fn report_program_status(&mut self, state: &AppState, now: Instant) -> io::Result<()> {

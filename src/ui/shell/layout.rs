@@ -32,9 +32,7 @@ use crate::features::sql_modal::SqlModal;
 use crate::shell::command_line::CommandLine;
 use crate::shell::footer::Footer;
 use crate::shell::header::Header;
-use crate::shell::motion_fx::{
-    ModalAfterimage, apply_focus_transition, apply_modal_fade, apply_modal_fade_out,
-};
+use crate::shell::motion_fx::{apply_focus_transition, apply_modal_fade, apply_modal_fade_out};
 use crate::theme::{ThemePalette, palette_for};
 
 pub struct MainLayout;
@@ -46,7 +44,6 @@ impl MainLayout {
         time_ms: Option<u128>,
         services: &AppServices,
         now: Instant,
-        afterimage: &mut ModalAfterimage,
     ) -> RenderOutput {
         Self::render_impl(
             frame,
@@ -55,7 +52,6 @@ impl MainLayout {
             services,
             now,
             palette_for(state.ui.theme_id()),
-            Some(afterimage),
         )
     }
 
@@ -66,7 +62,6 @@ impl MainLayout {
         services: &AppServices,
         now: Instant,
         theme: &ThemePalette,
-        afterimage: Option<&mut ModalAfterimage>,
     ) -> RenderOutput {
         let area = frame.area();
 
@@ -89,11 +84,13 @@ impl MainLayout {
         let command_line_visible_width = CommandLine::render(frame, cmdline_area, state, theme);
 
         let shows_overlay = state.input_mode().shows_overlay();
+        if !shows_overlay && let Some(dim) = state.motion.modal_close_dim(now) {
+            apply_modal_fade_out(frame.buffer_mut(), dim, theme);
+        }
         let modal_fade = shows_overlay
             .then(|| state.motion.modal_progress(now))
-            .flatten();
-        let background = (shows_overlay && (modal_fade.is_some() || afterimage.is_some()))
-            .then(|| frame.buffer_mut().clone());
+            .flatten()
+            .map(|progress| (progress, frame.buffer_mut().clone()));
         let connection_list_pane_height = match state.input_mode() {
             InputMode::ConnectionSelector => Some(ConnectionSelector::render(frame, state, theme)),
             _ => None,
@@ -172,17 +169,8 @@ impl MainLayout {
             _ => {}
         }
 
-        if let Some(afterimage) = afterimage {
-            match (&background, state.motion.modal_close_visibility(now)) {
-                (Some(background), _) => afterimage.capture(frame.buffer_mut(), background, theme),
-                (None, Some(visibility)) => {
-                    apply_modal_fade_out(frame.buffer_mut(), afterimage, visibility, theme);
-                }
-                (None, None) => afterimage.clear(),
-            }
-        }
-        if let (Some(progress), Some(background)) = (modal_fade, &background) {
-            apply_modal_fade(frame.buffer_mut(), background, progress, theme);
+        if let Some((progress, background)) = modal_fade {
+            apply_modal_fade(frame.buffer_mut(), &background, progress, theme);
         }
 
         RenderOutput {
@@ -258,15 +246,16 @@ impl MainLayout {
         let (inspector_area, result_area) = split_rows(right_area, inspector_height);
 
         let explorer_content_width =
-            left_area.map(|area| Explorer::render(frame, area, state, now, theme));
+            left_area.map(|area| Explorer::render(frame, area, state, theme));
         let inspector_plan =
             inspector_area.map(|area| Inspector::render(frame, area, state, services, now, theme));
         let (result_plan, result_widths_cache) =
             ResultPane::render(frame, result_area, state, now, theme);
-        // Keys act on the layout being expanded to, so sizes come from the full panes and partial inspector plans are not stored.
+        // Input acts on the layout being switched to, so only panes drawn at their final size report what they measured.
         let explorer = ExplorerLayout {
             pane_height: full_left.height,
             content_width: explorer_content_width
+                .filter(|_| left_area == Some(full_left))
                 .unwrap_or_else(|| state.ui.explorer_content_width()),
         };
         let inspector = InspectorLayout {
@@ -281,27 +270,35 @@ impl MainLayout {
             inspector: inspector_area.map(pane_area),
             result: Some(pane_area(result_area)),
         };
+        let target_result = if state.ui.is_focus_mode() {
+            main_area
+        } else {
+            full_result
+        };
         let browse = BrowseLayout {
             explorer,
             inspector,
             result: ResultLayout {
-                viewport_plan: result_plan,
-                widths_cache: result_widths_cache,
-                pane_height: if state.ui.is_focus_mode() {
-                    main_area.height
+                viewport_plan: if result_area == target_result {
+                    result_plan
                 } else {
-                    full_result.height
+                    state.ui.result_viewport_plan().clone()
                 },
+                widths_cache: result_widths_cache,
+                pane_height: target_result.height,
             },
-            // Panes collapsing into focus mode are on their way out, so the pointer cannot focus them.
             pane_areas: if state.ui.is_focus_mode() {
                 PaneAreas {
                     explorer: None,
                     inspector: None,
-                    ..drawn_panes
+                    result: Some(pane_area(main_area)),
                 }
             } else {
-                drawn_panes
+                PaneAreas {
+                    explorer: Some(pane_area(full_left)),
+                    inspector: Some(pane_area(full_inspector)),
+                    result: Some(pane_area(full_result)),
+                }
             },
         };
         (browse, drawn_panes)
@@ -356,7 +353,7 @@ pub mod test_support {
             now: Instant,
             theme: &ThemePalette,
         ) -> RenderOutput {
-            Self::render_impl(frame, state, time_ms, services, now, theme, None)
+            Self::render_impl(frame, state, time_ms, services, now, theme)
         }
     }
 }

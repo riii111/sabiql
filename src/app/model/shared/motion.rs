@@ -15,7 +15,6 @@ pub const FRAME_INTERVAL: Duration = Duration::from_millis(16);
 pub enum ScrolledPane {
     Result,
     Inspector,
-    Explorer,
     Help,
     ExplainPlan,
     ExplainCompare,
@@ -89,51 +88,26 @@ pub struct FocusTransition {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct ModalCloseTween {
-    from: f32,
-    tween: Tween,
-}
-
-#[derive(Debug, Clone, Copy)]
 struct LayoutTween {
     from: f32,
     to: f32,
     tween: Tween,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MotionState {
     enabled: bool,
     last_frame: Option<Instant>,
-    drawn_modal_progress: f32,
     scroll: Option<ScrollTween>,
     focus: Option<FocusTween>,
     modal: Option<Tween>,
-    modal_close: Option<ModalCloseTween>,
+    modal_close: Option<Tween>,
     layout: Option<LayoutTween>,
-}
-
-impl Default for MotionState {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            last_frame: None,
-            drawn_modal_progress: 1.0,
-            scroll: None,
-            focus: None,
-            modal: None,
-            modal_close: None,
-            layout: None,
-        }
-    }
 }
 
 impl MotionState {
     pub fn note_frame(&mut self, now: Instant) {
         self.last_frame = Some(now);
-        if let Some(modal) = self.modal {
-            self.drawn_modal_progress = modal.eased_progress(now);
-        }
     }
 
     pub fn enable(&mut self) {
@@ -148,8 +122,6 @@ impl MotionState {
         if !self.enabled || from == to {
             return;
         }
-        // Repeated jumps retarget from what was last drawn so held keys never snap back.
-        let from = self.scroll_offset(pane, from, self.last_frame.unwrap_or(now));
         self.scroll = Some(ScrollTween {
             pane,
             from,
@@ -158,8 +130,8 @@ impl MotionState {
         });
     }
 
-    pub fn scrolling_pane(&self) -> Option<ScrolledPane> {
-        self.scroll.map(|scroll| scroll.pane)
+    pub fn scroll_target(&self) -> Option<(ScrolledPane, usize)> {
+        self.scroll.map(|scroll| (scroll.pane, scroll.to))
     }
 
     pub fn cancel_scroll(&mut self) {
@@ -202,7 +174,6 @@ impl MotionState {
     pub fn begin_modal(&mut self, now: Instant) {
         if self.enabled {
             self.modal = Some(Tween::new(now, MODAL_DURATION));
-            self.drawn_modal_progress = 0.0;
         }
     }
 
@@ -213,27 +184,17 @@ impl MotionState {
     }
 
     pub fn begin_modal_close(&mut self, now: Instant) {
-        if !self.enabled {
-            return;
+        if self.enabled {
+            self.modal = None;
+            self.modal_close = Some(Tween::new(now, MODAL_CLOSE_DURATION));
         }
-        // A modal closed before it finished fading in starts fading out from how it was last drawn.
-        let from = if self.modal.is_some() {
-            self.drawn_modal_progress
-        } else {
-            1.0
-        };
-        self.modal = None;
-        self.modal_close = Some(ModalCloseTween {
-            from,
-            tween: Tween::new(now, MODAL_CLOSE_DURATION),
-        });
     }
 
-    /// Falls from 1.0 when the modal closes to 0.0 when it is gone.
-    pub fn modal_close_visibility(&self, now: Instant) -> Option<f32> {
+    /// How dim the panes still are after a modal closed, falling from 1.0 to 0.0.
+    pub fn modal_close_dim(&self, now: Instant) -> Option<f32> {
         self.modal_close
-            .filter(|close| close.tween.is_active(now))
-            .map(|close| close.from * (1.0 - close.tween.eased_progress(now)))
+            .filter(|close| close.is_active(now))
+            .map(|close| 1.0 - close.eased_progress(now))
     }
 
     pub fn begin_focus_mode(&mut self, entering: bool, now: Instant) {
@@ -264,7 +225,7 @@ impl MotionState {
             self.scroll.map(|scroll| scroll.tween),
             self.focus.map(|focus| focus.tween),
             self.modal,
-            self.modal_close.map(|close| close.tween),
+            self.modal_close,
             self.layout.map(|layout| layout.tween),
         ]
         .into_iter()
@@ -419,43 +380,14 @@ mod tests {
         use super::*;
 
         #[test]
-        fn visibility_fades_from_full_to_none() {
+        fn dim_lifts_from_full_to_none() {
             let mut motion = enabled();
             let now = Instant::now();
 
             motion.begin_modal_close(now);
 
-            assert_eq!(motion.modal_close_visibility(now), Some(1.0));
-            assert_eq!(
-                motion.modal_close_visibility(now + MODAL_CLOSE_DURATION),
-                None
-            );
-        }
-
-        #[test]
-        fn closing_mid_fade_in_starts_from_last_drawn_visibility() {
-            let mut motion = enabled();
-            let now = Instant::now();
-            motion.begin_modal(now);
-            let drawn_at = now + MODAL_DURATION / 4;
-            motion.note_frame(drawn_at);
-            let drawn = motion.modal_progress(drawn_at).expect("fading in");
-            let closed_at = now + MODAL_DURATION / 2;
-
-            motion.begin_modal_close(closed_at);
-
-            assert_eq!(motion.modal_close_visibility(closed_at), Some(drawn));
-        }
-
-        #[test]
-        fn closing_before_any_frame_shows_nothing() {
-            let mut motion = enabled();
-            let now = Instant::now();
-            motion.begin_modal(now);
-
-            motion.begin_modal_close(now);
-
-            assert_eq!(motion.modal_close_visibility(now), Some(0.0));
+            assert_eq!(motion.modal_close_dim(now), Some(1.0));
+            assert_eq!(motion.modal_close_dim(now + MODAL_CLOSE_DURATION), None);
         }
 
         #[test]
@@ -476,7 +408,7 @@ mod tests {
 
             motion.begin_modal_close(now);
 
-            assert_eq!(motion.modal_close_visibility(now), None);
+            assert_eq!(motion.modal_close_dim(now), None);
         }
     }
 
