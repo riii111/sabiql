@@ -8,7 +8,8 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::explain_context::CompareSlot;
-use crate::app::model::shared::flash_timer::FlashId;
+use crate::app::model::shared::flash_timer::{FlashId, FlashPhase};
+use crate::app::model::shared::motion::ScrolledPane;
 use crate::app::update::input::keymap::{HintSurface, KeyContext, sql_view_hints};
 use crate::domain::DatabaseType;
 use crate::domain::explain_plan::{self, ComparisonVerdict};
@@ -25,7 +26,11 @@ pub(super) fn render(
 ) -> u16 {
     let can_yank = state.explain.can_yank_compare();
     let (left, right) = state.explain.compare_slots();
-    let scroll_offset = state.explain.compare_scroll_offset();
+    let scroll_offset = state.motion.scroll_offset(
+        ScrolledPane::ExplainCompare,
+        state.explain.compare_scroll_offset(),
+        now,
+    );
 
     let mut lines: Vec<Line> = Vec::new();
     let mut flash_mask: Vec<bool> = Vec::new();
@@ -60,8 +65,14 @@ pub(super) fn render(
     let mut visible: Vec<Line> = lines.into_iter().skip(clamped).collect();
     let visible_mask: Vec<bool> = flash_mask.into_iter().skip(clamped).collect();
 
-    let flash_active = can_yank && state.flash_timers.is_active(FlashId::SqlModal, now);
-    apply_yank_flash_masked(&mut visible, flash_active, &visible_mask, theme);
+    let flash = if can_yank {
+        state
+            .flash_timers
+            .phase(FlashId::SqlModal, now, state.motion.is_enabled())
+    } else {
+        FlashPhase::Off
+    };
+    apply_yank_flash_masked(&mut visible, flash, &visible_mask, theme);
 
     frame.render_widget(
         Paragraph::new(visible)

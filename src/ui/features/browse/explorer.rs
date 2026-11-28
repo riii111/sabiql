@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
@@ -6,6 +8,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::focused_pane::FocusedPane;
+use crate::app::model::shared::motion::ScrolledPane;
 use crate::app::model::shared::ui_state::{
     explorer_content_width_from_inner_width, scroll_max_offset, text_display_width,
 };
@@ -20,7 +23,13 @@ use crate::primitives::atoms::panel_block;
 pub struct Explorer;
 
 impl Explorer {
-    pub fn render(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) -> usize {
+    pub fn render(
+        frame: &mut Frame,
+        area: Rect,
+        state: &AppState,
+        now: Instant,
+        theme: &ThemePalette,
+    ) -> usize {
         let is_focused = state.ui.focused_pane() == FocusedPane::Explorer;
         let block = panel_block(" [1] Explorer ", is_focused, theme);
         let inner = block.inner(area);
@@ -29,7 +38,7 @@ impl Explorer {
         let is_error = matches!(state.session.metadata_state(), MetadataState::Error);
         let has_cached_data =
             !is_error && state.session.metadata().is_some() && !state.tables().is_empty();
-        Self::render_tables_section(frame, inner, state, has_cached_data, theme)
+        Self::render_tables_section(frame, inner, state, has_cached_data, now, theme)
     }
 
     fn render_tables_section(
@@ -37,6 +46,7 @@ impl Explorer {
         area: Rect,
         state: &AppState,
         has_cached_data: bool,
+        now: Instant,
         theme: &ThemePalette,
     ) -> usize {
         let mode = state.settings.saved_icon_mode();
@@ -130,14 +140,19 @@ impl Explorer {
             )
             .highlight_symbol("> ");
 
-        let selected = if has_cached_data {
-            Some(state.ui.explorer_selected())
-        } else {
-            None
-        };
+        let scroll_offset = state.motion.scroll_offset(
+            ScrolledPane::Explorer,
+            state.ui.explorer_scroll_offset(),
+            now,
+        );
+        let visible_rows = area.height as usize;
+        // The list widget pulls its window back to the selection, so the selection stays hidden until the animated window reaches it.
+        let selected = has_cached_data
+            .then(|| state.ui.explorer_selected())
+            .filter(|&selected| (scroll_offset..scroll_offset + visible_rows).contains(&selected));
         let mut list_state = ListState::default()
             .with_selected(selected)
-            .with_offset(state.ui.explorer_scroll_offset());
+            .with_offset(scroll_offset);
         frame.render_stateful_widget(list, area, &mut list_state);
 
         // Render scrollbars
@@ -146,8 +161,6 @@ impl Explorer {
             let viewport_size = area.height.saturating_sub(1) as usize; // Reserve for horizontal scrollbar
 
             if total_items > viewport_size {
-                let scroll_offset = state.ui.explorer_scroll_offset();
-
                 use crate::primitives::atoms::scroll_indicator::{
                     VerticalScrollParams, render_vertical_scroll_indicator_bar,
                 };

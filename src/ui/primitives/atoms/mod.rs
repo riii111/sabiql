@@ -18,4 +18,4 @@ pub use text_cursor::{
     insert_cursor_span, insert_cursor_span_with_kind, render_modal_text_surface,
     set_terminal_cursor, text_cursor_spans, text_cursor_spans_with_kind,
 };
-pub use yank_flash::{apply_yank_flash, apply_yank_flash_masked};
+pub use yank_flash::{afterglow_fg, apply_yank_flash, apply_yank_flash_masked};

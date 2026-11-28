@@ -3,6 +3,7 @@ use std::time::Instant;
 
 use super::cell_edit::CellEditState;
 use crate::model::shared::cursor::CursorMove;
+use crate::model::shared::flash_timer::FLASH_AFTERGLOW;
 use crate::model::shared::text_input::{TextEdit, TextKillDirection};
 use crate::model::shared::ui_state::{ResultSelection, YankFlash};
 use crate::policy::write::write_guardrails::{WriteOperation, WritePreview};
@@ -244,7 +245,7 @@ impl ResultInteraction {
 
     pub fn clear_expired_flash(&mut self, now: Instant) {
         if let Some(flash) = self.yank_flash
-            && now >= flash.until
+            && now >= flash.until + FLASH_AFTERGLOW
         {
             self.yank_flash = None;
         }
@@ -422,7 +423,9 @@ mod tests {
             yank_flash: Some(YankFlash {
                 row: 0,
                 col: None,
-                until: now.checked_sub(Duration::from_millis(1)).unwrap(),
+                until: now
+                    .checked_sub(FLASH_AFTERGLOW + Duration::from_millis(1))
+                    .unwrap(),
             }),
             ..Default::default()
         };

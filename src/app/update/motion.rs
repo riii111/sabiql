@@ -3,11 +3,14 @@ use std::time::Instant;
 use crate::model::app_state::AppState;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::motion::ScrolledPane;
-use crate::update::action::{Action, ScrollAmount, ScrollTarget, ScrollToCursorTarget};
+use crate::update::action::{
+    Action, ScrollAmount, ScrollTarget, ScrollToCursorTarget, SelectMotion,
+};
 
 /// What was on screen before an action, so transitions start from it.
 pub(super) struct MotionProbe {
     focused_pane: FocusedPane,
+    focus_mode: bool,
     shows_overlay: bool,
     scroll_before: Option<(ScrolledPane, usize)>,
 }
@@ -16,6 +19,7 @@ impl MotionProbe {
     pub(super) fn capture(state: &AppState, action: &Action) -> Self {
         Self {
             focused_pane: state.ui.focused_pane(),
+            focus_mode: state.ui.is_focus_mode(),
             shows_overlay: state.input_mode().shows_overlay(),
             scroll_before: animated_scroll_pane(action)
                 .map(|pane| (pane, scroll_offset(state, pane))),
@@ -27,6 +31,13 @@ impl MotionProbe {
         // Switching between modals keeps the scrim, so only a modal opened over the panes fades in.
         if shows_overlay && !self.shows_overlay {
             state.motion.begin_modal(now);
+        }
+        if !shows_overlay && self.shows_overlay {
+            state.motion.begin_modal_close(now);
+        }
+        let focus_mode = state.ui.is_focus_mode();
+        if focus_mode != self.focus_mode {
+            state.motion.begin_focus_mode(focus_mode, now);
         }
         // Pane borders are hidden under a modal, so a focus change there needs no transition.
         if !shows_overlay {
@@ -47,12 +58,27 @@ fn animated_scroll_pane(action: &Action) -> Option<ScrolledPane> {
         Action::Scroll { target, amount, .. } if *amount != ScrollAmount::Line => match target {
             ScrollTarget::Result => Some(ScrolledPane::Result),
             ScrollTarget::Inspector => Some(ScrolledPane::Inspector),
-            _ => None,
+            ScrollTarget::Help => Some(ScrolledPane::Help),
+            ScrollTarget::ExplainPlan => Some(ScrolledPane::ExplainPlan),
+            ScrollTarget::ExplainCompare => Some(ScrolledPane::ExplainCompare),
+            ScrollTarget::SqliteDiagnostics => Some(ScrolledPane::SqliteDiagnostics),
+            ScrollTarget::CellDetail => Some(ScrolledPane::CellDetail),
+            ScrollTarget::RowDetail => Some(ScrolledPane::RowDetail),
+            // Short dialogs rarely scroll, and the explorer list moves through its selection instead.
+            ScrollTarget::ConnectionError
+            | ScrollTarget::ConfirmDialog
+            | ScrollTarget::ExplainConfirm
+            | ScrollTarget::Explorer => None,
         },
-        Action::ScrollToCursor {
-            target: ScrollToCursorTarget::Result,
-            ..
-        } => Some(ScrolledPane::Result),
+        Action::ScrollToCursor { target, .. } => Some(match target {
+            ScrollToCursorTarget::Result => ScrolledPane::Result,
+            ScrollToCursorTarget::Explorer => ScrolledPane::Explorer,
+        }),
+        Action::Select(motion)
+            if !matches!(motion, SelectMotion::Next | SelectMotion::Previous) =>
+        {
+            Some(ScrolledPane::Explorer)
+        }
         _ => None,
     }
 }
@@ -61,6 +87,13 @@ fn scroll_offset(state: &AppState, pane: ScrolledPane) -> usize {
     match pane {
         ScrolledPane::Result => state.result_interaction.scroll_offset(),
         ScrolledPane::Inspector => state.ui.inspector_scroll_offset(),
+        ScrolledPane::Explorer => state.ui.explorer_scroll_offset(),
+        ScrolledPane::Help => state.ui.help().scroll_offset(),
+        ScrolledPane::ExplainPlan => state.explain.scroll_offset(),
+        ScrolledPane::ExplainCompare => state.explain.compare_scroll_offset(),
+        ScrolledPane::SqliteDiagnostics => state.sqlite_diagnostics.scroll_offset(),
+        ScrolledPane::CellDetail => state.cell_detail.scroll_offset(),
+        ScrolledPane::RowDetail => state.row_detail.scroll_offset(),
     }
 }
 
@@ -70,6 +103,7 @@ mod tests {
 
     use super::*;
     use crate::model::shared::input_mode::InputMode;
+    use crate::model::shared::ui_state::FocusMode;
     use crate::update::action::ScrollDirection;
 
     fn motion_state() -> AppState {
@@ -154,6 +188,66 @@ mod tests {
                 .scroll_offset(ScrolledPane::Result, 20, now + Duration::from_secs(1)),
             20
         );
+    }
+
+    #[test]
+    fn closing_modal_to_panes_starts_fade_out() {
+        let mut state = motion_state();
+        state.modal.set_mode(InputMode::Help);
+        let now = Instant::now();
+        let probe = MotionProbe::capture(&state, &Action::None);
+
+        state.modal.set_mode(InputMode::Normal);
+        probe.record(&mut state, now);
+
+        assert_eq!(state.motion.modal_close_visibility(now), Some(1.0));
+    }
+
+    #[test]
+    fn entering_focus_mode_starts_layout_transition() {
+        let mut state = motion_state();
+        let now = Instant::now();
+        let probe = MotionProbe::capture(&state, &Action::None);
+
+        state.ui.set_focus_mode(FocusMode::Focused {
+            previous_pane: FocusedPane::Explorer,
+        });
+        probe.record(&mut state, now);
+
+        assert_eq!(state.motion.focus_mode_collapse(now), Some(0.0));
+    }
+
+    #[test]
+    fn explorer_page_jump_animates_list_window() {
+        let mut state = motion_state();
+        let now = Instant::now();
+        let probe = MotionProbe::capture(&state, &Action::Select(SelectMotion::FullPageDown));
+
+        state.ui.set_explorer_scroll_offset(20);
+        probe.record(&mut state, now);
+
+        assert_eq!(
+            state.motion.scroll_offset(ScrolledPane::Explorer, 20, now),
+            0
+        );
+    }
+
+    #[test]
+    fn help_page_scroll_animates() {
+        let mut state = motion_state();
+        state.modal.set_mode(InputMode::Help);
+        let now = Instant::now();
+        let action = Action::Scroll {
+            target: ScrollTarget::Help,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::HalfPage,
+        };
+        let probe = MotionProbe::capture(&state, &action);
+
+        state.ui.help_mut().set_scroll_offset(12);
+        probe.record(&mut state, now);
+
+        assert_eq!(state.motion.scroll_offset(ScrolledPane::Help, 12, now), 0);
     }
 
     #[test]

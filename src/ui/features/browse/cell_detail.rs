@@ -8,6 +8,7 @@ use unicode_casefold::UnicodeCaseFold;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::detail_view::DetailDisplayMode;
 use crate::app::model::shared::flash_timer::FlashId;
+use crate::app::model::shared::motion::ScrolledPane;
 use crate::app::update::input::keymap::{HintSurface, KeyContext, cell_detail_hints};
 use crate::features::browse::detail_view::{render_detail_search, search_match_status};
 use crate::primitives::atoms::apply_yank_flash;
@@ -82,13 +83,22 @@ impl CellDetail {
         theme: &ThemePalette,
     ) {
         let mut lines = content_lines(state, theme);
-        let flash_active = state.flash_timers.is_active(FlashId::CellDetail, now);
-        apply_yank_flash(&mut lines, flash_active, theme);
+        let flash = state
+            .flash_timers
+            .phase(FlashId::CellDetail, now, state.motion.is_enabled());
+        apply_yank_flash(&mut lines, flash, theme);
 
         frame.render_widget(
             Paragraph::new(lines)
                 .wrap(Wrap { trim: false })
-                .scroll((state.cell_detail.scroll_offset() as u16, 0))
+                .scroll((
+                    state.motion.scroll_offset(
+                        ScrolledPane::CellDetail,
+                        state.cell_detail.scroll_offset(),
+                        now,
+                    ) as u16,
+                    0,
+                ))
                 .style(Style::default().fg(theme.semantic.text.primary)),
             area,
         );

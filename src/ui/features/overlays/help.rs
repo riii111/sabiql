@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
@@ -11,6 +13,7 @@ use crate::app::catalog::{HELP_KEY_DESC_GAP, HELP_KEY_INDENT_WIDTH};
 use crate::app::catalog::{HelpDocument, HelpRow};
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::help::HelpMode;
+use crate::app::model::shared::motion::ScrolledPane;
 use crate::app::model::shared::ui_state::{
     HELP_MODAL_HEIGHT_PERCENT, HELP_MODAL_WIDTH_PERCENT, HELP_MODE_STATUS_HEIGHT,
     HelpViewportLayout, help_viewport_layout_for,
@@ -29,7 +32,7 @@ pub struct HelpOverlay;
 const FILTER_LABEL: &str = "Filter: ";
 
 impl HelpOverlay {
-    pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) {
+    pub fn render(frame: &mut Frame, state: &AppState, now: Instant, theme: &ThemePalette) {
         let document = HelpDocument::from_state(state);
         let footer = FooterHintBar::new(
             help_hints(HintSurface::Border, &KeyContext::from_state(state))
@@ -73,7 +76,9 @@ impl HelpOverlay {
         let content_area = Self::content_area(document_area, viewport);
         let viewport_height = content_area.height as usize;
         let scroll_offset = clamp_scroll_offset(
-            state.ui.help().scroll_offset(),
+            state
+                .motion
+                .scroll_offset(ScrolledPane::Help, state.ui.help().scroll_offset(), now),
             viewport_height,
             total_lines,
         );

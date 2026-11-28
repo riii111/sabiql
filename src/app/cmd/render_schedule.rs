@@ -2,6 +2,7 @@ use std::time::{Duration, Instant};
 
 use crate::model::app_state::AppState;
 use crate::model::er_state::ErStatus;
+use crate::model::shared::flash_timer::afterglow_frame;
 use crate::model::shared::input_mode::InputMode;
 
 const SPINNER_INTERVAL: Duration = Duration::from_millis(150);
@@ -37,6 +38,15 @@ pub fn next_animation_deadline(state: &AppState, now: Instant) -> Option<Instant
     }
 
     earliest = min_instant(earliest, state.flash_timers.earliest_deadline());
+
+    if state.motion.is_enabled() {
+        earliest = min_instant(earliest, state.flash_timers.next_afterglow_frame(now));
+        let result_afterglow = state
+            .result_interaction
+            .yank_flash()
+            .and_then(|flash| afterglow_frame(flash.until, now));
+        earliest = min_instant(earliest, result_afterglow);
+    }
 
     earliest = min_instant(earliest, state.motion.next_frame(now));
 

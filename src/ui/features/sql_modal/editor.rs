@@ -80,8 +80,10 @@ pub(super) fn render_editor(
     );
     let mut lines = build_modal_text_surface_lines(surface, line_spans, theme);
 
-    let flash_active = state.flash_timers.is_active(FlashId::SqlModal, now);
-    apply_yank_flash(&mut lines, flash_active, theme);
+    let flash = state
+        .flash_timers
+        .phase(FlashId::SqlModal, now, state.motion.is_enabled());
+    apply_yank_flash(&mut lines, flash, theme);
 
     render_modal_text_surface(frame, area, surface, lines);
 }

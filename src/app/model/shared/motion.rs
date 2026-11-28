@@ -5,14 +5,23 @@ use super::focused_pane::FocusedPane;
 const SCROLL_DURATION: Duration = Duration::from_millis(140);
 const FOCUS_DURATION: Duration = Duration::from_millis(160);
 const MODAL_DURATION: Duration = Duration::from_millis(140);
+const MODAL_CLOSE_DURATION: Duration = Duration::from_millis(100);
+const LAYOUT_DURATION: Duration = Duration::from_millis(160);
 
 // About 60 fps; terminals redraw only changed cells, so short tweens stay cheap.
-const FRAME_INTERVAL: Duration = Duration::from_millis(16);
+pub const FRAME_INTERVAL: Duration = Duration::from_millis(16);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScrolledPane {
     Result,
     Inspector,
+    Explorer,
+    Help,
+    ExplainPlan,
+    ExplainCompare,
+    SqliteDiagnostics,
+    CellDetail,
+    RowDetail,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -79,17 +88,30 @@ pub struct FocusTransition {
     pub progress: f32,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct LayoutTween {
+    from: f32,
+    to: f32,
+    tween: Tween,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct MotionState {
     enabled: bool,
     scroll: Option<ScrollTween>,
     focus: Option<FocusTween>,
     modal: Option<Tween>,
+    modal_close: Option<Tween>,
+    layout: Option<LayoutTween>,
 }
 
 impl MotionState {
     pub fn enable(&mut self) {
         self.enabled = true;
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
     }
 
     pub fn begin_scroll(&mut self, pane: ScrolledPane, from: usize, to: usize, now: Instant) {
@@ -151,11 +173,50 @@ impl MotionState {
             .map(|modal| modal.eased_progress(now))
     }
 
+    pub fn begin_modal_close(&mut self, now: Instant) {
+        if self.enabled {
+            self.modal = None;
+            self.modal_close = Some(Tween::new(now, MODAL_CLOSE_DURATION));
+        }
+    }
+
+    /// Falls from 1.0 when the modal closes to 0.0 when it is gone.
+    pub fn modal_close_visibility(&self, now: Instant) -> Option<f32> {
+        self.modal_close
+            .filter(|close| close.is_active(now))
+            .map(|close| 1.0 - close.eased_progress(now))
+    }
+
+    pub fn begin_focus_mode(&mut self, entering: bool, now: Instant) {
+        if !self.enabled {
+            return;
+        }
+        let to = if entering { 1.0 } else { 0.0 };
+        // Toggling again mid-transition turns back from the drawn layout instead of jumping to the far end.
+        let from = self.focus_mode_collapse(now).unwrap_or(1.0 - to);
+        self.layout = Some(LayoutTween {
+            from,
+            to,
+            tween: Tween::new(now, LAYOUT_DURATION),
+        });
+    }
+
+    /// 0.0 shows every pane and 1.0 shows only the result pane.
+    pub fn focus_mode_collapse(&self, now: Instant) -> Option<f32> {
+        self.layout
+            .filter(|layout| layout.tween.is_active(now))
+            .map(|layout| {
+                (layout.to - layout.from).mul_add(layout.tween.eased_progress(now), layout.from)
+            })
+    }
+
     pub fn next_frame(&self, now: Instant) -> Option<Instant> {
         [
             self.scroll.map(|scroll| scroll.tween),
             self.focus.map(|focus| focus.tween),
             self.modal,
+            self.modal_close,
+            self.layout.map(|layout| layout.tween),
         ]
         .into_iter()
         .flatten()
@@ -315,6 +376,83 @@ mod tests {
 
             assert_eq!(motion.modal_progress(now), Some(0.0));
             assert_eq!(motion.modal_progress(now + MODAL_DURATION), None);
+        }
+    }
+
+    mod modal_close {
+        use super::*;
+
+        #[test]
+        fn visibility_fades_from_full_to_none() {
+            let mut motion = enabled();
+            let now = Instant::now();
+
+            motion.begin_modal_close(now);
+
+            assert_eq!(motion.modal_close_visibility(now), Some(1.0));
+            assert_eq!(
+                motion.modal_close_visibility(now + MODAL_CLOSE_DURATION),
+                None
+            );
+        }
+
+        #[test]
+        fn closing_cancels_an_unfinished_fade_in() {
+            let mut motion = enabled();
+            let now = Instant::now();
+            motion.begin_modal(now);
+
+            motion.begin_modal_close(now);
+
+            assert_eq!(motion.modal_progress(now), None);
+        }
+
+        #[test]
+        fn disabled_motion_closes_at_once() {
+            let mut motion = MotionState::default();
+            let now = Instant::now();
+
+            motion.begin_modal_close(now);
+
+            assert_eq!(motion.modal_close_visibility(now), None);
+        }
+    }
+
+    mod layout {
+        use super::*;
+
+        #[test]
+        fn entering_focus_mode_collapses_from_zero() {
+            let mut motion = enabled();
+            let now = Instant::now();
+
+            motion.begin_focus_mode(true, now);
+
+            assert_eq!(motion.focus_mode_collapse(now), Some(0.0));
+            assert_eq!(motion.focus_mode_collapse(now + LAYOUT_DURATION), None);
+        }
+
+        #[test]
+        fn leaving_focus_mode_expands_from_full_collapse() {
+            let mut motion = enabled();
+            let now = Instant::now();
+
+            motion.begin_focus_mode(false, now);
+
+            assert_eq!(motion.focus_mode_collapse(now), Some(1.0));
+        }
+
+        #[test]
+        fn toggling_back_midway_starts_from_drawn_layout() {
+            let mut motion = enabled();
+            let now = Instant::now();
+            motion.begin_focus_mode(true, now);
+            let midway = now + LAYOUT_DURATION / 2;
+            let drawn = motion.focus_mode_collapse(midway).expect("collapse");
+
+            motion.begin_focus_mode(false, midway);
+
+            assert_eq!(motion.focus_mode_collapse(midway), Some(drawn));
         }
     }
 

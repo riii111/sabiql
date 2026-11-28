@@ -6,6 +6,7 @@ use ratatui::widgets::Paragraph;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::flash_timer::FlashId;
+use crate::app::model::shared::motion::ScrolledPane;
 use crate::app::model::shared::render_output::RowDetailLayout;
 use crate::app::update::input::keymap::{HintSurface, KeyContext, row_detail_hints};
 use crate::primitives::atoms::apply_yank_flash;
@@ -48,7 +49,11 @@ impl RowDetail {
         let content_width = state.row_detail.content_width();
         let viewport = detail_viewport(inner, total_lines, content_width);
         let scroll_offset = clamp_scroll_offset(
-            state.row_detail.scroll_offset(),
+            state.motion.scroll_offset(
+                ScrolledPane::RowDetail,
+                state.row_detail.scroll_offset(),
+                now,
+            ),
             viewport.content_area.height as usize,
             total_lines,
         );
@@ -83,8 +88,10 @@ impl RowDetail {
             })
             .collect();
 
-        let flash_active = state.flash_timers.is_active(FlashId::RowDetail, now);
-        apply_yank_flash(&mut lines, flash_active, theme);
+        let flash = state
+            .flash_timers
+            .phase(FlashId::RowDetail, now, state.motion.is_enabled());
+        apply_yank_flash(&mut lines, flash, theme);
 
         let paragraph = Paragraph::new(lines)
             .scroll((0, to_u16(horizontal_offset)))

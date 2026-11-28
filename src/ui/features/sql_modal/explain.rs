@@ -8,6 +8,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::flash_timer::FlashId;
+use crate::app::model::shared::motion::ScrolledPane;
 use crate::app::model::shared::text_input::TextInputState;
 use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
 use crate::app::policy::write::sql_risk::AcknowledgeReason;
@@ -108,7 +109,11 @@ pub(super) fn render(
             ),
         ]);
 
-        let scroll = state.explain.scroll_offset();
+        let scroll = state.motion.scroll_offset(
+            ScrolledPane::ExplainPlan,
+            state.explain.scroll_offset(),
+            now,
+        );
         let mut lines = vec![header, query_line];
         let shows_actual_metrics = match state.session.active_database_type_or_default() {
             DatabaseType::MySQL => state.explain.is_analyze(),
@@ -128,13 +133,15 @@ pub(super) fn render(
                 .map(|line| super::plan_highlight::highlight_plan_line(line, theme)),
         );
 
-        let flash_active = state.flash_timers.is_active(FlashId::SqlModal, now);
+        let flash = state
+            .flash_timers
+            .phase(FlashId::SqlModal, now, state.motion.is_enabled());
         let content_start = lines
             .iter()
             .position(|line| line == &Line::raw(""))
             .unwrap_or(0)
             + 1;
-        apply_yank_flash(&mut lines[content_start..], flash_active, theme);
+        apply_yank_flash(&mut lines[content_start..], flash, theme);
 
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
         area.height
