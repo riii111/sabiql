@@ -114,9 +114,6 @@ pub enum Effect {
         tables: Vec<ErTableInfo>,
         filename: String,
     },
-    WriteErFailureLog {
-        failed_tables: Vec<(String, String)>,
-    },
     SmartErRefresh {
         endpoint: Arc<ConnectionEndpoint>,
         run_id: u64,

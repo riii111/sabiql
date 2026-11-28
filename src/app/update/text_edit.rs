@@ -40,7 +40,6 @@ pub(in crate::update) fn apply_text_edit(
         | InputTarget::CommandLine
         | InputTarget::Filter
         | InputTarget::ErFilter
-        | InputTarget::SettingsErBrowser
         | InputTarget::QueryHistoryFilter
         | InputTarget::JsonSearch
         | InputTarget::CellDetailSearch
@@ -68,10 +67,6 @@ pub(in crate::update) fn apply_text_edit(
             .table_picker_mut()
             .apply_filter_edit(edit, yank_text),
         InputTarget::ErFilter => state.ui.er_picker_mut().apply_filter_edit(edit, yank_text),
-        InputTarget::SettingsErBrowser => state
-            .settings
-            .edit_custom_browser(|input| input.apply_edit(edit, yank_text))
-            .unwrap_or_default(),
         InputTarget::QueryHistoryFilter => state
             .query_history_picker
             .apply_filter_edit(edit, yank_text),

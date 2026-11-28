@@ -144,7 +144,6 @@ pub enum InputTarget {
     CommandLine,
     Filter,
     ErFilter,
-    SettingsErBrowser,
     QueryHistoryFilter,
     JsonEdit,
     JsonSearch,
@@ -419,8 +418,6 @@ pub enum Action {
     SettingsSelectPrevious,
     SettingsNextSection,
     SettingsPreviousSection,
-    SettingsStartCustomBrowserEdit,
-    SettingsStopCustomBrowserEdit,
     SettingsApply,
     SettingsCancel,
     SettingsSaved(Result<AppSettings, String>),
@@ -556,7 +553,6 @@ pub enum Action {
         run_id: u64,
         outcome: Result<ErDiagramInfo, String>,
     },
-    ErLogWriteFailed(String),
 }
 
 impl Action {
@@ -601,7 +597,6 @@ impl Action {
             | Self::ErConfirmSelection
             | Self::SmartErRefreshFetched { .. }
             | Self::ErDiagramOpened { .. }
-            | Self::ErLogWriteFailed(_)
             | Self::ListSelect {
                 target: ListTarget::ErTablePicker,
                 ..
@@ -693,7 +688,6 @@ fn text_feature_requirement(target: InputTarget, edit: TextEdit) -> FeatureRequi
         | InputTarget::ConnectionSetup
         | InputTarget::CommandLine
         | InputTarget::Filter
-        | InputTarget::SettingsErBrowser
         | InputTarget::QueryHistoryFilter
         | InputTarget::CellDetailSearch
         | InputTarget::HelpFilter => FeatureRequirement::None,
@@ -860,7 +854,7 @@ mod tests {
     mod feature_requirement_by_action_shape {
         use super::*;
 
-        const TEXT_REQUIREMENTS: [(InputTarget, FeatureRequirement); 14] = [
+        const TEXT_REQUIREMENTS: [(InputTarget, FeatureRequirement); 13] = [
             (InputTarget::SqlModal, FeatureRequirement::None),
             (InputTarget::SqlModalHighRisk, FeatureRequirement::None),
             (
@@ -872,7 +866,6 @@ mod tests {
             (InputTarget::CommandLine, FeatureRequirement::None),
             (InputTarget::Filter, FeatureRequirement::None),
             (InputTarget::ErFilter, FeatureRequirement::ErDiagram),
-            (InputTarget::SettingsErBrowser, FeatureRequirement::None),
             (InputTarget::QueryHistoryFilter, FeatureRequirement::None),
             (InputTarget::JsonEdit, FeatureRequirement::JsonDocumentEdit),
             (

@@ -26,14 +26,17 @@ pub(super) fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
     }
 
     state.er_preparation.mark_idle();
-    let failed_data: Vec<(String, String)> = state.table_prefetch.failed_table_errors();
-    state.messages.set_error(format!(
-        "ER failed: {} table(s) failed. 'e' to retry.",
-        failed_data.len()
-    ));
-    vec![Effect::WriteErFailureLog {
-        failed_tables: failed_data,
-    }]
+    let mut failed_tables = state.table_prefetch.failed_table_errors();
+    failed_tables.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+    let names = failed_tables
+        .iter()
+        .map(|(name, _)| name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    state
+        .messages
+        .set_error(format!("ER failed for: {names}. 'e' to retry."));
+    vec![]
 }
 
 #[cfg(test)]
@@ -82,6 +85,27 @@ mod tests {
                 .insert(format!("public.t{index}"), *empty_table("public", "t"));
         }
         state.table_detail_cache.contains("public.t0")
+    }
+
+    #[test]
+    fn er_failure_shows_failed_table_names_and_retains_them_for_retry() {
+        let mut state = state_with_dsn("postgres://localhost/test");
+        let _ = state.er_preparation.start_waiting_run();
+        state.er_preparation.mark_fk_expanded();
+        state
+            .table_prefetch
+            .fail("public.users".into(), "permission denied".into());
+        state
+            .table_prefetch
+            .fail("public.orders".into(), "connection failed".into());
+
+        assert!(check_er_completion(&mut state).is_empty());
+        let message = state.messages.last_error().unwrap();
+        assert!(message.contains("public.orders, public.users"));
+        assert!(message.contains("'e' to retry"));
+        assert!(state.table_prefetch.failed_prefetch("public.users"));
+        assert!(state.table_prefetch.failed_prefetch("public.orders"));
+        assert_eq!(state.er_preparation.status(), ErStatus::Idle);
     }
 
     mod freshness_guards {

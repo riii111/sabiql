@@ -24,7 +24,6 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
 mod tests {
     use super::*;
     use crate::model::shared::input_mode::InputMode;
-    use crate::model::shared::settings::SettingsSection;
     use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel};
     use crate::ports::inbound::Key;
     use crate::test_support::endpoint;
@@ -152,7 +151,6 @@ mod tests {
         TableFilter,
         ErFilter,
         QueryHistoryFilter,
-        SettingsBrowser,
         ConnectionSetup,
         SqlModalHighRisk,
         SqlModalAnalyzeHighRisk,
@@ -188,14 +186,6 @@ mod tests {
             FormSurface::QueryHistoryFilter => {
                 state.modal.set_mode(InputMode::QueryHistoryPicker);
                 InputTarget::QueryHistoryFilter
-            }
-            FormSurface::SettingsBrowser => {
-                state.modal.set_mode(InputMode::Settings);
-                state.settings.switch_next_section();
-                state.settings.switch_next_section();
-                assert_eq!(state.settings.section(), SettingsSection::ErDiagram);
-                state.settings.start_custom_browser_edit();
-                InputTarget::SettingsErBrowser
             }
             FormSurface::ConnectionSetup => {
                 state.modal.set_mode(InputMode::ConnectionSetup);
@@ -256,7 +246,6 @@ mod tests {
     #[case(FormSurface::TableFilter)]
     #[case(FormSurface::ErFilter)]
     #[case(FormSurface::QueryHistoryFilter)]
-    #[case(FormSurface::SettingsBrowser)]
     #[case(FormSurface::ConnectionSetup)]
     #[case(FormSurface::SqlModalHighRisk)]
     #[case(FormSurface::SqlModalAnalyzeHighRisk)]

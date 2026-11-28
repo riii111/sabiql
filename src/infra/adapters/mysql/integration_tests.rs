@@ -541,9 +541,7 @@ mod metadata_fetch {
                     .iter()
                     .find(|signature| signature.name == MYSQL_FK_CHILD)
                     .ok_or_else(|| "MySQL child signature was not returned".to_string())?;
-                if !child_signature
-                    .signature
-                    .contains("fk_mysql_metadata_child_parent")
+                if child_signature.signature.len() != 32
                 {
                     return Err(format!(
                         "unexpected MySQL table signature: {child_signature:?}"

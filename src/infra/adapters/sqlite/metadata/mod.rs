@@ -2,11 +2,10 @@ use crate::domain::connection::SqliteConnectionConfig;
 mod catalog;
 mod kind_info;
 mod preview;
-mod signature;
 mod table_detail;
 
 use crate::app::ports::outbound::DbOperationError;
-use crate::domain::{DatabaseMetadata, Table, TableSignatureSnapshot};
+use crate::domain::{DatabaseMetadata, Table};
 
 use super::sqlite3::metadata::RawNamedTableMetadata;
 use super::{SqliteAdapter, schema::MAIN_SCHEMA};
@@ -62,19 +61,6 @@ impl SqliteAdapter {
                 table_from_metadata(&name, TableDetailMode::Signature, metadata)
             })
             .collect()
-    }
-
-    pub async fn fetch_table_signatures(
-        &self,
-        config: &SqliteConnectionConfig,
-    ) -> Result<TableSignatureSnapshot, DbOperationError> {
-        let rows = self.fetch_table_signature_rows(config.path()).await?;
-        let mut signatures = Vec::with_capacity(rows.len());
-        for RawNamedTableMetadata { name, metadata } in rows {
-            let detail = table_from_metadata(&name, TableDetailMode::Signature, metadata)?;
-            signatures.push(signature::signature_for_table(&detail));
-        }
-        Ok(TableSignatureSnapshot { signatures })
     }
 }
 

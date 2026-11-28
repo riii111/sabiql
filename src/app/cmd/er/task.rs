@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::domain::ErTableInfo;
@@ -9,9 +8,8 @@ pub(in crate::cmd) struct ErDiagramRequest {
     pub(in crate::cmd) run_id: u64,
     pub(in crate::cmd) total_tables: usize,
     pub(in crate::cmd) tables: Vec<ErTableInfo>,
-    pub(in crate::cmd) cache_dir: PathBuf,
+    pub(in crate::cmd) project_name: String,
     pub(in crate::cmd) filename: String,
-    pub(in crate::cmd) browser: Option<String>,
 }
 
 pub(in crate::cmd) async fn generate_er_diagram(
@@ -22,13 +20,12 @@ pub(in crate::cmd) async fn generate_er_diagram(
         run_id,
         total_tables,
         tables,
-        cache_dir,
+        project_name,
         filename,
-        browser,
     } = request;
     let table_count = tables.len();
     let result = tokio::task::spawn_blocking(move || {
-        exporter.generate_and_export(&tables, &filename, &cache_dir, browser.as_deref())
+        exporter.generate_and_export(&tables, &filename, &project_name)
     })
     .await;
     let outcome = match result {
@@ -47,7 +44,7 @@ pub(in crate::cmd) async fn generate_er_diagram(
 mod tests {
     use super::*;
     use crate::ports::outbound::ErExportResult;
-    use std::path::Path;
+    use std::path::PathBuf;
 
     mod generate_er_diagram {
         use super::*;
@@ -61,8 +58,7 @@ mod tests {
                 &self,
                 _tables: &[ErTableInfo],
                 _filename: &str,
-                _cache_dir: &Path,
-                _browser: Option<&str>,
+                _project_name: &str,
             ) -> ErExportResult<PathBuf> {
                 Ok(self.output_path.clone())
             }
@@ -74,8 +70,7 @@ mod tests {
                 &self,
                 _tables: &[ErTableInfo],
                 _filename: &str,
-                _cache_dir: &Path,
-                _browser: Option<&str>,
+                _project_name: &str,
             ) -> ErExportResult<PathBuf> {
                 Err(std::io::Error::other("export failed").into())
             }
@@ -87,8 +82,7 @@ mod tests {
                 &self,
                 _tables: &[ErTableInfo],
                 _filename: &str,
-                _cache_dir: &Path,
-                _browser: Option<&str>,
+                _project_name: &str,
             ) -> ErExportResult<PathBuf> {
                 panic!("intentional panic")
             }
@@ -108,9 +102,8 @@ mod tests {
                     run_id: 1,
                     total_tables: 5,
                     tables: vec![],
-                    cache_dir: temp_dir.path().to_path_buf(),
+                    project_name: "test".to_string(),
                     filename: "er_full.dot".to_string(),
-                    browser: None,
                 },
             )
             .await;
@@ -135,7 +128,6 @@ mod tests {
 
         #[tokio::test]
         async fn error_sends_failed_action() {
-            let temp_dir = tempfile::tempdir().unwrap();
             let exporter = Arc::new(FailExporter);
 
             let action = super::super::generate_er_diagram(
@@ -144,9 +136,8 @@ mod tests {
                     run_id: 7,
                     total_tables: 5,
                     tables: vec![],
-                    cache_dir: temp_dir.path().to_path_buf(),
+                    project_name: "test".to_string(),
                     filename: "er_full.dot".to_string(),
-                    browser: None,
                 },
             )
             .await;
@@ -164,7 +155,6 @@ mod tests {
 
         #[tokio::test]
         async fn panic_sends_failed_action() {
-            let temp_dir = tempfile::tempdir().unwrap();
             let exporter = Arc::new(PanicExporter);
 
             let action = super::super::generate_er_diagram(
@@ -173,9 +163,8 @@ mod tests {
                     run_id: 11,
                     total_tables: 5,
                     tables: vec![],
-                    cache_dir: temp_dir.path().to_path_buf(),
+                    project_name: "test".to_string(),
                     filename: "er_full.dot".to_string(),
-                    browser: None,
                 },
             )
             .await;

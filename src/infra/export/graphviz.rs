@@ -18,10 +18,6 @@ pub enum ViewerError {
     LaunchFailed(#[from] std::io::Error),
     #[error("{operation} is unsupported on this platform")]
     UnsupportedPlatform { operation: String },
-    #[error("{browser} is not available on this platform")]
-    UnsupportedBrowser { browser: String },
-    #[error("Browser command not found for {browser}. Tried: {candidates}")]
-    BrowserCommandNotFound { browser: String, candidates: String },
 }
 
 impl From<GraphvizError> for ErExportError {
@@ -41,7 +37,7 @@ pub trait GraphvizRunner: Send + Sync {
 }
 
 pub trait ViewerLauncher: Send + Sync {
-    fn open_file(&self, path: &Path, browser: Option<&str>) -> Result<(), ViewerError>;
+    fn open_file(&self, path: &Path) -> Result<(), ViewerError>;
 }
 
 #[cfg(test)]
@@ -76,18 +72,6 @@ mod tests {
         }
 
         #[test]
-        fn unsupported_browser_names_browser() {
-            let error = ViewerError::UnsupportedBrowser {
-                browser: "Safari".to_string(),
-            };
-
-            let message = format!("{error}");
-
-            assert!(message.contains("Safari"));
-            assert!(message.contains("not available"));
-        }
-
-        #[test]
         fn unsupported_platform_names_operation() {
             let error = ViewerError::UnsupportedPlatform {
                 operation: "Opening ER diagrams".to_string(),
@@ -99,20 +83,6 @@ mod tests {
                 message,
                 "Opening ER diagrams is unsupported on this platform"
             );
-        }
-
-        #[test]
-        fn browser_command_not_found_lists_candidates() {
-            let error = ViewerError::BrowserCommandNotFound {
-                browser: "Google Chrome".to_string(),
-                candidates: "google-chrome, chromium".to_string(),
-            };
-
-            let message = format!("{error}");
-
-            assert!(message.contains("Google Chrome"));
-            assert!(message.contains("google-chrome"));
-            assert!(message.contains("chromium"));
         }
     }
 }
