@@ -222,13 +222,20 @@ fn build_list_item(
     query_max: usize,
     theme: &ThemePalette,
 ) -> ListItem<'static> {
-    let truncated = truncate_to_width_with(&ge.query_line, query_max, "\u{2026}");
+    const ELLIPSIS: &str = "…";
+    let query_display = ge.entry.query.replace('\n', " ");
+    let truncated = truncate_to_width_with(&query_display, query_max, ELLIPSIS);
+    let visible_query_bytes = if truncated == query_display {
+        truncated.len()
+    } else {
+        truncated.len().saturating_sub(ELLIPSIS.len())
+    };
 
     let ts_short = format_short_timestamp(&ge.entry.executed_at);
 
     let mut spans = vec![status_span(ge.entry.result_status, theme)];
 
-    if ge.match_indices.is_empty() {
+    if ge.match_byte_offsets.is_empty() {
         spans.push(Span::styled(
             truncated.clone(),
             Style::default().fg(if i == selected_idx {
@@ -238,8 +245,14 @@ fn build_list_item(
             }),
         ));
     } else {
-        for (index, grapheme) in truncated.graphemes(true).enumerate() {
-            let is_match = ge.match_indices.contains(&(index as u32));
+        // The newline replacement preserves byte offsets even when grapheme boundaries change.
+        for (offset, grapheme) in truncated.grapheme_indices(true) {
+            let end = offset + grapheme.len();
+            let is_match = end <= visible_query_bytes
+                && ge
+                    .match_byte_offsets
+                    .iter()
+                    .any(|index| (offset..end).contains(index));
             let color = if is_match {
                 theme.semantic.text.accent
             } else if i == selected_idx {

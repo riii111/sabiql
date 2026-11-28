@@ -2798,6 +2798,7 @@ dependencies = [
  "tokio",
  "toml",
  "unicode-casefold",
+ "unicode-segmentation",
  "unicode-width",
  "uuid",
 ]
