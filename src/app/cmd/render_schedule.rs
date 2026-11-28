@@ -258,6 +258,37 @@ mod tests {
         }
 
         #[test]
+        fn active_motion_schedules_its_next_frame() {
+            let mut state = create_test_state();
+            let now = Instant::now();
+            state.motion.enable();
+            state.motion.begin_modal_close(now);
+            state.messages.set_success_at(
+                "message".to_string(),
+                (now + Duration::from_secs(2))
+                    .checked_sub(MESSAGE_TIMEOUT)
+                    .unwrap(),
+            );
+
+            let motion_frame = state.motion.next_frame(now);
+
+            assert!(motion_frame.is_some());
+            assert_eq!(next_animation_deadline(&state, now), motion_frame);
+        }
+
+        #[test]
+        fn earlier_timer_takes_priority_over_motion_frame() {
+            let mut state = create_test_state();
+            let now = Instant::now();
+            let highlight_until = now + Duration::from_millis(1);
+            state.motion.enable();
+            state.motion.begin_modal_close(now);
+            state.query.set_result_highlight(highlight_until);
+
+            assert_eq!(next_animation_deadline(&state, now), Some(highlight_until));
+        }
+
+        #[test]
         fn completion_debounce_returns_expiration() {
             let mut state = create_test_state();
             let now = Instant::now();

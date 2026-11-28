@@ -466,7 +466,7 @@ impl KeyContext {
         self.history_available && !self.is_sql_completion_visible()
     }
 
-    pub(in crate::update::input) fn sql_tab(&self) -> Option<SqlModalTab> {
+    pub(super) fn sql_tab(&self) -> Option<SqlModalTab> {
         match self.scope {
             Scope::SqlNormal { tab, .. } => Some(tab),
             _ => None,
