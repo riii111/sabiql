@@ -586,10 +586,15 @@ fn confirm_selection(state: &mut AppState, now: Instant, services: &AppServices)
             return select_table(state, &table);
         }
     } else if state.modal.active_mode() == InputMode::CommandPalette {
-        let cmd_action = listed_palette_entries(state)
+        let Some(entry_id) = listed_palette_entries(state)
             .get(state.ui.table_picker().selected())
-            .and_then(|entry| palette_action(entry.id, &KeyContext::for_browse_state(state)))
-            .unwrap_or(Action::None);
+            .map(|entry| entry.id)
+        else {
+            // With no match the palette stays open, so a typo in the filter can be fixed in place.
+            return vec![];
+        };
+        let cmd_action =
+            palette_action(entry_id, &KeyContext::for_browse_state(state)).unwrap_or(Action::None);
         state.modal.set_mode(InputMode::Normal);
         // The outer reduce already compares the screen before the palette with the result, so a modal opened from it keeps the scrim settled.
         return reduce_without_motion(state, cmd_action, now, services);
@@ -3809,6 +3814,22 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::Settings);
+        }
+
+        #[test]
+        fn enter_without_a_match_keeps_the_typed_filter() {
+            let mut state = state_in_palette_mode(KeymapPreset::Default);
+            type_palette_filter(&mut state, "zzzzqx");
+
+            reduce(
+                &mut state,
+                Action::ConfirmSelection,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.input_mode(), InputMode::CommandPalette);
+            assert_eq!(state.ui.table_picker().filter_input().content(), "zzzzqx");
         }
 
         #[test]
