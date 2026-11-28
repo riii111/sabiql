@@ -124,31 +124,19 @@ pub(in crate::update) fn scroll_result(
                 s.result_interaction.set_scroll_offset(max_scroll);
             });
         }
-        (ScrollDirection::Up, ScrollAmount::ViewportMiddle) => {
+        (ScrollDirection::Up, ScrollAmount::ViewportMiddle | ScrollAmount::ViewportTop)
+        | (ScrollDirection::Down, ScrollAmount::ViewportBottom) => {
             if state.result_interaction.selection().row().is_some() {
-                let visible = state.result_visible_rows();
-                let total = result_row_count(state);
-                let offset = state.result_interaction.scroll_offset();
-                let displayed = visible.min(total.saturating_sub(offset));
-                let target_row = offset + displayed / 2;
-                state.result_interaction.move_row(target_row);
-                ensure_row_visible(state);
-            }
-        }
-        (ScrollDirection::Up, ScrollAmount::ViewportTop) => {
-            if state.result_interaction.selection().row().is_some() {
-                let target = state.result_interaction.scroll_offset();
-                state.result_interaction.move_row(target);
-                ensure_row_visible(state);
-            }
-        }
-        (ScrollDirection::Down, ScrollAmount::ViewportBottom) => {
-            if state.result_interaction.selection().row().is_some() {
-                let visible = state.result_visible_rows();
-                let total = result_row_count(state);
-                let offset = state.result_interaction.scroll_offset();
-                let displayed = visible.min(total.saturating_sub(offset));
-                let target = offset + displayed.saturating_sub(1);
+                let position = match amount {
+                    ScrollAmount::ViewportTop => CursorPosition::Top,
+                    ScrollAmount::ViewportMiddle => CursorPosition::Center,
+                    _ => CursorPosition::Bottom,
+                };
+                let target = position.viewport_item(
+                    state.result_interaction.scroll_offset(),
+                    state.result_visible_rows(),
+                    result_row_count(state),
+                );
                 state.result_interaction.move_row(target);
                 ensure_row_visible(state);
             }

@@ -413,6 +413,23 @@ mod tests {
             use super::*;
 
             #[test]
+            fn grapheme_cursor_tracks_single_line_edits() {
+                use crate::app::model::shared::cursor::CursorMove;
+                use crate::app::model::shared::text_input::TextInputState;
+                let mut input = TextInputState::new("e\u{301}👩‍💻x", 0);
+                input.move_cursor(CursorMove::Right);
+                let spans =
+                    text_cursor_spans(input.content(), input.cursor(), 0, 10, &DEFAULT_THEME);
+                assert_eq!(spans_to_strings(&spans), vec!["e\u{301}", "👩‍💻", "x"]);
+                input.delete();
+                let spans =
+                    text_cursor_spans(input.content(), input.cursor(), 0, 10, &DEFAULT_THEME);
+                assert_eq!(spans_to_strings(&spans), vec!["e\u{301}", "x", ""]);
+                input.backspace();
+                assert_eq!(input.content(), "x");
+            }
+
+            #[test]
             fn cursor_at_beginning() {
                 let spans = text_cursor_spans("abc", 0, 0, usize::MAX, &DEFAULT_THEME);
 

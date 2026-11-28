@@ -339,7 +339,6 @@ mod tests {
 
                 ..Default::default()
             },
-            ..Default::default()
         };
         state.picker.filter_input.set_content("test".to_string());
 
@@ -375,7 +374,6 @@ mod tests {
 
                 ..Default::default()
             },
-            ..Default::default()
         };
 
         assert_eq!(state.clamped_selected(), 1);
@@ -395,7 +393,6 @@ mod tests {
 
                 ..Default::default()
             },
-            ..Default::default()
         };
 
         assert_eq!(state.clamped_selected(), 1);
@@ -416,7 +413,6 @@ mod tests {
 
                 ..Default::default()
             },
-            ..Default::default()
         };
 
         state.select_next();
@@ -443,7 +439,6 @@ mod tests {
 
                 ..Default::default()
             },
-            ..Default::default()
         };
 
         state.select_previous();
@@ -464,7 +459,6 @@ mod tests {
 
                 ..Default::default()
             },
-            ..Default::default()
         };
 
         state.select_previous();
@@ -598,7 +592,6 @@ mod tests {
 
                     ..Default::default()
                 },
-                ..Default::default()
             };
 
             assert_eq!(state.clamped_selected(), 0);

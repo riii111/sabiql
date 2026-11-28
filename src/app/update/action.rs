@@ -135,6 +135,15 @@ pub enum CursorPosition {
 }
 
 impl CursorPosition {
+    pub(crate) fn viewport_item(self, offset: usize, visible: usize, total: usize) -> usize {
+        let displayed = visible.min(total.saturating_sub(offset));
+        match self {
+            Self::Top => offset,
+            Self::Center => offset + displayed / 2,
+            Self::Bottom => offset + displayed.saturating_sub(1),
+        }
+    }
+
     pub(crate) fn scroll_offset(
         self,
         selected: usize,

@@ -36,35 +36,22 @@ pub(in crate::update) fn select_explorer(
                 }
             }
         }
-        SelectMotion::ViewportMiddle => {
+        SelectMotion::ViewportTop | SelectMotion::ViewportMiddle | SelectMotion::ViewportBottom => {
             if state.ui.focused_pane() == FocusedPane::Explorer {
                 let len = explorer_item_count(state);
                 let visible = state.ui.explorer_visible_items();
-                if len > 0 && visible > 0 {
-                    let displayed =
-                        visible.min(len.saturating_sub(state.ui.explorer_scroll_offset));
-                    let target = state.ui.explorer_scroll_offset + displayed / 2;
-                    state.ui.set_explorer_selection(Some(target));
-                }
-            }
-        }
-        SelectMotion::ViewportTop => {
-            if state.ui.focused_pane() == FocusedPane::Explorer {
-                let len = explorer_item_count(state);
-                if len > 0 {
-                    let target = state.ui.explorer_scroll_offset.min(len.saturating_sub(1));
-                    state.ui.set_explorer_selection(Some(target));
-                }
-            }
-        }
-        SelectMotion::ViewportBottom => {
-            if state.ui.focused_pane() == FocusedPane::Explorer {
-                let len = explorer_item_count(state);
-                let visible = state.ui.explorer_visible_items();
-                if len > 0 && visible > 0 {
-                    let displayed =
-                        visible.min(len.saturating_sub(state.ui.explorer_scroll_offset));
-                    let target = state.ui.explorer_scroll_offset + displayed.saturating_sub(1);
+                if len > 0 && (visible > 0 || motion == SelectMotion::ViewportTop) {
+                    let position = match motion {
+                        SelectMotion::ViewportTop => CursorPosition::Top,
+                        SelectMotion::ViewportMiddle => CursorPosition::Center,
+                        _ => CursorPosition::Bottom,
+                    };
+                    let offset = if position == CursorPosition::Top {
+                        state.ui.explorer_scroll_offset.min(len.saturating_sub(1))
+                    } else {
+                        state.ui.explorer_scroll_offset
+                    };
+                    let target = position.viewport_item(offset, visible, len);
                     state.ui.set_explorer_selection(Some(target));
                 }
             }

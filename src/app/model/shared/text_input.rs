@@ -47,6 +47,7 @@ pub struct TextInputState {
     char_count: usize,
     cursor: usize,
     viewport_offset: usize,
+    scalar_editing: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,13 +81,27 @@ pub(crate) fn apply_filter_edit(
 
 impl TextInputState {
     pub fn new(content: impl Into<String>, cursor: usize) -> Self {
-        let content = content.into();
+        Self::with_editing_mode(content.into(), cursor, false)
+    }
+
+    pub(super) fn new_scalar(content: impl Into<String>, cursor: usize) -> Self {
+        Self::with_editing_mode(content.into(), cursor, true)
+    }
+
+    fn with_editing_mode(content: String, cursor: usize, scalar_editing: bool) -> Self {
         let char_count = content.chars().count();
+        let cursor = cursor.min(char_count);
+        let cursor = if scalar_editing {
+            cursor
+        } else {
+            grapheme_floor(&content, cursor)
+        };
         Self {
             content,
             char_count,
-            cursor: cursor.min(char_count),
+            cursor,
             viewport_offset: 0,
+            scalar_editing,
         }
     }
 
@@ -110,7 +125,12 @@ impl TextInputState {
     }
 
     pub fn set_cursor(&mut self, pos: usize) {
-        self.cursor = pos.min(self.char_count);
+        let pos = pos.min(self.char_count);
+        self.cursor = if self.scalar_editing {
+            pos
+        } else {
+            grapheme_floor(&self.content, pos)
+        };
         self.viewport_offset = 0;
     }
 
@@ -119,6 +139,9 @@ impl TextInputState {
         self.content.insert(byte_idx, c);
         self.cursor += 1;
         self.char_count += 1;
+        if !self.scalar_editing {
+            self.cursor = grapheme_ceil(&self.content, self.cursor);
+        }
     }
 
     pub fn insert_str(&mut self, text: &str) {
@@ -127,18 +150,28 @@ impl TextInputState {
         self.content.insert_str(byte_idx, text);
         self.cursor += inserted_chars;
         self.char_count += inserted_chars;
+        if !self.scalar_editing {
+            self.cursor = grapheme_ceil(&self.content, self.cursor);
+        }
     }
 
     pub fn backspace(&mut self) {
         if self.cursor == 0 {
             return;
         }
-        let prev = self.cursor - 1;
+        let prev = if self.scalar_editing {
+            self.cursor - 1
+        } else {
+            previous_grapheme(&self.content, self.cursor)
+        };
         let start = char_to_byte_index(&self.content, prev);
         let end = char_to_byte_index(&self.content, self.cursor);
         self.content.drain(start..end);
+        self.char_count -= self.cursor - prev;
         self.cursor = prev;
-        self.char_count -= 1;
+        if !self.scalar_editing {
+            self.cursor = grapheme_floor(&self.content, self.cursor);
+        }
     }
 
     pub fn delete(&mut self) {
@@ -146,9 +179,17 @@ impl TextInputState {
             return;
         }
         let start = char_to_byte_index(&self.content, self.cursor);
-        let end = char_to_byte_index(&self.content, self.cursor + 1);
+        let next = if self.scalar_editing {
+            self.cursor + 1
+        } else {
+            next_grapheme(&self.content, self.cursor)
+        };
+        let end = char_to_byte_index(&self.content, next);
         self.content.drain(start..end);
-        self.char_count -= 1;
+        self.char_count -= next - self.cursor;
+        if !self.scalar_editing {
+            self.cursor = grapheme_floor(&self.content, self.cursor);
+        }
     }
 
     pub fn kill_to_line_end(&mut self) -> String {
@@ -206,11 +247,19 @@ impl TextInputState {
     pub fn move_cursor(&mut self, movement: CursorMove) {
         match movement {
             CursorMove::Left => {
-                self.cursor = self.cursor.saturating_sub(1);
+                self.cursor = if self.scalar_editing {
+                    self.cursor.saturating_sub(1)
+                } else {
+                    previous_grapheme(&self.content, self.cursor)
+                };
             }
             CursorMove::Right => {
                 if self.cursor < self.char_count {
-                    self.cursor += 1;
+                    self.cursor = if self.scalar_editing {
+                        self.cursor + 1
+                    } else {
+                        next_grapheme(&self.content, self.cursor)
+                    };
                 }
             }
             CursorMove::LineStart | CursorMove::FirstLine => {
@@ -237,6 +286,14 @@ impl TextInputState {
             | CursorMove::ViewportTop
             | CursorMove::ViewportMiddle
             | CursorMove::ViewportBottom => {}
+        }
+        if !self.scalar_editing {
+            self.cursor = match movement {
+                CursorMove::WordForward | CursorMove::ReadlineWordEnd => {
+                    grapheme_ceil(&self.content, self.cursor)
+                }
+                _ => grapheme_floor(&self.content, self.cursor),
+            };
         }
     }
 
@@ -280,16 +337,64 @@ impl TextInputState {
         if start >= end {
             return String::new();
         }
+        let (start, end) = if self.scalar_editing {
+            (start, end)
+        } else {
+            (
+                grapheme_floor(&self.content, start),
+                grapheme_ceil(&self.content, end),
+            )
+        };
+        if start >= end {
+            return String::new();
+        }
 
         let start_byte = char_to_byte_index(&self.content, start);
         let end_byte = char_to_byte_index(&self.content, end);
         let removed = self.content[start_byte..end_byte].to_string();
         self.content.replace_range(start_byte..end_byte, "");
         self.char_count -= end - start;
-        self.cursor = start;
+        self.cursor = if self.scalar_editing {
+            start
+        } else {
+            grapheme_floor(&self.content, start)
+        };
         self.viewport_offset = 0;
         removed
     }
+}
+
+fn grapheme_boundaries(content: &str) -> impl Iterator<Item = usize> + '_ {
+    std::iter::once(0).chain(content.graphemes(true).scan(0, |offset, grapheme| {
+        *offset += grapheme.chars().count();
+        Some(*offset)
+    }))
+}
+
+fn grapheme_floor(content: &str, cursor: usize) -> usize {
+    grapheme_boundaries(content)
+        .take_while(|&boundary| boundary <= cursor)
+        .last()
+        .unwrap_or(0)
+}
+
+fn grapheme_ceil(content: &str, cursor: usize) -> usize {
+    grapheme_boundaries(content)
+        .find(|&boundary| boundary >= cursor)
+        .unwrap_or_else(|| content.chars().count())
+}
+
+fn previous_grapheme(content: &str, cursor: usize) -> usize {
+    grapheme_boundaries(content)
+        .take_while(|&boundary| boundary < cursor)
+        .last()
+        .unwrap_or(0)
+}
+
+fn next_grapheme(content: &str, cursor: usize) -> usize {
+    grapheme_boundaries(content)
+        .find(|&boundary| boundary > cursor)
+        .unwrap_or_else(|| content.chars().count())
 }
 
 pub(crate) fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
@@ -784,6 +889,32 @@ mod tests {
             s.move_cursor(movement);
 
             assert_eq!(s.cursor(), expected);
+        }
+    }
+
+    mod grapheme_editing {
+        use super::*;
+
+        #[test]
+        fn combining_mark_moves_and_deletes_with_its_base() {
+            let mut input = TextInputState::new("e\u{301}x", 0);
+            input.move_cursor(CursorMove::Right);
+            assert_eq!(input.cursor(), 2);
+            input.backspace();
+            assert_eq!(input.content(), "x");
+            assert_eq!(input.cursor(), 0);
+        }
+
+        #[test]
+        fn joined_emoji_moves_inserts_and_deletes_as_one_unit() {
+            let mut input = TextInputState::new("👩‍💻x", 0);
+            input.move_cursor(CursorMove::Right);
+            assert_eq!(input.cursor(), 3);
+            input.insert_char('!');
+            assert_eq!(input.content(), "👩‍💻!x");
+            input.move_cursor(CursorMove::Home);
+            input.delete();
+            assert_eq!(input.content(), "!x");
         }
     }
 
