@@ -1,7 +1,6 @@
 use crate::model::app_state::AppState;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
-use crate::model::sql_editor::modal::SqlModalTab;
 use crate::ports::inbound::{Key, KeyCombo, MouseInput, MouseKind};
 use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
 use crate::update::input::keymap::{KeyContext, key_action};
@@ -9,10 +8,8 @@ use crate::update::input::keymap::{KeyContext, key_action};
 pub(super) fn handle_mouse_event(input: MouseInput, state: &AppState) -> Action {
     if state.input_mode() == InputMode::Normal {
         browse_mouse_action(input, state)
-    } else if scrolls_like_arrow_keys(state) {
-        modal_wheel_action(input.kind, state)
     } else {
-        Action::None
+        modal_wheel_action(input.kind, state)
     }
 }
 
@@ -52,15 +49,22 @@ fn line_scroll(target: ScrollTarget, direction: ScrollDirection) -> Action {
 }
 
 fn modal_wheel_action(kind: MouseKind, state: &AppState) -> Action {
-    let key = match kind {
-        MouseKind::ScrollUp => Key::Up,
-        MouseKind::ScrollDown => Key::Down,
-        MouseKind::ScrollLeft | MouseKind::ScrollRight | MouseKind::LeftClick => {
-            return Action::None;
-        }
+    let (key, vertical) = match kind {
+        MouseKind::ScrollUp => (Key::Up, true),
+        MouseKind::ScrollDown => (Key::Down, true),
+        MouseKind::ScrollLeft => (Key::Left, false),
+        MouseKind::ScrollRight => (Key::Right, false),
+        MouseKind::LeftClick => return Action::None,
     };
     // Reusing the arrow-key binding keeps the wheel identical to the keyboard in every modal.
-    key_action(KeyCombo::plain(key), &KeyContext::from_state(state))
+    let action = key_action(KeyCombo::plain(key), &KeyContext::from_state(state));
+    // The wheel moves views and selections only, so arrow keys bound to a text cursor or field switch stay keyboard-only.
+    let moves_a_view = match action {
+        Action::Scroll { .. } => true,
+        Action::SettingsSelectNext | Action::SettingsSelectPrevious => vertical,
+        _ => vertical && scrolls_like_arrow_keys(state),
+    };
+    if moves_a_view { action } else { Action::None }
 }
 
 #[deny(
@@ -81,14 +85,9 @@ fn scrolls_like_arrow_keys(state: &AppState) -> bool {
         | InputMode::CellDetail
         | InputMode::SqliteDiagnostics
         | InputMode::RowDetail => true,
-        // The plan and comparison tabs are read-only views, while the SQL tab is an editor.
-        // The key context reports the tab after engine support is applied, which is the tab keys act on.
-        InputMode::SqlModal => matches!(
-            KeyContext::from_state(state).sql_tab(),
-            Some(SqlModalTab::Plan | SqlModalTab::Compare)
-        ),
-        // Text editors and forms bind the arrow keys to a cursor or field, not to a view.
+        // These also bind the arrow keys to a cursor or field, so only their scroll and selection actions pass.
         InputMode::Normal
+        | InputMode::SqlModal
         | InputMode::CommandLine
         | InputMode::CellEdit
         | InputMode::Settings
@@ -105,6 +104,7 @@ mod tests {
 
     use crate::domain::{DatabaseMetadata, TableSummary};
     use crate::model::shared::render_output::{PaneArea, PaneAreas};
+    use crate::model::sql_editor::modal::SqlModalTab;
     use crate::services::AppServices;
     use crate::update::action::ListMotion;
     use crate::update::action::ListTarget;
@@ -326,6 +326,32 @@ mod tests {
         assert!(matches!(
             handle_mouse_event(mouse(MouseKind::ScrollLeft, RESULT_CELL), &state),
             Action::ResultCellLeft
+        ));
+    }
+
+    #[test]
+    fn wheel_in_settings_moves_the_selection() {
+        let mut state = browse_state();
+        state.modal.set_mode(InputMode::Settings);
+
+        assert!(matches!(
+            handle_mouse_event(mouse(MouseKind::ScrollDown, RESULT_CELL), &state),
+            Action::SettingsSelectNext
+        ));
+    }
+
+    #[test]
+    fn horizontal_wheel_in_help_scrolls_sideways() {
+        let mut state = browse_state();
+        state.modal.set_mode(InputMode::Help);
+
+        assert!(matches!(
+            handle_mouse_event(mouse(MouseKind::ScrollRight, RESULT_CELL), &state),
+            Action::Scroll {
+                target: ScrollTarget::Help,
+                direction: ScrollDirection::Right,
+                ..
+            }
         ));
     }
 }
