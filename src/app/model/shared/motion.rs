@@ -6,7 +6,7 @@ const SCROLL_DURATION: Duration = Duration::from_millis(140);
 const FOCUS_DURATION: Duration = Duration::from_millis(160);
 const MODAL_DURATION: Duration = Duration::from_millis(140);
 const MODAL_CLOSE_DURATION: Duration = Duration::from_millis(100);
-const LAYOUT_DURATION: Duration = Duration::from_millis(160);
+const LAYOUT_DURATION: Duration = Duration::from_millis(200);
 
 // About 60 fps; terminals redraw only changed cells, so short tweens stay cheap.
 pub const FRAME_INTERVAL: Duration = Duration::from_millis(16);
@@ -45,11 +45,19 @@ impl Tween {
         now < self.ends_at()
     }
 
-    fn eased_progress(self, now: Instant) -> f32 {
+    fn linear_progress(self, now: Instant) -> f32 {
         let elapsed = now.saturating_duration_since(self.started_at);
-        let linear = (elapsed.as_secs_f32() / self.duration.as_secs_f32()).clamp(0.0, 1.0);
-        ease_out_cubic(linear)
+        (elapsed.as_secs_f32() / self.duration.as_secs_f32()).clamp(0.0, 1.0)
     }
+
+    fn eased_progress(self, now: Instant) -> f32 {
+        ease_out_cubic(self.linear_progress(now))
+    }
+}
+
+// The whole screen moves when panes resize, so the layout eases in and out to keep every frame's step small.
+fn ease_in_out_sine(t: f32) -> f32 {
+    (1.0 - (std::f32::consts::PI * t).cos()) / 2.0
 }
 
 fn ease_out_cubic(t: f32) -> f32 {
@@ -216,7 +224,8 @@ impl MotionState {
         self.layout
             .filter(|layout| layout.tween.is_active(now))
             .map(|layout| {
-                (layout.to - layout.from).mul_add(layout.tween.eased_progress(now), layout.from)
+                let progress = ease_in_out_sine(layout.tween.linear_progress(now));
+                (layout.to - layout.from).mul_add(progress, layout.from)
             })
     }
 
