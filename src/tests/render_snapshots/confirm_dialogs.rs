@@ -88,7 +88,7 @@ fn confirm_dialog_update_preview() {
         },
     );
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -126,7 +126,7 @@ fn confirm_dialog_update_preview_rich() {
         },
     );
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -159,7 +159,7 @@ fn confirm_dialog_delete_preview_low_risk() {
     });
     open_write_confirm(&mut state, "Confirm DELETE: users", &sql);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -197,7 +197,7 @@ fn confirm_dialog_update_preview_long_json() {
         ));
     open_write_confirm(&mut state, "Confirm UPDATE: users", &sql);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -241,7 +241,7 @@ fn confirm_dialog_update_preview_json_key_order_normalized() {
         ));
     open_write_confirm(&mut state, "Confirm UPDATE: users", &sql);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     // Both before and after should show the same key order after normalization
     // (serde_json alphabetical: company_size before industries)
@@ -297,7 +297,7 @@ fn confirm_dialog_update_preview_scrollable() {
         ));
     open_write_confirm(&mut state, "Confirm UPDATE: users", &sql);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     assert!(
         output.contains("Enter: Confirm │ Esc: Cancel"),
@@ -339,7 +339,7 @@ fn confirm_dialog_update_preview_narrow_terminal() {
         ));
     open_write_confirm(&mut state, "Confirm UPDATE: users", &sql);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -376,7 +376,7 @@ fn confirm_dialog_update_preview_multi_column() {
         ));
     open_write_confirm(&mut state, "Confirm UPDATE: users", &sql);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -414,7 +414,7 @@ fn confirm_dialog_update_preview_json_structured_diff_with_ellipsis() {
         ));
     open_write_confirm(&mut state, "Confirm UPDATE: users", &sql);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     assert!(
         output.contains("..."),
@@ -462,7 +462,7 @@ fn confirm_dialog_update_preview_json_and_string_mixed() {
         ));
     open_write_confirm(&mut state, "Confirm UPDATE: users", &sql);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }

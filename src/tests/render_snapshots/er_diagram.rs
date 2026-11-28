@@ -19,7 +19,7 @@ fn er_waiting_progress() {
         .table_prefetch
         .start_table_prefetch("public.posts".to_string());
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_footer_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -44,7 +44,7 @@ fn er_table_picker_filtered() {
     state.modal.set_mode(InputMode::ErTablePicker);
     state.ui.er_picker_mut().insert_filter_str("user");
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -59,7 +59,7 @@ fn er_table_picker_single_select() {
         .ui
         .replace_er_selected_tables(["public.users".to_string()]);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -74,7 +74,7 @@ fn er_table_picker_multi_select() {
         .ui
         .replace_er_selected_tables(["public.users".to_string(), "public.posts".to_string()]);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -91,7 +91,7 @@ fn er_table_picker_all_selected() {
         "public.comments".to_string(),
     ]);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -114,7 +114,7 @@ fn mysql_er_table_picker_shows_table_names_without_database() {
 
     state.modal.set_mode(InputMode::ErTablePicker);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -141,7 +141,7 @@ fn mysql_er_table_picker_single_select_shows_table_name_without_database() {
         .replace_er_selected_tables(["app.users".to_string()]);
     let mut terminal = create_test_terminal();
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }

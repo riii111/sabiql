@@ -1,7 +1,5 @@
 use super::*;
-use crate::tests::harness::{
-    focus_connection_field, render_to_string_with_services, set_connection_input,
-};
+use crate::tests::harness::{focus_connection_field, set_connection_input};
 use sabiql_app::model::shared::settings::KeymapPreset;
 use sabiql_app::ports::outbound::DsnBuilder;
 use sabiql_domain::connection::ConnectionEndpoint;
@@ -55,7 +53,7 @@ fn connection_setup_sqlite_form() {
         .unwrap()
         .set_content("/tmp/app.db".to_string());
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -80,7 +78,7 @@ fn connection_setup_mysql_form() {
         .unwrap()
         .set_content("mysql_user".to_string());
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -99,7 +97,7 @@ fn connection_setup_mysql_cleartext_auth_notice() {
     state.connection_setup.dropdown_next();
     state.connection_setup.confirm_dropdown();
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -126,7 +124,8 @@ fn connection_setup_mysql_preview_does_not_mask_empty_password() {
         .unwrap()
         .set_content("mysql_user".to_string());
 
-    let output = render_to_string_with_services(&mut terminal, &mut state, &services);
+    let buffer = harness::render_and_get_buffer_with_services(&mut terminal, &mut state, &services);
+    let output = harness::modal_contents(&buffer);
 
     insta::assert_snapshot!(output);
 }
@@ -145,7 +144,7 @@ fn connection_setup_empty_host_focused() {
         TextInputState::new("mydb", 4),
     );
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -168,7 +167,7 @@ fn connection_setup_empty_password_focused() {
         TextInputState::default(),
     );
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -192,7 +191,7 @@ fn connection_setup_preview_omits_empty_optional_fields() {
         TextInputState::new("secret", 6),
     );
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -219,7 +218,7 @@ fn connection_setup_preview_uses_postgres_conninfo_escaping() {
         TextInputState::new("user'org", 8),
     );
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -255,7 +254,7 @@ fn connection_setup_preview_wraps_across_multiple_rows_for_long_conninfo() {
         ),
     );
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -297,7 +296,7 @@ fn connection_setup_preview_with_max_length_fields() {
         TextInputState::new(repeated('p', 255), 255),
     );
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -311,7 +310,7 @@ fn connection_setup_ssl_mode_ide_hint() {
     state.settings.load_keymap_preset(KeymapPreset::Ide);
     focus_connection_field(&mut state, ConnectionField::SslMode);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -333,7 +332,7 @@ fn connection_setup_with_validation_errors() {
         .connection_setup
         .set_validation_error(ConnectionField::Database, "Required");
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -355,7 +354,7 @@ fn connection_error_collapsed() {
         ));
     state.connection_error.reset_view();
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -477,7 +476,7 @@ fn connection_error_expanded() {
         ));
     state.connection_error.toggle_details();
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -498,7 +497,7 @@ fn connection_error_expanded_with_tabs() {
         ));
     state.connection_error.toggle_details();
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -521,7 +520,7 @@ fn connection_error_expanded_long_details_capped() {
         ));
     state.connection_error.toggle_details();
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -535,7 +534,7 @@ fn footer_shows_success_message() {
         .messages
         .set_success_at("Reconnected!".to_string(), std::time::Instant::now());
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_footer_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }

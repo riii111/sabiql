@@ -2,14 +2,13 @@
 source: src/tests/render_snapshots/confirm_dialogs.rs
 expression: output
 ---
-⌂ t… ▸ … connected | localhost:5432/test
-┌╭ Confirm UPDATE: users ─────────────╮]
-││                                    │┐
-││ ✓ LOW RISK                         ││
-││                                    ││
-││ Diff                               │┘
-││   metadata:                        │┐
-││     {                              ││
-││   -   "company_size":              ││
-││                                    ││
-└╰ Enter: Confirm │ Esc: Cancel ──────╯┘
+╭ Confirm UPDATE: users ─────────────╮
+│                                    │
+│ ✓ LOW RISK                         │
+│                                    │
+│ Diff                               │
+│   metadata:                        │
+│     {                              │
+│   -   "company_size":              │
+│                                    │
+╰ Enter: Confirm │ Esc: Cancel ──────╯

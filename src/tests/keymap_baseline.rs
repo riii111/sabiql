@@ -28,8 +28,6 @@ use sabiql_ui::event::key_translator::translate;
 use sabiql_ui::shell::footer::Footer;
 use sabiql_ui::theme::palette_for;
 
-use super::harness::{create_test_terminal_sized, render_to_string};
-
 fn input_keys() -> Vec<KeyCombo> {
     (' '..='~')
         .map(Key::Char)
@@ -100,7 +98,8 @@ fn describe_combo(combo: KeyCombo) -> String {
     result
 }
 
-fn capture(name: &str, mut state: AppState, output: &mut String) {
+fn capture(name: &str, mut state: AppState, palettes: &mut BTreeMap<String, String>) -> String {
+    let mut output = String::new();
     writeln!(output, "## {name}").unwrap();
     let mut actions = BTreeMap::<String, Vec<String>>::new();
     for combo in input_keys() {
@@ -140,19 +139,6 @@ fn capture(name: &str, mut state: AppState, output: &mut String) {
         .collect::<String>();
     writeln!(output, "footer: {}", footer.trim_end()).unwrap();
 
-    let mut terminal = create_test_terminal_sized(165, 51);
-    let screen = render_to_string(&mut terminal, &mut state);
-    for line in screen
-        .lines()
-        .filter(|line| line.contains('╭') || line.contains('╰'))
-    {
-        let start = line.find(['╭', '╰']).unwrap();
-        let end = line
-            .rfind(['╮', '╯'])
-            .map_or(line.len(), |i| i + '╯'.len_utf8());
-        writeln!(output, "border: {}", &line[start..end]).unwrap();
-    }
-
     let origin = KeyContext::from_state(&state);
     state.ui.help_mut().open(origin);
     let help = HelpDocument::from_state(&state);
@@ -161,18 +147,28 @@ fn capture(name: &str, mut state: AppState, output: &mut String) {
             writeln!(output, "help: {}: {}", row.key(), row.description()).unwrap();
         }
     }
+    let mut palette = String::new();
     for command in palette_available(&KeyContext::for_browse_state(&state)) {
         writeln!(
-            output,
+            palette,
             "palette: {}: {} => {:?}",
             command.key, command.description, command.action
         )
         .unwrap();
     }
+    if let Some(first_section) = palettes.get(&palette) {
+        writeln!(output, "palette: see {first_section}").unwrap();
+    } else {
+        output.push_str(&palette);
+        palettes.insert(palette, name.to_string());
+    }
+    output
 }
 
-fn capture_matrix(engine: DatabaseType, preset: KeymapPreset) -> String {
-    let mut output = String::new();
+fn capture_matrix(engine: DatabaseType, preset: KeymapPreset) -> Vec<String> {
+    let mut sections = Vec::new();
+    let mut palettes = BTreeMap::new();
+    let mut record = |name: &str, state| sections.push(capture(name, state, &mut palettes));
     for mode in [
         InputMode::Normal,
         InputMode::CommandLine,
@@ -194,24 +190,20 @@ fn capture_matrix(engine: DatabaseType, preset: KeymapPreset) -> String {
         InputMode::SqliteDiagnostics,
         InputMode::RowDetail,
     ] {
-        capture(
-            &format!("{mode:?}"),
-            state(engine, preset, mode),
-            &mut output,
-        );
+        record(&format!("{mode:?}"), state(engine, preset, mode));
     }
     for pane in [FocusedPane::Inspector, FocusedPane::Result] {
         let mut current = state(engine, preset, InputMode::Normal);
         current.focus_pane(pane);
-        capture(&format!("Normal {pane:?}"), current, &mut output);
+        record(&format!("Normal {pane:?}"), current);
     }
     let mut focused = state(engine, preset, InputMode::Normal);
     focused.toggle_focus_mode();
-    capture("Normal focus", focused, &mut output);
+    record("Normal focus", focused);
 
     let mut readonly = state(engine, preset, InputMode::Normal);
     readonly.session.enable_read_only();
-    capture("Normal read-only", readonly, &mut output);
+    record("Normal read-only", readonly);
 
     let mut error = state(engine, preset, InputMode::Normal);
     error.focus_pane(FocusedPane::Result);
@@ -220,7 +212,7 @@ fn capture_matrix(engine: DatabaseType, preset: KeymapPreset) -> String {
         .set_error(ConnectionErrorInfo::from_db_operation_error(
             &DbOperationError::Timeout("connection timed out".to_string()),
         ));
-    capture("Normal result with connection error", error, &mut output);
+    record("Normal result with connection error", error);
 
     for variant in [
         "active",
@@ -250,22 +242,22 @@ fn capture_matrix(engine: DatabaseType, preset: KeymapPreset) -> String {
             "prefix" => result.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z),
             _ => {}
         }
-        capture(&format!("Normal result {variant}"), result, &mut output);
+        record(&format!("Normal result {variant}"), result);
     }
     let mut dropdown = state(engine, preset, InputMode::ConnectionSetup);
     dropdown.connection_setup.toggle_focused_dropdown();
-    capture("ConnectionSetup dropdown", dropdown, &mut output);
+    record("ConnectionSetup dropdown", dropdown);
 
     let mut cleartext = state(engine, preset, InputMode::ConnectionSetup);
     cleartext
         .connection_setup
         .set_database_type(DatabaseType::MySQL);
     super::harness::focus_connection_field(&mut cleartext, ConnectionField::CleartextAuth);
-    capture("ConnectionSetup cleartext", cleartext, &mut output);
+    record("ConnectionSetup cleartext", cleartext);
 
     let mut sql_edit = state(engine, preset, InputMode::SqlModal);
     sql_edit.sql_modal.enter_editing();
-    capture("SqlModal editing", sql_edit, &mut output);
+    record("SqlModal editing", sql_edit);
 
     let mut completion = state(engine, preset, InputMode::SqlModal);
     completion.sql_modal.enter_editing();
@@ -278,12 +270,12 @@ fn capture_matrix(engine: DatabaseType, preset: KeymapPreset) -> String {
         0,
         true,
     );
-    capture("SqlModal completion", completion, &mut output);
+    record("SqlModal completion", completion);
 
     for tab in [SqlModalTab::Plan, SqlModalTab::Compare] {
         let mut sql = state(engine, preset, InputMode::SqlModal);
         sql.sql_modal.set_active_tab(tab);
-        capture(&format!("SqlModal {tab:?}"), sql, &mut output);
+        record(&format!("SqlModal {tab:?}"), sql);
     }
     let mut confirm_high = state(engine, preset, InputMode::SqlModal);
     confirm_high.sql_modal.begin_confirming_high(
@@ -293,7 +285,7 @@ fn capture_matrix(engine: DatabaseType, preset: KeymapPreset) -> String {
         },
         "users".to_string(),
     );
-    capture("SqlModal confirm high", confirm_high, &mut output);
+    record("SqlModal confirm high", confirm_high);
 
     let mut confirm_analyze_high = state(engine, preset, InputMode::SqlModal);
     confirm_analyze_high
@@ -302,46 +294,38 @@ fn capture_matrix(engine: DatabaseType, preset: KeymapPreset) -> String {
             "EXPLAIN DELETE FROM users".to_string(),
             "users".to_string(),
         );
-    capture(
-        "SqlModal confirm analyze high",
-        confirm_analyze_high,
-        &mut output,
-    );
+    record("SqlModal confirm analyze high", confirm_analyze_high);
 
     let mut confirm_risk = state(engine, preset, InputMode::SqlModal);
     confirm_risk
         .sql_modal
         .begin_confirming_risk(AcknowledgeReason::UnknownRisk, "DO".to_string());
-    capture("SqlModal confirm risk", confirm_risk, &mut output);
+    record("SqlModal confirm risk", confirm_risk);
 
     let mut confirm_analyze_risk = state(engine, preset, InputMode::SqlModal);
     confirm_analyze_risk
         .sql_modal
         .begin_confirming_analyze_risk("DO".to_string(), AcknowledgeReason::UnknownRisk);
-    capture(
-        "SqlModal confirm analyze risk",
-        confirm_analyze_risk,
-        &mut output,
-    );
+    record("SqlModal confirm analyze risk", confirm_analyze_risk);
     let mut json_search = state(engine, preset, InputMode::JsonDetail);
     json_search.json_detail.enter_search();
-    capture("JsonDetail search", json_search, &mut output);
+    record("JsonDetail search", json_search);
 
     let mut help_filter = state(engine, preset, InputMode::Help);
     help_filter.ui.help_mut().enter_filter_editing();
-    capture("Help filter", help_filter, &mut output);
+    record("Help filter", help_filter);
 
     let mut settings_edit = state(engine, preset, InputMode::Settings);
     settings_edit.settings.switch_next_section();
     settings_edit.settings.switch_next_section();
     settings_edit.settings.start_custom_browser_edit();
-    capture("Settings browser", settings_edit, &mut output);
+    record("Settings browser", settings_edit);
 
     let mut cell_search = state(engine, preset, InputMode::CellDetail);
     cell_search.cell_detail.enter_search();
-    capture("CellDetail search", cell_search, &mut output);
+    record("CellDetail search", cell_search);
 
-    output
+    sections
 }
 
 #[test]
@@ -352,15 +336,12 @@ fn keymap_state_matrix() {
             ("postgres", DatabaseType::MySQL),
             ("sqlite", DatabaseType::SQLite),
         ] {
-            for (preset_name, preset) in [
-                ("default", KeymapPreset::Default),
-                ("ide", KeymapPreset::Ide),
-            ] {
-                insta::assert_snapshot!(
-                    format!("keymap_{snapshot_engine}_{preset_name}"),
-                    capture_matrix(engine, preset)
-                );
-            }
+            let default = capture_matrix(engine, KeymapPreset::Default);
+            let mut ide = capture_matrix(engine, KeymapPreset::Ide);
+            ide.retain(|section| !default.contains(section));
+
+            insta::assert_snapshot!(format!("keymap_{snapshot_engine}_default"), default.concat());
+            insta::assert_snapshot!(format!("keymap_{snapshot_engine}_ide"), ide.concat());
         }
     }
 }

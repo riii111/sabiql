@@ -2,52 +2,44 @@
 source: src/tests/render_snapshots/overlays.rs
 expression: output
 ---
-⌂ test_project ▸ Pg test_db ▸ -                                                                                                       connected | localhost:5432/test
-┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
-│> ▦ public.users                       │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│  ▦ public.posts                       ││(select a table)                                                                                                          │
-│  ▦ public.comments                    ││                                                                                                                          │
-│                        ╭ Help ───────────────────────────────────────────────────────────────────────────────────────────────────────────╮                        │
-│                        │Filter: copy                                                                                                     │                        │
-│                        │                                                                                                                 │                        │
-│                        │▸ Current: Result Pane                                                                                           │                        │
-│                        │  yy  Copy the active row values to clipboard (TSV)                                                              │                        │
-│                        │  Y   Copy the active cell value to clipboard                                                                    │                        │
-│                        │                                                                                                                 │                        │
-│                        │▸ Data Actions                                                                                                   │                        │
-│                        │  y   Copy DDL to clipboard                                                                                      │                        │
-│                        │  Y   Copy the active cell value to clipboard                                                                    │                        │
-│                        │  yy  Copy the active row values to clipboard (TSV)                                                              │                        │
-│                        │  y   Copy full JSON                                                                                             │                        │
-│                        │                                                                                                                 │                        │
-│                        │▸ Editing                                                                                                        │                        │
-│                        │  y   Copy query to clipboard                                                                                    │                        │
-│                        │                                                                                                                 │                        │
-│                        │▸ Connections                                                                                                    │                        │
-│                        │  y   Copy error to clipboard                                                                                    │                        │
-│                        │                                                                                                                 │                        │
-│                        │▸ Advanced                                                                                                       │────────────────────────┘
-│                        │  y   Copy full cell text                                                                                        │────────────────────────┐
-│                        │  y   Copy displayed text to clipboard                                                                           │                        │
-│                        │  Y   Copy row as JSON to clipboard                                                                              │                        │
-│                        │  y   Copy to clipboard                                                                                          │                        │
-│                        │  y   Copy full JSON                                                                                             │                        │
-│                        │                                                                                                                 │                        │
-│                        │                                                                                                                 │                        │
-│                        │                                                                                                                 │                        │
-│                        │                                                                                                                 │                        │
-│                        │                                                                                                                 │                        │
-│                        │                                                                                                                 │                        │
-│                        │                                                                                                                 │                        │
-│                        │                                                                                                                 │                        │
-│                        │                                                                                                                 │                        │
-│                        │                                                                                                                 │                        │
-│                        │                                                                                                                 │                        │
-│                        │                                                                                                                 │                        │
-│                        │                                                                                                                 │                        │
-│                        │─────────────────────────────────────────────────────────────────────────────────────────────────────────────────│                        │
-│                        │ [FILTER]                                                                                                        │                        │
-│                        ╰ Esc: Browse ────────────────────────────────────────────────────────────────────────────────────────────────────╯                        │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-└───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+╭ Help ───────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│Filter: copy                                                                                                     │
+│                                                                                                                 │
+│▸ Current: Result Pane                                                                                           │
+│  yy  Copy the active row values to clipboard (TSV)                                                              │
+│  Y   Copy the active cell value to clipboard                                                                    │
+│                                                                                                                 │
+│▸ Data Actions                                                                                                   │
+│  y   Copy DDL to clipboard                                                                                      │
+│  Y   Copy the active cell value to clipboard                                                                    │
+│  yy  Copy the active row values to clipboard (TSV)                                                              │
+│  y   Copy full JSON                                                                                             │
+│                                                                                                                 │
+│▸ Editing                                                                                                        │
+│  y   Copy query to clipboard                                                                                    │
+│                                                                                                                 │
+│▸ Connections                                                                                                    │
+│  y   Copy error to clipboard                                                                                    │
+│                                                                                                                 │
+│▸ Advanced                                                                                                       │
+│  y   Copy full cell text                                                                                        │
+│  y   Copy displayed text to clipboard                                                                           │
+│  Y   Copy row as JSON to clipboard                                                                              │
+│  y   Copy to clipboard                                                                                          │
+│  y   Copy full JSON                                                                                             │
+│                                                                                                                 │
+│                                                                                                                 │
+│                                                                                                                 │
+│                                                                                                                 │
+│                                                                                                                 │
+│                                                                                                                 │
+│                                                                                                                 │
+│                                                                                                                 │
+│                                                                                                                 │
+│                                                                                                                 │
+│                                                                                                                 │
+│                                                                                                                 │
+│                                                                                                                 │
+│─────────────────────────────────────────────────────────────────────────────────────────────────────────────────│
+│ [FILTER]                                                                                                        │
+╰ Esc: Browse ────────────────────────────────────────────────────────────────────────────────────────────────────╯
