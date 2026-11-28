@@ -38,13 +38,6 @@ impl TextInputState {
         }
     }
 
-    #[cfg(test)]
-    fn with_viewport(content: impl Into<String>, cursor: usize, viewport_offset: usize) -> Self {
-        let mut state = Self::new(content, cursor);
-        state.viewport_offset = viewport_offset;
-        state
-    }
-
     pub fn content(&self) -> &str {
         &self.content
     }
@@ -392,6 +385,16 @@ mod tests {
 
     fn state_with(content: &str, cursor: usize) -> TextInputState {
         TextInputState::new(content, cursor)
+    }
+
+    fn with_viewport(
+        content: impl Into<String>,
+        cursor: usize,
+        viewport_offset: usize,
+    ) -> TextInputState {
+        let mut state = TextInputState::new(content, cursor);
+        state.viewport_offset = viewport_offset;
+        state
     }
 
     mod insert_char_tests {
@@ -750,7 +753,7 @@ mod tests {
 
         #[test]
         fn cursor_within_viewport_no_change() {
-            let mut s = TextInputState::with_viewport("abcdef", 2, 0);
+            let mut s = with_viewport("abcdef", 2, 0);
 
             s.update_viewport(5);
 
@@ -759,7 +762,7 @@ mod tests {
 
         #[test]
         fn cursor_past_right_edge_scrolls() {
-            let mut s = TextInputState::with_viewport("abcdefgh", 7, 0);
+            let mut s = with_viewport("abcdefgh", 7, 0);
 
             s.update_viewport(5);
 
@@ -768,7 +771,7 @@ mod tests {
 
         #[test]
         fn cursor_before_viewport_scrolls_left() {
-            let mut s = TextInputState::with_viewport("abcdefgh", 1, 4);
+            let mut s = with_viewport("abcdefgh", 1, 4);
 
             s.update_viewport(5);
 
@@ -777,7 +780,7 @@ mod tests {
 
         #[test]
         fn cursor_at_end_reserves_space_for_block_cursor() {
-            let mut s = TextInputState::with_viewport("abcde", 5, 0);
+            let mut s = with_viewport("abcde", 5, 0);
 
             s.update_viewport(5);
 
@@ -788,7 +791,7 @@ mod tests {
 
         #[test]
         fn zero_visible_width() {
-            let mut s = TextInputState::with_viewport("abc", 1, 2);
+            let mut s = with_viewport("abc", 1, 2);
 
             s.update_viewport(0);
 
@@ -797,7 +800,7 @@ mod tests {
 
         #[test]
         fn cursor_on_last_char_no_extra_reserve() {
-            let mut s = TextInputState::with_viewport("abcde", 4, 0);
+            let mut s = with_viewport("abcde", 4, 0);
 
             s.update_viewport(5);
 
@@ -812,7 +815,7 @@ mod tests {
 
         #[test]
         fn set_content_resets_viewport() {
-            let mut s = TextInputState::with_viewport("old", 2, 5);
+            let mut s = with_viewport("old", 2, 5);
 
             s.set_content("new value".to_string());
 
@@ -832,7 +835,7 @@ mod tests {
 
         #[test]
         fn clear_resets_all() {
-            let mut s = TextInputState::with_viewport("hello", 3, 2);
+            let mut s = with_viewport("hello", 3, 2);
 
             s.clear();
 
@@ -919,7 +922,7 @@ mod tests {
 
         #[test]
         fn with_viewport_clamps_cursor() {
-            let s = TextInputState::with_viewport("ab", 10, 5);
+            let s = with_viewport("ab", 10, 5);
 
             assert_eq!(s.cursor(), 2);
             assert_eq!(s.viewport_offset(), 5);
@@ -927,7 +930,7 @@ mod tests {
 
         #[test]
         fn set_cursor_clamps_and_resets_viewport() {
-            let mut s = TextInputState::with_viewport("abcde", 3, 2);
+            let mut s = with_viewport("abcde", 3, 2);
 
             s.set_cursor(100);
 
@@ -937,7 +940,7 @@ mod tests {
 
         #[test]
         fn set_cursor_valid_position() {
-            let mut s = TextInputState::with_viewport("abcde", 4, 2);
+            let mut s = with_viewport("abcde", 4, 2);
 
             s.set_cursor(1);
 

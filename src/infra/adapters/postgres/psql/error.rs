@@ -2,8 +2,6 @@ use std::process::ExitStatus;
 
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
-#[cfg(all(test, windows))]
-use std::os::windows::process::ExitStatusExt;
 
 use crate::app::ports::outbound::{ConnectionFailureKind, DatabaseCli, DbOperationError};
 
@@ -281,6 +279,9 @@ mod tests {
     }
 
     mod classification {
+        #[cfg(windows)]
+        use std::os::windows::process::ExitStatusExt;
+
         use super::*;
 
         fn exit_status(code: i32) -> ExitStatus {

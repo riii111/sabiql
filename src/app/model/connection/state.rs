@@ -23,11 +23,6 @@ impl ConnectionState {
     pub fn is_connected(self) -> bool {
         matches!(self, Self::Connected)
     }
-
-    #[cfg(test)]
-    pub(crate) fn is_failed(self) -> bool {
-        matches!(self, Self::Failed)
-    }
 }
 
 #[cfg(test)]
@@ -50,6 +45,6 @@ mod tests {
         assert_eq!(state.is_not_connected(), is_not_connected);
         assert_eq!(state.is_connecting(), is_connecting);
         assert_eq!(state.is_connected(), is_connected);
-        assert_eq!(state.is_failed(), is_failed);
+        assert_eq!(state == ConnectionState::Failed, is_failed);
     }
 }

@@ -1,262 +1,315 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-ROOT = File.expand_path("..", __dir__)
-DEFAULT_PATHS = [
-  "src",
-  "tests",
-].freeze
-TEST_ONLY_ITEM_PATTERN = /\A(?:(?:pub(?:\([^)]*\))?|unsafe|async|extern(?:\s+"[^"]+")?)\s+)*(fn|struct|impl|const|type|static)\b/
-MODULE_PATTERN = /\A(?:(?:pub(?:\([^)]*\))?|unsafe)\s+)*mod\s+([a-zA-Z0-9_]+)\s*\{/
-PRIVATE_TEST_USE_PATTERN = /\Ause\b/
+require "strscan"
 
-# This lint only checks mechanically detectable anti-patterns.
-# Category-specific naming still relies on local rules and review.
+ROOT = File.expand_path("..", __dir__)
+DEFAULT_PATHS = ["src", "tests"].freeze
+
 def rust_files(paths)
   patterns = paths.flat_map do |path|
     absolute = File.expand_path(path, ROOT)
-    if File.directory?(absolute)
-      [File.join(absolute, "**/*.rs")]
-    else
-      [absolute]
-    end
+    File.directory?(absolute) ? File.join(absolute, "**/*.rs") : absolute
   end
 
   patterns.flat_map { |pattern| Dir.glob(pattern) }.sort.uniq
 end
 
-def starts_char_literal?(line, index)
-  return false unless line[index] == "'"
+# Keep Rust token trees balanced without interpreting Rust expressions or expanding macros.
+class RustTokens
+  IDENTIFIER = /(?:r\#)?[_\p{XID_Start}][\p{XID_Continue}]*/u
+  CHAR_LITERAL = /'(?:\\(?:u\{[\da-fA-F_]+\}|x[\da-fA-F]{2}|[^\r\n])|[^'\\\r\n])'/
+  GROUP_END = { "(" => ")", "[" => "]", "{" => "}" }.freeze
+  Token = Struct.new(:text, :line, :after_group)
 
-  if line[index + 1] == "\\"
-    closing = line.index("'", index + 2)
-    return !closing.nil?
-  end
+  def initialize(source)
+    @tokens = []
+    @scanner = StringScanner.new(source)
+    line = 1
+    groups = []
 
-  line[index + 2] == "'"
-end
+    until @scanner.eos?
+      if @scanner.scan(%r{\s+|//[^\n]*})
+        line += @scanner.matched.count("\n")
+      elsif @scanner.scan(%r{/\*})
+        line += skip_block_comment
+      else
+        start = @scanner.pos
+        text = scan_token
+        token = Token.new(text, line)
+        line += @scanner.string.byteslice(start...@scanner.pos).count("\n")
+        @tokens << token
 
-def count_braces(line, state)
-  opens = 0
-  closes = 0
-  index = 0
-
-  while index < line.length
-    char = line[index]
-
-    if state[:in_block_comment].positive?
-      if char == "/" && line[index + 1] == "*"
-        state[:in_block_comment] += 1
-        index += 2
-        next
-      end
-
-      if char == "*" && line[index + 1] == "/"
-        state[:in_block_comment] -= 1
-        index += 2
-        next
-      end
-
-      index += 1
-      next
-    end
-
-    if state[:in_single]
-      if state[:escaped]
-        state[:escaped] = false
-        index += 1
-        next
-      end
-
-      state[:escaped] = true if char == "\\"
-      state[:in_single] = false if char == "'"
-      index += 1
-      next
-    end
-
-    if state[:in_double]
-      if state[:escaped]
-        state[:escaped] = false
-        index += 1
-        next
-      end
-
-      state[:escaped] = true if char == "\\"
-      state[:in_double] = false if char == "\""
-      index += 1
-      next
-    end
-
-    if state[:in_raw]
-      if char == "\""
-        terminator = "\"" + ("#" * state[:raw_hashes])
-        if line[index, terminator.length] == terminator
-          state[:in_raw] = false
-          state[:raw_hashes] = 0
-          index += terminator.length
-          next
+        if GROUP_END.key?(text)
+          groups << token
+        elsif groups.any? && GROUP_END[groups.last.text] == text
+          groups.pop.after_group = @tokens.length
         end
       end
-
-      index += 1
-      next
     end
-
-    break if char == "/" && line[index + 1] == "/"
-
-    if char == "/" && line[index + 1] == "*"
-      state[:in_block_comment] = 1
-      index += 2
-      next
-    end
-
-    if char == "r"
-      hashes = 0
-      probe = index + 1
-      while line[probe] == "#"
-        hashes += 1
-        probe += 1
-      end
-
-      if line[probe] == "\""
-        state[:in_raw] = true
-        state[:raw_hashes] = hashes
-        index = probe + 1
-        next
-      end
-    end
-
-    case char
-    when "'"
-      state[:in_single] = true if starts_char_literal?(line, index)
-    when "\""
-      state[:in_double] = true
-    when "{"
-      opens += 1
-    when "}"
-      closes += 1
-    end
-
-    index += 1
   end
 
-  [opens, closes]
+  def [](index)
+    @tokens[index]&.text
+  end
+
+  def line(index)
+    @tokens[index].line
+  end
+
+  def after_group(index)
+    @tokens[index]&.after_group
+  end
+
+  private
+
+  def scan_token
+    if @scanner.scan(/(?:b|c)?r(\#*)"/)
+      terminator = '"' + @scanner[1]
+      @scanner.terminate unless @scanner.scan_until(/#{Regexp.escape(terminator)}/)
+      '"'
+    elsif @scanner.scan(/(?:b|c)?"(?:\\.|[^"\\])*"/m)
+      '"'
+    elsif @scanner.scan(CHAR_LITERAL)
+      "'"
+    else
+      @scanner.scan(IDENTIFIER) || @scanner.getch
+    end
+  end
+
+  def skip_block_comment
+    depth = 1
+    newlines = 0
+    while depth.positive? && (part = @scanner.scan_until(%r{/\*|\*/}))
+      newlines += part.count("\n")
+      depth += part.end_with?("/*") ? 1 : -1
+    end
+    @scanner.terminate if depth.positive?
+    newlines
+  end
 end
 
-def normalized_mod_name(name)
-  return nil if name.nil?
-  return nil if name == "tests"
+class RustTestLint
+  ITEM_KINDS = %w[fn struct enum union trait impl const type static macro_rules macro].freeze
+  ModuleTests = Struct.new(:name, :names)
 
-  normalized = name.sub(/_tests?\z/, "")
-  return nil if normalized.empty?
+  attr_reader :errors
 
-  normalized
-end
+  def initialize(source, file)
+    @tokens = RustTokens.new(source)
+    @file = file
+    @errors = []
+  end
 
-def cfg_test_attribute?(stripped)
-  stripped.delete(" \t") == "#[cfg(test)]"
-end
+  def run
+    lint_scope(0, ModuleTests.new(nil, {}), false, module_body: true)
+    errors
+  end
 
-def test_only_item_kind(stripped)
-  match = stripped.match(TEST_ONLY_ITEM_PATTERN)
-  match && match[1]
-end
+  private
 
-def private_test_use?(stripped)
-  PRIVATE_TEST_USE_PATTERN.match?(stripped)
+  def lint_scope(index, module_tests, inside_test_module, module_body: false)
+    inner_attributes, index = read_attributes(index, inner: true)
+    inside_test_module ||= module_body && test_only?(inner_attributes)
+
+    while (text = @tokens[index]) && text != "}"
+      attributes, item = read_attributes(index)
+      keyword, visibility = item_keyword(item)
+      kind = @tokens[keyword]
+      body = keyword + 2
+
+      if kind == "mod" && @tokens[body] == "{"
+        name = @tokens[keyword + 1].delete_prefix("r#")
+        test_module = inside_test_module || test_only?(attributes)
+        lint_scope(body + 1, ModuleTests.new(name, {}), test_module, module_body: true)
+        index = @tokens.after_group(body)
+        next
+      end
+
+      unless attributes.empty?
+        lint_placement(attributes, keyword, visibility) unless inside_test_module
+        lint_name(attributes, keyword, module_tests) if kind == "fn"
+      end
+
+      # Skip macro token trees and attribute/argument groups. Ordinary Rust blocks can contain local items.
+      if @tokens[item] == "{"
+        lint_scope(item + 1, module_tests, inside_test_module)
+      end
+      index = after_macro(item, keyword) || @tokens.after_group(item) || item + 1
+    end
+  end
+
+  def after_macro(item, keyword)
+    case @tokens[keyword]
+    when "macro_rules"
+      @tokens.after_group(keyword + 3) if @tokens[keyword + 1] == "!"
+    when "macro"
+      body = keyword + 2
+      body = @tokens.after_group(body) if @tokens[body] == "("
+      @tokens.after_group(body)
+    else
+      if @tokens[item + 1] == "!" && @tokens[item]&.match?(RustTokens::IDENTIFIER)
+        @tokens.after_group(item + 2)
+      end
+    end
+  end
+
+  def read_attributes(index, inner: false)
+    attributes = []
+    opening = index + (inner ? 2 : 1)
+    while @tokens[index] == "#" && (!inner || @tokens[index + 1] == "!") && @tokens[opening] == "["
+      attributes << opening + 1
+      index = @tokens.after_group(opening)
+      opening = index + (inner ? 2 : 1)
+    end
+    [attributes, index]
+  end
+
+  def item_keyword(index)
+    visibility = @tokens[index] == "pub"
+    if visibility
+      index += 1
+      index = @tokens.after_group(index) if @tokens[index] == "("
+    end
+
+    loop do
+      case @tokens[index]
+      when "unsafe", "async", "default", "safe"
+        index += 1
+      when "const"
+        break unless %w[fn unsafe async extern].include?(@tokens[index + 1])
+
+        index += 1
+      when "extern"
+        following = index + (@tokens[index + 1] == '"' ? 2 : 1)
+        break unless @tokens[following] == "fn"
+
+        index = following
+      else
+        break
+      end
+    end
+    [index, visibility]
+  end
+
+  def lint_placement(attributes, keyword, visibility)
+    return unless test_only?(attributes)
+
+    kind = @tokens[keyword]
+    if kind == "use" && !visibility
+      report(keyword, "test-only use must be inside a cfg(test) module")
+    elsif kind == "extern" || (ITEM_KINDS.include?(kind) && @tokens[keyword + 1] != "{")
+      report(keyword, "test-only item must be inside a cfg(test) module: #{kind}")
+    end
+  end
+
+  def test_only?(attributes)
+    attributes.any? { |attribute| cfg_attribute(attribute, false) == false } &&
+      attributes.none? { |attribute| cfg_attribute(attribute, true) == false }
+  end
+
+  # Evaluate with test fixed and every target/feature predicate unknown.
+  def cfg_attribute(index, test)
+    return true unless @tokens[index + 1] == "("
+
+    case @tokens[index]
+    when "cfg"
+      cfg_predicate(index + 2, test)
+    when "cfg_attr"
+      condition, *attributes = arguments(index + 1)
+      result = all(attributes.map { |attribute| cfg_attribute(attribute, test) })
+      any([invert(cfg_predicate(condition, test)), result])
+    else
+      true
+    end
+  end
+
+  def cfg_predicate(index, test)
+    case @tokens[index]
+    when "test"
+      @tokens[index + 1] == "=" ? nil : test
+    when "true"
+      true
+    when "false"
+      false
+    when "all", "any", "not"
+      return nil unless @tokens[index + 1] == "("
+
+      values = arguments(index + 1).map { |argument| cfg_predicate(argument, test) }
+      case @tokens[index]
+      when "all" then all(values)
+      when "any" then any(values)
+      when "not" then invert(values.first)
+      end
+    end
+  end
+
+  def arguments(opening)
+    arguments = []
+    closing = @tokens.after_group(opening) - 1
+    index = opening + 1
+    while index < closing
+      arguments << index
+      while index < closing && @tokens[index] != ","
+        index = @tokens.after_group(index) || index + 1
+      end
+      index += 1
+    end
+    arguments
+  end
+
+  def all(values)
+    return false if values.include?(false)
+
+    true unless values.include?(nil)
+  end
+
+  def any(values)
+    return true if values.include?(true)
+
+    false unless values.include?(nil)
+  end
+
+  def invert(value)
+    !value unless value.nil?
+  end
+
+  def lint_name(attributes, keyword, module_tests)
+    return unless attributes.any? { |index| test_attribute?(index) }
+
+    name = @tokens[keyword + 1].delete_prefix("r#")
+    if name.include?("returns_expected")
+      report(keyword, "test name must not contain `returns_expected`: #{name} (use a concrete result, drop the suffix if the result is already implied, or split the rstest if cases do not share one guarantee)")
+    end
+
+    if (previous = module_tests.names[name])
+      report(keyword, "duplicate test name in same module: #{name} (first seen at line #{previous})")
+    else
+      module_tests.names[name] = @tokens.line(keyword)
+    end
+
+    prefix = module_tests.name&.sub(/_tests?\z/, "")
+    if prefix && prefix != "tests" && !prefix.empty? && name.start_with?("#{prefix}_")
+      report(keyword, "redundant module prefix `#{prefix}_` in test name: #{name}")
+    end
+  end
+
+  def test_attribute?(index)
+    if @tokens[index] == "tokio" && @tokens[index + 1] == ":" && @tokens[index + 2] == ":"
+      return @tokens[index + 3] == "test" && @tokens[index + 4] != ":"
+    end
+
+    %w[test rstest].include?(@tokens[index]) && @tokens[index + 1] != ":"
+  end
+
+  def report(index, message)
+    errors << "#{@file}:#{@tokens.line(index)} #{message}"
+  end
 end
 
 paths = ARGV.empty? ? DEFAULT_PATHS : ARGV
-errors = []
-
-rust_files(paths).each do |file|
-  rel = file.delete_prefix("#{ROOT}/")
-  lines = File.readlines(file, chomp: true)
-
-  brace_depth = 0
-  brace_state = {
-    in_block_comment: 0,
-    in_single: false,
-    in_double: false,
-    in_raw: false,
-    raw_hashes: 0,
-    escaped: false,
-  }
-  mod_stack = []
-  pending_test_attr = false
-  pending_cfg_test_attr = false
-  seen_test_names = {}
-
-  lines.each_with_index do |line, idx|
-    stripped = line.strip
-    line_no = idx + 1
-
-    while mod_stack.any? && brace_depth < mod_stack.last[:depth]
-      mod_stack.pop
-    end
-
-    module_match = stripped.match(MODULE_PATTERN)
-    item_kind = test_only_item_kind(stripped)
-    private_test_use = private_test_use?(stripped)
-    cfg_test_module = pending_cfg_test_attr
-    module_depth = mod_stack.last&.dig(:depth) || 0
-    at_module_scope = brace_depth == module_depth
-    inside_test_module = mod_stack.any? { |entry| entry[:test_module] }
-
-    if stripped.start_with?("#[")
-      pending_cfg_test_attr ||= cfg_test_attribute?(stripped)
-    elsif pending_cfg_test_attr && (item_kind || module_match || private_test_use)
-      if item_kind && at_module_scope && !inside_test_module
-        errors << "#{rel}:#{line_no} test-only item must be inside a cfg(test) module: #{item_kind}"
-      elsif private_test_use && at_module_scope && !inside_test_module
-        errors << "#{rel}:#{line_no} test-only use must be inside a cfg(test) module"
-      end
-
-      pending_cfg_test_attr = false
-    elsif pending_cfg_test_attr && !stripped.empty? && !stripped.start_with?("//")
-      pending_cfg_test_attr = false
-    end
-
-    if module_match
-      mod_stack << {
-        name: module_match[1],
-        depth: brace_depth + 1,
-        test_module: cfg_test_module,
-      }
-      pending_cfg_test_attr = false
-    end
-
-    if stripped.match?(/^#\[(?:test|rstest|tokio::test)\b/) || (pending_test_attr && stripped.start_with?("#["))
-      pending_test_attr = true
-    elsif pending_test_attr && (match = stripped.match(/^(?:async\s+)?fn\s+([a-zA-Z0-9_]+)\s*\(/))
-      test_name = match[1]
-
-      if test_name.include?("returns_expected")
-        errors << "#{rel}:#{line_no} test name must not contain `returns_expected`: #{test_name} (use a concrete result, drop the suffix if the result is already implied, or split the rstest if cases do not share one guarantee)"
-      end
-
-      mod_path = mod_stack.map { |entry| entry[:name] }.join("::")
-      scoped_name = mod_path.empty? ? test_name : "#{mod_path}::#{test_name}"
-
-      if (previous = seen_test_names[scoped_name])
-        errors << "#{rel}:#{line_no} duplicate test name in same module: #{test_name} (first seen at line #{previous})"
-      else
-        seen_test_names[scoped_name] = line_no
-      end
-
-      mod_name = normalized_mod_name(mod_stack.last&.dig(:name))
-      if mod_name && test_name.start_with?("#{mod_name}_")
-        errors << "#{rel}:#{line_no} redundant module prefix `#{mod_name}_` in test name: #{test_name}"
-      end
-
-      pending_test_attr = false
-    elsif pending_test_attr && !stripped.empty? && !stripped.start_with?("//")
-      pending_test_attr = false
-    end
-
-    opens, closes = count_braces(line, brace_state)
-    brace_depth += opens - closes
-  end
+errors = rust_files(paths).flat_map do |file|
+  RustTestLint.new(File.read(file), file.delete_prefix("#{ROOT}/")).run
 end
 
 if errors.empty?
