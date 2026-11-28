@@ -433,11 +433,23 @@ impl EffectRunner {
                 tables,
                 filename,
             } => {
+                let cache_dir = match self.er.config_writer.get_cache_dir(&project_name) {
+                    Ok(cache_dir) => cache_dir,
+                    Err(error) => {
+                        self.spawn_report(async move {
+                            Action::ErDiagramOpened {
+                                run_id,
+                                outcome: Err(error.to_string()),
+                            }
+                        });
+                        return Ok(());
+                    }
+                };
                 let request = ErDiagramRequest {
                     run_id,
                     total_tables,
                     tables,
-                    cache_dir: self.er.config_writer.get_cache_dir(&project_name)?,
+                    cache_dir,
                     filename,
                     browser: state.settings.saved_er_browser().map(str::to_string),
                 };
@@ -556,6 +568,85 @@ mod tests {
     use crate::ports::outbound::{MySqlConnectionProbeResult, RenderOutput, RenderResult};
     use crate::test_support::endpoint;
     use tokio::sync::mpsc;
+
+    mod generate_er_diagram {
+        use super::*;
+        use crate::domain::ConnectionId;
+        use crate::model::er_state::ErStatus;
+        use crate::ports::outbound::ConfigWriterError;
+        use crate::update::reducer;
+        use std::path::PathBuf;
+        use std::time::Duration;
+
+        struct FailingConfigWriter;
+
+        impl ConfigWriter for FailingConfigWriter {
+            fn get_cache_dir(&self, _project_name: &str) -> Result<PathBuf, ConfigWriterError> {
+                Err(
+                    std::io::Error::new(std::io::ErrorKind::PermissionDenied, "cache denied")
+                        .into(),
+                )
+            }
+        }
+
+        #[tokio::test]
+        async fn cache_directory_failure_is_reported_without_stopping_the_runner() {
+            let (tx, mut rx) = mpsc::channel(8);
+            let mut runner = test_fixtures::make_runner(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                tx,
+            );
+            runner.er.config_writer = Arc::new(FailingConfigWriter);
+            let mut state = AppState::new("test".to_string());
+            state.session.activate_connection(
+                &ConnectionId::new(),
+                "postgres",
+                &endpoint::postgres("postgres://localhost/test"),
+            );
+            let run_id = state.er_preparation.start_waiting_run();
+            state.er_preparation.mark_rendering();
+            let mut renderer = NoopRenderer;
+
+            runner
+                .execute_effects(
+                    vec![Effect::GenerateErDiagram {
+                        run_id,
+                        total_tables: 1,
+                        project_name: "test".to_string(),
+                        tables: vec![],
+                        filename: "er.dot".to_string(),
+                    }],
+                    &mut renderer,
+                    &mut state,
+                )
+                .await
+                .unwrap();
+
+            let action =
+                test_fixtures::recv_action_with_timeout(&mut rx, Duration::from_secs(1)).await;
+            assert!(matches!(
+                &action,
+                Action::ErDiagramOpened { run_id: id, outcome: Err(error) }
+                    if *id == run_id && error.contains("cache denied")
+            ));
+            let effects = reducer::reduce(&mut state, action, Instant::now());
+            assert!(effects.is_empty());
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+            assert!(
+                state
+                    .messages
+                    .last_error()
+                    .unwrap()
+                    .contains("cache denied")
+            );
+            runner
+                .execute_effects(vec![Effect::Render], &mut renderer, &mut state)
+                .await
+                .unwrap();
+        }
+    }
 
     mod render {
         use super::*;
