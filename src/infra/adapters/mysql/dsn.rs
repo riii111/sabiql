@@ -215,12 +215,7 @@ pub(super) fn validate_mysql_transport(
                     "MySQL transport path is required".to_string(),
                 ));
             }
-            if target.transport == MySqlTransport::NamedPipe
-                && !matches!(
-                    target.ssl_mode,
-                    MySqlSslMode::Disabled | MySqlSslMode::Preferred
-                )
-            {
+            if !target.transport.allows_ssl_mode(target.ssl_mode) {
                 return Err(DbOperationError::ConnectionFailed(
                     "MySQL named pipe transport does not support the selected TLS mode".to_string(),
                 ));
@@ -240,11 +235,7 @@ pub(super) fn validate_mysql_tls_config(
             "MySQL TLS paths require an enabled TLS mode".to_string(),
         ));
     }
-    if matches!(
-        target.ssl_mode,
-        MySqlSslMode::VerifyCa | MySqlSslMode::VerifyIdentity
-    ) && target.ssl_ca.is_none()
-    {
+    if target.ssl_mode.uses_ca() && target.ssl_ca.is_none() {
         return Err(DbOperationError::ConnectionFailed(
             "MySQL CA path is required for certificate verification".to_string(),
         ));

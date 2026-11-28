@@ -1028,7 +1028,7 @@ mod tests {
             state.connection_setup.ssl_mode = SslMode::Prefer;
             state.connection_setup.focused_field = ConnectionField::SslMode;
             state.connection_setup.toggle_focused_dropdown();
-            while SslMode::all_variants()[state.connection_setup.ssl_dropdown().selected_index()]
+            while SslMode::all_variants()[state.connection_setup.open_dropdown().unwrap().1]
                 != SslMode::Require
             {
                 state.connection_setup.dropdown_next();
@@ -1037,7 +1037,7 @@ mod tests {
             let effects = reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
 
             assert_eq!(state.connection_setup.ssl_mode, SslMode::Require);
-            assert!(!state.connection_setup.ssl_dropdown().is_open());
+            assert!(!state.connection_setup.has_open_dropdown());
             assert!(matches!(
                 effects.as_slice(),
                 [Effect::CancelTrackedTasks, Effect::SaveAndConnect {

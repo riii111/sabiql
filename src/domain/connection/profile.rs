@@ -134,18 +134,14 @@ impl ConnectionProfile {
                         }
                     }
                     MySqlTransport::UnixSocket | MySqlTransport::NamedPipe => {
-                        let Some(path) = mysql.transport_path.as_deref() else {
-                            return Err(ConnectionProfileError::MissingMySqlTransportPath);
-                        };
-                        if path.trim().is_empty() || path.chars().any(char::is_control) {
+                        let path = mysql
+                            .transport_path
+                            .as_deref()
+                            .ok_or(ConnectionProfileError::MissingMySqlTransportPath)?;
+                        if !MySqlTransport::is_valid_path(path) {
                             return Err(ConnectionProfileError::InvalidMySqlTransportPath);
                         }
-                        if mysql.transport == MySqlTransport::NamedPipe
-                            && !matches!(
-                                mysql.ssl_mode,
-                                MySqlSslMode::Disabled | MySqlSslMode::Preferred
-                            )
-                        {
+                        if !mysql.transport.allows_ssl_mode(mysql.ssl_mode) {
                             return Err(ConnectionProfileError::MySqlNamedPipeRequiresNonTls);
                         }
                     }
