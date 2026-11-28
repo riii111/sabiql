@@ -18,7 +18,6 @@ pub const RESULT_INNER_OVERHEAD: u16 = 3;
 
 // border (2) + inner overhead, used by scroll limit calculation
 pub const RESULT_PANE_OVERHEAD: u16 = 2 + RESULT_INNER_OVERHEAD;
-pub const EXPLORER_PANEL_BORDER_WIDTH: u16 = 2;
 pub const EXPLORER_HIGHLIGHT_SYMBOL_WIDTH: u16 = 2;
 pub const EXPLORER_SCROLLBAR_RESERVED_WIDTH: u16 = 1;
 // Help modal height as a percent of the available terminal height.
@@ -49,7 +48,7 @@ pub enum ResultNavMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum FocusMode {
+enum FocusMode {
     #[default]
     Normal,
     Focused {
@@ -58,15 +57,15 @@ pub enum FocusMode {
 }
 
 impl FocusMode {
-    pub fn focused(previous_pane: FocusedPane) -> Self {
+    fn focused(previous_pane: FocusedPane) -> Self {
         Self::Focused { previous_pane }
     }
 
-    pub fn is_active(self) -> bool {
+    fn is_active(self) -> bool {
         matches!(self, Self::Focused { .. })
     }
 
-    pub fn previous_pane(self) -> Option<FocusedPane> {
+    fn previous_pane(self) -> Option<FocusedPane> {
         match self {
             Self::Focused { previous_pane } => Some(previous_pane),
             Self::Normal => None,
@@ -139,74 +138,52 @@ impl ResultSelection {
         self.row = None;
         self.cell = None;
     }
-
-    pub fn clamp(&mut self, max_rows: usize, max_cols: usize) {
-        if max_rows == 0 {
-            self.reset();
-            return;
-        }
-        if let Some(r) = self.row
-            && r >= max_rows
-        {
-            self.reset();
-            return;
-        }
-        if max_cols == 0 {
-            self.reset();
-            return;
-        }
-        if let Some(c) = self.cell
-            && c >= max_cols
-        {
-            self.cell = Some(max_cols - 1);
-        }
-    }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct UiState {
-    theme_id: ThemeId,
+    pub theme_id: ThemeId,
     focused_pane: FocusedPane,
     focus_mode: FocusMode,
     explorer_selected: usize,
-    explorer_scroll_offset: usize,
-    explorer_horizontal_offset: usize,
+    pub explorer_scroll_offset: usize,
+    pub explorer_horizontal_offset: usize,
     // Default::default() leaves this at 0 until the first render updates it, so
     // scroll_max_offset may temporarily return the full content width.
-    explorer_content_width: usize,
+    pub explorer_content_width: usize,
 
     connection_list_selected: usize,
     connection_list_scroll_offset: usize,
     connection_list_pane_height: u16,
 
     table_picker: PickerState,
-    palette_commands: Vec<usize>,
+    pub palette_commands: Vec<usize>,
 
     er_picker: PickerState,
     er_selected_tables: BTreeSet<String>,
     pending_er_picker: bool,
 
-    inspector_tab: InspectorTab,
-    inspector_scroll_offset: usize,
-    inspector_horizontal_offset: usize,
-    inspector_viewport_plan: ViewportPlan,
-    inspector_pane_height: u16,
+    pub inspector_tab: InspectorTab,
+    pub inspector_scroll_offset: usize,
+    pub inspector_horizontal_offset: usize,
+    pub inspector_viewport_plan: ViewportPlan,
+    pub(crate) inspector_pane_height: u16,
 
     explorer_pane_height: u16,
 
-    result_viewport_plan: ViewportPlan,
-    result_widths_cache: ColumnWidthsCache,
+    pub result_viewport_plan: ViewportPlan,
+    pub result_widths_cache: ColumnWidthsCache,
     result_pane_height: u16,
-    json_detail_editor_visible_rows: usize,
+    pub(crate) json_detail_editor_visible_rows: usize,
     pub row_detail_content_visible_rows: usize,
     pub row_detail_content_visible_columns: usize,
 
     help: HelpState,
 
     terminal_width: u16,
-    terminal_height: u16,
+    pub terminal_height: u16,
 
-    key_sequence: KeySequenceState,
+    pub key_sequence: KeySequenceState,
 }
 
 impl UiState {
@@ -229,32 +206,13 @@ impl UiState {
         self.focused_pane
     }
 
-    pub fn set_focused_pane(&mut self, pane: FocusedPane) {
+    // AppState also updates result interaction and input mode when changing panes.
+    pub(in crate::model) fn set_focused_pane(&mut self, pane: FocusedPane) {
         self.focused_pane = pane;
-    }
-
-    pub fn focus_mode(&self) -> FocusMode {
-        self.focus_mode
-    }
-
-    pub fn set_focus_mode(&mut self, mode: FocusMode) {
-        self.focus_mode = mode;
     }
 
     pub fn explorer_selected(&self) -> usize {
         self.explorer_selected
-    }
-
-    pub fn explorer_scroll_offset(&self) -> usize {
-        self.explorer_scroll_offset
-    }
-
-    pub fn explorer_horizontal_offset(&self) -> usize {
-        self.explorer_horizontal_offset
-    }
-
-    pub fn set_explorer_scroll_offset(&mut self, offset: usize) {
-        self.explorer_scroll_offset = offset;
     }
 
     pub fn scroll_explorer_page_down(&mut self, item_count: usize, delta: usize) {
@@ -282,18 +240,6 @@ impl UiState {
         self.explorer_scroll_offset = self.explorer_scroll_offset.saturating_sub(delta);
     }
 
-    pub fn set_explorer_horizontal_offset(&mut self, offset: usize) {
-        self.explorer_horizontal_offset = offset;
-    }
-
-    pub fn explorer_content_width(&self) -> usize {
-        self.explorer_content_width
-    }
-
-    pub fn set_explorer_content_width(&mut self, width: usize) {
-        self.explorer_content_width = width;
-    }
-
     pub fn connection_list_selected(&self) -> usize {
         self.connection_list_selected
     }
@@ -312,14 +258,6 @@ impl UiState {
 
     pub fn table_picker_mut(&mut self) -> &mut PickerState {
         &mut self.table_picker
-    }
-
-    pub fn palette_commands(&self) -> &[usize] {
-        &self.palette_commands
-    }
-
-    pub fn set_palette_commands(&mut self, commands: Vec<usize>) {
-        self.palette_commands = commands;
     }
 
     pub fn er_picker(&self) -> &PickerState {
@@ -348,84 +286,17 @@ impl UiState {
         self.er_selected_tables = tables.into_iter().collect();
     }
 
-    pub fn pending_er_picker(&self) -> bool {
+    #[cfg(test)]
+    pub(crate) fn pending_er_picker(&self) -> bool {
         self.pending_er_picker
-    }
-
-    pub fn set_pending_er_picker(&mut self, pending: bool) {
-        self.pending_er_picker = pending;
-    }
-
-    pub fn inspector_tab(&self) -> InspectorTab {
-        self.inspector_tab
-    }
-
-    pub fn set_inspector_tab(&mut self, tab: InspectorTab) {
-        self.inspector_tab = tab;
-    }
-
-    pub fn inspector_scroll_offset(&self) -> usize {
-        self.inspector_scroll_offset
-    }
-
-    pub fn set_inspector_scroll_offset(&mut self, offset: usize) {
-        self.inspector_scroll_offset = offset;
-    }
-
-    pub fn inspector_horizontal_offset(&self) -> usize {
-        self.inspector_horizontal_offset
-    }
-
-    pub fn set_inspector_horizontal_offset(&mut self, offset: usize) {
-        self.inspector_horizontal_offset = offset;
-    }
-
-    pub fn inspector_viewport_plan(&self) -> &ViewportPlan {
-        &self.inspector_viewport_plan
-    }
-
-    pub fn set_inspector_viewport_plan(&mut self, plan: ViewportPlan) {
-        self.inspector_viewport_plan = plan;
-    }
-
-    pub fn inspector_pane_height(&self) -> u16 {
-        self.inspector_pane_height
-    }
-
-    pub fn set_inspector_pane_height(&mut self, height: u16) {
-        self.inspector_pane_height = height;
     }
 
     pub fn set_explorer_pane_height(&mut self, height: u16) {
         self.explorer_pane_height = height;
     }
 
-    pub fn result_viewport_plan(&self) -> &ViewportPlan {
-        &self.result_viewport_plan
-    }
-
-    pub fn set_result_viewport_plan(&mut self, plan: ViewportPlan) {
-        self.result_viewport_plan = plan;
-    }
-
-    pub fn result_widths_cache(&self) -> &ColumnWidthsCache {
-        &self.result_widths_cache
-    }
-
-    pub fn set_result_widths_cache(&mut self, cache: ColumnWidthsCache) {
-        self.result_widths_cache = cache;
-    }
-
     pub fn set_result_pane_height(&mut self, height: u16) {
         self.result_pane_height = height;
-    }
-
-    pub fn json_detail_editor_visible_rows(&self) -> usize {
-        self.json_detail_editor_visible_rows
-    }
-
-    pub fn set_json_detail_editor_visible_rows(&mut self, rows: usize) {
-        self.json_detail_editor_visible_rows = rows;
     }
 
     pub fn help(&self) -> &HelpState {
@@ -436,32 +307,8 @@ impl UiState {
         &mut self.help
     }
 
-    pub fn terminal_height(&self) -> u16 {
-        self.terminal_height
-    }
-
-    pub fn set_terminal_height(&mut self, height: u16) {
-        self.terminal_height = height;
-    }
-
     pub fn set_terminal_width(&mut self, width: u16) {
         self.terminal_width = width;
-    }
-
-    pub fn key_sequence(&self) -> KeySequenceState {
-        self.key_sequence
-    }
-
-    pub fn set_key_sequence(&mut self, key_sequence: KeySequenceState) {
-        self.key_sequence = key_sequence;
-    }
-
-    pub fn theme_id(&self) -> ThemeId {
-        self.theme_id
-    }
-
-    pub fn set_theme(&mut self, theme_id: ThemeId) {
-        self.theme_id = theme_id;
     }
 
     pub fn result_visible_rows(&self) -> usize {
@@ -513,7 +360,7 @@ impl UiState {
         help_viewport_layout_for(base_rows, base_columns, total_lines, content_width)
     }
 
-    pub fn toggle_focus(&mut self) -> bool {
+    pub(in crate::model) fn toggle_focus(&mut self) -> bool {
         if let Some(prev) = self.focus_mode.previous_pane() {
             self.focus_mode = FocusMode::Normal;
             self.focused_pane = prev;
@@ -645,10 +492,6 @@ pub fn explorer_content_width_from_inner_width(inner_width: u16) -> usize {
         as usize
 }
 
-pub fn explorer_content_width_from_pane_width(pane_width: u16) -> usize {
-    explorer_content_width_from_inner_width(pane_width.saturating_sub(EXPLORER_PANEL_BORDER_WIDTH))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -670,18 +513,13 @@ mod tests {
         use super::*;
 
         #[test]
-        fn pane_width_excludes_panel_chrome_from_visible_content_width() {
-            assert_eq!(explorer_content_width_from_pane_width(20), 15);
-        }
-
-        #[test]
         fn inner_width_excludes_list_chrome_from_visible_content_width() {
             assert_eq!(explorer_content_width_from_inner_width(18), 15);
         }
 
         #[test]
-        fn tiny_pane_width_returns_zero_visible_content_width() {
-            assert_eq!(explorer_content_width_from_pane_width(4), 0);
+        fn tiny_inner_width_returns_zero_visible_content_width() {
+            assert_eq!(explorer_content_width_from_inner_width(2), 0);
         }
 
         #[test]
@@ -1029,57 +867,6 @@ mod tests {
 
             assert_eq!(sel.mode(), ResultNavMode::Scroll);
             assert_eq!(sel.row(), None);
-        }
-
-        #[test]
-        fn clamp_resets_when_zero_rows() {
-            let mut sel = ResultSelection::default();
-            sel.enter_cell(5, 0);
-
-            sel.clamp(0, 10);
-
-            assert_eq!(sel.mode(), ResultNavMode::Scroll);
-        }
-
-        #[test]
-        fn clamp_resets_when_row_out_of_bounds() {
-            let mut sel = ResultSelection::default();
-            sel.enter_cell(10, 2);
-
-            sel.clamp(5, 10);
-
-            assert_eq!(sel.mode(), ResultNavMode::Scroll);
-        }
-
-        #[test]
-        fn clamp_caps_cell_to_max_cols() {
-            let mut sel = ResultSelection::default();
-            sel.enter_cell(0, 9);
-
-            sel.clamp(10, 5);
-
-            assert_eq!(sel.cell(), Some(4));
-        }
-
-        #[test]
-        fn clamp_resets_when_zero_cols() {
-            let mut sel = ResultSelection::default();
-            sel.enter_cell(0, 3);
-
-            sel.clamp(10, 0);
-
-            assert_eq!(sel.mode(), ResultNavMode::Scroll);
-        }
-
-        #[test]
-        fn clamp_preserves_valid_selection() {
-            let mut sel = ResultSelection::default();
-            sel.enter_cell(3, 2);
-
-            sel.clamp(10, 10);
-
-            assert_eq!(sel.row(), Some(3));
-            assert_eq!(sel.cell(), Some(2));
         }
 
         #[test]

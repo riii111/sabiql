@@ -1,20 +1,15 @@
 use sabiql_domain::test_support::table;
 use sabiql_domain::{
     Column, ColumnAttributes, DatabaseMetadata, FkAction, ForeignKey, Index, IndexAttributes,
-    IndexType, QueryResult, QuerySource, Table, TableSummary, Trigger, TriggerEvent, TriggerTiming,
+    IndexType, QueryResult, QuerySource, Table, TableSummary, Trigger,
 };
 
 pub fn sample_metadata() -> DatabaseMetadata {
     let mut metadata = DatabaseMetadata::new("test_db".to_string());
     metadata.table_summaries = vec![
-        TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
-        TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
-        TableSummary::new(
-            "public".to_string(),
-            "comments".to_string(),
-            Some(200),
-            false,
-        ),
+        TableSummary::new("public".to_string(), "users".to_string(), Some(100)),
+        TableSummary::new("public".to_string(), "posts".to_string(), Some(50)),
+        TableSummary::new("public".to_string(), "comments".to_string(), Some(200)),
     ];
     metadata
 }
@@ -91,12 +86,7 @@ pub fn sample_postgres_table_detail() -> Table {
     }];
     table.triggers = vec![Trigger {
         name: "audit_users".to_string(),
-        timing: TriggerTiming::After,
-        events: vec![TriggerEvent::Insert, TriggerEvent::Update],
-        action_order: None,
-        definition: "audit_func".to_string(),
-        security_context: Some("INVOKER".to_string()),
-        creation_context: None,
+        definition: "CREATE TRIGGER audit_users AFTER INSERT OR UPDATE\nON public.users FOR EACH ROW EXECUTE FUNCTION audit_func()".to_string(),
     }];
     table.row_count_estimate = Some(100);
     table.comment = Some("User accounts".to_string());

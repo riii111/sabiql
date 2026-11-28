@@ -1,4 +1,4 @@
-pub mod confirm_dialog;
-pub mod help;
-pub mod settings;
-pub mod sqlite_diagnostics;
+pub(crate) mod confirm_dialog;
+pub(crate) mod help;
+pub(crate) mod settings;
+pub(crate) mod sqlite_diagnostics;

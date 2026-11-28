@@ -22,7 +22,7 @@ fn filter_visible_width(raw_width: usize, cursor: usize, char_count: usize) -> u
 
 /// Renders a one-line `  > ` filter input with cursor; returns the visible
 /// width the caller must feed back into `TextInputState::update_viewport`.
-pub fn render_filter_input_line(
+pub(crate) fn render_filter_input_line(
     frame: &mut Frame,
     area: Rect,
     input: &TextInputState,

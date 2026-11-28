@@ -100,7 +100,7 @@ pub fn render_and_get_buffer_at(
     state: &mut AppState,
     now: Instant,
 ) -> Buffer {
-    render_and_get_buffer_at_with_theme(terminal, state, now, palette_for(state.ui.theme_id()))
+    render_and_get_buffer_at_with_theme(terminal, state, now, palette_for(state.ui.theme_id))
 }
 
 pub fn render_and_get_buffer_at_with_theme(
@@ -156,7 +156,7 @@ pub fn render_to_string_with_services(
         terminal,
         state,
         test_instant(),
-        palette_for(state.ui.theme_id()),
+        palette_for(state.ui.theme_id),
         services,
     );
     buffer_to_string(&buffer)

@@ -1,8 +1,7 @@
-use std::cell::Cell;
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::domain::{DatabaseType, QueryResult, QuerySource, Table};
+use crate::domain::{QueryResult, QuerySource, Table};
 use crate::model::shared::async_run::AsyncRun;
 
 pub const PREVIEW_PAGE_SIZE: usize = 500;
@@ -90,12 +89,6 @@ impl PaginationState {
         self.reached_end = true;
     }
 
-    // Use when navigation changes only the page index and must preserve the
-    // current end-of-data flag.
-    pub fn set_current_page(&mut self, page: usize) {
-        self.current_page = page;
-    }
-
     // Applying a query result replaces both the page and end-of-data flag so
     // stale pagination state cannot survive a completed fetch.
     pub fn set_page_result(&mut self, page: usize, reached_end: bool) {
@@ -131,7 +124,6 @@ pub(crate) struct PendingPreview {
 pub struct QueryExecution {
     start_time: Option<Instant>,
     current_result: Option<Arc<QueryResult>>,
-    csv_export_cache: Cell<Option<(Option<DatabaseType>, bool)>>,
     result_generation: u64,
     result_highlight_until: Option<Instant>,
     pub pagination: PaginationState,
@@ -190,29 +182,12 @@ impl QueryExecution {
 
     pub fn set_current_result(&mut self, result: Arc<QueryResult>) {
         self.current_result = Some(result);
-        self.csv_export_cache.set(None);
         self.result_generation += 1;
     }
 
     pub fn clear_current_result(&mut self) {
         self.current_result = None;
-        self.csv_export_cache.set(None);
         self.result_generation += 1;
-    }
-
-    pub(crate) fn cached_csv_export(
-        &self,
-        database: Option<DatabaseType>,
-        compute: impl FnOnce() -> bool,
-    ) -> bool {
-        if let Some((cached_database, available)) = self.csv_export_cache.get()
-            && cached_database == database
-        {
-            return available;
-        }
-        let available = compute();
-        self.csv_export_cache.set(Some((database, available)));
-        available
     }
 
     pub(crate) fn defer_preview(
@@ -332,26 +307,6 @@ impl QueryExecution {
 mod tests {
     use super::*;
     use crate::domain::QuerySource;
-
-    #[test]
-    fn csv_export_cache_tracks_result_and_database() {
-        let mut query = QueryExecution::default();
-        let calls = Cell::new(0);
-        let compute = || {
-            calls.set(calls.get() + 1);
-            true
-        };
-
-        assert!(query.cached_csv_export(Some(DatabaseType::MySQL), compute));
-        assert!(query.cached_csv_export(Some(DatabaseType::MySQL), compute));
-        assert_eq!(calls.get(), 1);
-        assert!(query.cached_csv_export(Some(DatabaseType::SQLite), compute));
-        query.set_current_result(make_result(QuerySource::Adhoc));
-        assert!(query.cached_csv_export(Some(DatabaseType::SQLite), compute));
-        query.clear_current_result();
-        assert!(query.cached_csv_export(Some(DatabaseType::SQLite), compute));
-        assert_eq!(calls.get(), 4);
-    }
 
     fn make_result(source: QuerySource) -> Arc<QueryResult> {
         Arc::new(QueryResult::success(

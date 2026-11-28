@@ -97,12 +97,6 @@ impl KeyCombo {
             modifiers: Modifiers::ALT,
         }
     }
-    pub const fn ctrl_alt(key: Key) -> Self {
-        Self {
-            key,
-            modifiers: Modifiers::CTRL_ALT,
-        }
-    }
     pub const fn ctrl_shift(key: Key) -> Self {
         Self {
             key,

@@ -51,7 +51,7 @@ pub(super) mod tests {
 
     use crate::domain::{
         ColumnAttributes, CommandTag, Index, IndexAttributes, IndexType, QueryResult, QuerySource,
-        Table, Trigger, TriggerEvent, TriggerTiming,
+        Table, Trigger,
     };
     use crate::model::app_state::AppState;
     use crate::update::action::{Action, QueryCompletionContext};
@@ -147,12 +147,8 @@ pub(super) mod tests {
             }],
             triggers: vec![Trigger {
                 name: "trg".to_string(),
-                timing: TriggerTiming::After,
-                events: vec![TriggerEvent::Update],
-                action_order: None,
-                definition: "f".to_string(),
-                security_context: None,
-                creation_context: None,
+                definition: "CREATE TRIGGER trg AFTER UPDATE ON users EXECUTE FUNCTION f()"
+                    .to_string(),
             }],
             ..test_support::table::minimal("", "")
         }

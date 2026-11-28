@@ -113,7 +113,6 @@ mod tests {
                     "public".to_string(),
                     "users".to_string(),
                     None,
-                    false,
                 )];
                 metadata
             })
@@ -1177,7 +1176,7 @@ mod tests {
                 metadata.table_summaries = tables
                     .into_iter()
                     .map(|(schema, name)| {
-                        TableSummary::new(schema.to_string(), name.to_string(), None, false)
+                        TableSummary::new(schema.to_string(), name.to_string(), None)
                     })
                     .collect();
                 metadata
@@ -1317,7 +1316,7 @@ mod tests {
 
         fn make_metadata(table_count: usize) -> Arc<DatabaseMetadata> {
             let tables: Vec<TableSummary> = (0..table_count)
-                .map(|i| TableSummary::new(format!("t{i}"), "public".to_string(), None, false))
+                .map(|i| TableSummary::new(format!("t{i}"), "public".to_string(), None))
                 .collect();
             Arc::new({
                 let mut metadata = DatabaseMetadata::new("test".to_string());
@@ -1453,7 +1452,7 @@ mod tests {
 
         fn make_metadata(table_count: usize) -> Arc<DatabaseMetadata> {
             let tables: Vec<TableSummary> = (0..table_count)
-                .map(|i| TableSummary::new(format!("t{i}"), "public".to_string(), None, false))
+                .map(|i| TableSummary::new(format!("t{i}"), "public".to_string(), None))
                 .collect();
             Arc::new({
                 let mut metadata = DatabaseMetadata::new("test".to_string());
@@ -1626,7 +1625,6 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             let _ = state.table_prefetch.begin_er_prefetch();
             let _ = state.er_preparation.start_waiting_run();
-            state.er_preparation.mark_fk_unexpanded();
 
             let effects = check_er_completion(&mut state);
 

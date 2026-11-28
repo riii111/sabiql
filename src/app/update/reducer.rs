@@ -16,11 +16,11 @@ use crate::model::app_state::AppState;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::KeySequenceState;
-use crate::model::shared::key_sequence::Prefix;
 use crate::model::shared::text_input::TextEdit;
+use crate::model::sql_editor::modal::sql_modal_visible_rows;
 use crate::policy::FeaturePolicy;
 use crate::services::AppServices;
-use crate::update::action::{Action, TableTarget};
+use crate::update::action::{Action, ListMotion, TableTarget};
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 use crate::update::input::keymap::{KeyContext, palette_action};
 use crate::update::query_context::termination_effects;
@@ -74,7 +74,10 @@ pub(in crate::update) fn route(
         Action::Quit => quit(state),
         Action::Render => vec![Effect::Render],
         Action::Resize(width, height) => resize(state, width, height),
-        Action::SetFocusedPane(pane) => browse::navigation::focus::set_focused_pane(state, pane),
+        Action::SetFocusedPane(pane) => {
+            state.focus_pane(pane);
+            vec![]
+        }
         Action::TextInput { target, ch } => {
             text_edit::apply_text_edit(state, target, TextEdit::Insert(ch), now)
         }
@@ -104,22 +107,37 @@ pub(in crate::update) fn route(
         Action::ScrollToCursor { target, position } => {
             target_routing::scroll_to_cursor(state, target, position)
         }
-        Action::EnterHelpFilter => modal::help::enter_help_filter(state),
-        Action::ExitHelpFilter => modal::help::exit_help_filter(state),
-        Action::Select(motion) => target_routing::select(state, motion),
+        Action::EnterHelpFilter => {
+            state.ui.help_mut().enter_filter_editing();
+            vec![]
+        }
+        Action::ExitHelpFilter => {
+            state.ui.help_mut().exit_filter_editing();
+            vec![]
+        }
+        Action::Select(motion) => browse::navigation::explorer::select_explorer(state, motion),
         Action::ListSelect { target, motion } => target_routing::list_select(state, target, motion),
         Action::Paste { target, text } => target_routing::paste(state, target, text, now),
-        Action::BeginKeySequence(prefix) => begin_key_sequence(state, prefix),
+        Action::BeginKeySequence(prefix) => {
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(prefix);
+            vec![]
+        }
         Action::OpenModal(kind) => target_routing::open_modal(state, kind, now),
         Action::CloseModal(kind) => target_routing::close_modal(state, kind),
-        Action::CancelKeySequence => cancel_key_sequence(state),
+        Action::CancelKeySequence => {
+            state.ui.key_sequence = KeySequenceState::Idle;
+            vec![]
+        }
         Action::ToggleHelp => modal::help::toggle_help(state),
         Action::Escape => modal::base::escape(state),
         Action::ConfirmSelection => confirm_selection(state, now, services),
         Action::ConfirmDialogConfirm => modal::confirm_dialog::confirm_dialog_confirm(state, now),
         Action::ConfirmDialogCancel => modal::confirm_dialog::confirm_dialog_cancel(state),
         Action::EnterCommandLine => browse::navigation::input::enter_command_line(state),
-        Action::ExitCommandLine => browse::navigation::input::exit_command_line(state),
+        Action::ExitCommandLine => {
+            state.modal.pop_mode();
+            vec![]
+        }
         Action::CommandLineSubmit => browse::query::execution::command_line_submit(state),
         Action::TryConnect => connection::lifecycle::try_connect(state),
         Action::SwitchConnection(target) => connection::lifecycle::switch_connection(state, target),
@@ -132,19 +150,24 @@ pub(in crate::update) fn route(
         Action::ConnectionSetupNextField => connection::setup::connection_setup_next_field(state),
         Action::ConnectionSetupPrevField => connection::setup::connection_setup_prev_field(state),
         Action::ConnectionSetupToggleDropdown => {
-            connection::setup::connection_setup_toggle_dropdown(state)
+            state.connection_setup.toggle_focused_dropdown();
+            vec![]
         }
         Action::ConnectionSetupDropdownNext => {
-            connection::setup::connection_setup_dropdown_next(state)
+            state.connection_setup.dropdown_next();
+            vec![]
         }
         Action::ConnectionSetupDropdownPrev => {
-            connection::setup::connection_setup_dropdown_prev(state)
+            state.connection_setup.dropdown_prev();
+            vec![]
         }
         Action::ConnectionSetupDropdownConfirm => {
-            connection::setup::connection_setup_dropdown_confirm(state)
+            state.connection_setup.confirm_dropdown();
+            vec![]
         }
         Action::ConnectionSetupDropdownCancel => {
-            connection::setup::connection_setup_dropdown_cancel(state)
+            state.connection_setup.cancel_dropdown();
+            vec![]
         }
         Action::ConnectionSetupSave => connection::setup::connection_setup_save(state),
         Action::ConnectionSetupCancel => connection::setup::connection_setup_cancel(state),
@@ -181,12 +204,16 @@ pub(in crate::update) fn route(
         Action::ConnectionEditLoaded(profile) => {
             connection::setup::connection_edit_loaded(state, profile)
         }
-        Action::ConnectionEditLoadFailed(error) => {
-            connection::setup::connection_edit_load_failed(state, error)
+        Action::ConnectionEditLoadFailed(error)
+        | Action::ConnectionDeleteFailed(error)
+        | Action::ErLogWriteFailed(error) => {
+            state.messages.set_error(error);
+            vec![]
         }
         Action::CloseConnectionError => connection::error::close_connection_error(state),
         Action::ToggleConnectionErrorDetails => {
-            connection::error::toggle_connection_error_details(state)
+            state.connection_error.toggle_details();
+            vec![]
         }
         Action::CopyConnectionError => connection::error::copy_connection_error(state),
         Action::ReenterConnectionSetup => connection::error::reenter_connection_setup(state),
@@ -196,9 +223,6 @@ pub(in crate::update) fn route(
         }
         Action::DeleteConnection(id) => connection::selector::delete_connection(state, id),
         Action::ConnectionDeleted(id) => connection::selector::connection_deleted(state, id, now),
-        Action::ConnectionDeleteFailed(error) => {
-            connection::selector::connection_delete_failed(state, error)
-        }
         Action::RequestEditSelectedConnection => {
             connection::selector::request_edit_selected_connection(state)
         }
@@ -216,20 +240,39 @@ pub(in crate::update) fn route(
             run_id,
             quick_check,
         ),
-        Action::SettingsSelectNext => modal::settings::settings_select_next(state),
-        Action::SettingsSelectPrevious => modal::settings::settings_select_previous(state),
-        Action::SettingsNextSection => modal::settings::settings_next_section(state),
-        Action::SettingsPreviousSection => modal::settings::settings_previous_section(state),
+        Action::SettingsSelectNext => {
+            state.settings.select_next();
+            vec![]
+        }
+        Action::SettingsSelectPrevious => {
+            state.settings.select_previous();
+            vec![]
+        }
+        Action::SettingsNextSection => {
+            state.settings.switch_next_section();
+            vec![]
+        }
+        Action::SettingsPreviousSection => {
+            state.settings.switch_previous_section();
+            vec![]
+        }
         Action::SettingsStartCustomBrowserEdit => {
-            modal::settings::settings_start_custom_browser_edit(state)
+            state.settings.start_custom_browser_edit();
+            vec![]
         }
         Action::SettingsStopCustomBrowserEdit => {
-            modal::settings::settings_stop_custom_browser_edit(state)
+            state.settings.stop_custom_browser_edit();
+            vec![]
         }
         Action::SettingsApply => modal::settings::settings_apply(state),
         Action::SettingsCancel => modal::settings::settings_cancel(state),
         Action::SettingsSaved(settings) => modal::settings::settings_saved(state, settings, now),
-        Action::SettingsSaveFailed(error) => modal::settings::settings_save_failed(state, error),
+        Action::SettingsSaveFailed(error) => {
+            state
+                .messages
+                .set_error(format!("Failed to save settings: {error}"));
+            vec![]
+        }
         Action::ReloadMetadata => browse::metadata::loading::reload_metadata(state),
         Action::MetadataLoaded { run_id, metadata } => {
             browse::metadata::loading::metadata_loaded(state, run_id, metadata, now)
@@ -282,11 +325,21 @@ pub(in crate::update) fn route(
         Action::ProcessPrefetchQueue { run_id } => {
             browse::metadata::prefetch::process_prefetch_queue(state, run_id, now)
         }
-        Action::InspectorNextTab => browse::navigation::focus::inspector_next_tab(state),
-        Action::InspectorPrevTab => browse::navigation::focus::inspector_prev_tab(state),
+        Action::InspectorNextTab => {
+            browse::navigation::inspector::cycle_inspector_tab(state, ListMotion::Next)
+        }
+        Action::InspectorPrevTab => {
+            browse::navigation::inspector::cycle_inspector_tab(state, ListMotion::Previous)
+        }
         Action::SqlModalAppendInsert => sql_editor::mode::sql_modal_append_insert(state),
-        Action::SqlModalEnterInsert => sql_editor::mode::sql_modal_enter_insert(state),
-        Action::SqlModalEnterNormal => sql_editor::mode::sql_modal_enter_normal(state),
+        Action::SqlModalEnterInsert => {
+            state.sql_modal.enter_editing();
+            vec![]
+        }
+        Action::SqlModalEnterNormal => {
+            state.sql_modal.enter_normal();
+            vec![]
+        }
         Action::SqlModalYank => sql_editor::yank::sql_modal_yank(state),
         Action::SqlModalNewLine => sql_editor::editing::sql_modal_new_line(state, now),
         Action::SqlModalInsertTab => sql_editor::editing::sql_modal_insert_tab(state, now),
@@ -299,10 +352,24 @@ pub(in crate::update) fn route(
         Action::SqlModalNextTab => explain::tabs::sql_modal_next_tab(state),
         Action::SqlModalPrevTab => explain::tabs::sql_modal_prev_tab(state),
         Action::CompletionRequest => sql_editor::completion::completion_request(state),
-        Action::CompletionAccept => sql_editor::completion::completion_accept(state),
-        Action::CompletionDismiss => sql_editor::completion::completion_dismiss(state),
-        Action::CompletionNext => sql_editor::completion::completion_next(state),
-        Action::CompletionPrev => sql_editor::completion::completion_prev(state),
+        Action::CompletionAccept => {
+            state
+                .sql_modal
+                .accept_selected_completion(sql_modal_visible_rows(state.ui.terminal_height));
+            vec![]
+        }
+        Action::CompletionDismiss => {
+            state.sql_modal.dismiss_completion();
+            vec![]
+        }
+        Action::CompletionNext => {
+            state.sql_modal.completion_next();
+            vec![]
+        }
+        Action::CompletionPrev => {
+            state.sql_modal.completion_prev();
+            vec![]
+        }
         Action::ExplainRequest => explain::request::explain_request(state, now),
         Action::ExplainAnalyzeRequest => explain::analyze::explain_analyze_request(state, now),
         Action::ExplainAnalyzeConfirm => explain::analyze::explain_analyze_confirm(state, now),
@@ -365,32 +432,56 @@ pub(in crate::update) fn route(
         Action::ResultNextPage => browse::query::pagination::result_next_page(state, now),
         Action::ResultPrevPage => browse::query::pagination::result_prev_page(state, now),
         Action::ResultActivateCell => browse::result::selection::result_activate_cell(state),
-        Action::ResultExitToScroll => browse::result::selection::result_exit_to_scroll(state),
+        Action::ResultExitToScroll => {
+            state.result_interaction.exit_cell_to_scroll();
+            vec![]
+        }
         Action::ResultCellLeft => browse::result::selection::result_cell_left(state),
         Action::ResultCellRight => browse::result::selection::result_cell_right(state),
         Action::ResultCellYank => browse::result::yank::result_cell_yank(state),
         Action::ResultRowYankOperatorPending => {
-            browse::result::yank::result_row_yank_operator_pending(state)
+            state.result_interaction.start_yank_operator();
+            vec![]
         }
         Action::ResultRowYank => browse::result::yank::result_row_yank(state),
         Action::DdlYank => browse::result::yank::ddl_yank(state, services),
         Action::ResultDeleteOperatorPending => {
-            browse::result::selection::result_delete_operator_pending(state)
+            state.result_interaction.start_delete_operator();
+            vec![]
         }
         Action::StageRowForDelete => browse::result::selection::stage_row_for_delete(state),
-        Action::UnstageLastStagedRow => browse::result::selection::unstage_last_staged_row(state),
-        Action::ClearStagedDeletes => browse::result::selection::clear_staged_deletes(state),
+        Action::UnstageLastStagedRow => {
+            state.result_interaction.unstage_last_row();
+            vec![]
+        }
+        Action::ClearStagedDeletes => {
+            state.result_interaction.clear_staged_deletes();
+            vec![]
+        }
         Action::ResultEnterCellEdit => browse::result::edit::result_enter_cell_edit(state),
         Action::ResultOpenCellDetail => browse::result::cell_detail::result_open_cell_detail(state),
         Action::ResultCancelCellEdit => browse::result::edit::result_cancel_cell_edit(state),
         Action::ResultDiscardCellEdit => browse::result::edit::result_discard_cell_edit(state),
         Action::SubmitCellEditWrite => browse::query::write::submit_cell_edit_write(state),
-        Action::CopySucceeded(target) => clipboard::copy_succeeded(state, target, now),
-        Action::CopyFailed(error) => clipboard::copy_failed(state, &error),
-        Action::OpenFolderFailed(error) => {
-            browse::query::pagination::open_folder_failed(state, error)
+        Action::CopySucceeded(target) => {
+            clipboard::show_copy_feedback(state, target, now);
+            vec![]
         }
-        Action::ToggleFocus => browse::navigation::focus::toggle_focus(state),
+        Action::CopyFailed(error) => {
+            state.messages.set_error(error.to_string());
+            vec![]
+        }
+        Action::OpenFolderFailed(error) => {
+            state
+                .messages
+                .set_error(format!("Failed to open folder: {error}"));
+
+            vec![]
+        }
+        Action::ToggleFocus => {
+            state.toggle_focus_mode();
+            vec![]
+        }
         Action::ToggleReadOnly => browse::navigation::focus::toggle_read_only(state),
         Action::QueryHistoryLoaded(scope, entries) => {
             modal::query_history::query_history_loaded(state, scope, entries)
@@ -436,7 +527,6 @@ pub(in crate::update) fn route(
         Action::ErDiagramFailed { run_id, error } => {
             er::diagram::er_diagram_failed(state, run_id, error)
         }
-        Action::ErLogWriteFailed(error) => er::diagram::er_log_write_failed(state, error),
     }
 }
 
@@ -449,23 +539,11 @@ pub(in crate::update) fn quit(state: &mut AppState) -> Vec<Effect> {
 
 fn resize(state: &mut AppState, width: u16, height: u16) -> Vec<Effect> {
     state.ui.set_terminal_width(width);
-    state.ui.set_terminal_height(height);
+    state.ui.terminal_height = height;
     let document = HelpDocument::from_state(state);
     state
         .ui
         .clamp_help_offsets(document.line_count(), document.content_width());
-    vec![]
-}
-
-fn begin_key_sequence(state: &mut AppState, prefix: Prefix) -> Vec<Effect> {
-    state
-        .ui
-        .set_key_sequence(KeySequenceState::WaitingSecondKey(prefix));
-    vec![]
-}
-
-fn cancel_key_sequence(state: &mut AppState) -> Vec<Effect> {
-    state.ui.set_key_sequence(KeySequenceState::Idle);
     vec![]
 }
 
@@ -494,7 +572,7 @@ fn confirm_selection(state: &mut AppState, now: Instant, services: &AppServices)
     } else if state.modal.active_mode() == InputMode::CommandPalette {
         let cmd_action = state
             .ui
-            .palette_commands()
+            .palette_commands
             .get(state.ui.table_picker().selected())
             .and_then(|&id| palette_action(id, &KeyContext::for_browse_state(state)))
             .unwrap_or(Action::None);
@@ -552,6 +630,7 @@ mod tests {
     use super::*;
     use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::browse::session::TableDetailState;
+    use crate::model::shared::key_sequence::Prefix;
     use crate::model::shared::ui_state::UiState;
     use crate::ports::outbound::DbOperationError;
     use crate::test_support::endpoint;
@@ -593,10 +672,34 @@ mod tests {
         }
 
         #[test]
+        fn leaving_result_pane_clears_cell_edit_and_returns_to_normal() {
+            let mut state = create_test_state();
+            state.focus_pane(FocusedPane::Result);
+            state.result_interaction.activate_cell(0, 0);
+            state.result_interaction.begin_cell_edit(0, 0, "old".into());
+            state
+                .result_interaction
+                .edit_cell_text(TextEdit::Insert('x'), None);
+            state.modal.set_mode(InputMode::CellEdit);
+
+            reduce(
+                &mut state,
+                Action::SetFocusedPane(FocusedPane::Inspector),
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.ui.focused_pane(), FocusedPane::Inspector);
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert_eq!(state.result_interaction.selection().row(), None);
+            assert!(!state.result_interaction.cell_edit().has_pending_draft());
+        }
+
+        #[test]
         fn resize_updates_terminal_size_and_clamps_help_offsets() {
             let mut state = create_test_state();
             state.ui.set_terminal_width(20);
-            state.ui.set_terminal_height(10);
+            state.ui.terminal_height = 10;
             state.ui.help_mut().set_scroll_offset(usize::MAX);
             state.ui.help_mut().set_horizontal_offset(usize::MAX);
             let now = Instant::now();
@@ -608,12 +711,12 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.terminal_height(), 50);
+            assert_eq!(state.ui.terminal_height, 50);
             let document = HelpDocument::from_state(&state);
             let expected_layout = {
                 let mut expected = UiState::new();
                 expected.set_terminal_width(100);
-                expected.set_terminal_height(50);
+                expected.terminal_height = 50;
                 expected.help_viewport_layout(document.line_count(), document.content_width())
             };
             assert_eq!(
@@ -655,7 +758,7 @@ mod tests {
         #[case(Action::Select(SelectMotion::Previous))]
         fn selection_on_empty_tables_keeps_none(#[case] action: Action) {
             let mut state = create_test_state();
-            state.ui.set_focused_pane(FocusedPane::Explorer);
+            state.focus_pane(FocusedPane::Explorer);
             state.ui.set_explorer_selected_raw(0);
             let now = Instant::now();
 
@@ -667,7 +770,7 @@ mod tests {
         #[test]
         fn selecting_table_without_connection_does_not_leave_inspector_loading() {
             let mut state = create_test_state();
-            let table = TableSummary::new("public".to_string(), "users".to_string(), None, false);
+            let table = TableSummary::new("public".to_string(), "users".to_string(), None);
 
             let effects = select_table(&mut state, &table);
 
@@ -688,7 +791,6 @@ mod tests {
                     "public".to_string(),
                     "users".to_string(),
                     None,
-                    false,
                 )];
                 metadata
             })));
@@ -818,7 +920,7 @@ mod tests {
                 &mut json_detail_state,
                 Action::BeginKeySequence(Prefix::G),
             );
-            assert_eq!(json_detail_state.ui.key_sequence(), KeySequenceState::Idle);
+            assert_eq!(json_detail_state.ui.key_sequence, KeySequenceState::Idle);
 
             let mut analyze_state = sqlite_state();
             assert_unsupported_action_is_a_noop(&mut analyze_state, Action::ExplainAnalyzeCancel);
@@ -1013,7 +1115,7 @@ mod tests {
         #[test]
         fn help_half_page_scroll_uses_half_of_visible_rows() {
             let mut state = create_test_state();
-            state.ui.set_terminal_height(24);
+            state.ui.terminal_height = 24;
             state.ui.help_mut().set_scroll_offset(1);
             let now = Instant::now();
 
@@ -1035,7 +1137,7 @@ mod tests {
         #[test]
         fn help_full_page_scroll_uses_visible_rows() {
             let mut state = create_test_state();
-            state.ui.set_terminal_height(24);
+            state.ui.terminal_height = 24;
             state.ui.help_mut().set_scroll_offset(2);
             let now = Instant::now();
 
@@ -1552,7 +1654,6 @@ mod tests {
                     "public".to_string(),
                     "users".to_string(),
                     None,
-                    false,
                 )];
                 metadata
             };
@@ -1575,7 +1676,6 @@ mod tests {
                     "public".to_string(),
                     "users".to_string(),
                     None,
-                    false,
                 )];
                 metadata
             }));
@@ -1650,7 +1750,7 @@ mod tests {
                 false,
                 "error",
             ));
-            state.ui.set_focused_pane(FocusedPane::Result); // Any pane works
+            state.focus_pane(FocusedPane::Result); // Any pane works
             let now = Instant::now();
 
             reduce(
@@ -1711,7 +1811,7 @@ mod tests {
         fn reopen_modal_after_close_shows_same_error() {
             let mut state = state_with_error();
             state.session.set_metadata_state(MetadataState::Error);
-            state.ui.set_focused_pane(FocusedPane::Explorer);
+            state.focus_pane(FocusedPane::Explorer);
             let now = Instant::now();
 
             // Close modal
@@ -1834,7 +1934,6 @@ mod tests {
                     "public".to_string(),
                     "users".to_string(),
                     Some(100),
-                    false,
                 )];
                 metadata
             })
@@ -1849,7 +1948,7 @@ mod tests {
                 .session
                 .set_table_detail_raw(Some(stale_table_detail()));
             state.modal.set_mode(InputMode::Normal);
-            state.ui.set_focused_pane(FocusedPane::Explorer);
+            state.focus_pane(FocusedPane::Explorer);
             state.ui.set_explorer_selection(Some(0));
 
             reduce(
@@ -2942,7 +3041,7 @@ mod tests {
             assert_eq!(state.session.active_connection_id(), Some(&conn_b));
             assert!(state.session.connection_state().is_connected());
             assert_eq!(state.ui.explorer_selected(), 10);
-            assert_eq!(state.ui.inspector_tab(), InspectorTab::Indexes);
+            assert_eq!(state.ui.inspector_tab, InspectorTab::Indexes);
             assert_eq!(
                 state.session.metadata().as_ref().unwrap().database_name,
                 "cached_db"
@@ -3089,8 +3188,8 @@ mod tests {
             state.session.set_metadata(Some(Arc::new({
                 let mut metadata = DatabaseMetadata::new("test".to_string());
                 metadata.table_summaries = vec![
-                    TableSummary::new("public".to_string(), "users".to_string(), None, false),
-                    TableSummary::new("public".to_string(), "posts".to_string(), None, false),
+                    TableSummary::new("public".to_string(), "users".to_string(), None),
+                    TableSummary::new("public".to_string(), "posts".to_string(), None),
                 ];
                 metadata
             })));
@@ -3145,7 +3244,6 @@ mod tests {
                     "public".to_string(),
                     "users".to_string(),
                     Some(100),
-                    false,
                 )];
                 metadata
             })
@@ -3170,7 +3268,7 @@ mod tests {
         #[test]
         fn metadata_loaded_with_pending_dispatches_open() {
             let mut state = create_test_state();
-            state.ui.set_pending_er_picker(true);
+            state.ui.request_er_picker_after_metadata();
             state.modal.set_mode(InputMode::Normal);
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state);
@@ -3184,7 +3282,7 @@ mod tests {
         #[test]
         fn metadata_loaded_without_pending_does_not_dispatch_open() {
             let mut state = create_test_state();
-            state.ui.set_pending_er_picker(false);
+            state.ui.reset_er_picker_request();
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state);
 
@@ -3196,7 +3294,7 @@ mod tests {
         #[test]
         fn metadata_loaded_with_pending_but_non_normal_mode_discards() {
             let mut state = create_test_state();
-            state.ui.set_pending_er_picker(true);
+            state.ui.request_er_picker_after_metadata();
             state.modal.set_mode(InputMode::SqlModal);
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state);
@@ -3422,7 +3520,6 @@ mod tests {
                     "public".to_string(),
                     "users".to_string(),
                     Some(1200),
-                    false,
                 )];
                 metadata
             };
@@ -3439,7 +3536,7 @@ mod tests {
 
             // ConfirmSelection from Normal mode (explorer focused)
             state.modal.set_mode(InputMode::Normal);
-            state.ui.set_focused_pane(FocusedPane::Explorer);
+            state.focus_pane(FocusedPane::Explorer);
             state.ui.set_explorer_selected_raw(0);
             let effects = reduce(
                 &mut state,
@@ -3594,7 +3691,7 @@ mod tests {
         fn palette_index_of(state: &AppState, target: impl Fn(&Action) -> bool) -> usize {
             state
                 .ui
-                .palette_commands()
+                .palette_commands
                 .iter()
                 .filter_map(|&id| palette_entry(id, &KeyContext::for_browse_state(state)))
                 .enumerate()
@@ -3743,7 +3840,7 @@ mod tests {
             open_modal_command_palette(&mut state);
             let selected =
                 palette_index_of(&state, |action| matches!(action, Action::RequestCsvExport));
-            let captured = state.ui.palette_commands().to_vec();
+            let captured = state.ui.palette_commands.clone();
             state.ui.table_picker_mut().set_selection(selected);
 
             state.query.clear_current_result();
@@ -3757,7 +3854,7 @@ mod tests {
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(effects.is_empty());
             assert!(!state.session.is_read_only());
-            assert_eq!(state.ui.palette_commands(), captured);
+            assert_eq!(state.ui.palette_commands, captured);
         }
 
         #[test]
@@ -3782,7 +3879,7 @@ mod tests {
             open_modal_command_palette(&mut state);
             let selected =
                 palette_index_of(&state, |action| matches!(action, Action::RequestCsvExport));
-            let captured = state.ui.palette_commands().to_vec();
+            let captured = state.ui.palette_commands.clone();
             let export_id = captured[selected];
             state.ui.table_picker_mut().set_selection(selected);
             let now = Instant::now();
@@ -3807,7 +3904,7 @@ mod tests {
                 Action::RequestCsvExport | Action::OpenModal(ModalKind::QueryHistoryPicker)
             )));
             assert!(palette_action(export_id, &context).is_none());
-            assert_eq!(state.ui.palette_commands(), captured);
+            assert_eq!(state.ui.palette_commands, captured);
             let effects = reduce(
                 &mut state,
                 Action::ConfirmSelection,
@@ -3852,7 +3949,7 @@ mod tests {
         #[test]
         fn y_then_d_cancels_yank_starts_delete() {
             let mut state = create_test_state();
-            state.ui.set_focused_pane(FocusedPane::Result);
+            state.focus_pane(FocusedPane::Result);
             state.result_interaction.activate_cell(0, 0);
             let now = Instant::now();
 
@@ -3878,7 +3975,7 @@ mod tests {
         #[test]
         fn d_then_y_cancels_delete_starts_yank() {
             let mut state = create_test_state();
-            state.ui.set_focused_pane(FocusedPane::Result);
+            state.focus_pane(FocusedPane::Result);
             state.result_interaction.activate_cell(0, 0);
             let now = Instant::now();
 

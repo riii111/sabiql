@@ -74,7 +74,7 @@ mod tests {
             )
             .unwrap();
             let dsn = postgres_conninfo(&PostgresEndpoint::Settings(
-                profile.postgres_config().unwrap().clone(),
+                profile.config.as_postgres().unwrap().clone(),
             ));
             assert_eq!(
                 dsn,
@@ -89,7 +89,7 @@ mod tests {
                     .unwrap();
 
             let dsn = postgres_conninfo(&PostgresEndpoint::Settings(
-                profile.postgres_config().unwrap().clone(),
+                profile.config.as_postgres().unwrap().clone(),
             ));
 
             assert_eq!(dsn, "port='5432' dbname='mydb' sslmode='prefer'");
@@ -109,7 +109,7 @@ mod tests {
             .unwrap();
 
             let dsn = postgres_conninfo(&PostgresEndpoint::Settings(
-                profile.postgres_config().unwrap().clone(),
+                profile.config.as_postgres().unwrap().clone(),
             ));
 
             assert_eq!(
@@ -135,7 +135,7 @@ mod tests {
             )
             .unwrap();
             database_name(&PostgresEndpoint::Settings(
-                profile.postgres_config().unwrap().clone(),
+                profile.config.as_postgres().unwrap().clone(),
             ))
         }
 

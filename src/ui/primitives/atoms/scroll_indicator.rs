@@ -6,14 +6,14 @@ use ratatui::widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarStat
 
 use crate::theme::ThemePalette;
 
-pub struct HorizontalScrollParams {
-    pub position: usize,
-    pub viewport_size: usize,
-    pub total_items: usize,
-    pub label: &'static str,
+pub(crate) struct HorizontalScrollParams {
+    pub(crate) position: usize,
+    pub(crate) viewport_size: usize,
+    pub(crate) total_items: usize,
+    pub(crate) label: &'static str,
 }
 
-pub fn render_horizontal_scroll_indicator(
+pub(crate) fn render_horizontal_scroll_indicator(
     frame: &mut Frame,
     area: Rect,
     params: HorizontalScrollParams,
@@ -99,14 +99,14 @@ pub fn render_horizontal_scroll_indicator(
     frame.render_stateful_widget(scrollbar, scrollbar_area, &mut scrollbar_state);
 }
 
-pub struct VerticalScrollParams {
-    pub position: usize,
-    pub viewport_size: usize,
-    pub total_items: usize,
-    pub has_horizontal_scrollbar: bool,
+pub(crate) struct VerticalScrollParams {
+    pub(crate) position: usize,
+    pub(crate) viewport_size: usize,
+    pub(crate) total_items: usize,
+    pub(crate) has_horizontal_scrollbar: bool,
 }
 
-pub fn render_vertical_scroll_indicator_bar(
+pub(crate) fn render_vertical_scroll_indicator_bar(
     frame: &mut Frame,
     area: Rect,
     params: VerticalScrollParams,
@@ -173,7 +173,7 @@ pub fn render_vertical_scroll_indicator_bar(
     frame.render_stateful_widget(scrollbar, scrollbar_area, &mut scrollbar_state);
 }
 
-pub fn clamp_scroll_offset(
+pub(crate) fn clamp_scroll_offset(
     scroll_offset: usize,
     viewport_size: usize,
     total_items: usize,

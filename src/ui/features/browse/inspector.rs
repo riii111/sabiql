@@ -9,7 +9,7 @@ use ratatui::widgets::{Cell, Paragraph, Row, Table as RatatuiTable, Wrap};
 use crate::app::model::app_state::AppState;
 use crate::app::model::browse::inspector_view_model::{
     InspectorColumnRow, InspectorForeignKeyRow, InspectorIndexRow, InspectorInfoRow,
-    InspectorLoadState, InspectorRlsRow, InspectorSection, InspectorTriggerRow, InspectorViewModel,
+    InspectorLoadState, InspectorRlsRow, InspectorSection, InspectorViewModel,
 };
 use crate::app::model::shared::engine_feature_profile::InspectorInfoField;
 use crate::app::model::shared::flash_timer::{FlashId, FlashTimerStore};
@@ -22,15 +22,14 @@ use crate::app::model::shared::viewport::{
 };
 use crate::app::policy::column::column_generation_kind_label;
 use crate::app::services::AppServices;
-use crate::domain::DatabaseType;
 use crate::primitives::atoms::Icon;
 use crate::primitives::atoms::{apply_yank_flash, panel_block};
 use crate::primitives::utils::text_utils::{
-    MIN_COL_WIDTH, PADDING, calculate_header_min_widths, truncate_to_width,
+    MIN_COL_WIDTH, PADDING, calculate_header_min_widths, truncate_to_width, truncate_with_offset,
 };
 use crate::theme::ThemePalette;
 
-pub struct Inspector;
+pub(crate) struct Inspector;
 
 #[derive(Debug, Clone, Copy)]
 #[expect(
@@ -46,7 +45,7 @@ struct ColumnDisplayOptions {
 }
 
 impl Inspector {
-    pub fn render(
+    pub(crate) fn render(
         frame: &mut Frame,
         area: Rect,
         state: &AppState,
@@ -164,13 +163,7 @@ impl Inspector {
 
         match view_model.section() {
             Some(InspectorSection::Info { rows }) => {
-                Self::render_info(
-                    frame,
-                    inner,
-                    rows,
-                    state.ui.inspector_scroll_offset(),
-                    theme,
-                );
+                Self::render_info(frame, inner, rows, state.ui.inspector_scroll_offset, theme);
                 ViewportPlan::default()
             }
             Some(InspectorSection::Columns {
@@ -192,9 +185,9 @@ impl Inspector {
                     inner,
                     rows,
                     options,
-                    state.ui.inspector_scroll_offset(),
-                    state.ui.inspector_horizontal_offset(),
-                    state.ui.inspector_viewport_plan(),
+                    state.ui.inspector_scroll_offset,
+                    state.ui.inspector_horizontal_offset,
+                    &state.ui.inspector_viewport_plan,
                     theme,
                 )
             }
@@ -211,7 +204,7 @@ impl Inspector {
                     *show_type,
                     *show_partial,
                     *show_details,
-                    state.ui.inspector_scroll_offset(),
+                    state.ui.inspector_scroll_offset,
                     theme,
                 );
                 ViewportPlan::default()
@@ -221,28 +214,21 @@ impl Inspector {
                     frame,
                     inner,
                     rows,
-                    state.ui.inspector_scroll_offset(),
+                    state.ui.inspector_scroll_offset,
                     theme,
                 );
                 ViewportPlan::default()
             }
             Some(InspectorSection::Rls { rows }) => {
-                Self::render_rls(
-                    frame,
-                    inner,
-                    rows,
-                    state.ui.inspector_scroll_offset(),
-                    theme,
-                );
+                Self::render_rls(frame, inner, rows, state.ui.inspector_scroll_offset, theme);
                 ViewportPlan::default()
             }
-            Some(InspectorSection::Triggers { rows }) => Self::render_triggers(
+            Some(InspectorSection::Triggers { lines }) => Self::render_triggers(
                 frame,
                 inner,
-                rows,
-                state.session.active_database_type_or_default(),
-                state.ui.inspector_scroll_offset(),
-                state.ui.inspector_horizontal_offset(),
+                lines,
+                state.ui.inspector_scroll_offset,
+                state.ui.inspector_horizontal_offset,
                 theme,
             ),
             Some(InspectorSection::Ddl { rows }) => {
@@ -250,7 +236,7 @@ impl Inspector {
                     frame,
                     inner,
                     rows,
-                    state.ui.inspector_scroll_offset(),
+                    state.ui.inspector_scroll_offset,
                     &state.flash_timers,
                     now,
                     theme,
@@ -639,84 +625,18 @@ impl Inspector {
     fn render_triggers(
         frame: &mut Frame,
         area: Rect,
-        rows: &[InspectorTriggerRow],
-        database_type: DatabaseType,
+        lines: &[String],
         scroll_offset: usize,
         horizontal_offset: usize,
         theme: &ThemePalette,
     ) -> ViewportPlan {
-        let (headers, widths): (&[&str], &[Constraint]) = match database_type {
-            DatabaseType::PostgreSQL => (
-                &["Name", "Timing", "Event", "Function", "Security"],
-                &[
-                    Constraint::Percentage(25),
-                    Constraint::Percentage(15),
-                    Constraint::Percentage(20),
-                    Constraint::Percentage(25),
-                    Constraint::Percentage(15),
-                ],
-            ),
-            DatabaseType::SQLite => (
-                &["Name", "Timing", "Event", "Definition"],
-                &[
-                    Constraint::Percentage(25),
-                    Constraint::Percentage(15),
-                    Constraint::Percentage(20),
-                    Constraint::Percentage(40),
-                ],
-            ),
-            DatabaseType::MySQL => {
-                return Self::render_mysql_trigger_details(
-                    frame,
-                    area,
-                    rows,
-                    scroll_offset,
-                    horizontal_offset,
-                    theme,
-                );
-            }
-        };
+        use unicode_segmentation::UnicodeSegmentation;
+        use unicode_width::UnicodeWidthStr;
 
-        use crate::primitives::molecules::{StripedTableConfig, render_striped_table};
-        render_striped_table(
-            frame,
-            area,
-            &StripedTableConfig {
-                headers,
-                widths,
-                total_items: rows.len(),
-                empty_message: "No triggers",
-            },
-            scroll_offset,
-            theme,
-            |idx| {
-                trigger_row_cells(&rows[idx], database_type)
-                    .into_iter()
-                    .map(Cell::from)
-                    .collect()
-            },
-        );
-
-        ViewportPlan::default()
-    }
-
-    fn render_mysql_trigger_details(
-        frame: &mut Frame,
-        area: Rect,
-        rows: &[InspectorTriggerRow],
-        scroll_offset: usize,
-        horizontal_offset: usize,
-        theme: &ThemePalette,
-    ) -> ViewportPlan {
         use crate::primitives::atoms::scroll_indicator::{
             VerticalScrollParams, clamp_scroll_offset, render_vertical_scroll_indicator_bar,
         };
 
-        let lines: Vec<Line> = rows
-            .iter()
-            .flat_map(mysql_trigger_detail_lines)
-            .map(|line| Line::from(line).style(Style::default().fg(theme.semantic.text.primary)))
-            .collect();
         let total_lines = lines.len();
         let has_vertical_scrollbar = total_lines > area.height as usize;
         let content_area = Rect {
@@ -724,7 +644,15 @@ impl Inspector {
             ..area
         };
         let visible_lines = content_area.height as usize;
-        let content_width = lines.iter().map(Line::width).max().unwrap_or_default();
+        let content_width = lines
+            .iter()
+            .map(|line| {
+                line.graphemes(true)
+                    .map(UnicodeWidthStr::width)
+                    .sum::<usize>()
+            })
+            .max()
+            .unwrap_or_default();
         let clamped_scroll_offset = clamp_scroll_offset(scroll_offset, visible_lines, total_lines);
         let clamped_horizontal_offset = clamp_scroll_offset(
             horizontal_offset,
@@ -732,11 +660,20 @@ impl Inspector {
             content_width,
         );
 
+        let visible: Vec<Line> = lines
+            .iter()
+            .skip(clamped_scroll_offset)
+            .take(visible_lines)
+            .map(|line| {
+                Line::from(truncate_with_offset(
+                    line,
+                    clamped_horizontal_offset,
+                    content_area.width.into(),
+                ))
+            })
+            .collect();
         frame.render_widget(
-            Paragraph::new(lines).scroll((
-                clamped_scroll_offset.min(u16::MAX as usize) as u16,
-                clamped_horizontal_offset.min(u16::MAX as usize) as u16,
-            )),
+            Paragraph::new(visible).style(Style::default().fg(theme.semantic.text.primary)),
             content_area,
         );
 
@@ -897,72 +834,6 @@ fn foreign_key_row_cells(row: &InspectorForeignKeyRow) -> Vec<String> {
     ]
 }
 
-fn trigger_row_cells(row: &InspectorTriggerRow, database_type: DatabaseType) -> Vec<String> {
-    let mut cells = Vec::new();
-    cells.extend([
-        row.name.clone(),
-        row.timing.clone(),
-        row.events.clone(),
-        row.definition.clone(),
-    ]);
-    match database_type {
-        DatabaseType::PostgreSQL | DatabaseType::MySQL => {
-            cells.push(row.security_context.clone().unwrap_or_default());
-        }
-        DatabaseType::SQLite => {}
-    }
-    cells
-}
-
-fn mysql_trigger_detail_lines(row: &InspectorTriggerRow) -> Vec<String> {
-    let context = row.creation_context.as_ref();
-    vec![
-        format!(
-            "Order: {}",
-            row.action_order.map_or_default(|order| order.to_string())
-        ),
-        format!("Name: {}", row.name),
-        format!("Timing: {}", row.timing),
-        format!("Event: {}", row.events),
-        format!("Action: {}", row.definition),
-        format!(
-            "Definer: {}",
-            row.security_context.as_deref().unwrap_or_default()
-        ),
-        format!(
-            "SQL_MODE: {}",
-            context
-                .and_then(|context| context.sql_mode.as_deref())
-                .unwrap_or_default()
-        ),
-        format!(
-            "CHARACTER_SET_CLIENT: {}",
-            context
-                .and_then(|context| context.character_set_client.as_deref())
-                .unwrap_or_default()
-        ),
-        format!(
-            "COLLATION_CONNECTION: {}",
-            context
-                .and_then(|context| context.collation_connection.as_deref())
-                .unwrap_or_default()
-        ),
-        format!(
-            "DATABASE_COLLATION: {}",
-            context
-                .and_then(|context| context.database_collation.as_deref())
-                .unwrap_or_default()
-        ),
-        format!(
-            "CREATED: {}",
-            context
-                .and_then(|context| context.created.as_deref())
-                .unwrap_or_default()
-        ),
-        String::new(),
-    ]
-}
-
 fn checkmark(value: bool) -> String {
     if value {
         "✓".to_string()
@@ -995,7 +866,6 @@ fn calculate_column_widths(headers: &[&str], rows: &[Vec<String>]) -> Vec<u16> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::TriggerCreationContext;
 
     #[test]
     fn index_headers_match_row_cells_for_all_flag_combinations() {
@@ -1230,125 +1100,44 @@ mod tests {
     }
 
     #[test]
-    fn mysql_trigger_details_render_all_creation_context_fields() {
+    fn trigger_viewport_reaches_the_end_of_long_multiline_sql() {
         use crate::app::model::shared::theme_id::ThemeId;
         use crate::theme::palette_for;
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
-        use ratatui::layout::Rect;
 
-        let row = InspectorTriggerRow {
-            name: "audit_changes".to_string(),
-            timing: "BEFORE".to_string(),
-            events: "UPDATE".to_string(),
-            action_order: Some(2),
-            definition: format!("SET NEW.value = {}", "x".repeat(100)),
-            security_context: Some("sabiql@%".to_string()),
-            creation_context: Some(TriggerCreationContext {
-                sql_mode: Some("STRICT_TRANS_TABLES".to_string()),
-                character_set_client: Some("utf8mb4".to_string()),
-                collation_connection: Some("utf8mb4_0900_ai_ci".to_string()),
-                database_collation: Some("utf8mb4_0900_ai_ci".to_string()),
-                created: Some("2026-08-21 10:20:30.00".to_string()),
-            }),
-        };
-        let mut terminal = Terminal::new(TestBackend::new(80, 12)).unwrap();
+        let lines = [
+            "Name: audit_changes".to_string(),
+            "CREATE TRIGGER audit_changes AFTER UPDATE ON items".to_string(),
+            "BEGIN".to_string(),
+            format!(
+                "    SELECT '{}لا'; END",
+                "x".repeat(usize::from(u16::MAX) + 30)
+            ),
+        ];
+        let area = Rect::new(0, 0, 25, 2);
+        let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
         let theme = palette_for(ThemeId::Default);
         let mut plan = ViewportPlan::default();
+        terminal
+            .draw(|frame| {
+                plan = Inspector::render_triggers(frame, area, &lines, 0, 0, theme);
+            })
+            .unwrap();
+        let first_line: String = (0..plan.available_width)
+            .map(|x| terminal.backend().buffer().cell((x, 0)).unwrap().symbol())
+            .collect();
+        assert_eq!(first_line.trim_end(), "Name: audit_changes");
+        assert!(plan.max_offset > usize::from(u16::MAX));
 
         terminal
             .draw(|frame| {
-                plan = Inspector::render_triggers(
-                    frame,
-                    Rect::new(0, 0, 80, 12),
-                    &[row],
-                    DatabaseType::MySQL,
-                    0,
-                    0,
-                    theme,
-                );
+                Inspector::render_triggers(frame, area, &lines, usize::MAX, plan.max_offset, theme);
             })
             .unwrap();
-
-        assert!(plan.max_offset > 0);
-
-        let buffer = terminal.backend().buffer();
-        let rendered: String = (0..buffer.area.height)
-            .flat_map(|y| {
-                (0..buffer.area.width)
-                    .map(move |x| buffer.cell((x, y)).unwrap().symbol())
-                    .chain(std::iter::once("\n"))
-            })
+        let last_line: String = (0..plan.available_width)
+            .map(|x| terminal.backend().buffer().cell((x, 1)).unwrap().symbol())
             .collect();
-
-        for expected in [
-            "SQL_MODE: STRICT_TRANS_TABLES",
-            "CHARACTER_SET_CLIENT: utf8mb4",
-            "COLLATION_CONNECTION: utf8mb4_0900_ai_ci",
-            "DATABASE_COLLATION: utf8mb4_0900_ai_ci",
-            "CREATED: 2026-08-21 10:20:30.00",
-        ] {
-            assert!(
-                rendered.contains(expected),
-                "missing {expected:?} in {rendered:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn sqlite_trigger_table_shows_definition_column() {
-        use crate::app::model::shared::theme_id::ThemeId;
-        use crate::theme::palette_for;
-        use ratatui::Terminal;
-        use ratatui::backend::TestBackend;
-        use ratatui::layout::Rect;
-
-        let database_type = DatabaseType::SQLite;
-        let expected_headers = ["Name", "Timing", "Event", "Definition"];
-        let expected_cells = ["audit_changes", "BEFORE", "UPDATE", "audit_fn"];
-        let row = InspectorTriggerRow {
-            name: "audit_changes".to_string(),
-            timing: "BEFORE".to_string(),
-            events: "UPDATE".to_string(),
-            action_order: None,
-            definition: "audit_fn".to_string(),
-            security_context: Some("INVOKER".to_string()),
-            creation_context: None,
-        };
-        let mut terminal = Terminal::new(TestBackend::new(100, 6)).unwrap();
-        let theme = palette_for(ThemeId::Default);
-
-        terminal
-            .draw(|frame| {
-                Inspector::render_triggers(
-                    frame,
-                    Rect::new(0, 0, 100, 6),
-                    std::slice::from_ref(&row),
-                    database_type,
-                    0,
-                    0,
-                    theme,
-                );
-            })
-            .unwrap();
-
-        let buffer = terminal.backend().buffer();
-        let rendered_lines: Vec<String> = (0..buffer.area.height)
-            .map(|y| {
-                (0..buffer.area.width)
-                    .map(|x| buffer.cell((x, y)).unwrap().symbol())
-                    .collect()
-            })
-            .collect();
-        let line_words = |first_word: &str| {
-            rendered_lines
-                .iter()
-                .map(|line| line.split_whitespace().collect::<Vec<_>>())
-                .find(|words| words.first() == Some(&first_word))
-                .unwrap_or_else(|| panic!("missing {first_word:?} row in {rendered_lines:?}"))
-        };
-
-        assert_eq!(line_words("Name"), expected_headers);
-        assert_eq!(line_words("audit_changes"), expected_cells);
+        assert!(last_line.ends_with("'; END"));
     }
 }

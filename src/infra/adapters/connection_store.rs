@@ -224,7 +224,7 @@ ssl_mode = "prefer"
 
             assert_eq!(profiles.len(), 1);
             assert_eq!(profiles[0].database_type(), DatabaseType::PostgreSQL);
-            assert_eq!(profiles[0].postgres_config().unwrap().database, "testdb");
+            assert_eq!(profiles[0].config.as_postgres().unwrap().database, "testdb");
             assert!(
                 fs::read_to_string(&config_path)
                     .unwrap()
@@ -255,7 +255,7 @@ ssl_mode = "prefer"
             let profiles = store.load_all().unwrap();
 
             assert_eq!(profiles.len(), 1);
-            let config = profiles[0].postgres_config().unwrap();
+            let config = profiles[0].config.as_postgres().unwrap();
             assert_eq!(config.username, "");
             assert_eq!(config.host, "");
         }

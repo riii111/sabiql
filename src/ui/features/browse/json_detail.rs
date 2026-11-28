@@ -20,10 +20,10 @@ use crate::primitives::atoms::{
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::theme::ThemePalette;
 
-pub struct JsonDetail;
+pub(crate) struct JsonDetail;
 
 impl JsonDetail {
-    pub fn render(
+    pub(crate) fn render(
         frame: &mut Frame,
         state: &AppState,
         now: std::time::Instant,

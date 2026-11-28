@@ -17,7 +17,7 @@ pub(in crate::update) fn paste_sql_modal(
     state
         .sql_modal
         .editor
-        .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
+        .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
     state
         .sql_modal
         .schedule_completion_after_dismiss(now + Duration::from_millis(100));
@@ -31,7 +31,7 @@ pub(in crate::update) fn sql_modal_new_line(state: &mut AppState, now: Instant) 
     state
         .sql_modal
         .editor
-        .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
+        .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
     state
         .sql_modal
         .schedule_completion(now + Duration::from_millis(100));
@@ -44,7 +44,7 @@ pub(in crate::update) fn sql_modal_insert_tab(state: &mut AppState, now: Instant
     state
         .sql_modal
         .editor
-        .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
+        .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
     state
         .sql_modal
         .schedule_completion(now + Duration::from_millis(100));
@@ -54,7 +54,7 @@ pub(in crate::update) fn sql_modal_insert_tab(state: &mut AppState, now: Instant
 pub(in crate::update) fn sql_modal_clear(state: &mut AppState) -> Vec<Effect> {
     state.sql_modal.editor.clear();
     state.sql_modal.reset_completion();
-    state.ui.set_key_sequence(KeySequenceState::Idle);
+    state.ui.key_sequence = KeySequenceState::Idle;
     vec![]
 }
 
@@ -64,7 +64,7 @@ pub(in crate::update) fn edit_text(
     yank_text: Option<&str>,
     now: Instant,
 ) -> String {
-    let visible_rows = sql_modal_visible_rows(state.ui.terminal_height());
+    let visible_rows = sql_modal_visible_rows(state.ui.terminal_height);
     if let TextEdit::MoveCursor(movement) = edit {
         match movement {
             CursorMove::ViewportTop | CursorMove::ViewportMiddle | CursorMove::ViewportBottom => {
@@ -76,7 +76,7 @@ pub(in crate::update) fn edit_text(
             _ => state.sql_modal.editor.move_cursor(movement),
         }
         state.sql_modal.editor.update_scroll(visible_rows);
-        state.ui.set_key_sequence(KeySequenceState::Idle);
+        state.ui.key_sequence = KeySequenceState::Idle;
         return String::new();
     }
 

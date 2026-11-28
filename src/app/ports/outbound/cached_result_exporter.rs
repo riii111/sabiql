@@ -1,8 +1,9 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::domain::QueryValue;
+use crate::domain::QueryResult;
 
 use super::DbOperationError;
 
@@ -11,7 +12,6 @@ pub trait CachedResultExporter: Send + Sync {
     async fn export_cached_result_to_csv(
         &self,
         file_name: String,
-        columns: Vec<String>,
-        values: Vec<Vec<QueryValue>>,
+        result: Arc<QueryResult>,
     ) -> Result<PathBuf, DbOperationError>;
 }

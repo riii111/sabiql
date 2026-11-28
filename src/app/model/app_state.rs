@@ -6,7 +6,7 @@ use super::explain_context::ExplainContext;
 use crate::domain::connection::{
     ConnectionEndpoint, ConnectionId, ConnectionProfile, ServiceEntry,
 };
-use crate::domain::{Column, DatabaseType, TableSummary, mysql_sql::mysql_export_plan};
+use crate::domain::{Column, DatabaseType, TableSummary};
 use crate::model::browse::inspector_view_model::InspectorViewModel;
 use crate::model::browse::json_detail::JsonDetailState;
 use crate::model::browse::query_execution::{QueryExecution, VisibleResultKind};
@@ -20,6 +20,7 @@ use crate::model::connection::setup::ConnectionSetupState;
 use crate::model::shared::confirm_dialog::ConfirmDialogState;
 use crate::model::shared::detail_view::ReadOnlyDetailState;
 use crate::model::shared::flash_timer::FlashTimerStore;
+use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::message::MessageState;
 use crate::model::shared::modal::ModalState;
@@ -35,7 +36,6 @@ use crate::model::sqlite::diagnostics::SqliteDiagnosticsState;
 use crate::model::table_detail_cache::TableDetailCache;
 use crate::model::table_prefetch::TablePrefetchState;
 use crate::policy::preview_cell_text::CellPresentationPolicy;
-use crate::policy::sql::result_query::is_rerunnable_select;
 use crate::policy::table_kind::max_explorer_table_label_width;
 use crate::policy::write::inline_cell_edit::supports_inline_edit;
 use crate::policy::write::write_guardrails::{
@@ -134,6 +134,24 @@ impl AppState {
         self.modal.active_mode()
     }
 
+    pub fn focus_pane(&mut self, pane: FocusedPane) {
+        if pane != FocusedPane::Result {
+            self.result_interaction.reset_interaction();
+            if self.input_mode() == InputMode::CellEdit {
+                self.modal.set_mode(InputMode::Normal);
+            }
+        }
+        self.ui.set_focused_pane(pane);
+    }
+
+    pub fn toggle_focus_mode(&mut self) {
+        let was_focused = self.ui.is_focus_mode();
+        self.ui.toggle_focus();
+        if was_focused {
+            self.result_interaction.reset_interaction();
+        }
+    }
+
     pub fn record_kill(&mut self, text: String) {
         if !text.is_empty() {
             self.kill_buffer = Some(text);
@@ -174,25 +192,24 @@ impl AppState {
 
     fn apply_browse_layout(&mut self, layout: BrowseLayout) {
         if !self.ui.is_focus_mode() {
-            self.ui
-                .set_inspector_viewport_plan(layout.inspector.viewport_plan);
+            self.ui.inspector_horizontal_offset = self
+                .ui
+                .inspector_horizontal_offset
+                .min(layout.inspector.viewport_plan.max_offset);
+            self.ui.inspector_viewport_plan = layout.inspector.viewport_plan;
         }
-        self.ui
-            .set_result_viewport_plan(layout.result.viewport_plan);
-        self.ui.set_result_widths_cache(layout.result.widths_cache);
+        self.ui.result_viewport_plan = layout.result.viewport_plan;
+        self.ui.result_widths_cache = layout.result.widths_cache;
         self.ui
             .set_explorer_pane_height(layout.explorer.pane_height);
-        self.ui
-            .set_explorer_content_width(layout.explorer.content_width);
+        self.ui.explorer_content_width = layout.explorer.content_width;
         let max_name_width = max_explorer_table_label_width(
             self.tables(),
             self.session.active_database_type_or_default(),
         );
-        let max_offset = scroll_max_offset(max_name_width, self.ui.explorer_content_width());
-        self.ui
-            .set_explorer_horizontal_offset(self.ui.explorer_horizontal_offset().min(max_offset));
-        self.ui
-            .set_inspector_pane_height(layout.inspector.pane_height);
+        let max_offset = scroll_max_offset(max_name_width, self.ui.explorer_content_width);
+        self.ui.explorer_horizontal_offset = self.ui.explorer_horizontal_offset.min(max_offset);
+        self.ui.inspector_pane_height = layout.inspector.pane_height;
         self.ui.set_result_pane_height(layout.result.pane_height);
     }
 
@@ -230,8 +247,7 @@ impl AppState {
 
     fn apply_detail_layout(&mut self, layout: DetailLayout) {
         if let Some(json) = layout.json {
-            self.ui
-                .set_json_detail_editor_visible_rows(json.editor_visible_rows);
+            self.ui.json_detail_editor_visible_rows = json.editor_visible_rows;
             self.json_detail
                 .editor_mut()
                 .update_scroll(json.editor_visible_rows);
@@ -275,7 +291,7 @@ impl AppState {
     pub fn inspector_view_model(&self, ddl_generator: &dyn DdlGenerator) -> InspectorViewModel {
         InspectorViewModel::build_with_detail_state(
             &self.session.active_engine_feature_profile(),
-            self.ui.inspector_tab(),
+            self.ui.inspector_tab,
             self.session.table_detail_state(),
             self.session.active_database_type_or_default(),
             ddl_generator,
@@ -386,20 +402,9 @@ impl AppState {
     }
 
     pub fn can_request_csv_export(&self) -> bool {
-        let database = self.session.active_database_type();
-        self.query.cached_csv_export(database, || {
-            let Some(result) = self.query.visible_result() else {
-                return false;
-            };
-            if result.is_error() {
-                return false;
-            }
-            match database {
-                Some(DatabaseType::SQLite) => true,
-                Some(DatabaseType::MySQL) => mysql_export_plan(&result.query).is_some(),
-                Some(DatabaseType::PostgreSQL) | None => is_rerunnable_select(&result.query),
-            }
-        })
+        self.query
+            .visible_result()
+            .is_some_and(|result| !result.is_error() && !result.columns.is_empty())
     }
 
     pub fn visible_preview_target_read_only_reason(&self) -> Option<&'static str> {
@@ -1054,13 +1059,36 @@ mod tests {
         }
 
         #[test]
+        fn inspector_horizontal_scroll_offset_clamps_when_viewport_changes() {
+            let mut state = make_state();
+            state.ui.inspector_horizontal_offset = 500;
+            let output = RenderOutput {
+                browse: BrowseLayout {
+                    inspector: InspectorLayout {
+                        viewport_plan: ViewportPlan {
+                            max_offset: 10,
+                            ..ViewportPlan::default()
+                        },
+                        ..InspectorLayout::default()
+                    },
+                    ..BrowseLayout::default()
+                },
+                ..RenderOutput::default()
+            };
+
+            state.apply_render_output(output);
+
+            assert_eq!(state.ui.inspector_horizontal_offset, 10);
+        }
+
+        #[test]
         fn focus_mode_preserves_inspector_viewport_plan() {
             let mut state = make_state();
-            state.ui.set_inspector_viewport_plan(ViewportPlan {
+            state.ui.inspector_viewport_plan = ViewportPlan {
                 column_count: 2,
                 ..ViewportPlan::default()
-            });
-            state.ui.toggle_focus();
+            };
+            state.toggle_focus_mode();
             let output = RenderOutput {
                 browse: BrowseLayout {
                     inspector: InspectorLayout {
@@ -1077,8 +1105,8 @@ mod tests {
 
             state.apply_render_output(output);
 
-            assert_eq!(state.ui.inspector_viewport_plan().column_count, 2);
-            assert_eq!(state.ui.inspector_pane_height(), 30);
+            assert_eq!(state.ui.inspector_viewport_plan.column_count, 2);
+            assert_eq!(state.ui.inspector_pane_height, 30);
         }
     }
 
@@ -1146,8 +1174,8 @@ mod tests {
         fn empty_filter_returns_all() {
             let mut state = make_state();
             state.session.set_metadata(Some(make_metadata(vec![
-                TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
-                TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
+                TableSummary::new("public".to_string(), "users".to_string(), Some(100)),
+                TableSummary::new("public".to_string(), "posts".to_string(), Some(50)),
             ])));
             state.ui.table_picker_mut().clear_filter();
 
@@ -1160,8 +1188,8 @@ mod tests {
         fn substring_filter_matches() {
             let mut state = make_state();
             state.session.set_metadata(Some(make_metadata(vec![
-                TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
-                TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
+                TableSummary::new("public".to_string(), "users".to_string(), Some(100)),
+                TableSummary::new("public".to_string(), "posts".to_string(), Some(50)),
             ])));
             state.ui.table_picker_mut().insert_filter_str("user");
 
@@ -1180,7 +1208,6 @@ mod tests {
                     "public".to_string(),
                     "Users".to_string(),
                     Some(100),
-                    false,
                 )])));
             state.ui.table_picker_mut().insert_filter_str("user");
 
@@ -1414,8 +1441,11 @@ mod tests {
         }
 
         #[test]
-        fn csv_export_is_rechecked_after_result_or_database_changes() {
+        fn csv_export_availability_follows_visible_result() {
             let mut state = make_state();
+            state.query.clear_current_result();
+            assert!(!state.can_request_csv_export());
+
             state
                 .query
                 .set_current_result(Arc::new(QueryResult::success(
@@ -1426,57 +1456,21 @@ mod tests {
                     QuerySource::Adhoc,
                 )));
             assert!(!state.can_request_csv_export());
-            state.session.activate_connection(
-                &ConnectionId::new(),
-                "sqlite",
-                &endpoint::for_engine(DatabaseType::SQLite, "sqlite:///tmp/app.db"),
-            );
-            assert!(state.can_request_csv_export());
-            state.query.clear_current_result();
-            assert!(!state.can_request_csv_export());
-            state
-                .query
-                .set_current_result(make_query_result(QuerySource::Preview));
-            assert!(state.can_request_csv_export());
-        }
 
-        #[test]
-        fn csv_export_blocked_for_mutating_result_query() {
-            let mut state = make_state();
-            let result = QueryResult::success(
-                "UPDATE users SET name = 'b' WHERE id = 1 RETURNING id".to_string(),
-                vec!["id".to_string()],
-                vec![vec!["1".to_string()]],
+            state.query.set_current_result(Arc::new(QueryResult::error(
+                "SELECT 1".to_string(),
+                "error".to_string(),
                 10,
                 QuerySource::Adhoc,
-            );
-            state.query.set_current_result(Arc::new(result));
-
+            )));
             assert!(!state.can_request_csv_export());
-        }
 
-        #[rstest]
-        #[case("SELECT id FROM users")]
-        #[case("TABLE users")]
-        #[case("SHOW TABLES")]
-        #[case("DESCRIBE users")]
-        fn mysql_csv_export_allows_supported_result_queries(#[case] query: &str) {
-            let mut state = make_state();
-            state.session.activate_connection(
-                &ConnectionId::new(),
-                "mysql",
-                &endpoint::mysql("mysql://localhost/test", None),
-            );
+            state.query.clear_current_result();
+            assert!(!state.can_request_csv_export());
+
             state
                 .query
-                .set_current_result(Arc::new(QueryResult::success(
-                    query.to_string(),
-                    vec!["column".to_string()],
-                    vec![vec!["value".to_string()]],
-                    10,
-                    QuerySource::Adhoc,
-                )));
-
+                .set_current_result(make_query_result(QuerySource::Adhoc));
             assert!(state.can_request_csv_export());
         }
 
@@ -1585,7 +1579,7 @@ mod tests {
                 let generation = state.session.selection_generation();
                 activate_postgres_connection(&mut state, "dsn://test");
                 let run_id = state.session.begin_table_detail_run();
-                state.ui.set_inspector_scroll_offset(42);
+                state.ui.inspector_scroll_offset = 42;
 
                 reduce(
                     &mut state,
@@ -1599,7 +1593,7 @@ mod tests {
                     &AppServices::stub(),
                 );
 
-                assert_eq!(state.ui.inspector_scroll_offset(), 0);
+                assert_eq!(state.ui.inspector_scroll_offset, 0);
             }
         }
     }

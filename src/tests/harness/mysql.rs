@@ -31,7 +31,7 @@ impl MySqlTestDb {
         )
         .map_err(|error| DbOperationError::ConnectionFailed(error.to_string()))?;
         let adapter = MySqlAdapter::new();
-        let config = profile.mysql_config().unwrap().clone();
+        let config = profile.config.as_mysql().unwrap().clone();
         let endpoint = ConnectionEndpoint::from(&profile.config);
         Ok(Self {
             adapter,

@@ -184,19 +184,9 @@ pub(in crate::adapters::mysql) const INDEX_RESULT_COLUMNS_LEGACY: &[&str] = &[
     "SUB_PART",
     "COLLATION",
 ];
-pub(in crate::adapters::mysql) const TRIGGER_RESULT_COLUMNS: &[&str] = &[
-    "TRIGGER_NAME",
-    "ACTION_ORDER",
-    "ACTION_TIMING",
-    "EVENT_MANIPULATION",
-    "ACTION_STATEMENT",
-    "DEFINER",
-    "SQL_MODE",
-    "CHARACTER_SET_CLIENT",
-    "COLLATION_CONNECTION",
-    "DATABASE_COLLATION",
-    "CREATED",
-];
+pub(in crate::adapters::mysql) const TRIGGER_NAME_RESULT_COLUMNS: &[&str] = &["TRIGGER_NAME"];
+pub(in crate::adapters::mysql) const TRIGGER_SHOW_CREATE_RESULT_COLUMNS: &[&str] =
+    &["Trigger", "sql_mode", "SQL Original Statement"];
 const TABLE_SHOW_CREATE_RESULT_COLUMNS: &[&str] = &["Table", "Create Table"];
 const VIEW_SHOW_CREATE_RESULT_COLUMNS: &[&str] = &["View", "Create View"];
 
@@ -235,12 +225,20 @@ pub(in crate::adapters::mysql) fn indexes_query_for_capabilities(
     )
 }
 
-pub(in crate::adapters::mysql) fn triggers_query(schema: &str, table: &str) -> String {
+pub(in crate::adapters::mysql) fn trigger_names_query(schema: &str, table: &str) -> String {
     format!(
-        "SELECT TRIGGER_NAME, ACTION_ORDER, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT, DEFINER, SQL_MODE, CHARACTER_SET_CLIENT, COLLATION_CONNECTION, DATABASE_COLLATION, CREATED FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = {} AND EVENT_OBJECT_SCHEMA = {} AND EVENT_OBJECT_TABLE = {} ORDER BY EVENT_MANIPULATION, ACTION_TIMING, ACTION_ORDER",
+        "SELECT TRIGGER_NAME FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = {} AND EVENT_OBJECT_SCHEMA = {} AND EVENT_OBJECT_TABLE = {} ORDER BY EVENT_MANIPULATION, ACTION_TIMING, ACTION_ORDER",
         MySql.quote_text(schema),
         MySql.quote_text(schema),
         MySql.quote_text(table),
+    )
+}
+
+pub(in crate::adapters::mysql) fn show_create_trigger_query(schema: &str, trigger: &str) -> String {
+    format!(
+        "SHOW CREATE TRIGGER {}.{}",
+        MySql.quote_identifier(schema),
+        MySql.quote_identifier(trigger),
     )
 }
 
@@ -420,11 +418,11 @@ mod tests {
             )
         );
 
-        let triggers_sql = triggers_query(schema, table);
+        let triggers_sql = trigger_names_query(schema, table);
         assert_eq!(
             triggers_sql,
             format!(
-                "SELECT TRIGGER_NAME, ACTION_ORDER, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT, DEFINER, SQL_MODE, CHARACTER_SET_CLIENT, COLLATION_CONNECTION, DATABASE_COLLATION, CREATED FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = {quoted_schema} AND EVENT_OBJECT_SCHEMA = {quoted_schema} AND EVENT_OBJECT_TABLE = {quoted_table} ORDER BY EVENT_MANIPULATION, ACTION_TIMING, ACTION_ORDER"
+                "SELECT TRIGGER_NAME FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = {quoted_schema} AND EVENT_OBJECT_SCHEMA = {quoted_schema} AND EVENT_OBJECT_TABLE = {quoted_table} ORDER BY EVENT_MANIPULATION, ACTION_TIMING, ACTION_ORDER"
             )
         );
 
@@ -538,21 +536,13 @@ mod tests {
                 "IS_VISIBLE",
             ]
         );
+    }
+
+    #[test]
+    fn show_create_trigger_quotes_schema_and_trigger_identifiers() {
         assert_eq!(
-            TRIGGER_RESULT_COLUMNS,
-            &[
-                "TRIGGER_NAME",
-                "ACTION_ORDER",
-                "ACTION_TIMING",
-                "EVENT_MANIPULATION",
-                "ACTION_STATEMENT",
-                "DEFINER",
-                "SQL_MODE",
-                "CHARACTER_SET_CLIENT",
-                "COLLATION_CONNECTION",
-                "DATABASE_COLLATION",
-                "CREATED",
-            ]
+            show_create_trigger_query("app`db", "audit`log"),
+            "SHOW CREATE TRIGGER `app``db`.`audit``log`"
         );
     }
 

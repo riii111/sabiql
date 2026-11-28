@@ -1,28 +1,7 @@
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::confirm_dialog::ConfirmIntent;
-use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
-
-pub(in crate::update) fn set_focused_pane(state: &mut AppState, pane: FocusedPane) -> Vec<Effect> {
-    if pane != FocusedPane::Result {
-        state.result_interaction.reset_interaction();
-        if state.modal.active_mode() == InputMode::CellEdit {
-            state.modal.set_mode(InputMode::Normal);
-        }
-    }
-    state.ui.set_focused_pane(pane);
-    vec![]
-}
-
-pub(in crate::update) fn toggle_focus(state: &mut AppState) -> Vec<Effect> {
-    let was_focus = state.ui.is_focus_mode();
-    state.ui.toggle_focus();
-    if was_focus {
-        state.result_interaction.reset_interaction();
-    }
-    vec![]
-}
 
 pub(in crate::update) fn toggle_read_only(state: &mut AppState) -> Vec<Effect> {
     if state.session.is_read_only() {
@@ -38,33 +17,10 @@ pub(in crate::update) fn toggle_read_only(state: &mut AppState) -> Vec<Effect> {
     vec![]
 }
 
-pub(in crate::update) fn inspector_next_tab(state: &mut AppState) -> Vec<Effect> {
-    state.ui.set_inspector_tab(
-        state
-            .session
-            .active_engine_feature_profile()
-            .next_inspector_tab(state.ui.inspector_tab()),
-    );
-    vec![]
-}
-
-pub(in crate::update) fn inspector_prev_tab(state: &mut AppState) -> Vec<Effect> {
-    state.ui.set_inspector_tab(
-        state
-            .session
-            .active_engine_feature_profile()
-            .prev_inspector_tab(state.ui.inspector_tab()),
-    );
-    vec![]
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::ConnectionId;
-    use crate::model::shared::inspector_tab::InspectorTab;
     use crate::services::AppServices;
-    use crate::test_support::endpoint;
     use crate::update::action::Action;
     use crate::update::reducer::route;
     use std::time::Instant;
@@ -106,50 +62,6 @@ mod tests {
                 state.confirm_dialog.intent(),
                 Some(ConfirmIntent::DisableReadOnly)
             ));
-        }
-    }
-
-    mod inspector_tabs {
-        use super::*;
-
-        fn activate_sqlite_connection(state: &mut AppState) {
-            state.session.activate_connection(
-                &ConnectionId::new(),
-                "sqlite",
-                &endpoint::sqlite("sqlite://test.db"),
-            );
-        }
-
-        #[test]
-        fn next_tab_uses_session_capabilities() {
-            let mut state = AppState::new("test".to_string());
-            activate_sqlite_connection(&mut state);
-            state.ui.set_inspector_tab(InspectorTab::Info);
-
-            route(
-                &mut state,
-                Action::InspectorNextTab,
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert_eq!(state.ui.inspector_tab(), InspectorTab::Columns);
-        }
-
-        #[test]
-        fn prev_tab_uses_session_capabilities() {
-            let mut state = AppState::new("test".to_string());
-            activate_sqlite_connection(&mut state);
-            state.ui.set_inspector_tab(InspectorTab::Info);
-
-            route(
-                &mut state,
-                Action::InspectorPrevTab,
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert_eq!(state.ui.inspector_tab(), InspectorTab::Ddl);
         }
     }
 }

@@ -16,10 +16,10 @@ use crate::primitives::atoms::scroll_indicator::{
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::theme::ThemePalette;
 
-pub struct RowDetail;
+pub(crate) struct RowDetail;
 
 impl RowDetail {
-    pub fn render(
+    pub(crate) fn render(
         frame: &mut Frame,
         state: &AppState,
         now: std::time::Instant,

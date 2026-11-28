@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{
     Column, ColumnAttributes, FkAction, ForeignKey, Index, IndexAttributes, IndexType, Table,
-    TableStorageAttributes, UNRESOLVED_FK_COLUMN,
+    TableStorageAttributes, Trigger, UNRESOLVED_FK_COLUMN,
 };
 
 use super::{
@@ -17,7 +17,6 @@ use super::{
         },
     },
     kind_info::table_kind_info_from_raw,
-    trigger::parse_sqlite_trigger,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -117,7 +116,10 @@ pub(super) fn table_from_metadata(
     if mode.include_full_detail() {
         for raw in metadata.triggers {
             if let Some(sql) = raw.sql {
-                triggers.push(parse_sqlite_trigger(&raw.name, &sql)?);
+                triggers.push(Trigger {
+                    name: raw.name,
+                    definition: sql,
+                });
             }
         }
         triggers.sort_by(|left, right| left.name.cmp(&right.name));

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::domain::connection::{ConnectionConfig, ConnectionEndpoint, ConnectionId};
 use crate::domain::query_history::QueryHistoryScope;
-use crate::domain::{ErTableInfo, QueryValue};
+use crate::domain::{ErTableInfo, QueryResult};
 use crate::model::browse::session::ConnectionSaveGuard;
 use crate::ports::outbound::{AccessMode, AppSettings};
 use crate::update::action::{Action, ConnectionTarget};
@@ -96,18 +96,10 @@ pub enum Effect {
     CancelMetadataTasks,
     CancelSqliteDiagnostics,
     CancelTrackedTasks,
-    ExportCsv {
-        endpoint: Arc<ConnectionEndpoint>,
-        run_id: u64,
-        query: String,
-        file_name: String,
-    },
     ExportCsvFromCache {
         run_id: u64,
         file_name: String,
-        columns: Vec<String>,
-        values: Vec<Vec<QueryValue>>,
-        row_count: Option<usize>,
+        result: Arc<QueryResult>,
     },
 
     GenerateErDiagram {

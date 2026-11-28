@@ -224,7 +224,6 @@ impl EffectRunner {
             | Effect::ExecuteAdhoc { .. }
             | Effect::ExecuteExplain { .. }
             | Effect::ExecuteWrite { .. }
-            | Effect::ExportCsv { .. }
             | Effect::ExportCsvFromCache { .. }) => {
                 cmd_browse::query::run(
                     e,
@@ -426,11 +425,10 @@ mod tests {
                     "public".to_string(),
                     "abcdefghij".to_string(),
                     Some(0),
-                    false,
                 )];
                 metadata
             })));
-            state.ui.set_explorer_horizontal_offset(20);
+            state.ui.explorer_horizontal_offset = 20;
 
             let mut renderer = ExplorerWidthRenderer {
                 explorer_content_width: 8,
@@ -446,7 +444,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(state.ui.explorer_horizontal_offset(), 9);
+            assert_eq!(state.ui.explorer_horizontal_offset, 9);
         }
 
         #[tokio::test]
@@ -484,7 +482,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(state.ui.json_detail_editor_visible_rows(), 2);
+            assert_eq!(state.ui.json_detail_editor_visible_rows, 2);
             assert_eq!(state.json_detail.editor().cursor_to_position().0, 3);
             assert_eq!(state.json_detail.editor().scroll_row(), 2);
         }
@@ -783,7 +781,6 @@ mod tests {
 
     mod query_context_termination {
         use std::future::pending;
-        use std::path::PathBuf;
         use std::sync::Mutex;
         use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -839,15 +836,6 @@ mod tests {
                 _query: &str,
                 _access_mode: AccessMode,
             ) -> Result<WriteExecutionResult, DbOperationError> {
-                unreachable!("test only starts a preview")
-            }
-
-            async fn export_to_csv(
-                &self,
-                _endpoint: &ConnectionEndpoint,
-                _query: &str,
-                _file_name: &str,
-            ) -> Result<PathBuf, DbOperationError> {
                 unreachable!("test only starts a preview")
             }
         }

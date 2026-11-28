@@ -2,8 +2,7 @@ use std::collections::BTreeSet;
 use std::time::Instant;
 
 use super::cell_edit::CellEditState;
-use crate::model::shared::cursor::CursorMove;
-use crate::model::shared::text_input::{TextEdit, TextKillDirection};
+use crate::model::shared::text_input::TextEdit;
 use crate::model::shared::ui_state::{ResultSelection, YankFlash};
 use crate::policy::write::write_guardrails::{WriteOperation, WritePreview};
 
@@ -84,10 +83,6 @@ impl ResultInteraction {
         self.selection.move_cell(col);
     }
 
-    pub fn clamp_selection(&mut self, max_rows: usize, max_cols: usize) {
-        self.selection.clamp(max_rows, max_cols);
-    }
-
     pub fn begin_cell_edit(&mut self, row: usize, col: usize, value: String) {
         self.cell_edit.begin(row, col, value);
     }
@@ -99,39 +94,9 @@ impl ResultInteraction {
         }
     }
 
-    pub fn cell_edit_insert_char(&mut self, ch: char) {
-        self.cell_edit.insert_char(ch);
-        self.clear_write_preview();
-    }
-
     pub fn cell_edit_insert_str(&mut self, text: &str) {
         self.cell_edit.insert_str(text);
         self.clear_write_preview();
-    }
-
-    pub fn cell_edit_backspace(&mut self) {
-        self.cell_edit.backspace();
-        self.clear_write_preview();
-    }
-
-    pub fn cell_edit_delete(&mut self) {
-        self.cell_edit.delete();
-        self.clear_write_preview();
-    }
-
-    pub fn cell_edit_kill(&mut self, direction: TextKillDirection) -> String {
-        let killed = self.cell_edit.kill(direction);
-        self.clear_write_preview();
-        killed
-    }
-
-    pub fn cell_edit_yank(&mut self, text: &str) {
-        self.cell_edit.yank(text);
-        self.clear_write_preview();
-    }
-
-    pub fn cell_edit_move_cursor(&mut self, direction: CursorMove) {
-        self.cell_edit.move_cursor(direction);
     }
 
     pub fn edit_cell_text(&mut self, edit: TextEdit, yank_text: Option<&str>) -> String {
@@ -146,10 +111,6 @@ impl ResultInteraction {
     pub fn replace_cell_edit_draft(&mut self, content: String) {
         self.cell_edit.replace_draft(content);
         self.clear_write_preview();
-    }
-
-    pub fn cell_edit_set_cursor(&mut self, cursor: usize) {
-        self.cell_edit.set_cursor(cursor);
     }
 
     pub fn leave_cell_edit(&mut self) {
@@ -318,7 +279,7 @@ mod tests {
         ri.begin_cell_edit(0, 0, "val".to_string());
         ri.set_write_preview(test_preview());
 
-        ri.cell_edit_insert_char('x');
+        ri.edit_cell_text(TextEdit::Insert('x'), None);
 
         assert_eq!(ri.cell_edit().draft_value(), "valx");
         assert!(ri.pending_write_preview().is_none());
@@ -525,16 +486,6 @@ mod tests {
         assert!(ri.cell_edit().is_active());
         assert_eq!(ri.cell_edit().row(), Some(1));
         assert_eq!(ri.cell_edit().col(), Some(2));
-    }
-
-    #[test]
-    fn clamp_selection_delegates() {
-        let mut ri = ResultInteraction::default();
-        ri.activate_cell(10, 0);
-
-        ri.clamp_selection(5, 5);
-
-        assert_eq!(ri.selection().mode(), ResultNavMode::Scroll);
     }
 
     fn test_preview() -> WritePreview {

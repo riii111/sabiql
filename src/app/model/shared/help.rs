@@ -79,16 +79,6 @@ impl HelpState {
         self.horizontal_offset = 0;
     }
 
-    pub fn insert_filter_char(&mut self, ch: char) {
-        self.filter.insert_char(ch);
-        self.reset_offsets();
-    }
-
-    pub fn backspace_filter(&mut self) {
-        self.filter.backspace();
-        self.reset_offsets();
-    }
-
     pub fn edit_filter<R>(&mut self, edit: impl FnOnce(&mut TextInputState) -> R) -> R {
         let result = edit(&mut self.filter);
         self.reset_offsets();
@@ -103,7 +93,7 @@ impl HelpState {
         self.edit_filter(|input| input.apply_edit(edit, yank_text))
     }
 
-    pub fn move_filter_cursor(&mut self, direction: CursorMove) {
+    fn move_filter_cursor(&mut self, direction: CursorMove) {
         self.filter.move_cursor(direction);
     }
 
@@ -130,7 +120,7 @@ mod tests {
         state.set_scroll_offset(10);
         state.set_horizontal_offset(4);
 
-        state.insert_filter_char('c');
+        state.apply_filter_edit(TextEdit::Insert('c'), None);
 
         assert_eq!(state.filter().content(), "c");
         assert_eq!(state.scroll_offset(), 0);
@@ -150,7 +140,7 @@ mod tests {
     #[test]
     fn filter_mode_returns_to_viewing_without_clearing_the_filter() {
         let mut state = HelpState::default();
-        state.insert_filter_char('c');
+        state.apply_filter_edit(TextEdit::Insert('c'), None);
         state.enter_filter_editing();
 
         state.exit_filter_editing();

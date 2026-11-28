@@ -5,7 +5,7 @@ use crate::app::policy::sql::lexer::{SqlLexer, TokenKind};
 use crate::domain::DatabaseType;
 use crate::theme::ThemePalette;
 
-pub fn highlight_sql(
+pub(crate) fn highlight_sql(
     text: &str,
     database_type: DatabaseType,
     theme: &ThemePalette,
@@ -16,7 +16,7 @@ pub fn highlight_sql(
         .collect()
 }
 
-pub fn highlight_sql_spans(
+pub(crate) fn highlight_sql_spans(
     text: &str,
     database_type: DatabaseType,
     theme: &ThemePalette,

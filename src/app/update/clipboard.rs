@@ -1,28 +1,16 @@
 use std::time::{Duration, Instant};
 
-use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::ui_state::YankFlash;
-use crate::ports::outbound::clipboard::ClipboardError;
 use crate::update::action::CopyTarget;
 
 const RESULT_YANK_FLASH: Duration = Duration::from_millis(200);
 
-pub(in crate::update) fn copy_succeeded(
+pub(in crate::update) fn show_copy_feedback(
     state: &mut AppState,
     target: CopyTarget,
     now: Instant,
-) -> Vec<Effect> {
-    show_copy_feedback(state, target, now);
-    vec![]
-}
-
-pub(in crate::update) fn copy_failed(state: &mut AppState, error: &ClipboardError) -> Vec<Effect> {
-    state.messages.set_error(error.to_string());
-    vec![]
-}
-
-fn show_copy_feedback(state: &mut AppState, target: CopyTarget, now: Instant) {
+) {
     match target {
         CopyTarget::Panel(flash_id) => state.flash_timers.set(flash_id, now),
         CopyTarget::ResultCell { row, col } => {
@@ -49,9 +37,18 @@ mod tests {
 
     use super::*;
     use crate::model::shared::flash_timer::FlashId;
+    use crate::ports::outbound::clipboard::ClipboardError;
+    use crate::services::AppServices;
+    use crate::update::action::Action;
+    use crate::update::reducer::route;
 
     fn copied(state: &mut AppState, target: CopyTarget, now: Instant) {
-        copy_succeeded(state, target, now);
+        route(
+            state,
+            Action::CopySucceeded(target),
+            now,
+            &AppServices::stub(),
+        );
     }
 
     #[rstest]
@@ -99,9 +96,11 @@ mod tests {
     fn copy_failure_shows_error() {
         let mut state = AppState::new("test".to_string());
 
-        copy_failed(
+        route(
             &mut state,
-            &ClipboardError::Unavailable("Clipboard unavailable".into()),
+            Action::CopyFailed(ClipboardError::Unavailable("Clipboard unavailable".into())),
+            Instant::now(),
+            &AppServices::stub(),
         );
 
         assert_eq!(

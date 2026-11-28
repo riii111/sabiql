@@ -23,7 +23,7 @@ Safety follows a plan-before-apply flow familiar from Terraform: inline edits an
 - **Edit with previews** — Update cells or delete rows only after reviewing the SQL and its risk level
 - **Browse in read-only mode** (`Ctrl+R`) — Block writes while investigating data
 - **Analyze queries** — View and compare PostgreSQL or MySQL execution plans, or inspect SQLite query plans
-- **Work with data** — Copy cell values, export CSV, and inspect or edit PostgreSQL and MySQL JSON documents
+- **Work with data** — Copy cell values, export the shown result to CSV, and inspect or edit PostgreSQL and MySQL JSON documents
 - **Visualize relationships** — Generate PostgreSQL and MySQL ER diagrams with Graphviz and open them in your browser
 
 Press `?` inside sabiql to see all commands and keybindings.

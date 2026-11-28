@@ -1,11 +1,8 @@
 mod classifier;
-mod export;
 mod lexer;
 mod side_effect;
 mod target;
 mod transaction;
-
-pub use export::{MySqlExportPlan, mysql_export_plan};
 
 use lexer::TokenKind;
 
@@ -200,13 +197,6 @@ pub fn classify_mysql_multi_statement_with_lower_case_table_names(
         lower_case_table_names,
     )?;
     Ok(classified)
-}
-
-pub fn validate_mysql_statements(
-    statements: &[MySqlStatement],
-    selected_database: Option<&str>,
-) -> Result<(), String> {
-    validate_mysql_statements_with_lower_case_table_names(statements, selected_database, 0)
 }
 
 pub fn validate_mysql_statements_with_lower_case_table_names(

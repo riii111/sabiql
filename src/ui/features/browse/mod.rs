@@ -1,7 +1,7 @@
-pub mod cell_detail;
+pub(crate) mod cell_detail;
 mod detail_view;
-pub mod explorer;
-pub mod inspector;
-pub mod json_detail;
-pub mod result;
-pub mod row_detail;
+pub(crate) mod explorer;
+pub(crate) mod inspector;
+pub(crate) mod json_detail;
+pub(crate) mod result;
+pub(crate) mod row_detail;

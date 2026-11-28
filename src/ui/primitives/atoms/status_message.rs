@@ -3,30 +3,11 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::theme::{StatusTone, ThemePalette};
 
-pub enum MessageType {
-    Error,
-    Success,
-}
-
-pub struct StatusMessage;
+pub(crate) struct StatusMessage;
 
 impl StatusMessage {
-    pub fn render_line(
+    pub(crate) fn render_error_lines(
         message: &str,
-        msg_type: MessageType,
-        theme: &ThemePalette,
-    ) -> Line<'static> {
-        let (prefix, style) = match msg_type {
-            MessageType::Error => ("", theme.status_style(StatusTone::Error)),
-            MessageType::Success => ("", theme.status_style(StatusTone::Success)),
-        };
-
-        Line::from(vec![Span::styled(format!("{prefix}{message}"), style)])
-    }
-
-    pub fn render_lines(
-        message: &str,
-        msg_type: MessageType,
         width: u16,
         theme: &ThemePalette,
     ) -> Vec<Line<'static>> {
@@ -34,10 +15,7 @@ impl StatusMessage {
             return Vec::new();
         }
 
-        let style = match msg_type {
-            MessageType::Error => theme.status_style(StatusTone::Error),
-            MessageType::Success => theme.status_style(StatusTone::Success),
-        };
+        let style = theme.status_style(StatusTone::Error);
         let width = width as usize;
         let mut lines = Vec::new();
 

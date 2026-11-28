@@ -35,7 +35,8 @@ impl ModalState {
         self.mode = target;
     }
 
-    pub fn return_destination(&self) -> InputMode {
+    #[cfg(test)]
+    pub(crate) fn return_destination(&self) -> InputMode {
         self.return_stack
             .last()
             .copied()

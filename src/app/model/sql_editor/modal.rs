@@ -85,6 +85,7 @@ impl SqlModalContext {
         &self.editor
     }
 
+    #[cfg(feature = "test-support")]
     pub fn editor_mut_for_input(&mut self) -> &mut MultiLineInputState {
         &mut self.editor
     }

@@ -9,8 +9,8 @@ use crate::app::model::er_state::ErStatus;
 use crate::app::update::input::keymap::{KeyContext, footer_hints};
 use crate::primitives::atoms::key_text;
 use crate::primitives::atoms::spinner_char;
-use crate::primitives::atoms::status_message::{MessageType, StatusMessage};
-use crate::theme::ThemePalette;
+use crate::primitives::atoms::status_message::StatusMessage;
+use crate::theme::{StatusTone, ThemePalette};
 
 pub struct Footer;
 
@@ -27,10 +27,12 @@ impl Footer {
             let line = Self::build_er_waiting_line(state, time_ms, theme);
             frame.render_widget(Paragraph::new(line).style(base_style), area);
         } else if let Some(error) = state.messages.last_error() {
-            let line = StatusMessage::render_lines(error, MessageType::Error, area.width, theme)
+            let line = StatusMessage::render_error_lines(error, area.width, theme)
                 .into_iter()
                 .next()
-                .unwrap_or_else(|| StatusMessage::render_line("", MessageType::Error, theme));
+                .unwrap_or_else(|| {
+                    Line::from(Span::styled("", theme.status_style(StatusTone::Error)))
+                });
             frame.render_widget(Paragraph::new(line).style(base_style), area);
         } else {
             // Show hints with optional inline success message
@@ -119,7 +121,7 @@ mod tests {
     use crate::app::model::connection::setup::ConnectionField;
     use crate::app::model::shared::focused_pane::FocusedPane;
     use crate::app::model::shared::input_mode::InputMode;
-    use crate::app::model::shared::ui_state::FocusMode;
+
     use crate::app::ports::outbound::DbOperationError;
     use crate::app::update::input::keymap::{HintSurface, KeyContext, connection_error_hints};
     use rstest::rstest;
@@ -152,7 +154,7 @@ mod tests {
     fn inspector_state() -> AppState {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::Normal);
-        state.ui.set_focused_pane(FocusedPane::Inspector);
+        state.focus_pane(FocusedPane::Inspector);
         state
     }
 
@@ -165,7 +167,7 @@ mod tests {
     fn result_focused_state() -> AppState {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::Normal);
-        state.ui.set_focused_pane(FocusedPane::Result);
+        state.focus_pane(FocusedPane::Result);
         state
     }
 
@@ -185,9 +187,7 @@ mod tests {
     #[case(true)]
     fn focus_mode_footer_shows_connections(#[case] result_active: bool) {
         let mut state = result_focused_state();
-        state
-            .ui
-            .set_focus_mode(FocusMode::focused(FocusedPane::Explorer));
+        state.toggle_focus_mode();
         if result_active {
             state.result_interaction.activate_cell(0, 0);
         }

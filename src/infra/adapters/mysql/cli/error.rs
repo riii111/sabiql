@@ -15,6 +15,11 @@ fn mysql_server_error_code(lowercase_details: &str) -> Option<u32> {
     digits[..end].parse().ok()
 }
 
+pub(in crate::adapters::mysql) fn is_mysql_missing_trigger(error: &DbOperationError) -> bool {
+    matches!(error, DbOperationError::QueryFailed(details)
+        if mysql_server_error_code(&details.to_ascii_lowercase()) == Some(1360))
+}
+
 pub(super) fn is_mysql_connect_timeout_message(value: &str) -> bool {
     let lowercase = value.to_ascii_lowercase();
     lowercase.contains("can't connect to mysql server")
