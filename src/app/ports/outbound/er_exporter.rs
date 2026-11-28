@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::domain::ErTableInfo;
 
@@ -17,7 +17,6 @@ pub trait ErDiagramExporter: Send + Sync {
         &self,
         tables: &[ErTableInfo],
         filename: &str,
-        cache_dir: &Path,
-        browser: Option<&str>,
+        project_name: &str,
     ) -> ErExportResult<PathBuf>;
 }

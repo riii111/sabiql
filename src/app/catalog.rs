@@ -325,7 +325,6 @@ mod tests {
         for description in [
             "Select setting",
             "Switch settings section",
-            "Edit custom browser",
             "Submit command",
         ] {
             assert!(

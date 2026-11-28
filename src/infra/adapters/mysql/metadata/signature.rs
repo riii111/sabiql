@@ -4,16 +4,15 @@ use std::ffi::OsStr;
 use std::time::Duration;
 
 use crate::app::ports::outbound::DbOperationError;
-use crate::domain::{
-    FkAction, Table, TableKind, TableKindInfo, TableSignature, TableSignatureSnapshot,
-};
+use crate::domain::{Table, TableKindInfo, TableSignature, TableSignatureSnapshot};
 
 use super::super::cli::{MYSQL_QUERY_TIMEOUT, MySqlResultSet};
 use super::super::dsn::NormalizedMySqlConfig;
 use super::super::sql::{
     FOREIGN_KEY_RESULT_COLUMNS, SIGNATURE_COLUMNS_QUERY, SIGNATURE_COLUMNS_RESULT_COLUMNS,
     SIGNATURE_FOREIGN_KEYS_QUERY, SIGNATURE_UNIQUE_COLUMNS_QUERY,
-    SIGNATURE_UNIQUE_COLUMNS_RESULT_COLUMNS, TABLES_QUERY, TABLES_RESULT_COLUMNS,
+    SIGNATURE_UNIQUE_COLUMNS_RESULT_COLUMNS, TABLE_SIGNATURES_QUERY,
+    TABLE_SIGNATURES_RESULT_COLUMNS, TABLES_QUERY, TABLES_RESULT_COLUMNS,
 };
 use super::catalog::{
     MySqlColumnMetadata, MySqlForeignKeyMetadata, MySqlTableMetadata, column_from_metadata,
@@ -41,8 +40,16 @@ async fn fetch_table_signatures_with_program(
     program: &OsStr,
     timeout: Duration,
 ) -> Result<TableSignatureSnapshot, DbOperationError> {
-    let details = fetch_details_with_program(config, program, timeout).await?;
-    Ok(snapshot_from_details(details))
+    let target = NormalizedMySqlConfig::new(config)?;
+    selected_database(&target)?;
+    let (_, results) = execute_metadata_queries_in_session_with_program(
+        &target,
+        &[(TABLE_SIGNATURES_QUERY, TABLE_SIGNATURES_RESULT_COLUMNS)],
+        program,
+        timeout,
+    )
+    .await?;
+    parse_table_signatures(&results[0])
 }
 
 pub(super) async fn fetch_table_details(
@@ -213,147 +220,25 @@ fn table_details_from_metadata(
     Ok(details)
 }
 
-fn snapshot_from_details(details: Vec<Table>) -> TableSignatureSnapshot {
-    let signatures = details
+fn parse_table_signatures(
+    result: &MySqlResultSet,
+) -> Result<TableSignatureSnapshot, DbOperationError> {
+    expect_columns(result, TABLE_SIGNATURES_RESULT_COLUMNS)?;
+    let signatures = result
+        .values
         .iter()
-        .map(|table| TableSignature {
-            schema: table.schema.clone(),
-            name: table.name.clone(),
-            signature: table_signature(table),
+        .map(|row| {
+            if row.len() != TABLE_SIGNATURES_RESULT_COLUMNS.len() {
+                return Err(metadata_shape_error("table signature row"));
+            }
+            Ok(TableSignature {
+                schema: required_text(&row[0], "TABLE_SCHEMA")?.to_string(),
+                name: required_text(&row[1], "TABLE_NAME")?.to_string(),
+                signature: required_text(&row[2], "SIGNATURE")?.to_string(),
+            })
         })
-        .collect();
-    TableSignatureSnapshot { signatures }
-}
-
-fn table_signature(table: &Table) -> String {
-    let mut signature = String::new();
-    append_record(&mut signature, "table");
-    append_value(&mut signature, &table.schema);
-    append_value(&mut signature, &table.name);
-    append_value(&mut signature, table_kind_name(table.kind_info.kind));
-
-    append_record(&mut signature, "primary-key");
-    match &table.primary_key {
-        Some(columns) => {
-            append_value(&mut signature, "some");
-            append_values(&mut signature, columns);
-        }
-        None => append_value(&mut signature, "none"),
-    }
-
-    let mut columns = table.columns.iter().collect::<Vec<_>>();
-    columns.sort_by(|left, right| {
-        left.ordinal_position
-            .cmp(&right.ordinal_position)
-            .then_with(|| left.name.cmp(&right.name))
-    });
-    for column in columns {
-        append_record(&mut signature, "column");
-        append_value(&mut signature, &column.name);
-        append_value(&mut signature, &column.data_type);
-        append_bool(&mut signature, column.is_nullable());
-        append_optional_value(&mut signature, column.default.as_deref());
-        append_optional_value(&mut signature, column.comment.as_deref());
-        append_value(&mut signature, &column.ordinal_position.to_string());
-        append_bool(&mut signature, column.is_primary_key());
-        append_bool(&mut signature, column.is_unique());
-        append_bool(&mut signature, column.is_read_only());
-        append_bool(&mut signature, column.is_hidden());
-        append_bool(&mut signature, column.is_generated());
-    }
-
-    let mut foreign_keys = table.foreign_keys.iter().collect::<Vec<_>>();
-    foreign_keys.sort_by(|left, right| {
-        left.name
-            .cmp(&right.name)
-            .then_with(|| left.from_schema.cmp(&right.from_schema))
-            .then_with(|| left.from_table.cmp(&right.from_table))
-            .then_with(|| left.from_columns.cmp(&right.from_columns))
-            .then_with(|| left.to_schema.cmp(&right.to_schema))
-            .then_with(|| left.to_table.cmp(&right.to_table))
-            .then_with(|| left.to_columns.cmp(&right.to_columns))
-            .then_with(|| {
-                foreign_key_action_name(&left.on_delete)
-                    .cmp(foreign_key_action_name(&right.on_delete))
-            })
-            .then_with(|| {
-                foreign_key_action_name(&left.on_update)
-                    .cmp(foreign_key_action_name(&right.on_update))
-            })
-            .then_with(|| left.reference_resolved.cmp(&right.reference_resolved))
-    });
-    for foreign_key in foreign_keys {
-        append_record(&mut signature, "foreign-key");
-        append_value(&mut signature, &foreign_key.name);
-        append_value(&mut signature, &foreign_key.from_schema);
-        append_value(&mut signature, &foreign_key.from_table);
-        append_values(&mut signature, &foreign_key.from_columns);
-        append_value(&mut signature, &foreign_key.to_schema);
-        append_value(&mut signature, &foreign_key.to_table);
-        append_values(&mut signature, &foreign_key.to_columns);
-        append_value(
-            &mut signature,
-            foreign_key_action_name(&foreign_key.on_delete),
-        );
-        append_value(
-            &mut signature,
-            foreign_key_action_name(&foreign_key.on_update),
-        );
-        append_bool(&mut signature, foreign_key.reference_resolved);
-    }
-
-    signature
-}
-
-fn append_record(signature: &mut String, name: &str) {
-    signature.push_str(name);
-    signature.push('|');
-}
-
-fn append_value(signature: &mut String, value: &str) {
-    signature.push_str(&value.len().to_string());
-    signature.push(':');
-    signature.push_str(value);
-    signature.push('|');
-}
-
-fn append_values(signature: &mut String, values: &[String]) {
-    append_value(signature, &values.len().to_string());
-    for value in values {
-        append_value(signature, value);
-    }
-}
-
-fn append_optional_value(signature: &mut String, value: Option<&str>) {
-    match value {
-        Some(value) => {
-            append_value(signature, "some");
-            append_value(signature, value);
-        }
-        None => append_value(signature, "none"),
-    }
-}
-
-fn append_bool(signature: &mut String, value: bool) {
-    append_value(signature, if value { "true" } else { "false" });
-}
-
-fn table_kind_name(kind: TableKind) -> &'static str {
-    match kind {
-        TableKind::Table => "table",
-        TableKind::Virtual => "virtual",
-        TableKind::View => "view",
-    }
-}
-
-fn foreign_key_action_name(action: &FkAction) -> &'static str {
-    match action {
-        FkAction::NoAction => "no-action",
-        FkAction::Restrict => "restrict",
-        FkAction::Cascade => "cascade",
-        FkAction::SetNull => "set-null",
-        FkAction::SetDefault => "set-default",
-    }
+        .collect::<Result<_, DbOperationError>>()?;
+    Ok(TableSignatureSnapshot { signatures })
 }
 
 fn parse_signature_unique_column_metadata(
@@ -377,157 +262,28 @@ fn parse_signature_unique_column_metadata(
 mod tests {
     use super::super::test_support::result;
     use super::*;
-    use crate::domain::{Column, ColumnAttributes, ForeignKey, QueryValue, TableStorageAttributes};
-
-    fn table_signatures_from_metadata(
-        tables: &[MySqlTableMetadata],
-        database: &str,
-        lower_case_table_names: u8,
-        columns: Vec<MySqlSignatureColumnMetadata>,
-        foreign_keys: Vec<MySqlForeignKeyMetadata>,
-        unique_columns_by_table: HashMap<String, HashSet<String>>,
-    ) -> Result<TableSignatureSnapshot, DbOperationError> {
-        Ok(snapshot_from_details(table_details_from_metadata(
-            tables,
-            database,
-            lower_case_table_names,
-            columns,
-            foreign_keys,
-            unique_columns_by_table,
-        )?))
-    }
-
-    fn signature_table() -> Table {
-        Table {
-            schema: "app".to_string(),
-            name: "child".to_string(),
-            owner: None,
-            columns: vec![
-                Column {
-                    name: "id".to_string(),
-                    data_type: "int".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::from_parts(false, true, false),
-                    comment: None,
-                    ordinal_position: 1,
-                    character_set_name: None,
-                    collation_name: None,
-                    generation_expression: None,
-                    generation_kind: None,
-                },
-                Column {
-                    name: "parent_id".to_string(),
-                    data_type: "bigint".to_string(),
-                    default: Some("0".to_string()),
-                    attributes: ColumnAttributes::from_parts(true, false, false),
-                    comment: Some("parent reference".to_string()),
-                    ordinal_position: 2,
-                    character_set_name: None,
-                    collation_name: None,
-                    generation_expression: None,
-                    generation_kind: None,
-                },
-            ],
-            primary_key: Some(vec!["id".to_string()]),
-            foreign_keys: vec![
-                ForeignKey {
-                    name: "fk_z_parent".to_string(),
-                    from_schema: "app".to_string(),
-                    from_table: "child".to_string(),
-                    from_columns: vec!["parent_id".to_string()],
-                    to_schema: "app".to_string(),
-                    to_table: "parents".to_string(),
-                    to_columns: vec!["id".to_string()],
-                    on_delete: FkAction::SetNull,
-                    on_update: FkAction::Cascade,
-                    reference_resolved: true,
-                },
-                ForeignKey {
-                    name: "fk_a_audit".to_string(),
-                    from_schema: "app".to_string(),
-                    from_table: "child".to_string(),
-                    from_columns: vec!["id".to_string()],
-                    to_schema: "audit".to_string(),
-                    to_table: "entries".to_string(),
-                    to_columns: vec!["id".to_string()],
-                    on_delete: FkAction::Restrict,
-                    on_update: FkAction::NoAction,
-                    reference_resolved: true,
-                },
-            ],
-            indexes: Vec::new(),
-            rls: None,
-            triggers: Vec::new(),
-            row_count_estimate: None,
-            comment: None,
-            source_ddl: None,
-            storage_attributes: TableStorageAttributes::default(),
-            kind_info: TableKindInfo {
-                kind: TableKind::Table,
-                is_strict: false,
-                without_rowid: false,
-                virtual_module: None,
-            },
-        }
-    }
-
-    fn assert_signature_changes(change: impl FnOnce(&mut Table)) {
-        let mut changed = signature_table();
-        let original = table_signature(&changed);
-        change(&mut changed);
-
-        assert_ne!(original, table_signature(&changed));
-    }
+    use crate::domain::{QueryValue, TableKind};
 
     #[test]
-    fn table_signature_does_not_depend_on_debug_output() {
-        let table = signature_table();
-        let signature = table_signature(&table);
-
-        assert!(signature.contains("fk_a_audit"));
-        assert!(!signature.contains("Column {"));
-        assert!(!signature.contains("ForeignKey {"));
-        assert!(!signature.contains("ColumnAttributes"));
-
-        let mut unrelated = table;
-        unrelated.owner = Some("owner".to_string());
-        unrelated.comment = Some("display comment".to_string());
-        unrelated.source_ddl = Some("CREATE TABLE child (...)".to_string());
-        unrelated.row_count_estimate = Some(42);
-        unrelated.kind_info.is_strict = true;
-        unrelated.kind_info.without_rowid = true;
-        unrelated.kind_info.virtual_module = Some("module".to_string());
-        assert_eq!(signature, table_signature(&unrelated));
-    }
-
-    #[test]
-    fn table_signature_is_independent_of_metadata_fetch_order() {
-        let mut reordered = signature_table();
-        reordered.columns.reverse();
-        reordered.foreign_keys.reverse();
-
-        assert_eq!(
-            table_signature(&signature_table()),
-            table_signature(&reordered)
+    fn signature_rows_require_schema_name_and_digest() {
+        let rows = result(
+            TABLE_SIGNATURES_RESULT_COLUMNS,
+            vec![vec![
+                QueryValue::text("app"),
+                QueryValue::text("users"),
+                QueryValue::text("0123456789abcdef0123456789abcdef"),
+            ]],
         );
-    }
-
-    #[test]
-    fn table_signature_changes_for_semantic_metadata() {
-        assert_signature_changes(|table| table.schema = "other".to_string());
-        assert_signature_changes(|table| table.name = "other".to_string());
-        assert_signature_changes(|table| table.kind_info.kind = TableKind::View);
-        assert_signature_changes(|table| table.columns[0].name = "identifier".to_string());
-        assert_signature_changes(|table| table.columns[0].data_type = "bigint".to_string());
-        assert_signature_changes(|table| {
-            table.columns[0].attributes = ColumnAttributes::from_parts(true, true, false);
-        });
-        assert_signature_changes(|table| table.primary_key = Some(vec!["parent_id".to_string()]));
-        assert_signature_changes(|table| table.foreign_keys[0].to_table = "accounts".to_string());
-        assert_signature_changes(|table| {
-            table.foreign_keys[0].from_columns = vec!["id".to_string()];
-        });
-        assert_signature_changes(|table| table.foreign_keys[0].on_delete = FkAction::Cascade);
+        let snapshot = parse_table_signatures(&rows).unwrap();
+        assert_eq!(snapshot.signatures[0].qualified_name(), "app.users");
+        let malformed = result(
+            TABLE_SIGNATURES_RESULT_COLUMNS,
+            vec![vec![QueryValue::text("app")]],
+        );
+        assert!(matches!(
+            parse_table_signatures(&malformed),
+            Err(DbOperationError::MetadataParseFailed(_))
+        ));
     }
 
     #[test]
@@ -645,35 +401,10 @@ mod tests {
             ]],
         ))
         .unwrap();
-        let details = table_details_from_metadata(
-            &tables,
-            "App",
-            0,
-            columns.clone(),
-            foreign_keys.clone(),
-            unique_columns,
-        )
-        .unwrap();
-        let signatures = snapshot_from_details(details.clone());
-        let signatures_without_unique = table_signatures_from_metadata(
-            &tables,
-            "App",
-            0,
-            columns,
-            foreign_keys,
-            HashMap::new(),
-        )
-        .unwrap();
-
-        assert_eq!(signatures.signatures.len(), 2);
+        let details =
+            table_details_from_metadata(&tables, "App", 0, columns, foreign_keys, unique_columns)
+                .unwrap();
         assert_eq!(details.len(), 2);
-        assert_eq!(signatures.signatures[0].qualified_name(), "App.child");
-        assert!(signatures.signatures[0].signature.contains("id"));
-        assert!(
-            signatures.signatures[0]
-                .signature
-                .contains("fk_child_parent")
-        );
         let child = &details[0];
         assert_eq!(child.columns.len(), 2);
         assert!(child.columns[1].is_unique());
@@ -683,10 +414,6 @@ mod tests {
         assert!(child.row_count_estimate.is_none());
         assert!(child.comment.is_none());
         assert_eq!(child.storage_attributes.engine.as_deref(), Some("InnoDB"));
-        assert_ne!(
-            signatures.signatures[0].signature,
-            signatures_without_unique.signatures[0].signature
-        );
     }
 
     #[test]
@@ -702,15 +429,9 @@ mod tests {
             table_collation: None,
             create_options: None,
         }];
-        let error = table_signatures_from_metadata(
-            &tables,
-            "app",
-            0,
-            Vec::new(),
-            Vec::new(),
-            HashMap::new(),
-        )
-        .unwrap_err();
+        let error =
+            table_details_from_metadata(&tables, "app", 0, Vec::new(), Vec::new(), HashMap::new())
+                .unwrap_err();
 
         assert!(matches!(
             error,
@@ -781,9 +502,9 @@ done
     }
 
     #[tokio::test]
-    async fn signature_metadata_uses_one_process_and_four_metadata_queries() {
+    async fn batch_metadata_uses_one_process_and_four_metadata_queries() {
         let (_directory, program, transcript) = fake_signature_cli();
-        let snapshot = fetch_table_signatures_with_program(
+        let details = fetch_details_with_program(
             &connection_config("user", "password", "app"),
             OsStr::new(&program),
             Duration::from_secs(5),
@@ -796,7 +517,7 @@ done
             )
         });
 
-        assert_eq!(snapshot.signatures.len(), 1);
+        assert_eq!(details.len(), 1);
         let transcript_text = std::fs::read_to_string(&transcript).unwrap();
         assert_eq!(
             transcript_text

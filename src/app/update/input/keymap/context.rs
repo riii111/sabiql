@@ -6,7 +6,7 @@ use crate::model::shared::help::HelpMode;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::model::shared::key_sequence::Prefix;
-use crate::model::shared::settings::{ErBrowserChoice, KeymapPreset, SettingsSection};
+use crate::model::shared::settings::KeymapPreset;
 use crate::model::shared::ui_state::ResultNavMode;
 use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
 use crate::policy::{FeaturePolicy, FeatureRequirement};
@@ -60,8 +60,6 @@ pub struct KeyContext {
     pub(super) is_setup_dropdown_field: bool,
     pub(super) is_setup_text_focused: bool,
     pub(super) is_setup_editing: bool,
-    pub(super) is_settings_editing: bool,
-    pub(super) is_custom_browser_selected: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,10 +87,6 @@ enum Scope {
         dropdown_field: bool,
         text_focused: bool,
         editing: bool,
-    },
-    Settings {
-        editing: bool,
-        custom_selected: bool,
     },
     SqlConfirmation {
         kind: SqlConfirmation,
@@ -207,11 +201,6 @@ impl KeyContext {
                 dropdown_field: is_dropdown_field(state.connection_setup.focused_field()),
                 text_focused: state.connection_setup.focused_input().is_some(),
                 editing: state.connection_setup.is_edit_mode(),
-            },
-            InputMode::Settings => Scope::Settings {
-                editing: state.settings.is_editing_custom_er_browser(),
-                custom_selected: state.settings.section() == SettingsSection::ErDiagram
-                    && state.settings.selected_er_browser_choice() == ErBrowserChoice::Custom,
             },
             InputMode::SqlModal if matches!(state.sql_modal.status(), SqlModalStatus::Editing) => {
                 Scope::SqlEditing {
@@ -332,14 +321,6 @@ impl KeyContext {
             }
         );
         let is_setup_editing = matches!(scope, Scope::ConnectionSetup { editing: true, .. });
-        let is_settings_editing = matches!(scope, Scope::Settings { editing: true, .. });
-        let is_custom_browser_selected = matches!(
-            scope,
-            Scope::Settings {
-                custom_selected: true,
-                ..
-            }
-        );
         let label = match mode {
             InputMode::Normal => match browse.pane {
                 BrowsePane::Explorer => "Explorer Pane",
@@ -430,8 +411,6 @@ impl KeyContext {
             is_setup_dropdown_field,
             is_setup_text_focused,
             is_setup_editing,
-            is_settings_editing,
-            is_custom_browser_selected,
         }
     }
     pub(super) fn allows(&self, action: &Action) -> bool {

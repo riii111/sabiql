@@ -291,12 +291,6 @@ fn visible_bindings_match_event_entry_in_representative_states() {
                         ));
                         check_state(&mut state);
                     }
-                    InputMode::Settings => {
-                        state.settings.switch_next_section();
-                        state.settings.switch_next_section();
-                        state.settings.start_custom_browser_edit();
-                        check_state(&mut state);
-                    }
                     InputMode::Help => {
                         state.ui.help_mut().enter_filter_editing();
                         check_state(&mut state);

@@ -1,9 +1,8 @@
 use std::sync::LazyLock;
 
 use crate::ports::inbound::{Key, KeyCombo};
-use crate::update::action::{Action, InputTarget};
+use crate::update::action::Action;
 
-use super::common::text_field_any_modifiers;
 use super::model::{Binding, Row, hints};
 use super::{Hint, HintSurface, KeyContext};
 
@@ -49,24 +48,6 @@ pub(super) static SELECTING: LazyLock<Vec<Row>> = LazyLock::new(|| {
                 HintSurface::ModalBasics,
             ],
         ),
-        {
-            let mut row = Row {
-                bindings: vec![Binding::action(
-                    Action::SettingsStartCustomBrowserEdit,
-                    &[KeyCombo::plain(Key::Char('i'))],
-                )],
-                short: "Edit",
-                description: "Edit custom browser",
-
-                dynamic_label: None,
-                visible: Some(|context, surface| {
-                    surface != HintSurface::Border || context.is_custom_browser_selected
-                }),
-                surfaces: [HintSurface::Border, HintSurface::Current].to_vec(),
-            };
-            row.surfaces.extend_from_slice(&[HintSurface::Editing]);
-            row
-        },
         Row::new(
             vec![
                 Binding::action(Action::SettingsNextSection, &[KeyCombo::plain(Key::Tab)]),
@@ -99,54 +80,6 @@ pub(super) static SELECTING: LazyLock<Vec<Row>> = LazyLock::new(|| {
     ]
 });
 
-pub(super) static EDITING: LazyLock<Vec<Row>> = LazyLock::new(|| {
-    let mut rows = vec![
-        Row::new(
-            vec![Binding::any_modifiers(Action::SettingsApply, Key::Enter)],
-            "Apply",
-            "Apply setting",
-            &[
-                HintSurface::Border,
-                HintSurface::Current,
-                HintSurface::Editing,
-            ],
-        ),
-        Row::new(
-            vec![Binding::any_modifiers(
-                Action::SettingsStopCustomBrowserEdit,
-                Key::Esc,
-            )],
-            "Done",
-            "Finish editing",
-            &[
-                HintSurface::Border,
-                HintSurface::Current,
-                HintSurface::Editing,
-            ],
-        ),
-    ];
-    rows.extend(text_field_any_modifiers(InputTarget::SettingsErBrowser));
-    rows.push(Row::new(
-        vec![Binding::text(InputTarget::SettingsErBrowser)],
-        "Browser",
-        "Edit custom browser",
-        &[
-            HintSurface::Border,
-            HintSurface::Current,
-            HintSurface::Editing,
-        ],
-    ));
-    rows
-});
-
-fn rows(context: &KeyContext) -> &'static [Row] {
-    if context.is_settings_editing {
-        &EDITING
-    } else {
-        &SELECTING
-    }
-}
-
 pub fn settings_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
-    hints(rows(context), context, surface)
+    hints(&SELECTING, context, surface)
 }

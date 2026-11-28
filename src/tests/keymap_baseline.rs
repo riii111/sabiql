@@ -315,12 +315,6 @@ fn capture_matrix(engine: DatabaseType, preset: KeymapPreset) -> Vec<String> {
     help_filter.ui.help_mut().enter_filter_editing();
     record("Help filter", help_filter);
 
-    let mut settings_edit = state(engine, preset, InputMode::Settings);
-    settings_edit.settings.switch_next_section();
-    settings_edit.settings.switch_next_section();
-    settings_edit.settings.start_custom_browser_edit();
-    record("Settings browser", settings_edit);
-
     let mut cell_search = state(engine, preset, InputMode::CellDetail);
     cell_search.cell_detail.enter_search();
     record("CellDetail search", cell_search);

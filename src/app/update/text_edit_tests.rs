@@ -130,7 +130,7 @@ const JSON_EDIT_CASES: [Case; 9] = [
 
 const SELECTION_BEFORE_EDIT: usize = 1;
 
-const TARGETS: [InputTarget; 14] = [
+const TARGETS: [InputTarget; 13] = [
     InputTarget::SqlModal,
     InputTarget::SqlModalHighRisk,
     InputTarget::SqlModalAnalyzeHighRisk,
@@ -139,7 +139,6 @@ const TARGETS: [InputTarget; 14] = [
     InputTarget::CommandLine,
     InputTarget::Filter,
     InputTarget::ErFilter,
-    InputTarget::SettingsErBrowser,
     InputTarget::QueryHistoryFilter,
     InputTarget::JsonEdit,
     InputTarget::JsonSearch,
@@ -242,14 +241,6 @@ fn state_for(target: InputTarget) -> AppState {
                 .er_picker_mut()
                 .set_selection(SELECTION_BEFORE_EDIT);
         }
-        InputTarget::SettingsErBrowser => {
-            dispatch(&mut state, Action::OpenModal(ModalKind::Settings));
-            while !state.settings.is_editing_custom_er_browser() {
-                dispatch(&mut state, Action::SettingsNextSection);
-                dispatch(&mut state, Action::SettingsStartCustomBrowserEdit);
-            }
-            type_text(&mut state, target, "ab cd");
-        }
         InputTarget::QueryHistoryFilter => {
             state.modal.set_mode(InputMode::QueryHistoryPicker);
             type_text(&mut state, target, "ab cd");
@@ -350,7 +341,6 @@ fn cases_for(target: InputTarget) -> Vec<Case> {
         | InputTarget::CommandLine
         | InputTarget::Filter
         | InputTarget::ErFilter
-        | InputTarget::SettingsErBrowser
         | InputTarget::QueryHistoryFilter
         | InputTarget::JsonSearch
         | InputTarget::HelpFilter => SINGLE_LINE_CASES.to_vec(),
@@ -380,7 +370,6 @@ fn edited_text(state: &AppState, target: InputTarget) -> Option<(&str, usize)> {
         InputTarget::CommandLine => &state.command_line_input,
         InputTarget::Filter => state.ui.table_picker().filter_input(),
         InputTarget::ErFilter => state.ui.er_picker().filter_input(),
-        InputTarget::SettingsErBrowser => state.settings.custom_er_browser(),
         InputTarget::QueryHistoryFilter => state.query_history_picker.filter_input(),
         InputTarget::JsonSearch => state.json_detail.search().input(),
         InputTarget::CellDetailSearch => state.cell_detail.search().input(),
@@ -462,14 +451,12 @@ fn assert_side_effects(state: &AppState, target: InputTarget, step: Step, contex
         | InputTarget::ResultCellEdit
         | InputTarget::ConnectionSetup
         | InputTarget::CommandLine
-        | InputTarget::SettingsErBrowser
         | InputTarget::HelpFilter => {}
     }
 }
 
 mod paste {
     use super::*;
-    use crate::model::shared::settings::SettingsSection;
     use crate::ports::inbound::InputEvent;
     use crate::update::input::handle_event;
 
@@ -552,9 +539,6 @@ mod paste {
         dispatch(&mut help, Action::ToggleHelp);
         let mut settings = connected_state();
         dispatch(&mut settings, Action::OpenModal(ModalKind::Settings));
-        while settings.settings.section() != SettingsSection::ErDiagram {
-            dispatch(&mut settings, Action::SettingsNextSection);
-        }
         let mut select_field = connected_state();
         select_field.modal.set_mode(InputMode::ConnectionSetup);
         assert_eq!(
@@ -620,11 +604,6 @@ fn text_edits_keep_per_target_behavior() {
 #[case::er_filter(InputTarget::ErFilter, TextKillDirection::ToLineStart, "ab cd")]
 #[case::query_history(
     InputTarget::QueryHistoryFilter,
-    TextKillDirection::ToLineStart,
-    "ab cd"
-)]
-#[case::settings_browser(
-    InputTarget::SettingsErBrowser,
     TextKillDirection::ToLineStart,
     "ab cd"
 )]

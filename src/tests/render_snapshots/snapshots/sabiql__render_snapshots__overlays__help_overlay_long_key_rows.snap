@@ -33,13 +33,13 @@ expression: output
 │  ← / →                                Move cursor                                                              ││
 │  Home / End                           Jump to start/end                                                        ││
 │  Esc                                  Exit to Cell Active (draft preserved)                                    ││
-│  i                                    Edit custom browser                                                      ││
-│  Enter                                Apply setting                                                            ││
-│  Esc                                  Finish editing                                                           ││
-│  type                                 Edit custom browser                                                      ││
 │  Alt+Enter / F5                       Execute query                                                            ││
 │  y                                    Copy query to clipboard                                                  ││
-│  i / A                                Enter Insert mode / append at line end                                   ▼│
+│  i / A                                Enter Insert mode / append at line end                                   ││
+│  Ctrl+L                               Clear editor                                                             ││
+│  Ctrl+O                               Open Query History                                                       ││
+│  h / l / ← / →                        Move cursor left / right                                                 ││
+│  j / k / ↓ / ↑ / Ctrl+N / Ctrl+P      Move cursor down / up                                                    ▼│
 │─────────────────────────────────────────────────────────────────────────────────────────────────────────────────│
 │ [BROWSE]                                                                                                        │
 ╰ /: Filter │ Esc/?: Close ───────────────────────────────────────────────────────────────────────────────────────╯

@@ -23,12 +23,11 @@ use crate::ports::outbound::connection_store::MockConnectionStore;
 use crate::ports::outbound::metadata::MockMetadataProvider;
 use crate::ports::outbound::query_executor::MockQueryExecutor;
 use crate::ports::outbound::{
-    AppSettings, CachedResultExporter, ClipboardError, ClipboardWriter, ConfigWriter,
-    ConfigWriterError, ConnectionStore, ErDiagramExporter, ErExportResult, ErLogWriter,
-    FolderOpener, MetadataProvider, MySqlConnectionProbe, MySqlConnectionProbeResult,
-    PgServiceEntryReader, QueryExecutor, QueryHistoryError, QueryHistoryStore, RenderOutput,
-    RenderResult, Renderer, ServiceFileError, SettingsStore, SettingsStoreError,
-    SqliteDiagnosticsProvider, SqlitePathValidator,
+    AppSettings, CachedResultExporter, ClipboardError, ClipboardWriter, ConnectionStore,
+    ErDiagramExporter, ErExportResult, FolderOpener, MetadataProvider, MySqlConnectionProbe,
+    MySqlConnectionProbeResult, PgServiceEntryReader, QueryExecutor, QueryHistoryError,
+    QueryHistoryStore, RenderOutput, RenderResult, Renderer, ServiceFileError, SettingsStore,
+    SettingsStoreError, SqliteDiagnosticsProvider, SqlitePathValidator,
 };
 use crate::update::action::Action;
 
@@ -108,34 +107,15 @@ impl CachedResultExporter for TestCachedResultExporter {
     }
 }
 
-pub struct NoopConfigWriter;
-impl ConfigWriter for NoopConfigWriter {
-    fn get_cache_dir(&self, _project_name: &str) -> Result<PathBuf, ConfigWriterError> {
-        Ok(PathBuf::from("/tmp"))
-    }
-}
-
 pub struct NoopErExporter;
 impl ErDiagramExporter for NoopErExporter {
     fn generate_and_export(
         &self,
         _tables: &[ErTableInfo],
         _filename: &str,
-        _cache_dir: &Path,
-        _browser: Option<&str>,
+        _project_name: &str,
     ) -> ErExportResult<PathBuf> {
         Ok(PathBuf::from("/tmp/er.svg"))
-    }
-}
-
-pub struct NoopErLogWriter;
-impl ErLogWriter for NoopErLogWriter {
-    fn write_er_failure_log(
-        &self,
-        _failed_tables: Vec<(String, String)>,
-        _cache_dir: PathBuf,
-    ) -> std::io::Result<()> {
-        Ok(())
     }
 }
 
@@ -374,8 +354,6 @@ fn make_runner_with_all(
         },
         ErDeps {
             er_exporter: Arc::new(NoopErExporter),
-            config_writer: Arc::new(NoopConfigWriter),
-            er_log_writer: Arc::new(NoopErLogWriter),
         },
         UtilityDeps {
             clipboard: Arc::new(NoopClipboardWriter),

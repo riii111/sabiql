@@ -1,8 +1,7 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::domain::connection::ConnectionEndpoint;
-use crate::ports::outbound::{ConfigWriterError, ErLogWriter, MetadataProvider};
+use crate::ports::outbound::MetadataProvider;
 use crate::update::action::{Action, SmartErRefreshError, SmartErRefreshSnapshot};
 
 pub(in crate::cmd) async fn smart_refresh(
@@ -37,22 +36,4 @@ pub(in crate::cmd) async fn smart_refresh(
         run_id,
         outcome,
     }
-}
-
-pub(in crate::cmd) async fn write_failure_log(
-    er_log_writer: Arc<dyn ErLogWriter>,
-    cache_dir: Result<PathBuf, ConfigWriterError>,
-    failed_tables: Vec<(String, String)>,
-) -> Option<Action> {
-    let result = match cache_dir {
-        Ok(cache_dir) => tokio::task::spawn_blocking(move || {
-            er_log_writer
-                .write_er_failure_log(failed_tables, cache_dir)
-                .map_err(|e| e.to_string())
-        })
-        .await
-        .expect("ER failure log task panicked"),
-        Err(e) => Err(e.to_string()),
-    };
-    result.err().map(Action::ErLogWriteFailed)
 }
