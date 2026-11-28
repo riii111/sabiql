@@ -1,5 +1,5 @@
 use ratatui::buffer::{Buffer, Cell};
-use ratatui::style::Color;
+use ratatui::style::{Color, Modifier};
 
 use crate::app::model::shared::motion::FocusTransition;
 use crate::app::model::shared::render_output::{PaneArea, PaneAreas};
@@ -26,7 +26,6 @@ pub(super) fn apply_focus_transition(
     }
 }
 
-// Only cells still drawn in the settled border color change, so titles and highlights keep their own colors.
 fn recolor_border(buf: &mut Buffer, area: PaneArea, settled: Color, color: Color) {
     if area.width == 0 || area.height == 0 {
         return;
@@ -37,6 +36,7 @@ fn recolor_border(buf: &mut Buffer, area: PaneArea, settled: Color, color: Color
     let sides = (area.y..=bottom).flat_map(|y| [(area.x, y), (right, y)]);
 
     for position in top_and_bottom.chain(sides) {
+        // Only cells still drawn in the settled border color change, so titles and highlights keep their own colors.
         if let Some(cell) = buf.cell_mut(position)
             && cell.fg == settled
         {
@@ -58,7 +58,10 @@ pub(super) fn apply_modal_fade(
             let (Some(cell), Some(under)) = (buf.cell_mut((x, y)), background.cell((x, y))) else {
                 continue;
             };
-            if cell.symbol() == under.symbol() {
+            if *cell == *under {
+                continue;
+            }
+            if is_scrim_cell(cell, under, theme) {
                 fade_scrim_cell(cell, under, progress, theme);
             } else {
                 fade_overlay_cell(cell, progress, theme);
@@ -67,10 +70,16 @@ pub(super) fn apply_modal_fade(
     }
 }
 
+fn is_scrim_cell(cell: &Cell, under: &Cell, theme: &ThemePalette) -> bool {
+    // The scrim only recolors and dims what was drawn before, and the shadow only adds a background.
+    // Any other change, such as a blank cell cleared inside the modal, belongs to the modal itself.
+    cell.symbol() == under.symbol()
+        && cell.fg == theme.semantic.text.muted
+        && cell.modifier == under.modifier | Modifier::DIM
+        && (cell.bg == under.bg || cell.bg == theme.component.modal.shadow)
+}
+
 fn fade_scrim_cell(cell: &mut Cell, under: &Cell, progress: f32, theme: &ThemePalette) {
-    if cell.fg == under.fg && cell.bg == under.bg && cell.modifier == under.modifier {
-        return;
-    }
     let default_fg = theme.semantic.text.primary;
     let fg = blend(
         resolve(under.fg, default_fg),
@@ -84,8 +93,8 @@ fn fade_scrim_cell(cell: &mut Cell, under: &Cell, progress: f32, theme: &ThemePa
     cell.fg = fg;
 }
 
-// Default-colored text has no known RGB value, so only themed colors fade.
 fn fade_overlay_cell(cell: &mut Cell, progress: f32, theme: &ThemePalette) {
+    // Default-colored text has no known RGB value, so only themed colors fade.
     if matches!(cell.fg, Color::Rgb(..)) {
         cell.fg = blend(theme.semantic.text.muted, cell.fg, progress);
     }
@@ -99,7 +108,6 @@ fn resolve(color: Color, default: Color) -> Color {
     }
 }
 
-// Indexed and named colors have no portable RGB value, so they switch at the midpoint instead of blending.
 fn blend(from: Color, to: Color, progress: f32) -> Color {
     match (from, to) {
         (Color::Rgb(r1, g1, b1), Color::Rgb(r2, g2, b2)) => Color::Rgb(
@@ -107,6 +115,7 @@ fn blend(from: Color, to: Color, progress: f32) -> Color {
             mix(g1, g2, progress),
             mix(b1, b2, progress),
         ),
+        // Indexed and named colors have no portable RGB value, so they switch at the midpoint instead of blending.
         _ if progress < SCRIM_SWITCH_PROGRESS => from,
         _ => to,
     }
@@ -300,6 +309,38 @@ mod tests {
             apply_modal_fade(&mut buf, &background, 0.0, THEME);
 
             assert_eq!(buf[(0, 1)].fg, THEME.semantic.text.muted);
+        }
+
+        #[test]
+        fn cleared_modal_cells_keep_their_own_style() {
+            let mut background = background();
+            background.set_style(
+                Rect::new(0, 2, 10, 1),
+                Style::default()
+                    .bg(Color::Rgb(30, 30, 40))
+                    .add_modifier(Modifier::UNDERLINED),
+            );
+            let mut buf = scrimmed(&background);
+            buf[(3, 2)].reset();
+
+            apply_modal_fade(&mut buf, &background, 0.0, THEME);
+
+            assert_eq!(buf[(3, 2)], Cell::default());
+        }
+
+        #[test]
+        fn shadow_appears_with_the_dim() {
+            let background = background();
+            let mut buf = scrimmed(&background);
+            buf[(0, 0)].bg = THEME.component.modal.shadow;
+
+            apply_modal_fade(&mut buf, &background, 0.0, THEME);
+            assert_eq!(buf[(0, 0)].bg, background[(0, 0)].bg);
+
+            let mut buf = scrimmed(&background);
+            buf[(0, 0)].bg = THEME.component.modal.shadow;
+            apply_modal_fade(&mut buf, &background, 0.9, THEME);
+            assert_eq!(buf[(0, 0)].bg, THEME.component.modal.shadow);
         }
 
         #[test]

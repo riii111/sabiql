@@ -150,6 +150,20 @@ pub(in crate::update) fn scroll_explorer(
     amount: ScrollAmount,
 ) -> Vec<Effect> {
     match (direction, amount) {
+        (ScrollDirection::Up | ScrollDirection::Down, ScrollAmount::Line) => {
+            // Only the mouse wheel scrolls the explorer vertically; it targets the pane under the pointer, so focus is not required.
+            // The list keeps its selection in view, so the wheel steps the selection instead of a free viewport.
+            let len = state.tables().len();
+            if len > 0 {
+                let selected = state.ui.explorer_selected();
+                let next = if direction == ScrollDirection::Down {
+                    (selected + 1).min(len - 1)
+                } else {
+                    selected.saturating_sub(1)
+                };
+                state.ui.set_explorer_selection(Some(next));
+            }
+        }
         (ScrollDirection::Left, ScrollAmount::Line) => {
             state.ui.set_explorer_horizontal_offset(
                 state.ui.explorer_horizontal_offset().saturating_sub(1),

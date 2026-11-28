@@ -193,9 +193,9 @@ impl TuiRunner {
         &mut self.terminal
     }
 
-    /// Terminals without OSC 7501 support ignore the sequence, so it is sent without feature detection.
     pub fn report_program_status(&mut self, state: &AppState, now: Instant) -> io::Result<()> {
         match self.program_status.observe(state, now) {
+            // Terminals without OSC 7501 support ignore the sequence, so it is sent without feature detection.
             Some(next) => execute!(stdout(), Print(next.sequence())),
             None => Ok(()),
         }

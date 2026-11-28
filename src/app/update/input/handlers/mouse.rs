@@ -1,51 +1,38 @@
 use crate::model::app_state::AppState;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
+use crate::model::sql_editor::modal::SqlModalTab;
 use crate::ports::inbound::{Key, KeyCombo, MouseInput, MouseKind};
-use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget, SelectMotion};
+use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
 use crate::update::input::keymap::{KeyContext, key_action};
 
 pub(super) fn handle_mouse_event(input: MouseInput, state: &AppState) -> Action {
     if state.input_mode() == InputMode::Normal {
         browse_mouse_action(input, state)
-    } else if scrolls_like_arrow_keys(state.input_mode()) {
+    } else if scrolls_like_arrow_keys(state) {
         modal_wheel_action(input.kind, state)
     } else {
         Action::None
     }
 }
 
-// The pane under the pointer reacts, as in GUI apps, even when another pane has keyboard focus.
 fn browse_mouse_action(input: MouseInput, state: &AppState) -> Action {
+    // The pane under the pointer reacts even when another pane has keyboard focus, as in GUI apps.
     let Some(pane) = state.ui.pane_areas().pane_at(input.column, input.row) else {
         return Action::None;
     };
-    match input.kind {
-        MouseKind::LeftClick => Action::SetFocusedPane(pane),
-        MouseKind::ScrollUp => vertical_step(pane, ScrollDirection::Up),
-        MouseKind::ScrollDown => vertical_step(pane, ScrollDirection::Down),
-        MouseKind::ScrollLeft => horizontal_step(pane, ScrollDirection::Left),
-        MouseKind::ScrollRight => horizontal_step(pane, ScrollDirection::Right),
-    }
-}
-
-// The explorer has no free-scrolling viewport; its list follows the selection like `j`/`k`.
-fn vertical_step(pane: FocusedPane, direction: ScrollDirection) -> Action {
-    match (pane, direction) {
-        (FocusedPane::Explorer, ScrollDirection::Down) => Action::Select(SelectMotion::Next),
-        (FocusedPane::Explorer, _) => Action::Select(SelectMotion::Previous),
-        (FocusedPane::Inspector, _) => line_scroll(ScrollTarget::Inspector, direction),
-        (FocusedPane::Result, _) => line_scroll(ScrollTarget::Result, direction),
-    }
-}
-
-fn horizontal_step(pane: FocusedPane, direction: ScrollDirection) -> Action {
     let target = match pane {
         FocusedPane::Explorer => ScrollTarget::Explorer,
         FocusedPane::Inspector => ScrollTarget::Inspector,
         FocusedPane::Result => ScrollTarget::Result,
     };
-    line_scroll(target, direction)
+    match input.kind {
+        MouseKind::LeftClick => Action::SetFocusedPane(pane),
+        MouseKind::ScrollUp => line_scroll(target, ScrollDirection::Up),
+        MouseKind::ScrollDown => line_scroll(target, ScrollDirection::Down),
+        MouseKind::ScrollLeft => line_scroll(target, ScrollDirection::Left),
+        MouseKind::ScrollRight => line_scroll(target, ScrollDirection::Right),
+    }
 }
 
 fn line_scroll(target: ScrollTarget, direction: ScrollDirection) -> Action {
@@ -56,7 +43,6 @@ fn line_scroll(target: ScrollTarget, direction: ScrollDirection) -> Action {
     }
 }
 
-// Modals reuse their arrow-key bindings so the wheel scrolls or moves the list exactly like the keyboard.
 fn modal_wheel_action(kind: MouseKind, state: &AppState) -> Action {
     let key = match kind {
         MouseKind::ScrollUp => Key::Up,
@@ -65,16 +51,16 @@ fn modal_wheel_action(kind: MouseKind, state: &AppState) -> Action {
             return Action::None;
         }
     };
+    // Reusing the arrow-key binding keeps the wheel identical to the keyboard in every modal.
     key_action(KeyCombo::plain(key), &KeyContext::from_state(state))
 }
 
-// Text editors and forms also bind the arrow keys, but there they move a cursor or field, not a view.
 #[deny(
     clippy::wildcard_enum_match_arm,
     reason = "A new mode must decide whether the wheel acts like its arrow keys."
 )]
-fn scrolls_like_arrow_keys(mode: InputMode) -> bool {
-    match mode {
+fn scrolls_like_arrow_keys(state: &AppState) -> bool {
+    match state.input_mode() {
         InputMode::TablePicker
         | InputMode::CommandPalette
         | InputMode::Help
@@ -87,11 +73,17 @@ fn scrolls_like_arrow_keys(mode: InputMode) -> bool {
         | InputMode::CellDetail
         | InputMode::SqliteDiagnostics
         | InputMode::RowDetail => true,
+        // The plan and comparison tabs are read-only views, while the SQL tab is an editor.
+        // The key context reports the tab after engine support is applied, which is the tab keys act on.
+        InputMode::SqlModal => matches!(
+            KeyContext::from_state(state).sql_tab(),
+            Some(SqlModalTab::Plan | SqlModalTab::Compare)
+        ),
+        // Text editors and forms bind the arrow keys to a cursor or field, not to a view.
         InputMode::Normal
         | InputMode::CommandLine
         | InputMode::CellEdit
         | InputMode::Settings
-        | InputMode::SqlModal
         | InputMode::ConnectionSetup
         | InputMode::JsonEdit => false,
     }
@@ -100,9 +92,16 @@ fn scrolls_like_arrow_keys(mode: InputMode) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+    use std::time::Instant;
+
+    use crate::domain::{DatabaseMetadata, TableSummary};
     use crate::model::shared::render_output::{PaneArea, PaneAreas};
+    use crate::services::AppServices;
     use crate::update::action::ListMotion;
     use crate::update::action::ListTarget;
+    use crate::update::reducer::reduce;
+    use crate::update::test_fixtures;
     use rstest::rstest;
 
     const EXPLORER_CELL: (u16, u16) = (5, 5);
@@ -160,7 +159,7 @@ mod tests {
     }
 
     #[test]
-    fn wheel_over_result_scrolls_result_without_focusing_it() {
+    fn wheel_over_result_scrolls_result() {
         let state = browse_state();
 
         let action = handle_mouse_event(mouse(MouseKind::ScrollDown, RESULT_CELL), &state);
@@ -173,7 +172,6 @@ mod tests {
                 amount: ScrollAmount::Line,
             }
         ));
-        assert_eq!(state.ui.focused_pane(), FocusedPane::Explorer);
     }
 
     #[test]
@@ -192,15 +190,35 @@ mod tests {
         ));
     }
 
+    fn with_tables(state: &mut AppState, count: usize) {
+        let tables = (0..count)
+            .map(|i| TableSummary::new("public".to_string(), format!("table_{i}"), Some(0), false))
+            .collect();
+        state.session.set_metadata(Some(Arc::new({
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.table_summaries = tables;
+            metadata
+        })));
+        state.ui.set_explorer_pane_height(10);
+        state.ui.set_explorer_selection(Some(1));
+    }
+
     #[rstest]
-    #[case(MouseKind::ScrollDown, SelectMotion::Next)]
-    #[case(MouseKind::ScrollUp, SelectMotion::Previous)]
-    fn wheel_over_explorer_moves_selection(#[case] kind: MouseKind, #[case] motion: SelectMotion) {
-        let state = browse_state();
+    #[case(MouseKind::ScrollDown, 2)]
+    #[case(MouseKind::ScrollUp, 0)]
+    fn wheel_over_unfocused_explorer_moves_selection(
+        #[case] kind: MouseKind,
+        #[case] expected: usize,
+    ) {
+        let mut state = browse_state();
+        with_tables(&mut state, 3);
+        state.ui.set_focused_pane(FocusedPane::Result);
 
         let action = handle_mouse_event(mouse(kind, EXPLORER_CELL), &state);
+        reduce(&mut state, action, Instant::now(), &AppServices::stub());
 
-        assert!(matches!(action, Action::Select(m) if m == motion));
+        assert_eq!(state.ui.explorer_selected(), expected);
+        assert_eq!(state.ui.focused_pane(), FocusedPane::Result);
     }
 
     #[test]
@@ -233,6 +251,36 @@ mod tests {
                 motion: ListMotion::Next,
             }
         ));
+    }
+
+    #[test]
+    fn wheel_in_sql_plan_tab_scrolls_plan() {
+        let mut state = browse_state();
+        test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
+        state.modal.set_mode(InputMode::SqlModal);
+        state.sql_modal.set_active_tab(SqlModalTab::Plan);
+
+        let action = handle_mouse_event(mouse(MouseKind::ScrollDown, RESULT_CELL), &state);
+
+        assert!(matches!(
+            action,
+            Action::Scroll {
+                target: ScrollTarget::ExplainPlan,
+                direction: ScrollDirection::Down,
+                amount: ScrollAmount::Line,
+            }
+        ));
+    }
+
+    #[test]
+    fn wheel_in_plan_tab_unsupported_by_engine_is_ignored() {
+        let mut state = browse_state();
+        state.modal.set_mode(InputMode::SqlModal);
+        state.sql_modal.set_active_tab(SqlModalTab::Plan);
+
+        let action = handle_mouse_event(mouse(MouseKind::ScrollDown, RESULT_CELL), &state);
+
+        assert!(matches!(action, Action::None));
     }
 
     #[rstest]

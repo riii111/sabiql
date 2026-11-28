@@ -7,7 +7,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::shared::render_output::PickerLayout;
 use crate::app::update::action::{Action, ModalKind};
 use crate::app::update::input::keymap::{
-    HintSurface, KeyContext, Picker, palette_matches, picker_hints,
+    HintSurface, KeyContext, Picker, listed_palette_entries, picker_hints,
 };
 use crate::primitives::atoms::Icon;
 use crate::theme::ThemePalette;
@@ -41,13 +41,7 @@ impl CommandPalette {
         let visible_width =
             render_filter_input_line(frame, filter_area, picker.filter_input(), None, theme);
 
-        let context = KeyContext::for_browse_state(state);
-        let matches = palette_matches(
-            state.ui.palette_commands(),
-            picker.filter_input().content(),
-            &context,
-        );
-        let items: Vec<ListItem> = matches
+        let items: Vec<ListItem> = listed_palette_entries(state)
             .iter()
             .enumerate()
             .map(|(i, kb)| {

@@ -61,9 +61,9 @@ impl ProgramStatusReporter {
         self.announce(next)
     }
 
-    /// Input after a finished run means the user has seen the outcome.
     pub fn acknowledge(&mut self) -> Option<ProgramState> {
         match self.reported {
+            // Input after a finished run means the user has seen the outcome.
             Some(ProgramState::Done | ProgramState::Error) => self.announce(ProgramState::Idle),
             Some(ProgramState::Idle | ProgramState::Working) | None => None,
         }
@@ -87,8 +87,8 @@ fn is_busy(state: &AppState) -> bool {
     state.query.is_running() || state.er_preparation.is_waiting()
 }
 
-// An error result left over from an earlier query must not mark a later, unrelated run as failed.
 fn finished_state(state: &AppState, run: Option<BusyRun>) -> ProgramState {
+    // An error result left over from an earlier query must not mark a later, unrelated run as failed.
     let produced_result =
         run.is_none_or(|run| run.result_generation != state.query.result_generation());
     let failed_query = produced_result

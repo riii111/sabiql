@@ -3,7 +3,7 @@ use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::text_input::TextEdit;
 use crate::update::action::ListMotion;
-use crate::update::input::keymap::{KeyContext, palette_matches};
+use crate::update::input::keymap::listed_palette_entries;
 
 pub(in crate::update) fn paste_command_line(state: &mut AppState, text: String) -> Vec<Effect> {
     let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
@@ -85,13 +85,7 @@ pub(in crate::update) fn list_select_command_palette(
 ) -> Vec<Effect> {
     match motion {
         ListMotion::Next => {
-            let max = palette_matches(
-                state.ui.palette_commands(),
-                state.ui.table_picker().filter_input().content(),
-                &KeyContext::for_browse_state(state),
-            )
-            .len()
-            .saturating_sub(1);
+            let max = listed_palette_entries(state).len().saturating_sub(1);
             let selected = state.ui.table_picker().selected();
             if selected < max {
                 state.ui.table_picker_mut().set_selection(selected + 1);

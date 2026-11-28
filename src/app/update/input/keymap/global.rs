@@ -3,6 +3,7 @@ use std::sync::LazyLock;
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 
+use crate::model::app_state::AppState;
 use crate::ports::inbound::{Key, KeyCombo};
 use crate::update::action::{Action, ModalKind};
 
@@ -325,11 +326,7 @@ pub fn palette_entry(id: usize, context: &KeyContext) -> Option<PaletteEntry> {
 
 /// Entries among `commands` whose description fuzzy-matches `filter`, best match first.
 /// Ties and an empty filter keep the palette order.
-pub fn palette_matches(
-    commands: &[usize],
-    filter: &str,
-    context: &KeyContext,
-) -> Vec<PaletteEntry> {
+fn palette_matches(commands: &[usize], filter: &str, context: &KeyContext) -> Vec<PaletteEntry> {
     let entries = commands.iter().filter_map(|&id| palette_entry(id, context));
     if filter.is_empty() {
         return entries.collect();
@@ -350,6 +347,14 @@ pub fn palette_matches(
     scored.into_iter().map(|(_, entry)| entry).collect()
 }
 
+pub fn listed_palette_entries(state: &AppState) -> Vec<PaletteEntry> {
+    palette_matches(
+        state.ui.palette_commands(),
+        state.ui.table_picker().filter_input().content(),
+        &KeyContext::for_browse_state(state),
+    )
+}
+
 pub fn palette_action(id: usize, context: &KeyContext) -> Option<Action> {
     palette_available(context)
         .into_iter()
@@ -361,7 +366,6 @@ pub fn palette_action(id: usize, context: &KeyContext) -> Option<Action> {
 mod tests {
     use super::*;
     use crate::domain::{ConnectionId, DatabaseType, QueryResult, QuerySource};
-    use crate::model::app_state::AppState;
     use crate::test_support::endpoint;
     use std::sync::Arc;
     use std::time::Instant;

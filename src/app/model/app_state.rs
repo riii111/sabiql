@@ -163,7 +163,6 @@ impl AppState {
         self.result_interaction.clear_expired_flash(now);
         self.flash_timers.clear_expired(now);
         self.connection_error.clear_copied_feedback_if_expired(now);
-        self.motion.clear_expired(now);
     }
 
     /// Applies layout data produced during a draw. Inspector viewport plans are

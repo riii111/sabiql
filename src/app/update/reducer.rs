@@ -22,11 +22,23 @@ use crate::policy::FeaturePolicy;
 use crate::services::AppServices;
 use crate::update::action::{Action, TableTarget};
 use crate::update::helpers::reject_pending_mysql_connection_probe;
-use crate::update::input::keymap::{KeyContext, palette_action, palette_matches};
+use crate::update::input::keymap::{KeyContext, listed_palette_entries, palette_action};
 use crate::update::motion::MotionProbe;
 use crate::update::query_context::termination_effects;
 
 pub fn reduce(
+    state: &mut AppState,
+    action: Action,
+    now: Instant,
+    services: &AppServices,
+) -> Vec<Effect> {
+    let motion_probe = MotionProbe::capture(state, &action);
+    let effects = reduce_without_motion(state, action, now, services);
+    motion_probe.record(state, now);
+    effects
+}
+
+fn reduce_without_motion(
     state: &mut AppState,
     action: Action,
     now: Instant,
@@ -40,9 +52,7 @@ pub fn reduce(
     // Mark dirty for all state-changing actions (except None and Render)
     let should_mark_dirty = !matches!(action, Action::None | Action::Render);
 
-    let motion_probe = MotionProbe::capture(state, &action);
     let effects = dispatch_enabled_action(state, action, now, services);
-    motion_probe.record(state, now);
 
     if should_mark_dirty {
         state.mark_dirty();
@@ -492,17 +502,13 @@ fn confirm_selection(state: &mut AppState, now: Instant, services: &AppServices)
             return select_table(state, &table);
         }
     } else if state.modal.active_mode() == InputMode::CommandPalette {
-        let context = KeyContext::for_browse_state(state);
-        let cmd_action = palette_matches(
-            state.ui.palette_commands(),
-            state.ui.table_picker().filter_input().content(),
-            &context,
-        )
-        .get(state.ui.table_picker().selected())
-        .and_then(|entry| palette_action(entry.id, &context))
-        .unwrap_or(Action::None);
+        let cmd_action = listed_palette_entries(state)
+            .get(state.ui.table_picker().selected())
+            .and_then(|entry| palette_action(entry.id, &KeyContext::for_browse_state(state)))
+            .unwrap_or(Action::None);
         state.modal.set_mode(InputMode::Normal);
-        return reduce(state, cmd_action, now, services);
+        // The outer reduce already compares the screen before the palette with the result, so a modal opened from it keeps the scrim settled.
+        return reduce_without_motion(state, cmd_action, now, services);
     }
 
     vec![]
@@ -3749,6 +3755,24 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::Settings);
+        }
+
+        #[test]
+        fn modal_opened_from_palette_keeps_scrim_settled() {
+            let mut state = state_in_palette_mode(KeymapPreset::Default);
+            state.motion.enable();
+            type_palette_filter(&mut state, "settings");
+            let now = Instant::now();
+
+            reduce(
+                &mut state,
+                Action::ConfirmSelection,
+                now,
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.input_mode(), InputMode::Settings);
+            assert_eq!(state.motion.modal_progress(now), None);
         }
 
         #[test]

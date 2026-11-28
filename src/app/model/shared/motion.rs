@@ -79,7 +79,6 @@ pub struct FocusTransition {
     pub progress: f32,
 }
 
-/// Disabled by default so render tests and other headless callers see settled frames.
 #[derive(Debug, Clone, Default)]
 pub struct MotionState {
     enabled: bool,
@@ -91,10 +90,6 @@ pub struct MotionState {
 impl MotionState {
     pub fn enable(&mut self) {
         self.enabled = true;
-    }
-
-    pub fn is_enabled(&self) -> bool {
-        self.enabled
     }
 
     pub fn begin_scroll(&mut self, pane: ScrolledPane, from: usize, to: usize, now: Instant) {
@@ -167,21 +162,6 @@ impl MotionState {
         .filter(|tween| tween.is_active(now))
         .map(|tween| (now + FRAME_INTERVAL).min(tween.ends_at()))
         .min()
-    }
-
-    pub fn clear_expired(&mut self, now: Instant) {
-        if self
-            .scroll
-            .is_some_and(|scroll| !scroll.tween.is_active(now))
-        {
-            self.scroll = None;
-        }
-        if self.focus.is_some_and(|focus| !focus.tween.is_active(now)) {
-            self.focus = None;
-        }
-        if self.modal.is_some_and(|modal| !modal.is_active(now)) {
-            self.modal = None;
-        }
     }
 }
 
@@ -366,22 +346,6 @@ mod tests {
             let near_end = now + MODAL_DURATION.saturating_sub(Duration::from_millis(1));
 
             assert_eq!(motion.next_frame(near_end), Some(now + MODAL_DURATION));
-        }
-
-        #[test]
-        fn clear_expired_drops_finished_tweens() {
-            let mut motion = enabled();
-            let now = Instant::now();
-            motion.begin_scroll(ScrolledPane::Result, 0, 40, now);
-            motion.begin_focus(FocusedPane::Explorer, FocusedPane::Result, now);
-            motion.begin_modal(now);
-
-            motion.clear_expired(now + FOCUS_DURATION);
-
-            assert_eq!(motion.next_frame(now + FOCUS_DURATION), None);
-            assert!(motion.scroll.is_none());
-            assert!(motion.focus.is_none());
-            assert!(motion.modal.is_none());
         }
     }
 }

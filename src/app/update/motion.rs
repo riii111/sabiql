@@ -23,10 +23,6 @@ impl MotionProbe {
     }
 
     pub(super) fn record(self, state: &mut AppState, now: Instant) {
-        if !state.motion.is_enabled() {
-            return;
-        }
-
         let shows_overlay = state.input_mode().shows_overlay();
         // Switching between modals keeps the scrim, so only a modal opened over the panes fades in.
         if shows_overlay && !self.shows_overlay {
@@ -45,9 +41,9 @@ impl MotionProbe {
     }
 }
 
-// Line steps stay immediate because key repeat and the mouse wheel already move one row at a time.
 fn animated_scroll_pane(action: &Action) -> Option<ScrolledPane> {
     match action {
+        // Line steps stay immediate because key repeat and the mouse wheel already move one row at a time.
         Action::Scroll { target, amount, .. } if *amount != ScrollAmount::Line => match target {
             ScrollTarget::Result => Some(ScrolledPane::Result),
             ScrollTarget::Inspector => Some(ScrolledPane::Inspector),
@@ -175,22 +171,5 @@ mod tests {
         probe.record(&mut state, now);
 
         assert_eq!(state.motion.scroll_offset(ScrolledPane::Result, 1, now), 1);
-    }
-
-    #[test]
-    fn disabled_motion_records_nothing() {
-        let mut state = AppState::new("test".to_string());
-        let now = Instant::now();
-        let probe = MotionProbe::capture(&state, &page_down());
-
-        state.modal.set_mode(InputMode::Help);
-        state.result_interaction.set_scroll_offset(20);
-        probe.record(&mut state, now);
-
-        assert_eq!(state.motion.modal_progress(now), None);
-        assert_eq!(
-            state.motion.scroll_offset(ScrolledPane::Result, 20, now),
-            20
-        );
     }
 }
