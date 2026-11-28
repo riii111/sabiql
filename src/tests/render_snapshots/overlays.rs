@@ -1,6 +1,7 @@
 use super::*;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
+use ratatui::buffer::Cell;
 use ratatui::style::Modifier;
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::settings::KeymapPreset;
@@ -754,7 +755,7 @@ fn query_history_picker_highlights_the_match_after_a_combining_accent() {
         .positions()
         .map(|position| &buffer[position])
         .filter(|cell| cell.modifier.contains(Modifier::BOLD))
-        .map(|cell| cell.symbol())
+        .map(Cell::symbol)
         .collect();
     assert_eq!(highlighted, "foo");
 }
