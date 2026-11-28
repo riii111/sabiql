@@ -161,7 +161,7 @@ mod tests {
                 }
                 other => panic!("expected CopyToClipboard, got {other:?}"),
             }
-            assert!(state.result_interaction.yank_flash().is_none());
+            assert!(state.flash_timers.result().is_none());
         }
 
         #[test]
@@ -248,7 +248,7 @@ mod tests {
                 }
                 other => panic!("expected CopyToClipboard, got {other:?}"),
             }
-            assert!(state.result_interaction.yank_flash().is_none());
+            assert!(state.flash_timers.result().is_none());
         }
 
         #[test]

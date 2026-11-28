@@ -1,8 +1,6 @@
 use std::time::Instant;
 
 use crate::model::app_state::AppState;
-use crate::model::shared::flash_timer::FLASH_DURATION;
-use crate::model::shared::ui_state::YankFlash;
 use crate::ports::outbound::clipboard::ClipboardError;
 use crate::update::action::CopyTarget;
 
@@ -23,20 +21,8 @@ pub(in crate::update) fn copied(
     }
     match target {
         CopyTarget::Panel(flash_id) => state.flash_timers.set(flash_id, now),
-        CopyTarget::ResultCell { row, col } => {
-            state.result_interaction.set_yank_flash(Some(YankFlash {
-                row,
-                col: Some(col),
-                until: now + FLASH_DURATION,
-            }));
-        }
-        CopyTarget::ResultRow { row } => {
-            state.result_interaction.set_yank_flash(Some(YankFlash {
-                row,
-                col: None,
-                until: now + FLASH_DURATION,
-            }));
-        }
+        CopyTarget::ResultCell { row, col } => state.flash_timers.set_result(row, Some(col), now),
+        CopyTarget::ResultRow { row } => state.flash_timers.set_result(row, None, now),
         CopyTarget::ConnectionError => state.connection_error.mark_copied_at(now),
     }
 }
@@ -86,7 +72,7 @@ mod tests {
             Instant::now(),
         );
 
-        let flash = state.result_interaction.yank_flash().expect("flash set");
+        let flash = state.flash_timers.result().expect("flash set");
         assert_eq!(flash.row, 1);
         assert_eq!(flash.col, Some(2));
     }
@@ -97,7 +83,7 @@ mod tests {
 
         copied(&mut state, CopyTarget::ResultRow { row: 0 }, Instant::now());
 
-        let flash = state.result_interaction.yank_flash().expect("flash set");
+        let flash = state.flash_timers.result().expect("flash set");
         assert_eq!(flash.row, 0);
         assert_eq!(flash.col, None);
     }
@@ -121,6 +107,6 @@ mod tests {
         );
 
         assert_eq!(state.messages.last_error.as_deref(), Some(expected));
-        assert!(state.result_interaction.yank_flash().is_none());
+        assert!(state.flash_timers.result().is_none());
     }
 }

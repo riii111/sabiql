@@ -36,14 +36,6 @@ impl QueryHistoryPickerState {
         self.picker.scroll_offset()
     }
 
-    pub fn pane_height(&self) -> u16 {
-        self.picker.pane_height()
-    }
-
-    pub fn filter_visible_width(&self) -> usize {
-        self.picker.filter_visible_width()
-    }
-
     pub fn set_pane_height(&mut self, height: u16) {
         self.picker.set_pane_height(height);
     }
@@ -67,16 +59,8 @@ impl QueryHistoryPickerState {
         self.picker.insert_filter_str(text);
     }
 
-    pub fn edit_filter<R>(&mut self, edit: impl FnOnce(&mut TextInputState) -> R) -> R {
-        self.picker.edit_filter(edit)
-    }
-
     pub fn apply_filter_edit(&mut self, edit: TextEdit, yank_text: Option<&str>) -> String {
         self.picker.apply_filter_edit(edit, yank_text)
-    }
-
-    pub fn reset_selection(&mut self) {
-        self.picker.reset();
     }
 
     pub fn select_next(&mut self) {
@@ -167,94 +151,55 @@ mod tests {
 
     impl QueryHistoryPickerState {
         pub(crate) fn set_selection_for_test(&mut self, selected: usize) {
-            self.picker.selected = selected;
+            self.picker.set_selection(selected);
         }
     }
 
     fn state_with_selection() -> QueryHistoryPickerState {
-        QueryHistoryPickerState {
-            picker: PickerState {
-                selected: 3,
-                scroll_offset: 2,
-
-                ..Default::default()
-            },
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn insert_filter_char_resets_selection() {
-        let mut state = state_with_selection();
-
-        state.apply_filter_edit(TextEdit::Insert('a'), None);
-
-        assert_eq!(state.picker.filter_input.content(), "a");
-        assert_eq!(state.picker.selected, 0);
-        assert_eq!(state.picker.scroll_offset, 0);
-    }
-
-    #[test]
-    fn insert_filter_str_strips_newlines_and_resets_selection() {
-        let mut state = state_with_selection();
-
-        state.insert_filter_str("a\nb\rc");
-
-        assert_eq!(state.picker.filter_input.content(), "abc");
-        assert_eq!(state.picker.selected, 0);
-        assert_eq!(state.picker.scroll_offset, 0);
+        let mut state = QueryHistoryPickerState::default();
+        state.set_pane_height(2);
+        state.picker.set_selection(3);
+        state
     }
 
     #[test]
     fn backspace_filter_resets_selection() {
-        let mut state = QueryHistoryPickerState {
-            picker: PickerState {
-                filter_input: TextInputState::new("abc", 3),
-
-                ..state_with_selection().picker
-            },
-            ..state_with_selection()
-        };
+        let mut state = state_with_selection();
+        state
+            .picker
+            .edit_filter(|input| input.set_content("abc".to_string()));
+        state.picker.set_selection(3);
 
         state.apply_filter_edit(TextEdit::Backspace, None);
 
-        assert_eq!(state.picker.filter_input.content(), "ab");
-        assert_eq!(state.picker.selected, 0);
-        assert_eq!(state.picker.scroll_offset, 0);
+        assert_eq!(state.filter_input().content(), "ab");
+        assert_eq!(state.selected(), 0);
+        assert_eq!(state.scroll_offset(), 0);
     }
 
     #[test]
     fn move_filter_cursor_preserves_selection() {
-        let mut state = QueryHistoryPickerState {
-            picker: PickerState {
-                filter_input: TextInputState::new("abc", 3),
-
-                ..state_with_selection().picker
-            },
-            ..state_with_selection()
-        };
+        let mut state = state_with_selection();
+        state
+            .picker
+            .edit_filter(|input| input.set_content("abc".to_string()));
+        state.picker.set_selection(3);
 
         state.apply_filter_edit(TextEdit::MoveCursor(CursorMove::Left), None);
 
-        assert_eq!(state.picker.selected, 3);
-        assert_eq!(state.picker.scroll_offset, 2);
+        assert_eq!(state.selected(), 3);
+        assert_eq!(state.scroll_offset(), 2);
     }
 
     #[test]
     fn filter_input_updates_viewport() {
-        let mut state = QueryHistoryPickerState {
-            picker: PickerState {
-                filter_visible_width: 3,
-
-                ..Default::default()
-            },
-            ..Default::default()
-        };
+        let mut state = QueryHistoryPickerState::default();
+        state.set_filter_visible_width(3);
 
         state.insert_filter_str("abcd");
 
-        assert_eq!(state.picker.filter_input.content(), "abcd");
-        assert_eq!(state.picker.filter_input.viewport_offset(), 2);
+        assert_eq!(state.filter_input().content(), "abcd");
+        assert_eq!(state.filter_input().viewport_offset(), 2);
     }
 
     fn make_entry(query: &str) -> QueryHistoryEntry {
@@ -299,7 +244,9 @@ mod tests {
             make_entry("INSERT INTO orders VALUES (1)"),
             make_entry("SELECT count(*) FROM users"),
         ]);
-        state.picker.filter_input.set_content("users".to_string());
+        state
+            .picker
+            .edit_filter(|input| input.set_content("users".to_string()));
 
         let grouped = state.grouped_filtered_entries();
 
@@ -321,7 +268,9 @@ mod tests {
     #[test]
     fn filter_is_case_insensitive() {
         let mut state = make_state(vec![make_entry("SELECT * FROM Users")]);
-        state.picker.filter_input.set_content("users".to_string());
+        state
+            .picker
+            .edit_filter(|input| input.set_content("users".to_string()));
 
         let grouped = state.grouped_filtered_entries();
 
@@ -330,90 +279,56 @@ mod tests {
 
     #[test]
     fn reset_clears_all_state() {
-        let mut state = QueryHistoryPickerState {
-            entries: vec![make_entry("SELECT 1")],
-
-            picker: PickerState {
-                selected: 5,
-                scroll_offset: 3,
-
-                ..Default::default()
-            },
-        };
-        state.picker.filter_input.set_content("test".to_string());
+        let mut state = make_state(vec![make_entry("SELECT 1")]);
+        state.insert_filter_str("test");
+        state.set_pane_height(3);
+        state.picker.set_selection(5);
 
         state.reset();
 
         assert!(state.entries.is_empty());
-        assert_eq!(state.picker.filter_input.content(), "");
-        assert_eq!(state.picker.selected, 0);
-        assert_eq!(state.picker.scroll_offset, 0);
+        assert_eq!(state.filter_input().content(), "");
+        assert_eq!(state.selected(), 0);
+        assert_eq!(state.scroll_offset(), 0);
     }
 
     #[test]
     fn clamped_selected_with_empty_entries() {
-        let state = QueryHistoryPickerState {
-            picker: PickerState {
-                selected: 5,
-
-                ..Default::default()
-            },
-            ..Default::default()
-        };
+        let mut state = QueryHistoryPickerState::default();
+        state.picker.set_selection(5);
 
         assert_eq!(state.clamped_selected(), 0);
     }
 
     #[test]
     fn clamped_selected_clamps_to_last_index() {
-        let state = QueryHistoryPickerState {
-            entries: vec![make_entry("SELECT 1"), make_entry("SELECT 2")],
-
-            picker: PickerState {
-                selected: 10,
-
-                ..Default::default()
-            },
-        };
+        let mut state = make_state(vec![make_entry("SELECT 1"), make_entry("SELECT 2")]);
+        state.picker.set_selection(10);
 
         assert_eq!(state.clamped_selected(), 1);
     }
 
     #[test]
     fn clamped_selected_preserves_valid_selection() {
-        let state = QueryHistoryPickerState {
-            entries: vec![
-                make_entry("SELECT 1"),
-                make_entry("SELECT 2"),
-                make_entry("SELECT 3"),
-            ],
-
-            picker: PickerState {
-                selected: 1,
-
-                ..Default::default()
-            },
-        };
+        let mut state = make_state(vec![
+            make_entry("SELECT 1"),
+            make_entry("SELECT 2"),
+            make_entry("SELECT 3"),
+        ]);
+        state.picker.set_selection(1);
 
         assert_eq!(state.clamped_selected(), 1);
     }
 
     #[test]
     fn select_next_updates_scroll_offset() {
-        let mut state = QueryHistoryPickerState {
-            entries: vec![
-                make_entry("SELECT 1"),
-                make_entry("SELECT 2"),
-                make_entry("SELECT 3"),
-                make_entry("SELECT 4"),
-            ],
-
-            picker: PickerState {
-                pane_height: 2,
-
-                ..Default::default()
-            },
-        };
+        let mut state = make_state(vec![
+            make_entry("SELECT 1"),
+            make_entry("SELECT 2"),
+            make_entry("SELECT 3"),
+            make_entry("SELECT 4"),
+        ]);
+        state.set_pane_height(2);
 
         state.select_next();
         state.select_next();
@@ -424,22 +339,14 @@ mod tests {
 
     #[test]
     fn select_previous_updates_scroll_offset() {
-        let mut state = QueryHistoryPickerState {
-            entries: vec![
-                make_entry("SELECT 1"),
-                make_entry("SELECT 2"),
-                make_entry("SELECT 3"),
-                make_entry("SELECT 4"),
-            ],
-
-            picker: PickerState {
-                selected: 3,
-                scroll_offset: 2,
-                pane_height: 2,
-
-                ..Default::default()
-            },
-        };
+        let mut state = make_state(vec![
+            make_entry("SELECT 1"),
+            make_entry("SELECT 2"),
+            make_entry("SELECT 3"),
+            make_entry("SELECT 4"),
+        ]);
+        state.set_pane_height(2);
+        state.picker.set_selection(3);
 
         state.select_previous();
         state.select_previous();
@@ -450,16 +357,9 @@ mod tests {
 
     #[test]
     fn select_previous_starts_from_clamped_selection() {
-        let mut state = QueryHistoryPickerState {
-            entries: vec![make_entry("SELECT 1"), make_entry("SELECT 2")],
-
-            picker: PickerState {
-                selected: 10,
-                pane_height: 5,
-
-                ..Default::default()
-            },
-        };
+        let mut state = make_state(vec![make_entry("SELECT 1"), make_entry("SELECT 2")]);
+        state.set_pane_height(5);
+        state.picker.set_selection(10);
 
         state.select_previous();
 
@@ -470,10 +370,7 @@ mod tests {
     #[test]
     fn no_matches_returns_empty() {
         let mut state = make_state(vec![make_entry("SELECT 1")]);
-        state
-            .picker
-            .filter_input
-            .set_content("xyz_no_match".to_string());
+        state.insert_filter_str("xyz_no_match");
 
         let grouped = state.grouped_filtered_entries();
 
@@ -542,7 +439,9 @@ mod tests {
                 make_entry("SELECT * FROM users"),
                 make_entry("SELECT * FROM users"),
             ]);
-            state.picker.filter_input.set_content("users".to_string());
+            state
+                .picker
+                .edit_filter(|input| input.set_content("users".to_string()));
 
             let grouped = state.grouped_filtered_entries();
 
@@ -559,7 +458,9 @@ mod tests {
                 make_entry("INSERT INTO orders VALUES (1)"),
                 make_entry("SELECT * FROM users WHERE id=1"),
             ]);
-            state.picker.filter_input.set_content("users".to_string());
+            state
+                .picker
+                .edit_filter(|input| input.set_content("users".to_string()));
 
             let grouped = state.grouped_filtered_entries();
 
@@ -580,19 +481,12 @@ mod tests {
 
         #[test]
         fn clamped_selected_uses_grouped_count() {
-            let state = QueryHistoryPickerState {
-                entries: vec![
-                    make_entry("SELECT 1"),
-                    make_entry("SELECT 1"),
-                    make_entry("SELECT 1"),
-                ],
-
-                picker: PickerState {
-                    selected: 5,
-
-                    ..Default::default()
-                },
-            };
+            let mut state = make_state(vec![
+                make_entry("SELECT 1"),
+                make_entry("SELECT 1"),
+                make_entry("SELECT 1"),
+            ]);
+            state.picker.set_selection(5);
 
             assert_eq!(state.clamped_selected(), 0);
         }

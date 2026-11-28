@@ -114,7 +114,7 @@ impl ResultPane {
                         selection: state.result_interaction.selection(),
                         editing_cell,
                         staged_delete_rows: state.result_interaction.staged_delete_rows(),
-                        yank_flash: state.result_interaction.yank_flash(),
+                        yank_flash: state.flash_timers.result(),
                         now,
                     },
                     theme,

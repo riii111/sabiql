@@ -9,6 +9,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::app::model::shared::detail_view::DetailSearchState;
 use crate::primitives::atoms::{CursorKind, set_terminal_cursor, text_cursor_spans_with_kind};
+use crate::primitives::utils::text_utils::take_within_width;
 use crate::theme::ThemePalette;
 
 pub(super) fn search_match_status(search: &DetailSearchState) -> String {
@@ -65,22 +66,15 @@ fn slice_chars_fitting_width(input: &str, start: usize, visible_width: usize) ->
         return String::new();
     }
 
-    let mut width = 0usize;
-    let mut char_index = 0usize;
-    let mut visible = String::new();
-    for grapheme in input.graphemes(true) {
-        char_index += grapheme.chars().count();
-        if char_index <= start {
-            continue;
-        }
-        let next = width.saturating_add(UnicodeWidthStr::width(grapheme));
-        if next > visible_width {
-            break;
-        }
-        width = next;
-        visible.push_str(grapheme);
-    }
-    visible
+    let mut char_index = 0;
+    let byte_index = input
+        .grapheme_indices(true)
+        .find_map(|(index, grapheme)| {
+            char_index += grapheme.chars().count();
+            (char_index > start).then_some(index)
+        })
+        .unwrap_or(input.len());
+    take_within_width(&input[byte_index..], visible_width)
 }
 
 #[cfg(test)]

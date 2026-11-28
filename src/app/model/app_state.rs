@@ -178,9 +178,21 @@ impl AppState {
     pub fn clear_expired_timers(&mut self, now: Instant) {
         self.messages.clear_expired_at(now);
         self.query.clear_expired_highlight(now);
-        self.result_interaction.clear_expired_flash(now);
         self.flash_timers.clear_expired(now);
         self.connection_error.clear_copied_feedback_if_expired(now);
+    }
+
+    /// Earliest deadline across transient feedback shown by the application.
+    pub fn transient_feedback_deadline(&self) -> Option<Instant> {
+        [
+            self.messages.expires_at(),
+            self.query.result_highlight_until(),
+            self.connection_error.copied_feedback_expires_at(),
+            self.flash_timers.earliest_deadline(),
+        ]
+        .into_iter()
+        .flatten()
+        .min()
     }
 
     /// Applies layout data produced during a draw. Inspector viewport plans are

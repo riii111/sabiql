@@ -11,7 +11,7 @@ use crate::model::connection::setup::{
 use crate::model::connection::state::ConnectionState;
 use crate::model::shared::confirm_dialog::ConfirmIntent;
 use crate::model::shared::input_mode::InputMode;
-use crate::model::shared::text_input::TextEdit;
+use crate::model::shared::text_input::{TextEdit, TextInputState};
 use crate::update::action::{ConnectionSaveError, ConnectionTarget, SavedConnection};
 use crate::update::connection::helpers::{
     cancel_connection_task_effects, connection_save_fetch_effects,
@@ -217,43 +217,33 @@ fn remaining_input_capacity(field: ConnectionField, current_len: usize) -> usize
         .map_or(usize::MAX, |max| max.saturating_sub(current_len))
 }
 
-fn insert_form_text(setup: &mut ConnectionSetupState, text: &str) {
-    let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
-    match setup.focused_field() {
-        ConnectionField::Port => {
-            let remaining =
-                remaining_input_capacity(ConnectionField::Port, setup.port_mut().char_count());
-            let digits: String = clean
-                .chars()
-                .filter(char::is_ascii_digit)
-                .take(remaining)
-                .collect();
-            if !digits.is_empty() {
-                setup.port_mut().insert_str(&digits);
-                setup
-                    .port_mut()
-                    .update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
-            }
-        }
-        ConnectionField::DatabaseType
-        | ConnectionField::Transport
-        | ConnectionField::SslMode
-        | ConnectionField::CleartextAuth => {}
-        field => {
-            if let Some(input) = setup.focused_input_mut() {
-                let remaining = remaining_input_capacity(field, input.char_count());
-                let allowed = take_chars(&clean, remaining);
-                if !allowed.is_empty() {
-                    input.insert_str(&allowed);
-                    input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
-                }
-            }
-        }
+fn edit_form_input<R>(
+    setup: &mut ConnectionSetupState,
+    edit: impl FnOnce(&mut TextInputState) -> R,
+) -> Option<R> {
+    let input = setup.focused_input_mut()?;
+    Some(input.edit_with_viewport(CONNECTION_INPUT_VISIBLE_WIDTH, edit))
+}
+
+fn insert_form_value(setup: &mut ConnectionSetupState, text: &str) {
+    let field = setup.focused_field();
+    let Some(input) = setup.focused_input() else {
+        return;
+    };
+    let remaining = remaining_input_capacity(field, input.char_count());
+    let allowed: String = text
+        .chars()
+        .filter(|ch| field != ConnectionField::Port || ch.is_ascii_digit())
+        .take(remaining)
+        .collect();
+    if !allowed.is_empty() {
+        edit_form_input(setup, |input| input.insert_str(&allowed));
     }
 }
 
-fn take_chars(text: &str, max_chars: usize) -> String {
-    text.chars().take(max_chars).collect()
+fn insert_form_text(setup: &mut ConnectionSetupState, text: &str) {
+    let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
+    insert_form_value(setup, &clean);
 }
 
 pub(in crate::update) fn edit_text(
@@ -264,7 +254,7 @@ pub(in crate::update) fn edit_text(
     let setup = &mut state.connection_setup;
     match edit {
         TextEdit::Insert(ch) => {
-            insert_form_char(setup, ch);
+            insert_form_value(setup, ch.encode_utf8(&mut [0; 4]));
             String::new()
         }
         TextEdit::Yank => {
@@ -275,45 +265,12 @@ pub(in crate::update) fn edit_text(
         }
         TextEdit::Kill(direction) => {
             let is_password = setup.focused_field == ConnectionField::Password;
-            let killed = setup.focused_input_mut().map_or_default(|input| {
-                let killed = input.kill(direction);
-                input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
-                killed
-            });
+            let killed = edit_form_input(setup, |input| input.kill(direction)).unwrap_or_default();
             if is_password { String::new() } else { killed }
         }
         TextEdit::Backspace | TextEdit::Delete | TextEdit::MoveCursor(_) => {
-            if let Some(input) = setup.focused_input_mut() {
-                input.apply_edit(edit, None);
-                input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
-            }
+            edit_form_input(setup, |input| input.apply_edit(edit, None));
             String::new()
-        }
-    }
-}
-
-fn insert_form_char(setup: &mut ConnectionSetupState, ch: char) {
-    match setup.focused_field() {
-        ConnectionField::Port => {
-            let port = setup.port_mut();
-            if ch.is_ascii_digit()
-                && remaining_input_capacity(ConnectionField::Port, port.char_count()) > 0
-            {
-                port.insert_char(ch);
-                port.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
-            }
-        }
-        ConnectionField::DatabaseType
-        | ConnectionField::Transport
-        | ConnectionField::SslMode
-        | ConnectionField::CleartextAuth => {}
-        field => {
-            if let Some(input) = setup.focused_input_mut()
-                && remaining_input_capacity(field, input.char_count()) > 0
-            {
-                input.insert_char(ch);
-                input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
-            }
         }
     }
 }

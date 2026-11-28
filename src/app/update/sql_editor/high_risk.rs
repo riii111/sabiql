@@ -70,8 +70,9 @@ pub(in crate::update) fn paste_text(
     text: String,
 ) -> Vec<Effect> {
     if let Some(input) = high_risk_input_mut(&mut state.sql_modal, target) {
-        input.insert_str(&sanitize_filter_text(&text));
-        input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
+        input.edit_with_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH, |input| {
+            input.insert_str(&sanitize_filter_text(&text));
+        });
     }
     vec![]
 }
@@ -83,8 +84,8 @@ pub(in crate::update) fn edit_text(
     yank_text: Option<&str>,
 ) -> String {
     high_risk_input_mut(&mut state.sql_modal, target).map_or_default(|input| {
-        let killed = input.apply_edit(edit, yank_text);
-        input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
-        killed
+        input.edit_with_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH, |input| {
+            input.apply_edit(edit, yank_text)
+        })
     })
 }

@@ -1159,7 +1159,9 @@ mod tests {
             #[test]
             fn filter_input_resets_selection() {
                 let mut state = connected_state();
+                state.query_history_picker.set_pane_height(2);
                 state.query_history_picker.set_selection_for_test(5);
+                assert_eq!(state.query_history_picker.scroll_offset(), 4);
 
                 let effects = edit_text(
                     &mut state,
@@ -1171,6 +1173,7 @@ mod tests {
                 );
 
                 assert_eq!(state.query_history_picker.selected(), 0);
+                assert_eq!(state.query_history_picker.scroll_offset(), 0);
                 assert_eq!(state.query_history_picker.filter_input().content(), "a");
                 assert!(effects.is_empty());
             }

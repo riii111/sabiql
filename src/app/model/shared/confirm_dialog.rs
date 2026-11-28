@@ -72,8 +72,7 @@ impl ConfirmDialogState {
 
     pub fn scroll_preview(&mut self, direction: ScrollDirection) {
         let max_scroll = self.max_scroll() as usize;
-        let next = direction.clamp_vertical_offset(self.preview_scroll.get(), max_scroll, 1);
-        self.preview_scroll.set(next);
+        self.preview_scroll.scroll(direction, 1, max_scroll);
     }
 
     pub fn title(&self) -> &str {

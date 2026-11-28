@@ -297,6 +297,17 @@ impl TextInputState {
         }
     }
 
+    /// Recompute the viewport after a single-line edit using the current render width.
+    pub fn edit_with_viewport<R>(
+        &mut self,
+        visible_width: usize,
+        edit: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let result = edit(self);
+        self.update_viewport(visible_width);
+        result
+    }
+
     pub fn update_viewport(&mut self, visible_width: usize) {
         if visible_width == 0 {
             self.viewport_offset = 0;
@@ -345,9 +356,6 @@ impl TextInputState {
                 grapheme_ceil(&self.content, end),
             )
         };
-        if start >= end {
-            return String::new();
-        }
 
         let start_byte = char_to_byte_index(&self.content, start);
         let end_byte = char_to_byte_index(&self.content, end);
@@ -385,16 +393,11 @@ fn grapheme_ceil(content: &str, cursor: usize) -> usize {
 }
 
 fn previous_grapheme(content: &str, cursor: usize) -> usize {
-    grapheme_boundaries(content)
-        .take_while(|&boundary| boundary < cursor)
-        .last()
-        .unwrap_or(0)
+    grapheme_floor(content, cursor.saturating_sub(1))
 }
 
 fn next_grapheme(content: &str, cursor: usize) -> usize {
-    grapheme_boundaries(content)
-        .find(|&boundary| boundary > cursor)
-        .unwrap_or_else(|| content.chars().count())
+    grapheme_ceil(content, cursor.saturating_add(1))
 }
 
 pub(crate) fn char_to_byte_index(s: &str, char_idx: usize) -> usize {

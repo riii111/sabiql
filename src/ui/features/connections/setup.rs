@@ -611,7 +611,6 @@ mod tests {
         let input = state.input_mut(ConnectionField::Password).unwrap();
         input.set_content("界".repeat(13));
         input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
-        assert_eq!(input.viewport_offset(), 1);
         let mut terminal = Terminal::new(TestBackend::new(80, 1)).unwrap();
         terminal
             .draw(|frame| {

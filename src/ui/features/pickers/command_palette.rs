@@ -1,4 +1,4 @@
-use super::render_picker_list;
+use super::{PickerModal, render_picker, render_picker_list};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::Style;
@@ -7,13 +7,9 @@ use ratatui::widgets::ListItem;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::render_output::PickerLayout;
 use crate::app::update::action::{Action, ModalKind};
-use crate::app::update::input::keymap::{
-    HintSurface, KeyContext, Picker, listed_palette_entries, picker_hints,
-};
+use crate::app::update::input::keymap::listed_palette_entries;
 use crate::primitives::atoms::Icon;
 use crate::theme::ThemePalette;
-
-use crate::primitives::molecules::{FooterHintBar, render_filter_input_line, render_modal};
 
 pub(crate) struct CommandPalette;
 
@@ -23,24 +19,13 @@ impl CommandPalette {
         state: &AppState,
         theme: &ThemePalette,
     ) -> PickerLayout {
-        let (_, inner) = render_modal(
-            frame,
-            Constraint::Percentage(50),
-            Constraint::Percentage(50),
-            " Command Palette ",
-            FooterHintBar::new(picker_hints(
-                Picker::CommandPalette,
-                HintSurface::Border,
-                &KeyContext::from_state(state),
-            )),
-            theme,
-        );
-
-        let [filter_area, list_area] =
-            Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(inner);
         let picker = state.ui.table_picker();
-        let visible_width =
-            render_filter_input_line(frame, filter_area, picker.filter_input(), None, theme);
+        let (list_area, visible_width) =
+            render_picker(frame, state, theme, PickerModal::CommandPalette, |inner| {
+                let areas: [_; 2] =
+                    Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(inner);
+                areas.into()
+            });
 
         let items: Vec<ListItem> = listed_palette_entries(state)
             .iter()

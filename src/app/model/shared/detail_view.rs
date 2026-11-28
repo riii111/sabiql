@@ -295,12 +295,8 @@ impl ReadOnlyDetailState {
             _ => return,
         };
 
-        let next = direction.clamp_vertical_offset(
-            self.scroll_offset.get(),
-            self.max_scroll_offset(),
-            delta,
-        );
-        self.scroll_offset.set(next);
+        let max = self.max_scroll_offset();
+        self.scroll_offset.scroll(direction, delta, max);
     }
 
     pub fn scroll_to_match(&mut self) {
@@ -325,29 +321,10 @@ impl ReadOnlyDetailState {
 }
 
 fn visual_line_count(content: &str, width: usize) -> usize {
-    content
-        .split('\n')
-        .map(|line| visual_rows_for_line(line, width))
-        .sum::<usize>()
-        .max(1)
-}
-
-fn visual_rows_for_line(line: &str, width: usize) -> usize {
     if width == 0 {
-        return 1;
+        return content.split('\n').count();
     }
-
-    let mut rows = 1;
-    let mut current_width = 0;
-    for ch in line.chars() {
-        let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
-        if current_width > 0 && current_width + ch_width > width {
-            rows += 1;
-            current_width = 0;
-        }
-        current_width += ch_width;
-    }
-    rows
+    visual_row_for_char_offset(content, usize::MAX, width).saturating_add(1)
 }
 
 fn visual_row_for_char_offset(content: &str, target: usize, width: usize) -> usize {
@@ -393,6 +370,16 @@ mod tests {
             state.scroll(ScrollDirection::Down, ScrollAmount::ToEnd);
 
             assert_eq!(state.scroll_offset(), 7);
+        }
+
+        #[test]
+        fn end_scroll_counts_wrapped_and_empty_lines() {
+            let content = "ab界c\n\nx".to_string();
+            let mut state =
+                ReadOnlyDetailState::open(0, 0, "body".to_string(), content.clone(), content);
+            state.set_viewport_metrics(1, 3);
+            state.scroll(ScrollDirection::Down, ScrollAmount::ToEnd);
+            assert_eq!(state.scroll_offset(), 3);
         }
 
         #[test]

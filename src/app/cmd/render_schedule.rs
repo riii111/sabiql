@@ -9,36 +9,15 @@ const SPINNER_INTERVAL: Duration = Duration::from_millis(150);
 const CURSOR_BLINK_INTERVAL: Duration = Duration::from_millis(500);
 
 pub fn next_animation_deadline(state: &AppState, now: Instant) -> Option<Instant> {
-    let mut earliest: Option<Instant> = None;
-
-    if has_active_spinner(state) {
-        earliest = min_instant(earliest, Some(now + SPINNER_INTERVAL));
-    }
-
-    if let Some(expires_at) = state.messages.expires_at() {
-        earliest = min_instant(earliest, Some(expires_at));
-    }
-
-    if let Some(highlight_until) = state.query.result_highlight_until() {
-        earliest = min_instant(earliest, Some(highlight_until));
-    }
-
-    earliest = min_instant(
-        earliest,
-        state.connection_error.copied_feedback_expires_at(),
-    );
-
-    if let Some(debounce_until) = state.sql_modal.completion_debounce() {
-        earliest = min_instant(earliest, Some(debounce_until));
-    }
-
-    if let Some(flash) = state.result_interaction.yank_flash() {
-        earliest = min_instant(earliest, Some(flash.until));
-    }
-
-    earliest = min_instant(earliest, state.flash_timers.earliest_deadline());
-
-    earliest = min_instant(earliest, state.motion.next_frame(now));
+    let mut earliest = [
+        has_active_spinner(state).then(|| now + SPINNER_INTERVAL),
+        state.transient_feedback_deadline(),
+        state.sql_modal.completion_debounce(),
+        state.motion.next_frame(now),
+    ]
+    .into_iter()
+    .flatten()
+    .min();
 
     // Cursor blink is the slowest; skip if faster timers are active
     if has_blinking_cursor(state) && earliest.is_none() {
@@ -61,13 +40,6 @@ fn has_blinking_cursor(state: &AppState) -> bool {
             | InputMode::CellEdit
             | InputMode::ConnectionSetup
     )
-}
-
-fn min_instant(a: Option<Instant>, b: Option<Instant>) -> Option<Instant> {
-    match (a, b) {
-        (Some(a), Some(b)) => Some(a.min(b)),
-        _ => a.or(b),
-    }
 }
 
 #[cfg(test)]

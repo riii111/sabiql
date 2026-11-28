@@ -5,11 +5,11 @@ use crate::model::shared::text_input::{TextEdit, apply_filter_edit};
 
 #[derive(Debug, Clone, Default)]
 pub struct PickerState {
-    pub(crate) selected: usize,
-    pub(crate) scroll_offset: usize,
-    pub(crate) pane_height: u16,
-    pub(crate) filter_visible_width: usize,
-    pub(crate) filter_input: TextInputState,
+    selected: usize,
+    scroll_offset: usize,
+    pane_height: u16,
+    filter_visible_width: usize,
+    filter_input: TextInputState,
 }
 
 impl PickerState {
@@ -32,14 +32,6 @@ impl PickerState {
     pub fn set_filter_visible_width(&mut self, width: usize) {
         self.filter_visible_width = width;
         self.filter_input.update_viewport(width);
-    }
-
-    pub fn pane_height(&self) -> u16 {
-        self.pane_height
-    }
-
-    pub fn filter_visible_width(&self) -> usize {
-        self.filter_visible_width
     }
 
     pub fn visible_items(&self) -> usize {
@@ -66,21 +58,22 @@ impl PickerState {
     }
 
     pub fn insert_filter_str(&mut self, text: &str) {
-        self.filter_input.insert_str(&sanitize_filter_text(text));
-        self.filter_input.update_viewport(self.filter_visible_width);
-        self.reset();
+        self.edit_filter(|input| input.insert_str(&sanitize_filter_text(text)));
     }
 
     pub fn edit_filter<R>(&mut self, edit: impl FnOnce(&mut TextInputState) -> R) -> R {
-        let result = edit(&mut self.filter_input);
-        self.filter_input.update_viewport(self.filter_visible_width);
+        let result = self.update_filter(edit);
         self.reset();
         result
     }
 
+    fn update_filter<R>(&mut self, edit: impl FnOnce(&mut TextInputState) -> R) -> R {
+        self.filter_input
+            .edit_with_viewport(self.filter_visible_width, edit)
+    }
+
     pub fn apply_filter_edit(&mut self, edit: TextEdit, yank_text: Option<&str>) -> String {
-        let (result, reset) = apply_filter_edit(&mut self.filter_input, edit, yank_text);
-        self.filter_input.update_viewport(self.filter_visible_width);
+        let (result, reset) = self.update_filter(|input| apply_filter_edit(input, edit, yank_text));
         if reset {
             self.reset();
         }

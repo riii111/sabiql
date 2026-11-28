@@ -1,3 +1,5 @@
+use crate::update::action::ScrollDirection;
+
 /// A bounded scroll position. The owner supplies the current limit because it
 /// depends on its content and viewport, both of which can change independently.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -15,6 +17,9 @@ impl ScrollOffset {
     }
     pub fn forward(&mut self, amount: usize, max: usize) {
         self.0 = self.0.saturating_add(amount).min(max);
+    }
+    pub fn scroll(&mut self, direction: ScrollDirection, amount: usize, max: usize) {
+        self.0 = direction.clamp_vertical_offset(self.0, max, amount);
     }
     pub fn clamp(&mut self, max: usize) {
         self.0 = self.0.min(max);
