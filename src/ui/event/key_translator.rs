@@ -278,7 +278,7 @@ mod tests {
         #[test]
         fn translated_ctrl_d_still_half_page_scrolls_on_result() {
             let mut state = sqlite_connected_state();
-            state.ui.focused_pane = FocusedPane::Result;
+            state.focus_pane(FocusedPane::Result);
             let combo = translate(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL));
 
             let result = handle_event(InputEvent::Key(combo), &state);

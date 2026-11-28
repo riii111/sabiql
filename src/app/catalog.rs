@@ -471,7 +471,7 @@ mod tests {
         }
 
         press(&mut state, Key::Esc);
-        state.ui.focused_pane = FocusedPane::Result;
+        state.focus_pane(FocusedPane::Result);
         state.result_interaction.activate_cell(0, 0);
         state
             .result_interaction
@@ -540,7 +540,7 @@ mod tests {
         table.columns = vec![id, selected];
         table.primary_key = Some(vec!["id".to_string()]);
         state.session.set_table_detail_raw(Some(table));
-        state.ui.focused_pane = FocusedPane::Result;
+        state.focus_pane(FocusedPane::Result);
         state.result_interaction.activate_cell(0, selected_column);
         state
     }

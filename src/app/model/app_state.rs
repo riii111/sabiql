@@ -20,6 +20,7 @@ use crate::model::connection::setup::ConnectionSetupState;
 use crate::model::shared::confirm_dialog::ConfirmDialogState;
 use crate::model::shared::detail_view::ReadOnlyDetailState;
 use crate::model::shared::flash_timer::FlashTimerStore;
+use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::message::MessageState;
 use crate::model::shared::modal::ModalState;
@@ -131,6 +132,24 @@ impl AppState {
 
     pub fn input_mode(&self) -> InputMode {
         self.modal.active_mode()
+    }
+
+    pub fn focus_pane(&mut self, pane: FocusedPane) {
+        if pane != FocusedPane::Result {
+            self.result_interaction.reset_interaction();
+            if self.input_mode() == InputMode::CellEdit {
+                self.modal.set_mode(InputMode::Normal);
+            }
+        }
+        self.ui.set_focused_pane(pane);
+    }
+
+    pub fn toggle_focus_mode(&mut self) {
+        let was_focused = self.ui.is_focus_mode();
+        self.ui.toggle_focus();
+        if was_focused {
+            self.result_interaction.reset_interaction();
+        }
     }
 
     pub fn record_kill(&mut self, text: String) {
@@ -1069,7 +1088,7 @@ mod tests {
                 column_count: 2,
                 ..ViewportPlan::default()
             };
-            state.ui.toggle_focus();
+            state.toggle_focus_mode();
             let output = RenderOutput {
                 browse: BrowseLayout {
                     inspector: InspectorLayout {

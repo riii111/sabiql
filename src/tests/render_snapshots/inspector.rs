@@ -17,7 +17,7 @@ fn sqlite_indexes_state(index: Index) -> AppState {
         &endpoint::sqlite("sqlite:///tmp/app.db"),
     );
     state.ui.inspector_tab = InspectorTab::Indexes;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.focus_pane(FocusedPane::Inspector);
     state
 }
 
@@ -34,7 +34,7 @@ fn inspector_columns_narrow_pane_keeps_horizontal_scroll() {
     );
     let _ = state.session.set_table_detail(table, 0);
     state.ui.inspector_tab = InspectorTab::Columns;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.focus_pane(FocusedPane::Inspector);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -53,7 +53,7 @@ fn inspector_columns_narrow_pane_caps_wide_comment() {
     );
     let _ = state.session.set_table_detail(table, 0);
     state.ui.inspector_tab = InspectorTab::Columns;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.focus_pane(FocusedPane::Inspector);
     // Scrolled to the comment column: its width is capped so the preceding
     // columns stay visible instead of the comment monopolizing the pane
     state.ui.inspector_horizontal_offset = 1;
@@ -77,7 +77,7 @@ fn inspector_columns_narrow_pane_right_edge_truncates_cjk_comment() {
     );
     let _ = state.session.set_table_detail(table, 0);
     state.ui.inspector_tab = InspectorTab::Columns;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.focus_pane(FocusedPane::Inspector);
     state.ui.inspector_horizontal_offset = usize::MAX;
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -95,7 +95,7 @@ fn inspector_columns_marks_read_only_generated_columns() {
         ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED | ColumnAttributes::NULLABLE;
     let _ = state.session.set_table_detail(table, 0);
     state.ui.inspector_tab = InspectorTab::Columns;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.focus_pane(FocusedPane::Inspector);
 
     let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
 
@@ -121,7 +121,7 @@ fn inspector_columns_shows_mysql_column_metadata() {
         &endpoint::mysql("mysql://user@localhost:3306/app?ssl-mode=PREFERRED", None),
     );
     state.ui.inspector_tab = InspectorTab::Columns;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.focus_pane(FocusedPane::Inspector);
 
     let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
 
@@ -134,7 +134,7 @@ fn inspector_indexes_tab_with_data() {
     let mut terminal = create_test_terminal();
 
     state.ui.inspector_tab = InspectorTab::Indexes;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.focus_pane(FocusedPane::Inspector);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -163,7 +163,7 @@ fn inspector_indexes_tab_for_mysql_hides_unsupported_partial_column() {
         &endpoint::mysql("mysql://user@localhost:3306/app?ssl-mode=PREFERRED", None),
     );
     state.ui.inspector_tab = InspectorTab::Indexes;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.focus_pane(FocusedPane::Inspector);
 
     let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
 
@@ -186,7 +186,7 @@ fn inspector_indexes_tab_for_sqlite_hides_unknown_type() {
         &endpoint::sqlite("sqlite:///tmp/app.db"),
     );
     state.ui.inspector_tab = InspectorTab::Indexes;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.focus_pane(FocusedPane::Inspector);
 
     let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
 
@@ -283,7 +283,7 @@ fn inspector_foreign_keys_tab_with_data() {
     let mut terminal = create_test_terminal();
 
     state.ui.inspector_tab = InspectorTab::ForeignKeys;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.focus_pane(FocusedPane::Inspector);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -310,7 +310,7 @@ fn inspector_foreign_keys_tab_marks_unresolved_reference() {
     let _ = state.session.set_table_detail(table, 0);
 
     state.ui.inspector_tab = InspectorTab::ForeignKeys;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.focus_pane(FocusedPane::Inspector);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -323,7 +323,7 @@ fn inspector_triggers_tab_with_data() {
     let mut terminal = create_test_terminal();
 
     state.ui.inspector_tab = InspectorTab::Triggers;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.focus_pane(FocusedPane::Inspector);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -339,7 +339,7 @@ fn inspector_triggers_tab_empty() {
     table.triggers = vec![];
     let _ = state.session.set_table_detail(table, 0);
     state.ui.inspector_tab = InspectorTab::Triggers;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.focus_pane(FocusedPane::Inspector);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -352,7 +352,7 @@ fn inspector_info_tab_shows_owner_and_comment() {
     let mut terminal = create_test_terminal();
 
     state.ui.inspector_tab = InspectorTab::Info;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.focus_pane(FocusedPane::Inspector);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -370,7 +370,7 @@ fn inspector_info_tab_with_no_metadata() {
     table.row_count_estimate = None;
     let _ = state.session.set_table_detail(table, 0);
     state.ui.inspector_tab = InspectorTab::Info;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.focus_pane(FocusedPane::Inspector);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -394,7 +394,7 @@ fn inspector_info_tab_for_sqlite_hides_postgres_only_fields() {
         &endpoint::sqlite("sqlite:///tmp/app.db"),
     );
     state.ui.inspector_tab = InspectorTab::Info;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.focus_pane(FocusedPane::Inspector);
 
     let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
 
@@ -415,7 +415,7 @@ fn inspector_info_tab_for_mysql_hides_schema_field() {
         &endpoint::mysql("mysql://user@localhost:3306/app?ssl-mode=PREFERRED", None),
     );
     state.ui.inspector_tab = InspectorTab::Info;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.focus_pane(FocusedPane::Inspector);
 
     let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
 
@@ -441,7 +441,7 @@ fn inspector_info_tab_for_mysql_shows_storage_attributes() {
         &endpoint::mysql("mysql://user@localhost:3306/app?ssl-mode=PREFERRED", None),
     );
     state.ui.inspector_tab = InspectorTab::Info;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.focus_pane(FocusedPane::Inspector);
 
     let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
 
@@ -469,7 +469,7 @@ fn inspector_ddl_tab_uses_source_ddl() {
     );
     let _ = state.session.set_table_detail(table, 0);
     state.ui.inspector_tab = InspectorTab::Ddl;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.focus_pane(FocusedPane::Inspector);
 
     let output = trim_line_endings(&harness::render_to_string_with_services(
         &mut terminal,
@@ -504,7 +504,7 @@ fn inspector_info_tab_for_sqlite_shows_table_kind_fields() {
         &endpoint::sqlite("sqlite:///tmp/app.db"),
     );
     state.ui.inspector_tab = InspectorTab::Info;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.focus_pane(FocusedPane::Inspector);
 
     let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
 
@@ -530,7 +530,7 @@ fn inspector_info_tab_for_sqlite_shows_view_kind() {
         &endpoint::sqlite("sqlite:///tmp/app.db"),
     );
     state.ui.inspector_tab = InspectorTab::Info;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.focus_pane(FocusedPane::Inspector);
 
     let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
 

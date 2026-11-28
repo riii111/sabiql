@@ -14,7 +14,7 @@ pub(in crate::update) fn select_explorer(
 ) -> Vec<Effect> {
     match motion {
         SelectMotion::Next => {
-            if state.ui.focused_pane == FocusedPane::Explorer {
+            if state.ui.focused_pane() == FocusedPane::Explorer {
                 let len = state.tables().len();
                 if len > 0 && state.ui.explorer_selected() < len - 1 {
                     state
@@ -24,18 +24,18 @@ pub(in crate::update) fn select_explorer(
             }
         }
         SelectMotion::Previous => {
-            if state.ui.focused_pane == FocusedPane::Explorer && !state.tables().is_empty() {
+            if state.ui.focused_pane() == FocusedPane::Explorer && !state.tables().is_empty() {
                 let new_idx = state.ui.explorer_selected().saturating_sub(1);
                 state.ui.set_explorer_selection(Some(new_idx));
             }
         }
         SelectMotion::First => {
-            if state.ui.focused_pane == FocusedPane::Explorer && !state.tables().is_empty() {
+            if state.ui.focused_pane() == FocusedPane::Explorer && !state.tables().is_empty() {
                 state.ui.set_explorer_selection(Some(0));
             }
         }
         SelectMotion::Last => {
-            if state.ui.focused_pane == FocusedPane::Explorer {
+            if state.ui.focused_pane() == FocusedPane::Explorer {
                 let len = state.tables().len();
                 if len > 0 {
                     state.ui.set_explorer_selection(Some(len - 1));
@@ -43,7 +43,7 @@ pub(in crate::update) fn select_explorer(
             }
         }
         SelectMotion::ViewportMiddle => {
-            if state.ui.focused_pane == FocusedPane::Explorer {
+            if state.ui.focused_pane() == FocusedPane::Explorer {
                 let len = explorer_item_count(state);
                 let visible = state.ui.explorer_visible_items();
                 if len > 0 && visible > 0 {
@@ -55,7 +55,7 @@ pub(in crate::update) fn select_explorer(
             }
         }
         SelectMotion::ViewportTop => {
-            if state.ui.focused_pane == FocusedPane::Explorer {
+            if state.ui.focused_pane() == FocusedPane::Explorer {
                 let len = explorer_item_count(state);
                 if len > 0 {
                     let target = state.ui.explorer_scroll_offset.min(len.saturating_sub(1));
@@ -64,7 +64,7 @@ pub(in crate::update) fn select_explorer(
             }
         }
         SelectMotion::ViewportBottom => {
-            if state.ui.focused_pane == FocusedPane::Explorer {
+            if state.ui.focused_pane() == FocusedPane::Explorer {
                 let len = explorer_item_count(state);
                 let visible = state.ui.explorer_visible_items();
                 if len > 0 && visible > 0 {
@@ -182,7 +182,7 @@ mod tests {
     fn state_with_tables(count: usize, pane_height: u16) -> AppState {
         let mut state = AppState::new("test".to_string());
         state.ui.set_explorer_pane_height(pane_height);
-        state.ui.focused_pane = FocusedPane::Explorer;
+        state.focus_pane(FocusedPane::Explorer);
         let tables: Vec<TableSummary> = (0..count)
             .map(|i| TableSummary::new("public".to_string(), format!("table_{i}"), Some(0)))
             .collect();
@@ -197,7 +197,7 @@ mod tests {
 
     fn state_with_named_tables(names: &[&str], content_width: usize) -> AppState {
         let mut state = AppState::new("test".to_string());
-        state.ui.focused_pane = FocusedPane::Explorer;
+        state.focus_pane(FocusedPane::Explorer);
         state.ui.explorer_content_width = content_width;
         let tables: Vec<TableSummary> = names
             .iter()
@@ -736,7 +736,7 @@ mod tests {
         #[test]
         fn right_scroll_uses_sqlite_table_name_width() {
             let mut state = AppState::new("test".to_string());
-            state.ui.focused_pane = FocusedPane::Explorer;
+            state.focus_pane(FocusedPane::Explorer);
             state.ui.explorer_content_width = 4;
             state.session.activate_connection(
                 &ConnectionId::from_string("sqlite-test"),

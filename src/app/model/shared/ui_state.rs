@@ -143,7 +143,7 @@ impl ResultSelection {
 #[derive(Debug, Clone, Default)]
 pub struct UiState {
     pub theme_id: ThemeId,
-    pub focused_pane: FocusedPane,
+    focused_pane: FocusedPane,
     focus_mode: FocusMode,
     explorer_selected: usize,
     pub explorer_scroll_offset: usize,
@@ -200,6 +200,15 @@ impl UiState {
 
     pub fn is_focus_mode(&self) -> bool {
         self.focus_mode.is_active()
+    }
+
+    pub fn focused_pane(&self) -> FocusedPane {
+        self.focused_pane
+    }
+
+    // AppState also updates result interaction and input mode when changing panes.
+    pub(in crate::model) fn set_focused_pane(&mut self, pane: FocusedPane) {
+        self.focused_pane = pane;
     }
 
     pub fn explorer_selected(&self) -> usize {
@@ -351,7 +360,7 @@ impl UiState {
         help_viewport_layout_for(base_rows, base_columns, total_lines, content_width)
     }
 
-    pub fn toggle_focus(&mut self) -> bool {
+    pub(in crate::model) fn toggle_focus(&mut self) -> bool {
         if let Some(prev) = self.focus_mode.previous_pane() {
             self.focus_mode = FocusMode::Normal;
             self.focused_pane = prev;

@@ -510,7 +510,7 @@ fn help_overlay_filtered_current_result() {
     let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
-    state.ui.focused_pane = FocusedPane::Result;
+    state.focus_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 0);
     let origin = KeyContext::from_state(&state);
     state.ui.help_mut().open(origin);

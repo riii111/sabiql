@@ -1,10 +1,24 @@
+use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::browse::inspector_view_model::InspectorViewModel;
 use crate::model::shared::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
 use crate::services::AppServices;
-use crate::update::action::{ScrollAmount, ScrollDirection};
+use crate::update::action::{ListMotion, ScrollAmount, ScrollDirection};
 
 use super::inspector_max_scroll;
+
+pub(in crate::update) fn cycle_inspector_tab(
+    state: &mut AppState,
+    motion: ListMotion,
+) -> Vec<Effect> {
+    let engine = state.session.active_engine_feature_profile();
+    let tab = state.ui.inspector_tab;
+    state.ui.inspector_tab = match motion {
+        ListMotion::Next => engine.next_inspector_tab(tab),
+        ListMotion::Previous => engine.prev_inspector_tab(tab),
+    };
+    vec![]
+}
 
 fn inspector_page_scroll_delta(
     view_model: &InspectorViewModel,
@@ -68,6 +82,28 @@ mod tests {
     use crate::update::action::{Action, ScrollTarget};
     use crate::update::reducer::route;
     use std::time::Instant;
+
+    mod tabs {
+        use super::*;
+        use crate::update::test_fixtures::activate_sqlite_connection;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case(Action::InspectorNextTab, InspectorTab::Columns)]
+        #[case(Action::InspectorPrevTab, InspectorTab::Ddl)]
+        fn cycles_through_tabs_supported_by_the_active_engine(
+            #[case] action: Action,
+            #[case] expected: InspectorTab,
+        ) {
+            let mut state = AppState::new("test".to_string());
+            activate_sqlite_connection(&mut state, "sqlite://test.db");
+            state.ui.inspector_tab = InspectorTab::Info;
+
+            route(&mut state, action, Instant::now(), &AppServices::stub());
+
+            assert_eq!(state.ui.inspector_tab, expected);
+        }
+    }
 
     mod inspector_scroll_top_bottom {
         use crate::test_support;

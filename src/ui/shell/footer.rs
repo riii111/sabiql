@@ -154,7 +154,7 @@ mod tests {
     fn inspector_state() -> AppState {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::Normal);
-        state.ui.focused_pane = FocusedPane::Inspector;
+        state.focus_pane(FocusedPane::Inspector);
         state
     }
 
@@ -167,7 +167,7 @@ mod tests {
     fn result_focused_state() -> AppState {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::Normal);
-        state.ui.focused_pane = FocusedPane::Result;
+        state.focus_pane(FocusedPane::Result);
         state
     }
 
@@ -187,7 +187,7 @@ mod tests {
     #[case(true)]
     fn focus_mode_footer_shows_connections(#[case] result_active: bool) {
         let mut state = result_focused_state();
-        state.ui.toggle_focus();
+        state.toggle_focus_mode();
         if result_active {
             state.result_interaction.activate_cell(0, 0);
         }
