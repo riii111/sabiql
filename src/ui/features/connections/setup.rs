@@ -206,7 +206,7 @@ impl ConnectionSetup {
                             .map(MySqlSslMode::as_str),
                         selected_index,
                         theme,
-                    )
+                    );
                 }
                 ConnectionDropdown::SslMode => Self::render_dropdown_list(
                     frame,
