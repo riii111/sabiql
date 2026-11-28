@@ -222,8 +222,7 @@ fn build_list_item(
     query_max: usize,
     theme: &ThemePalette,
 ) -> ListItem<'static> {
-    let query_display = ge.entry.query.replace('\n', " ");
-    let truncated = truncate_to_width_with(&query_display, query_max, "\u{2026}");
+    let truncated = truncate_to_width_with(&ge.query_line, query_max, "\u{2026}");
 
     let ts_short = format_short_timestamp(&ge.entry.executed_at);
 

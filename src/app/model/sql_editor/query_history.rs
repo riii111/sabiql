@@ -1,5 +1,7 @@
+use std::borrow::Cow;
+
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
-use nucleo_matcher::{Config, Matcher};
+use nucleo_matcher::{Config, Matcher, Utf32Str, chars};
 
 use crate::domain::query_history::QueryHistoryEntry;
 use crate::model::shared::cursor::CursorMove;
@@ -19,6 +21,7 @@ pub struct QueryHistoryPickerState {
 
 pub struct GroupedEntry<'a> {
     pub entry: &'a QueryHistoryEntry,
+    pub query_line: Cow<'a, str>,
     pub count: usize,
     pub match_indices: Vec<u32>,
 }
@@ -126,10 +129,21 @@ impl QueryHistoryPickerState {
         let mut groups: Vec<GroupedEntry<'_>> = Vec::new();
 
         for entry in self.entries.iter().rev() {
+            let query_line = if entry.query.contains('\n') {
+                Cow::Owned(entry.query.replace('\n', " "))
+            } else {
+                Cow::Borrowed(entry.query.as_str())
+            };
             let match_indices = if let Some(pattern) = pattern.as_ref() {
                 let mut indices = Vec::new();
                 let mut buf = Vec::new();
-                let haystack = nucleo_matcher::Utf32Str::new(&entry.query, &mut buf);
+                let haystack = if query_line.is_ascii() {
+                    Utf32Str::Ascii(query_line.as_bytes())
+                } else {
+                    // Nucleo's ASCII shortcut can produce byte offsets for decomposed text.
+                    buf.extend(chars::graphemes(&query_line));
+                    Utf32Str::Unicode(&buf)
+                };
                 let matcher = matcher.get_or_insert_with(|| Matcher::new(Config::DEFAULT));
                 if pattern.indices(haystack, matcher, &mut indices).is_none() {
                     continue;
@@ -145,6 +159,7 @@ impl QueryHistoryPickerState {
             }
             groups.push(GroupedEntry {
                 entry,
+                query_line,
                 count: 1,
                 match_indices,
             });

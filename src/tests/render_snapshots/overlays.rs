@@ -1,6 +1,7 @@
 use super::*;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
+use ratatui::style::Modifier;
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::settings::KeymapPreset;
 use sabiql_app::model::shared::text_input::TextEdit;
@@ -701,21 +702,9 @@ fn query_history_picker_with_entries() {
 #[test]
 fn query_history_picker_keeps_a_whole_emoji_before_the_ellipsis() {
     for filter in ["", "developer"] {
-        let mut state = create_test_state();
+        let mut state = query_history_with_entries(&["👩‍💻 developer"]);
         // A 29-cell modal leaves three cells for the query in each list row.
         let mut terminal = create_test_terminal_sized(41, 24);
-
-        state.modal.set_mode(InputMode::QueryHistoryPicker);
-        state
-            .query_history_picker
-            .replace_entries(&[QueryHistoryEntry::new_with_database(
-                "👩‍💻 developer".to_string(),
-                "2026-03-13T10:00:00Z".to_string(),
-                ConnectionId::from_string("test-conn"),
-                None,
-                QueryResultStatus::Success,
-                None,
-            )]);
 
         state.query_history_picker.insert_filter_str(filter);
 
@@ -730,6 +719,64 @@ fn query_history_picker_keeps_a_whole_emoji_before_the_ellipsis() {
         let ellipsis = buffer[(status.x + 4, status.y)].symbol();
         assert_eq!(format!("{emoji}{ellipsis}"), "👩‍💻…", "filter {filter:?}");
     }
+}
+
+#[test]
+fn query_history_picker_fits_sql_after_tabs_before_the_ellipsis() {
+    let mut state = query_history_with_entries(&["SELECT \t\t42"]);
+    let mut terminal = create_test_terminal_sized(52, 24);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    assert!(output.contains("✓ SELECT 42…"), "{output}");
+}
+
+#[test]
+fn query_history_picker_highlights_the_match_after_a_combining_accent() {
+    let mut state = query_history_with_entries(&["SELECT 'a\n\u{301}b', foo", "SELECT foo"]);
+    let mut terminal = create_test_terminal();
+    state.query_history_picker.insert_filter_str("foo");
+
+    let buffer = render_and_get_buffer_at(&mut terminal, &mut state, test_instant());
+
+    let row = buffer
+        .area
+        .rows()
+        .find(|row| {
+            let text: String = row
+                .positions()
+                .map(|position| buffer[position].symbol())
+                .collect();
+            text.contains("SELECT 'a")
+        })
+        .expect("history list row");
+    let highlighted: String = row
+        .positions()
+        .map(|position| &buffer[position])
+        .filter(|cell| cell.modifier.contains(Modifier::BOLD))
+        .map(|cell| cell.symbol())
+        .collect();
+    assert_eq!(highlighted, "foo");
+}
+
+fn query_history_with_entries(queries: &[&str]) -> AppState {
+    let entries: Vec<_> = queries
+        .iter()
+        .map(|query| {
+            QueryHistoryEntry::new_with_database(
+                query.to_string(),
+                "2026-03-13T10:00:00Z".to_string(),
+                ConnectionId::from_string("test-conn"),
+                None,
+                QueryResultStatus::Success,
+                None,
+            )
+        })
+        .collect();
+    let mut state = create_test_state();
+    state.modal.set_mode(InputMode::QueryHistoryPicker);
+    state.query_history_picker.replace_entries(&entries);
+    state
 }
 
 #[test]
