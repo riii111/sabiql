@@ -9,6 +9,7 @@ pub(in crate::update) mod explain;
 pub(in crate::update) mod helpers;
 pub mod input;
 pub(in crate::update) mod modal;
+mod motion;
 mod query_context;
 pub mod reducer;
 pub(in crate::update) mod sql_editor;

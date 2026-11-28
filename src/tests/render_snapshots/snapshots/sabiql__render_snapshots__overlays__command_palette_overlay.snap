@@ -16,6 +16,7 @@ expression: output
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       │╭ Command Palette ────────────────────────────────────────────────────────────────╮                                        │
+│                                       ││  >                                                                              │                                        │
 │                                       ││  q                  × Quit application                                          │                                        │
 │                                       ││  ?                  ? Toggle help                                               │                                        │
 │                                       ││  Ctrl+P             ▦ Open Table Picker                                         │                                        │
@@ -25,9 +26,8 @@ expression: output
 │                                       ││  s                  ▷ Open SQL Editor                                           │                                        │
 │                                       ││  e                  ⑂ Open ER Diagram                                           │                                        │
 │                                       ││  c                  ⇄ Open Connection Selector                                  │                                        │
-│                                       ││  Ctrl+R             ⊘ Enable Read-Only mode                                     │                                        │
-│                                       ││  Ctrl+O             ◷ Open Query History                                        │────────────────────────────────────────┘
-│                                       ││                                                                                 │────────────────────────────────────────┐
+│                                       ││  Ctrl+R             ⊘ Enable Read-Only mode                                     │────────────────────────────────────────┘
+│                                       ││  Ctrl+O             ◷ Open Query History                                        │────────────────────────────────────────┐
 │                                       ││                                                                                 │                                        │
 │                                       ││                                                                                 │                                        │
 │                                       ││                                                                                 │                                        │

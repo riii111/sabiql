@@ -50,6 +50,7 @@ impl Renderer for TuiAdapter<'_> {
             )?;
             self.last_cursor_insert = Some(uses_insert);
         }
+        self.tui.report_program_status(state, now)?;
         Ok(output)
     }
 }

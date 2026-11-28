@@ -23,6 +23,7 @@ use crate::model::shared::flash_timer::FlashTimerStore;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::message::MessageState;
 use crate::model::shared::modal::ModalState;
+use crate::model::shared::motion::MotionState;
 use crate::model::shared::render_output::{
     BrowseLayout, DetailLayout, InputLayout, OverlayLayout, PickerLayouts, RenderOutput,
 };
@@ -74,6 +75,7 @@ pub struct AppState {
     pub explain: ExplainContext,
     pub modal: ModalState,
     pub flash_timers: FlashTimerStore,
+    pub motion: MotionState,
     pub connection_caches: HashMap<ConnectionId, ConnectionCache>,
     connections: Vec<ConnectionProfile>,
     service_entries: Vec<ServiceEntry>,
@@ -111,6 +113,7 @@ impl AppState {
             explain: ExplainContext::default(),
             modal: ModalState::default(),
             flash_timers: FlashTimerStore::default(),
+            motion: MotionState::default(),
             connection_caches: HashMap::default(),
             connections: Vec::new(),
             service_entries: Vec::new(),
@@ -160,6 +163,7 @@ impl AppState {
         self.result_interaction.clear_expired_flash(now);
         self.flash_timers.clear_expired(now);
         self.connection_error.clear_copied_feedback_if_expired(now);
+        self.motion.clear_expired(now);
     }
 
     /// Applies layout data produced during a draw. Inspector viewport plans are
@@ -194,6 +198,7 @@ impl AppState {
         self.ui
             .set_inspector_pane_height(layout.inspector.pane_height);
         self.ui.set_result_pane_height(layout.result.pane_height);
+        self.ui.set_pane_areas(layout.pane_areas);
     }
 
     fn apply_input_layout(&mut self, layout: InputLayout) {

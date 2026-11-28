@@ -44,7 +44,7 @@ expression: output
 │                        │  Enter                                Enter cell selection at the current viewport anchor                      ││                        │
 │                        │  ] / [                                Next/Previous page                                                       ││                        │
 │                        │  ↓ / ↑ / Ctrl+N / Ctrl+P              Navigate                                                                 ││                        │
-│                        │  j / k / ↓ / ↑ / Ctrl+N / Ctrl+P      Navigate                                                                 ▼│                        │
+│                        │  ↓ / ↑                                Scroll confirmation                                                      ▼│                        │
 │                        │─────────────────────────────────────────────────────────────────────────────────────────────────────────────────│                        │
 │                        │ [BROWSE]                                                                                                        │                        │
 │                        ╰ /: Filter │ Esc/?: Close ───────────────────────────────────────────────────────────────────────────────────────╯                        │

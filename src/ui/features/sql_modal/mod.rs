@@ -18,7 +18,7 @@ use crate::app::policy::write::sql_risk::AcknowledgeReason;
 use crate::app::update::input::keymap::{
     HintSurface, KeyContext, sql_confirmation_hints, sql_edit_hints, sql_view_hints,
 };
-use crate::primitives::molecules::overlay::{centered_rect, render_scrim};
+use crate::primitives::molecules::overlay::{centered_rect, render_modal_shadow, render_scrim};
 use crate::primitives::molecules::{FooterHintBar, render_modal_with_border_color};
 use crate::theme::ThemePalette;
 
@@ -191,6 +191,7 @@ impl SqlModal {
             Constraint::Percentage(SQL_MODAL_HEIGHT_PERCENT),
         );
         render_scrim(frame, theme);
+        render_modal_shadow(frame, area, theme);
         frame.render_widget(Clear, area);
 
         let title = Self::build_title_with_tabs(active_tab, engine_feature_profile, theme);

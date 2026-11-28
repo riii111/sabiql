@@ -2,8 +2,26 @@
 pub enum InputEvent {
     Init,
     Key(KeyCombo),
+    Mouse(MouseInput),
     Paste(String),
     Resize(u16, u16),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MouseKind {
+    ScrollUp,
+    ScrollDown,
+    ScrollLeft,
+    ScrollRight,
+    LeftClick,
+}
+
+/// `column` and `row` are zero-based from the terminal's top-left cell.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MouseInput {
+    pub kind: MouseKind,
+    pub column: u16,
+    pub row: u16,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

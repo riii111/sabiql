@@ -1,5 +1,8 @@
 use std::sync::LazyLock;
 
+use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
+use nucleo_matcher::{Config, Matcher, Utf32Str};
+
 use crate::ports::inbound::{Key, KeyCombo};
 use crate::update::action::{Action, ModalKind};
 
@@ -320,6 +323,33 @@ pub fn palette_entry(id: usize, context: &KeyContext) -> Option<PaletteEntry> {
     })
 }
 
+/// Entries among `commands` whose description fuzzy-matches `filter`, best match first.
+/// Ties and an empty filter keep the palette order.
+pub fn palette_matches(
+    commands: &[usize],
+    filter: &str,
+    context: &KeyContext,
+) -> Vec<PaletteEntry> {
+    let entries = commands.iter().filter_map(|&id| palette_entry(id, context));
+    if filter.is_empty() {
+        return entries.collect();
+    }
+
+    let pattern = Pattern::parse(filter, CaseMatching::Ignore, Normalization::Smart);
+    let mut matcher = Matcher::new(Config::DEFAULT);
+    let mut buf = Vec::new();
+    let mut scored: Vec<(u32, PaletteEntry)> = entries
+        .filter_map(|entry| {
+            let haystack = Utf32Str::new(entry.description, &mut buf);
+            pattern
+                .score(haystack, &mut matcher)
+                .map(|score| (score, entry))
+        })
+        .collect();
+    scored.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
+    scored.into_iter().map(|(_, entry)| entry).collect()
+}
+
 pub fn palette_action(id: usize, context: &KeyContext) -> Option<Action> {
     palette_available(context)
         .into_iter()
@@ -335,6 +365,50 @@ mod tests {
     use crate::test_support::endpoint;
     use std::sync::Arc;
     use std::time::Instant;
+
+    fn palette_ids(context: &KeyContext) -> Vec<usize> {
+        palette_available(context)
+            .into_iter()
+            .map(|entry| entry.id)
+            .collect()
+    }
+
+    #[test]
+    fn empty_filter_keeps_every_command_in_order() {
+        let state = AppState::new("test".to_string());
+        let context = KeyContext::for_browse_state(&state);
+        let ids = palette_ids(&context);
+
+        let matches = palette_matches(&ids, "", &context);
+
+        assert_eq!(
+            matches.iter().map(|entry| entry.id).collect::<Vec<_>>(),
+            ids
+        );
+    }
+
+    #[test]
+    fn fuzzy_filter_ranks_matching_description_first() {
+        let state = AppState::new("test".to_string());
+        let context = KeyContext::for_browse_state(&state);
+
+        let matches = palette_matches(&palette_ids(&context), "opn sett", &context);
+
+        assert_eq!(
+            matches.first().map(|entry| entry.description),
+            Some("Open Settings")
+        );
+    }
+
+    #[test]
+    fn filter_without_matches_yields_no_commands() {
+        let state = AppState::new("test".to_string());
+        let context = KeyContext::for_browse_state(&state);
+
+        let matches = palette_matches(&palette_ids(&context), "zzzzqx", &context);
+
+        assert!(matches.is_empty());
+    }
 
     #[test]
     fn palette_checks_connection_and_history_availability_again_on_selection() {

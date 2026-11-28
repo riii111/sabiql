@@ -22,7 +22,8 @@ use crate::policy::FeaturePolicy;
 use crate::services::AppServices;
 use crate::update::action::{Action, TableTarget};
 use crate::update::helpers::reject_pending_mysql_connection_probe;
-use crate::update::input::keymap::{KeyContext, palette_action};
+use crate::update::input::keymap::{KeyContext, palette_action, palette_matches};
+use crate::update::motion::MotionProbe;
 use crate::update::query_context::termination_effects;
 
 pub fn reduce(
@@ -39,7 +40,9 @@ pub fn reduce(
     // Mark dirty for all state-changing actions (except None and Render)
     let should_mark_dirty = !matches!(action, Action::None | Action::Render);
 
+    let motion_probe = MotionProbe::capture(state, &action);
     let effects = dispatch_enabled_action(state, action, now, services);
+    motion_probe.record(state, now);
 
     if should_mark_dirty {
         state.mark_dirty();
@@ -489,12 +492,15 @@ fn confirm_selection(state: &mut AppState, now: Instant, services: &AppServices)
             return select_table(state, &table);
         }
     } else if state.modal.active_mode() == InputMode::CommandPalette {
-        let cmd_action = state
-            .ui
-            .palette_commands()
-            .get(state.ui.table_picker().selected())
-            .and_then(|&id| palette_action(id, &KeyContext::for_browse_state(state)))
-            .unwrap_or(Action::None);
+        let context = KeyContext::for_browse_state(state);
+        let cmd_action = palette_matches(
+            state.ui.palette_commands(),
+            state.ui.table_picker().filter_input().content(),
+            &context,
+        )
+        .get(state.ui.table_picker().selected())
+        .and_then(|entry| palette_action(entry.id, &context))
+        .unwrap_or(Action::None);
         state.modal.set_mode(InputMode::Normal);
         return reduce(state, cmd_action, now, services);
     }
@@ -3640,6 +3646,7 @@ mod tests {
         use super::*;
         use crate::domain::{QueryResult, QuerySource};
         use crate::model::shared::settings::KeymapPreset;
+        use crate::update::action::{ListMotion, ListTarget};
         use crate::update::input::keymap::palette_entry;
         use crate::update::modal::base::open_modal_command_palette;
         use rstest::rstest;
@@ -3713,6 +3720,63 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), expected_mode);
+        }
+
+        fn type_palette_filter(state: &mut AppState, text: &str) {
+            for ch in text.chars() {
+                reduce(
+                    state,
+                    Action::TextInput {
+                        target: InputTarget::Filter,
+                        ch,
+                    },
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
+            }
+        }
+
+        #[test]
+        fn typed_filter_runs_best_matching_command() {
+            let mut state = state_in_palette_mode(KeymapPreset::Default);
+            type_palette_filter(&mut state, "settings");
+
+            reduce(
+                &mut state,
+                Action::ConfirmSelection,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.input_mode(), InputMode::Settings);
+        }
+
+        #[test]
+        fn navigation_stays_within_filtered_commands() {
+            let mut state = state_in_palette_mode(KeymapPreset::Default);
+            type_palette_filter(&mut state, "settings");
+
+            reduce(
+                &mut state,
+                Action::ListSelect {
+                    target: ListTarget::CommandPalette,
+                    motion: ListMotion::Next,
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.ui.table_picker().selected(), 0);
+        }
+
+        #[test]
+        fn reopening_palette_clears_previous_filter() {
+            let mut state = state_in_palette_mode(KeymapPreset::Default);
+            type_palette_filter(&mut state, "settings");
+
+            open_modal_command_palette(&mut state);
+
+            assert_eq!(state.ui.table_picker().filter_input().content(), "");
         }
 
         #[test]

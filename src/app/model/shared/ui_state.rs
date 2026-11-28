@@ -7,6 +7,7 @@ use super::help::HelpState;
 use super::inspector_tab::InspectorTab;
 use super::key_sequence::KeySequenceState;
 use super::picker::PickerState;
+use super::render_output::PaneAreas;
 use super::theme_id::ThemeId;
 use super::viewport::{ColumnWidthsCache, ViewportPlan};
 use unicode_width::UnicodeWidthStr;
@@ -197,6 +198,7 @@ pub struct UiState {
     result_viewport_plan: ViewportPlan,
     result_widths_cache: ColumnWidthsCache,
     result_pane_height: u16,
+    pane_areas: PaneAreas,
     json_detail_editor_visible_rows: usize,
     pub row_detail_content_visible_rows: usize,
     pub row_detail_content_visible_columns: usize,
@@ -414,6 +416,14 @@ impl UiState {
 
     pub fn set_result_widths_cache(&mut self, cache: ColumnWidthsCache) {
         self.result_widths_cache = cache;
+    }
+
+    pub fn pane_areas(&self) -> &PaneAreas {
+        &self.pane_areas
+    }
+
+    pub fn set_pane_areas(&mut self, areas: PaneAreas) {
+        self.pane_areas = areas;
     }
 
     pub fn set_result_pane_height(&mut self, height: u16) {

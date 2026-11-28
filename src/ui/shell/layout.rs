@@ -7,7 +7,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::render_output::{
     BrowseLayout, ConfirmPreviewLayout, DetailLayout, ExplorerLayout, InputLayout, InspectorLayout,
-    OverlayLayout, PickerLayouts, ResultLayout,
+    OverlayLayout, PaneArea, PaneAreas, PickerLayouts, ResultLayout,
 };
 use crate::app::ports::outbound::{CellDetailViewport, RenderOutput};
 use crate::app::services::AppServices;
@@ -32,6 +32,7 @@ use crate::features::sql_modal::SqlModal;
 use crate::shell::command_line::CommandLine;
 use crate::shell::footer::Footer;
 use crate::shell::header::Header;
+use crate::shell::motion_fx::{apply_focus_transition, apply_modal_fade};
 use crate::theme::{ThemePalette, palette_for};
 
 pub struct MainLayout;
@@ -74,9 +75,19 @@ impl MainLayout {
 
         Header::render(frame, header_area, state, theme);
         let browse = Self::render_browse_mode(frame, main_area, state, services, now, theme);
+        if let Some(transition) = state.motion.focus_transition(now) {
+            apply_focus_transition(frame.buffer_mut(), &browse.pane_areas, transition, theme);
+        }
 
         Footer::render(frame, footer_area, state, time_ms, theme);
         let command_line_visible_width = CommandLine::render(frame, cmdline_area, state, theme);
+
+        let modal_fade = state
+            .input_mode()
+            .shows_overlay()
+            .then(|| state.motion.modal_progress(now))
+            .flatten()
+            .map(|progress| (progress, frame.buffer_mut().clone()));
         let connection_list_pane_height = match state.input_mode() {
             InputMode::ConnectionSelector => Some(ConnectionSelector::render(frame, state, theme)),
             _ => None,
@@ -84,6 +95,8 @@ impl MainLayout {
 
         let table_picker = match state.input_mode() {
             InputMode::TablePicker => Some(TablePicker::render(frame, state, theme)),
+            // The palette shares the table picker's selection and filter state, so it reports into the same layout slot.
+            InputMode::CommandPalette => Some(CommandPalette::render(frame, state, theme)),
             _ => None,
         };
 
@@ -146,12 +159,15 @@ impl MainLayout {
             };
 
         match state.input_mode() {
-            InputMode::CommandPalette => CommandPalette::render(frame, state, theme),
             InputMode::Settings => SettingsOverlay::render(frame, state, theme),
             InputMode::Help => HelpOverlay::render(frame, state, theme),
             InputMode::ConnectionSetup => ConnectionSetup::render(frame, state, services, theme),
             InputMode::ConnectionError => ConnectionError::render(frame, state, now, theme),
             _ => {}
+        }
+
+        if let Some((progress, background)) = modal_fade {
+            apply_modal_fade(frame.buffer_mut(), &background, progress, theme);
         }
 
         RenderOutput {
@@ -198,6 +214,11 @@ impl MainLayout {
                     widths_cache: result_widths_cache,
                     pane_height: main_area.height,
                 },
+                pane_areas: PaneAreas {
+                    explorer: None,
+                    inspector: None,
+                    result: Some(pane_area(main_area)),
+                },
             }
         } else {
             let [left_area, right_area] =
@@ -229,8 +250,22 @@ impl MainLayout {
                     widths_cache: result_widths_cache,
                     pane_height: result_area.height,
                 },
+                pane_areas: PaneAreas {
+                    explorer: Some(pane_area(left_area)),
+                    inspector: Some(pane_area(inspector_area)),
+                    result: Some(pane_area(result_area)),
+                },
             }
         }
+    }
+}
+
+fn pane_area(rect: Rect) -> PaneArea {
+    PaneArea {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
     }
 }
 

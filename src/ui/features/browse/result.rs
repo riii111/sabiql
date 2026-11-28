@@ -14,6 +14,7 @@ use crate::primitives::atoms::{panel_block_highlight, text_cursor_spans};
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::input_mode::InputMode;
+use crate::app::model::shared::motion::ScrolledPane;
 use crate::app::model::shared::ui_state::{RESULT_INNER_OVERHEAD, ResultSelection, YankFlash};
 use crate::app::model::shared::viewport::{
     ColumnWidthConfig, ColumnWidthsCache, MAX_COL_WIDTH, SelectionContext, ViewportPlan,
@@ -91,7 +92,11 @@ impl ResultPane {
                     result,
                     block,
                     ResultTableParams {
-                        scroll_offset: state.result_interaction.scroll_offset(),
+                        scroll_offset: state.motion.scroll_offset(
+                            ScrolledPane::Result,
+                            state.result_interaction.scroll_offset(),
+                            now,
+                        ),
                         horizontal_offset: state.result_interaction.horizontal_offset(),
                         stored_plan: state.ui.result_viewport_plan(),
                         stored_cache: state.ui.result_widths_cache(),

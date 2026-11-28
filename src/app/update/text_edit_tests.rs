@@ -558,9 +558,6 @@ mod paste {
             dispatch(&mut connection_setup, Action::ConnectionSetupPrevField);
             dispatch(&mut connection_setup, Action::ConnectionSetupToggleDropdown);
         }
-        let mut palette = connected_state();
-        dispatch(&mut palette, Action::OpenModal(ModalKind::CommandPalette));
-
         vec![
             ("browse", connected_state()),
             ("SQL modal normal", state_for(InputTarget::SqlModal)),
@@ -570,8 +567,18 @@ mod paste {
             ("settings", settings),
             ("connection setup select field", select_field),
             ("connection setup dropdown", connection_setup),
-            ("command palette", palette),
         ]
+    }
+
+    #[test]
+    fn command_palette_filter_receives_paste() {
+        let mut palette = connected_state();
+        dispatch(&mut palette, Action::OpenModal(ModalKind::CommandPalette));
+
+        let action = handle_event(InputEvent::Paste(PASTED.to_string()), &palette);
+        dispatch(&mut palette, action);
+
+        assert_eq!(palette.ui.table_picker().filter_input().content(), PASTED);
     }
 
     #[test]

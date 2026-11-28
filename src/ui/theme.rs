@@ -73,6 +73,7 @@ pub struct ModalTokens {
     pub hint: Color,
     pub border: Color,
     pub border_highlight: Color,
+    pub shadow: Color,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -226,6 +227,7 @@ pub const DEFAULT_THEME: ThemePalette = ThemePalette {
             hint: Color::Rgb(0xc0, 0xb8, 0xb0),
             border: Color::Rgb(0x76, 0x7a, 0x84),
             border_highlight: Color::Rgb(0xc0, 0xb8, 0xb8),
+            shadow: Color::Rgb(0x0b, 0x0c, 0x10),
         },
         navigation: NavigationTokens {
             key_chip_bg: Color::Rgb(0x3a, 0x3a, 0x4a),
@@ -299,6 +301,7 @@ pub const LIGHT_THEME: ThemePalette = ThemePalette {
             hint: Color::Rgb(0x65, 0x5d, 0x61),
             border: Color::Rgb(0x96, 0x98, 0xa0),
             border_highlight: Color::Rgb(0x3f, 0x70, 0x6a),
+            shadow: Color::Rgb(0xd9, 0xd5, 0xd8),
         },
         navigation: NavigationTokens {
             key_chip_bg: Color::Rgb(0xe8, 0xe3, 0xe6),

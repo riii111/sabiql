@@ -14,6 +14,7 @@ use sabiql_app::cmd::render_schedule::next_animation_deadline;
 use sabiql_app::cmd::runner::{ConnectionDeps, EffectRunner, ErDeps, QueryDeps, UtilityDeps};
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::input_mode::InputMode;
+use sabiql_app::ports::inbound::InputEvent;
 use sabiql_app::ports::outbound::{
     AppSettings, ConnectionStore, ConnectionStoreError, PgServiceEntryReader, ServiceFileError,
 };
@@ -141,6 +142,7 @@ fn initialize_state(
     infrastructure: &Infrastructure,
 ) -> Result<AppState> {
     let mut state = AppState::new(project_name);
+    state.motion.enable();
     apply_app_settings(&mut state, app_settings);
 
     match infrastructure.connection_store.load_all() {
@@ -367,6 +369,9 @@ impl Runtime {
             tokio::select! {
                 event = self.tui.next_event() => {
                     let event = event?;
+                    if matches!(event, InputEvent::Key(_) | InputEvent::Mouse(_)) {
+                        self.tui.acknowledge_program_status()?;
+                    }
                     let action = handle_event(event, &self.state);
                     if !action.is_none() {
                         self.process_terminal_event_burst(action).await?;

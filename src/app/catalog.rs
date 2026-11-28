@@ -349,8 +349,8 @@ mod tests {
                 );
             }
             assert!(rows.iter().any(|row| row.description() == "Navigate"
-                && row.key().contains('j')
-                && row.key().contains('k')));
+                && row.key().contains("Ctrl+N")
+                && row.key().contains("Ctrl+P")));
         }
 
         let mut sqlite = AppState::new("test".to_string());

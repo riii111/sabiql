@@ -46,12 +46,12 @@ fn rows(picker: Picker) -> Vec<Row> {
         ),
         Picker::CommandPalette => (
             ListTarget::CommandPalette,
-            None,
+            Some(InputTarget::Filter),
             Action::ConfirmSelection,
             ModalKind::CommandPalette,
             "Execute",
             "Execute command",
-            &[][..],
+            &[HintSurface::Current, HintSurface::SearchFilter][..],
         ),
         Picker::Er => (
             ListTarget::ErTablePicker,
@@ -109,7 +109,7 @@ fn rows(picker: Picker) -> Vec<Row> {
             ),
         ]);
     }
-    let mut navigation = list_navigation(target, matches!(picker, Picker::CommandPalette));
+    let mut navigation = list_navigation(target, false);
     if matches!(picker, Picker::Er) {
         navigation.surfaces = &[HintSurface::Current, HintSurface::Advanced];
     }

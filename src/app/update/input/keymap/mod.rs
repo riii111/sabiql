@@ -39,7 +39,7 @@ pub use connection_error::connection_error_hints;
 pub use connection_selector::connection_selector_hints;
 pub use connection_setup::connection_setup_hints;
 pub use context::KeyContext;
-pub use global::{PaletteEntry, palette_action, palette_available, palette_entry};
+pub use global::{PaletteEntry, palette_action, palette_available, palette_entry, palette_matches};
 pub use help::help_hints;
 pub use pickers::{Picker, picker_hints};
 pub use row_detail::row_detail_hints;
