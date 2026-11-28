@@ -167,14 +167,17 @@ impl KeyContext {
     }
 
     pub fn from_state(state: &AppState) -> Self {
-        Self::from_mode(state, state.input_mode())
+        Self::from_mode(state, state.input_mode(), true)
     }
     pub fn for_browse_state(state: &AppState) -> Self {
-        Self::from_mode(state, InputMode::Normal)
+        Self::from_mode(state, InputMode::Normal, true)
     }
-    fn from_mode(state: &AppState, mode: InputMode) -> Self {
+    pub(crate) fn for_help_fallback(state: &AppState) -> Self {
+        Self::from_mode(state, InputMode::Normal, false)
+    }
+    fn from_mode(state: &AppState, mode: InputMode, use_state: bool) -> Self {
         let scope = match mode {
-            InputMode::Normal => browse_scope(state),
+            InputMode::Normal if use_state => browse_scope(state),
             InputMode::SqliteDiagnostics => Scope::Diagnostics {
                 can_run: state.sqlite_diagnostics.can_run_quick_check(),
             },
@@ -238,7 +241,7 @@ impl KeyContext {
             Scope::Browse(browse) => browse,
             _ => BrowseScope::default(),
         };
-        let history_available = state.can_open_query_history();
+        let history_available = !use_state || state.can_open_query_history();
         let json_searching = state.json_detail.search().is_active();
         let is_sql_editing = matches!(scope, Scope::SqlEditing { .. });
         let browse_pane = browse.pane;
@@ -385,7 +388,11 @@ impl KeyContext {
             mode,
             json_searching,
             policy: FeaturePolicy::new(&state.session.active_engine_feature_profile()),
-            pending_prefix: state.ui.key_sequence.pending_prefix(),
+            pending_prefix: if use_state {
+                state.ui.key_sequence.pending_prefix()
+            } else {
+                None
+            },
             label,
             is_sql_editing,
             browse_pane,

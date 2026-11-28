@@ -24,7 +24,7 @@ impl HelpDocument {
             .help()
             .origin()
             .cloned()
-            .unwrap_or_else(|| KeyContext::for_browse_state(state));
+            .unwrap_or_else(|| KeyContext::for_help_fallback(state));
         Self::new(context, filter.content(), filter.cursor())
     }
 
