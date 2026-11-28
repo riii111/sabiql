@@ -9,11 +9,12 @@ use super::{Hint, HintSurface, KeyContext};
 
 pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
     let mut scroll = line_scroll(ScrollTarget::SqliteDiagnostics);
-    scroll.surfaces = &[
+    scroll.surfaces = [
         HintSurface::Border,
         HintSurface::Current,
         HintSurface::Advanced,
-    ];
+    ]
+    .to_vec();
     vec![
         scroll,
         Row {
@@ -23,16 +24,17 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Run check",
             description: "Run quick check",
-            references: &[],
+
             dynamic_label: None,
             visible: Some(|context, surface| {
-                surface != HintSurface::Border || context.can_run_diagnostics()
+                surface != HintSurface::Border || context.can_run_diagnostics
             }),
-            surfaces: &[
+            surfaces: [
                 HintSurface::Border,
                 HintSurface::Current,
                 HintSurface::Advanced,
-            ],
+            ]
+            .to_vec(),
         },
         Row {
             bindings: vec![Binding::action(
@@ -41,16 +43,17 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Help",
             description: "Toggle help",
-            references: &[],
+
             dynamic_label: None,
             visible: Some(|context, surface| {
                 surface != HintSurface::Footer || context.supports_diagnostics()
             }),
-            surfaces: &[
+            surfaces: [
                 HintSurface::Footer,
                 HintSurface::Current,
                 HintSurface::Advanced,
-            ],
+            ]
+            .to_vec(),
         },
         Row::new(
             vec![Binding::action(

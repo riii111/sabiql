@@ -120,7 +120,6 @@ pub(in crate::update) fn json_append_insert(state: &mut AppState) -> Vec<Effect>
 }
 
 pub(in crate::update) fn json_exit_edit(state: &mut AppState) -> Vec<Effect> {
-    state.json_detail.exit_edit();
     state.modal.replace_mode(InputMode::JsonDetail);
     vec![]
 }
@@ -182,41 +181,23 @@ fn apply_pending_edit_as_draft(state: &mut AppState) {
     state.result_interaction.replace_cell_edit_draft(compact);
 }
 
-pub(in crate::update) fn edit_json_text(
-    state: &mut AppState,
-    edit: TextEdit,
-    yank_text: Option<&str>,
-) -> String {
-    if let TextEdit::MoveCursor(direction) = edit {
-        match direction {
-            CursorMove::ViewportTop | CursorMove::ViewportMiddle | CursorMove::ViewportBottom => {
-                let visible_rows = effective_visible_rows(state);
-                state
-                    .json_detail
-                    .editor_mut()
-                    .move_cursor_to_viewport_position(direction, visible_rows);
-            }
-            _ => state.json_detail.editor_mut().move_cursor(direction),
-        }
+pub(in crate::update) fn edit_json_text(state: &mut AppState, edit: TextEdit) {
+    let visible_rows = effective_visible_rows(state);
+    let edited = if edit == TextEdit::Insert('\t') {
+        state.json_detail.editor_mut().insert_tab();
         update_editor_scroll(state);
-        state.ui.key_sequence = KeySequenceState::Idle;
-        return String::new();
-    }
-
-    let killed = match edit {
-        TextEdit::Insert('\n') => {
-            state.json_detail.editor_mut().insert_newline();
-            String::new()
-        }
-        TextEdit::Insert('\t') => {
-            state.json_detail.editor_mut().insert_tab();
-            String::new()
-        }
-        _ => state.json_detail.editor_mut().apply_edit(edit, yank_text),
+        true
+    } else {
+        state
+            .json_detail
+            .editor_mut()
+            .apply_editor_edit(edit, visible_rows)
     };
-    update_editor_scroll(state);
-    state.json_detail.validate_editor_content();
-    killed
+    if edited {
+        state.json_detail.validate_editor_content();
+    } else if matches!(edit, TextEdit::MoveCursor(_)) {
+        state.ui.key_sequence = KeySequenceState::Idle;
+    }
 }
 
 #[cfg(test)]
@@ -231,7 +212,6 @@ mod tests {
     use crate::cmd::effect::Effect;
     use crate::domain::connection::ConnectionId;
     use crate::domain::{QueryResult, QuerySource, Table};
-    use crate::model::browse::json_detail::JsonDetailMode;
     use crate::model::shared::flash_timer::FlashId;
     use crate::update::action::CopyTarget;
     use crate::update::action::DetailTarget;
@@ -552,7 +532,6 @@ mod tests {
             route(&mut state, Action::JsonEnterEdit, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::JsonEdit);
-            assert_eq!(state.json_detail.mode(), JsonDetailMode::Editing);
         }
 
         #[test]
@@ -564,7 +543,6 @@ mod tests {
             reduce(&mut state, Action::JsonEnterEdit, now);
 
             assert_eq!(state.input_mode(), InputMode::JsonEdit);
-            assert_eq!(state.json_detail.mode(), JsonDetailMode::Editing);
         }
 
         #[test]
@@ -617,7 +595,6 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::JsonEdit);
             assert_eq!(state.json_detail.editor().cursor_to_position(), (0, 3));
-            assert_eq!(state.json_detail.mode(), JsonDetailMode::Editing);
         }
 
         #[test]
@@ -641,7 +618,7 @@ mod tests {
             route(&mut state, Action::JsonEnterEdit, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::JsonDetail);
-            assert_eq!(state.json_detail.mode(), JsonDetailMode::Viewing);
+            assert!(!state.json_detail.search().is_active());
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("Read-only column cannot be edited: settings (generated)")
@@ -669,7 +646,7 @@ mod tests {
             route(&mut state, Action::JsonAppendInsert, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::JsonDetail);
-            assert_eq!(state.json_detail.mode(), JsonDetailMode::Viewing);
+            assert!(!state.json_detail.search().is_active());
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("Read-only column cannot be edited: settings (generated)")
@@ -791,38 +768,8 @@ mod tests {
             route(&mut state, Action::JsonExitEdit, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::JsonDetail);
-            assert_eq!(state.json_detail.mode(), JsonDetailMode::Viewing);
+            assert!(!state.json_detail.search().is_active());
             assert!(state.json_detail.is_active());
-        }
-
-        #[test]
-        fn kill_then_yank_restores_json_editor_text() {
-            let mut state = state_with_json_cell();
-            open_detail(&mut state);
-            route(&mut state, Action::JsonEnterEdit, Instant::now());
-            state
-                .json_detail
-                .editor_mut()
-                .set_content_with_cursor("before after".to_string(), 7);
-
-            edit_text(
-                &mut state,
-                &Action::TextKill {
-                    target: InputTarget::JsonEdit,
-                    direction: TextKillDirection::ToLineEnd,
-                },
-                Instant::now(),
-            );
-            edit_text(
-                &mut state,
-                &Action::TextYank {
-                    target: InputTarget::JsonEdit,
-                },
-                Instant::now(),
-            );
-
-            assert_eq!(state.json_detail.editor().content(), "before after");
-            assert_eq!(state.kill_buffer(), Some("after"));
         }
 
         #[test]
@@ -932,7 +879,6 @@ mod tests {
             );
 
             assert!(state.json_detail.search().is_active());
-            assert_eq!(state.json_detail.mode(), JsonDetailMode::Searching);
         }
 
         #[test]
@@ -958,7 +904,6 @@ mod tests {
             );
 
             assert!(!state.json_detail.search().is_active());
-            assert_eq!(state.json_detail.mode(), JsonDetailMode::Viewing);
         }
 
         #[test]
@@ -998,7 +943,7 @@ mod tests {
 
             assert!(!state.json_detail.search().is_active());
             let expected_cursor = state.json_detail.search().matches()[0];
-            assert_eq!(state.json_detail.mode(), JsonDetailMode::Viewing);
+            assert!(!state.json_detail.search().is_active());
             assert_eq!(state.json_detail.editor().cursor(), expected_cursor);
             assert_eq!(
                 state.json_detail.editor().cursor_to_position(),
@@ -1225,7 +1170,6 @@ mod tests {
                 now,
             );
             assert!(!state.json_detail.search().is_active());
-            assert_eq!(state.json_detail.mode(), JsonDetailMode::Viewing);
 
             let effects = reduce_app(
                 &mut state,
@@ -1239,7 +1183,6 @@ mod tests {
 
             reduce_app(&mut state, Action::JsonEnterEdit, now);
             assert_eq!(state.input_mode(), InputMode::JsonEdit);
-            assert_eq!(state.json_detail.mode(), JsonDetailMode::Editing);
 
             reduce_app(&mut state, Action::JsonExitEdit, now);
             assert_eq!(state.input_mode(), InputMode::JsonDetail);
@@ -1288,7 +1231,6 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::JsonEdit);
-            assert_eq!(state.json_detail.mode(), JsonDetailMode::Editing);
         }
 
         #[test]

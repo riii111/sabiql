@@ -45,52 +45,60 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             Some(non_cell_footer),
         ),
         Row {
-            surfaces: &[],
+            surfaces: vec![HintSurface::Common],
             ..row(Action::EnterCommandLine, ':', "Cmd", "Enter command line")
         },
         footer(
-            Row {
-                bindings: vec![
-                    Binding::action(
-                        Action::OpenModal(ModalKind::CommandPalette),
-                        &[KeyCombo::plain(Key::F(1))],
-                    )
-                    .ide(&[KeyCombo::plain(Key::Char('P'))]),
-                ],
-                short: "Palette",
-                description: "Open Command Palette",
-                references: &[HintSurface::Common],
-                dynamic_label: None,
-                visible: None,
-                surfaces: &[],
+            {
+                let mut row = Row {
+                    bindings: vec![
+                        Binding::action(
+                            Action::OpenModal(ModalKind::CommandPalette),
+                            &[KeyCombo::plain(Key::F(1))],
+                        )
+                        .ide(&[KeyCombo::plain(Key::Char('P'))]),
+                    ],
+                    short: "Palette",
+                    description: "Open Command Palette",
+
+                    dynamic_label: None,
+                    visible: None,
+                    surfaces: [].to_vec(),
+                };
+                row.surfaces.extend_from_slice(&[HintSurface::Common]);
+                row
             },
             HintSurface::FooterHelp,
             Some(regular_footer),
         ),
-        Row {
-            references: &[HintSurface::Common],
-            dynamic_label: Some(|context| {
-                if context.browse_focused() {
-                    ("Exit Focus", "Exit Focus mode")
-                } else {
-                    ("Focus", "Toggle Focus mode")
-                }
-            }),
-            visible: Some(|context, surface| match surface {
-                HintSurface::FooterAction => {
-                    !context.browse_focused() && context.browse_pane() != BrowsePane::ResultCell
-                }
-                HintSurface::FooterClose => {
-                    context.browse_focused() && context.browse_pane() != BrowsePane::ResultCell
-                }
-                _ => true,
-            }),
-            surfaces: &[
-                HintSurface::Palette,
-                HintSurface::FooterAction,
-                HintSurface::FooterClose,
-            ],
-            ..row(Action::ToggleFocus, 'f', "Focus", "Toggle Focus mode")
+        {
+            let mut row = Row {
+                dynamic_label: Some(|context| {
+                    if context.browse_focused {
+                        ("Exit Focus", "Exit Focus mode")
+                    } else {
+                        ("Focus", "Toggle Focus mode")
+                    }
+                }),
+                visible: Some(|context, surface| match surface {
+                    HintSurface::FooterAction => {
+                        !context.browse_focused && context.browse_pane != BrowsePane::ResultCell
+                    }
+                    HintSurface::FooterClose => {
+                        context.browse_focused && context.browse_pane != BrowsePane::ResultCell
+                    }
+                    _ => true,
+                }),
+                surfaces: [
+                    HintSurface::Palette,
+                    HintSurface::FooterAction,
+                    HintSurface::FooterClose,
+                ]
+                .to_vec(),
+                ..row(Action::ToggleFocus, 'f', "Focus", "Toggle Focus mode")
+            };
+            row.surfaces.extend_from_slice(&[HintSurface::Common]);
+            row
         },
         footer(
             reference(
@@ -102,7 +110,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
                 !matches!(
                     surface,
                     HintSurface::FooterAction | HintSurface::Palette | HintSurface::Current
-                ) || (regular_footer(context, surface) && context.browse_connected())
+                ) || (regular_footer(context, surface) && context.browse_connected)
             }),
         ),
         footer(
@@ -145,78 +153,101 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             None,
         ),
         footer(
-            Row {
-                bindings: vec![
-                    Binding::action(
-                        Action::OpenModal(ModalKind::SqliteDiagnostics),
-                        &[KeyCombo::ctrl_shift(Key::Char('d'))],
-                    )
-                    .ide(&[KeyCombo::plain(Key::Char('D'))]),
-                ],
-                short: "Diagnostics",
-                description: "Open SQLite Diagnostics",
-                references: &[HintSurface::Current, HintSurface::OpenSwitch],
-                dynamic_label: None,
-                visible: None,
-                surfaces: &[HintSurface::Palette],
+            {
+                let mut row = Row {
+                    bindings: vec![
+                        Binding::action(
+                            Action::OpenModal(ModalKind::SqliteDiagnostics),
+                            &[KeyCombo::ctrl_shift(Key::Char('d'))],
+                        )
+                        .ide(&[KeyCombo::plain(Key::Char('D'))]),
+                    ],
+                    short: "Diagnostics",
+                    description: "Open SQLite Diagnostics",
+
+                    dynamic_label: None,
+                    visible: None,
+                    surfaces: [HintSurface::Palette].to_vec(),
+                };
+                row.surfaces
+                    .extend_from_slice(&[HintSurface::Current, HintSurface::OpenSwitch]);
+                row
             },
             HintSurface::FooterAction,
             Some(regular_footer),
         ),
         footer(
-            Row {
-                bindings: vec![
-                    Binding::action(Action::RequestCsvExport, &[KeyCombo::ctrl(Key::Char('e'))])
+            {
+                let mut row = Row {
+                    bindings: vec![
+                        Binding::action(
+                            Action::RequestCsvExport,
+                            &[KeyCombo::ctrl(Key::Char('e'))],
+                        )
                         .ide(&[KeyCombo::plain(Key::Char('E'))])
-                        .when(KeyContext::browse_csv_available),
-                ],
-                short: "Export",
-                description: "Export result to CSV",
-                references: &[HintSurface::Current, HintSurface::DataActions],
-                dynamic_label: None,
-                visible: None,
-                surfaces: &[HintSurface::Palette],
+                        .when(|context| context.browse_csv_available),
+                    ],
+                    short: "Export",
+                    description: "Export result to CSV",
+
+                    dynamic_label: None,
+                    visible: None,
+                    surfaces: [HintSurface::Palette].to_vec(),
+                };
+                row.surfaces
+                    .extend_from_slice(&[HintSurface::Current, HintSurface::DataActions]);
+                row
             },
             HintSurface::FooterAction,
             Some(non_cell_footer),
         ),
         footer(
-            Row {
-                references: &[HintSurface::Common],
-                dynamic_label: Some(|context| {
-                    if context.browse_read_only() {
-                        ("Read-Write", "Disable Read-Only mode")
-                    } else {
-                        ("Read-Only", "Enable Read-Only mode")
-                    }
-                }),
-                ..preset_row(
-                    Action::ToggleReadOnly,
-                    'r',
-                    'R',
-                    "Read-Only",
-                    "Enable Read-Only mode",
-                )
+            {
+                let mut row = Row {
+                    dynamic_label: Some(|context| {
+                        if context.browse_read_only {
+                            ("Read-Write", "Disable Read-Only mode")
+                        } else {
+                            ("Read-Only", "Enable Read-Only mode")
+                        }
+                    }),
+                    ..preset_row(
+                        Action::ToggleReadOnly,
+                        'r',
+                        'R',
+                        "Read-Only",
+                        "Enable Read-Only mode",
+                    )
+                };
+                row.surfaces
+                    .retain(|surface| *surface == HintSurface::Palette);
+                row.surfaces.push(HintSurface::Common);
+                row
             },
             HintSurface::FooterAction,
             Some(regular_footer),
         ),
         footer(
-            Row {
-                bindings: vec![
-                    Binding::action(
-                        Action::OpenModal(ModalKind::QueryHistoryPicker),
-                        &[KeyCombo::ctrl(Key::Char('o'))],
-                    )
-                    .ide(&[KeyCombo::plain(Key::Char('O'))])
-                    .when(KeyContext::can_open_history),
-                ],
-                short: "History",
-                description: "Open Query History",
-                references: &[HintSurface::Current, HintSurface::OpenSwitch],
-                dynamic_label: None,
-                visible: None,
-                surfaces: &[HintSurface::Palette],
+            {
+                let mut row = Row {
+                    bindings: vec![
+                        Binding::action(
+                            Action::OpenModal(ModalKind::QueryHistoryPicker),
+                            &[KeyCombo::ctrl(Key::Char('o'))],
+                        )
+                        .ide(&[KeyCombo::plain(Key::Char('O'))])
+                        .when(|context| context.can_open_history),
+                    ],
+                    short: "History",
+                    description: "Open Query History",
+
+                    dynamic_label: None,
+                    visible: None,
+                    surfaces: [HintSurface::Palette].to_vec(),
+                };
+                row.surfaces
+                    .extend_from_slice(&[HintSurface::Current, HintSurface::OpenSwitch]);
+                row
             },
             HintSurface::FooterAction,
             Some(regular_footer),
@@ -226,16 +257,18 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
 
 fn regular_footer(context: &KeyContext, surface: HintSurface) -> bool {
     !matches!(surface, HintSurface::FooterAction | HintSurface::FooterHelp)
-        || (!context.browse_focused() && context.browse_pane() != BrowsePane::ResultCell)
+        || (!context.browse_focused && context.browse_pane != BrowsePane::ResultCell)
 }
 
 fn non_cell_footer(context: &KeyContext, surface: HintSurface) -> bool {
     !matches!(surface, HintSurface::FooterAction | HintSurface::FooterHelp)
-        || context.browse_pane() != BrowsePane::ResultCell
+        || context.browse_pane != BrowsePane::ResultCell
 }
 
 fn reference(mut row: Row, references: &'static [HintSurface]) -> Row {
-    row.references = references;
+    row.surfaces
+        .retain(|surface| *surface == HintSurface::Palette);
+    row.surfaces.extend_from_slice(references);
     row
 }
 
@@ -244,26 +277,30 @@ fn footer(
     group: HintSurface,
     visible: Option<fn(&KeyContext, HintSurface) -> bool>,
 ) -> Row {
-    row.surfaces = match (row.surfaces.contains(&HintSurface::Palette), group) {
-        (true, HintSurface::FooterAction) => &[HintSurface::Palette, HintSurface::FooterAction],
-        (true, HintSurface::FooterHelp) => &[HintSurface::Palette, HintSurface::FooterHelp],
-        (true, HintSurface::FooterQuit) => &[HintSurface::Palette, HintSurface::FooterQuit],
-        (false, HintSurface::FooterHelp) => &[HintSurface::FooterHelp],
-        _ => unreachable!(),
-    };
+    row.surfaces.retain(|surface| {
+        !matches!(
+            surface,
+            HintSurface::FooterAction | HintSurface::FooterHelp | HintSurface::FooterQuit
+        )
+    });
+    row.surfaces.push(group);
     row.visible = visible;
     row
 }
 
 fn row(action: Action, key: char, short: &'static str, description: &'static str) -> Row {
-    Row {
-        bindings: vec![Binding::action(action, &[KeyCombo::plain(Key::Char(key))])],
-        short,
-        description,
-        references: &[HintSurface::Common],
-        dynamic_label: None,
-        visible: None,
-        surfaces: &[HintSurface::Palette],
+    {
+        let mut row = Row {
+            bindings: vec![Binding::action(action, &[KeyCombo::plain(Key::Char(key))])],
+            short,
+            description,
+
+            dynamic_label: None,
+            visible: None,
+            surfaces: [HintSurface::Palette].to_vec(),
+        };
+        row.surfaces.extend_from_slice(&[HintSurface::Common]);
+        row
     }
 }
 
@@ -274,17 +311,22 @@ fn preset_row(
     short: &'static str,
     description: &'static str,
 ) -> Row {
-    Row {
-        bindings: vec![
-            Binding::action(action, &[KeyCombo::ctrl(Key::Char(default))])
-                .ide(&[KeyCombo::plain(Key::Char(ide))]),
-        ],
-        short,
-        description,
-        references: &[HintSurface::Current, HintSurface::OpenSwitch],
-        dynamic_label: None,
-        visible: None,
-        surfaces: &[HintSurface::Palette],
+    {
+        let mut row = Row {
+            bindings: vec![
+                Binding::action(action, &[KeyCombo::ctrl(Key::Char(default))])
+                    .ide(&[KeyCombo::plain(Key::Char(ide))]),
+            ],
+            short,
+            description,
+
+            dynamic_label: None,
+            visible: None,
+            surfaces: [HintSurface::Palette].to_vec(),
+        };
+        row.surfaces
+            .extend_from_slice(&[HintSurface::Current, HintSurface::OpenSwitch]);
+        row
     }
 }
 

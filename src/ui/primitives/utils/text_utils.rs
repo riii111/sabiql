@@ -153,6 +153,7 @@ mod tests {
         #[case("ab", 1, "\u{2026}")]
         #[case("anything", 0, "")]
         #[case("テーブル名前", 4, "テ\u{2026}")]
+        #[case("e\u{301}abcd", 2, "e\u{301}…")]
         fn unicode_ellipsis_respects_display_width(
             #[case] input: &str,
             #[case] max: usize,

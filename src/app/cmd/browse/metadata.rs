@@ -1,10 +1,8 @@
 use std::sync::Arc;
 
 use crate::domain::connection::ConnectionEndpoint;
-use crate::ports::outbound::{DbOperationError, MetadataProvider};
+use crate::ports::outbound::MetadataProvider;
 use crate::update::action::Action;
-
-const PREFETCH_TIMEOUT_SECS: u64 = 10;
 
 pub(in crate::cmd) async fn fetch_metadata(
     provider: Arc<dyn MetadataProvider>,
@@ -51,37 +49,26 @@ pub(in crate::cmd) async fn fetch_table_detail(
     }
 }
 
-pub(in crate::cmd) async fn prefetch_table_detail(
+pub(in crate::cmd) async fn prefetch_table_details(
     provider: Arc<dyn MetadataProvider>,
     endpoint: Arc<ConnectionEndpoint>,
     run_id: u64,
-    schema: String,
-    table: String,
+    tables: Vec<(String, String)>,
 ) -> Action {
-    let outcome = tokio::time::timeout(
-        tokio::time::Duration::from_secs(PREFETCH_TIMEOUT_SECS),
-        provider.fetch_table_columns_and_fks(&endpoint, &schema, &table),
-    )
-    .await
-    .unwrap_or_else(|_| Err(DbOperationError::Timeout("timed out".to_string())))
-    .map(Box::new);
-    Action::TableDetailCached {
+    let outcome = provider
+        .fetch_table_columns_and_fks_batch(&endpoint, &tables)
+        .await;
+    Action::TableDetailsCached {
         endpoint,
         run_id,
-        schema,
-        table,
         outcome,
     }
-}
-
-pub(in crate::cmd) async fn process_prefetch_queue_after(delay_secs: u64, run_id: u64) -> Action {
-    tokio::time::sleep(tokio::time::Duration::from_secs(delay_secs)).await;
-    Action::ProcessPrefetchQueue { run_id }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ports::outbound::DbOperationError;
 
     use crate::domain::Table;
     use crate::ports::outbound::metadata::MockMetadataProvider;
@@ -146,34 +133,6 @@ mod tests {
                 generation: 1,
                 outcome: Ok(_),
             } if endpoint == &endpoint::postgres("dsn://test")
-        ));
-    }
-
-    #[tokio::test]
-    async fn prefetch_uses_light_provider() {
-        let mut provider = MockMetadataProvider::new();
-        provider.expect_fetch_table_detail().never();
-        provider
-            .expect_fetch_table_columns_and_fks()
-            .once()
-            .returning(|_, _, _| Ok(sample_table()));
-
-        let action = prefetch_table_detail(
-            Arc::new(provider),
-            endpoint::postgres("dsn://test"),
-            3,
-            "public".to_string(),
-            "users".to_string(),
-        )
-        .await;
-
-        assert!(matches!(
-            action,
-            Action::TableDetailCached {
-                run_id: 3,
-                outcome: Ok(_),
-                ..
-            }
         ));
     }
 }

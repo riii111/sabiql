@@ -16,7 +16,6 @@ mod tests {
     use crate::model::app_state::AppState;
     use crate::model::er_state::ErStatus;
     use crate::test_support::endpoint;
-    use crate::test_support::table::minimal as minimal_table;
     use crate::update::action::{
         Action, ErDiagramInfo, SmartErRefreshError, SmartErRefreshSnapshot,
     };
@@ -107,7 +106,7 @@ mod tests {
         fn pending_mysql_probe_rejects_er_open_before_prefetch_invalidation() {
             let mut state = state_with_pending_mysql_probe();
             state.session.set_metadata(Some(make_metadata(1)));
-            let prefetch_run_id = state.table_prefetch.begin_er_prefetch();
+            let prefetch_run_id = state.table_prefetch.begin(Vec::<String>::new(), true);
 
             let effects = diagram::er_open_diagram(&mut state, Instant::now());
 
@@ -128,7 +127,7 @@ mod tests {
             let mut state = state_with_mysql_connection();
             state.session.set_metadata(Some(make_metadata(1)));
             let run_id = state.er_preparation.start_waiting_run();
-            let prefetch_run_id = state.table_prefetch.begin_er_prefetch();
+            let prefetch_run_id = state.table_prefetch.begin(Vec::<String>::new(), true);
             let _ = state.session.begin_mysql_connection_probe(
                 &ConnectionId::from_string("mysql-target"),
                 "mysql-target",
@@ -141,10 +140,7 @@ mod tests {
                     run_id,
                     outcome: Ok(SmartErRefreshSnapshot {
                         new_metadata: make_metadata(1),
-                        signature_snapshot: Arc::new(TableSignatureSnapshot {
-                            signatures: vec![],
-                            prefetched_table_details: vec![],
-                        }),
+                        signature_snapshot: Arc::new(TableSignatureSnapshot { signatures: vec![] }),
                     }),
                 },
                 Action::SmartErRefreshFetched {
@@ -187,7 +183,7 @@ mod tests {
             let mut state = state_with_mysql_connection();
             state.session.set_metadata(Some(make_metadata(1)));
             let run_id = state.er_preparation.start_waiting_run();
-            let _ = state.table_prefetch.begin_er_prefetch();
+            let _ = state.table_prefetch.begin(Vec::<String>::new(), true);
             let _ = state.session.begin_mysql_connection_probe(
                 &ConnectionId::from_string("mysql-target"),
                 "mysql-target",
@@ -385,7 +381,7 @@ mod tests {
             assert!(
                 effects
                     .iter()
-                    .any(|e| matches!(e, Effect::SchedulePrefetchQueueProcessing { .. }))
+                    .any(|e| matches!(e, Effect::PrefetchTableColumnsAndFks { .. }))
             );
         }
 
@@ -428,10 +424,10 @@ mod tests {
             assert!(
                 effects
                     .iter()
-                    .any(|e| matches!(e, Effect::SchedulePrefetchQueueProcessing { .. }))
+                    .any(|e| matches!(e, Effect::PrefetchTableColumnsAndFks { .. }))
             );
-            assert!(state.table_prefetch.is_prefetch_queued("public.uncached"));
-            assert_eq!(state.table_prefetch.pending_prefetch_count(), 1);
+            assert!(state.table_prefetch.in_flight().contains("public.uncached"));
+            assert_eq!(state.table_prefetch.prefetch_in_flight_count(), 1);
         }
 
         #[test]
@@ -453,10 +449,10 @@ mod tests {
             assert!(
                 effects
                     .iter()
-                    .any(|e| matches!(e, Effect::SchedulePrefetchQueueProcessing { .. }))
+                    .any(|e| matches!(e, Effect::PrefetchTableColumnsAndFks { .. }))
             );
-            assert!(state.table_prefetch.is_prefetch_queued("public.uncached"));
-            assert_eq!(state.table_prefetch.pending_prefetch_count(), 1);
+            assert!(state.table_prefetch.in_flight().contains("public.uncached"));
+            assert_eq!(state.table_prefetch.prefetch_in_flight_count(), 1);
         }
 
         #[test]
@@ -503,13 +499,12 @@ mod tests {
                     new_metadata: make_metadata(1),
                     signature_snapshot: Arc::new(TableSignatureSnapshot {
                         signatures: Vec::new(),
-                        prefetched_table_details: Vec::new(),
                     }),
                 }),
             }
         }
 
-        fn fetched(names: &[&str], prefetched: &[&str]) -> Action {
+        fn fetched(names: &[&str], _prefetched: &[&str]) -> Action {
             Action::SmartErRefreshFetched {
                 endpoint: endpoint::postgres("postgres://localhost/test"),
                 run_id: 1,
@@ -523,10 +518,6 @@ mod tests {
                                 name: (*name).to_string(),
                                 signature: "signature".to_string(),
                             })
-                            .collect(),
-                        prefetched_table_details: prefetched
-                            .iter()
-                            .map(|name| minimal_table("public", *name))
                             .collect(),
                     }),
                 }),
@@ -554,21 +545,6 @@ mod tests {
         }
 
         #[test]
-        fn prefetched_details_are_cached_before_diff() {
-            let mut state = state_with_dsn("postgres://localhost/test");
-            set_waiting_run_id(&mut state, 1);
-
-            let effects = reduce_er(&mut state, &fetched(&["items"], &["items"]), Instant::now());
-
-            assert!(state.table_detail_cache.contains("public.items"));
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::GenerateErDiagram { .. }))
-            );
-        }
-
-        #[test]
         fn uncached_tables_start_scoped_prefetch() {
             let mut state = state_with_dsn("postgres://localhost/test");
             set_waiting_run_id(&mut state, 1);
@@ -578,9 +554,14 @@ mod tests {
             assert!(
                 effects
                     .iter()
-                    .any(|e| matches!(e, Effect::SchedulePrefetchQueueProcessing { .. }))
+                    .any(|e| matches!(e, Effect::PrefetchTableColumnsAndFks { .. }))
             );
-            assert!(state.table_prefetch.is_prefetch_queued("public.new_table"));
+            assert!(
+                state
+                    .table_prefetch
+                    .in_flight()
+                    .contains("public.new_table")
+            );
         }
 
         #[test]
@@ -595,10 +576,7 @@ mod tests {
                     run_id,
                     outcome: Ok(SmartErRefreshSnapshot {
                         new_metadata: make_metadata(1),
-                        signature_snapshot: Arc::new(TableSignatureSnapshot {
-                            signatures: vec![],
-                            prefetched_table_details: vec![minimal_table("public", "items")],
-                        }),
+                        signature_snapshot: Arc::new(TableSignatureSnapshot { signatures: vec![] }),
                     }),
                 },
                 Instant::now(),
@@ -674,7 +652,7 @@ mod tests {
             assert!(
                 effects
                     .iter()
-                    .any(|e| matches!(e, Effect::SchedulePrefetchQueueProcessing { .. }))
+                    .any(|e| matches!(e, Effect::PrefetchTableColumnsAndFks { .. }))
             );
         }
 
@@ -804,7 +782,7 @@ mod tests {
             assert!(
                 effects
                     .iter()
-                    .any(|e| matches!(e, Effect::SchedulePrefetchQueueProcessing { .. }))
+                    .any(|e| matches!(e, Effect::PrefetchTableColumnsAndFks { .. }))
             );
         }
     }

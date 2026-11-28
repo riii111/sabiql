@@ -6,7 +6,6 @@ use crate::domain::connection::{
 };
 use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
 use crate::model::app_state::AppState;
-use crate::model::browse::json_detail::JsonDetailMode;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
@@ -442,15 +441,10 @@ pub enum Action {
         outcome: Result<Box<Table>, DbOperationError>,
         generation: u64,
     },
-    TableDetailCached {
+    TableDetailsCached {
         endpoint: Arc<ConnectionEndpoint>,
         run_id: u64,
-        schema: String,
-        table: String,
-        outcome: Result<Box<Table>, DbOperationError>,
-    },
-    ProcessPrefetchQueue {
-        run_id: u64,
+        outcome: Result<Vec<Table>, DbOperationError>,
     },
     InspectorNextTab,
     InspectorPrevTab,
@@ -657,22 +651,23 @@ impl Action {
     }
 
     pub fn feature_requirement_for_state(&self, state: &AppState) -> FeatureRequirement {
-        self.feature_requirement_for_context(state.input_mode(), state.json_detail.mode())
+        self.feature_requirement_for_context(
+            state.input_mode(),
+            state.json_detail.search().is_active(),
+        )
     }
 
     pub(crate) fn feature_requirement_for_context(
         &self,
         mode: InputMode,
-        json_mode: JsonDetailMode,
+        json_searching: bool,
     ) -> FeatureRequirement {
         match self {
             Self::JsonExitEdit if mode == InputMode::JsonEdit => FeatureRequirement::None,
             Self::DetailSearch {
                 target: DetailTarget::JsonDetail,
                 step: SearchStep::Exit,
-            } if mode == InputMode::JsonDetail && json_mode == JsonDetailMode::Searching => {
-                FeatureRequirement::None
-            }
+            } if mode == InputMode::JsonDetail && json_searching => FeatureRequirement::None,
             Self::BeginKeySequence(Prefix::G)
                 if matches!(mode, InputMode::JsonDetail | InputMode::JsonEdit) =>
             {

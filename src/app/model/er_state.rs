@@ -39,7 +39,7 @@ impl ErPreparationState {
 
     pub fn progress(&self, prefetch: &TablePrefetchState) -> ErPreparationProgress {
         let failed = prefetch.failed_prefetch_count();
-        let remaining = prefetch.pending_prefetch_count() + prefetch.prefetch_in_flight_count();
+        let remaining = prefetch.prefetch_in_flight_count();
         let cached = self.total_tables.saturating_sub(remaining + failed);
         ErPreparationProgress {
             cached,

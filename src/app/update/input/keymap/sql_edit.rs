@@ -9,7 +9,7 @@ use super::model::{Binding, Row, hints};
 use super::{Hint, HintSurface, KeyContext};
 
 fn completion(context: &KeyContext) -> bool {
-    context.is_sql_completion_visible()
+    context.is_sql_completion_visible
 }
 
 pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
@@ -43,7 +43,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
                     &[KeyCombo::ctrl(Key::Char('o'))],
                 )
                 .ide(&[])
-                .when(KeyContext::can_open_history),
+                .when(|context| context.can_open_history),
             ],
             "History",
             "Open Query History",
@@ -55,7 +55,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
                     .ide(&[KeyCombo::ctrl(Key::Char('o'))])
                     .consume()
                     .when(|context| {
-                        !context.can_open_history() || context.preset == KeymapPreset::Ide
+                        !context.can_open_history || context.preset == KeymapPreset::Ide
                     }),
             ],
             "",
@@ -145,12 +145,15 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             ],
         ),
         Row::new(
-            [(Key::Home, CursorMove::Home), (Key::End, CursorMove::End)]
-                .into_iter()
-                .map(|(key, direction)| {
-                    Binding::any_modifiers(Action::TextMoveCursor { target, direction }, key)
-                })
-                .collect(),
+            [
+                (Key::Home, CursorMove::LineStart),
+                (Key::End, CursorMove::LineEnd),
+            ]
+            .into_iter()
+            .map(|(key, direction)| {
+                Binding::any_modifiers(Action::TextMoveCursor { target, direction }, key)
+            })
+            .collect(),
             "Line",
             "Line start/end",
             &[HintSurface::Current, HintSurface::Editing],

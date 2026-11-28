@@ -33,12 +33,7 @@ pub(super) fn queue_fk_neighbors(
         return check_er_completion(state);
     }
 
-    for qualified_name in tables {
-        state
-            .table_prefetch
-            .queue_pending_table(qualified_name.clone());
-    }
-    vec![Effect::SchedulePrefetchQueueProcessing { run_id }]
+    super::prefetch::start_er_neighbor_prefetch(state, tables.to_vec())
 }
 
 fn discover_fk_neighbors(

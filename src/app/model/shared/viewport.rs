@@ -54,7 +54,7 @@ pub struct ColumnWidthConfig<'a> {
 pub struct SelectionContext {
     pub horizontal_offset: usize,
     pub available_width: u16,
-    pub fixed_count: Option<usize>,
+    pub fixed_count: usize,
     pub max_offset: usize,
 }
 
@@ -231,10 +231,7 @@ pub fn select_viewport_columns(
         min_widths: config.min_widths,
     };
 
-    let (indices, mut widths) = match ctx.fixed_count {
-        Some(count) => select_fixed_columns(config, ctx, count),
-        None => select_dynamic_columns(config, ctx.horizontal_offset, ctx.available_width),
-    };
+    let (indices, mut widths) = select_fixed_columns(config, ctx, ctx.fixed_count);
 
     apply_slack_to_rightmost(&mut widths, ctx.available_width);
 
@@ -305,47 +302,6 @@ fn select_fixed_columns(
 
     if ctx.max_offset > 0 && ctx.horizontal_offset >= ctx.max_offset {
         try_prepend_partial_column(config, &mut indices, &mut widths, ctx.available_width);
-    }
-
-    (indices, widths)
-}
-
-fn select_dynamic_columns(
-    config: &ColumnWidthConfig,
-    horizontal_offset: usize,
-    available_width: u16,
-) -> (Vec<usize>, Vec<u16>) {
-    let mut indices = Vec::new();
-    let mut widths = Vec::new();
-    let mut used_width: u16 = 0;
-
-    for (i, &width) in config
-        .ideal_widths
-        .iter()
-        .enumerate()
-        .skip(horizontal_offset)
-    {
-        let separator = u16::from(!indices.is_empty());
-        let needed = width + separator;
-
-        if used_width + needed <= available_width {
-            used_width += needed;
-            indices.push(i);
-            widths.push(width);
-        } else {
-            let remaining = available_width.saturating_sub(used_width + separator);
-            let min_w = config.min_widths.get(i).copied().unwrap_or(MIN_COL_WIDTH);
-            if remaining >= min_w {
-                indices.push(i);
-                widths.push(remaining);
-            }
-            break;
-        }
-    }
-
-    if indices.is_empty() && horizontal_offset < config.ideal_widths.len() {
-        indices.push(horizontal_offset);
-        widths.push(config.ideal_widths[horizontal_offset].min(available_width));
     }
 
     (indices, widths)
@@ -480,7 +436,7 @@ mod tests {
         }
     }
 
-    fn ctx(offset: usize, width: u16, fixed: Option<usize>, max: usize) -> SelectionContext {
+    fn ctx(offset: usize, width: u16, fixed: usize, max: usize) -> SelectionContext {
         SelectionContext {
             horizontal_offset: offset,
             available_width: width,
@@ -650,50 +606,6 @@ mod tests {
         }
     }
 
-    mod select_dynamic {
-        use super::*;
-
-        #[test]
-        fn basic_fit_absorbs_remainder_into_rightmost() {
-            let ideal = vec![10, 10, 10, 10];
-            let min = vec![4, 4, 4, 4];
-            let cfg = config(&ideal, &min);
-            let (indices, selected) = select_viewport_columns(&cfg, &ctx(0, 35, None, 0));
-            assert_eq!(indices, vec![0, 1, 2]);
-            // 10+10+10 + 2 sep = 32, remainder 3 absorbed by rightmost
-            assert_eq!(selected, vec![10, 10, 13]);
-        }
-
-        #[test]
-        fn offset_selects_columns() {
-            let ideal = vec![10, 10, 10, 10];
-            let min = vec![4, 4, 4, 4];
-            let cfg = config(&ideal, &min);
-            let (indices, _) = select_viewport_columns(&cfg, &ctx(1, 25, None, 0));
-            assert_eq!(indices, vec![1, 2]);
-        }
-
-        #[test]
-        fn shrinks_rightmost() {
-            let ideal = vec![10, 10, 50];
-            let min = vec![4, 4, 4];
-            let cfg = config(&ideal, &min);
-            let (indices, selected) = select_viewport_columns(&cfg, &ctx(0, 30, None, 0));
-            assert_eq!(indices, vec![0, 1, 2]);
-            assert_eq!(selected, vec![10, 10, 8]);
-        }
-
-        #[test]
-        fn at_least_one() {
-            let ideal = vec![100];
-            let min = vec![4];
-            let cfg = config(&ideal, &min);
-            let (indices, selected) = select_viewport_columns(&cfg, &ctx(0, 50, None, 0));
-            assert_eq!(indices, vec![0]);
-            assert_eq!(selected, vec![50]);
-        }
-    }
-
     mod select_fixed {
         use super::*;
 
@@ -704,7 +616,7 @@ mod tests {
             let cfg = config(&ideal, &min);
             // max_offset=1, available=100, fixed=3
             // 3 cols: 32, slack=68, bonus col needs 11 → bonus added, remainder absorbed
-            let (indices, selected) = select_viewport_columns(&cfg, &ctx(0, 100, Some(3), 1));
+            let (indices, selected) = select_viewport_columns(&cfg, &ctx(0, 100, 3, 1));
             assert_eq!(indices, vec![0, 1, 2, 3]); // 3 fixed + 1 bonus
             assert_eq!(selected, vec![10, 10, 10, 67]);
         }
@@ -716,7 +628,7 @@ mod tests {
             let cfg = config(&ideal, &min);
             // max_offset=2, available=100, fixed=2
             // 2 cols: 21, slack=79, bonus col needs 11 → bonus added, remainder absorbed
-            let (indices, selected) = select_viewport_columns(&cfg, &ctx(1, 100, Some(2), 2));
+            let (indices, selected) = select_viewport_columns(&cfg, &ctx(1, 100, 2, 2));
             assert_eq!(indices, vec![1, 2, 3]); // 2 fixed + 1 bonus
             assert_eq!(selected, vec![10, 10, 78]);
         }
@@ -726,7 +638,7 @@ mod tests {
             let ideal = vec![20, 20, 20];
             let min = vec![4, 4, 4];
             let cfg = config(&ideal, &min);
-            let (indices, selected) = select_viewport_columns(&cfg, &ctx(0, 50, Some(3), 1));
+            let (indices, selected) = select_viewport_columns(&cfg, &ctx(0, 50, 3, 1));
             assert_eq!(indices, vec![0, 1, 2]);
             assert_eq!(selected, vec![20, 20, 8]);
         }
@@ -737,7 +649,7 @@ mod tests {
             let min = vec![4, 4, 4];
             let cfg = config(&ideal, &min);
             // 2 cols of 20 + 1 sep = 41, available = 34, excess = 7
-            let (indices, selected) = select_viewport_columns(&cfg, &ctx(1, 34, Some(2), 1));
+            let (indices, selected) = select_viewport_columns(&cfg, &ctx(1, 34, 2, 1));
             assert_eq!(indices, vec![1, 2]);
             assert_eq!(selected, vec![13, 20]); // left shrinks, right preserved
         }
@@ -747,7 +659,7 @@ mod tests {
             let ideal = vec![20, 20, 20];
             let min = vec![4, 4, 4];
             let cfg = config(&ideal, &min);
-            let (indices, selected) = select_viewport_columns(&cfg, &ctx(0, 34, Some(3), 1));
+            let (indices, selected) = select_viewport_columns(&cfg, &ctx(0, 34, 3, 1));
             assert_eq!(indices, vec![0, 1, 2]);
             assert_eq!(selected, vec![20, 8, 4]);
         }
@@ -757,7 +669,7 @@ mod tests {
             let ideal = vec![10, 10];
             let min = vec![4, 4];
             let cfg = config(&ideal, &min);
-            let (indices, _) = select_viewport_columns(&cfg, &ctx(0, 100, Some(5), 0));
+            let (indices, _) = select_viewport_columns(&cfg, &ctx(0, 100, 5, 0));
             assert_eq!(indices, vec![0, 1]);
         }
 
@@ -768,13 +680,13 @@ mod tests {
             let cfg = config(&ideal, &min);
             let max_offset = 2;
 
-            let (idx0, _) = select_viewport_columns(&cfg, &ctx(0, 75, Some(3), max_offset));
+            let (idx0, _) = select_viewport_columns(&cfg, &ctx(0, 75, 3, max_offset));
             assert_eq!(idx0, vec![0, 1, 2]);
 
-            let (idx1, _) = select_viewport_columns(&cfg, &ctx(1, 75, Some(3), max_offset));
+            let (idx1, _) = select_viewport_columns(&cfg, &ctx(1, 75, 3, max_offset));
             assert_eq!(idx1, vec![1, 2, 3]);
 
-            let (idx2, _) = select_viewport_columns(&cfg, &ctx(2, 75, Some(3), max_offset));
+            let (idx2, _) = select_viewport_columns(&cfg, &ctx(2, 75, 3, max_offset));
             assert_eq!(idx2, vec![2, 3, 4]);
         }
     }
@@ -857,8 +769,8 @@ mod tests {
             let cfg = config(&ideal, &min);
             let max_offset = 2;
 
-            let (idx0, _) = select_viewport_columns(&cfg, &ctx(0, 80, Some(3), max_offset));
-            let (idx1, _) = select_viewport_columns(&cfg, &ctx(1, 80, Some(3), max_offset));
+            let (idx0, _) = select_viewport_columns(&cfg, &ctx(0, 80, 3, max_offset));
+            let (idx1, _) = select_viewport_columns(&cfg, &ctx(1, 80, 3, max_offset));
 
             // First column shifts by 1 each scroll
             assert_eq!(idx0[0], 0);
@@ -876,7 +788,7 @@ mod tests {
             let cfg = config(&ideal, &min);
             let max_offset = 2;
 
-            let (indices, widths) = select_viewport_columns(&cfg, &ctx(2, 80, Some(3), max_offset));
+            let (indices, widths) = select_viewport_columns(&cfg, &ctx(2, 80, 3, max_offset));
 
             // Truncated peek of col 1 fills the leftover; anchor col 2 keeps ideal width
             assert_eq!(indices, vec![1, 2, 3, 4]);
@@ -894,7 +806,7 @@ mod tests {
 
             for offset in 0..=max_offset {
                 let (indices, _) =
-                    select_viewport_columns(&cfg, &ctx(offset, 60, Some(fixed_count), max_offset));
+                    select_viewport_columns(&cfg, &ctx(offset, 60, fixed_count, max_offset));
                 assert!(
                     indices.len() >= fixed_count,
                     "Column count {} below fixed {} at offset {}",
@@ -915,7 +827,7 @@ mod tests {
             let min = vec![10, 10, 10];
             let cfg = config(&ideal, &min);
 
-            let (_, selected) = select_viewport_columns(&cfg, &ctx(0, 35, Some(3), 1));
+            let (_, selected) = select_viewport_columns(&cfg, &ctx(0, 35, 3, 1));
 
             for (i, (w, min_w)) in selected.iter().zip(min.iter()).enumerate() {
                 assert!(*w >= *min_w, "Column {i} width {w} is below min {min_w}");
@@ -928,7 +840,7 @@ mod tests {
             let min = vec![15, 15, 15];
             let cfg = config(&ideal, &min);
 
-            let (_, selected) = select_viewport_columns(&cfg, &ctx(0, 50, Some(3), 1));
+            let (_, selected) = select_viewport_columns(&cfg, &ctx(0, 50, 3, 1));
 
             for (w, min_w) in selected.iter().zip(min.iter()) {
                 assert!(*w >= *min_w);
@@ -947,7 +859,7 @@ mod tests {
             for offset in 0..=max_offset {
                 let cfg = config(&ideal, &min);
                 let (indices, widths) =
-                    select_viewport_columns(&cfg, &ctx(offset, available, Some(count), max_offset));
+                    select_viewport_columns(&cfg, &ctx(offset, available, count, max_offset));
                 for (i, &w) in widths.iter().enumerate() {
                     let col_idx = indices[i];
                     let min_w = min[col_idx];
@@ -968,7 +880,7 @@ mod tests {
             let max_offset = 1;
 
             let (indices, selected) =
-                select_viewport_columns(&cfg, &ctx(max_offset, 35, Some(2), max_offset));
+                select_viewport_columns(&cfg, &ctx(max_offset, 35, 2, max_offset));
 
             let last_idx = indices.len() - 1;
             assert_eq!(
@@ -987,7 +899,7 @@ mod tests {
             // Suffix [1, 2] = 17 fits in 25; col 0 (ideal 20) can't fit fully,
             // so the leftover 7 shows it truncated
             let (indices, widths) =
-                select_viewport_columns(&cfg, &ctx(max_offset, 25, Some(1), max_offset));
+                select_viewport_columns(&cfg, &ctx(max_offset, 25, 1, max_offset));
 
             assert_eq!(indices, vec![0, 1, 2]);
             assert_eq!(widths, vec![7, 8, 8]);
@@ -1002,7 +914,7 @@ mod tests {
 
             // Leftover 7 < col 0 min 15 → absorbed by rightmost instead
             let (indices, widths) =
-                select_viewport_columns(&cfg, &ctx(max_offset, 25, Some(1), max_offset));
+                select_viewport_columns(&cfg, &ctx(max_offset, 25, 1, max_offset));
 
             assert_eq!(indices, vec![1, 2]);
             assert_eq!(widths, vec![8, 16]);
@@ -1017,7 +929,7 @@ mod tests {
 
             // Pane narrower than the column's header min width (20 > 15)
             let (indices, widths) =
-                select_viewport_columns(&cfg, &ctx(max_offset, 15, Some(1), max_offset));
+                select_viewport_columns(&cfg, &ctx(max_offset, 15, 1, max_offset));
 
             assert_eq!(indices, vec![1]);
             assert_eq!(widths, vec![15]);
@@ -1033,7 +945,7 @@ mod tests {
             // [1, 2] exceeds 15 even at min widths; col 1 is dropped and the
             // surviving col 2 still overflows → clamped to the pane
             let (indices, widths) =
-                select_viewport_columns(&cfg, &ctx(max_offset, 15, Some(2), max_offset));
+                select_viewport_columns(&cfg, &ctx(max_offset, 15, 2, max_offset));
 
             assert_eq!(indices, vec![2]);
             assert_eq!(widths, vec![15]);
@@ -1050,7 +962,7 @@ mod tests {
             // After shrinking left to 20: 20 + 30 + 1 = 51 > 35, still excess
             // Should drop leftmost, keep only rightmost
             let (indices, widths) =
-                select_viewport_columns(&cfg, &ctx(max_offset, 35, Some(2), max_offset));
+                select_viewport_columns(&cfg, &ctx(max_offset, 35, 2, max_offset));
 
             assert_eq!(indices.len(), 1, "Should drop to 1 column");
             assert_eq!(indices[0], 2, "Should keep rightmost column");
@@ -1069,7 +981,7 @@ mod tests {
             let cfg = config(&ideal, &min);
 
             // 10+10+10 + 2sep = 32, available = 50, slack = 18
-            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 50, Some(3), 0));
+            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 50, 3, 0));
 
             assert_eq!(indices, vec![0, 1, 2]);
             assert_eq!(widths[0], 10);
@@ -1084,7 +996,7 @@ mod tests {
             let cfg = config(&ideal, &min);
 
             // 40+40 + 1sep = 81, available = 120, slack = 39
-            let (_, widths) = select_viewport_columns(&cfg, &ctx(0, 120, Some(2), 0));
+            let (_, widths) = select_viewport_columns(&cfg, &ctx(0, 120, 2, 0));
 
             assert_eq!(widths[0], 40);
             assert_eq!(widths[1], 79); // 40 + 39 (all slack absorbed)
@@ -1098,7 +1010,7 @@ mod tests {
 
             // 3 cols: 32; col 3 gets neither bonus (needs 21 > slack 8)
             // nor partial (remaining 7 < min 15) → leftover goes to rightmost
-            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 40, Some(3), 2));
+            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 40, 3, 2));
 
             assert_eq!(indices, vec![0, 1, 2]);
             assert_eq!(widths, vec![10, 10, 18]);
@@ -1111,8 +1023,8 @@ mod tests {
             let cfg = config(&ideal, &min);
             let max_offset = 2;
 
-            let (idx0, _) = select_viewport_columns(&cfg, &ctx(0, 60, Some(3), max_offset));
-            let (idx1, _) = select_viewport_columns(&cfg, &ctx(1, 60, Some(3), max_offset));
+            let (idx0, _) = select_viewport_columns(&cfg, &ctx(0, 60, 3, max_offset));
+            let (idx1, _) = select_viewport_columns(&cfg, &ctx(1, 60, 3, max_offset));
 
             assert_eq!(idx0[0], 0);
             assert_eq!(idx1[0], 1);
@@ -1136,7 +1048,7 @@ mod tests {
                 .map(|offset| {
                     let (indices, _) = select_viewport_columns(
                         &cfg,
-                        &ctx(offset, available, Some(plan.column_count), plan.max_offset),
+                        &ctx(offset, available, plan.column_count, plan.max_offset),
                     );
                     indices
                 })
@@ -1175,7 +1087,7 @@ mod tests {
             let min = vec![4, 4];
             let cfg = config(&ideal, &min);
 
-            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 120, Some(2), 0));
+            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 120, 2, 0));
 
             assert_eq!(indices, vec![0, 1]);
             assert_eq!(widths, vec![10, 109]);
@@ -1191,7 +1103,7 @@ mod tests {
             let cfg = config(&ideal, &min);
             let (indices, widths) = select_viewport_columns(
                 &cfg,
-                &ctx(0, available, Some(plan.column_count), plan.max_offset),
+                &ctx(0, available, plan.column_count, plan.max_offset),
             );
 
             assert_eq!(indices, vec![0, 1]);
@@ -1218,7 +1130,7 @@ mod tests {
             let ctx = SelectionContext {
                 horizontal_offset: clamped_offset,
                 available_width,
-                fixed_count: Some(plan.column_count),
+                fixed_count: plan.column_count,
                 max_offset: plan.max_offset,
             };
 
@@ -1362,7 +1274,7 @@ mod tests {
             let cfg = config(&ideal, &min);
 
             // Fixed count = 2 (21), bonus cols 2,3,4 each need 11 → all added
-            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 70, Some(2), 3));
+            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 70, 2, 3));
 
             assert_eq!(indices, vec![0, 1, 2, 3, 4]);
             let total = total_width_with_separators(&widths);
@@ -1377,7 +1289,7 @@ mod tests {
 
             // 3 cols: 32; col 3 needs 21 > slack 8 → no bonus,
             // but remaining 7 >= min 4 → shown truncated
-            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 40, Some(3), 2));
+            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 40, 3, 2));
 
             assert_eq!(indices, vec![0, 1, 2, 3]);
             assert_eq!(widths, vec![10, 10, 10, 7]);
@@ -1390,7 +1302,7 @@ mod tests {
             let cfg = config(&ideal, &min);
 
             // Showing cols [1, 2]; nothing exists after col 2 to append
-            let (indices, _) = select_viewport_columns(&cfg, &ctx(1, 50, Some(2), 2));
+            let (indices, _) = select_viewport_columns(&cfg, &ctx(1, 50, 2, 2));
 
             assert_eq!(indices.len(), 2);
         }
@@ -1402,7 +1314,7 @@ mod tests {
             let min = vec![4, 4, 4, 4];
             let cfg = config(&ideal, &min);
 
-            let (indices, _) = select_viewport_columns(&cfg, &ctx(0, 100, Some(3), 0));
+            let (indices, _) = select_viewport_columns(&cfg, &ctx(0, 100, 3, 0));
 
             // Only 3 columns (fixed count), not 4
             assert_eq!(indices.len(), 3);
@@ -1416,8 +1328,8 @@ mod tests {
             // Fixed count = 3, max_offset = 3
             // With bonus, might show 4 columns
 
-            let (idx0, _) = select_viewport_columns(&cfg, &ctx(0, 70, Some(3), 3));
-            let (idx1, _) = select_viewport_columns(&cfg, &ctx(1, 70, Some(3), 3));
+            let (idx0, _) = select_viewport_columns(&cfg, &ctx(0, 70, 3, 3));
+            let (idx1, _) = select_viewport_columns(&cfg, &ctx(1, 70, 3, 3));
 
             // Scroll should still move by 1 (fixed count behavior)
             // idx0 starts at 0, idx1 starts at 1
@@ -1435,7 +1347,7 @@ mod tests {
             // Available: 80, slack: 18
             // Next col needs: 15 + 1 sep = 16
             // 18 >= 16, bonus added
-            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 80, Some(3), 1));
+            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 80, 3, 1));
 
             assert_eq!(indices.len(), 4);
             let total = total_width_with_separators(&widths);

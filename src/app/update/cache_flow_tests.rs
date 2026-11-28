@@ -24,8 +24,8 @@ const MAX_STEPS: usize = 10_000;
 struct PendingFetch {
     endpoint: Arc<ConnectionEndpoint>,
     run_id: u64,
-    schema: String,
-    table: String,
+    tables: Vec<String>,
+    details: Vec<Table>,
 }
 
 struct CacheFlowDriver {
@@ -67,16 +67,19 @@ impl CacheFlowDriver {
         let index = self
             .pending_fetches
             .iter()
-            .position(|fetch| format!("{}.{}", fetch.schema, fetch.table) == qualified_name)
+            .position(|fetch| fetch.tables.iter().any(|name| name == qualified_name))
             .unwrap_or_else(|| panic!("no pending fetch for {qualified_name}"));
-        let fetch = self.pending_fetches.remove(index);
-        self.channel.push_back(Action::TableDetailCached {
-            endpoint: fetch.endpoint,
-            run_id: fetch.run_id,
-            schema: fetch.schema,
-            table: fetch.table,
-            outcome: Ok(Box::new(table)),
-        });
+        let fetch = &mut self.pending_fetches[index];
+        fetch.tables.retain(|name| name != qualified_name);
+        fetch.details.push(table);
+        if fetch.tables.is_empty() {
+            let fetch = self.pending_fetches.remove(index);
+            self.channel.push_back(Action::TableDetailsCached {
+                endpoint: fetch.endpoint,
+                run_id: fetch.run_id,
+                outcome: Ok(fetch.details),
+            });
+        }
         self.run_until_idle();
     }
 
@@ -93,7 +96,7 @@ impl CacheFlowDriver {
     fn pending_fetch_names(&self) -> Vec<String> {
         self.pending_fetches
             .iter()
-            .map(|fetch| format!("{}.{}", fetch.schema, fetch.table))
+            .flat_map(|fetch| fetch.tables.iter().cloned())
             .collect()
     }
 
@@ -156,22 +159,21 @@ impl CacheFlowDriver {
             | Effect::CancelTableDetail
             | Effect::CancelConnectionTask
             | Effect::CancelSqliteDiagnostics => {}
-            Effect::SchedulePrefetchQueueProcessing { run_id } => {
-                self.channel
-                    .push_back(Action::ProcessPrefetchQueue { run_id });
-            }
             Effect::PrefetchTableColumnsAndFks {
                 endpoint,
                 run_id,
-                schema,
-                table,
+                tables,
             } => {
-                self.fetched_tables.push(format!("{schema}.{table}"));
+                let tables: Vec<String> = tables
+                    .into_iter()
+                    .map(|(schema, table)| format!("{schema}.{table}"))
+                    .collect();
+                self.fetched_tables.extend(tables.iter().cloned());
                 self.pending_fetches.push(PendingFetch {
                     endpoint,
                     run_id,
-                    schema,
-                    table,
+                    tables,
+                    details: Vec::new(),
                 });
             }
             other => self.io_effects.push(other),
@@ -262,7 +264,6 @@ fn signatures(names: &[&str]) -> Arc<TableSignatureSnapshot> {
                 signature: "v1".to_string(),
             })
             .collect(),
-        prefetched_table_details: Vec::new(),
     })
 }
 
@@ -432,22 +433,16 @@ mod cache_lifetime {
     #[test]
     fn stale_prefetch_results_do_not_replace_cached_columns() {
         let mut driver = driver_with_cached_users();
-        let run_id = driver
-            .state
-            .table_prefetch
-            .active_prefetch_run_id()
-            .expect("completion prefetch should stay active");
+        let run_id = 1;
 
         for (dsn, stale_run_id) in [
             (POSTGRES_DSN, run_id + 100),
             ("postgres://localhost/other", run_id),
         ] {
-            driver.dispatch(Action::TableDetailCached {
+            driver.dispatch(Action::TableDetailsCached {
                 endpoint: endpoint::postgres(dsn),
                 run_id: stale_run_id,
-                schema: "public".to_string(),
-                table: "users".to_string(),
-                outcome: Ok(Box::new(table("users", &["legacy_column"], &[]))),
+                outcome: Ok(vec![table("users", &["legacy_column"], &[])]),
             });
         }
         driver.dispatch(Action::CompletionRequest);
@@ -479,12 +474,10 @@ mod cache_lifetime {
             &endpoint::mysql("mysql://localhost/target", Some("target")),
         );
 
-        driver.dispatch(Action::TableDetailCached {
+        driver.dispatch(Action::TableDetailsCached {
             endpoint: endpoint::mysql("mysql://localhost/current", Some("current")),
             run_id,
-            schema: "public".to_string(),
-            table: "users".to_string(),
-            outcome: Ok(Box::new(table("users", &["id"], &[]))),
+            outcome: Ok(vec![table("users", &["id"], &[])]),
         });
 
         assert!(!driver.is_cached("public.users"));

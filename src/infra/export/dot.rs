@@ -393,7 +393,7 @@ mod tests {
                 name: "orders".to_string(),
                 schema: "public".to_string(),
                 foreign_keys: vec![ErFkInfo {
-                    name: "fk_user".to_string(),
+                    name: r#"fk_"user""#.to_string(),
                     from_qualified: "public.orders".to_string(),
                     to_qualified: "public.users".to_string(),
                 }],
@@ -415,13 +415,12 @@ mod tests {
         }
 
         #[test]
-        fn foreign_keys_appear_as_edges() {
+        fn foreign_keys_appear_as_edges_with_escaped_labels() {
             let tables = make_test_tables();
 
             let dot = DotExporter::generate_full_dot(&tables);
 
-            assert!(dot.contains("\"public.orders\" -> \"public.users\""));
-            assert!(dot.contains("label=\"fk_user\""));
+            assert!(dot.contains(r#""public.orders" -> "public.users" [label="fk_\"user\""]"#));
         }
 
         #[test]

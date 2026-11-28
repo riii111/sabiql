@@ -18,11 +18,12 @@ pub(super) static VIEWING: LazyLock<Vec<Row>> = LazyLock::new(|| {
         },
     );
     for row in &mut rows {
-        row.surfaces = &[
+        row.surfaces = [
             HintSurface::Current,
             HintSurface::SearchFilter,
             HintSurface::ModalBasics,
-        ];
+        ]
+        .to_vec();
     }
     rows.extend([
         Row::new(
@@ -82,7 +83,7 @@ pub(super) static EDITING: LazyLock<Vec<Row>> = LazyLock::new(|| {
 });
 
 fn rows(context: &KeyContext) -> &'static [Row] {
-    if context.is_help_editing() {
+    if context.is_help_editing {
         &EDITING
     } else {
         &VIEWING

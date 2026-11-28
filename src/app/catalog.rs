@@ -1,8 +1,6 @@
 use unicode_width::UnicodeWidthStr;
 
 use crate::model::app_state::AppState;
-use crate::model::shared::input_mode::InputMode;
-use crate::policy::FeaturePolicy;
 use crate::update::input::keymap::{Hint, HintSurface, KeyContext, current_hints, reference_hints};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,13 +19,12 @@ pub const HELP_KEY_DESC_GAP: usize = 2;
 impl HelpDocument {
     pub fn from_state(state: &AppState) -> Self {
         let filter = state.ui.help().filter();
-        let context = state.ui.help().origin().cloned().unwrap_or_else(|| {
-            KeyContext::for_scope(
-                InputMode::Normal,
-                state.settings.saved_keymap_preset(),
-                &FeaturePolicy::new(&state.session.active_engine_feature_profile()),
-            )
-        });
+        let context = state
+            .ui
+            .help()
+            .origin()
+            .cloned()
+            .unwrap_or_else(|| KeyContext::for_help_fallback(state));
         Self::new(context, filter.content(), filter.cursor())
     }
 
@@ -250,8 +247,10 @@ mod tests {
     use crate::model::connection::setup::ConnectionField;
     use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
     use crate::model::shared::focused_pane::FocusedPane;
+    use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::settings::KeymapPreset;
     use crate::model::sql_editor::modal::SqlModalTab;
+    use crate::policy::FeaturePolicy;
     use crate::policy::FeatureRequirement;
     use crate::test_support;
     use crate::test_support::endpoint;
@@ -264,6 +263,57 @@ mod tests {
             .flat_map(HelpSection::rows)
             .map(HelpRow::description)
             .collect()
+    }
+
+    #[test]
+    fn reference_sections_preserve_order_and_visible_bindings() {
+        use std::fmt::Write as _;
+
+        // Group identical sections so the fixture records each distinct display once.
+        let mut sections = Vec::<(String, Vec<String>)>::new();
+        for database in [
+            None,
+            Some(DatabaseType::PostgreSQL),
+            Some(DatabaseType::MySQL),
+            Some(DatabaseType::SQLite),
+        ] {
+            for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
+                let mut state = AppState::new("test".to_string());
+                if let Some(database) = database {
+                    state.session.activate_connection(
+                        &ConnectionId::new(),
+                        "database",
+                        &endpoint::for_engine(database, "database"),
+                    );
+                }
+                state.settings.load_keymap_preset(preset);
+                let document = HelpDocument::new(KeyContext::from_state(&state), "", 0);
+                for (index, section) in document.sections()[1..].iter().enumerate() {
+                    let mut display = format!("[{}]\n", section.title());
+                    for row in section.rows() {
+                        writeln!(display, "{} | {}", row.key(), row.description()).unwrap();
+                    }
+                    let origin = format!("{database:?} {preset:?} {index}");
+                    if let Some((_, origins)) = sections
+                        .iter_mut()
+                        .find(|(existing, _)| *existing == display)
+                    {
+                        origins.push(origin);
+                    } else {
+                        sections.push((display, vec![origin]));
+                    }
+                }
+            }
+        }
+        let mut actual = String::new();
+        for (display, origins) in sections {
+            writeln!(actual, "# {}", origins.join(", ")).unwrap();
+            actual.push_str(&display);
+        }
+        assert_eq!(
+            actual,
+            include_str!("catalog/help_reference.txt").replace("\r\n", "\n")
+        );
     }
 
     #[test]
@@ -919,9 +969,11 @@ mod tests {
 
     #[test]
     fn connection_setup_cleartext_auth_is_a_dropdown() {
-        let policy = FeaturePolicy::new(&EngineFeatureProfile::postgres_like());
-        let context = KeyContext::for_scope(InputMode::ConnectionSetup, KeymapPreset::Ide, &policy)
-            .with_connection_setup(ConnectionField::CleartextAuth, false);
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::ConnectionSetup);
+        state.settings.load_keymap_preset(KeymapPreset::Ide);
+        state.connection_setup.focused_field = ConnectionField::CleartextAuth;
+        let context = KeyContext::from_state(&state);
         let document = HelpDocument::new(context, "", 0);
         let rows = document.sections()[0].rows();
         assert!(

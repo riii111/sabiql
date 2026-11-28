@@ -65,7 +65,6 @@ impl PostgresAdapter {
             .await?;
         Ok(TableSignatureSnapshot {
             signatures: Self::parse_table_signatures(&json)?,
-            prefetched_table_details: Vec::new(),
         })
     }
 
@@ -102,6 +101,53 @@ impl PostgresAdapter {
             storage_attributes: TableStorageAttributes::default(),
             kind_info: TableKindInfo::default(),
         })
+    }
+
+    pub async fn fetch_table_columns_and_fks_batch(
+        &self,
+        endpoint: &PostgresEndpoint,
+        tables: &[(String, String)],
+    ) -> Result<Vec<Table>, DbOperationError> {
+        if tables.is_empty() {
+            return Ok(Vec::new());
+        }
+        let query = Self::batch_table_columns_and_fks_query(tables);
+        let json = self
+            .execute_batch_metadata_sql(&postgres_conninfo(endpoint), &query)
+            .await?;
+        #[derive(serde::Deserialize)]
+        struct Row {
+            schema: String,
+            name: String,
+            detail: serde_json::Value,
+        }
+        let rows: Vec<Row> = serde_json::from_str(&json)?;
+        let mut details = Vec::with_capacity(rows.len());
+        for row in rows {
+            let (exists, columns, foreign_keys) =
+                Self::parse_table_columns_and_fks(&row.detail.to_string())?;
+            if !exists {
+                continue;
+            }
+            let primary_key = extract_primary_key(&columns);
+            details.push(Table {
+                schema: row.schema,
+                name: row.name,
+                owner: None,
+                columns,
+                primary_key,
+                foreign_keys,
+                indexes: Vec::new(),
+                rls: None,
+                triggers: Vec::new(),
+                row_count_estimate: None,
+                comment: None,
+                source_ddl: None,
+                storage_attributes: TableStorageAttributes::default(),
+                kind_info: TableKindInfo::default(),
+            });
+        }
+        Ok(details)
     }
 
     pub async fn fetch_table_columns_and_fks(
@@ -175,6 +221,50 @@ mod tests {
             decode(url.password().unwrap_or_default()),
             ssl_mode,
         ))
+    }
+
+    #[tokio::test]
+    #[ignore = "requires PostgreSQL"]
+    async fn batch_returns_multiple_relations_and_omits_missing_ones() {
+        let adapter = PostgresAdapter::new();
+        let dsn = postgres_test_dsn();
+        let schema = unique_schema_name();
+        let unusual_name = "odd\n\\! not_a_command";
+        adapter.execute_adhoc(&dsn, &format!(
+            "CREATE SCHEMA \"{schema}\"; CREATE TABLE \"{schema}\".parent (id integer PRIMARY KEY); CREATE TABLE \"{schema}\".child (id integer, parent_id integer REFERENCES \"{schema}\".parent(id)); CREATE TABLE \"{schema}\".\"{unusual_name}\" (id integer); DO $$ BEGIN FOR n IN 1..1800 LOOP EXECUTE format('CREATE TABLE %I.%I (id integer)', '{schema}', 'bulk_' || lpad(n::text, 5, '0') || repeat('x', 40)); END LOOP; END $$;"
+        ), AccessMode::ReadWrite).await.unwrap();
+        let mut tables = vec![
+            (schema.clone(), "parent".into()),
+            (schema.clone(), "child".into()),
+            (schema.clone(), "missing".into()),
+            (schema.clone(), unusual_name.into()),
+        ];
+        tables
+            .extend((1..=1800).map(|n| (schema.clone(), format!("bulk_{n:05}{}", "x".repeat(40)))));
+        assert!(PostgresAdapter::batch_table_columns_and_fks_query(&tables).len() > 131_072);
+        let result = adapter
+            .fetch_table_columns_and_fks_batch(&dsn, &tables)
+            .await;
+        adapter
+            .execute_adhoc(
+                &dsn,
+                &format!("DROP SCHEMA \"{schema}\" CASCADE"),
+                AccessMode::ReadWrite,
+            )
+            .await
+            .unwrap();
+        let details = result.unwrap();
+        assert_eq!(details.len(), 1803);
+        assert!(details.iter().any(|table| table.name == unusual_name));
+        let parent = details.iter().find(|table| table.name == "parent").unwrap();
+        assert_eq!(
+            parent.primary_key.as_deref(),
+            Some(["id".to_string()].as_slice())
+        );
+        let child = details.iter().find(|table| table.name == "child").unwrap();
+        assert_eq!(child.columns.len(), 2);
+        assert_eq!(child.foreign_keys.len(), 1);
+        assert_eq!(child.foreign_keys[0].to_table, "parent");
     }
 
     #[tokio::test]
@@ -252,11 +342,13 @@ mod tests {
             r#"
             CREATE SCHEMA "{schema}";
             CREATE TABLE {} (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+            CREATE POLICY public_read ON {} FOR SELECT TO PUBLIC USING (true);
             CREATE TABLE {} (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
             CREATE TABLE {} ();
             CREATE TABLE {} (id INTEGER);
             CREATE TABLE {} (id INTEGER);
             "#,
+            qualified("existing_full"),
             qualified("existing_full"),
             qualified("existing_light"),
             qualified("zero_columns"),
@@ -277,6 +369,11 @@ mod tests {
                         .map_err(|error| format!("full existing fetch failed: {error}"))?;
                     if full.columns.len() != 2 || full.owner.is_none() || full.rls.is_none() {
                         return Err(format!("unexpected full existing table: {full:?}"));
+                    }
+
+                    let policies = &full.rls.as_ref().expect("RLS metadata").policies;
+                    if policies.len() != 1 || policies[0].name != "public_read" || !policies[0].roles.is_empty() {
+                        return Err(format!("unexpected PUBLIC policy: {policies:?}"));
                     }
 
                     let light = adapter

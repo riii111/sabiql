@@ -1193,9 +1193,9 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.ui.request_er_picker_after_metadata();
             let _ = state.er_preparation.start_waiting_run();
-            state
+            let _ = state
                 .table_prefetch
-                .queue_table_prefetch("public.users".to_string());
+                .begin(vec!["public.users".to_string()], true);
             let run_id = state.session.begin_connection_save();
 
             let action = Action::ConnectionSaved {
@@ -1214,7 +1214,7 @@ mod tests {
 
             assert!(!state.ui.pending_er_picker());
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
-            assert!(!state.table_prefetch.has_pending_prefetch());
+            assert!(state.table_prefetch.is_complete());
         }
 
         #[test]

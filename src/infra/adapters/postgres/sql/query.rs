@@ -5,7 +5,7 @@ use super::super::PostgresAdapter;
 impl PostgresAdapter {
     pub(in crate::adapters::postgres) fn tables_query() -> &'static str {
         r"
-        SELECT json_agg(row_to_json(t))
+        SELECT COALESCE(json_agg(row_to_json(t)), '[]'::json)
         FROM (
             SELECT
                 n.nspname as schema,
@@ -31,7 +31,7 @@ impl PostgresAdapter {
 
     pub(in crate::adapters::postgres) fn table_signatures_query() -> &'static str {
         r"
-        SELECT json_agg(row_to_json(t))
+        SELECT COALESCE(json_agg(row_to_json(t)), '[]'::json)
         FROM (
             SELECT
                 n.nspname AS schema,
@@ -81,7 +81,7 @@ impl PostgresAdapter {
 
     pub(in crate::adapters::postgres) fn schemas_query() -> &'static str {
         r"
-        SELECT json_agg(row_to_json(s))
+        SELECT COALESCE(json_agg(row_to_json(s)), '[]'::json)
         FROM (
             SELECT nspname as name
             FROM pg_namespace
@@ -98,9 +98,13 @@ impl PostgresAdapter {
     }
 
     pub(in crate::adapters::postgres) fn columns_query(schema: &str, table: &str) -> String {
+        Self::columns_query_for_sql(&Postgres.quote_text(schema), &Postgres.quote_text(table))
+    }
+
+    fn columns_query_for_sql(schema: &str, table: &str) -> String {
         format!(
             r"
-            SELECT json_agg(row_to_json(c) ORDER BY c.ordinal_position)
+            SELECT COALESCE(json_agg(row_to_json(c) ORDER BY c.ordinal_position), '[]'::json)
             FROM (
                 SELECT
                     a.attname as name,
@@ -129,14 +133,12 @@ impl PostgresAdapter {
                 JOIN pg_namespace n ON n.oid = cl.relnamespace
                 JOIN pg_attribute a ON a.attrelid = cl.oid
                 LEFT JOIN pg_attrdef d ON d.adrelid = cl.oid AND d.adnum = a.attnum
-                WHERE n.nspname = {}
-                  AND cl.relname = {}
+                WHERE n.nspname = {schema}
+                  AND cl.relname = {table}
                   AND a.attnum > 0
                   AND NOT a.attisdropped
             ) c
-            ",
-            Postgres.quote_text(schema),
-            Postgres.quote_text(table)
+            "
         )
     }
 
@@ -191,7 +193,7 @@ impl PostgresAdapter {
     pub(in crate::adapters::postgres) fn indexes_query(schema: &str, table: &str) -> String {
         format!(
             r"
-            SELECT json_agg(row_to_json(i))
+            SELECT COALESCE(json_agg(row_to_json(i)), '[]'::json)
             FROM (
                 SELECT
                     idx.relname as name,
@@ -230,9 +232,13 @@ impl PostgresAdapter {
     }
 
     pub(in crate::adapters::postgres) fn foreign_keys_query(schema: &str, table: &str) -> String {
+        Self::foreign_keys_query_for_sql(&Postgres.quote_text(schema), &Postgres.quote_text(table))
+    }
+
+    fn foreign_keys_query_for_sql(schema: &str, table: &str) -> String {
         format!(
             r"
-            SELECT json_agg(row_to_json(fk))
+            SELECT COALESCE(json_agg(row_to_json(fk)), '[]'::json)
             FROM (
                 SELECT
                     con.conname as name,
@@ -252,13 +258,11 @@ impl PostgresAdapter {
                 JOIN pg_attribute a1 ON a1.attrelid = c1.oid AND a1.attnum = ANY(con.conkey)
                 JOIN pg_attribute a2 ON a2.attrelid = c2.oid AND a2.attnum = ANY(con.confkey)
                 WHERE con.contype = 'f'
-                  AND n1.nspname = {}
-                  AND c1.relname = {}
+                  AND n1.nspname = {schema}
+                  AND c1.relname = {table}
                 GROUP BY con.conname, n1.nspname, c1.relname, n2.nspname, c2.relname, con.confdeltype, con.confupdtype
             ) fk
-            ",
-            Postgres.quote_text(schema),
-            Postgres.quote_text(table)
+            "
         )
     }
 
@@ -272,11 +276,11 @@ impl PostgresAdapter {
                     SELECT json_agg(json_build_object(
                         'name', p.polname,
                         'permissive', p.polpermissive,
-                        'roles', (
+                        'roles', COALESCE((
                             SELECT array_agg(r.rolname)
                             FROM pg_roles r
                             WHERE r.oid = ANY(p.polroles)
-                        ),
+                        ), ARRAY[]::name[]),
                         'cmd', p.polcmd,
                         'qual', pg_get_expr(p.polqual, p.polrelid),
                         'with_check', pg_get_expr(p.polwithcheck, p.polrelid)
@@ -298,7 +302,7 @@ impl PostgresAdapter {
     pub(in crate::adapters::postgres) fn triggers_query(schema: &str, table: &str) -> String {
         format!(
             r"
-            SELECT json_agg(row_to_json(t) ORDER BY t.name)
+            SELECT COALESCE(json_agg(row_to_json(t) ORDER BY t.name), '[]'::json)
             FROM (
                 SELECT
                     tg.tgname AS name,
@@ -358,6 +362,42 @@ impl PostgresAdapter {
             table = Postgres.quote_text(table),
             columns = Self::columns_query(schema, table).trim(),
             fks = Self::foreign_keys_query(schema, table).trim(),
+        )
+    }
+
+    pub(in crate::adapters::postgres) fn batch_table_columns_and_fks_query(
+        tables: &[(String, String)],
+    ) -> String {
+        let values = tables
+            .iter()
+            .map(|(schema, table)| {
+                // Hex encoding keeps every identifier on one line and excludes psql metacommands.
+                let literal = |value: &str| {
+                    use std::fmt::Write as _;
+                    let mut hex = String::with_capacity(value.len() * 2);
+                    for byte in value.as_bytes() {
+                        write!(&mut hex, "{byte:02x}").expect("writing to a string cannot fail");
+                    }
+                    format!("convert_from(decode('{hex}', 'hex'), 'UTF8')")
+                };
+                format!("({}, {})", literal(schema), literal(table))
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            r"
+            WITH requested(schema_name, table_name) AS (VALUES {values})
+            SELECT COALESCE(json_agg(json_build_object(
+                'schema', r.schema_name, 'name', r.table_name,
+                'detail', json_build_object(
+                    'exists', EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE n.nspname = r.schema_name AND c.relname = r.table_name),
+                    'columns', ({columns}), 'foreign_keys', ({fks})
+                )
+            )), '[]'::json) FROM requested r
+        ",
+            columns = Self::columns_query_for_sql("r.schema_name", "r.table_name"),
+            fks = Self::foreign_keys_query_for_sql("r.schema_name", "r.table_name")
         )
     }
 
@@ -586,6 +626,20 @@ mod tests {
 
     mod table_columns_and_fks_query {
         use super::*;
+
+        #[test]
+        fn batch_uses_one_requested_relation_and_quotes_each_name() {
+            let sql = PostgresAdapter::batch_table_columns_and_fks_query(&[
+                ("public".into(), "users".into()),
+                ("odd'schema".into(), "order's".into()),
+            ]);
+            assert!(sql.contains("decode('7075626c6963', 'hex')"));
+            assert!(sql.contains("decode('6f646427736368656d61', 'hex')"));
+            assert!(!sql.contains("odd'schema"));
+            assert!(sql.contains("FROM requested r"));
+            assert!(sql.contains("n.nspname = r.schema_name"));
+            assert!(sql.contains("c1.relname = r.table_name"));
+        }
 
         #[test]
         fn wraps_existence_columns_and_fks_in_json_build_object() {

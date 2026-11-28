@@ -988,27 +988,30 @@ mod tests {
             }
         }
 
-        #[test]
-        fn ddl_resets_prefetch_state_and_clears_table_detail() {
+        #[rstest::rstest]
+        #[case::drop(CommandTag::Drop("TABLE".to_string()))]
+        #[case::alter(CommandTag::Alter("TABLE".to_string()))]
+        fn ddl_reloads_metadata_and_clears_stale_table_detail(#[case] command_tag: CommandTag) {
             let mut state = state_with_table("public", "users");
-            let _ = state.table_prefetch.begin_er_prefetch();
-            state
+            let _ = state.table_prefetch.begin(Vec::<String>::new(), true);
+            let _ = state
                 .table_prefetch
-                .queue_table_prefetch("public.users".to_string());
+                .begin(vec!["public.users".to_string()], true);
             state
                 .session
                 .set_table_detail_raw(Some(users_table_detail()));
-            let action = query_completed_action(
-                &mut state,
-                adhoc_result_with_tag(CommandTag::Drop("TABLE".to_string())),
-                0,
-                None,
+            let action =
+                query_completed_action(&mut state, adhoc_result_with_tag(command_tag), 0, None);
+
+            let effects = route(&mut state, action, Instant::now());
+
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
             );
-
-            route(&mut state, action, Instant::now());
-
             assert!(state.table_prefetch.active_prefetch_run_id().is_none());
-            assert!(!state.table_prefetch.has_pending_prefetch());
+            assert!(state.table_prefetch.is_complete());
             assert!(state.session.table_detail().is_none());
         }
 
@@ -1035,10 +1038,7 @@ mod tests {
                     run_id: old_er_run_id,
                     outcome: Ok(SmartErRefreshSnapshot {
                         new_metadata: Arc::new(DatabaseMetadata::new("new".to_string())),
-                        signature_snapshot: Arc::new(TableSignatureSnapshot {
-                            signatures: vec![],
-                            prefetched_table_details: vec![],
-                        }),
+                        signature_snapshot: Arc::new(TableSignatureSnapshot { signatures: vec![] }),
                     }),
                 },
                 Instant::now(),
@@ -1119,15 +1119,16 @@ mod tests {
             })
         }
 
-        #[test]
-        fn dml_then_preview_updates_current_result() {
+        #[rstest::rstest]
+        #[case::update(CommandTag::Update(3), 5)]
+        #[case::truncate(CommandTag::Truncate, 0)]
+        fn data_change_then_preview_updates_current_result(
+            #[case] command_tag: CommandTag,
+            #[case] preview_rows: usize,
+        ) {
             let mut state = state_with_table("public", "users");
-            let action = query_completed_action(
-                &mut state,
-                adhoc_result_with_tag(CommandTag::Update(3)),
-                0,
-                None,
-            );
+            let action =
+                query_completed_action(&mut state, adhoc_result_with_tag(command_tag), 0, None);
 
             let effects = route(&mut state, action, Instant::now());
 
@@ -1136,13 +1137,13 @@ mod tests {
                 matches!(&effects[0], Effect::ExecutePreview { table, .. } if table == "users")
             );
 
-            let new_preview = preview_result(5);
+            let new_preview = preview_result(preview_rows);
             let action = query_completed_action(&mut state, Arc::clone(&new_preview), 0, Some(0));
             route(&mut state, action, Instant::now());
 
             let stored = state.query.current_result().unwrap();
             assert_eq!(stored.source, QuerySource::Preview);
-            assert_eq!(stored.row_count(), 5);
+            assert_eq!(stored.row_count(), preview_rows);
         }
 
         #[test]
