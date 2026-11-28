@@ -160,7 +160,6 @@ impl SettingsStore for TomlConfigStore {
             config.icon_mode = Some(settings.icon_mode.config_value().to_owned());
             config.theme = Some(settings.theme_id.config_value().to_string());
             config.keymap_preset = Some(settings.keymap_preset.config_value().to_string());
-            config.er_browser = settings.er_browser;
             Ok(())
         })
     }
@@ -183,7 +182,6 @@ fn app_settings(config: ConnectionConfigFile) -> AppSettings {
             .as_deref()
             .and_then(KeymapPreset::from_config_value)
             .unwrap_or(KeymapPreset::Default),
-        er_browser: config.er_browser,
     }
 }
 
@@ -386,7 +384,6 @@ ssl_mode = "prefer"
             assert!(content.contains("theme = \"light\""));
             assert!(content.contains("icon_mode = \"unicode\""));
             assert!(content.contains("keymap_preset = \"ide\""));
-            assert!(content.contains("er_browser = \"Firefox\""));
             assert!(content.contains("[[connections]]"));
         }
 
@@ -631,7 +628,6 @@ mod settings_tests {
                 theme_id: ThemeId::Light,
                 icon_mode: IconMode::NerdFont,
                 keymap_preset: KeymapPreset::Ide,
-                er_browser: Some("Google Chrome".to_string()),
             })
             .unwrap();
 
@@ -639,7 +635,6 @@ mod settings_tests {
         assert_eq!(settings.icon_mode, IconMode::NerdFont);
         assert_eq!(settings.theme_id, ThemeId::Light);
         assert_eq!(settings.keymap_preset, KeymapPreset::Ide);
-        assert_eq!(settings.er_browser.as_deref(), Some("Google Chrome"));
     }
 
     #[test]
@@ -668,14 +663,12 @@ ssl_mode = "prefer"
                 theme_id: ThemeId::Light,
                 icon_mode: IconMode::NerdFont,
                 keymap_preset: KeymapPreset::Ide,
-                er_browser: Some("Firefox".to_string()),
             })
             .unwrap();
 
         let content = fs::read_to_string(temp_dir.path().join(CONFIG_FILE_NAME)).unwrap();
         assert!(content.contains("theme = \"light\""));
         assert!(content.contains("keymap_preset = \"ide\""));
-        assert!(content.contains("er_browser = \"Firefox\""));
         assert!(content.contains("[[connections]]"));
         assert!(content.contains("name = \"Test\""));
     }
@@ -690,7 +683,6 @@ ssl_mode = "prefer"
 
         assert_eq!(settings.theme_id, ThemeId::Default);
         assert_eq!(settings.keymap_preset, KeymapPreset::Default);
-        assert_eq!(settings.er_browser, None);
     }
 
     #[test]
@@ -770,7 +762,6 @@ ssl_mode = "prefer"
             theme_id: ThemeId::Light,
             icon_mode: IconMode::NerdFont,
             keymap_preset: KeymapPreset::Default,
-            er_browser: None,
         });
 
         assert!(matches!(

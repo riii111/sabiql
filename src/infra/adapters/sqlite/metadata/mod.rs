@@ -2,11 +2,10 @@ use crate::domain::connection::SqliteConnectionConfig;
 mod catalog;
 mod kind_info;
 mod preview;
-mod signature;
 mod table_detail;
 
 use crate::app::ports::outbound::DbOperationError;
-use crate::domain::{DatabaseMetadata, Table, TableSignatureSnapshot};
+use crate::domain::{DatabaseMetadata, Table};
 
 use super::sqlite3::metadata::RawNamedTableMetadata;
 use super::{SqliteAdapter, schema::MAIN_SCHEMA};
@@ -49,22 +48,19 @@ impl SqliteAdapter {
             .await
     }
 
-    pub async fn fetch_table_signatures(
+    pub async fn fetch_table_columns_and_fks_batch(
         &self,
         config: &SqliteConnectionConfig,
-    ) -> Result<TableSignatureSnapshot, DbOperationError> {
+        tables: &[(String, String)],
+    ) -> Result<Vec<Table>, DbOperationError> {
+        let requested: std::collections::HashSet<_> = tables.iter().collect();
         let rows = self.fetch_table_signature_rows(config.path()).await?;
-        let mut signatures = Vec::with_capacity(rows.len());
-        let mut prefetched_table_details = Vec::with_capacity(rows.len());
-        for RawNamedTableMetadata { name, metadata } in rows {
-            let detail = table_from_metadata(&name, TableDetailMode::Signature, metadata)?;
-            signatures.push(signature::signature_for_table(&detail));
-            prefetched_table_details.push(detail);
-        }
-        Ok(TableSignatureSnapshot {
-            signatures,
-            prefetched_table_details,
-        })
+        rows.into_iter()
+            .filter(|row| requested.contains(&(MAIN_SCHEMA.to_string(), row.name.clone())))
+            .map(|RawNamedTableMetadata { name, metadata }| {
+                table_from_metadata(&name, TableDetailMode::Signature, metadata)
+            })
+            .collect()
     }
 }
 

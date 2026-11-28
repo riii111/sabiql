@@ -781,13 +781,13 @@ mod tests {
     #[test]
     fn failure_before_a_change_keeps_original_error() {
         let error = query_failed_after_change(
-            DbOperationError::ForeignKeyViolation("foreign key failed".to_string()),
+            DbOperationError::QueryFailed("foreign key failed".to_string()),
             RefreshScope::None,
         );
 
         assert!(matches!(
             error,
-            DbOperationError::ForeignKeyViolation(details) if details == "foreign key failed"
+            DbOperationError::QueryFailed(details) if details == "foreign key failed"
         ));
     }
 

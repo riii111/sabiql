@@ -541,9 +541,7 @@ mod metadata_fetch {
                     .iter()
                     .find(|signature| signature.name == MYSQL_FK_CHILD)
                     .ok_or_else(|| "MySQL child signature was not returned".to_string())?;
-                if !child_signature
-                    .signature
-                    .contains("fk_mysql_metadata_child_parent")
+                if child_signature.signature.len() != 32
                 {
                     return Err(format!(
                         "unexpected MySQL table signature: {child_signature:?}"
@@ -3132,7 +3130,7 @@ mod query_execution {
                 if !matches!(
                     &duplicate,
                     Err(DbOperationError::QueryFailedAfterChange { source, .. })
-                        if matches!(&**source, DbOperationError::UniqueViolation(_))
+                        if matches!(&**source, DbOperationError::QueryFailed(details) if details.contains("Duplicate entry"))
                 ) {
                     return Err(format!("duplicate error was not classified: {duplicate:?}"));
                 }

@@ -211,9 +211,7 @@ fn validate_metadata_probe(
         })?
         .parse::<u8>()
         .map_err(|_| {
-            DbOperationError::MetadataParseFailed(
-                "invalid MySQL lower_case_table_names value".to_string(),
-            )
+            DbOperationError::QueryFailed("invalid MySQL lower_case_table_names value".to_string())
         })?;
     validate_lower_case_table_names(lower_case_table_names)?;
     Ok(mysql_server_capabilities(

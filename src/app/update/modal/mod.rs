@@ -254,64 +254,7 @@ mod tests {
                 assert!(matches!(
                     effects.as_slice(),
                     [Effect::SaveSettings { settings }]
-                        if settings.theme_id == ThemeId::Light && settings.icon_mode == IconMode::Ascii && settings.er_browser.is_none()
-                ));
-            }
-
-            #[test]
-            fn apply_emits_er_browser_save_effect() {
-                let mut state = create_test_state();
-                route(
-                    &mut state,
-                    Action::OpenModal(ModalKind::Settings),
-                    Instant::now(),
-                );
-                route(&mut state, Action::SettingsNextSection, Instant::now());
-                route(&mut state, Action::SettingsNextSection, Instant::now());
-                route(&mut state, Action::SettingsSelectNext, Instant::now());
-
-                let effects = route(&mut state, Action::SettingsApply, Instant::now());
-
-                assert_eq!(state.input_mode(), InputMode::Settings);
-                assert_eq!(state.settings.saved_er_browser(), None);
-                assert!(matches!(
-                    effects.as_slice(),
-                    [Effect::SaveSettings { settings }]
-                        if settings.er_browser.as_deref() == Some("Google Chrome")
-                ));
-            }
-
-            #[test]
-            fn custom_browser_input_is_saved() {
-                let mut state = create_test_state();
-                route(
-                    &mut state,
-                    Action::OpenModal(ModalKind::Settings),
-                    Instant::now(),
-                );
-                route(&mut state, Action::SettingsNextSection, Instant::now());
-                route(&mut state, Action::SettingsNextSection, Instant::now());
-                route(
-                    &mut state,
-                    Action::SettingsStartCustomBrowserEdit,
-                    Instant::now(),
-                );
-                edit_text(
-                    &mut state,
-                    &Action::TextInput {
-                        target: InputTarget::SettingsErBrowser,
-                        ch: 'B',
-                    },
-                    Instant::now(),
-                );
-
-                let effects = route(&mut state, Action::SettingsApply, Instant::now());
-
-                assert_eq!(state.input_mode(), InputMode::Settings);
-                assert!(matches!(
-                    effects.as_slice(),
-                    [Effect::SaveSettings { settings }]
-                        if settings.er_browser.as_deref() == Some("B")
+                        if settings.theme_id == ThemeId::Light && settings.icon_mode == IconMode::Ascii
                 ));
             }
 
@@ -333,7 +276,6 @@ mod tests {
                         theme_id: ThemeId::Light,
                         icon_mode: IconMode::Unicode,
                         keymap_preset: KeymapPreset::Ide,
-                        er_browser: Some("Google Chrome".to_string()),
                     })),
                     Instant::now(),
                 );
@@ -342,7 +284,6 @@ mod tests {
                 assert_eq!(state.settings.previous_theme(), ThemeId::Light);
                 assert_eq!(state.settings.saved_icon_mode(), IconMode::Unicode);
                 assert_eq!(state.settings.saved_keymap_preset(), KeymapPreset::Ide);
-                assert_eq!(state.settings.saved_er_browser(), Some("Google Chrome"));
                 assert!(
                     state
                         .messages

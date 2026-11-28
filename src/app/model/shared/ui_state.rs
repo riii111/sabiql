@@ -288,11 +288,6 @@ impl UiState {
         self.er_selected_tables = tables.into_iter().collect();
     }
 
-    #[cfg(test)]
-    pub(crate) fn pending_er_picker(&self) -> bool {
-        self.pending_er_picker
-    }
-
     pub fn set_explorer_pane_height(&mut self, height: u16) {
         self.explorer_pane_height = height;
     }
@@ -422,6 +417,10 @@ pub mod test_support {
     use super::UiState;
 
     impl UiState {
+        pub(crate) fn pending_er_picker(&self) -> bool {
+            self.pending_er_picker
+        }
+
         #[doc(hidden)]
         pub fn set_explorer_selected_raw(&mut self, selected: usize) {
             self.explorer_selected = selected;

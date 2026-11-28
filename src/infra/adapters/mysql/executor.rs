@@ -111,7 +111,7 @@ fn with_mysql_command_tag(
         };
         if let Some(affected_rows) = affected_rows {
             let row_count = usize::try_from(affected_rows).map_err(|_| {
-                DbOperationError::CommandTagParseFailed(
+                DbOperationError::QueryFailed(
                     "MySQL affected row count does not fit in usize".to_string(),
                 )
             })?;
@@ -196,12 +196,12 @@ impl MySqlAdapter {
             .command_tag
             .and_then(|tag| tag.affected_rows())
             .ok_or_else(|| {
-                DbOperationError::CommandTagParseFailed(
+                DbOperationError::QueryFailed(
                     "MySQL write did not return an affected row count".to_string(),
                 )
             })?;
         let affected_rows = usize::try_from(affected_rows).map_err(|_| {
-            DbOperationError::CommandTagParseFailed(
+            DbOperationError::QueryFailed(
                 "MySQL affected row count does not fit in usize".to_string(),
             )
         })?;

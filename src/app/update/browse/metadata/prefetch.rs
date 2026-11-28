@@ -1,5 +1,3 @@
-use crate::update::sql_editor::completion::completion_request;
-use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -8,365 +6,307 @@ use crate::domain::connection::ConnectionEndpoint;
 use crate::domain::{Table, TableSummary};
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
-use crate::model::table_prefetch::FailedPrefetchEntry;
 use crate::ports::outbound::DbOperationError;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
+use crate::update::sql_editor::completion::completion_request;
 
 use super::check_er_completion;
 
-const BASE_BACKOFF_SECS: u64 = 1;
-const MAX_BACKOFF_SECS: u64 = 4;
-const MAX_CONCURRENT_PREFETCH: usize = 4;
-pub(super) use crate::model::table_prefetch::MAX_PREFETCH_RETRIES;
-
-struct PrefetchStep {
-    effects: Vec<Effect>,
-    cache_hit: bool,
-}
-
-impl PrefetchStep {
-    fn effects(effects: Vec<Effect>) -> Self {
-        Self {
-            effects,
-            cache_hit: false,
-        }
-    }
-}
-
-pub(super) fn backoff_secs_for(retry_count: u32) -> u64 {
-    (BASE_BACKOFF_SECS * 2u64.pow(retry_count)).min(MAX_BACKOFF_SECS)
-}
-
-#[derive(Default)]
-struct PrefetchBatch {
-    effects: Vec<Effect>,
-    cache_hits: usize,
-}
-
-impl PrefetchBatch {
-    fn push(&mut self, step: PrefetchStep) {
-        self.cache_hits += usize::from(step.cache_hit);
-        self.effects.extend(step.effects);
-    }
-}
-
-fn finish_prefetch_batch(
-    state: &mut AppState,
-    run_id: u64,
-    batch: PrefetchBatch,
-    now: Instant,
-) -> Vec<Effect> {
-    let PrefetchBatch {
-        mut effects,
-        cache_hits,
-    } = batch;
-    if cache_hits == 0 {
-        return effects;
-    }
-
-    // Cached tables finish without a fetch, so no fetch completion schedules the rest of the queue.
-    // One schedule per batch keeps the queue moving without multiplying ProcessPrefetchQueue messages.
-    let already_scheduled = effects.iter().any(|effect| {
-        matches!(effect, Effect::SchedulePrefetchQueueProcessing { run_id: id } if *id == run_id)
-    });
-    if !already_scheduled
-        && state.table_prefetch.has_pending_prefetch()
-        && state.table_prefetch.prefetch_in_flight_count() < MAX_CONCURRENT_PREFETCH
-    {
-        effects.push(Effect::SchedulePrefetchQueueProcessing { run_id });
-    }
-    effects.extend(after_table_detail_cached(state, now));
-    effects
-}
-
-fn after_table_detail_cached(state: &mut AppState, now: Instant) -> Vec<Effect> {
-    if state.table_prefetch.prefetch_tracks_er() {
-        check_er_completion(state)
-    } else if state.modal.active_mode() == InputMode::SqlModal {
-        completion_request(state, now)
-    } else {
-        vec![]
-    }
-}
-
-fn prefetch_table_detail_step(
-    state: &mut AppState,
-    run_id: u64,
-    schema: &str,
-    table: &str,
-    now: Instant,
-) -> PrefetchStep {
-    if !state.table_prefetch.is_current_prefetch_run(run_id) {
-        return PrefetchStep::effects(vec![]);
-    }
-    let qualified_name = format!("{schema}.{table}");
-
-    if state.table_prefetch.is_table_prefetching(&qualified_name) {
-        return PrefetchStep::effects(vec![]);
-    }
-
-    if let Some(entry) = state.table_prefetch.failed_prefetch(&qualified_name) {
-        if entry.retry_count >= MAX_PREFETCH_RETRIES {
-            let mut effects = if state.table_prefetch.prefetch_tracks_er() {
-                check_er_completion(state)
-            } else {
-                Vec::new()
-            };
-            if effects.is_empty()
-                && state.table_prefetch.prefetch_tracks_er()
-                && state.er_preparation.is_waiting()
-            {
-                effects.push(Effect::SchedulePrefetchQueueProcessing { run_id });
-            }
-            return PrefetchStep::effects(effects);
-        }
-
-        let backoff_secs = backoff_secs_for(entry.retry_count);
-        let elapsed = now.saturating_duration_since(entry.failed_at).as_secs();
-        if elapsed < backoff_secs {
-            let remaining = backoff_secs - elapsed;
-            state.table_prefetch.queue_table_prefetch(qualified_name);
-            return PrefetchStep::effects(vec![Effect::DelayedProcessPrefetchQueue {
-                run_id,
-                delay_secs: remaining,
-            }]);
-        }
-    }
-
+fn start_batch(state: &mut AppState, tables: Vec<String>, tracks_er: bool) -> Vec<Effect> {
     let Some(endpoint) = state.session.endpoint().cloned() else {
-        state.table_prefetch.defer_table_prefetch(qualified_name);
-        return PrefetchStep::effects(vec![]);
+        return vec![];
     };
-
-    if state.table_detail_cache.contains(&qualified_name) {
-        state
-            .table_prefetch
-            .complete_table_prefetch(&qualified_name);
-        return PrefetchStep {
-            effects: vec![],
-            cache_hit: true,
+    let mut names: Vec<String> = tables
+        .into_iter()
+        .filter(|name| !state.table_detail_cache.contains(name))
+        .filter(|name| !state.table_prefetch.failed_prefetch(name))
+        .collect();
+    names.sort();
+    names.dedup();
+    let mut requested = Vec::with_capacity(names.len());
+    for name in &names {
+        if let Some((schema, table)) = name.split_once('.') {
+            requested.push((schema.to_string(), table.to_string()));
+        } else {
+            state
+                .table_prefetch
+                .fail(name.clone(), "Invalid table name".to_string());
+        }
+    }
+    let valid_names = requested.iter().map(|(s, t)| format!("{s}.{t}"));
+    let run_id = state.table_prefetch.begin(valid_names, tracks_er);
+    if requested.is_empty() {
+        return if tracks_er {
+            check_er_completion(state)
+        } else {
+            state.table_prefetch.invalidate_prefetch();
+            vec![]
         };
     }
-
-    state.table_prefetch.start_table_prefetch(qualified_name);
-
-    PrefetchStep::effects(vec![Effect::PrefetchTableColumnsAndFks {
+    vec![Effect::PrefetchTableColumnsAndFks {
         endpoint,
         run_id,
-        schema: schema.to_string(),
-        table: table.to_string(),
-    }])
+        tables: requested,
+    }]
 }
 
 pub(in crate::update) fn start_er_prefetch_all(state: &mut AppState) -> Vec<Effect> {
-    if reject_pending_mysql_connection_probe(state) {
+    if reject_pending_mysql_connection_probe(state)
+        || (state.table_prefetch.active_prefetch_run_id().is_some()
+            && state.table_prefetch.prefetch_tracks_er())
+    {
         return vec![];
     }
-    if (state.table_prefetch.active_prefetch_run_id().is_none()
-        || !state.table_prefetch.prefetch_tracks_er())
-        && let Some(metadata) = state.session.metadata()
-    {
-        let run_id = state.table_prefetch.begin_er_prefetch();
-        let qualified_names: Vec<String> = metadata
-            .table_summaries
-            .iter()
-            .map(TableSummary::qualified_name)
-            .collect();
-        state
-            .er_preparation
-            .begin_all_prefetch(qualified_names.iter().cloned());
-
-        state
-            .table_detail_cache
-            .resize_for_table_count(metadata.table_summaries.len());
-
-        for qualified_name in qualified_names {
-            state.table_prefetch.queue_table_prefetch(qualified_name);
-        }
-        vec![Effect::SchedulePrefetchQueueProcessing { run_id }]
-    } else {
-        vec![]
-    }
+    let Some(metadata) = state.session.metadata() else {
+        return vec![];
+    };
+    let names: Vec<String> = metadata
+        .table_summaries
+        .iter()
+        .map(TableSummary::qualified_name)
+        .collect();
+    state.table_detail_cache.resize_for_table_count(names.len());
+    state
+        .er_preparation
+        .begin_all_prefetch(names.iter().cloned());
+    state.table_prefetch.clear_failures();
+    start_batch(state, names, true)
 }
 
 pub(in crate::update) fn start_er_prefetch_scoped(
     state: &mut AppState,
     tables: Vec<String>,
 ) -> Vec<Effect> {
-    if reject_pending_mysql_connection_probe(state) {
+    if reject_pending_mysql_connection_probe(state)
+        || (state.table_prefetch.active_prefetch_run_id().is_some()
+            && state.table_prefetch.prefetch_tracks_er())
+    {
         return vec![];
     }
-    if state.table_prefetch.active_prefetch_run_id().is_some()
-        && state.table_prefetch.prefetch_tracks_er()
-    {
-        vec![]
-    } else {
-        let run_id = state.table_prefetch.begin_er_prefetch();
-        state.er_preparation.begin_scoped_prefetch(&tables);
-
-        for qualified_name in &tables {
-            state
-                .table_prefetch
-                .queue_table_prefetch(qualified_name.clone());
-        }
-        if let Some(metadata) = state.session.metadata() {
-            state
-                .table_detail_cache
-                .resize_for_table_count(metadata.table_summaries.len());
-        }
-        vec![Effect::SchedulePrefetchQueueProcessing { run_id }]
+    state.er_preparation.begin_scoped_prefetch(&tables);
+    if let Some(metadata) = state.session.metadata() {
+        state
+            .table_detail_cache
+            .resize_for_table_count(metadata.table_summaries.len());
     }
+    state.table_prefetch.clear_failures();
+    start_batch(state, tables, true)
+}
+
+pub(super) fn start_er_neighbor_prefetch(state: &mut AppState, tables: Vec<String>) -> Vec<Effect> {
+    start_batch(state, tables, true)
 }
 
 pub(in crate::update) fn start_completion_prefetch(
     state: &mut AppState,
-    tables: Vec<String>,
+    mut tables: Vec<String>,
 ) -> Vec<Effect> {
-    if reject_pending_mysql_connection_probe(state) {
+    if reject_pending_mysql_connection_probe(state)
+        || tables.is_empty()
+        || (state.table_prefetch.active_prefetch_run_id().is_some()
+            && state.table_prefetch.prefetch_tracks_er())
+    {
         return vec![];
     }
-    if tables.is_empty() {
+    tables.retain(|name| {
+        !state.table_detail_cache.contains(name) && !state.table_prefetch.failed_prefetch(name)
+    });
+    if tables
+        .iter()
+        .all(|name| state.table_prefetch.in_flight().contains(name))
+    {
         return vec![];
     }
-
-    let run_id = if let Some(run_id) = state.table_prefetch.active_prefetch_run_id() {
-        run_id
-    } else {
-        state.table_prefetch.begin_completion_prefetch()
-    };
-    for qualified_name in &tables {
-        state
-            .table_prefetch
-            .queue_table_prefetch(qualified_name.clone());
-    }
-    vec![Effect::SchedulePrefetchQueueProcessing { run_id }]
+    tables.extend(state.table_prefetch.in_flight().iter().cloned());
+    start_batch(state, tables, false)
 }
 
-pub(in crate::update) fn process_prefetch_queue(
-    state: &mut AppState,
-    run_id: u64,
-    now: Instant,
-) -> Vec<Effect> {
-    if reject_pending_mysql_connection_probe(state) {
-        return vec![];
-    }
-    if !state.table_prefetch.is_current_prefetch_run(run_id) {
-        return vec![];
-    }
-    let current_in_flight = state.table_prefetch.prefetch_in_flight_count();
-    let available_slots = MAX_CONCURRENT_PREFETCH.saturating_sub(current_in_flight);
-    let batch_size = available_slots.min(state.table_prefetch.pending_prefetch_count());
-    let mut processed_tables = HashSet::with_capacity(batch_size);
-
-    let mut batch = PrefetchBatch::default();
-    for _ in 0..batch_size {
-        let Some(qualified_name) = state.table_prefetch.take_next_prefetch() else {
-            break;
-        };
-        if !processed_tables.insert(qualified_name.clone()) {
-            state.table_prefetch.defer_table_prefetch(qualified_name);
-            break;
-        }
-        let Some((schema, table)) = qualified_name.split_once('.') else {
-            continue;
-        };
-        batch.push(prefetch_table_detail_step(
-            state, run_id, schema, table, now,
-        ));
-    }
-
-    finish_prefetch_batch(state, run_id, batch, now)
-}
-
-pub(in crate::update) fn prefetch_table_detail(
-    state: &mut AppState,
-    run_id: u64,
-    schema: &str,
-    table: &str,
-    now: Instant,
-) -> Vec<Effect> {
-    if reject_pending_mysql_connection_probe(state) {
-        return vec![];
-    }
-    let mut batch = PrefetchBatch::default();
-    batch.push(prefetch_table_detail_step(
-        state, run_id, schema, table, now,
-    ));
-    finish_prefetch_batch(state, run_id, batch, now)
-}
-
-pub(in crate::update) fn table_detail_cached(
+pub(in crate::update) fn table_details_cached(
     state: &mut AppState,
     endpoint: Arc<ConnectionEndpoint>,
     run_id: u64,
-    schema: String,
-    table: String,
-    outcome: Result<Box<Table>, DbOperationError>,
+    outcome: Result<Vec<Table>, DbOperationError>,
     now: Instant,
 ) -> Vec<Effect> {
-    if reject_pending_mysql_connection_probe(state) {
-        return vec![];
-    }
-    if !state.session.endpoint_matches(&endpoint)
+    if reject_pending_mysql_connection_probe(state)
+        || !state.session.endpoint_matches(&endpoint)
         || !state.table_prefetch.is_current_prefetch_run(run_id)
     {
         return vec![];
     }
-    let qualified_name = format!("{schema}.{table}");
-    let detail = match outcome {
-        Ok(detail) => detail,
-        Err(error) => return table_detail_cache_failed(state, run_id, qualified_name, &error, now),
-    };
-    state
-        .table_prefetch
-        .complete_table_prefetch(&qualified_name);
-
-    state
-        .table_detail_cache
-        .insert(qualified_name, detail.as_ref().clone());
-
-    let mut effects = Vec::new();
-
-    if state.table_prefetch.has_pending_prefetch() {
-        effects.push(Effect::SchedulePrefetchQueueProcessing { run_id });
+    let mut remaining = state.table_prefetch.finish();
+    match outcome {
+        Ok(details) => {
+            for detail in details {
+                let name = detail.qualified_name();
+                if remaining.remove(&name) {
+                    state.table_detail_cache.insert(name, detail);
+                }
+            }
+            for name in remaining {
+                state
+                    .table_prefetch
+                    .fail(name, "Table not found".to_string());
+            }
+        }
+        Err(error) => {
+            let error = error.user_message();
+            for name in remaining {
+                state.table_prefetch.fail(name, error.clone());
+            }
+        }
     }
-    effects.extend(after_table_detail_cached(state, now));
-
-    effects
+    if state.table_prefetch.prefetch_tracks_er() {
+        check_er_completion(state)
+    } else {
+        state.table_prefetch.invalidate_prefetch();
+        if state.modal.active_mode() == InputMode::SqlModal {
+            completion_request(state, now)
+        } else {
+            vec![]
+        }
+    }
 }
 
-fn table_detail_cache_failed(
-    state: &mut AppState,
-    run_id: u64,
-    qualified_name: String,
-    error: &DbOperationError,
-    now: Instant,
-) -> Vec<Effect> {
-    let prev_count = state
-        .table_prefetch
-        .failed_prefetch(&qualified_name)
-        .map_or(0, |e| e.retry_count);
-    let had_other_pending_before_requeue = state.table_prefetch.retry_table_prefetch(
-        qualified_name,
-        FailedPrefetchEntry {
-            failed_at: now,
-            error: error.user_message(),
-            retry_count: prev_count + 1,
-        },
-    );
-    let mut effects = Vec::new();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::{ConnectionId, DatabaseMetadata};
+    use crate::test_support::{endpoint, table};
 
-    if had_other_pending_before_requeue {
-        effects.push(Effect::SchedulePrefetchQueueProcessing { run_id });
-    }
-    effects.push(Effect::DelayedProcessPrefetchQueue {
-        run_id,
-        delay_secs: backoff_secs_for(prev_count + 1),
-    });
-
-    if state.table_prefetch.prefetch_tracks_er() {
-        effects.extend(check_er_completion(state));
+    fn state() -> AppState {
+        let mut state = AppState::new("test".into());
+        state.session.activate_connection(
+            &ConnectionId::new(),
+            "test",
+            &endpoint::postgres("postgres://localhost/test"),
+        );
+        let mut metadata = DatabaseMetadata::new("test".into());
+        metadata.table_summaries = ["users", "orders"]
+            .into_iter()
+            .map(|name| TableSummary::new("public".into(), name.into(), None))
+            .collect();
+        state.session.set_metadata(Some(Arc::new(metadata)));
+        state
     }
 
-    effects
+    fn batch(effects: &[Effect]) -> (Arc<ConnectionEndpoint>, u64, Vec<(String, String)>) {
+        match effects {
+            [
+                Effect::PrefetchTableColumnsAndFks {
+                    endpoint,
+                    run_id,
+                    tables,
+                },
+            ] => (endpoint.clone(), *run_id, tables.clone()),
+            _ => panic!("expected one batch effect"),
+        }
+    }
+
+    #[test]
+    fn fetches_all_missing_tables_in_one_batch_and_caches_results() {
+        let mut state = state();
+        let effects = start_completion_prefetch(
+            &mut state,
+            vec!["public.users".into(), "public.orders".into()],
+        );
+        let (endpoint, run, names) = batch(&effects);
+        assert_eq!(
+            names,
+            [
+                ("public".into(), "orders".into()),
+                ("public".into(), "users".into())
+            ]
+        );
+        let result = vec![
+            table::minimal("public", "orders"),
+            table::minimal("public", "users"),
+        ];
+        assert!(
+            table_details_cached(&mut state, endpoint, run, Ok(result), Instant::now()).is_empty()
+        );
+        assert!(state.table_detail_cache.contains("public.users"));
+        assert!(state.table_detail_cache.contains("public.orders"));
+        assert!(state.table_prefetch.is_complete());
+    }
+
+    #[test]
+    fn replacement_and_connection_switch_reject_old_results() {
+        let mut state = state();
+        let (endpoint, old, _) = batch(&start_completion_prefetch(
+            &mut state,
+            vec!["public.users".into()],
+        ));
+        let (_, current, names) = batch(&start_completion_prefetch(
+            &mut state,
+            vec!["public.orders".into()],
+        ));
+        assert_ne!(old, current);
+        assert_eq!(names.len(), 2);
+        table_details_cached(
+            &mut state,
+            endpoint.clone(),
+            old,
+            Ok(vec![table::minimal("public", "users")]),
+            Instant::now(),
+        );
+        assert!(!state.table_detail_cache.contains("public.users"));
+        state.session.activate_connection(
+            &ConnectionId::new(),
+            "other",
+            &endpoint::postgres("postgres://localhost/other"),
+        );
+        table_details_cached(
+            &mut state,
+            endpoint,
+            current,
+            Ok(vec![table::minimal("public", "orders")]),
+            Instant::now(),
+        );
+        assert!(!state.table_detail_cache.contains("public.orders"));
+    }
+
+    #[test]
+    fn failure_is_not_retried_automatically_and_er_retry_fetches_it() {
+        let mut state = state();
+        let _ = state.er_preparation.start_waiting_run();
+        let (endpoint, run, _) = batch(&start_er_prefetch_all(&mut state));
+        let effects = table_details_cached(
+            &mut state,
+            endpoint,
+            run,
+            Err(DbOperationError::QueryFailed("denied".into())),
+            Instant::now(),
+        );
+        assert_eq!(state.table_prefetch.failed_prefetch_count(), 2);
+        assert!(
+            effects
+                .iter()
+                .all(|effect| !matches!(effect, Effect::PrefetchTableColumnsAndFks { .. }))
+        );
+        state.table_prefetch.invalidate_prefetch();
+        let _ = state.er_preparation.start_waiting_run();
+        let (_, _, names) = batch(&start_er_prefetch_all(&mut state));
+        assert_eq!(names.len(), 2);
+        assert!(!state.table_prefetch.has_failures());
+    }
+
+    #[test]
+    fn missing_table_is_recorded_as_failure_without_losing_successes() {
+        let mut state = state();
+        let (endpoint, run, _) = batch(&start_completion_prefetch(
+            &mut state,
+            vec!["public.users".into(), "public.orders".into()],
+        ));
+        table_details_cached(
+            &mut state,
+            endpoint,
+            run,
+            Ok(vec![table::minimal("public", "users")]),
+            Instant::now(),
+        );
+        assert!(state.table_detail_cache.contains("public.users"));
+        assert!(state.table_prefetch.failed_prefetch("public.orders"));
+        assert!(start_completion_prefetch(&mut state, vec!["public.orders".into()]).is_empty());
+    }
 }

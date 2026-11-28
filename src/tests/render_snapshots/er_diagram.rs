@@ -12,12 +12,10 @@ fn er_waiting_progress() {
         "public.comments".to_string(),
         "public.posts".to_string(),
     ]);
-    state
-        .table_prefetch
-        .queue_table_prefetch("public.comments".to_string());
-    state
-        .table_prefetch
-        .start_table_prefetch("public.posts".to_string());
+    let _ = state.table_prefetch.begin(
+        vec!["public.comments".to_string(), "public.posts".to_string()],
+        true,
+    );
 
     let output = render_footer_to_string(&mut terminal, &mut state);
 

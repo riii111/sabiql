@@ -2,7 +2,7 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::time::timeout;
 
@@ -135,6 +135,17 @@ impl PostgresAdapter {
         cmd: &mut Command,
         timeout_secs: u64,
     ) -> Result<String, DbOperationError> {
+        Self::collect_output_with_input(cmd, timeout_secs, None).await
+    }
+
+    async fn collect_output_with_input(
+        cmd: &mut Command,
+        timeout_secs: u64,
+        input: Option<&[u8]>,
+    ) -> Result<String, DbOperationError> {
+        if input.is_some() {
+            cmd.stdin(Stdio::piped());
+        }
         let mut child = cmd
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -142,11 +153,19 @@ impl PostgresAdapter {
             .spawn()
             .map_err(classify_cli_spawn_error)?;
 
+        let mut stdin_handle = child.stdin.take();
         let mut stdout_handle = child.stdout.take().expect("piped psql stdout");
         let mut stderr_handle = child.stderr.take().expect("piped psql stderr");
 
         let result = timeout(Duration::from_secs(timeout_secs), async {
-            let (stdout_result, stderr_result) = tokio::join!(
+            let (input_result, stdout_result, stderr_result) = tokio::join!(
+                async {
+                    if let (Some(input), Some(mut stdin)) = (input, stdin_handle.take()) {
+                        stdin.write_all(input).await?;
+                        stdin.shutdown().await?;
+                    }
+                    Ok::<_, std::io::Error>(())
+                },
                 async {
                     let mut buf = Vec::new();
                     stdout_handle.read_to_end(&mut buf).await?;
@@ -162,6 +181,9 @@ impl PostgresAdapter {
             let stdout = stdout_result?;
             let stderr = stderr_result?;
             let status = child.wait().await?;
+            if status.success() {
+                input_result?;
+            }
 
             Ok::<_, std::io::Error>((status, stdout, stderr))
         })
@@ -174,6 +196,23 @@ impl PostgresAdapter {
             return Err(classify_query_error(&stderr, status));
         }
         Ok(stdout)
+    }
+
+    // This accepts only internally generated SQL whose identifiers have been hex-encoded.
+    // Arbitrary user SQL must continue to use -c so psql cannot interpret metacommands.
+    pub(in crate::adapters::postgres) async fn execute_batch_metadata_sql(
+        &self,
+        dsn: &str,
+        query: &str,
+    ) -> Result<String, DbOperationError> {
+        if query.contains('\\') {
+            return Err(DbOperationError::QueryFailed(
+                "Unsafe character in generated metadata query".to_string(),
+            ));
+        }
+        let mut cmd = Self::build_psql_command(dsn, &["-t", "-A"], &["-f", "-"], false);
+        let script = format!("{query};\n");
+        Self::collect_output_with_input(&mut cmd, self.timeout_secs, Some(script.as_bytes())).await
     }
 
     pub(in crate::adapters::postgres) async fn execute_raw_output(
@@ -350,7 +389,7 @@ impl PostgresAdapter {
 
         let affected_rows = Self::parse_affected_rows_with_source(&output).map_err(
             |error: ParseCommandTagError| DbOperationError::QueryFailedAfterChange {
-                source: Arc::new(DbOperationError::CommandTagParseFailed(error.to_string())),
+                source: Arc::new(DbOperationError::QueryFailed(error.to_string())),
                 refresh_scope: RefreshScope::Data,
             },
         )?;
@@ -659,7 +698,7 @@ mod tests {
             )
             .unwrap_err();
 
-            assert!(matches!(error, DbOperationError::CsvParse(_)));
+            assert!(matches!(error, DbOperationError::QueryFailed(_)));
         }
     }
 

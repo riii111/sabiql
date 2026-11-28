@@ -19,10 +19,9 @@ use crate::cmd::sqlite_diagnostics;
 use crate::cmd::utility as cmd_utility;
 use crate::model::app_state::AppState;
 use crate::ports::outbound::{
-    CachedResultExporter, ClipboardWriter, ConfigWriter, ConnectionStore, ErDiagramExporter,
-    ErLogWriter, FolderOpener, MetadataProvider, MySqlConnectionProbe, PgServiceEntryReader,
-    QueryExecutor, QueryHistoryStore, Renderer, SettingsStore, SqliteDiagnosticsProvider,
-    SqlitePathValidator,
+    CachedResultExporter, ClipboardWriter, ConnectionStore, ErDiagramExporter, FolderOpener,
+    MetadataProvider, MySqlConnectionProbe, PgServiceEntryReader, QueryExecutor, QueryHistoryStore,
+    Renderer, SettingsStore, SqliteDiagnosticsProvider, SqlitePathValidator,
 };
 use crate::update::action::{Action, QueryContext};
 
@@ -43,8 +42,6 @@ pub struct QueryDeps {
 
 pub struct ErDeps {
     pub er_exporter: Arc<dyn ErDiagramExporter>,
-    pub config_writer: Arc<dyn ConfigWriter>,
-    pub er_log_writer: Arc<dyn ErLogWriter>,
 }
 
 pub struct UtilityDeps {
@@ -62,6 +59,7 @@ pub struct EffectRunner {
     action_tx: mpsc::Sender<Action>,
     query_tasks: SingleTaskOwner,
     table_detail_tasks: SingleTaskOwner,
+    prefetch_task: SingleTaskOwner,
     metadata_tasks: Arc<MetadataTaskRegistry>,
     connection_task: SingleTaskOwner,
     sqlite_diagnostics_task: sqlite_diagnostics::SqliteDiagnosticsTaskOwner,
@@ -89,6 +87,7 @@ impl EffectRunner {
             action_tx,
             query_tasks: SingleTaskOwner::default(),
             table_detail_tasks: SingleTaskOwner::default(),
+            prefetch_task: SingleTaskOwner::default(),
             metadata_tasks: Arc::new(MetadataTaskRegistry::default()),
             connection_task: SingleTaskOwner::default(),
             sqlite_diagnostics_task: sqlite_diagnostics::SqliteDiagnosticsTaskOwner::default(),
@@ -259,29 +258,17 @@ impl EffectRunner {
             Effect::PrefetchTableColumnsAndFks {
                 endpoint,
                 run_id,
-                schema,
-                table,
+                tables,
             } => {
-                self.spawn_metadata_report(cmd_metadata::prefetch_table_detail(
-                    metadata(),
-                    endpoint,
-                    run_id,
-                    schema,
-                    table,
-                ));
-            }
-            Effect::SchedulePrefetchQueueProcessing { run_id } => {
-                self.spawn_report(async move { Action::ProcessPrefetchQueue { run_id } });
-            }
-            Effect::DelayedProcessPrefetchQueue { run_id, delay_secs } => {
-                self.spawn_metadata_report(cmd_metadata::process_prefetch_queue_after(
-                    delay_secs, run_id,
-                ));
+                let task =
+                    cmd_metadata::prefetch_table_details(metadata(), endpoint, run_id, tables);
+                self.prefetch_task.replace(self.report(task)).await;
             }
 
             Effect::CancelConnectionTask => self.connection_task.cancel().await,
             Effect::CancelMetadataTasks => {
                 self.metadata_tasks.cancel().await;
+                self.prefetch_task.cancel().await;
                 self.smart_er_refresh_task.cancel().await;
             }
             Effect::CancelTableDetail => self.table_detail_tasks.cancel().await,
@@ -433,36 +420,16 @@ impl EffectRunner {
                 tables,
                 filename,
             } => {
-                let cache_dir = match self.er.config_writer.get_cache_dir(&project_name) {
-                    Ok(cache_dir) => cache_dir,
-                    Err(error) => {
-                        self.spawn_report(async move {
-                            Action::ErDiagramOpened {
-                                run_id,
-                                outcome: Err(error.to_string()),
-                            }
-                        });
-                        return Ok(());
-                    }
-                };
                 let request = ErDiagramRequest {
                     run_id,
                     total_tables,
                     tables,
-                    cache_dir,
+                    project_name,
                     filename,
-                    browser: state.settings.saved_er_browser().map(str::to_string),
                 };
                 self.spawn_report(cmd_er_task::generate_er_diagram(
                     Arc::clone(&self.er.er_exporter),
                     request,
-                ));
-            }
-            Effect::WriteErFailureLog { failed_tables } => {
-                self.spawn_report(cmd_er::write_failure_log(
-                    Arc::clone(&self.er.er_log_writer),
-                    self.er.config_writer.get_cache_dir(state.project_name()),
-                    failed_tables,
                 ));
             }
             Effect::SmartErRefresh { endpoint, run_id } => {
@@ -535,6 +502,7 @@ impl EffectRunner {
         let sqlite_diagnostics_tasks = self.sqlite_diagnostics_task.abort();
         let query_task = self.query_tasks.abort();
         let table_detail_task = self.table_detail_tasks.abort();
+        let prefetch_task = self.prefetch_task.abort();
         if let Some(task) = metadata_task {
             let _ = task.await;
         }
@@ -547,7 +515,11 @@ impl EffectRunner {
         if let Some(task) = connection_task {
             let _ = task.await;
         }
-        for task in smart_er_task.into_iter().chain(sqlite_diagnostics_tasks) {
+        for task in smart_er_task
+            .into_iter()
+            .chain(prefetch_task)
+            .chain(sqlite_diagnostics_tasks)
+        {
             let _ = task.await;
         }
     }
@@ -572,16 +544,21 @@ mod tests {
     mod generate_er_diagram {
         use super::*;
         use crate::domain::ConnectionId;
+        use crate::domain::ErTableInfo;
         use crate::model::er_state::ErStatus;
-        use crate::ports::outbound::ConfigWriterError;
+        use crate::ports::outbound::ErExportResult;
         use crate::update::reducer;
         use std::path::PathBuf;
         use std::time::Duration;
 
-        struct FailingConfigWriter;
-
-        impl ConfigWriter for FailingConfigWriter {
-            fn get_cache_dir(&self, _project_name: &str) -> Result<PathBuf, ConfigWriterError> {
+        struct FailingExporter;
+        impl ErDiagramExporter for FailingExporter {
+            fn generate_and_export(
+                &self,
+                _tables: &[ErTableInfo],
+                _filename: &str,
+                _project_name: &str,
+            ) -> ErExportResult<PathBuf> {
                 Err(
                     std::io::Error::new(std::io::ErrorKind::PermissionDenied, "cache denied")
                         .into(),
@@ -598,7 +575,7 @@ mod tests {
                 Arc::new(MockConnectionStore::new()),
                 tx,
             );
-            runner.er.config_writer = Arc::new(FailingConfigWriter);
+            runner.er.er_exporter = Arc::new(FailingExporter);
             let mut state = AppState::new("test".to_string());
             state.session.activate_connection(
                 &ConnectionId::new(),
@@ -1633,61 +1610,6 @@ mod tests {
 
             assert_eq!(state.session.effective_user(), Some("refreshed_user"));
             assert!(state.session.selected_table_key().is_none());
-        }
-
-        #[tokio::test]
-        async fn quit_drops_effective_user_and_delayed_prefetch_tasks() {
-            let (effective_user_started_tx, effective_user_started_rx) = oneshot::channel();
-            let dropped = Arc::new(AtomicUsize::new(0));
-            let provider = PendingMetadataProvider {
-                metadata_started: Mutex::new(None),
-                effective_user_started: Mutex::new(Some(effective_user_started_tx)),
-                effective_user_result: Mutex::new(None),
-                dropped: Arc::clone(&dropped),
-            };
-            let (action_tx, mut action_rx) = mpsc::channel(8);
-            let runner = test_fixtures::make_runner(
-                Arc::new(provider),
-                Arc::new(MockQueryExecutor::new()),
-                Arc::new(MockConnectionStore::new()),
-                action_tx,
-            );
-            let mut state = AppState::new("test".to_string());
-            let mut renderer = NoopRenderer;
-
-            runner
-                .execute_effects(
-                    vec![
-                        Effect::FetchEffectiveUser {
-                            endpoint: endpoint::postgres("postgres://localhost/current"),
-                            run_id: 1,
-                        },
-                        Effect::DelayedProcessPrefetchQueue {
-                            run_id: 1,
-                            delay_secs: 60,
-                        },
-                    ],
-                    &mut renderer,
-                    &mut state,
-                )
-                .await
-                .unwrap();
-            effective_user_started_rx
-                .await
-                .expect("effective user should start");
-
-            let shutdown_effects = reduce(&mut state, Action::Quit, Instant::now());
-            runner
-                .execute_effects(shutdown_effects, &mut renderer, &mut state)
-                .await
-                .unwrap();
-
-            assert_eq!(dropped.load(Ordering::SeqCst), 1);
-            assert!(
-                timeout(Duration::from_millis(100), action_rx.recv())
-                    .await
-                    .is_err()
-            );
         }
     }
 

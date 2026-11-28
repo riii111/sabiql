@@ -744,9 +744,9 @@ mod tests {
         fn seed_er_state(state: &mut AppState) {
             state.ui.request_er_picker_after_metadata();
             let _ = state.er_preparation.start_waiting_run();
-            state
+            let _ = state
                 .table_prefetch
-                .queue_table_prefetch("public.users".to_string());
+                .begin(vec!["public.users".to_string()], true);
         }
 
         fn seed_sqlite_diagnostics(state: &mut AppState) {
@@ -760,7 +760,7 @@ mod tests {
         fn assert_er_state_cleared(state: &AppState) {
             assert!(!state.ui.pending_er_picker());
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
-            assert!(!state.table_prefetch.has_pending_prefetch());
+            assert!(state.table_prefetch.is_complete());
         }
 
         fn assert_reconciles_postgres_to_sqlite_feature_state(cached: bool) {
@@ -1406,19 +1406,19 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let new_id = ConnectionId::new();
             state.result_interaction.activate_cell(5, 0);
-            let _ = state.table_prefetch.begin_er_prefetch();
+            let _ = state.table_prefetch.begin(Vec::<String>::new(), true);
             state.ui.request_er_picker_after_metadata();
             let _ = state.er_preparation.start_waiting_run();
-            state
+            let _ = state
                 .table_prefetch
-                .queue_table_prefetch("public.users".to_string());
+                .begin(vec!["public.users".to_string()], true);
 
             let target = create_postgres_switch_target(&new_id, "fresh_db");
             switch_connection(&mut state, target);
 
             assert!(!state.ui.pending_er_picker());
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
-            assert!(!state.table_prefetch.has_pending_prefetch());
+            assert!(state.table_prefetch.is_complete());
             assert!(state.table_prefetch.active_prefetch_run_id().is_none());
             assert_eq!(
                 state.result_interaction.selection().mode(),
@@ -1431,12 +1431,12 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let target_id = ConnectionId::new();
             state.result_interaction.activate_cell(3, 2);
-            let _ = state.table_prefetch.begin_er_prefetch();
+            let _ = state.table_prefetch.begin(Vec::<String>::new(), true);
             state.ui.request_er_picker_after_metadata();
             let _ = state.er_preparation.start_waiting_run();
-            state
+            let _ = state
                 .table_prefetch
-                .queue_table_prefetch("public.users".to_string());
+                .begin(vec!["public.users".to_string()], true);
             state
                 .connection_caches
                 .insert(target_id.clone(), ConnectionCache::default());
@@ -1446,7 +1446,7 @@ mod tests {
 
             assert!(!state.ui.pending_er_picker());
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
-            assert!(!state.table_prefetch.has_pending_prefetch());
+            assert!(state.table_prefetch.is_complete());
             assert!(state.table_prefetch.active_prefetch_run_id().is_none());
             assert_eq!(
                 state.result_interaction.selection().mode(),
@@ -1564,7 +1564,7 @@ mod tests {
                 std::time::Instant::now(),
             );
 
-            assert!(state.session.connection_state().is_failed());
+            assert_eq!(state.session.connection_state(), ConnectionState::Failed);
             assert_eq!(state.modal.active_mode(), InputMode::ConnectionError);
             assert!(state.connection_error.error_info().is_some());
             assert!(matches!(
@@ -2288,7 +2288,7 @@ mod tests {
             );
 
             assert!(!state.session.connection_state().is_connected());
-            assert!(state.session.connection_state().is_failed());
+            assert_eq!(state.session.connection_state(), ConnectionState::Failed);
             assert_eq!(state.modal.active_mode(), InputMode::ConnectionError);
             assert_eq!(
                 state.connection_error.error_info().unwrap().summary(),

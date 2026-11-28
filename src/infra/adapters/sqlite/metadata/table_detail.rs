@@ -310,7 +310,7 @@ fn primary_key_target_column(
 fn parse_fk_action(action: &str) -> Result<FkAction, DbOperationError> {
     action
         .parse::<FkAction>()
-        .map_err(|error| DbOperationError::MetadataParseFailed(error.to_string()))
+        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))
 }
 
 #[cfg(test)]

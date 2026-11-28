@@ -43,7 +43,11 @@ pub(in crate::update) fn result_open_cell_detail(
 }
 
 pub(in crate::update) fn close_modal_cell_detail(state: &mut AppState) -> Vec<Effect> {
-    state.cell_detail.close();
+    if let Some(previous) = state.er_failure_previous_detail.take() {
+        state.cell_detail = previous;
+    } else {
+        state.cell_detail.close();
+    }
     state.modal.pop_mode();
     vec![]
 }

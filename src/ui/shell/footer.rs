@@ -72,14 +72,6 @@ impl Footer {
         ))
     }
 
-    #[cfg(test)]
-    fn get_context_hints(state: &AppState) -> Vec<(String, &'static str)> {
-        footer_hints(&KeyContext::from_state(state))
-            .into_iter()
-            .map(|hint| (hint.key, hint.short))
-            .collect()
-    }
-
     fn build_hint_line_with_success(
         hints: &[(&str, &str)],
         success_msg: Option<&str>,
@@ -110,7 +102,6 @@ impl Footer {
 mod tests {
     use std::sync::Arc;
 
-    use super::Footer;
     use crate::app::domain::connection::{
         ConnectionEndpoint, MySqlConnectionConfig, MySqlSslMode, PostgresConnectionConfig,
         PostgresEndpoint, SqliteConnectionConfig, SslMode,
@@ -123,8 +114,17 @@ mod tests {
     use crate::app::model::shared::input_mode::InputMode;
 
     use crate::app::ports::outbound::DbOperationError;
-    use crate::app::update::input::keymap::{HintSurface, KeyContext, connection_error_hints};
+    use crate::app::update::input::keymap::{
+        HintSurface, KeyContext, connection_error_hints, footer_hints,
+    };
     use rstest::rstest;
+
+    fn get_context_hints(state: &AppState) -> Vec<(String, &'static str)> {
+        footer_hints(&KeyContext::from_state(state))
+            .into_iter()
+            .map(|hint| (hint.key, hint.short))
+            .collect()
+    }
 
     fn contains(hints: &[(String, &str)], expected: (&str, &str)) -> bool {
         hints
@@ -176,7 +176,7 @@ mod tests {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::Normal);
 
-        let hints = Footer::get_context_hints(&state);
+        let hints = get_context_hints(&state);
 
         assert!(!contains(&hints, ("r", "Reload")));
         assert!(contains(&hints, ("c", "Connections")));
@@ -192,7 +192,7 @@ mod tests {
             state.result_interaction.activate_cell(0, 0);
         }
 
-        let hints = Footer::get_context_hints(&state);
+        let hints = get_context_hints(&state);
 
         assert!(contains(&hints, ("c", "Connections")));
     }
@@ -213,7 +213,7 @@ mod tests {
             );
         }
 
-        let hints = Footer::get_context_hints(&state);
+        let hints = get_context_hints(&state);
 
         assert_eq!(contains(&hints, ("Tab/⇧Tab", "InsTabs")), expected_visible);
     }
@@ -224,7 +224,7 @@ mod tests {
         state.modal.set_mode(InputMode::ConnectionSetup);
         focus_connection_field(&mut state, ConnectionField::SslMode);
 
-        assert!(Footer::get_context_hints(&state).is_empty());
+        assert!(get_context_hints(&state).is_empty());
     }
 
     #[test]

@@ -131,7 +131,7 @@ fn mysql_pipe_empty_response_or_error(
     if has_mysql_cli_error(pending_stderr) {
         classify_mysql_query_failure_with_packet_limit(pending_stderr, client_packet_limit_bytes)
     } else {
-        DbOperationError::EmptyResponse("mysql mode probe returned no resultset".to_string())
+        DbOperationError::QueryFailed("mysql mode probe returned no resultset".to_string())
     }
 }
 

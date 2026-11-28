@@ -75,7 +75,7 @@ impl SqliteAdapter {
     ) -> Result<T, DbOperationError> {
         let rows: Vec<RawJsonPayload> = self.cli.execute_json_read_only(path, query).await?;
         let payload = rows.into_iter().next().ok_or_else(|| {
-            DbOperationError::MetadataParseFailed("SQLite metadata payload was empty".to_string())
+            DbOperationError::QueryFailed("SQLite metadata payload was empty".to_string())
         })?;
         serde_json::from_str(&payload.payload).map_err(DbOperationError::from)
     }

@@ -32,10 +32,14 @@ impl CellDetail {
             return None;
         }
 
-        let title = format!(
-            " Cell Detail \u{2500}\u{2500} {}",
-            state.cell_detail.column_name()
-        );
+        let title = if state.er_failure_previous_detail.is_some() {
+            " ER diagram failures ".to_string()
+        } else {
+            format!(
+                " Cell Detail \u{2500}\u{2500} {}",
+                state.cell_detail.column_name()
+            )
+        };
         let hints = cell_detail_hints(HintSurface::Border, &KeyContext::from_state(state));
         let (_area, inner) = render_modal(
             frame,

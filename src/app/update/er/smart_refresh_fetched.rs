@@ -42,15 +42,7 @@ pub(in crate::update) fn smart_er_refresh_fetched(
         Err(failure) => return smart_er_refresh_failed(state, failure),
     };
 
-    let TableSignatureSnapshot {
-        signatures,
-        prefetched_table_details,
-    } = Arc::unwrap_or_clone(signature_snapshot);
-    for detail in prefetched_table_details {
-        state
-            .table_detail_cache
-            .insert(detail.qualified_name(), detail);
-    }
+    let TableSignatureSnapshot { signatures } = Arc::unwrap_or_clone(signature_snapshot);
     let diff = diff_signatures(
         state.er_preparation.last_signatures(),
         &signatures,

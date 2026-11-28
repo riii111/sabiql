@@ -193,12 +193,6 @@ pub(in crate::update) fn paste(
             state.ui.er_picker_mut().insert_filter_str(&text);
             vec![]
         }
-        InputTarget::SettingsErBrowser => {
-            state
-                .settings
-                .edit_custom_browser(|input| input.insert_str(&sanitize_filter_text(&text)));
-            vec![]
-        }
         InputTarget::QueryHistoryFilter => {
             state.query_history_picker.insert_filter_str(&text);
             vec![]

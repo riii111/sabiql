@@ -21,9 +21,8 @@ use sabiql_app::update::action::Action;
 use sabiql_app::update::input::handle_event;
 use sabiql_app::update::reducer::reduce;
 use sabiql_infra::adapters::{
-    ArboardClipboard, CsvCachedResultExporter, DbAdapterRegistry, FileConfigWriter,
-    FileQueryHistoryStore, FsErLogWriter, FsSqlitePathValidator, NativeFolderOpener,
-    PgServiceFileReader, TomlConfigStore,
+    ArboardClipboard, CsvCachedResultExporter, DbAdapterRegistry, FileQueryHistoryStore,
+    FsSqlitePathValidator, NativeFolderOpener, PgServiceFileReader, TomlConfigStore,
 };
 use sabiql_infra::config::project_root::{find_project_root, get_project_name};
 use sabiql_infra::export::DotExporter;
@@ -182,7 +181,6 @@ fn apply_app_settings(state: &mut AppState, app_settings: AppSettings) {
     state
         .settings
         .load_keymap_preset(app_settings.keymap_preset);
-    state.settings.load_er_browser(app_settings.er_browser);
 }
 
 fn load_service_entries(state: &mut AppState, reader: &dyn PgServiceEntryReader) {
@@ -320,8 +318,6 @@ impl Runtime {
             },
             ErDeps {
                 er_exporter: Arc::new(DotExporter::new()),
-                config_writer: Arc::new(FileConfigWriter::new()),
-                er_log_writer: Arc::new(FsErLogWriter),
             },
             UtilityDeps {
                 clipboard: Arc::new(ArboardClipboard),
