@@ -466,10 +466,15 @@ fn foreign_key_row(fk: &ForeignKey) -> InspectorForeignKeyRow {
 fn escape_trigger_controls(line: &str) -> String {
     let mut displayed = String::with_capacity(line.len());
     for ch in line.chars() {
-        if ch.is_control() {
-            displayed.extend(ch.escape_debug());
-        } else {
-            displayed.push(ch);
+        match ch {
+            '\0'..='\u{1f}' => {
+                let picture =
+                    char::from_u32(0x2400 + u32::from(ch)).expect("valid control picture");
+                displayed.push(picture);
+            }
+            '\u{7f}' => displayed.push('␡'),
+            ch if ch.is_control() => displayed.extend(ch.escape_debug()),
+            ch => displayed.push(ch),
         }
     }
     displayed
@@ -849,7 +854,7 @@ mod tests {
         let mut table = table();
         table.triggers.push(Trigger {
             name: "users_audit".to_string(),
-            definition: "CREATE TRIGGER users_audit AFTER INSERT ON users\n  BEGIN\n    SELECT 'one\ttwo';\n  END"
+            definition: "CREATE TRIGGER users_audit AFTER INSERT ON users\n  BEGIN\n    SELECT 'one\ttwo', 'one\\ttwo';\n  END"
                 .to_string(),
         });
         let model = build_loaded(
@@ -873,7 +878,7 @@ mod tests {
                 "Name: users_audit",
                 "CREATE TRIGGER users_audit AFTER INSERT ON users",
                 "  BEGIN",
-                "    SELECT 'one\\ttwo';",
+                "    SELECT 'one␉two', 'one\\ttwo';",
                 "  END",
             ]
         );
