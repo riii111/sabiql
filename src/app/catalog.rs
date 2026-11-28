@@ -310,7 +310,10 @@ mod tests {
             writeln!(actual, "# {}", origins.join(", ")).unwrap();
             actual.push_str(&display);
         }
-        assert_eq!(actual, include_str!("catalog/help_reference.txt"));
+        assert_eq!(
+            actual,
+            include_str!("catalog/help_reference.txt").replace("\r\n", "\n")
+        );
     }
 
     #[test]
