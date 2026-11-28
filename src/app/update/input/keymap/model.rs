@@ -385,6 +385,53 @@ pub(super) fn indexed_hints(
         .collect()
 }
 
+pub(super) fn reference_hint(
+    row: &Row,
+    preset: KeymapPreset,
+    policy: &crate::policy::FeaturePolicy,
+) -> Option<Hint> {
+    let mut seen = Vec::new();
+    let triggers = row
+        .bindings
+        .iter()
+        .filter(|binding| {
+            use crate::policy::FeatureRequirement;
+            let feature = match &binding.output {
+                Output::Action(action) => action.feature_requirement(),
+                Output::Command(command) => command.action().feature_requirement(),
+                Output::Text(target) => Action::TextInput {
+                    target: *target,
+                    ch: ' ',
+                }
+                .feature_requirement(),
+                Output::Consume => FeatureRequirement::None,
+            };
+            policy.is_enabled(feature)
+        })
+        .map(|binding| {
+            binding
+                .triggers(preset)
+                .iter()
+                .copied()
+                .filter(|trigger| {
+                    let label = name(*trigger, true);
+                    if seen.contains(&label) {
+                        return false;
+                    }
+                    seen.push(label);
+                    true
+                })
+                .collect::<Vec<_>>()
+        })
+        .filter(|triggers| !triggers.is_empty())
+        .collect::<Vec<_>>();
+    (!triggers.is_empty()).then(|| Hint {
+        key: long_name(&triggers),
+        short: row.short,
+        description: row.description,
+    })
+}
+
 pub(super) fn retained_hint(row: &Row, context: &KeyContext, surface: HintSurface) -> Hint {
     let triggers: Vec<_> = row
         .bindings

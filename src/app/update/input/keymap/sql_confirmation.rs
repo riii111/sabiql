@@ -8,10 +8,10 @@ use super::context::SqlConfirmation;
 use super::model::{Binding, Row, hints};
 use super::{Hint, HintSurface, KeyContext};
 
-static HIGH: LazyLock<Vec<Row>> = LazyLock::new(|| rows(false, true));
-static RISK: LazyLock<Vec<Row>> = LazyLock::new(|| rows(false, false));
-static ANALYZE_HIGH: LazyLock<Vec<Row>> = LazyLock::new(|| rows(true, true));
-static ANALYZE_RISK: LazyLock<Vec<Row>> = LazyLock::new(|| rows(true, false));
+pub(super) static HIGH: LazyLock<Vec<Row>> = LazyLock::new(|| rows(false, true));
+pub(super) static RISK: LazyLock<Vec<Row>> = LazyLock::new(|| rows(false, false));
+pub(super) static ANALYZE_HIGH: LazyLock<Vec<Row>> = LazyLock::new(|| rows(true, true));
+pub(super) static ANALYZE_RISK: LazyLock<Vec<Row>> = LazyLock::new(|| rows(true, false));
 
 fn rows(analyze: bool, typed: bool) -> Vec<Row> {
     let (confirm, cancel, confirm_label, cancel_label) = if analyze {

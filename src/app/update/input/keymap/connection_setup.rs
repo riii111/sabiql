@@ -7,7 +7,7 @@ use super::common::conditional_text_field;
 use super::model::{Binding, Row, hints};
 use super::{Hint, HintSurface, KeyContext};
 
-static CONNECT: LazyLock<Vec<Row>> = LazyLock::new(|| rows("Connect"));
+pub(super) static CONNECT: LazyLock<Vec<Row>> = LazyLock::new(|| rows("Connect"));
 static SAVE: LazyLock<Vec<Row>> = LazyLock::new(|| rows("Save"));
 
 fn form(context: &KeyContext) -> bool {

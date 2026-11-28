@@ -191,8 +191,8 @@ pub(super) fn document_navigation(target: InputTarget, shifted_prefix: bool) -> 
     ];
     if target == InputTarget::SqlModal {
         jumps.extend([
-            movement(CursorMove::Home, &[KeyCombo::plain(Key::Home)]),
-            movement(CursorMove::End, &[KeyCombo::plain(Key::End)]),
+            movement(CursorMove::LineStart, &[KeyCombo::plain(Key::Home)]),
+            movement(CursorMove::LineEnd, &[KeyCombo::plain(Key::End)]),
         ]);
     } else {
         jumps[0] = jumps[0].clone().with_no_ctrl_alt(Key::Home);
@@ -297,7 +297,10 @@ pub(super) fn text_field_with_navigation(target: InputTarget) -> (Vec<Row>, Vec<
             ],
         ),
         group(
-            &[(Key::Home, CursorMove::Home), (Key::End, CursorMove::End)],
+            &[
+                (Key::Home, CursorMove::LineStart),
+                (Key::End, CursorMove::LineEnd),
+            ],
             "Jump",
             "Jump to start/end",
             &[HintSurface::Current, HintSurface::Editing],
@@ -348,7 +351,7 @@ fn cursor_rows(target: InputTarget, modifiers: KeyModifiers) -> Vec<Row> {
         hidden(
             Action::TextMoveCursor {
                 target,
-                direction: CursorMove::Home,
+                direction: CursorMove::LineStart,
             },
             Key::Home,
             modifiers,
@@ -356,7 +359,7 @@ fn cursor_rows(target: InputTarget, modifiers: KeyModifiers) -> Vec<Row> {
         hidden(
             Action::TextMoveCursor {
                 target,
-                direction: CursorMove::End,
+                direction: CursorMove::LineEnd,
             },
             Key::End,
             modifiers,

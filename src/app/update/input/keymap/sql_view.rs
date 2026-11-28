@@ -9,9 +9,9 @@ use super::model::{Binding, Row, hints};
 use super::scroll::line_scroll;
 use super::{Hint, HintSurface, KeyContext};
 
-static SQL: LazyLock<Vec<Row>> = LazyLock::new(|| rows(SqlModalTab::Sql));
-static PLAN: LazyLock<Vec<Row>> = LazyLock::new(|| rows(SqlModalTab::Plan));
-static COMPARE: LazyLock<Vec<Row>> = LazyLock::new(|| rows(SqlModalTab::Compare));
+pub(super) static SQL: LazyLock<Vec<Row>> = LazyLock::new(|| rows(SqlModalTab::Sql));
+pub(super) static PLAN: LazyLock<Vec<Row>> = LazyLock::new(|| rows(SqlModalTab::Plan));
+pub(super) static COMPARE: LazyLock<Vec<Row>> = LazyLock::new(|| rows(SqlModalTab::Compare));
 
 fn rows(tab: SqlModalTab) -> Vec<Row> {
     let sql = tab == SqlModalTab::Sql;

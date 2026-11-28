@@ -145,12 +145,15 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             ],
         ),
         Row::new(
-            [(Key::Home, CursorMove::Home), (Key::End, CursorMove::End)]
-                .into_iter()
-                .map(|(key, direction)| {
-                    Binding::any_modifiers(Action::TextMoveCursor { target, direction }, key)
-                })
-                .collect(),
+            [
+                (Key::Home, CursorMove::LineStart),
+                (Key::End, CursorMove::LineEnd),
+            ]
+            .into_iter()
+            .map(|(key, direction)| {
+                Binding::any_modifiers(Action::TextMoveCursor { target, direction }, key)
+            })
+            .collect(),
             "Line",
             "Line start/end",
             &[HintSurface::Current, HintSurface::Editing],

@@ -638,7 +638,7 @@ mod tests {
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::ResultCellEdit,
-                    direction: CursorMove::End,
+                    direction: CursorMove::LineEnd,
                 },
                 Instant::now(),
             );

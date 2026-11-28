@@ -248,7 +248,7 @@ impl ResultPane {
         let ctx = SelectionContext {
             horizontal_offset: clamped_offset,
             available_width: inner.width,
-            fixed_count: Some(plan.column_count),
+            fixed_count: plan.column_count,
             max_offset: plan.max_offset,
         };
         let (viewport_indices, viewport_widths) = select_viewport_columns(&config, &ctx);

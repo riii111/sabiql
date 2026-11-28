@@ -1,9 +1,6 @@
 use crate::model::shared::cursor::CursorMove;
 
-use super::text_input::{
-    TextInputState, TextKillDirection, char_to_byte_index, next_word_start, previous_word_start,
-    readline_forward_word_end, readline_previous_boundary,
-};
+use super::text_input::{TextInputState, char_to_byte_index, next_word_start, previous_word_start};
 use crate::model::shared::text_input::TextEdit;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -100,60 +97,6 @@ impl MultiLineInputState {
         self.rebuild_derived();
     }
 
-    pub fn kill_to_line_end(&mut self) -> String {
-        let (line, _) = self.current_line_col();
-        let end = self.line_spans()[line].start + self.line_spans()[line].len;
-        self.remove_range(self.cursor(), end)
-    }
-
-    pub fn kill_to_line_start(&mut self) -> String {
-        let (line, _) = self.current_line_col();
-        self.remove_range(self.line_spans()[line].start, self.cursor())
-    }
-
-    pub fn kill_next_word(&mut self) -> String {
-        self.remove_range(
-            self.cursor(),
-            readline_forward_word_end(self.content(), self.cursor()),
-        )
-    }
-
-    pub fn kill_previous_word(&mut self) -> String {
-        self.remove_range(
-            readline_previous_boundary(self.content(), self.cursor(), |ch| !ch.is_whitespace()),
-            self.cursor(),
-        )
-    }
-
-    pub fn kill(&mut self, direction: TextKillDirection) -> String {
-        match direction {
-            TextKillDirection::ToLineEnd => self.kill_to_line_end(),
-            TextKillDirection::ToLineStart => self.kill_to_line_start(),
-            TextKillDirection::ReadlineWordEnd => self.kill_next_word(),
-            TextKillDirection::ReadlinePreviousWhitespace => self.kill_previous_word(),
-        }
-    }
-
-    pub fn apply_edit(&mut self, edit: TextEdit, yank_text: Option<&str>) -> String {
-        match edit {
-            TextEdit::Insert(ch) => self.insert_char(ch),
-            TextEdit::Backspace => self.backspace(),
-            TextEdit::Delete => self.delete(),
-            TextEdit::Kill(direction) => return self.kill(direction),
-            TextEdit::Yank => {
-                if let Some(text) = yank_text {
-                    self.yank(text);
-                }
-            }
-            TextEdit::MoveCursor(direction) => self.move_cursor(direction),
-        }
-        String::new()
-    }
-
-    pub fn yank(&mut self, text: &str) {
-        self.insert_str(text);
-    }
-
     pub fn set_content(&mut self, s: String) {
         self.inner.set_content(s);
         self.scroll_row = 0;
@@ -175,6 +118,38 @@ impl MultiLineInputState {
         self.scroll_row = 0;
         self.preferred_col = None;
         self.rebuild_derived();
+    }
+
+    /// Applies an editor action and returns whether it was a text edit.
+    pub(crate) fn apply_editor_edit(&mut self, edit: TextEdit, visible_rows: usize) -> bool {
+        let edited = match edit {
+            TextEdit::Insert(ch) => {
+                self.insert_char(ch);
+                true
+            }
+            TextEdit::Backspace => {
+                self.backspace();
+                true
+            }
+            TextEdit::Delete => {
+                self.delete();
+                true
+            }
+            TextEdit::MoveCursor(movement) => {
+                match movement {
+                    CursorMove::ViewportTop
+                    | CursorMove::ViewportMiddle
+                    | CursorMove::ViewportBottom => {
+                        self.move_cursor_to_viewport_position(movement, visible_rows);
+                    }
+                    _ => self.move_cursor(movement),
+                }
+                false
+            }
+            TextEdit::Kill(_) | TextEdit::Yank => return false,
+        };
+        self.update_scroll(visible_rows);
+        edited
     }
 
     pub fn move_cursor(&mut self, movement: CursorMove) {
@@ -201,12 +176,12 @@ impl MultiLineInputState {
                 }
                 self.preferred_col = Some(preferred_col);
             }
-            CursorMove::Home | CursorMove::LineStart => {
+            CursorMove::LineStart => {
                 let (current_line, _) = self.current_line_col();
                 self.set_cursor_from_line(current_line, 0);
                 self.preferred_col = None;
             }
-            CursorMove::End | CursorMove::LineEnd => {
+            CursorMove::LineEnd => {
                 let (current_line, _) = self.current_line_col();
                 let current = self.line_spans()[current_line];
                 self.set_cursor_from_line(current_line, current.len);
@@ -222,30 +197,7 @@ impl MultiLineInputState {
                 self.set_cursor_and_sync(previous);
                 self.preferred_col = None;
             }
-            CursorMove::ReadlineWordStart => {
-                let previous = readline_previous_boundary(
-                    self.content(),
-                    self.cursor(),
-                    char::is_alphanumeric,
-                );
-                self.set_cursor_and_sync(previous);
-                self.preferred_col = None;
-            }
-            CursorMove::ReadlineWordEnd => {
-                let next = readline_forward_word_end(self.content(), self.cursor());
-                self.set_cursor_and_sync(next);
-                self.preferred_col = None;
-            }
-            CursorMove::BufferStart => {
-                self.set_cursor_from_line(0, 0);
-                self.preferred_col = None;
-            }
-            CursorMove::BufferEnd => {
-                let last_row = self.line_spans().len().saturating_sub(1);
-                let last = self.line_spans()[last_row];
-                self.set_cursor_from_line(last_row, last.len);
-                self.preferred_col = None;
-            }
+            CursorMove::ReadlineWordStart | CursorMove::ReadlineWordEnd => {}
             CursorMove::FirstLine => {
                 let (_, current_col) = self.current_line_col();
                 let preferred_col = self.preferred_col.unwrap_or(current_col);
@@ -265,7 +217,7 @@ impl MultiLineInputState {
         }
     }
 
-    pub fn move_cursor_to_viewport_position(&mut self, movement: CursorMove, visible_rows: usize) {
+    fn move_cursor_to_viewport_position(&mut self, movement: CursorMove, visible_rows: usize) {
         if visible_rows == 0 {
             return;
         }
@@ -306,15 +258,6 @@ impl MultiLineInputState {
 
     fn rebuild_derived(&mut self) {
         self.derived = MultiLineDerivedState::new(self.content(), self.cursor());
-    }
-
-    fn remove_range(&mut self, start: usize, end: usize) -> String {
-        let removed = self.inner.remove_range(start, end);
-        if !removed.is_empty() {
-            self.preferred_col = None;
-            self.rebuild_derived();
-        }
-        removed
     }
 
     fn current_line_col(&self) -> (usize, usize) {
@@ -646,7 +589,7 @@ mod tests {
             use super::*;
 
             #[rstest]
-            #[case(CursorMove::Home)]
+            #[case(CursorMove::LineStart)]
             #[case(CursorMove::LineStart)]
             fn returns_current_line_start(#[case] movement: CursorMove) {
                 // "abc\ndef" → cursor at 5 (on 'e'), col=1
@@ -657,7 +600,7 @@ mod tests {
             }
 
             #[rstest]
-            #[case(CursorMove::End)]
+            #[case(CursorMove::LineEnd)]
             #[case(CursorMove::LineEnd)]
             fn returns_current_line_end(#[case] movement: CursorMove) {
                 // "abc\ndef" → cursor at 4 (on 'd'), col=0
@@ -668,7 +611,7 @@ mod tests {
             }
 
             #[rstest]
-            #[case(CursorMove::Home)]
+            #[case(CursorMove::LineStart)]
             #[case(CursorMove::LineStart)]
             fn first_line_start_returns_zero(#[case] movement: CursorMove) {
                 let mut s = ml("abc\ndef", 2);
@@ -677,7 +620,7 @@ mod tests {
             }
 
             #[rstest]
-            #[case(CursorMove::End)]
+            #[case(CursorMove::LineEnd)]
             #[case(CursorMove::LineEnd)]
             fn first_line_end_returns_line_length(#[case] movement: CursorMove) {
                 let mut s = ml("abc\ndef", 0);
@@ -686,9 +629,9 @@ mod tests {
             }
 
             #[rstest]
-            #[case(CursorMove::Home, 4)]
             #[case(CursorMove::LineStart, 4)]
-            #[case(CursorMove::End, 4)]
+            #[case(CursorMove::LineStart, 4)]
+            #[case(CursorMove::LineEnd, 4)]
             #[case(CursorMove::LineEnd, 4)]
             fn empty_line_returns_same_position(
                 #[case] movement: CursorMove,
@@ -702,9 +645,9 @@ mod tests {
             }
 
             #[rstest]
-            #[case(CursorMove::Home, 4)]
             #[case(CursorMove::LineStart, 4)]
-            #[case(CursorMove::End, 6)]
+            #[case(CursorMove::LineStart, 4)]
+            #[case(CursorMove::LineEnd, 6)]
             #[case(CursorMove::LineEnd, 6)]
             fn multibyte_returns_line_boundaries(
                 #[case] movement: CursorMove,
@@ -798,20 +741,6 @@ mod tests {
 
         mod buffer_navigation {
             use super::*;
-
-            #[test]
-            fn start_returns_position_zero() {
-                let mut s = ml("abc\ndef", 5);
-                s.move_cursor(CursorMove::BufferStart);
-                assert_eq!(s.cursor(), 0);
-            }
-
-            #[test]
-            fn end_returns_last_position() {
-                let mut s = ml("abc\ndef", 1);
-                s.move_cursor(CursorMove::BufferEnd);
-                assert_eq!(s.cursor(), 7);
-            }
 
             #[test]
             fn first_line_preserves_column() {
@@ -1070,21 +999,6 @@ mod tests {
             assert_eq!(s.content(), "");
             assert_eq!(s.cursor(), 0);
             assert_eq!(s.scroll_row(), 0);
-        }
-    }
-
-    mod kill {
-        use super::*;
-
-        #[test]
-        fn to_line_end_preserves_following_lines() {
-            let mut input = ml("select\nfrom users", 2);
-
-            let killed = input.kill_to_line_end();
-
-            assert_eq!(killed, "lect");
-            assert_eq!(input.content(), "se\nfrom users");
-            assert_eq!(input.cursor_to_position(), (0, 2));
         }
     }
 

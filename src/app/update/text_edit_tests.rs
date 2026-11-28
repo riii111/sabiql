@@ -52,7 +52,7 @@ impl Step {
             },
             Self::Home => Action::TextMoveCursor {
                 target,
-                direction: CursorMove::Home,
+                direction: CursorMove::LineStart,
             },
             Self::ViewportBottom => Action::TextMoveCursor {
                 target,
@@ -116,15 +116,11 @@ const SQL_MODAL_MULTI_LINE_CASES: [Case; 3] = [
     case(Step::ViewportBottom, "ab cd", 3, Some("XY")),
 ];
 
-const JSON_EDIT_CASES: [Case; 13] = [
+const JSON_EDIT_CASES: [Case; 9] = [
     case(Step::Initial, "{\n  \"a\": 1\n}", 3, None),
     case(Step::Insert('Z'), "{\n Z \"a\": 1\n}", 4, Some("XY")),
     case(Step::Backspace, "{\n \"a\": 1\n}", 2, Some("XY")),
     case(Step::Delete, "{\n \"a\": 1\n}", 3, Some("XY")),
-    case(Step::KillToLineStart, "{\n \"a\": 1\n}", 2, Some(" ")),
-    case(Step::KillToLineEnd, "{\n \n}", 3, Some(" \"a\": 1")),
-    case(Step::Yank, "{\n XY \"a\": 1\n}", 5, Some("XY")),
-    case(Step::YankWithEmptyBuffer, "{\n  \"a\": 1\n}", 3, None),
     case(Step::Left, "{\n  \"a\": 1\n}", 2, Some("XY")),
     case(Step::Home, "{\n  \"a\": 1\n}", 2, Some("XY")),
     case(Step::Insert('\n'), "{\n \n \"a\": 1\n}", 4, Some("XY")),
@@ -321,9 +317,19 @@ fn state_after(target: InputTarget, step: Step) -> AppState {
 
 fn cases_for(target: InputTarget) -> Vec<Case> {
     match target {
-        InputTarget::SqlModal => {
-            [SINGLE_LINE_CASES.as_slice(), &SQL_MODAL_MULTI_LINE_CASES].concat()
-        }
+        InputTarget::SqlModal => SINGLE_LINE_CASES
+            .into_iter()
+            .filter(|case| {
+                !matches!(
+                    case.step,
+                    Step::KillToLineStart
+                        | Step::KillToLineEnd
+                        | Step::Yank
+                        | Step::YankWithEmptyBuffer
+                )
+            })
+            .chain(SQL_MODAL_MULTI_LINE_CASES)
+            .collect(),
         InputTarget::JsonEdit => JSON_EDIT_CASES.to_vec(),
         InputTarget::CellDetailSearch => SINGLE_LINE_CASES
             .into_iter()
@@ -438,7 +444,7 @@ fn assert_side_effects(state: &AppState, target: InputTarget, step: Step, contex
         ),
         InputTarget::JsonEdit => assert_eq!(
             state.json_detail.validation_error().is_some(),
-            matches!(step, Step::Insert('Z') | Step::Yank),
+            matches!(step, Step::Insert('Z')),
             "{context}: validation error"
         ),
         InputTarget::JsonSearch => assert_eq!(
@@ -634,7 +640,7 @@ fn kill_then_yank_restores_text(
             &mut state,
             Action::TextMoveCursor {
                 target,
-                direction: CursorMove::End,
+                direction: CursorMove::LineEnd,
             },
         );
     }

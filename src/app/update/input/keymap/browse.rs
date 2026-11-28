@@ -14,10 +14,11 @@ use super::global;
 use super::model::{Binding, Row, hints, indexed_hints, row_action};
 use super::{Hint, HintSurface, KeyContext};
 
-static EXPLORER: LazyLock<Vec<Row>> = LazyLock::new(|| rows(BrowsePane::Explorer));
-static INSPECTOR: LazyLock<Vec<Row>> = LazyLock::new(|| rows(BrowsePane::Inspector));
-static RESULT_SCROLL: LazyLock<Vec<Row>> = LazyLock::new(|| rows(BrowsePane::ResultScroll));
-static RESULT_CELL: LazyLock<Vec<Row>> = LazyLock::new(|| rows(BrowsePane::ResultCell));
+pub(super) static EXPLORER: LazyLock<Vec<Row>> = LazyLock::new(|| rows(BrowsePane::Explorer));
+pub(super) static INSPECTOR: LazyLock<Vec<Row>> = LazyLock::new(|| rows(BrowsePane::Inspector));
+pub(super) static RESULT_SCROLL: LazyLock<Vec<Row>> =
+    LazyLock::new(|| rows(BrowsePane::ResultScroll));
+pub(super) static RESULT_CELL: LazyLock<Vec<Row>> = LazyLock::new(|| rows(BrowsePane::ResultCell));
 
 fn rows(pane: BrowsePane) -> Vec<Row> {
     let mut rows = global::ROWS.clone();

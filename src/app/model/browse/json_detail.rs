@@ -1,17 +1,8 @@
 use crate::model::shared::detail_view::{DetailContentState, DetailSearchState};
 use crate::model::shared::multi_line_input::MultiLineInputState;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum JsonDetailMode {
-    #[default]
-    Viewing,
-    Editing,
-    Searching,
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct JsonDetailState {
     detail: DetailContentState,
-    mode: JsonDetailMode,
     editor: MultiLineInputState,
     search: DetailSearchState,
     validation_error: Option<String>,
@@ -36,7 +27,6 @@ impl JsonDetailState {
             ),
             editor: MultiLineInputState::new(pretty_original, 0),
             search: DetailSearchState::default(),
-            mode: JsonDetailMode::Viewing,
             validation_error: None,
             active: true,
         }
@@ -56,10 +46,6 @@ impl JsonDetailState {
 
     pub fn is_active(&self) -> bool {
         self.active
-    }
-
-    pub fn mode(&self) -> JsonDetailMode {
-        self.mode
     }
 
     pub fn row(&self) -> usize {
@@ -103,24 +89,17 @@ impl JsonDetailState {
     }
 
     pub fn enter_search(&mut self) {
-        self.mode = JsonDetailMode::Searching;
         self.search.reset();
         self.search.activate();
     }
 
     pub fn exit_search(&mut self) {
         self.search.deactivate();
-        self.mode = JsonDetailMode::Viewing;
     }
 
     pub fn enter_edit(&mut self) {
         self.search.deactivate();
         self.validation_error = None;
-        self.mode = JsonDetailMode::Editing;
-    }
-
-    pub fn exit_edit(&mut self) {
-        self.mode = JsonDetailMode::Viewing;
     }
 
     pub fn current_json_for_yank(&self) -> String {
@@ -151,7 +130,7 @@ impl JsonDetailState {
 
 #[cfg(test)]
 mod tests {
-    use super::{JsonDetailMode, JsonDetailState};
+    use super::JsonDetailState;
 
     #[test]
     fn open_prettifies_valid_json_into_editor() {
@@ -205,6 +184,5 @@ mod tests {
         state.enter_edit();
 
         assert!(!state.search().is_active());
-        assert_eq!(state.mode(), JsonDetailMode::Editing);
     }
 }

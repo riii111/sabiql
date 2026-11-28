@@ -1,5 +1,4 @@
 use crate::model::app_state::AppState;
-use crate::model::browse::json_detail::JsonDetailMode;
 use crate::model::connection::list::is_service_selected;
 use crate::model::connection::setup::ConnectionField;
 use crate::model::shared::focused_pane::FocusedPane;
@@ -17,7 +16,7 @@ use crate::update::action::Action;
 pub struct KeyContext {
     pub(super) preset: KeymapPreset,
     mode: InputMode,
-    json_mode: JsonDetailMode,
+    pub(super) json_searching: bool,
     policy: FeaturePolicy,
     scope: Scope,
     pending_prefix: Option<Prefix>,
@@ -162,11 +161,8 @@ impl KeyContext {
             InputMode::ConnectionSelector => "Connection Selector",
             InputMode::ErTablePicker => "ER Table Picker",
             InputMode::QueryHistoryPicker => "Query History Picker",
-            InputMode::JsonDetail => match self.json_mode {
-                JsonDetailMode::Viewing => "JSON Detail",
-                JsonDetailMode::Searching => "JSON Search",
-                JsonDetailMode::Editing => "JSON Edit",
-            },
+            InputMode::JsonDetail if self.json_searching => "JSON Search",
+            InputMode::JsonDetail => "JSON Detail",
             InputMode::JsonEdit => "JSON Edit",
             InputMode::CellDetail if self.is_cell_detail_searching() => "Cell Detail Search",
             InputMode::CellDetail => "Cell Detail",
@@ -178,14 +174,11 @@ impl KeyContext {
         matches!(self.scope, Scope::SqlEditing { .. })
     }
 
-    pub(super) fn json_mode(&self) -> JsonDetailMode {
-        self.json_mode
-    }
     pub fn from_state(state: &AppState) -> Self {
         Self {
             preset: state.settings.saved_keymap_preset(),
             mode: state.input_mode(),
-            json_mode: state.json_detail.mode(),
+            json_searching: state.json_detail.search().is_active(),
             policy: FeaturePolicy::new(&state.session.active_engine_feature_profile()),
             pending_prefix: state.ui.key_sequence.pending_prefix(),
             history_available: state.can_open_query_history(),
@@ -261,7 +254,7 @@ impl KeyContext {
         Self {
             preset,
             mode,
-            json_mode: JsonDetailMode::Viewing,
+            json_searching: false,
             policy: policy.clone(),
             pending_prefix: None,
             history_available: true,
@@ -287,52 +280,6 @@ impl KeyContext {
                 _ => Scope::Other,
             },
         }
-    }
-
-    pub(super) fn with_browse_reference(
-        mut self,
-        pane: BrowsePane,
-        staged: bool,
-        draft: bool,
-    ) -> Self {
-        self.mode = InputMode::Normal;
-        self.history_available = true;
-        self.pending_prefix = None;
-        self.scope = Scope::Browse(BrowseScope {
-            focused: false,
-            read_only: false,
-            csv_available: true,
-            pane,
-            connection_error: false,
-            inspector_ddl: true,
-            staged_delete: staged,
-            draft,
-            yank_pending: false,
-            delete_pending: false,
-            selected_row: true,
-            selected_cell: true,
-            connected: true,
-            can_edit_cell: true,
-            can_write: true,
-            can_paginate: true,
-            multiple_inspector_tabs: true,
-        });
-        self
-    }
-
-    pub(super) fn with_browse_reference_error(mut self) -> Self {
-        if let Scope::Browse(ref mut scope) = self.scope {
-            scope.connection_error = true;
-        }
-        self
-    }
-
-    pub(super) fn with_browse_reference_focus_read_only(mut self) -> Self {
-        if let Scope::Browse(ref mut scope) = self.scope {
-            scope.focused = true;
-            scope.read_only = true;
-        }
-        self
     }
 
     pub fn for_browse_state(state: &AppState) -> Self {
@@ -421,7 +368,7 @@ impl KeyContext {
 
     pub(super) fn allows(&self, action: &Action) -> bool {
         self.policy
-            .is_enabled(action.feature_requirement_for_context(self.mode, self.json_mode))
+            .is_enabled(action.feature_requirement_for_context(self.mode, self.json_searching))
     }
 
     pub(super) fn pending_prefix(&self) -> Option<Prefix> {
@@ -503,31 +450,6 @@ impl KeyContext {
         )
     }
 
-    pub(crate) fn with_sql_view(mut self, tab: SqlModalTab) -> Self {
-        self.mode = InputMode::SqlModal;
-        self.scope = Scope::SqlNormal {
-            tab,
-            multiple_tabs: self.policy.is_enabled(FeatureRequirement::Explain),
-            compare_can_yank: true,
-        };
-        self
-    }
-
-    pub(crate) fn with_sql_editing(mut self, completion_visible: bool) -> Self {
-        self.mode = InputMode::SqlModal;
-        self.scope = Scope::SqlEditing { completion_visible };
-        self
-    }
-
-    pub(super) fn with_sql_confirmation(mut self, kind: SqlConfirmation) -> Self {
-        self.mode = InputMode::SqlModal;
-        self.scope = Scope::SqlConfirmation {
-            kind,
-            matched: true,
-        };
-        self
-    }
-
     pub(super) fn can_run_diagnostics(&self) -> bool {
         matches!(self.scope, Scope::Diagnostics { can_run: true })
     }
@@ -591,6 +513,7 @@ impl KeyContext {
         matches!(self.scope, Scope::ConnectionSetup { editing: true, .. })
     }
 
+    #[cfg(test)]
     pub(crate) fn with_connection_setup(
         mut self,
         field: ConnectionField,
@@ -611,21 +534,6 @@ impl KeyContext {
         matches!(self.scope, Scope::Settings { editing: true, .. })
     }
 
-    pub(super) fn with_settings_editing(mut self) -> Self {
-        self.mode = InputMode::Settings;
-        self.scope = Scope::Settings {
-            editing: true,
-            custom_selected: true,
-        };
-        self
-    }
-
-    pub(super) fn with_help_editing(mut self) -> Self {
-        self.mode = InputMode::Help;
-        self.scope = Scope::Help { editing: true };
-        self
-    }
-
     pub(super) fn is_custom_browser_selected(&self) -> bool {
         matches!(
             self.scope,
@@ -634,24 +542,6 @@ impl KeyContext {
                 ..
             }
         )
-    }
-
-    pub(crate) fn with_cell_detail_searching(mut self, searching: bool) -> Self {
-        self.mode = InputMode::CellDetail;
-        self.scope = Scope::CellDetail { searching };
-        self
-    }
-
-    pub(crate) fn with_json_mode(mut self, mode: JsonDetailMode) -> Self {
-        self.mode = InputMode::JsonDetail;
-        self.json_mode = mode;
-        self
-    }
-
-    pub(crate) fn with_json_edit(mut self) -> Self {
-        self.mode = InputMode::JsonEdit;
-        self.json_mode = JsonDetailMode::Editing;
-        self
     }
 }
 

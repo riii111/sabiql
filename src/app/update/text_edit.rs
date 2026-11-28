@@ -24,6 +24,18 @@ pub(in crate::update) fn apply_text_edit(
     edit: TextEdit,
     now: Instant,
 ) -> Vec<Effect> {
+    match target {
+        InputTarget::SqlModal => {
+            edit_sql_modal(state, edit, now);
+            return vec![];
+        }
+        InputTarget::JsonEdit => {
+            edit_json_text(state, edit);
+            return vec![];
+        }
+        _ => {}
+    }
+
     let yank_text = state.kill_buffer().map(str::to_owned);
     // Every target ignores a yank from an empty kill buffer, including side effects such as
     // selection resets, so the router stops it before reaching the target.
@@ -33,7 +45,7 @@ pub(in crate::update) fn apply_text_edit(
     let yank_text = yank_text.as_deref();
 
     let killed = match target {
-        InputTarget::SqlModal => edit_sql_modal(state, edit, yank_text, now),
+        InputTarget::SqlModal | InputTarget::JsonEdit => unreachable!(),
         InputTarget::SqlModalHighRisk | InputTarget::SqlModalAnalyzeHighRisk => {
             edit_high_risk_confirmation(state, target, edit, yank_text)
         }
@@ -52,7 +64,6 @@ pub(in crate::update) fn apply_text_edit(
         InputTarget::QueryHistoryFilter => state
             .query_history_picker
             .apply_filter_edit(edit, yank_text),
-        InputTarget::JsonEdit => edit_json_text(state, edit, yank_text),
         InputTarget::JsonSearch => {
             edit_search_query(state, DetailTarget::JsonDetail, edit, yank_text)
         }

@@ -23,10 +23,7 @@ mod sql_edit;
 mod sql_view;
 mod sqlite_diagnostics;
 
-use crate::model::browse::json_detail::JsonDetailMode;
-use crate::model::connection::setup::ConnectionField;
 use crate::model::shared::input_mode::InputMode;
-use crate::model::sql_editor::modal::SqlModalTab;
 use crate::policy::FeatureRequirement;
 use crate::ports::inbound::KeyCombo;
 use crate::update::action::{Action, InputTarget};
@@ -104,9 +101,7 @@ fn scope_rows(context: &KeyContext) -> Option<&'static [model::Row]> {
         InputMode::ConnectionSelector => &connection_selector::ROWS,
         InputMode::ErTablePicker => &pickers::ER_ROWS,
         InputMode::QueryHistoryPicker => &pickers::HISTORY_ROWS,
-        InputMode::JsonDetail if context.json_mode() == JsonDetailMode::Searching => {
-            &json_search::ROWS
-        }
+        InputMode::JsonDetail if context.json_searching => &json_search::ROWS,
         InputMode::JsonDetail => &json_view::ROWS,
         InputMode::JsonEdit => &json_edit::ROWS,
         InputMode::CellDetail if context.is_cell_detail_searching() => &cell_detail::SEARCHING,
@@ -116,117 +111,147 @@ fn scope_rows(context: &KeyContext) -> Option<&'static [model::Row]> {
 }
 
 pub(crate) fn reference_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
-    reference_scopes(context)
-        .iter()
-        .filter_map(|scope| scope_rows(scope).map(|rows| model::hints(rows, scope, surface)))
-        .flatten()
-        .collect()
-}
+    use FeatureRequirement as Feature;
 
-fn reference_scopes(context: &KeyContext) -> Vec<KeyContext> {
-    use context::BrowsePane;
-    use context::SqlConfirmation;
+    let groups: &[&[model::Row]] = &[
+        &browse::EXPLORER,
+        &browse::INSPECTOR,
+        &browse::RESULT_SCROLL,
+        &browse::RESULT_CELL,
+        &command::EDITING,
+        &cell_edit::ROWS,
+        &pickers::TABLE_ROWS,
+        &pickers::PALETTE_ROWS,
+        &settings::SELECTING,
+        &help::VIEWING,
+        &connection_error::ROWS,
+        &confirm::ROWS,
+        &connection_selector::ROWS,
+        &pickers::HISTORY_ROWS,
+        &cell_detail::VIEWING,
+        &row_detail::ROWS,
+        &settings::EDITING,
+        &help::EDITING,
+        &cell_detail::SEARCHING,
+        &connection_setup::CONNECT,
+        &sql_view::SQL,
+        &sql_edit::ROWS,
+        &sql_confirmation::HIGH,
+        &sql_confirmation::RISK,
+    ];
+    let feature_groups: &[(Feature, &[model::Row])] = &[
+        (Feature::ExplainAnalyze, &sql_confirmation::ANALYZE_HIGH),
+        (Feature::ExplainAnalyze, &sql_confirmation::ANALYZE_RISK),
+        (Feature::Explain, &sql_view::PLAN),
+        (Feature::PlanComparison, &sql_view::COMPARE),
+        (Feature::ErDiagram, &pickers::ER_ROWS),
+        (Feature::SqliteDiagnostics, &sqlite_diagnostics::ROWS),
+        (Feature::JsonDocumentDetail, &json_view::ROWS),
+        (Feature::JsonDocumentDetail, &json_search::ROWS),
+        (Feature::JsonDocumentEdit, &json_edit::ROWS),
+    ];
 
-    let mut scopes = Vec::new();
-    for pane in [
-        BrowsePane::Explorer,
-        BrowsePane::Inspector,
-        BrowsePane::ResultScroll,
-        BrowsePane::ResultCell,
-    ] {
-        for staged in [false, true] {
-            scopes.push(context.clone().with_browse_reference(pane, staged, false));
+    let mut result = Vec::new();
+    for rows in groups.iter().copied().chain(
+        feature_groups
+            .iter()
+            .filter_map(|(feature, rows)| context.policy().is_enabled(*feature).then_some(*rows)),
+    ) {
+        let mut deferred = Vec::new();
+        for row in rows {
+            if !row.surfaces.contains(&surface) && !row.references.contains(&surface) {
+                continue;
+            }
+            let Some(mut hint) = model::reference_hint(row, context.preset(), context.policy())
+            else {
+                continue;
+            };
+            if surface == HintSurface::Common && row.dynamic_label.is_some() {
+                result.push(hint.clone());
+                if hint.description == "Enable Read-Only mode" {
+                    let mut focus = result
+                        .iter()
+                        .find(|h: &&Hint| h.description == "Toggle Focus mode")
+                        .unwrap()
+                        .clone();
+                    focus.description = "Exit Focus mode";
+                    result.push(focus);
+                    hint.description = "Disable Read-Only mode";
+                    result.push(hint);
+                }
+                continue;
+            }
+            if surface == HintSurface::DataActions
+                && hint.description == "Cancel"
+                && row.dynamic_label.is_some()
+            {
+                result.push(hint.clone());
+                hint.description = "Clear all staged row deletions";
+                deferred.push(hint);
+                continue;
+            }
+            if surface == HintSurface::DataActions
+                && hint.description == "Unstage the last staged row deletion"
+            {
+                result.append(&mut deferred);
+            }
+            if surface == HintSurface::Editing
+                && hint.description == "Exit cell selection or discard draft"
+            {
+                hint.description = "Exit cell selection";
+                result.push(hint.clone());
+                hint.description = "Discard pending draft";
+                deferred.push(hint);
+                continue;
+            }
+            if std::ptr::eq(rows, &sql_edit::ROWS[..])
+                && matches!(
+                    hint.description,
+                    "Select completion" | "Accept completion" | "Dismiss completion"
+                )
+            {
+                deferred.push(hint);
+                continue;
+            }
+            if std::ptr::eq(rows, &connection_setup::CONNECT[..]) {
+                match hint.description {
+                    "Confirm dropdown selection"
+                    | "Dropdown navigation"
+                    | "Cancel dropdown"
+                    | "Edit connection setting" => {
+                        deferred.push(hint);
+                        continue;
+                    }
+                    "Save and connect"
+                        if context.preset()
+                            == crate::model::shared::settings::KeymapPreset::Ide =>
+                    {
+                        let mut closed = hint.clone();
+                        closed.key = "Ctrl+S".to_string();
+                        result.push(closed);
+                        continue;
+                    }
+                    _ => {}
+                }
+            }
+            result.push(hint);
         }
-        if pane == BrowsePane::ResultCell {
-            scopes.push(context.clone().with_browse_reference(pane, false, true));
+        if surface == HintSurface::Connections
+            && std::ptr::eq(rows, &connection_setup::CONNECT[..])
+            && context.preset() == crate::model::shared::settings::KeymapPreset::Ide
+        {
+            let insert_at = deferred.len().saturating_sub(1);
+            if let Some(row) = rows
+                .iter()
+                .find(|row| row.description == "Save and connect")
+                && let Some(hint) = model::reference_hint(row, context.preset(), context.policy())
+            {
+                deferred.insert(insert_at, hint);
+            }
         }
+        result.extend(deferred);
     }
-    scopes.push(
-        context
-            .clone()
-            .with_browse_reference(BrowsePane::Explorer, false, false)
-            .with_browse_reference_error(),
-    );
-    scopes.push(
-        context
-            .clone()
-            .with_browse_reference(BrowsePane::ResultScroll, false, false)
-            .with_browse_reference_focus_read_only(),
-    );
-    let make = |mode| KeyContext::for_scope(mode, context.preset(), context.policy());
-    for mode in [
-        InputMode::CommandLine,
-        InputMode::CellEdit,
-        InputMode::TablePicker,
-        InputMode::CommandPalette,
-        InputMode::Settings,
-        InputMode::Help,
-        InputMode::ConnectionError,
-        InputMode::ConfirmDialog,
-        InputMode::ConnectionSelector,
-        InputMode::QueryHistoryPicker,
-        InputMode::CellDetail,
-        InputMode::RowDetail,
-    ] {
-        scopes.push(make(mode));
-    }
-    scopes.push(make(InputMode::Settings).with_settings_editing());
-    scopes.push(make(InputMode::Help).with_help_editing());
-    scopes.push(make(InputMode::CellDetail).with_cell_detail_searching(true));
-    for (field, open) in [
-        (ConnectionField::DatabaseType, false),
-        (ConnectionField::DatabaseType, true),
-        (ConnectionField::Name, false),
-    ] {
-        scopes.push(make(InputMode::ConnectionSetup).with_connection_setup(field, open));
-    }
-    let sql = make(InputMode::SqlModal);
-    scopes.push(sql.clone().with_sql_view(SqlModalTab::Sql));
-    scopes.push(sql.clone().with_sql_editing(false));
-    scopes.push(sql.clone().with_sql_editing(true));
-    for kind in [SqlConfirmation::High, SqlConfirmation::Risk] {
-        scopes.push(sql.clone().with_sql_confirmation(kind));
-    }
-    if context
-        .policy()
-        .is_enabled(FeatureRequirement::ExplainAnalyze)
-    {
-        for kind in [SqlConfirmation::AnalyzeHigh, SqlConfirmation::AnalyzeRisk] {
-            scopes.push(sql.clone().with_sql_confirmation(kind));
-        }
-    }
-    if context.policy().is_enabled(FeatureRequirement::Explain) {
-        scopes.push(sql.clone().with_sql_view(SqlModalTab::Plan));
-    }
-    if context
-        .policy()
-        .is_enabled(FeatureRequirement::PlanComparison)
-    {
-        scopes.push(sql.with_sql_view(SqlModalTab::Compare));
-    }
-    if context.policy().is_enabled(FeatureRequirement::ErDiagram) {
-        scopes.push(make(InputMode::ErTablePicker));
-    }
-    if context
-        .policy()
-        .is_enabled(FeatureRequirement::SqliteDiagnostics)
-    {
-        scopes.push(make(InputMode::SqliteDiagnostics));
-    }
-    if context
-        .policy()
-        .is_enabled(FeatureRequirement::JsonDocumentDetail)
-    {
-        scopes.push(make(InputMode::JsonDetail).with_json_mode(JsonDetailMode::Viewing));
-        scopes.push(make(InputMode::JsonDetail).with_json_mode(JsonDetailMode::Searching));
-    }
-    if context
-        .policy()
-        .is_enabled(FeatureRequirement::JsonDocumentEdit)
-    {
-        scopes.push(make(InputMode::JsonEdit).with_json_edit());
-    }
-    scopes
+    result
 }
 
 pub fn current_hints(context: &KeyContext) -> Vec<Hint> {
