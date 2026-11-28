@@ -42,8 +42,10 @@ impl ConnectionErrorInfo {
         retryable: bool,
         raw_stderr: impl Into<String>,
     ) -> Self {
+        use crate::policy::password_masking::mask_password;
+
         let raw_details = raw_stderr.into();
-        let masked_details = crate::policy::password_masking::mask_password(&raw_details);
+        let masked_details = mask_password(&raw_details);
 
         Self {
             summary,
