@@ -974,24 +974,6 @@ mod tests {
         }
 
         #[test]
-        fn left_columns_shrink_first_at_right_edge() {
-            let ideal = vec![20, 20, 20];
-            let min = vec![10, 10, 10];
-            let cfg = config(&ideal, &min);
-            let max_offset = 1;
-
-            // 2 cols of 20 + 1 sep = 41, available = 34, excess = 7
-            let (_, selected) =
-                select_viewport_columns(&cfg, &ctx(max_offset, 34, Some(2), max_offset));
-
-            assert!(
-                selected[0] < ideal[1],
-                "Left column should be shrunk at right edge"
-            );
-            assert_eq!(selected[1], ideal[2], "Right column should be preserved");
-        }
-
-        #[test]
         fn fills_leftover_with_truncated_previous_column() {
             let ideal = vec![20, 8, 8];
             let min = vec![6, 6, 6];

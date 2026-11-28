@@ -100,13 +100,6 @@ mod tests {
     }
 
     #[test]
-    fn calculates_min_widths_with_string_vec() {
-        let headers = vec!["id".to_string(), "name".to_string()];
-        let widths = calculate_header_min_widths(&headers);
-        assert_eq!(widths, vec![4, 6]);
-    }
-
-    #[test]
     fn enforces_min_width() {
         let headers = ["a"];
         let widths = calculate_header_min_widths(&headers);

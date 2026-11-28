@@ -1548,33 +1548,6 @@ mod tests {
         }
 
         #[test]
-        fn compare_plan_scroll_down_increments() {
-            let mut state = sql_modal_state();
-            let long_plan = (0..20)
-                .map(|i| format!("  ->  Node{i}  (cost=0.00..{i}.00 rows=1 width=32)"))
-                .collect::<Vec<_>>()
-                .join("\n");
-            state
-                .explain
-                .set_plan(long_plan.clone(), DatabaseType::PostgreSQL, false, 0, "Q1");
-            state
-                .explain
-                .set_plan(long_plan, DatabaseType::PostgreSQL, false, 0, "Q2");
-
-            reduce_explain(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::ExplainCompare,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::Line,
-                },
-                Instant::now(),
-            );
-
-            assert_eq!(state.explain.compare_scroll_offset, 1);
-        }
-
-        #[test]
         fn compare_scroll_down_stops_at_max() {
             let mut state = sql_modal_state();
             state.ui.terminal_height = 24;
@@ -1592,7 +1565,7 @@ mod tests {
             let max = state.explain.compare_max_scroll(state.ui.terminal_height);
 
             // Scroll to max
-            for _ in 0..max + 5 {
+            for step in 1..=max + 5 {
                 reduce_explain(
                     &mut state,
                     &Action::Scroll {
@@ -1602,9 +1575,8 @@ mod tests {
                     },
                     Instant::now(),
                 );
+                assert_eq!(state.explain.compare_scroll_offset, step.min(max));
             }
-
-            assert_eq!(state.explain.compare_scroll_offset, max);
 
             // k should immediately scroll back
             reduce_explain(

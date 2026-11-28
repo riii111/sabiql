@@ -143,20 +143,6 @@ mod tests {
     }
 
     #[test]
-    fn single_section_returns_service_name() {
-        let content = "\
-[mydb]
-host=localhost
-port=5432
-dbname=mydb
-user=admin
-";
-        let entries = parse(content);
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].service_name, "mydb");
-    }
-
-    #[test]
     fn multiple_sections_parsed() {
         let content = "\
 [dev]

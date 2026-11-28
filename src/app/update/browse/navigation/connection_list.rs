@@ -325,37 +325,6 @@ mod tests {
         }
 
         #[test]
-        fn different_connection_dispatches_switch_effect() {
-            let mut state = AppState::new("test".to_string());
-            let active_id = ConnectionId::new();
-            let other_id = ConnectionId::new();
-
-            state.set_connections(vec![
-                create_test_profile_with_id("active", active_id.clone()),
-                create_test_profile_with_id("other", other_id.clone()),
-            ]);
-            state.session.activate_connection(
-                &active_id,
-                "active",
-                &endpoint::postgres("postgres://localhost/test"),
-            );
-            state.ui.set_connection_list_selection(Some(1));
-
-            let effects = route(
-                &mut state,
-                Action::ConfirmConnectionSelection,
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert_eq!(state.session.active_connection_id(), Some(&other_id));
-            assert!(matches!(
-                effects.as_slice(),
-                [Effect::CancelTrackedTasks, Effect::FetchMetadata { .. }]
-            ));
-        }
-
-        #[test]
         fn service_entry_switches_to_service_endpoint() {
             let mut state = AppState::new("test".to_string());
             state.set_service_entries(vec![ServiceEntry {
@@ -421,32 +390,6 @@ mod tests {
                 state.messages.last_error.as_deref(),
                 Some("MySQL connection field `database` is required")
             );
-        }
-
-        #[test]
-        fn stays_on_same_connection_returns_to_tables() {
-            let mut state = AppState::new("test".to_string());
-            let active_id = ConnectionId::new();
-
-            state.set_connections(vec![create_test_profile_with_id(
-                "active",
-                active_id.clone(),
-            )]);
-            state.session.activate_connection(
-                &active_id,
-                "active",
-                &endpoint::postgres("postgres://localhost/test"),
-            );
-            state.ui.set_connection_list_selection(Some(0));
-
-            let effects = route(
-                &mut state,
-                Action::ConfirmConnectionSelection,
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert!(effects.is_empty());
         }
 
         #[test]

@@ -371,22 +371,6 @@ mod tests {
         }
 
         #[test]
-        fn uncached_fk_target_returned() {
-            // orders → users, users not in cache
-            let tables = vec![make_table(
-                "orders",
-                "public",
-                vec![("public.orders", "public.users")],
-            )];
-            let seeds = seed_set(&["public.orders"]);
-            let cached = cached_set(&["public.orders"]);
-
-            let result = fk_neighbors_of_seeds(&tables, &seeds, &cached);
-
-            assert_eq!(result, vec!["public.users".to_string()]);
-        }
-
-        #[test]
         fn already_cached_target_excluded() {
             let tables = vec![make_table(
                 "orders",

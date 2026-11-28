@@ -382,24 +382,6 @@ mod tests {
         }
 
         #[test]
-        fn host_inserts_text() {
-            let mut state = setup_state_with_field(ConnectionField::Host);
-
-            reduce(
-                &mut state,
-                &Action::Paste {
-                    target: InputTarget::ConnectionSetup,
-                    text: "db.example.com".to_string(),
-                },
-                Instant::now(),
-            );
-
-            let host = state.connection_setup.input(ConnectionField::Host).unwrap();
-            assert_eq!(host.content(), "db.example.com");
-            assert_eq!(host.cursor(), 14);
-        }
-
-        #[test]
         fn port_filters_non_digits() {
             let mut state = setup_state_with_field(ConnectionField::Port);
 
@@ -610,20 +592,6 @@ mod tests {
                 .input_mut(ConnectionField::Password)
                 .unwrap()
                 .set_content("pass".to_string());
-        }
-
-        #[test]
-        fn save_sets_connection_and_metadata_state_as_pair() {
-            let mut state = AppState::new("test".to_string());
-            fill_valid_form(&mut state);
-
-            reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
-
-            assert_eq!(
-                state.session.connection_state(),
-                ConnectionState::Connecting
-            );
-            assert_eq!(state.session.metadata_state(), &MetadataState::Loading);
         }
 
         #[test]
@@ -997,6 +965,9 @@ mod tests {
                 first_effects.as_slice(),
                 [Effect::CancelTrackedTasks, Effect::SaveAndConnect { .. }]
             ));
+
+            assert!(state.session.connection_state().is_connecting());
+            assert_eq!(state.session.metadata_state(), &MetadataState::Loading);
 
             let effects = reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
 

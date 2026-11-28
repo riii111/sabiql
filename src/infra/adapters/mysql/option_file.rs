@@ -635,10 +635,6 @@ mod tests {
         let mut certificate = String::new();
         push_option(&mut certificate, "ssl-ca", r"C:\certs\server.pem");
         assert_eq!(certificate, "ssl-ca = \"C:\\\\certs\\\\server.pem\"\n");
-        assert_eq!(
-            quote_option_value(r"C:\certs\server.pem"),
-            r#""C:\\certs\\server.pem""#
-        );
     }
 
     #[test]

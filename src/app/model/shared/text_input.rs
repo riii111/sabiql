@@ -817,23 +817,14 @@ mod tests {
         use super::*;
 
         #[test]
-        fn set_content_sets_cursor_to_end() {
-            let mut s = TextInputState::default();
-
-            s.set_content("hello".to_string());
-
-            assert_eq!(s.content(), "hello");
-            assert_eq!(s.cursor(), 5);
-            assert_eq!(s.viewport_offset(), 0);
-        }
-
-        #[test]
         fn set_content_resets_viewport() {
             let mut s = TextInputState::with_viewport("old", 2, 5);
 
             s.set_content("new value".to_string());
 
             assert_eq!(s.viewport_offset(), 0);
+            assert_eq!(s.content(), "new value");
+            assert_eq!(s.cursor(), 9);
         }
 
         #[test]

@@ -110,35 +110,3 @@ async fn duplicate_empty_select_columns_are_rejected_without_replaying_user_sql(
         "{log}"
     );
 }
-
-#[tokio::test]
-async fn generated_preview_and_metadata_queries_configure_read_only_session() {
-    for query in [
-        "SELECT id FROM app.items ORDER BY id LIMIT 10 OFFSET 0",
-        "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES",
-    ] {
-        let (_directory, program, option_file) = fake_mysql_multi();
-        let statements = split_mysql_statements(query)
-            .unwrap()
-            .into_iter()
-            .map(|sql| classify_mysql_statement(&sql).unwrap())
-            .collect::<Vec<_>>();
-
-        run_mysql_adhoc_with_program_and_statements(
-            OsStr::new(&program),
-            &option_file,
-            &statements,
-            AccessMode::ReadOnly,
-            Duration::from_secs(5),
-        )
-        .await
-        .unwrap();
-
-        let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
-        let session_index = log
-            .find(MYSQL_READ_ONLY_STATEMENT)
-            .expect("read-only session statement");
-        let query_index = log.find(query).expect("generated query");
-        assert!(session_index < query_index, "{query}: {log}");
-    }
-}

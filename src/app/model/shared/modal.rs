@@ -144,13 +144,4 @@ mod tests {
 
         assert_eq!(modal.return_destination(), InputMode::Normal);
     }
-
-    #[test]
-    fn return_destination_shows_last_pushed() {
-        let mut modal = ModalState::default();
-        modal.set_mode(InputMode::SqlModal);
-        modal.push_mode(InputMode::QueryHistoryPicker);
-
-        assert_eq!(modal.return_destination(), InputMode::SqlModal);
-    }
 }

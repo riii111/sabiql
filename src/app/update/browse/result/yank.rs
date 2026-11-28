@@ -318,8 +318,8 @@ mod tests {
         }
 
         #[test]
-        fn escapes_tab_and_newline() {
-            let mut state = state_with_row(vec!["a\tb", "c\nd"]);
+        fn escapes_tsv_special_characters() {
+            let mut state = state_with_row(vec!["a\tb", "c\\\nd"]);
             state.result_interaction.activate_cell(0, 0);
 
             let effects = route(
@@ -332,28 +332,7 @@ mod tests {
             assert_eq!(effects.len(), 1);
             match &effects[0] {
                 Effect::CopyToClipboard { content, .. } => {
-                    assert_eq!(content, "a\\tb\tc\\nd");
-                }
-                other => panic!("expected CopyToClipboard, got {other:?}"),
-            }
-        }
-
-        #[test]
-        fn escapes_backslash() {
-            let mut state = state_with_row(vec!["a\\b"]);
-            state.result_interaction.activate_cell(0, 0);
-
-            let effects = route(
-                &mut state,
-                Action::ResultRowYank,
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert_eq!(effects.len(), 1);
-            match &effects[0] {
-                Effect::CopyToClipboard { content, .. } => {
-                    assert_eq!(content, "a\\\\b");
+                    assert_eq!(content, "a\\tb\tc\\\\\\nd");
                 }
                 other => panic!("expected CopyToClipboard, got {other:?}"),
             }

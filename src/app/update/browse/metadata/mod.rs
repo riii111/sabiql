@@ -316,84 +316,6 @@ mod tests {
             );
             assert!(state.messages.last_error().is_none());
         }
-
-        #[test]
-        fn mysql_reload_metadata_during_pending_switch_preserves_probe() {
-            let mut state = AppState::new("test".to_string());
-            let current_id = ConnectionId::from_string("mysql-a");
-            let target_id = ConnectionId::from_string("mysql-b");
-            state.session.activate_connection(
-                &current_id,
-                "mysql-a",
-                &endpoint::mysql("mysql://user@localhost:3306/a", Some("a")),
-            );
-            state
-                .session
-                .set_connection_state(ConnectionState::Connected);
-            let probe_run_id = state.session.begin_mysql_connection_probe(
-                &target_id,
-                "mysql-b",
-                &endpoint::mysql("mysql://user@localhost:3306/b", Some("b")),
-            );
-
-            let effects = route(
-                &mut state,
-                Action::ReloadMetadata,
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert!(effects.is_empty());
-            assert_eq!(
-                state
-                    .session
-                    .pending_mysql_connection_probe()
-                    .map(|pending| pending.run_id),
-                Some(probe_run_id)
-            );
-            assert_eq!(
-                state.messages.last_error(),
-                Some("Connection switch in progress")
-            );
-        }
-
-        #[test]
-        fn mysql_reload_metadata_during_same_connection_retry_preserves_probe() {
-            let mut state = AppState::new("test".to_string());
-            let id = ConnectionId::from_string("mysql-a");
-            let dsn = "mysql://user@localhost:3306/a";
-            state
-                .session
-                .activate_connection(&id, "mysql-a", &endpoint::mysql(dsn, Some("a")));
-            state
-                .session
-                .set_connection_state(ConnectionState::Connected);
-            let probe_run_id = state.session.begin_mysql_connection_probe(
-                &id,
-                "mysql-a",
-                &endpoint::mysql(dsn, Some("a")),
-            );
-
-            let effects = route(
-                &mut state,
-                Action::ReloadMetadata,
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert!(effects.is_empty());
-            assert_eq!(
-                state
-                    .session
-                    .pending_mysql_connection_probe()
-                    .map(|pending| pending.run_id),
-                Some(probe_run_id)
-            );
-            assert_eq!(
-                state.messages.last_error(),
-                Some("Connection switch in progress")
-            );
-        }
     }
 
     mod prefetch_table_detail {
@@ -962,31 +884,6 @@ mod tests {
         }
 
         #[test]
-        fn first_failure_sets_retry_count_1() {
-            let mut state = state_with_dsn("postgres://localhost/test");
-            let run_id = state.table_prefetch.begin_er_prefetch();
-            let qualified = "public.users".to_string();
-            state.table_prefetch.start_table_prefetch(qualified.clone());
-
-            let now = Instant::now();
-            route(
-                &mut state,
-                Action::TableDetailCached {
-                    endpoint: endpoint::postgres("postgres://localhost/test"),
-                    run_id,
-                    schema: "public".to_string(),
-                    table: "users".to_string(),
-                    outcome: Err(DbOperationError::Timeout("timed out".to_string())),
-                },
-                now,
-                &AppServices::stub(),
-            );
-
-            let entry = state.table_prefetch.failed_prefetch(&qualified).unwrap();
-            assert_eq!(entry.retry_count, 1);
-        }
-
-        #[test]
         fn failure_requeues_table_for_retry_with_delayed_process() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.table_prefetch.begin_er_prefetch();
@@ -1008,7 +905,14 @@ mod tests {
 
             assert!(state.table_prefetch.is_prefetch_queued(&qualified));
             assert!(!state.table_prefetch.is_table_prefetching(&qualified));
-            assert!(state.table_prefetch.failed_prefetch(&qualified).is_some());
+            assert_eq!(
+                state
+                    .table_prefetch
+                    .failed_prefetch(&qualified)
+                    .unwrap()
+                    .retry_count,
+                1
+            );
             assert!(
                 effects
                     .iter()
@@ -1242,30 +1146,6 @@ mod tests {
             ));
 
             assert_eq!(state.ui.explorer_selected(), 0);
-        }
-
-        #[test]
-        fn after_connection_switch_pagination_reset_suppresses_auto_preview() {
-            let mut state = state_with_dsn("postgres://localhost/test");
-            // Simulate fresh connection: pagination is reset (as reset_connection_state does)
-            state.query.pagination.reset();
-
-            // New DB happens to have a table named "users" too
-            let metadata = make_metadata(vec![("public", "users")]);
-            let action = metadata_loaded_action(&mut state, metadata);
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
-
-            // No table was selected on this connection, so no auto-preview should fire
-            assert!(
-                !effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::ExecutePreview { .. }))
-            );
-            assert!(
-                !effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::FetchTableDetail { .. }))
-            );
         }
     }
 

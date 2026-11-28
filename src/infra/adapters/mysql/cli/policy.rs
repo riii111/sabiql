@@ -804,9 +804,7 @@ mod tests {
     }
 
     #[test]
-    fn read_only_rejects_temporary_table_dml_before_starting_mysql() {
-        let directory = tempfile::tempdir().unwrap();
-        let log_file = directory.path().join("mysql.log");
+    fn read_only_rejects_temporary_table_dml() {
         let query = "CREATE TEMPORARY TABLE temp_items (id INT); INSERT INTO temp_items VALUES (1); DROP TEMPORARY TABLE temp_items";
 
         let result = validate_mysql_multi_query(query, Some("app"), AccessMode::ReadOnly);
@@ -816,7 +814,6 @@ mod tests {
             Err(DbOperationError::PermissionDenied(details))
                 if details.contains("read-only mode blocks MySQL write statements")
         ));
-        assert!(!log_file.exists());
     }
 
     #[test]
@@ -835,21 +832,17 @@ mod tests {
     }
 
     #[test]
-    fn read_only_rejects_read_write_overrides_before_starting_mysql() {
+    fn read_only_rejects_read_write_overrides() {
         for query in [
             "SET SESSION TRANSACTION READ WRITE",
             "START TRANSACTION READ WRITE",
         ] {
-            let directory = tempfile::tempdir().unwrap();
-            let log_file = directory.path().join("mysql.log");
-
             let result = validate_mysql_multi_query(query, Some("app"), AccessMode::ReadOnly);
 
             assert!(matches!(
                 result,
                 Err(DbOperationError::UnsupportedOperation(_))
             ));
-            assert!(!log_file.exists(), "{query}");
         }
     }
 

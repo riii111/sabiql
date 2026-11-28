@@ -383,27 +383,6 @@ mod tests {
             use super::*;
 
             #[test]
-            fn half_page_down_moves_both_cursor_and_viewport() {
-                let mut state = state_with_result_rows(100, 25);
-                state.result_interaction.activate_cell(10, 0);
-                state.result_interaction.set_scroll_offset(5);
-
-                route(
-                    &mut state,
-                    Action::Scroll {
-                        target: ScrollTarget::Result,
-                        direction: ScrollDirection::Down,
-                        amount: ScrollAmount::HalfPage,
-                    },
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
-
-                assert_eq!(state.result_interaction.selection().row(), Some(20));
-                assert_eq!(state.result_interaction.scroll_offset(), 15);
-            }
-
-            #[test]
             fn half_page_up_moves_both_cursor_and_viewport() {
                 let mut state = state_with_result_rows(100, 25);
                 state.result_interaction.activate_cell(30, 0);

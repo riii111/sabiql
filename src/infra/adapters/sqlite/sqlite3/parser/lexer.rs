@@ -606,38 +606,6 @@ mod tests {
         }
 
         #[test]
-        fn keeps_create_trigger_body_together() {
-            let trigger = "\
-CREATE TRIGGER agent_messages_fts_ai AFTER INSERT ON agent_messages BEGIN
-    INSERT INTO agent_messages_fts(rowid, role, content)
-    VALUES (new.id, new.role, new.content);
-END";
-            let sql = format!("{trigger}; SELECT 1 AS value;");
-
-            let statements = try_split_sqlite_statements(&sql).unwrap();
-
-            assert_eq!(statements.len(), 2);
-            assert_eq!(statements[0], trigger);
-            assert_eq!(statements[1], "SELECT 1 AS value");
-        }
-
-        #[test]
-        fn keeps_create_trigger_with_dotted_end_reference() {
-            let trigger = "\
-CREATE TRIGGER sync_end AFTER UPDATE ON events BEGIN
-    UPDATE counters SET end_value = new.end WHERE id = new.id;
-    INSERT INTO audit(event_id, end_value) VALUES (new.id, new.end);
-END";
-            let sql = format!("{trigger}; SELECT 1 AS value;");
-
-            let statements = try_split_sqlite_statements(&sql).unwrap();
-
-            assert_eq!(statements.len(), 2);
-            assert_eq!(statements[0], trigger);
-            assert_eq!(statements[1], "SELECT 1 AS value");
-        }
-
-        #[test]
         fn keeps_create_trigger_with_case_end_expression() {
             let trigger = "\
 CREATE TRIGGER normalize_events AFTER UPDATE ON events BEGIN

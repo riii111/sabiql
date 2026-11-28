@@ -152,6 +152,7 @@ mod tests {
         #[test]
         fn sets_mode_and_loads_connections() {
             let mut state = AppState::new("test".to_string());
+            state.ui.set_connection_list_selection(Some(3));
 
             let effects = route(
                 &mut state,
@@ -162,20 +163,6 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::ConnectionSelector);
             assert!(effects.iter().any(|e| matches!(e, Effect::LoadConnections)));
-        }
-
-        #[test]
-        fn resets_selection_to_zero() {
-            let mut state = AppState::new("test".to_string());
-            state.ui.set_connection_list_selection(Some(3));
-
-            route(
-                &mut state,
-                Action::OpenModal(ModalKind::ConnectionSelector),
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
             assert_eq!(state.ui.connection_list_selected(), 0);
         }
     }
@@ -205,6 +192,12 @@ mod tests {
                     .confirm_dialog
                     .message()
                     .contains("This action cannot be undone")
+            );
+            assert!(
+                !state
+                    .confirm_dialog
+                    .message()
+                    .contains("This is the active connection")
             );
         }
 
@@ -239,28 +232,6 @@ mod tests {
                     .confirm_dialog
                     .message()
                     .contains("You will be disconnected")
-            );
-        }
-
-        #[test]
-        fn inactive_connection_shows_standard_message() {
-            let mut state = AppState::new("test".to_string());
-            let profile = create_profile("Production");
-            state.set_connections(vec![profile]);
-            state.ui.set_connection_list_selected_raw(0);
-
-            route(
-                &mut state,
-                Action::RequestDeleteSelectedConnection,
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert!(
-                !state
-                    .confirm_dialog
-                    .message()
-                    .contains("This is the active connection")
             );
         }
 
@@ -333,6 +304,7 @@ mod tests {
 
             assert_eq!(state.connections().len(), 1);
             assert_eq!(state.connections()[0].name.as_str(), "Second");
+            assert_eq!(state.connection_list_items(), build_connection_list(1, 0));
         }
 
         #[test]
@@ -432,33 +404,6 @@ mod tests {
         }
 
         #[test]
-        fn clears_active_state_when_active_deleted() {
-            let mut state = AppState::new("test".to_string());
-            let profile = create_profile("Production");
-            let profile_id = profile.id.clone();
-            state.set_connections(vec![profile]);
-            state.session.activate_connection(
-                &profile_id,
-                "Production",
-                &endpoint::postgres("postgres://localhost/db"),
-            );
-            state
-                .session
-                .set_connection_state(ConnectionState::Connected);
-
-            route(
-                &mut state,
-                Action::ConnectionDeleted(Ok(profile_id)),
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert!(state.session.active_connection_id().is_none());
-            assert!(state.session.endpoint().is_none());
-            assert!(state.session.connection_state().is_not_connected());
-        }
-
-        #[test]
         fn resets_postgres_state_when_active_deleted() {
             let mut state = AppState::new("test".to_string());
             let profile = create_profile("Production");
@@ -529,6 +474,9 @@ mod tests {
             assert!(!state.ui.pending_er_picker());
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
             assert!(!state.table_prefetch.has_pending_prefetch());
+            assert!(state.session.active_connection_id().is_none());
+            assert!(state.session.endpoint().is_none());
+            assert!(state.session.connection_state().is_not_connected());
         }
 
         #[test]
@@ -614,24 +562,6 @@ mod tests {
 
             assert!(state.connections().is_empty());
             assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
-        }
-
-        #[test]
-        fn rebuilds_connection_list_items_after_delete() {
-            let mut state = AppState::new("test".to_string());
-            let profile1 = create_profile("First");
-            let profile2 = create_profile("Second");
-            let id_to_delete = profile1.id.clone();
-            state.set_connections(vec![profile1, profile2]);
-
-            route(
-                &mut state,
-                Action::ConnectionDeleted(Ok(id_to_delete)),
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert_eq!(state.connection_list_items(), build_connection_list(1, 0));
         }
 
         #[test]

@@ -187,14 +187,6 @@ mod tests {
         }
 
         #[test]
-        fn bitor_combines_flags() {
-            let attributes = IndexAttributes::UNIQUE | IndexAttributes::PRIMARY;
-
-            assert!(attributes.contains(IndexAttributes::UNIQUE));
-            assert!(attributes.contains(IndexAttributes::PRIMARY));
-        }
-
-        #[test]
         fn detail_visibility_splits_column_and_source_definition_needs() {
             let auxiliary_only = make_index(IndexAttributes::HAS_AUXILIARY_COLUMNS);
             assert!(auxiliary_only.has_index_detail());

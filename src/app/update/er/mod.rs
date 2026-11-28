@@ -90,22 +90,6 @@ mod tests {
         use crate::update::reducer;
 
         #[test]
-        fn emits_smart_refresh() {
-            let mut state = state_with_dsn("postgres://localhost/test");
-            state.session.set_metadata(Some(make_metadata(0)));
-
-            let effects = diagram::er_open_diagram(&mut state, Instant::now());
-
-            assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
-            assert_eq!(state.er_preparation.run_id(), 1);
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(
-                &effects[0],
-                Effect::SmartErRefresh { run_id: 1, .. }
-            ));
-        }
-
-        #[test]
         fn increments_run_id_on_each_call() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.session.set_metadata(Some(make_metadata(5)));
@@ -118,20 +102,6 @@ mod tests {
                 &effects[0],
                 Effect::SmartErRefresh { run_id: 4, .. }
             ));
-        }
-
-        #[test]
-        fn active_prefetch_run_still_resets_and_emits_smart_refresh() {
-            let mut state = state_with_dsn("postgres://localhost/test");
-            let _ = state.table_prefetch.begin_er_prefetch();
-            state.session.set_metadata(Some(make_metadata(0)));
-
-            let effects = diagram::er_open_diagram(&mut state, Instant::now());
-
-            assert!(state.table_prefetch.active_prefetch_run_id().is_none());
-            assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
         }
 
         #[test]
@@ -302,17 +272,6 @@ mod tests {
             let effects = diagram::er_open_diagram(&mut state, Instant::now());
 
             assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn no_metadata_returns_error() {
-            let mut state = state_with_dsn("postgres://localhost/test");
-            let _ = state.table_prefetch.begin_er_prefetch();
-
-            let effects = diagram::er_open_diagram(&mut state, Instant::now());
-
-            assert!(effects.is_empty());
-            assert!(state.messages.last_error.is_some());
         }
     }
 

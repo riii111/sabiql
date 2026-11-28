@@ -356,21 +356,6 @@ mod tests {
         use super::*;
         use rstest::rstest;
 
-        #[test]
-        fn opens_on_valid_json_cell() {
-            let mut state = state_with_json_cell();
-
-            route(
-                &mut state,
-                Action::OpenModal(ModalKind::JsonDetail),
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert!(state.json_detail.is_active());
-            assert_eq!(state.input_mode(), InputMode::JsonDetail);
-        }
-
         #[rstest]
         #[case(r#"{"key":"value"}"#)]
         #[case(r"[1,2,3]")]
@@ -1326,6 +1311,7 @@ mod tests {
                 now,
                 &services,
             );
+            assert!(state.json_detail.is_active());
             assert_eq!(state.input_mode(), InputMode::JsonDetail);
 
             reduce_app(
