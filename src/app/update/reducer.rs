@@ -1541,7 +1541,7 @@ mod tests {
             assert!(state.session.selected_table_key().is_none());
             assert!(state.query.current_result().is_none());
             assert_eq!(state.ui.explorer_selected(), 0);
-            assert!(state.session.connection_state().is_failed());
+            assert_eq!(state.session.connection_state(), ConnectionState::Failed);
             assert!(matches!(
                 state.session.metadata_state(),
                 MetadataState::Error

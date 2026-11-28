@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
+require "fileutils"
 require "minitest/autorun"
 require "open3"
 require "rbconfig"
@@ -10,10 +11,17 @@ SCRIPT = File.expand_path("lint_test_names.rb", __dir__)
 
 class LintTestNamesTest < Minitest::Test
   def run_lint(source)
+    run_lint_files("fixture.rs" => source)
+  end
+
+  def run_lint_files(sources)
     Dir.mktmpdir do |directory|
-      path = File.join(directory, "fixture.rs")
-      File.write(path, source)
-      return Open3.capture3(RbConfig.ruby, SCRIPT, path)
+      sources.each do |name, source|
+        path = File.join(directory, name)
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, source)
+      end
+      Open3.capture3(RbConfig.ruby, SCRIPT, directory)
     end
   end
 
@@ -178,11 +186,17 @@ class LintTestNamesTest < Minitest::Test
 
           #[cfg(test)]
           const { assert!(true); }
+
+          if !{
+              #[cfg(test)]
+              fn inside_negated_block() {}
+              true
+          } {}
       }
     RUST
 
     refute status.success?
-    assert_equal %w[fn fn const type fn fn fn], stderr.scan(/cfg\(test\) module: (\w+)/).flatten
+    assert_equal %w[fn fn const type fn fn fn fn], stderr.scan(/cfg\(test\) module: (\w+)/).flatten
   end
 
   def test_rejects_other_test_only_declarations_and_private_imports
@@ -206,10 +220,13 @@ class LintTestNamesTest < Minitest::Test
 
       #[cfg_attr(not(test), cfg(test))]
       fn gated_by_cfg_attr() {}
+
+      #[r#cfg(r#all(r#test))]
+      fn raw_cfg() {}
     RUST
 
     refute status.success?
-    assert_equal %w[enum union trait extern macro_rules fn fn], stderr.scan(/cfg\(test\) module: (\w+)/).flatten
+    assert_equal %w[enum union trait extern macro_rules fn fn fn], stderr.scan(/cfg\(test\) module: (\w+)/).flatten
     assert_equal 1, stderr.lines.grep(/test-only use must be inside a cfg\(test\) module/).length
   end
 
@@ -291,6 +308,55 @@ class LintTestNamesTest < Minitest::Test
     assert status.success?, stderr
     assert_equal "test-name lint passed\n", stdout
     assert_empty stderr
+  end
+
+  def test_allows_items_in_out_of_line_test_modules
+    entry = <<~'RUST'
+      #[cfg(test)] mod tests;
+      #[cfg_attr(test, path = "conditional_test.rs")] mod platform;
+      #[cfg(test)] mod inline {
+          #[path = "fïxture\x2ers"] mod helper;
+      }
+    RUST
+    tests = <<~'RUST'
+      mod nested;
+      #[path = r#"aliased.rs"#] mod fixture;
+      impl Fixture { #[cfg(test)] fn helper() {} }
+    RUST
+    aliased = <<~'RUST'
+      mod child;
+      #[cfg(test)] struct Fixture;
+    RUST
+    helper = "#[cfg(test)] fn helper() {}\n"
+    stdout, stderr, status = run_lint_files(
+      "lib.rs" => entry,
+      "tests.rs" => tests,
+      "tests/nested/mod.rs" => helper,
+      "aliased.rs" => aliased,
+      "child.rs" => helper,
+      "platform.rs" => "fn production() {}\n",
+      "conditional_test.rs" => helper,
+      "inline/fïxture.rs" => helper,
+    )
+
+    assert status.success?, stderr
+    assert_equal "test-name lint passed\n", stdout
+    assert_empty stderr
+  end
+
+  def test_rejects_items_in_a_file_also_loaded_by_production
+    entry = <<~'RUST'
+      #[cfg(test)] #[path = "shared.rs"] mod tests;
+      #[cfg_attr(not(test), path = "shared.rs")] mod production;
+    RUST
+    _stdout, stderr, status = run_lint_files(
+      "lib.rs" => entry,
+      "production.rs" => "fn production() {}\n",
+      "shared.rs" => "#[cfg(test)] fn misplaced() {}\n",
+    )
+
+    refute status.success?
+    assert_match(/shared\.rs:1 test-only item must be inside a cfg\(test\) module: fn/, stderr)
   end
 
   def test_reports_after_a_test_module_closes_and_preserves_name_checks
