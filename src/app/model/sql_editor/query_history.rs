@@ -1,5 +1,6 @@
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
-use nucleo_matcher::{Config, Matcher};
+use nucleo_matcher::{Config, Matcher, Utf32Str};
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::domain::query_history::QueryHistoryEntry;
 use crate::model::shared::cursor::CursorMove;
@@ -20,7 +21,7 @@ pub struct QueryHistoryPickerState {
 pub struct GroupedEntry<'a> {
     pub entry: &'a QueryHistoryEntry,
     pub count: usize,
-    pub match_indices: Vec<u32>,
+    pub match_byte_offsets: Vec<usize>,
 }
 
 impl QueryHistoryPickerState {
@@ -126,15 +127,15 @@ impl QueryHistoryPickerState {
         let mut groups: Vec<GroupedEntry<'_>> = Vec::new();
 
         for entry in self.entries.iter().rev() {
-            let match_indices = if let Some(pattern) = pattern.as_ref() {
+            let match_byte_offsets = if let Some(pattern) = pattern.as_ref() {
                 let mut indices = Vec::new();
                 let mut buf = Vec::new();
-                let haystack = nucleo_matcher::Utf32Str::new(&entry.query, &mut buf);
+                let haystack = Utf32Str::new(&entry.query, &mut buf);
                 let matcher = matcher.get_or_insert_with(|| Matcher::new(Config::DEFAULT));
                 if pattern.indices(haystack, matcher, &mut indices).is_none() {
                     continue;
                 }
-                indices
+                match_byte_offsets(&entry.query, haystack, indices)
             } else {
                 Vec::new()
             };
@@ -146,7 +147,7 @@ impl QueryHistoryPickerState {
             groups.push(GroupedEntry {
                 entry,
                 count: 1,
-                match_indices,
+                match_byte_offsets,
             });
         }
 
@@ -165,6 +166,24 @@ impl QueryHistoryPickerState {
             self.selected.min(count.saturating_sub(1))
         }
     }
+}
+
+fn match_byte_offsets(query: &str, haystack: Utf32Str<'_>, mut indices: Vec<u32>) -> Vec<usize> {
+    if matches!(haystack, Utf32Str::Ascii(_)) {
+        return indices.into_iter().map(|index| index as usize).collect();
+    }
+
+    indices.sort_unstable();
+    query
+        .grapheme_indices(true)
+        .enumerate()
+        .filter_map(|(index, (offset, _))| {
+            indices
+                .binary_search(&(index as u32))
+                .is_ok()
+                .then_some(offset)
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -296,6 +315,17 @@ mod tests {
 
         assert_eq!(grouped.len(), 2);
         assert!(grouped.iter().all(|g| g.entry.query.contains("users")));
+    }
+
+    #[test]
+    fn negative_filter_distinguishes_newlines_from_literal_spaces() {
+        let mut state = make_state(vec![make_entry("SELECT\n42"), make_entry("SELECT 42")]);
+        state.insert_filter_str(r"!SELECT\ 42");
+
+        let grouped = state.grouped_filtered_entries();
+
+        assert_eq!(grouped.len(), 1);
+        assert_eq!(grouped[0].entry.query, "SELECT\n42");
     }
 
     #[test]

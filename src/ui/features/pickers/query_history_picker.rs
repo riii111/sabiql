@@ -3,6 +3,7 @@ use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap};
+use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::model::app_state::AppState;
@@ -221,14 +222,20 @@ fn build_list_item(
     query_max: usize,
     theme: &ThemePalette,
 ) -> ListItem<'static> {
+    const ELLIPSIS: &str = "…";
     let query_display = ge.entry.query.replace('\n', " ");
-    let truncated = truncate_to_width_with(&query_display, query_max, "\u{2026}");
+    let truncated = truncate_to_width_with(&query_display, query_max, ELLIPSIS);
+    let visible_query_bytes = if truncated == query_display {
+        truncated.len()
+    } else {
+        truncated.len().saturating_sub(ELLIPSIS.len())
+    };
 
     let ts_short = format_short_timestamp(&ge.entry.executed_at);
 
     let mut spans = vec![status_span(ge.entry.result_status, theme)];
 
-    if ge.match_indices.is_empty() {
+    if ge.match_byte_offsets.is_empty() {
         spans.push(Span::styled(
             truncated.clone(),
             Style::default().fg(if i == selected_idx {
@@ -238,9 +245,14 @@ fn build_list_item(
             }),
         ));
     } else {
-        let chars: Vec<char> = truncated.chars().collect();
-        for (ci, ch) in chars.iter().enumerate() {
-            let is_match = ge.match_indices.contains(&(ci as u32));
+        // The newline replacement preserves byte offsets even when grapheme boundaries change.
+        for (offset, grapheme) in truncated.grapheme_indices(true) {
+            let end = offset + grapheme.len();
+            let is_match = end <= visible_query_bytes
+                && ge
+                    .match_byte_offsets
+                    .iter()
+                    .any(|index| (offset..end).contains(index));
             let color = if is_match {
                 theme.semantic.text.accent
             } else if i == selected_idx {
@@ -252,7 +264,7 @@ fn build_list_item(
             if is_match {
                 style = style.add_modifier(Modifier::BOLD);
             }
-            spans.push(Span::styled(ch.to_string(), style));
+            spans.push(Span::styled(grapheme.to_string(), style));
         }
     }
 

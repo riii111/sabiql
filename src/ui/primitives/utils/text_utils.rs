@@ -35,19 +35,21 @@ pub(crate) fn truncate_to_width(s: &str, max_width: usize) -> String {
 }
 
 pub(crate) fn take_within_width(s: &str, budget: usize) -> String {
-    use unicode_width::UnicodeWidthChar;
+    use unicode_segmentation::UnicodeSegmentation;
+    use unicode_width::UnicodeWidthStr;
 
-    let mut taken = String::new();
     let mut used = 0;
-    for ch in s.chars() {
-        let w = UnicodeWidthChar::width(ch).unwrap_or(0);
-        if used + w > budget {
-            break;
+    for (index, grapheme) in s.grapheme_indices(true) {
+        // Ratatui omits control characters, so they consume no display cells.
+        if grapheme.contains(char::is_control) {
+            continue;
         }
-        taken.push(ch);
-        used += w;
+        used += grapheme.width();
+        if used > budget {
+            return s[..index].to_string();
+        }
     }
-    taken
+    s.to_string()
 }
 
 pub(crate) fn truncate_with_offset(s: &str, offset: usize, max_width: usize) -> String {
