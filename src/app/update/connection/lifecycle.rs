@@ -1564,7 +1564,7 @@ mod tests {
                 std::time::Instant::now(),
             );
 
-            assert!(state.session.connection_state().is_failed());
+            assert_eq!(state.session.connection_state(), ConnectionState::Failed);
             assert_eq!(state.modal.active_mode(), InputMode::ConnectionError);
             assert!(state.connection_error.error_info().is_some());
             assert!(matches!(
@@ -2288,7 +2288,7 @@ mod tests {
             );
 
             assert!(!state.session.connection_state().is_connected());
-            assert!(state.session.connection_state().is_failed());
+            assert_eq!(state.session.connection_state(), ConnectionState::Failed);
             assert_eq!(state.modal.active_mode(), InputMode::ConnectionError);
             assert_eq!(
                 state.connection_error.error_info().unwrap().summary(),

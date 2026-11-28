@@ -34,13 +34,19 @@ impl ModalState {
         self.return_stack.pop();
         self.mode = target;
     }
+}
 
-    #[cfg(test)]
-    pub(crate) fn return_destination(&self) -> InputMode {
-        self.return_stack
-            .last()
-            .copied()
-            .unwrap_or(InputMode::Normal)
+#[cfg(test)]
+mod test_support {
+    use super::{InputMode, ModalState};
+
+    impl ModalState {
+        pub(crate) fn return_destination(&self) -> InputMode {
+            self.return_stack
+                .last()
+                .copied()
+                .unwrap_or(InputMode::Normal)
+        }
     }
 }
 
