@@ -13,7 +13,7 @@ fi
 unexpected_refs="$(printf '%s\n' "$backend_refs" | grep -v 'self_update::backends::github' || true)"
 
 if [[ -n "$unexpected_refs" ]]; then
-  echo "Only self_update::backends::github is allowed while quick-xml advisories are ignored."
+  echo "Only self_update::backends::github is allowed for self-update."
   printf '%s\n' "$unexpected_refs"
   exit 1
 fi
