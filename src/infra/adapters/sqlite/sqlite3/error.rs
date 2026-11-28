@@ -61,6 +61,11 @@ fn classify_by_stderr(details: &str) -> DbOperationError {
         return DbOperationError::PermissionDenied(details.to_string());
     }
 
+    if lower.contains("foreign key constraint failed") || lower.contains("unique constraint failed")
+    {
+        return DbOperationError::QueryFailed(details.to_string());
+    }
+
     if is_missing_object(&lower) {
         return DbOperationError::ObjectMissing(details.to_string());
     }
@@ -180,6 +185,10 @@ mod tests {
             ClassifiedKind::QueryFailed
         )]
         #[case("Error: near \"SELEKT\": syntax error", ClassifiedKind::QueryFailed)]
+        #[case(
+            "Error: UNIQUE constraint failed: no such table.v",
+            ClassifiedKind::QueryFailed
+        )]
         #[case("Error: no such table: users", ClassifiedKind::ObjectMissing)]
         #[case("Error: no such column: missing", ClassifiedKind::ObjectMissing)]
         #[case("Error: no such index: missing_idx", ClassifiedKind::ObjectMissing)]

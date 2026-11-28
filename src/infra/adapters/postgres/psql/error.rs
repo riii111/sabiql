@@ -91,6 +91,13 @@ fn classify_by_stderr(details: &str) -> DbOperationError {
         return DbOperationError::ConnectionFailed(details.to_string());
     }
 
+    if lower.contains("foreign key constraint")
+        || lower.contains("duplicate key value")
+        || lower.contains("unique constraint")
+    {
+        return DbOperationError::QueryFailed(details.to_string());
+    }
+
     if lower.contains("lock not available")
         || lower.contains("canceling statement due to lock timeout")
     {
@@ -417,6 +424,10 @@ mod tests {
         #[rstest]
         #[case("ERROR: permission denied for table users", "PermissionDenied")]
         #[case("ERROR: duplicate key value violates unique constraint", "QueryFailed")]
+        #[case(
+            "ERROR: duplicate key value violates unique constraint no such table",
+            "QueryFailed"
+        )]
         #[case("ERROR: relation \"users\" does not exist", "ObjectMissing")]
         #[case("server closed the connection unexpectedly", "ConnectionLost")]
         #[case("ERROR: canceling statement due to statement timeout", "Timeout")]

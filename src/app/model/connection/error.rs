@@ -1,5 +1,3 @@
-#[cfg(test)]
-use crate::policy::password_masking::mask_password;
 use crate::ports::outbound::DbOperationError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,7 +43,7 @@ impl ConnectionErrorInfo {
         raw_stderr: impl Into<String>,
     ) -> Self {
         let raw_details = raw_stderr.into();
-        let masked_details = mask_password(&raw_details);
+        let masked_details = crate::policy::password_masking::mask_password(&raw_details);
 
         Self {
             summary,
@@ -64,6 +62,7 @@ pub(crate) mod test_support;
 mod tests {
     use super::*;
     use crate::domain::SqlitePathError;
+    use crate::policy::password_masking::mask_password;
     use crate::ports::outbound::{
         ConnectionFailureKind, DatabaseCli, SqliteCompatibilityKind, UnsupportedOperationKind,
     };
