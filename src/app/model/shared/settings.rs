@@ -406,16 +406,19 @@ impl SettingsState {
         keymap_preset: KeymapPreset,
         er_browser: Option<String>,
     ) {
-        self.load_icon_mode(icon_mode);
+        let er_browser = normalize_browser(er_browser);
+        // A save completes after later input can arrive, so a selection edited since the save is kept instead of being reset to the saved values.
+        let edited_since_save = self.selected_theme != theme
+            || self.selected_icon_mode != icon_mode
+            || self.selected_keymap_preset != keymap_preset
+            || self.selected_er_browser() != er_browser;
         self.previous_theme = theme;
-        self.selected_theme = theme;
+        self.saved_icon_mode = icon_mode;
         self.saved_keymap_preset = keymap_preset;
-        self.selected_keymap_preset = keymap_preset;
-        self.saved_er_browser = normalize_browser(er_browser);
-        self.selected_er_browser_choice =
-            ErBrowserChoice::from_browser_name(self.saved_er_browser.as_deref());
-        self.custom_er_browser = custom_input_for(self.saved_er_browser.as_deref());
-        self.editing_custom_er_browser = false;
+        self.saved_er_browser = er_browser;
+        if !edited_since_save {
+            self.discard_selection();
+        }
     }
 
     pub fn discard_selection(&mut self) {

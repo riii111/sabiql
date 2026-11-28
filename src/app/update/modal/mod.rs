@@ -477,6 +477,48 @@ mod tests {
         }
 
         #[test]
+        fn late_save_completion_keeps_a_newer_selection() {
+            let mut state = create_test_state();
+            let now = Instant::now();
+            route(
+                &mut state,
+                Action::OpenModal(ModalKind::Settings),
+                now,
+                &AppServices::stub(),
+            );
+            route(
+                &mut state,
+                Action::SettingsSelectNext,
+                now,
+                &AppServices::stub(),
+            );
+            let effects = route(&mut state, Action::SettingsApply, now, &AppServices::stub());
+            let [Effect::SaveSettings { settings: applied }] = effects.as_slice() else {
+                panic!("expected settings save, got {effects:?}");
+            };
+            let applied = applied.clone();
+            route(
+                &mut state,
+                Action::SettingsSelectPrevious,
+                now,
+                &AppServices::stub(),
+            );
+            let newer_theme = state.settings.selected_theme();
+            assert_ne!(newer_theme, applied.theme_id);
+
+            route(
+                &mut state,
+                Action::SettingsSaved(Ok(applied.clone())),
+                now,
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.settings.selected_theme(), newer_theme);
+            assert_eq!(state.settings.previous_theme(), applied.theme_id);
+            assert_eq!(state.ui.theme_id, applied.theme_id);
+        }
+
+        #[test]
         fn save_failed_sets_error_message() {
             let mut state = create_test_state();
 

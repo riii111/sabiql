@@ -1,8 +1,9 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 
 use crate::cmd::browse::metadata as cmd_metadata;
 use crate::cmd::browse::query::{self as cmd_query, QueryHistoryTarget};
@@ -66,6 +67,7 @@ pub struct EffectRunner {
     connection_task: SingleTaskOwner,
     sqlite_diagnostics_task: sqlite_diagnostics::SqliteDiagnosticsTaskOwner,
     smart_er_refresh_task: SingleTaskOwner,
+    settings_save: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl EffectRunner {
@@ -92,6 +94,7 @@ impl EffectRunner {
             connection_task: SingleTaskOwner::default(),
             sqlite_diagnostics_task: sqlite_diagnostics::SqliteDiagnosticsTaskOwner::default(),
             smart_er_refresh_task: SingleTaskOwner::default(),
+            settings_save: Mutex::new(None),
         }
     }
 
@@ -460,9 +463,24 @@ impl EffectRunner {
             }
 
             Effect::SaveSettings { settings } => {
-                // Saving and reporting in effect order keeps a slower earlier save from overwriting a later one.
-                let action = cmd_settings::save(settings, self.settings_store.as_ref());
-                self.action_tx.send(action).await.ok();
+                let store = Arc::clone(&self.settings_store);
+                let mut last_save = self
+                    .settings_save
+                    .lock()
+                    .expect("settings save lock poisoned");
+                let previous = last_save.take();
+                let task = self.report(async move {
+                    // Each save waits for the previous one, so a slower earlier save can neither overwrite nor report after a later one.
+                    if let Some(previous) = previous {
+                        let _ = previous.await;
+                    }
+                    tokio::task::spawn_blocking(move || {
+                        cmd_settings::save(settings, store.as_ref())
+                    })
+                    .await
+                    .expect("settings save task panicked")
+                });
+                *last_save = Some(tokio::spawn(task));
             }
 
             Effect::FetchSqliteDiagnosticsCore { endpoint, run_id } => {
@@ -666,7 +684,7 @@ mod tests {
 
     mod task_cancellation {
         use std::future::pending;
-        use std::sync::{Condvar, Mutex};
+        use std::sync::Condvar;
         use std::time::Duration as StdDuration;
 
         use tokio::sync::oneshot;
@@ -914,7 +932,6 @@ mod tests {
 
     mod query_context_termination {
         use std::future::pending;
-        use std::sync::Mutex;
         use std::sync::atomic::{AtomicBool, Ordering};
 
         use tokio::sync::oneshot;
@@ -1166,6 +1183,7 @@ mod tests {
         use super::*;
         use crate::model::shared::theme_id::ThemeId;
         use crate::ports::outbound::AppSettings;
+        use std::time::Duration;
 
         #[tokio::test]
         async fn reports_saves_in_effect_order() {
@@ -1198,11 +1216,14 @@ mod tests {
                 .await
                 .unwrap();
 
-            let themes =
-                [rx.try_recv().unwrap(), rx.try_recv().unwrap()].map(|action| match action {
-                    Action::SettingsSaved(Ok(saved)) => saved.theme_id,
-                    other => panic!("expected saved settings, got {other:?}"),
-                });
+            let first =
+                test_fixtures::recv_action_with_timeout(&mut rx, Duration::from_secs(1)).await;
+            let second =
+                test_fixtures::recv_action_with_timeout(&mut rx, Duration::from_secs(1)).await;
+            let themes = [first, second].map(|action| match action {
+                Action::SettingsSaved(Ok(saved)) => saved.theme_id,
+                other => panic!("expected saved settings, got {other:?}"),
+            });
             assert_eq!(themes, [ThemeId::Light, ThemeId::Default]);
         }
     }
@@ -1383,7 +1404,6 @@ mod tests {
 
     mod metadata_context_termination {
         use std::future::pending;
-        use std::sync::Mutex;
         use std::sync::atomic::{AtomicUsize, Ordering};
 
         use tokio::sync::oneshot;
