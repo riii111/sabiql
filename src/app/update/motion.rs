@@ -3,7 +3,7 @@ use std::time::Instant;
 use crate::model::app_state::AppState;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::motion::ScrolledPane;
-use crate::update::action::{Action, ScrollAmount, ScrollTarget};
+use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
 
 /// What was on screen before an action, so transitions start from it.
 pub(super) struct MotionProbe {
@@ -83,8 +83,8 @@ fn scrolled_pane(target: ScrollTarget) -> Option<ScrolledPane> {
 pub(super) fn settle_before_line_step(state: &mut AppState, action: &Action) {
     let Action::Scroll {
         target,
+        direction: ScrollDirection::Up | ScrollDirection::Down,
         amount: ScrollAmount::Line,
-        ..
     } = action
     else {
         return;
@@ -96,6 +96,7 @@ pub(super) fn settle_before_line_step(state: &mut AppState, action: &Action) {
         return;
     }
     let drawn = state.motion.drawn_scroll_offset(pane, target_offset);
+    state.motion.cancel_scroll();
     match pane {
         ScrolledPane::Result => state.result_interaction.set_scroll_offset(drawn),
         ScrolledPane::Inspector => state.ui.inspector_scroll_offset = drawn,
@@ -137,7 +138,6 @@ mod tests {
     use crate::domain::{QueryResult, QuerySource};
     use crate::model::shared::input_mode::InputMode;
     use crate::services::AppServices;
-    use crate::update::action::ScrollDirection;
     use crate::update::reducer::reduce;
 
     fn motion_state() -> AppState {
@@ -421,6 +421,42 @@ mod tests {
             "drawn {drawn}, target {target}"
         );
         assert_eq!(state.result_interaction.scroll_offset(), drawn - 1);
+        assert_eq!(state.motion.scroll_target(), None);
+    }
+
+    #[test]
+    fn horizontal_step_mid_animation_keeps_the_page_jump() {
+        let mut state = motion_state();
+        state
+            .query
+            .set_current_result(Arc::new(QueryResult::success(
+                "SELECT a, b".to_string(),
+                vec!["a".to_string(), "b".to_string()],
+                (0..60)
+                    .map(|i| vec![i.to_string(), i.to_string()])
+                    .collect(),
+                1,
+                QuerySource::Preview,
+            )));
+        state.ui.set_result_pane_height(24);
+        let start = Instant::now();
+        reduce(&mut state, page_down(), start, &AppServices::stub());
+        let target = state.result_interaction.scroll_offset();
+        let drawn_at = start + Duration::from_millis(30);
+        state.motion.note_frame(drawn_at);
+        let right = Action::Scroll {
+            target: ScrollTarget::Result,
+            direction: ScrollDirection::Right,
+            amount: ScrollAmount::Line,
+        };
+
+        reduce(&mut state, right, drawn_at, &AppServices::stub());
+
+        assert_eq!(state.result_interaction.scroll_offset(), target);
+        assert_eq!(
+            state.motion.scroll_target(),
+            Some((ScrolledPane::Result, target))
+        );
     }
 
     #[test]
