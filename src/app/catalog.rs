@@ -267,6 +267,54 @@ mod tests {
     }
 
     #[test]
+    fn reference_sections_preserve_order_and_visible_bindings() {
+        use std::fmt::Write as _;
+
+        // Group identical sections so the fixture records each distinct display once.
+        let mut sections = Vec::<(String, Vec<String>)>::new();
+        for database in [
+            None,
+            Some(DatabaseType::PostgreSQL),
+            Some(DatabaseType::MySQL),
+            Some(DatabaseType::SQLite),
+        ] {
+            for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
+                let mut state = AppState::new("test".to_string());
+                if let Some(database) = database {
+                    state.session.activate_connection(
+                        &ConnectionId::new(),
+                        "database",
+                        &endpoint::for_engine(database, "database"),
+                    );
+                }
+                state.settings.load_keymap_preset(preset);
+                let document = HelpDocument::new(KeyContext::from_state(&state), "", 0);
+                for (index, section) in document.sections()[1..].iter().enumerate() {
+                    let mut display = format!("[{}]\n", section.title());
+                    for row in section.rows() {
+                        writeln!(display, "{} | {}", row.key(), row.description()).unwrap();
+                    }
+                    let origin = format!("{database:?} {preset:?} {index}");
+                    if let Some((_, origins)) = sections
+                        .iter_mut()
+                        .find(|(existing, _)| *existing == display)
+                    {
+                        origins.push(origin);
+                    } else {
+                        sections.push((display, vec![origin]));
+                    }
+                }
+            }
+        }
+        let mut actual = String::new();
+        for (display, origins) in sections {
+            writeln!(actual, "# {}", origins.join(", ")).unwrap();
+            actual.push_str(&display);
+        }
+        assert_eq!(actual, include_str!("catalog/help_reference.txt"));
+    }
+
+    #[test]
     fn normal_help_finds_settings_and_command_operations() {
         let mut state = AppState::new("test".to_string());
         let context = KeyContext::from_state(&state);
