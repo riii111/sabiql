@@ -20,7 +20,7 @@ use crate::model::shared::text_input::TextEdit;
 use crate::model::sql_editor::modal::sql_modal_visible_rows;
 use crate::policy::FeaturePolicy;
 use crate::services::AppServices;
-use crate::update::action::{Action, TableTarget};
+use crate::update::action::{Action, ListMotion, TableTarget};
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 use crate::update::input::keymap::{KeyContext, palette_action};
 use crate::update::query_context::termination_effects;
@@ -74,7 +74,10 @@ pub(in crate::update) fn route(
         Action::Quit => quit(state),
         Action::Render => vec![Effect::Render],
         Action::Resize(width, height) => resize(state, width, height),
-        Action::SetFocusedPane(pane) => browse::navigation::focus::set_focused_pane(state, pane),
+        Action::SetFocusedPane(pane) => {
+            state.focus_pane(pane);
+            vec![]
+        }
         Action::TextInput { target, ch } => {
             text_edit::apply_text_edit(state, target, TextEdit::Insert(ch), now)
         }
@@ -323,18 +326,10 @@ pub(in crate::update) fn route(
             browse::metadata::prefetch::process_prefetch_queue(state, run_id, now)
         }
         Action::InspectorNextTab => {
-            state.ui.inspector_tab = state
-                .session
-                .active_engine_feature_profile()
-                .next_inspector_tab(state.ui.inspector_tab);
-            vec![]
+            browse::navigation::inspector::cycle_inspector_tab(state, ListMotion::Next)
         }
         Action::InspectorPrevTab => {
-            state.ui.inspector_tab = state
-                .session
-                .active_engine_feature_profile()
-                .prev_inspector_tab(state.ui.inspector_tab);
-            vec![]
+            browse::navigation::inspector::cycle_inspector_tab(state, ListMotion::Previous)
         }
         Action::SqlModalAppendInsert => sql_editor::mode::sql_modal_append_insert(state),
         Action::SqlModalEnterInsert => {
@@ -483,7 +478,10 @@ pub(in crate::update) fn route(
 
             vec![]
         }
-        Action::ToggleFocus => browse::navigation::focus::toggle_focus(state),
+        Action::ToggleFocus => {
+            state.toggle_focus_mode();
+            vec![]
+        }
         Action::ToggleReadOnly => browse::navigation::focus::toggle_read_only(state),
         Action::QueryHistoryLoaded(scope, entries) => {
             modal::query_history::query_history_loaded(state, scope, entries)
@@ -564,7 +562,7 @@ fn confirm_selection(state: &mut AppState, now: Instant, services: &AppServices)
             state.modal.replace_mode(InputMode::ConnectionError);
             return vec![];
         }
-        if state.ui.focused_pane != FocusedPane::Explorer {
+        if state.ui.focused_pane() != FocusedPane::Explorer {
             return vec![];
         }
         let table = state.tables().get(state.ui.explorer_selected()).cloned();
@@ -674,6 +672,30 @@ mod tests {
         }
 
         #[test]
+        fn leaving_result_pane_clears_cell_edit_and_returns_to_normal() {
+            let mut state = create_test_state();
+            state.focus_pane(FocusedPane::Result);
+            state.result_interaction.activate_cell(0, 0);
+            state.result_interaction.begin_cell_edit(0, 0, "old".into());
+            state
+                .result_interaction
+                .edit_cell_text(TextEdit::Insert('x'), None);
+            state.modal.set_mode(InputMode::CellEdit);
+
+            reduce(
+                &mut state,
+                Action::SetFocusedPane(FocusedPane::Inspector),
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.ui.focused_pane(), FocusedPane::Inspector);
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert_eq!(state.result_interaction.selection().row(), None);
+            assert!(!state.result_interaction.cell_edit().has_pending_draft());
+        }
+
+        #[test]
         fn resize_updates_terminal_size_and_clamps_help_offsets() {
             let mut state = create_test_state();
             state.ui.set_terminal_width(20);
@@ -736,7 +758,7 @@ mod tests {
         #[case(Action::Select(SelectMotion::Previous))]
         fn selection_on_empty_tables_keeps_none(#[case] action: Action) {
             let mut state = create_test_state();
-            state.ui.focused_pane = FocusedPane::Explorer;
+            state.focus_pane(FocusedPane::Explorer);
             state.ui.set_explorer_selected_raw(0);
             let now = Instant::now();
 
@@ -1728,7 +1750,7 @@ mod tests {
                 false,
                 "error",
             ));
-            state.ui.focused_pane = FocusedPane::Result; // Any pane works
+            state.focus_pane(FocusedPane::Result); // Any pane works
             let now = Instant::now();
 
             reduce(
@@ -1789,7 +1811,7 @@ mod tests {
         fn reopen_modal_after_close_shows_same_error() {
             let mut state = state_with_error();
             state.session.set_metadata_state(MetadataState::Error);
-            state.ui.focused_pane = FocusedPane::Explorer;
+            state.focus_pane(FocusedPane::Explorer);
             let now = Instant::now();
 
             // Close modal
@@ -1926,7 +1948,7 @@ mod tests {
                 .session
                 .set_table_detail_raw(Some(stale_table_detail()));
             state.modal.set_mode(InputMode::Normal);
-            state.ui.focused_pane = FocusedPane::Explorer;
+            state.focus_pane(FocusedPane::Explorer);
             state.ui.set_explorer_selection(Some(0));
 
             reduce(
@@ -3514,7 +3536,7 @@ mod tests {
 
             // ConfirmSelection from Normal mode (explorer focused)
             state.modal.set_mode(InputMode::Normal);
-            state.ui.focused_pane = FocusedPane::Explorer;
+            state.focus_pane(FocusedPane::Explorer);
             state.ui.set_explorer_selected_raw(0);
             let effects = reduce(
                 &mut state,
@@ -3927,7 +3949,7 @@ mod tests {
         #[test]
         fn y_then_d_cancels_yank_starts_delete() {
             let mut state = create_test_state();
-            state.ui.focused_pane = FocusedPane::Result;
+            state.focus_pane(FocusedPane::Result);
             state.result_interaction.activate_cell(0, 0);
             let now = Instant::now();
 
@@ -3953,7 +3975,7 @@ mod tests {
         #[test]
         fn d_then_y_cancels_delete_starts_yank() {
             let mut state = create_test_state();
-            state.ui.focused_pane = FocusedPane::Result;
+            state.focus_pane(FocusedPane::Result);
             state.result_interaction.activate_cell(0, 0);
             let now = Instant::now();
 

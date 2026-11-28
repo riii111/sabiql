@@ -53,7 +53,7 @@ impl Inspector {
         now: Instant,
         theme: &ThemePalette,
     ) -> ViewportPlan {
-        let is_focused = state.ui.focused_pane == FocusedPane::Inspector;
+        let is_focused = state.ui.focused_pane() == FocusedPane::Inspector;
         let [tab_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
         let view_model = state.inspector_view_model(services.ddl_generator.as_ref());

@@ -668,13 +668,13 @@ fn is_dropdown_field(field: ConnectionField) -> bool {
 fn browse_scope(state: &AppState) -> Scope {
     let connected = state.session.endpoint().is_some()
         && state.session.pending_mysql_connection_probe().is_none();
-    let pane = if state.ui.is_focus_mode() || state.ui.focused_pane == FocusedPane::Result {
+    let pane = if state.ui.is_focus_mode() || state.ui.focused_pane() == FocusedPane::Result {
         if state.result_interaction.selection().mode() == ResultNavMode::CellActive {
             BrowsePane::ResultCell
         } else {
             BrowsePane::ResultScroll
         }
-    } else if state.ui.focused_pane == FocusedPane::Inspector {
+    } else if state.ui.focused_pane() == FocusedPane::Inspector {
         BrowsePane::Inspector
     } else {
         BrowsePane::Explorer

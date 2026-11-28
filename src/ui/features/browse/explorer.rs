@@ -26,7 +26,7 @@ impl Explorer {
         state: &AppState,
         theme: &ThemePalette,
     ) -> usize {
-        let is_focused = state.ui.focused_pane == FocusedPane::Explorer;
+        let is_focused = state.ui.focused_pane() == FocusedPane::Explorer;
         let block = panel_block(" [1] Explorer ", is_focused, theme);
         let inner = block.inner(area);
         frame.render_widget(block, area);

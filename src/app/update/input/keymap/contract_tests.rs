@@ -304,9 +304,9 @@ fn visible_bindings_match_event_entry_in_representative_states() {
                 check_state(&mut state);
                 match mode {
                     InputMode::Normal => {
-                        state.ui.focused_pane = FocusedPane::Inspector;
+                        state.focus_pane(FocusedPane::Inspector);
                         check_state(&mut state);
-                        state.ui.focused_pane = FocusedPane::Result;
+                        state.focus_pane(FocusedPane::Result);
                         state
                             .query
                             .set_current_result(Arc::new(QueryResult::success(
@@ -336,7 +336,7 @@ fn visible_bindings_match_event_entry_in_representative_states() {
                         check_state(&mut state);
                         state.ui.key_sequence = KeySequenceState::Idle;
                         state.session.enable_read_only();
-                        state.ui.toggle_focus();
+                        state.toggle_focus_mode();
                         state.connection_error.set_error(test_support::from_parts(
                             "Connection failed",
                             "Details",
@@ -486,7 +486,7 @@ fn conditional_bindings_win_at_the_event_entry() {
         KeymapPreset::Default,
         InputMode::Normal,
     );
-    result.ui.focused_pane = FocusedPane::Result;
+    result.focus_pane(FocusedPane::Result);
     result.connection_error.set_error(test_support::from_parts(
         "Connection failed",
         "Details",
@@ -517,7 +517,7 @@ fn repeated_operators_and_prefixes_reach_their_state_transitions() {
         KeymapPreset::Default,
         InputMode::Normal,
     );
-    state.ui.focused_pane = FocusedPane::Result;
+    state.focus_pane(FocusedPane::Result);
     state
         .query
         .set_current_result(Arc::new(QueryResult::success(

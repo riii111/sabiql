@@ -202,11 +202,11 @@ fn capture_matrix(engine: DatabaseType, preset: KeymapPreset) -> String {
     }
     for pane in [FocusedPane::Inspector, FocusedPane::Result] {
         let mut current = state(engine, preset, InputMode::Normal);
-        current.ui.focused_pane = pane;
+        current.focus_pane(pane);
         capture(&format!("Normal {pane:?}"), current, &mut output);
     }
     let mut focused = state(engine, preset, InputMode::Normal);
-    focused.ui.toggle_focus();
+    focused.toggle_focus_mode();
     capture("Normal focus", focused, &mut output);
 
     let mut readonly = state(engine, preset, InputMode::Normal);
@@ -214,7 +214,7 @@ fn capture_matrix(engine: DatabaseType, preset: KeymapPreset) -> String {
     capture("Normal read-only", readonly, &mut output);
 
     let mut error = state(engine, preset, InputMode::Normal);
-    error.ui.focused_pane = FocusedPane::Result;
+    error.focus_pane(FocusedPane::Result);
     error
         .connection_error
         .set_error(ConnectionErrorInfo::from_db_operation_error(
@@ -232,7 +232,7 @@ fn capture_matrix(engine: DatabaseType, preset: KeymapPreset) -> String {
     ] {
         let mut result = state(engine, preset, InputMode::Normal);
         super::harness::with_current_result(&mut result);
-        result.ui.focused_pane = FocusedPane::Result;
+        result.focus_pane(FocusedPane::Result);
         result.result_interaction.activate_cell(0, 0);
         match variant {
             "draft" => {

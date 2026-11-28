@@ -45,7 +45,7 @@ fn json_detail_state() -> (AppState, Instant) {
             QuerySource::Preview,
         )));
     state.query.pagination.reset_for_table("public", "users");
-    state.ui.focused_pane = FocusedPane::Result;
+    state.focus_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 3);
     reduce(
         &mut state,
@@ -302,7 +302,7 @@ fn cell_edit_cursor_position_tracks_head_middle_and_tail() {
         let mut terminal = create_test_terminal();
 
         with_current_result(&mut state);
-        state.ui.focused_pane = FocusedPane::Result;
+        state.focus_pane(FocusedPane::Result);
         state.result_interaction.activate_cell(1, 2);
         state.modal.set_mode(InputMode::CellEdit);
         state
