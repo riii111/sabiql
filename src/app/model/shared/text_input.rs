@@ -38,19 +38,11 @@ impl TextInputState {
         }
     }
 
-    pub fn with_viewport(
-        content: impl Into<String>,
-        cursor: usize,
-        viewport_offset: usize,
-    ) -> Self {
-        let content = content.into();
-        let char_count = content.chars().count();
-        Self {
-            content,
-            char_count,
-            cursor: cursor.min(char_count),
-            viewport_offset,
-        }
+    #[cfg(test)]
+    fn with_viewport(content: impl Into<String>, cursor: usize, viewport_offset: usize) -> Self {
+        let mut state = Self::new(content, cursor);
+        state.viewport_offset = viewport_offset;
+        state
     }
 
     pub fn content(&self) -> &str {

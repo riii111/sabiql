@@ -22,7 +22,7 @@ pub(in crate::update) fn table_detail_loaded(
 
     match outcome {
         Ok(detail) if state.session.set_table_detail(*detail.clone(), generation) => {
-            state.ui.set_inspector_scroll_offset(0);
+            state.ui.inspector_scroll_offset = 0;
             reveal_pending_preview(state, generation)
         }
         Ok(_) => Vec::new(),

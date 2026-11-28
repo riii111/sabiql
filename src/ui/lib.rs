@@ -15,11 +15,19 @@
 
 pub mod adapters;
 pub mod event;
-pub mod features;
-pub mod primitives;
+#[allow(
+    clippy::redundant_pub_crate,
+    reason = "Explicit crate visibility keeps internal UI items compatible with unreachable_pub."
+)]
+pub(crate) mod features;
+#[allow(
+    clippy::redundant_pub_crate,
+    reason = "Explicit crate visibility keeps internal UI items compatible with unreachable_pub."
+)]
+pub(crate) mod primitives;
 pub mod shell;
 pub mod theme;
 pub mod tui;
 
-pub use sabiql_app as app;
-pub use sabiql_domain as domain;
+pub(crate) use sabiql_app as app;
+pub(crate) use sabiql_domain as domain;

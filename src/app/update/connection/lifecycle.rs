@@ -509,7 +509,7 @@ mod tests {
                 &endpoint::postgres("postgres://localhost/current"),
             );
             state.ui.set_explorer_selected_raw(5);
-            state.ui.set_inspector_tab(InspectorTab::Indexes);
+            state.ui.inspector_tab = InspectorTab::Indexes;
 
             let action = create_postgres_switch_action(&new_id, "new_db");
             reduce(&mut state, &action);
@@ -539,7 +539,7 @@ mod tests {
                 &endpoint::for_engine(database_type, dsn),
             );
             state.ui.set_explorer_selected_raw(5);
-            state.ui.set_inspector_tab(InspectorTab::Indexes);
+            state.ui.inspector_tab = InspectorTab::Indexes;
 
             let mysql = ConnectionTarget {
                 id: mysql_id,
@@ -567,7 +567,7 @@ mod tests {
 
             assert_eq!(state.session.active_connection_id(), Some(&source_id));
             assert_eq!(state.ui.explorer_selected(), 5);
-            assert_eq!(state.ui.inspector_tab(), InspectorTab::Indexes);
+            assert_eq!(state.ui.inspector_tab, InspectorTab::Indexes);
         }
 
         #[test]
@@ -604,7 +604,7 @@ mod tests {
                 .session
                 .mark_effective_user_loaded(Some("user@localhost".to_string()));
             state.ui.set_explorer_selected_raw(5);
-            state.ui.set_inspector_tab(InspectorTab::Indexes);
+            state.ui.inspector_tab = InspectorTab::Indexes;
             state
                 .query
                 .set_current_result(Arc::new(QueryResult::success(
@@ -646,7 +646,7 @@ mod tests {
             reduce(&mut state, &action);
 
             assert_eq!(state.ui.explorer_selected(), 42);
-            assert_eq!(state.ui.inspector_tab(), InspectorTab::ForeignKeys);
+            assert_eq!(state.ui.inspector_tab, InspectorTab::ForeignKeys);
             assert_eq!(
                 state.session.active_database_type(),
                 Some(DatabaseType::PostgreSQL)
@@ -688,7 +688,7 @@ mod tests {
             });
             reduce(&mut state, &action);
 
-            assert_eq!(state.ui.inspector_tab(), InspectorTab::Ddl);
+            assert_eq!(state.ui.inspector_tab, InspectorTab::Ddl);
         }
     }
 
@@ -743,7 +743,7 @@ mod tests {
         }
 
         fn seed_er_state(state: &mut AppState) {
-            state.ui.set_pending_er_picker(true);
+            state.ui.request_er_picker_after_metadata();
             let _ = state.er_preparation.start_waiting_run();
             state
                 .table_prefetch
@@ -773,9 +773,9 @@ mod tests {
                 "current",
                 &endpoint::postgres("postgres://localhost/current"),
             );
-            state.ui.set_inspector_tab(InspectorTab::Rls);
-            state.ui.set_inspector_scroll_offset(17);
-            state.ui.set_inspector_horizontal_offset(23);
+            state.ui.inspector_tab = InspectorTab::Rls;
+            state.ui.inspector_scroll_offset = 17;
+            state.ui.inspector_horizontal_offset = 23;
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
             seed_er_state(&mut state);
             seed_explain_state(&mut state);
@@ -795,9 +795,9 @@ mod tests {
                 &target_action(target_id, "app", NonMySqlDatabaseType::SQLite),
             );
 
-            assert_eq!(state.ui.inspector_tab(), InspectorTab::Info);
-            assert_eq!(state.ui.inspector_scroll_offset(), 0);
-            assert_eq!(state.ui.inspector_horizontal_offset(), 0);
+            assert_eq!(state.ui.inspector_tab, InspectorTab::Info);
+            assert_eq!(state.ui.inspector_scroll_offset, 0);
+            assert_eq!(state.ui.inspector_horizontal_offset, 0);
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
             assert_er_state_cleared(&state);
             assert_explain_state_cleared(&state);
@@ -863,7 +863,7 @@ mod tests {
                 "current",
                 &endpoint::postgres("postgres://localhost/current"),
             );
-            state.ui.set_inspector_tab(InspectorTab::Rls);
+            state.ui.inspector_tab = InspectorTab::Rls;
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
             seed_er_state(&mut state);
             seed_explain_state(&mut state);
@@ -877,7 +877,7 @@ mod tests {
                 ),
             );
 
-            assert_eq!(state.ui.inspector_tab(), InspectorTab::Rls);
+            assert_eq!(state.ui.inspector_tab, InspectorTab::Rls);
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Compare);
             assert_er_state_cleared(&state);
             assert_explain_state_cleared(&state);
@@ -892,7 +892,7 @@ mod tests {
                 "current",
                 &endpoint::sqlite("sqlite:///tmp/current.db"),
             );
-            state.ui.set_inspector_tab(InspectorTab::Ddl);
+            state.ui.inspector_tab = InspectorTab::Ddl;
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
             seed_sqlite_diagnostics(&mut state);
             seed_explain_state(&mut state);
@@ -902,7 +902,7 @@ mod tests {
                 &target_action(ConnectionId::new(), "target", NonMySqlDatabaseType::SQLite),
             );
 
-            assert_eq!(state.ui.inspector_tab(), InspectorTab::Ddl);
+            assert_eq!(state.ui.inspector_tab, InspectorTab::Ddl);
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
             assert_sqlite_diagnostics_cleared(&state);
             assert_explain_state_cleared(&state);
@@ -1064,7 +1064,7 @@ mod tests {
             assert_eq!(state.query.pagination.table(), "users");
             assert_eq!(state.query.pagination.current_page(), 2);
             assert_eq!(state.ui.explorer_selected(), 42);
-            assert_eq!(state.ui.inspector_tab(), InspectorTab::ForeignKeys);
+            assert_eq!(state.ui.inspector_tab, InspectorTab::ForeignKeys);
 
             let refreshed_metadata = Arc::new({
                 let mut metadata = DatabaseMetadata::new("app".to_string());
@@ -1072,13 +1072,11 @@ mod tests {
                     "app".to_string(),
                     "users".to_string(),
                     Some(1),
-                    false,
                 ));
                 metadata.table_summaries.push(TableSummary::new(
                     "app".to_string(),
                     "orders".to_string(),
                     Some(10),
-                    false,
                 ));
                 metadata
             });
@@ -1410,7 +1408,7 @@ mod tests {
         fn switch_without_cache_clears_pending_er_picker() {
             let mut state = AppState::new("test".to_string());
             let new_id = ConnectionId::new();
-            state.ui.set_pending_er_picker(true);
+            state.ui.request_er_picker_after_metadata();
             let _ = state.er_preparation.start_waiting_run();
             state
                 .table_prefetch
@@ -1428,7 +1426,7 @@ mod tests {
         fn cached_switch_clears_pending_er_picker() {
             let mut state = AppState::new("test".to_string());
             let target_id = ConnectionId::new();
-            state.ui.set_pending_er_picker(true);
+            state.ui.request_er_picker_after_metadata();
             let _ = state.er_preparation.start_waiting_run();
             state
                 .table_prefetch
@@ -1822,7 +1820,7 @@ mod tests {
                     QuerySource::Preview,
                 )));
             state.query.pagination.reset_for_table("public", "users");
-            state.query.pagination.set_current_page(2);
+            state.query.pagination.set_page_result(2, false);
             let query_run_id = state.query.begin_running(std::time::Instant::now());
 
             let second = ConnectionTarget {

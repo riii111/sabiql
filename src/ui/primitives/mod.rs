@@ -1,3 +1,3 @@
-pub mod atoms;
-pub mod molecules;
-pub mod utils;
+pub(crate) mod atoms;
+pub(crate) mod molecules;
+pub(crate) mod utils;

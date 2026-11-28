@@ -7,7 +7,7 @@ use crate::primitives::molecules::FooterHintBar;
 use crate::primitives::molecules::overlay::{centered_rect, modal_block, render_scrim};
 use crate::theme::ThemePalette;
 
-pub fn render_modal(
+pub(crate) fn render_modal(
     frame: &mut Frame,
     width: Constraint,
     height: Constraint,
@@ -26,7 +26,7 @@ pub fn render_modal(
     )
 }
 
-pub fn render_modal_with_border_color(
+pub(crate) fn render_modal_with_border_color(
     frame: &mut Frame,
     width: Constraint,
     height: Constraint,

@@ -13,10 +13,10 @@ use crate::theme::ThemePalette;
 
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 
-pub struct CommandPalette;
+pub(crate) struct CommandPalette;
 
 impl CommandPalette {
-    pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) {
+    pub(crate) fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) {
         let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(50),
@@ -37,7 +37,7 @@ impl CommandPalette {
         let context = KeyContext::for_browse_state(state);
         let items: Vec<ListItem> = state
             .ui
-            .palette_commands()
+            .palette_commands
             .iter()
             .filter_map(|&id| palette_entry(id, &context))
             .enumerate()

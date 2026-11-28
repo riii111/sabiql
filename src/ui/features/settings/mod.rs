@@ -1,1 +1,1 @@
-pub mod hints;
+pub(crate) mod hints;

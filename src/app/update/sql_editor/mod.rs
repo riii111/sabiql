@@ -191,7 +191,7 @@ mod tests {
         #[test]
         fn moves_down_without_scrolling_while_cursor_stays_inside_visible_rows() {
             let mut state = sql_modal_state();
-            state.ui.set_terminal_height(20);
+            state.ui.terminal_height = 20;
             state.sql_modal.enter_normal();
             state
                 .sql_modal
@@ -216,7 +216,7 @@ mod tests {
         #[test]
         fn scrolls_once_cursor_moves_past_visible_rows() {
             let mut state = sql_modal_state();
-            state.ui.set_terminal_height(20);
+            state.ui.terminal_height = 20;
             state.sql_modal.enter_normal();
             state
                 .sql_modal
@@ -1068,7 +1068,7 @@ mod tests {
             let mut metadata = DatabaseMetadata::new("test".to_string());
             metadata.table_summaries = (0..1_000)
                 .map(|index| {
-                    TableSummary::new("public".to_string(), format!("table_{index}"), None, false)
+                    TableSummary::new("public".to_string(), format!("table_{index}"), None)
                 })
                 .collect();
             state.session.set_metadata(Some(Arc::new(metadata)));

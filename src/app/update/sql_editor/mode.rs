@@ -21,17 +21,7 @@ pub(in crate::update) fn sql_modal_append_insert(state: &mut AppState) -> Vec<Ef
     state
         .sql_modal
         .editor
-        .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
+        .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
     state.sql_modal.enter_editing();
-    vec![]
-}
-
-pub(in crate::update) fn sql_modal_enter_insert(state: &mut AppState) -> Vec<Effect> {
-    state.sql_modal.enter_editing();
-    vec![]
-}
-
-pub(in crate::update) fn sql_modal_enter_normal(state: &mut AppState) -> Vec<Effect> {
-    state.sql_modal.enter_normal();
     vec![]
 }

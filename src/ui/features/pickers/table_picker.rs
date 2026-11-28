@@ -11,10 +11,14 @@ use crate::primitives::atoms::Icon;
 use crate::primitives::molecules::{FooterHintBar, render_filter_input_line, render_modal};
 use crate::theme::ThemePalette;
 
-pub struct TablePicker;
+pub(crate) struct TablePicker;
 
 impl TablePicker {
-    pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) -> PickerLayout {
+    pub(crate) fn render(
+        frame: &mut Frame,
+        state: &AppState,
+        theme: &ThemePalette,
+    ) -> PickerLayout {
         let filtered_tables = state.filtered_tables();
         let filtered_count = filtered_tables.len();
         let (_, inner) = render_modal(

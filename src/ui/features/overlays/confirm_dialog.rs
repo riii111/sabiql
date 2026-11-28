@@ -14,7 +14,7 @@ use crate::primitives::molecules::{FooterHintBar, render_modal, render_modal_wit
 use crate::primitives::utils::text_utils::wrapped_line_count;
 use crate::theme::ThemePalette;
 
-pub struct ConfirmDialog;
+pub(crate) struct ConfirmDialog;
 
 impl ConfirmDialog {
     fn hint_bar(state: &AppState) -> FooterHintBar {
@@ -25,7 +25,7 @@ impl ConfirmDialog {
         )
     }
 
-    pub fn render(
+    pub(crate) fn render(
         frame: &mut Frame,
         state: &AppState,
         theme: &ThemePalette,

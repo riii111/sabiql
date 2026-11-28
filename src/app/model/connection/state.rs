@@ -24,7 +24,8 @@ impl ConnectionState {
         matches!(self, Self::Connected)
     }
 
-    pub fn is_failed(self) -> bool {
+    #[cfg(test)]
+    pub(crate) fn is_failed(self) -> bool {
         matches!(self, Self::Failed)
     }
 }

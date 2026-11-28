@@ -2,10 +2,11 @@ use std::time::Instant;
 
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
+use crate::model::shared::picker::sanitize_filter_text;
 use crate::services::AppServices;
 use crate::update::action::{
     CursorPosition, DetailTarget, InputTarget, ListMotion, ListTarget, ModalKind, ScrollAmount,
-    ScrollDirection, ScrollTarget, ScrollToCursorTarget, SelectMotion,
+    ScrollDirection, ScrollTarget, ScrollToCursorTarget,
 };
 use crate::update::{browse, connection, explain, modal, sql_editor};
 
@@ -68,10 +69,6 @@ pub(in crate::update) fn scroll_to_cursor(
             browse::result::scroll::scroll_to_cursor_result(state, position)
         }
     }
-}
-
-pub(in crate::update) fn select(state: &mut AppState, motion: SelectMotion) -> Vec<Effect> {
-    browse::navigation::explorer::select_explorer(state, motion)
 }
 
 #[deny(
@@ -144,7 +141,10 @@ pub(in crate::update) fn close_modal(state: &mut AppState, kind: ModalKind) -> V
             modal::base::close_modal_table_picker_or_command_palette(state)
         }
         ModalKind::Settings => modal::settings::settings_cancel(state),
-        ModalKind::Help => modal::help::close_modal_help(state),
+        ModalKind::Help => {
+            modal::help::close_help(state);
+            vec![]
+        }
         ModalKind::SqlModal => modal::base::close_modal_sql_modal(state),
         ModalKind::ErTablePicker => modal::er_picker::close_modal_er_table_picker(state),
         ModalKind::QueryHistoryPicker => {
@@ -188,7 +188,12 @@ pub(in crate::update) fn paste(
             state.ui.er_picker_mut().insert_filter_str(&text);
             vec![]
         }
-        InputTarget::SettingsErBrowser => modal::settings::paste_custom_browser(state, text),
+        InputTarget::SettingsErBrowser => {
+            state
+                .settings
+                .edit_custom_browser(|input| input.insert_str(&sanitize_filter_text(&text)));
+            vec![]
+        }
         InputTarget::QueryHistoryFilter => {
             state.query_history_picker.insert_filter_str(&text);
             vec![]
@@ -204,6 +209,12 @@ pub(in crate::update) fn paste(
             DetailTarget::CellDetail,
             &text,
         ),
-        InputTarget::HelpFilter => modal::help::paste_help_filter(state, text),
+        InputTarget::HelpFilter => {
+            state
+                .ui
+                .help_mut()
+                .edit_filter(|input| input.insert_str(&sanitize_filter_text(&text)));
+            vec![]
+        }
     }
 }

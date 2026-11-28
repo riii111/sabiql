@@ -7,14 +7,19 @@ use ratatui::widgets::Paragraph;
 use crate::app::model::app_state::AppState;
 use crate::app::model::er_state::ErStatus;
 use crate::app::model::shared::input_mode::InputMode;
-use crate::primitives::atoms::status_message::{MessageType, StatusMessage};
+use crate::primitives::atoms::status_message::StatusMessage;
 use crate::primitives::atoms::text_cursor_spans;
 use crate::theme::ThemePalette;
 
-pub struct CommandLine;
+pub(super) struct CommandLine;
 
 impl CommandLine {
-    pub fn render(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) -> usize {
+    pub(super) fn render(
+        frame: &mut Frame,
+        area: Rect,
+        state: &AppState,
+        theme: &ThemePalette,
+    ) -> usize {
         let raw_width = area.width.saturating_sub(1) as usize; // ":" prefix
 
         let content = if state.input_mode() == InputMode::CommandLine {
@@ -41,7 +46,7 @@ impl CommandLine {
             && state.er_preparation.status() != ErStatus::Waiting
             && let Some(error) = state.messages.last_error()
         {
-            StatusMessage::render_lines(error, MessageType::Error, area.width, theme)
+            StatusMessage::render_error_lines(error, area.width, theme)
                 .into_iter()
                 .nth(1)
                 .unwrap_or_else(|| Line::raw(""))

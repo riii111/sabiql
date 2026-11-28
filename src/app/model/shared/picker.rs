@@ -59,20 +59,8 @@ impl PickerState {
         self.filter_input.clear();
     }
 
-    pub fn insert_filter_char(&mut self, ch: char) {
-        self.filter_input.insert_char(ch);
-        self.filter_input.update_viewport(self.filter_visible_width);
-        self.reset();
-    }
-
     pub fn insert_filter_str(&mut self, text: &str) {
         self.filter_input.insert_str(&sanitize_filter_text(text));
-        self.filter_input.update_viewport(self.filter_visible_width);
-        self.reset();
-    }
-
-    pub fn backspace_filter(&mut self) {
-        self.filter_input.backspace();
         self.filter_input.update_viewport(self.filter_visible_width);
         self.reset();
     }
@@ -92,7 +80,7 @@ impl PickerState {
         self.edit_filter(|input| input.apply_edit(edit, yank_text))
     }
 
-    pub fn move_filter_cursor(&mut self, direction: CursorMove) {
+    fn move_filter_cursor(&mut self, direction: CursorMove) {
         self.filter_input.move_cursor(direction);
         self.filter_input.update_viewport(self.filter_visible_width);
     }

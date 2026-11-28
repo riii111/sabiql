@@ -90,14 +90,13 @@ impl PostgresAdapter {
             schema: String,
             name: String,
             row_count_estimate: Option<i64>,
-            has_rls: bool,
         }
 
         let raw: Vec<RawTable> = serde_json::from_str(trimmed)?;
 
         Ok(raw
             .into_iter()
-            .map(|t| TableSummary::new(t.schema, t.name, t.row_count_estimate, t.has_rls))
+            .map(|t| TableSummary::new(t.schema, t.name, t.row_count_estimate))
             .collect())
     }
 

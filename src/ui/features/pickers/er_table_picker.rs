@@ -13,10 +13,14 @@ use crate::primitives::atoms::Icon;
 use crate::primitives::molecules::{FooterHintBar, render_filter_input_line, render_modal};
 use crate::theme::ThemePalette;
 
-pub struct ErTablePicker;
+pub(crate) struct ErTablePicker;
 
 impl ErTablePicker {
-    pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) -> PickerLayout {
+    pub(crate) fn render(
+        frame: &mut Frame,
+        state: &AppState,
+        theme: &ThemePalette,
+    ) -> PickerLayout {
         let selected_count = state.ui.er_selected_tables().len();
         let total_count = state.tables().len();
         let filtered_count = state.er_filtered_tables().len();
