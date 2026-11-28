@@ -327,7 +327,10 @@ mod tests {
     async fn write_failure_leaves_no_partial_file() {
         let dir = tempdir().unwrap();
         let failed_write = dir.path().join("write.csv");
-        let write_error = export_to_path(failed_write.clone(), |_| async {
+        let write_error = export_to_path(failed_write, |temporary_path| async move {
+            tokio::fs::write(temporary_path, b"partial,csv\n")
+                .await
+                .unwrap();
             Err(DbOperationError::QueryFailed("write failed".to_string()))
         })
         .await

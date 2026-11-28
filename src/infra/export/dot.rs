@@ -415,13 +415,13 @@ mod tests {
         }
 
         #[test]
-        fn foreign_keys_appear_as_edges() {
-            let tables = make_test_tables();
+        fn foreign_keys_appear_as_edges_with_escaped_labels() {
+            let mut tables = make_test_tables();
+            tables[1].foreign_keys[0].name = r#"fk_"user""#.to_string();
 
             let dot = DotExporter::generate_full_dot(&tables);
 
-            assert!(dot.contains("\"public.orders\" -> \"public.users\""));
-            assert!(dot.contains("label=\"fk_user\""));
+            assert!(dot.contains(r#""public.orders" -> "public.users" [label="fk_\"user\""]"#));
         }
 
         #[test]

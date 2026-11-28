@@ -158,7 +158,9 @@ mod tests {
             &DEFAULT_THEME,
         );
         let text = spans_text(&line);
-        assert!(text.contains("Seq Scan"));
+        assert!(line.spans.iter().any(|span| {
+            span.content == "Seq Scan" && span.style.add_modifier.contains(Modifier::BOLD)
+        }));
         assert!(text.contains("(cost="));
     }
 
