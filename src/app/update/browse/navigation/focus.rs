@@ -20,7 +20,6 @@ pub(in crate::update) fn toggle_read_only(state: &mut AppState) -> Vec<Effect> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::AppServices;
     use crate::update::action::Action;
     use crate::update::reducer::route;
     use std::time::Instant;
@@ -33,12 +32,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             assert!(!state.session.is_read_only());
 
-            route(
-                &mut state,
-                Action::ToggleReadOnly,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::ToggleReadOnly, Instant::now());
 
             assert!(state.session.is_read_only());
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -49,12 +43,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.session.enable_read_only();
 
-            route(
-                &mut state,
-                Action::ToggleReadOnly,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::ToggleReadOnly, Instant::now());
 
             assert!(state.session.is_read_only());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);

@@ -48,7 +48,6 @@ mod tests {
 
     use super::*;
     use crate::model::shared::flash_timer::FlashId;
-    use crate::services::AppServices;
     use crate::update::action::Action;
     use crate::update::reducer::route;
 
@@ -60,7 +59,6 @@ mod tests {
                 outcome: Ok(()),
             },
             now,
-            &AppServices::stub(),
         );
     }
 
@@ -121,7 +119,6 @@ mod tests {
                 outcome: Err(ClipboardError::Unavailable("no display".into())),
             },
             Instant::now(),
-            &AppServices::stub(),
         );
 
         assert_eq!(state.messages.last_error.as_deref(), Some(expected));

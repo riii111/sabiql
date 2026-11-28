@@ -10,7 +10,6 @@ use crate::model::shared::detail_view::ReadOnlyDetailState;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::SqlModalStatus;
 use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel};
-use crate::services::AppServices;
 use crate::update::action::DetailTarget;
 use crate::update::action::SearchStep;
 use crate::update::action::{Action, CursorMove, InputTarget, ModalKind, TextKillDirection};
@@ -153,7 +152,7 @@ const TARGETS: [InputTarget; 14] = [
 ];
 
 fn dispatch(state: &mut AppState, action: Action) {
-    let _ = reduce(state, action, Instant::now(), &AppServices::stub());
+    let _ = reduce(state, action, Instant::now());
 }
 
 fn type_text(state: &mut AppState, target: InputTarget, text: &str) {

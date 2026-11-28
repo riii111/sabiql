@@ -502,16 +502,13 @@ fn conditional_bindings_win_at_the_event_entry() {
 #[test]
 fn repeated_operators_and_prefixes_reach_their_state_transitions() {
     use crate::cmd::effect::Effect;
-    use crate::services::AppServices;
     use crate::update::reducer::reduce;
     use std::time::Instant;
 
-    fn press(state: &mut AppState, key: char, services: &AppServices) -> Vec<Effect> {
+    fn press(state: &mut AppState, key: char) -> Vec<Effect> {
         let action = handle_event(InputEvent::Key(KeyCombo::plain(Key::Char(key))), state);
-        reduce(state, action, Instant::now(), services)
+        reduce(state, action, Instant::now())
     }
-
-    let services = AppServices::stub();
     let mut state = state(
         DatabaseType::PostgreSQL,
         KeymapPreset::Default,
@@ -529,25 +526,25 @@ fn repeated_operators_and_prefixes_reach_their_state_transitions() {
         )));
     state.result_interaction.activate_cell(0, 0);
 
-    assert!(press(&mut state, 'y', &services).is_empty());
+    assert!(press(&mut state, 'y').is_empty());
     assert!(state.result_interaction.is_yank_operator_pending());
     assert!(
-        matches!(press(&mut state, 'y', &services).as_slice(), [Effect::CopyToClipboard { content, .. }] if content == "1")
+        matches!(press(&mut state, 'y').as_slice(), [Effect::CopyToClipboard { content, .. }] if content == "1")
     );
     assert!(!state.result_interaction.is_yank_operator_pending());
-    press(&mut state, 'y', &services);
-    press(&mut state, 'h', &services);
+    press(&mut state, 'y');
+    press(&mut state, 'h');
     assert!(!state.result_interaction.is_yank_operator_pending());
-    press(&mut state, 'd', &services);
+    press(&mut state, 'd');
     assert!(state.result_interaction.is_delete_operator_pending());
-    press(&mut state, 'd', &services);
+    press(&mut state, 'd');
     assert!(state.result_interaction.staged_delete_rows().contains(&0));
     assert!(!state.result_interaction.is_delete_operator_pending());
-    press(&mut state, 'z', &services);
+    press(&mut state, 'z');
     assert_eq!(
         state.ui.key_sequence,
         KeySequenceState::WaitingSecondKey(Prefix::Z)
     );
-    press(&mut state, 't', &services);
+    press(&mut state, 't');
     assert_eq!(state.ui.key_sequence, KeySequenceState::Idle);
 }

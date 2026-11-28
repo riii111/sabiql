@@ -8,11 +8,10 @@ use crate::app::model::connection::setup::{
     ConnectionSetupState,
 };
 use crate::app::policy::mask_password;
-use crate::app::services::AppServices;
 use crate::app::update::input::keymap::{HintSurface, KeyContext, connection_setup_hints};
 use crate::domain::connection::{
     ConnectionEndpoint, ConnectionId, ConnectionProfile, DatabaseType, MySqlSslMode,
-    MySqlTransport, SslMode,
+    MySqlTransport, SslMode, build_dsn,
 };
 use crate::primitives::atoms::text_cursor_spans;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
@@ -42,17 +41,12 @@ fn bracketed_input(content: &str, border_style: Style, theme: &ThemePalette) -> 
 pub(crate) struct ConnectionSetup;
 
 impl ConnectionSetup {
-    pub(crate) fn render(
-        frame: &mut Frame,
-        state: &AppState,
-        services: &AppServices,
-        theme: &ThemePalette,
-    ) {
+    pub(crate) fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) {
         let form_state = &state.connection_setup;
         let visible_fields = form_state.visible_fields();
 
         let modal_width = LABEL_WIDTH + INPUT_WIDTH + ERROR_WIDTH + 8;
-        let preview = preview_text(form_state, services);
+        let preview = preview_text(form_state);
         let preview_width = modal_width.saturating_sub(MODAL_HORIZONTAL_CHROME) as usize;
         let notice_height = if form_state.cleartext_auth_plugin_enabled() {
             3
@@ -528,13 +522,13 @@ fn preview_profile(state: &ConnectionSetupState) -> Option<ConnectionProfile> {
         .ok()
 }
 
-fn preview_text(form_state: &ConnectionSetupState, services: &AppServices) -> Option<String> {
+fn preview_text(form_state: &ConnectionSetupState) -> Option<String> {
     match form_state.database_type() {
         DatabaseType::SQLite => None,
         DatabaseType::PostgreSQL | DatabaseType::MySQL => {
             let profile = preview_profile(form_state)?;
             let endpoint = ConnectionEndpoint::from(&profile.config);
-            Some(mask_password(&services.dsn_builder.build_dsn(&endpoint)))
+            Some(mask_password(&build_dsn(&endpoint)))
         }
     }
 }

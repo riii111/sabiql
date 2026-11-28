@@ -299,7 +299,6 @@ mod tests {
     fn json_prefix_completes_or_cancels_and_search_treats_g_as_text() {
         use crate::model::browse::json_detail::JsonDetailState;
         use crate::model::shared::key_sequence::{KeySequenceState, Prefix};
-        use crate::services::AppServices;
         use crate::update::{reducer::route, test_fixtures};
         use std::time::Instant;
 
@@ -307,11 +306,10 @@ mod tests {
         test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
         state.json_detail = JsonDetailState::open(0, 0, "json".to_string(), "[1, 2]".to_string());
         state.modal.set_mode(InputMode::JsonDetail);
-        let services = AppServices::stub();
 
         let first = handle_key_event(KeyCombo::plain(Key::Char('g')), &state);
         assert!(matches!(first, Action::BeginKeySequence(Prefix::G)));
-        route(&mut state, first, Instant::now(), &services);
+        route(&mut state, first, Instant::now());
         assert_eq!(
             state.ui.key_sequence,
             KeySequenceState::WaitingSecondKey(Prefix::G)
@@ -324,14 +322,14 @@ mod tests {
                 direction: CursorMove::FirstLine
             }
         ));
-        route(&mut state, second, Instant::now(), &services);
+        route(&mut state, second, Instant::now());
         assert_eq!(state.ui.key_sequence, KeySequenceState::Idle);
 
         let first = handle_key_event(KeyCombo::plain(Key::Char('g')), &state);
-        route(&mut state, first, Instant::now(), &services);
+        route(&mut state, first, Instant::now());
         let cancel = handle_key_event(KeyCombo::ctrl(Key::Char('g')), &state);
         assert!(matches!(cancel, Action::CancelKeySequence));
-        route(&mut state, cancel, Instant::now(), &services);
+        route(&mut state, cancel, Instant::now());
         assert_eq!(state.ui.key_sequence, KeySequenceState::Idle);
 
         state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::G);

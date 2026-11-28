@@ -186,7 +186,6 @@ mod tests {
     use super::*;
     use crate::domain::{DatabaseMetadata, TableSummary};
     use crate::model::shared::key_sequence::Prefix;
-    use crate::services::AppServices;
     use crate::test_support::endpoint;
     use crate::update::action::{Action, ScrollTarget, ScrollToCursorTarget};
     use crate::update::reducer::route;
@@ -236,7 +235,6 @@ mod tests {
                 &mut state,
                 Action::Select(SelectMotion::HalfPageDown),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 10);
@@ -251,7 +249,6 @@ mod tests {
                 &mut state,
                 Action::Select(SelectMotion::HalfPageDown),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 49);
@@ -266,7 +263,6 @@ mod tests {
                 &mut state,
                 Action::Select(SelectMotion::HalfPageUp),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 0);
@@ -279,7 +275,6 @@ mod tests {
                 &mut state,
                 Action::Select(SelectMotion::FullPageDown),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 20);
@@ -294,7 +289,6 @@ mod tests {
                 &mut state,
                 Action::Select(SelectMotion::HalfPageDown),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 0);
@@ -307,7 +301,6 @@ mod tests {
                 &mut state,
                 Action::Select(SelectMotion::HalfPageDown),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 0);
@@ -324,7 +317,6 @@ mod tests {
                 &mut state,
                 Action::Select(SelectMotion::HalfPageDown),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 25);
@@ -341,7 +333,6 @@ mod tests {
                 &mut state,
                 Action::Select(SelectMotion::HalfPageUp),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 15);
@@ -357,7 +348,6 @@ mod tests {
                 &mut state,
                 Action::Select(SelectMotion::HalfPageDown),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 9);
@@ -374,7 +364,6 @@ mod tests {
                 &mut state,
                 Action::Select(SelectMotion::FullPageDown),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 30);
@@ -391,7 +380,6 @@ mod tests {
                 &mut state,
                 Action::Select(SelectMotion::FullPageUp),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 10);
@@ -408,7 +396,6 @@ mod tests {
                 &mut state,
                 Action::Select(SelectMotion::FullPageDown),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 49);
@@ -425,7 +412,6 @@ mod tests {
                 &mut state,
                 Action::Select(SelectMotion::FullPageUp),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 0);
@@ -443,7 +429,6 @@ mod tests {
                 &mut state,
                 Action::Select(SelectMotion::ViewportMiddle),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 10);
@@ -459,7 +444,6 @@ mod tests {
                 &mut state,
                 Action::Select(SelectMotion::ViewportMiddle),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 25);
@@ -476,7 +460,6 @@ mod tests {
                 &mut state,
                 Action::Select(SelectMotion::ViewportTop),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 10);
@@ -492,7 +475,6 @@ mod tests {
                 &mut state,
                 Action::Select(SelectMotion::ViewportBottom),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 29);
@@ -505,7 +487,6 @@ mod tests {
                 &mut state,
                 Action::Select(SelectMotion::ViewportBottom),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 9);
@@ -521,7 +502,6 @@ mod tests {
                 &mut state,
                 Action::Select(SelectMotion::ViewportMiddle),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 45);
@@ -537,7 +517,6 @@ mod tests {
                 &mut state,
                 Action::Select(SelectMotion::ViewportBottom),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_selected(), 49);
@@ -561,7 +540,6 @@ mod tests {
                     position: CursorPosition::Center,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_scroll_offset, 20);
@@ -582,7 +560,6 @@ mod tests {
                     position: CursorPosition::Top,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_scroll_offset, 15);
@@ -603,7 +580,6 @@ mod tests {
                     position: CursorPosition::Bottom,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_scroll_offset, 6);
@@ -624,7 +600,6 @@ mod tests {
                     position: CursorPosition::Top,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.explorer_scroll_offset, 30);
@@ -661,7 +636,6 @@ mod tests {
                         amount: ScrollAmount::Line,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
             }
 
@@ -686,7 +660,6 @@ mod tests {
                         amount: ScrollAmount::Line,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
             }
 
@@ -717,7 +690,6 @@ mod tests {
                     amount: ScrollAmount::Line,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(
@@ -766,7 +738,6 @@ mod tests {
                         amount: ScrollAmount::Line,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
             }
 

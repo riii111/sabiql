@@ -144,7 +144,6 @@ mod tests {
     use crate::domain::ConnectionId;
     use crate::model::connection::error::test_support;
     use crate::model::connection::state::ConnectionState;
-    use crate::services::AppServices;
     use crate::test_support::endpoint;
     use crate::update::action::ScrollTarget;
     use crate::update::reducer::route;
@@ -173,21 +172,11 @@ mod tests {
 
             let action = scroll_down_action();
 
-            route(
-                &mut state,
-                action.clone(),
-                Instant::now(),
-                &AppServices::stub(),
-            );
-            route(
-                &mut state,
-                action.clone(),
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, action.clone(), Instant::now());
+            route(&mut state, action.clone(), Instant::now());
             assert_eq!(state.connection_error.scroll_offset(), 2);
 
-            route(&mut state, action, Instant::now(), &AppServices::stub());
+            route(&mut state, action, Instant::now());
             assert_eq!(state.connection_error.scroll_offset(), 2);
         }
     }
@@ -205,12 +194,7 @@ mod tests {
             );
             state.modal.set_mode(InputMode::ConnectionError);
 
-            route(
-                &mut state,
-                Action::ReenterConnectionSetup,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::ReenterConnectionSetup, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::ConnectionError);
         }
@@ -227,12 +211,7 @@ mod tests {
             );
             state.modal.set_mode(InputMode::ConnectionError);
 
-            route(
-                &mut state,
-                Action::ReenterConnectionSetup,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::ReenterConnectionSetup, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::ConnectionError);
         }
@@ -243,12 +222,7 @@ mod tests {
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/db");
             state.modal.set_mode(InputMode::ConnectionError);
 
-            route(
-                &mut state,
-                Action::ReenterConnectionSetup,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::ReenterConnectionSetup, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
         }
@@ -265,12 +239,7 @@ mod tests {
         state.session.set_connection_state(ConnectionState::Failed);
         state.modal.set_mode(InputMode::ConnectionError);
 
-        let effects = route(
-            &mut state,
-            Action::RetryConnection,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        let effects = route(&mut state, Action::RetryConnection, Instant::now());
 
         assert!(effects.iter().any(|effect| matches!(
             effect,
@@ -307,12 +276,7 @@ mod tests {
         state.session.set_connection_state(ConnectionState::Failed);
         state.modal.set_mode(InputMode::ConnectionError);
 
-        let effects = route(
-            &mut state,
-            Action::RetryConnection,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        let effects = route(&mut state, Action::RetryConnection, Instant::now());
 
         assert!(effects.is_empty());
         assert_eq!(state.input_mode(), InputMode::ConnectionError);
@@ -351,12 +315,7 @@ mod tests {
         ));
         state.modal.set_mode(InputMode::ConnectionError);
 
-        route(
-            &mut state,
-            Action::CloseConnectionError,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        route(&mut state, Action::CloseConnectionError, Instant::now());
 
         assert!(state.session.pending_mysql_connection_probe().is_none());
         assert!(state.connection_error.error_info().is_none());
@@ -393,12 +352,7 @@ mod tests {
         state.modal.set_mode(InputMode::ConnectionError);
 
         assert!(!state.session.has_pending_connection_switch());
-        route(
-            &mut state,
-            Action::CloseConnectionError,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        route(&mut state, Action::CloseConnectionError, Instant::now());
 
         assert!(state.session.pending_mysql_connection_probe().is_none());
         assert!(state.connection_error.error_info().is_none());
@@ -438,12 +392,7 @@ mod tests {
         ));
         state.modal.set_mode(InputMode::ConnectionError);
 
-        route(
-            &mut state,
-            Action::ReenterConnectionSetup,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        route(&mut state, Action::ReenterConnectionSetup, Instant::now());
 
         assert_eq!(state.input_mode(), InputMode::ConnectionError);
         assert_eq!(

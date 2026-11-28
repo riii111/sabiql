@@ -107,7 +107,6 @@ pub(in crate::update) fn edit_command_line(
 mod tests {
     use super::*;
     use crate::model::shared::text_input::TextInputState;
-    use crate::services::AppServices;
     use crate::update::action::{Action, InputTarget, ListTarget};
     use crate::update::reducer::route;
     use crate::update::test_fixtures::edit_text;
@@ -128,7 +127,6 @@ mod tests {
                     text: "hel\nlo\r\n".to_string(),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.table_picker().filter_input().content(), "hello");
@@ -147,7 +145,6 @@ mod tests {
                     text: "x".to_string(),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.table_picker().selected(), 0);
@@ -165,7 +162,6 @@ mod tests {
                     text: "qu\nit".to_string(),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.command_line_input.content(), "quit");
@@ -183,7 +179,6 @@ mod tests {
                     text: "public.users".to_string(),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(
@@ -205,7 +200,6 @@ mod tests {
                     text: "public\n.users\r\n".to_string(),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(
@@ -227,7 +221,6 @@ mod tests {
                     text: "us\ners\r\n".to_string(),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.query_history_picker.filter_input().content(), "users");
@@ -242,20 +235,10 @@ mod tests {
         fn enter_from_normal_and_exit_returns_to_normal() {
             let mut state = AppState::new("test".to_string());
 
-            route(
-                &mut state,
-                Action::EnterCommandLine,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::EnterCommandLine, Instant::now());
             assert_eq!(state.input_mode(), InputMode::CommandLine);
 
-            route(
-                &mut state,
-                Action::ExitCommandLine,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::ExitCommandLine, Instant::now());
             assert_eq!(state.input_mode(), InputMode::Normal);
         }
 
@@ -264,20 +247,10 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::CellEdit);
 
-            route(
-                &mut state,
-                Action::EnterCommandLine,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::EnterCommandLine, Instant::now());
             assert_eq!(state.input_mode(), InputMode::CommandLine);
 
-            route(
-                &mut state,
-                Action::ExitCommandLine,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::ExitCommandLine, Instant::now());
             assert_eq!(state.input_mode(), InputMode::CellEdit);
         }
     }
@@ -313,7 +286,6 @@ mod tests {
                     motion: ListMotion::Next,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.table_picker().selected(), 1);
@@ -332,7 +304,6 @@ mod tests {
                     motion: ListMotion::Next,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.table_picker().selected(), 2);
@@ -351,7 +322,6 @@ mod tests {
                     motion: ListMotion::Previous,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.table_picker().selected(), 2);
@@ -369,7 +339,6 @@ mod tests {
                     motion: ListMotion::Previous,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.table_picker().selected(), 0);
@@ -387,7 +356,6 @@ mod tests {
                     motion: ListMotion::Next,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.er_picker().selected(), 1);
@@ -405,7 +373,6 @@ mod tests {
                     motion: ListMotion::Previous,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.er_picker().selected(), 0);
@@ -423,7 +390,6 @@ mod tests {
                     motion: ListMotion::Next,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.table_picker().selected(), 1);
@@ -441,7 +407,6 @@ mod tests {
                     motion: ListMotion::Previous,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.table_picker().selected(), 0);

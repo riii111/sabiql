@@ -4,7 +4,6 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::picker::sanitize_filter_text;
 use crate::policy::FeaturePolicy;
-use crate::services::AppServices;
 use crate::update::action::{
     CursorPosition, DetailTarget, InputTarget, ListMotion, ListTarget, ModalKind, ScrollAmount,
     ScrollDirection, ScrollTarget, ScrollToCursorTarget,
@@ -21,7 +20,6 @@ pub(in crate::update) fn scroll(
     target: ScrollTarget,
     direction: ScrollDirection,
     amount: ScrollAmount,
-    services: &AppServices,
 ) {
     use browse::{
         navigation::{explorer::scroll_explorer, inspector::scroll_inspector},
@@ -38,7 +36,7 @@ pub(in crate::update) fn scroll(
 
     match target {
         ScrollTarget::Result => scroll_result(state, direction, amount),
-        ScrollTarget::Inspector => scroll_inspector(state, direction, amount, services),
+        ScrollTarget::Inspector => scroll_inspector(state, direction, amount),
         ScrollTarget::Help => scroll_help(state, direction, amount),
         ScrollTarget::ConnectionError => scroll_connection_error(state, direction, amount),
         ScrollTarget::ConfirmDialog => scroll_confirm_dialog(state, direction, amount),

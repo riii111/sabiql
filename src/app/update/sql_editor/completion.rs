@@ -47,7 +47,6 @@ mod tests {
     use super::*;
     use crate::domain::{DatabaseMetadata, TableSummary};
     use crate::model::shared::input_mode::InputMode;
-    use crate::services::AppServices;
     use crate::update::reducer::route;
     use crate::update::test_fixtures;
 
@@ -65,12 +64,7 @@ mod tests {
             .collect();
         state.session.set_metadata(Some(Arc::new(metadata)));
 
-        let effects = route(
-            &mut state,
-            Action::CompletionRequest,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        let effects = route(&mut state, Action::CompletionRequest, Instant::now());
 
         assert!(matches!(
             effects.as_slice(),
@@ -90,12 +84,7 @@ mod tests {
             .set_content("SELECT * FROM public.users".to_string());
         let run_id = state.table_prefetch.begin_completion_prefetch();
 
-        let effects = route(
-            &mut state,
-            Action::CompletionRequest,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        let effects = route(&mut state, Action::CompletionRequest, Instant::now());
 
         assert!(matches!(
             effects.as_slice(),

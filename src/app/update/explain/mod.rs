@@ -15,7 +15,6 @@ mod tests {
     use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
     use crate::policy::write::sql_risk::AcknowledgeReason;
     use crate::ports::outbound::AccessMode;
-    use crate::services::AppServices;
     use crate::test_support::endpoint;
     use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
     use crate::update::reducer::{reduce, route};
@@ -23,7 +22,7 @@ mod tests {
     use std::time::Instant;
 
     fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Vec<Effect> {
-        route(state, action.clone(), now, &AppServices::stub())
+        route(state, action.clone(), now)
     }
 
     fn sql_modal_state() -> AppState {
@@ -41,7 +40,7 @@ mod tests {
     }
 
     fn reduce_at_boundary(state: &mut AppState, action: Action) -> Vec<Effect> {
-        reduce(state, action, Instant::now(), &AppServices::stub())
+        reduce(state, action, Instant::now())
     }
 
     mod explain_request {
@@ -98,12 +97,7 @@ mod tests {
             state.sql_modal.editor.set_content("SELECT 1".to_string());
             activate_sqlite_connection(&mut state);
 
-            let effects = route(
-                &mut state,
-                Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ExplainRequest, Instant::now());
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(
@@ -127,12 +121,7 @@ mod tests {
                 .set_content("DELETE FROM users".to_string());
             activate_sqlite_connection(&mut state);
 
-            let effects = route(
-                &mut state,
-                Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ExplainRequest, Instant::now());
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(
@@ -158,12 +147,7 @@ mod tests {
             state.sql_modal.editor.set_content("SELECT 1".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
 
-            let effects = route(
-                &mut state,
-                Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ExplainRequest, Instant::now());
 
             assert!(matches!(
                 &effects[0],
@@ -200,12 +184,7 @@ mod tests {
                 .set_content("UPDATE users SET active = TRUE".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
 
-            let effects = route(
-                &mut state,
-                Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ExplainRequest, Instant::now());
 
             assert!(matches!(
                 &effects[0],
@@ -229,12 +208,7 @@ mod tests {
                 .set_content("REPLACE INTO users (id, active) VALUES (1, TRUE)".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
 
-            let effects = route(
-                &mut state,
-                Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ExplainRequest, Instant::now());
 
             assert!(matches!(
                 &effects[0],
@@ -258,12 +232,7 @@ mod tests {
                 .set_content("SELECT * FROM users FOR UPDATE".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
 
-            let effects = route(
-                &mut state,
-                Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ExplainRequest, Instant::now());
 
             assert!(matches!(
                 &effects[0],
@@ -287,12 +256,7 @@ mod tests {
                 .set_content("CREATE TABLE users(id INT)".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
 
-            let effects = route(
-                &mut state,
-                Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ExplainRequest, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -312,12 +276,7 @@ mod tests {
                 .set_content("\\C /tmp/other.sock".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
 
-            let effects = route(
-                &mut state,
-                Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ExplainRequest, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -335,12 +294,7 @@ mod tests {
                 .set_content("SELECT 1; SELECT 2".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
 
-            let effects = route(
-                &mut state,
-                Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ExplainRequest, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -358,12 +312,7 @@ mod tests {
                 .set_content("SELECT 'unterminated".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
 
-            let effects = route(
-                &mut state,
-                Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ExplainRequest, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -382,12 +331,7 @@ mod tests {
                 .set_content("SELECT 1; SELECT 2".to_string());
             activate_sqlite_connection(&mut state);
 
-            let effects = route(
-                &mut state,
-                Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ExplainRequest, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -406,12 +350,7 @@ mod tests {
                 .set_content("SELECT 1; -- note".to_string());
             activate_sqlite_connection(&mut state);
 
-            let effects = route(
-                &mut state,
-                Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ExplainRequest, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -431,12 +370,7 @@ mod tests {
                 .set_content("CREATE TABLE users(id INTEGER)".to_string());
             activate_sqlite_connection(&mut state);
 
-            let effects = route(
-                &mut state,
-                Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ExplainRequest, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -457,12 +391,7 @@ mod tests {
                 .set_content("EXPLAIN SELECT 1".to_string());
             activate_sqlite_connection(&mut state);
 
-            let effects = route(
-                &mut state,
-                Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ExplainRequest, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -532,12 +461,7 @@ mod tests {
             state.sql_modal.editor.set_content("SELECT 1".to_string());
             let now = Instant::now();
 
-            let effects = reduce(
-                &mut state,
-                Action::ExplainRequest,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::ExplainRequest, now);
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(
@@ -634,12 +558,7 @@ mod tests {
             state.sql_modal.editor.set_content("SELECT 1".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
 
-            let effects = route(
-                &mut state,
-                Action::ExplainAnalyzeRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ExplainAnalyzeRequest, Instant::now());
 
             assert!(effects.is_empty());
             assert!(matches!(
@@ -650,12 +569,7 @@ mod tests {
                 } if query == "SELECT 1"
             ));
 
-            let effects = route(
-                &mut state,
-                Action::ExplainAnalyzeConfirm,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ExplainAnalyzeConfirm, Instant::now());
 
             assert!(matches!(
                 &effects[0],
@@ -679,12 +593,7 @@ mod tests {
                 .set_content("TABLE items".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
 
-            let effects = route(
-                &mut state,
-                Action::ExplainAnalyzeRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ExplainAnalyzeRequest, Instant::now());
 
             assert!(effects.is_empty());
             assert!(matches!(
@@ -705,12 +614,7 @@ mod tests {
                 .set_content("UPDATE items SET value = 1".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
 
-            let effects = route(
-                &mut state,
-                Action::ExplainAnalyzeRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ExplainAnalyzeRequest, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -919,12 +823,7 @@ mod tests {
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
             state.session.enable_read_only();
 
-            let effects = route(
-                &mut state,
-                Action::ExplainAnalyzeRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ExplainAnalyzeRequest, Instant::now());
 
             assert!(effects.is_empty());
             assert!(matches!(
@@ -935,12 +834,7 @@ mod tests {
                 }
             ));
 
-            let effects = route(
-                &mut state,
-                Action::ExplainAnalyzeConfirm,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ExplainAnalyzeConfirm, Instant::now());
 
             assert!(matches!(
                 &effects[0],
@@ -1675,12 +1569,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Sql);
 
-            route(
-                &mut state,
-                Action::SqlModalNextTab,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::SqlModalNextTab, Instant::now());
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
         }
@@ -1691,12 +1580,7 @@ mod tests {
             activate_sqlite_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Sql);
 
-            route(
-                &mut state,
-                Action::SqlModalNextTab,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::SqlModalNextTab, Instant::now());
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
         }
@@ -1707,12 +1591,7 @@ mod tests {
             activate_sqlite_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
 
-            route(
-                &mut state,
-                Action::SqlModalNextTab,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::SqlModalNextTab, Instant::now());
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
         }
@@ -1722,12 +1601,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
 
-            route(
-                &mut state,
-                Action::SqlModalNextTab,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::SqlModalNextTab, Instant::now());
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
         }
@@ -1770,12 +1644,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Sql);
 
-            route(
-                &mut state,
-                Action::SqlModalPrevTab,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::SqlModalPrevTab, Instant::now());
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
         }
@@ -1786,12 +1655,7 @@ mod tests {
             activate_sqlite_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Sql);
 
-            route(
-                &mut state,
-                Action::SqlModalPrevTab,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::SqlModalPrevTab, Instant::now());
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
         }
@@ -1802,12 +1666,7 @@ mod tests {
             activate_sqlite_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
 
-            route(
-                &mut state,
-                Action::SqlModalPrevTab,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::SqlModalPrevTab, Instant::now());
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
         }
@@ -1817,12 +1676,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
 
-            route(
-                &mut state,
-                Action::SqlModalPrevTab,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::SqlModalPrevTab, Instant::now());
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
         }

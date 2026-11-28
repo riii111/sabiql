@@ -419,7 +419,6 @@ mod tests {
         GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
     };
     use crate::ports::outbound::DbOperationError;
-    use crate::services::AppServices;
     use crate::update::action::Action;
     use crate::update::browse::query::tests::*;
     use crate::update::reducer::route;
@@ -502,12 +501,7 @@ mod tests {
         }
 
         fn submit_write_preview(state: &mut AppState) -> WritePreview {
-            let effects = route(
-                state,
-                Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(state, Action::SubmitCellEditWrite, Instant::now());
             assert!(effects.is_empty());
             state
                 .result_interaction
@@ -521,12 +515,7 @@ mod tests {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::Normal);
 
-            let effects = route(
-                &mut state,
-                Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::SubmitCellEditWrite, Instant::now());
             assert!(effects.is_empty());
             assert_eq!(
                 state.messages.last_error.as_deref(),
@@ -546,12 +535,7 @@ mod tests {
             detail.primary_key = None;
             state.session.set_table_detail_raw(Some(detail));
 
-            let effects = route(
-                &mut state,
-                Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::SubmitCellEditWrite, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -565,12 +549,7 @@ mod tests {
             let mut state = editable_state();
             let _ = state.query.begin_running(Instant::now());
 
-            let effects = route(
-                &mut state,
-                Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::SubmitCellEditWrite, Instant::now());
             assert!(effects.is_empty());
             assert_eq!(
                 state.messages.last_error.as_deref(),
@@ -586,12 +565,7 @@ mod tests {
                 state.session.set_table_detail_raw(Some(detail));
             }
 
-            let effects = route(
-                &mut state,
-                Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::SubmitCellEditWrite, Instant::now());
             assert!(effects.is_empty());
             assert_eq!(
                 state.messages.last_error.as_deref(),
@@ -625,12 +599,7 @@ mod tests {
                 .result_interaction
                 .begin_cell_edit(0, 1, draft.to_string());
 
-            let effects = route(
-                &mut state,
-                Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::SubmitCellEditWrite, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(state.messages.last_error.as_deref(), Some(expected_error));
@@ -645,12 +614,7 @@ mod tests {
                 state.session.set_table_detail_raw(Some(detail));
             }
 
-            let effects = route(
-                &mut state,
-                Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::SubmitCellEditWrite, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -681,12 +645,7 @@ mod tests {
             for (data_type, original, draft) in cases {
                 let mut state = mysql_editable_state(data_type, original, draft);
 
-                let effects = route(
-                    &mut state,
-                    Action::SubmitCellEditWrite,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                let effects = route(&mut state, Action::SubmitCellEditWrite, Instant::now());
 
                 assert!(effects.is_empty(), "{data_type} should not send SQL");
                 assert_eq!(
@@ -921,12 +880,7 @@ mod tests {
                 .result_interaction
                 .replace_cell_edit_draft("1e999".to_string());
 
-            let effects = route(
-                &mut state,
-                Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::SubmitCellEditWrite, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -963,12 +917,7 @@ mod tests {
                 .result_interaction
                 .replace_cell_edit_draft("Bob".to_string());
 
-            let effects = route(
-                &mut state,
-                Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::SubmitCellEditWrite, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -1016,12 +965,7 @@ mod tests {
                 .result_interaction
                 .replace_cell_edit_draft(r#"{ "role": "admin" }"#.to_string());
 
-            let effects = route(
-                &mut state,
-                Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::SubmitCellEditWrite, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -1230,7 +1174,7 @@ mod tests {
             state.query.pagination.set_page_result(2, false);
             let action = write_succeeded_action(&mut state, 1);
 
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.query.is_running());
@@ -1256,7 +1200,7 @@ mod tests {
             let mut state = editable_state();
             let action = write_succeeded_action(&mut state, affected_rows);
 
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert_eq!(effects.len(), 1);
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -1286,7 +1230,6 @@ mod tests {
                     }),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(effects.len(), 1);
@@ -1309,7 +1252,7 @@ mod tests {
                 }],
             );
 
-            route(&mut state, action, Instant::now(), &AppServices::stub());
+            route(&mut state, action, Instant::now());
 
             assert_eq!(
                 state.messages.last_success.as_deref(),
@@ -1330,7 +1273,7 @@ mod tests {
                 },
             );
 
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(!state.result_interaction.cell_edit().is_active());
@@ -1360,7 +1303,7 @@ mod tests {
                 },
             );
 
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(!state.result_interaction.cell_edit().is_active());
@@ -1388,7 +1331,7 @@ mod tests {
                 DbOperationError::QueryFailed("before write".to_string()),
             );
 
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::CellEdit);
@@ -1413,7 +1356,6 @@ mod tests {
                     }),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(effects.is_empty());
@@ -1445,7 +1387,6 @@ mod tests {
                     outcome: Err(DbOperationError::QueryFailed("stale write".to_string())),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(stale_run_id < current_run_id);
@@ -1529,7 +1470,7 @@ mod tests {
             state.result_interaction.set_write_preview(delete_preview());
             let action = write_succeeded_action(&mut state, 1);
 
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(
@@ -1562,7 +1503,7 @@ mod tests {
             state.result_interaction.set_write_preview(delete_preview());
             let action = write_succeeded_action(&mut state, 0);
 
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(
@@ -1583,7 +1524,7 @@ mod tests {
                 DbOperationError::QueryFailed("boom".to_string()),
             );
 
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -1613,7 +1554,7 @@ mod tests {
                 },
             );
 
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.result_interaction.staged_delete_rows().is_empty());
@@ -1634,7 +1575,7 @@ mod tests {
                 .set_post_delete_selection(PostDeleteRowSelection::Select(1000));
             let action = query_completed_action(&mut state, preview_result(3), 1, Some(0));
 
-            route(&mut state, action, Instant::now(), &AppServices::stub());
+            route(&mut state, action, Instant::now());
 
             assert_eq!(state.result_interaction.selection().row(), Some(2));
             assert_eq!(
@@ -1653,7 +1594,7 @@ mod tests {
                 .set_post_delete_selection(PostDeleteRowSelection::Clear);
             let action = query_completed_action(&mut state, preview_result(2), 1, Some(0));
 
-            route(&mut state, action, Instant::now(), &AppServices::stub());
+            route(&mut state, action, Instant::now());
 
             assert_eq!(state.result_interaction.selection().row(), None);
             assert_eq!(

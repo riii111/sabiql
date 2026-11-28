@@ -125,7 +125,6 @@ mod tests {
     use super::*;
     use crate::domain::connection::ConnectionId;
     use crate::domain::{QueryResult, QuerySource, QueryValue, Table};
-    use crate::services::AppServices;
     use crate::test_support::endpoint;
     use crate::update::action::CursorMove;
     use crate::update::action::InputTarget;
@@ -179,12 +178,7 @@ mod tests {
                 .replace_cell_edit_draft("modified".to_string());
             state.modal.set_mode(InputMode::Normal);
 
-            route(
-                &mut state,
-                Action::ResultEnterCellEdit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::ResultEnterCellEdit, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert_eq!(
@@ -206,12 +200,7 @@ mod tests {
                 .result_interaction
                 .replace_cell_edit_draft("stale-modified".to_string());
 
-            route(
-                &mut state,
-                Action::ResultEnterCellEdit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::ResultEnterCellEdit, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert_eq!(state.result_interaction.cell_edit().col(), Some(1));
@@ -241,12 +230,7 @@ mod tests {
                 .session
                 .set_table_detail_raw(Some(minimal_users_table()));
 
-            let effects = route(
-                &mut state,
-                Action::ResultEnterCellEdit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultEnterCellEdit, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -279,12 +263,7 @@ mod tests {
                 .session
                 .set_table_detail_raw(Some(minimal_users_table()));
 
-            route(
-                &mut state,
-                Action::ResultEnterCellEdit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::ResultEnterCellEdit, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert_eq!(state.result_interaction.cell_edit().draft_value(), "42");
@@ -308,12 +287,7 @@ mod tests {
                 .session
                 .set_table_detail_raw(Some(minimal_users_table()));
 
-            route(
-                &mut state,
-                Action::ResultEnterCellEdit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::ResultEnterCellEdit, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert_eq!(
@@ -333,12 +307,7 @@ mod tests {
                 ..test_support::table::minimal("", "")
             }));
 
-            let effects = route(
-                &mut state,
-                Action::ResultEnterCellEdit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultEnterCellEdit, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -355,12 +324,7 @@ mod tests {
             table.kind_info = test_support::table::view_kind_info();
             state.session.set_table_detail_raw(Some(table));
 
-            let effects = route(
-                &mut state,
-                Action::ResultEnterCellEdit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultEnterCellEdit, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -386,12 +350,7 @@ mod tests {
             ];
             state.session.set_table_detail_raw(Some(table));
 
-            let effects = route(
-                &mut state,
-                Action::ResultEnterCellEdit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultEnterCellEdit, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -412,12 +371,7 @@ mod tests {
                 .begin_cell_edit(0, 1, "alice".to_string());
             state.modal.set_mode(InputMode::CellEdit);
 
-            route(
-                &mut state,
-                Action::ResultCancelCellEdit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::ResultCancelCellEdit, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(!state.result_interaction.cell_edit().is_active());
@@ -437,12 +391,7 @@ mod tests {
                 .replace_cell_edit_draft("bob".to_string());
             state.modal.set_mode(InputMode::CellEdit);
 
-            route(
-                &mut state,
-                Action::ResultCancelCellEdit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::ResultCancelCellEdit, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.result_interaction.cell_edit().is_active());
@@ -518,12 +467,7 @@ mod tests {
         fn json_cell_routes_to_json_detail_instead_of_cell_edit() {
             let mut state = state_with_json_column();
 
-            let effects = route(
-                &mut state,
-                Action::ResultEnterCellEdit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultEnterCellEdit, Instant::now());
 
             assert!(effects.is_empty());
             assert_ne!(state.input_mode(), InputMode::CellEdit);
@@ -533,12 +477,7 @@ mod tests {
         fn json_cell_after_hidden_primary_key_opens_json_detail() {
             let mut state = state_with_hidden_primary_key_json_column();
 
-            let effects = route(
-                &mut state,
-                Action::ResultEnterCellEdit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultEnterCellEdit, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::JsonDetail);
@@ -565,12 +504,7 @@ mod tests {
                     QuerySource::Preview,
                 )));
 
-            let effects = route(
-                &mut state,
-                Action::ResultEnterCellEdit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultEnterCellEdit, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -589,12 +523,7 @@ mod tests {
                 &endpoint::sqlite("sqlite:///tmp/app.db"),
             );
 
-            let effects = route(
-                &mut state,
-                Action::ResultEnterCellEdit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultEnterCellEdit, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::CellEdit);
@@ -622,12 +551,7 @@ mod tests {
                 .session
                 .set_table_detail_raw(Some(cell_edit_entry_guardrails::minimal_users_table()));
 
-            let effects = route(
-                &mut state,
-                Action::ResultEnterCellEdit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultEnterCellEdit, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::CellEdit);
@@ -649,12 +573,7 @@ mod tests {
                 .set_table_detail_raw(Some(cell_edit_entry_guardrails::minimal_users_table()));
             state.session.enable_read_only();
 
-            let effects = route(
-                &mut state,
-                Action::ResultEnterCellEdit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultEnterCellEdit, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);

@@ -47,13 +47,8 @@ fn json_detail_state() -> (AppState, Instant) {
     state.query.pagination.reset_for_table("public", "users");
     state.focus_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 3);
-    reduce(
-        &mut state,
-        Action::OpenModal(ModalKind::JsonDetail),
-        now,
-        &AppServices::stub(),
-    );
-    reduce(&mut state, Action::JsonEnterEdit, now, &AppServices::stub());
+    reduce(&mut state, Action::OpenModal(ModalKind::JsonDetail), now);
+    reduce(&mut state, Action::JsonEnterEdit, now);
     (state, now)
 }
 fn block_cursor_position(buffer: &ratatui::buffer::Buffer) -> Option<(u16, u16)> {
@@ -338,7 +333,6 @@ fn json_edit_uses_terminal_cursor_without_fake_glyph() {
             direction: CursorMove::Right,
         },
         now,
-        &AppServices::stub(),
     );
 
     let moved_buffer = render_and_get_buffer(&mut terminal, &mut state);
@@ -355,7 +349,7 @@ fn json_edit_uses_terminal_cursor_without_fake_glyph() {
 fn json_search_cursor_uses_display_width_for_wide_chars() {
     let (mut state, now) = json_detail_state();
     let mut terminal = create_test_terminal();
-    reduce(&mut state, Action::JsonExitEdit, now, &AppServices::stub());
+    reduce(&mut state, Action::JsonExitEdit, now);
     reduce(
         &mut state,
         Action::DetailSearch {
@@ -363,7 +357,6 @@ fn json_search_cursor_uses_display_width_for_wide_chars() {
             step: SearchStep::Enter,
         },
         now,
-        &AppServices::stub(),
     );
 
     let head = render_and_get_cursor_position(&mut terminal, &mut state);
@@ -375,7 +368,6 @@ fn json_search_cursor_uses_display_width_for_wide_chars() {
             ch: 'a',
         },
         now,
-        &AppServices::stub(),
     );
     reduce(
         &mut state,
@@ -384,7 +376,6 @@ fn json_search_cursor_uses_display_width_for_wide_chars() {
             ch: '語',
         },
         now,
-        &AppServices::stub(),
     );
 
     let after_wide = render_and_get_cursor_position(&mut terminal, &mut state);

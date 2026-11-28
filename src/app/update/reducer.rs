@@ -19,7 +19,6 @@ use crate::model::shared::key_sequence::KeySequenceState;
 use crate::model::shared::text_input::TextEdit;
 use crate::model::sql_editor::modal::sql_modal_visible_rows;
 use crate::policy::FeaturePolicy;
-use crate::services::AppServices;
 use crate::update::action::{Action, ListMotion};
 use crate::update::browse::query::table_load_effect;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
@@ -27,24 +26,14 @@ use crate::update::input::keymap::{KeyContext, listed_palette_entries, palette_a
 use crate::update::motion::MotionProbe;
 use crate::update::query_context::termination_effects;
 
-pub fn reduce(
-    state: &mut AppState,
-    action: Action,
-    now: Instant,
-    services: &AppServices,
-) -> Vec<Effect> {
+pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect> {
     let motion_probe = MotionProbe::capture(state, &action);
-    let effects = reduce_without_motion(state, action, now, services);
+    let effects = reduce_without_motion(state, action, now);
     motion_probe.record(state, now);
     effects
 }
 
-fn reduce_without_motion(
-    state: &mut AppState,
-    action: Action,
-    now: Instant,
-    services: &AppServices,
-) -> Vec<Effect> {
+fn reduce_without_motion(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect> {
     let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
     if !feature_policy.is_enabled(action.feature_requirement_for_state(state)) {
         return vec![];
@@ -53,7 +42,7 @@ fn reduce_without_motion(
     // Mark dirty for all state-changing actions (except None and Render)
     let should_mark_dirty = !matches!(action, Action::None | Action::Render);
 
-    let effects = dispatch_enabled_action(state, action, now, services);
+    let effects = dispatch_enabled_action(state, action, now);
 
     if should_mark_dirty {
         state.mark_dirty();
@@ -62,17 +51,12 @@ fn reduce_without_motion(
     effects
 }
 
-fn dispatch_enabled_action(
-    state: &mut AppState,
-    action: Action,
-    now: Instant,
-    services: &AppServices,
-) -> Vec<Effect> {
+fn dispatch_enabled_action(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect> {
     // Animation frames arrive between keystrokes, so only real actions end a pending `yy` or `dd`.
     if !matches!(action, Action::Render) {
         state.result_interaction.clear_operator_pending();
     }
-    route(state, action, now, services)
+    route(state, action, now)
 }
 
 #[deny(
@@ -80,12 +64,7 @@ fn dispatch_enabled_action(
     clippy::match_wildcard_for_single_variants,
     reason = "Every variant must name its handler so a new variant fails to compile instead of being silently dropped."
 )]
-pub(in crate::update) fn route(
-    state: &mut AppState,
-    action: Action,
-    now: Instant,
-    services: &AppServices,
-) -> Vec<Effect> {
+pub(in crate::update) fn route(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect> {
     match action {
         Action::None => vec![],
         Action::Quit => quit(state),
@@ -118,7 +97,7 @@ pub(in crate::update) fn route(
             direction,
             amount,
         } => {
-            target_routing::scroll(state, target, direction, amount, services);
+            target_routing::scroll(state, target, direction, amount);
             vec![]
         }
         Action::ScrollToCursor { target, position } => {
@@ -147,7 +126,7 @@ pub(in crate::update) fn route(
         }
         Action::ToggleHelp => modal::help::toggle_help(state),
         Action::Escape => modal::base::escape(state),
-        Action::ConfirmSelection => confirm_selection(state, now, services),
+        Action::ConfirmSelection => confirm_selection(state, now),
         Action::ConfirmDialogConfirm => modal::confirm_dialog::confirm_dialog_confirm(state, now),
         Action::ConfirmDialogCancel => modal::confirm_dialog::confirm_dialog_cancel(state),
         Action::EnterCommandLine => browse::navigation::input::enter_command_line(state),
@@ -383,7 +362,7 @@ pub(in crate::update) fn route(
             vec![]
         }
         Action::ResultRowYank => browse::result::yank::result_row_yank(state),
-        Action::DdlYank => browse::result::yank::ddl_yank(state, services),
+        Action::DdlYank => browse::result::yank::ddl_yank(state),
         Action::ResultDeleteOperatorPending => {
             state.result_interaction.start_delete_operator();
             vec![]
@@ -474,7 +453,7 @@ fn resize(state: &mut AppState, width: u16, height: u16) -> Vec<Effect> {
     vec![]
 }
 
-fn confirm_selection(state: &mut AppState, now: Instant, services: &AppServices) -> Vec<Effect> {
+fn confirm_selection(state: &mut AppState, now: Instant) -> Vec<Effect> {
     if state.modal.active_mode() == InputMode::TablePicker {
         let table = state
             .filtered_tables()
@@ -508,7 +487,7 @@ fn confirm_selection(state: &mut AppState, now: Instant, services: &AppServices)
             palette_action(entry_id, &KeyContext::for_browse_state(state)).unwrap_or(Action::None);
         state.modal.set_mode(InputMode::Normal);
         // The outer reduce already compares the screen before the palette with the result, so a modal opened from it keeps the scrim settled.
-        return reduce_without_motion(state, cmd_action, now, services);
+        return reduce_without_motion(state, cmd_action, now);
     }
 
     vec![]
@@ -568,7 +547,7 @@ mod tests {
             let mut state = create_test_state();
             let now = Instant::now();
 
-            let effects = reduce(&mut state, Action::Quit, now, &AppServices::stub());
+            let effects = reduce(&mut state, Action::Quit, now);
 
             assert!(state.should_quit);
             assert!(matches!(effects.as_slice(), [Effect::CancelTrackedTasks]));
@@ -579,12 +558,7 @@ mod tests {
             let mut state = create_test_state();
             state.result_interaction.start_yank_operator();
 
-            reduce(
-                &mut state,
-                Action::Render,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::Render, Instant::now());
 
             assert!(state.result_interaction.is_yank_operator_pending());
         }
@@ -594,7 +568,7 @@ mod tests {
             let mut state = create_test_state();
             let now = Instant::now();
 
-            let effects = reduce(&mut state, Action::ToggleFocus, now, &AppServices::stub());
+            let effects = reduce(&mut state, Action::ToggleFocus, now);
 
             assert!(state.ui.is_focus_mode());
             assert!(effects.is_empty());
@@ -615,7 +589,6 @@ mod tests {
                 &mut state,
                 Action::SetFocusedPane(FocusedPane::Inspector),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.focused_pane(), FocusedPane::Inspector);
@@ -633,12 +606,7 @@ mod tests {
             state.ui.help_mut().set_horizontal_offset(usize::MAX);
             let now = Instant::now();
 
-            let effects = reduce(
-                &mut state,
-                Action::Resize(100, 50),
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::Resize(100, 50), now);
 
             assert_eq!(state.ui.terminal_height, 50);
             let document = HelpDocument::from_state(&state);
@@ -674,7 +642,7 @@ mod tests {
             let mut state = create_test_state();
             let now = Instant::now();
 
-            let effects = reduce(&mut state, Action::Render, now, &AppServices::stub());
+            let effects = reduce(&mut state, Action::Render, now);
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(effects[0], Effect::Render));
@@ -691,7 +659,7 @@ mod tests {
             state.ui.set_explorer_selected_raw(0);
             let now = Instant::now();
 
-            reduce(&mut state, action, now, &AppServices::stub());
+            reduce(&mut state, action, now);
 
             assert_eq!(state.ui.explorer_selected(), 0);
         }
@@ -730,12 +698,7 @@ mod tests {
             );
             state.modal.set_mode(InputMode::TablePicker);
 
-            let effects = reduce(
-                &mut state,
-                Action::ConfirmSelection,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::ConfirmSelection, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::TablePicker);
@@ -777,7 +740,7 @@ mod tests {
             let er_status = state.er_preparation.status();
             let json_flash_active = state.flash_timers.is_active(FlashId::JsonDetail, now);
 
-            let effects = reduce(state, action, now, &AppServices::stub());
+            let effects = reduce(state, action, now);
 
             assert!(effects.is_empty());
             assert!(!state.render_dirty);
@@ -942,7 +905,6 @@ mod tests {
                     amount: ScrollAmount::Line,
                 },
                 now,
-                &AppServices::stub(),
             );
 
             assert_eq!(state.result_interaction.scroll_offset(), 4);
@@ -963,7 +925,6 @@ mod tests {
                     amount: ScrollAmount::Line,
                 },
                 now,
-                &AppServices::stub(),
             );
 
             assert_eq!(state.result_interaction.scroll_offset(), 0);
@@ -984,7 +945,6 @@ mod tests {
                     amount: ScrollAmount::ToStart,
                 },
                 now,
-                &AppServices::stub(),
             );
 
             assert_eq!(state.result_interaction.scroll_offset(), 0);
@@ -1022,7 +982,6 @@ mod tests {
                     amount: ScrollAmount::ToStart,
                 },
                 now,
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.help().scroll_offset(), 0);
@@ -1042,7 +1001,6 @@ mod tests {
                     amount: ScrollAmount::ToEnd,
                 },
                 now,
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.help().scroll_offset(), help_max_scroll(&state));
@@ -1064,7 +1022,6 @@ mod tests {
                     amount: ScrollAmount::HalfPage,
                 },
                 now,
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.help().scroll_offset(), 8);
@@ -1086,7 +1043,6 @@ mod tests {
                     amount: ScrollAmount::FullPage,
                 },
                 now,
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.help().scroll_offset(), 16);
@@ -1108,7 +1064,6 @@ mod tests {
                     amount: ScrollAmount::FullPage,
                 },
                 now,
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.help().scroll_offset(), help_max_scroll(&state));
@@ -1121,7 +1076,6 @@ mod tests {
                     amount: ScrollAmount::FullPage,
                 },
                 now,
-                &AppServices::stub(),
             );
 
             reduce(
@@ -1132,7 +1086,6 @@ mod tests {
                     amount: ScrollAmount::ToStart,
                 },
                 now,
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.help().scroll_offset(), 0);
@@ -1154,7 +1107,6 @@ mod tests {
                     amount: ScrollAmount::Line,
                 },
                 now,
-                &AppServices::stub(),
             );
 
             assert_eq!(
@@ -1170,7 +1122,6 @@ mod tests {
                     amount: ScrollAmount::Line,
                 },
                 now,
-                &AppServices::stub(),
             );
 
             assert_eq!(
@@ -1187,12 +1138,7 @@ mod tests {
             state.ui.help_mut().set_horizontal_offset(4);
             let now = Instant::now();
 
-            let effects = reduce(
-                &mut state,
-                Action::CloseModal(ModalKind::Help),
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::CloseModal(ModalKind::Help), now);
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(state.ui.help().scroll_offset(), 0);
@@ -1210,12 +1156,7 @@ mod tests {
             state.ui.table_picker_mut().insert_filter_str("test");
             let now = Instant::now();
 
-            let effects = reduce(
-                &mut state,
-                Action::OpenModal(ModalKind::TablePicker),
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::OpenModal(ModalKind::TablePicker), now);
 
             assert_eq!(state.input_mode(), InputMode::TablePicker);
             assert!(state.ui.table_picker().filter_input().content().is_empty());
@@ -1229,12 +1170,7 @@ mod tests {
             state.modal.set_mode(InputMode::TablePicker);
             let now = Instant::now();
 
-            let effects = reduce(
-                &mut state,
-                Action::CloseModal(ModalKind::TablePicker),
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::CloseModal(ModalKind::TablePicker), now);
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(effects.is_empty());
@@ -1246,12 +1182,12 @@ mod tests {
             let now = Instant::now();
 
             // First open
-            let effects = reduce(&mut state, Action::ToggleHelp, now, &AppServices::stub());
+            let effects = reduce(&mut state, Action::ToggleHelp, now);
             assert_eq!(state.input_mode(), InputMode::Help);
             assert!(effects.is_empty());
 
             // Toggle back to normal
-            let effects = reduce(&mut state, Action::ToggleHelp, now, &AppServices::stub());
+            let effects = reduce(&mut state, Action::ToggleHelp, now);
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(effects.is_empty());
         }
@@ -1262,13 +1198,8 @@ mod tests {
             state.modal.set_mode(InputMode::SqlModal);
             let now = Instant::now();
 
-            reduce(&mut state, Action::ToggleHelp, now, &AppServices::stub());
-            let effects = reduce(
-                &mut state,
-                Action::CloseModal(ModalKind::Help),
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::ToggleHelp, now);
+            let effects = reduce(&mut state, Action::CloseModal(ModalKind::Help), now);
 
             assert_eq!(state.input_mode(), InputMode::SqlModal);
             assert!(effects.is_empty());
@@ -1292,7 +1223,6 @@ mod tests {
                     ch: 'a',
                 },
                 now,
-                &AppServices::stub(),
             );
 
             assert_eq!(state.sql_modal.editor.content(), "a");
@@ -1316,7 +1246,6 @@ mod tests {
                     target: InputTarget::SqlModal,
                 },
                 now,
-                &AppServices::stub(),
             );
 
             assert_eq!(state.sql_modal.editor.content(), "a");
@@ -1340,7 +1269,6 @@ mod tests {
                     ch: 'x',
                 },
                 now,
-                &AppServices::stub(),
             );
 
             assert!(state.sql_modal.completion().visible);
@@ -1374,12 +1302,7 @@ mod tests {
             state.sql_modal.completion_next();
             let now = Instant::now();
 
-            let effects = reduce(
-                &mut state,
-                Action::CompletionNext,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::CompletionNext, now);
 
             assert_eq!(state.sql_modal.completion().selected_index, 0);
             assert!(effects.is_empty());
@@ -1395,12 +1318,7 @@ mod tests {
             );
             let now = Instant::now();
 
-            let effects = reduce(
-                &mut state,
-                Action::CompletionPrev,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::CompletionPrev, now);
 
             assert_eq!(state.sql_modal.completion().selected_index, 1);
             assert!(effects.is_empty());
@@ -1419,12 +1337,7 @@ mod tests {
                 .apply_completion_update(&[make_candidate("users")], 7, true);
             let now = Instant::now();
 
-            let effects = reduce(
-                &mut state,
-                Action::CompletionAccept,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::CompletionAccept, now);
 
             assert_eq!(state.sql_modal.editor.content(), "SELECT ");
             assert_eq!(state.sql_modal.editor.cursor(), 0);
@@ -1465,7 +1378,7 @@ mod tests {
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state, metadata);
 
-            reduce(&mut state, action, now, &AppServices::stub());
+            reduce(&mut state, action, now);
 
             assert!(state.session.metadata().is_some());
             assert_eq!(state.ui.explorer_selected(), 0);
@@ -1484,7 +1397,6 @@ mod tests {
                     effective_user: Some("postgres".to_string()),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.session.effective_user(), Some("postgres"));
@@ -1504,7 +1416,6 @@ mod tests {
                     effective_user: Some("old_user".to_string()),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(state.session.effective_user().is_none());
@@ -1515,12 +1426,7 @@ mod tests {
             let mut state = create_test_state();
             let metadata_action =
                 metadata_loaded_action(&mut state, DatabaseMetadata::new("test".to_string()));
-            let metadata_effects = reduce(
-                &mut state,
-                metadata_action,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let metadata_effects = reduce(&mut state, metadata_action, Instant::now());
             let user_run_id = metadata_effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -1529,12 +1435,7 @@ mod tests {
                 })
                 .expect("metadata load should start user fetch");
 
-            let reload_effects = reduce(
-                &mut state,
-                Action::ReloadMetadata,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let reload_effects = reduce(&mut state, Action::ReloadMetadata, Instant::now());
             let reload_run_id = reload_effects
                 .iter()
                 .find_map(|effect| match effect {
@@ -1552,7 +1453,6 @@ mod tests {
                     )),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(state.session.connection_state().is_connected());
@@ -1565,7 +1465,6 @@ mod tests {
                     effective_user: Some("postgres".to_string()),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.session.effective_user(), Some("postgres"));
@@ -1587,7 +1486,7 @@ mod tests {
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state, metadata);
 
-            reduce(&mut state, action, now, &AppServices::stub());
+            reduce(&mut state, action, now);
 
             assert!(state.session.metadata().is_some());
             assert_eq!(state.ui.explorer_selected(), 0);
@@ -1635,7 +1534,6 @@ mod tests {
                     )),
                 },
                 now,
-                &AppServices::stub(),
             );
 
             assert!(state.session.metadata().is_none());
@@ -1659,7 +1557,7 @@ mod tests {
                 DbOperationError::ConnectionFailed("psql: error: connection refused".to_string()),
             );
 
-            let effects = reduce(&mut state, action, now, &AppServices::stub());
+            let effects = reduce(&mut state, action, now);
 
             assert!(matches!(
                 state.session.metadata_state(),
@@ -1686,12 +1584,7 @@ mod tests {
             state.focus_pane(FocusedPane::Result); // Any pane works
             let now = Instant::now();
 
-            reduce(
-                &mut state,
-                Action::ConfirmSelection,
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::ConfirmSelection, now);
 
             assert_eq!(state.input_mode(), InputMode::ConnectionError);
         }
@@ -1724,12 +1617,7 @@ mod tests {
             state.connection_error.mark_copied_at(now);
             assert!(state.connection_error.is_copied_visible_at(now));
 
-            reduce(
-                &mut state,
-                Action::CloseConnectionError,
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::CloseConnectionError, now);
 
             // error_info is kept so Enter can re-open modal
             assert!(state.connection_error.has_error());
@@ -1748,21 +1636,11 @@ mod tests {
             let now = Instant::now();
 
             // Close modal
-            reduce(
-                &mut state,
-                Action::CloseConnectionError,
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::CloseConnectionError, now);
             assert_eq!(state.input_mode(), InputMode::Normal);
 
             // Re-open with Enter
-            reduce(
-                &mut state,
-                Action::ConfirmSelection,
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::ConfirmSelection, now);
             assert_eq!(state.input_mode(), InputMode::ConnectionError);
             assert!(state.connection_error.has_error());
         }
@@ -1773,20 +1651,10 @@ mod tests {
             let now = Instant::now();
             assert!(!state.connection_error.details_expanded());
 
-            reduce(
-                &mut state,
-                Action::ToggleConnectionErrorDetails,
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::ToggleConnectionErrorDetails, now);
             assert!(state.connection_error.details_expanded());
 
-            reduce(
-                &mut state,
-                Action::ToggleConnectionErrorDetails,
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::ToggleConnectionErrorDetails, now);
             assert!(!state.connection_error.details_expanded());
         }
 
@@ -1795,12 +1663,7 @@ mod tests {
             let mut state = state_with_error();
             let now = Instant::now();
 
-            let effects = reduce(
-                &mut state,
-                Action::CopyConnectionError,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::CopyConnectionError, now);
 
             let [Effect::CopyToClipboard { target, .. }] = effects.as_slice() else {
                 panic!("expected clipboard effect");
@@ -1826,7 +1689,6 @@ mod tests {
                     outcome: Ok(()),
                 },
                 now,
-                &AppServices::stub(),
             );
 
             assert!(state.connection_error.is_copied_visible_at(now));
@@ -1871,12 +1733,7 @@ mod tests {
             state.focus_pane(FocusedPane::Explorer);
             state.ui.set_explorer_selection(Some(0));
 
-            reduce(
-                &mut state,
-                Action::ConfirmSelection,
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::ConfirmSelection, now);
 
             assert!(state.session.table_detail().is_none());
         }
@@ -1892,12 +1749,7 @@ mod tests {
             state.modal.set_mode(InputMode::TablePicker);
             state.ui.table_picker_mut().set_selection(0);
 
-            reduce(
-                &mut state,
-                Action::ConfirmSelection,
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::ConfirmSelection, now);
 
             assert!(state.session.table_detail().is_none());
         }
@@ -1915,12 +1767,7 @@ mod tests {
 
             test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
 
-            let effects = reduce(
-                &mut state,
-                Action::ReloadMetadata,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::ReloadMetadata, now);
 
             assert!(matches!(
                 effects.as_slice(),
@@ -1940,12 +1787,7 @@ mod tests {
             let now = Instant::now();
 
             // Trigger reload
-            reduce(
-                &mut state,
-                Action::ReloadMetadata,
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::ReloadMetadata, now);
             assert!(state.session.is_reloading());
 
             // Metadata loaded
@@ -1954,7 +1796,7 @@ mod tests {
                 run_id: 1,
                 outcome: Ok(Arc::new(metadata)),
             };
-            reduce(&mut state, action, now, &AppServices::stub());
+            reduce(&mut state, action, now);
 
             // Check reloading flag is cleared and message is shown
             assert!(!state.session.is_reloading());
@@ -2069,7 +1911,7 @@ mod tests {
                 )),
             };
 
-            reduce(&mut state, action, now, &AppServices::stub());
+            reduce(&mut state, action, now);
 
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
         }
@@ -2109,7 +1951,6 @@ mod tests {
                     outcome: Ok(make_test_table()),
                 },
                 now,
-                &AppServices::stub(),
             );
 
             assert!(state.table_detail_cache.contains("public.users"));
@@ -2136,7 +1977,6 @@ mod tests {
                     outcome: Ok(make_test_table()),
                 },
                 now,
-                &AppServices::stub(),
             );
 
             assert!(
@@ -2301,7 +2141,6 @@ mod tests {
                     }),
                 },
                 now,
-                &AppServices::stub(),
             );
 
             assert!(!state.connection_setup.is_first_run());
@@ -2338,7 +2177,6 @@ mod tests {
                     )),
                 },
                 now,
-                &AppServices::stub(),
             );
 
             assert!(state.messages.last_error.is_some());
@@ -2352,12 +2190,7 @@ mod tests {
             state.connection_setup.set_first_run(true);
             let now = Instant::now();
 
-            let effects = reduce(
-                &mut state,
-                Action::ConnectionSetupCancel,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::ConnectionSetupCancel, now);
 
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
             assert!(matches!(
@@ -2374,12 +2207,7 @@ mod tests {
             state.connection_setup.set_first_run(false);
             let now = Instant::now();
 
-            let effects = reduce(
-                &mut state,
-                Action::ConnectionSetupCancel,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::ConnectionSetupCancel, now);
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(matches!(effects.as_slice(), [Effect::CancelConnectionTask]));
@@ -2405,12 +2233,7 @@ mod tests {
                 .open("", "", ConfirmIntent::QuitNoConnection);
             let now = Instant::now();
 
-            let effects = reduce(
-                &mut state,
-                Action::ConfirmDialogConfirm,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::ConfirmDialogConfirm, now);
 
             assert!(state.should_quit);
             assert!(state.confirm_dialog.intent().is_none());
@@ -2426,12 +2249,7 @@ mod tests {
                 .open("", "", ConfirmIntent::QuitNoConnection);
             let now = Instant::now();
 
-            let effects = reduce(
-                &mut state,
-                Action::ConfirmDialogCancel,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::ConfirmDialogCancel, now);
 
             assert!(state.confirm_dialog.intent().is_none());
             assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
@@ -2472,12 +2290,7 @@ mod tests {
             );
 
             let now = Instant::now();
-            let effects = reduce(
-                &mut state,
-                Action::ConfirmDialogConfirm,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::ConfirmDialogConfirm, now);
 
             // Preview must survive confirm for ExecuteWriteSucceeded to detect Delete
             assert!(state.result_interaction.pending_write_preview().is_some());
@@ -2496,7 +2309,6 @@ mod tests {
                     }),
                 },
                 now,
-                &AppServices::stub(),
             );
 
             // After success, preview is cleaned up and delete message is shown
@@ -2552,12 +2364,7 @@ mod tests {
                 .set_post_delete_selection(PostDeleteRowSelection::Select(4));
 
             let now = Instant::now();
-            reduce(
-                &mut state,
-                Action::ConfirmDialogConfirm,
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::ConfirmDialogConfirm, now);
 
             // Simulate failure — must detect Delete and return to Normal (not CellEdit)
             reduce(
@@ -2567,7 +2374,6 @@ mod tests {
                     outcome: Err(DbOperationError::QueryFailed("connection lost".to_string())),
                 },
                 now,
-                &AppServices::stub(),
             );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -2596,7 +2402,7 @@ mod tests {
             state.modal.set_mode(InputMode::Normal);
             let now = Instant::now();
 
-            let effects = reduce(&mut state, Action::TryConnect, now, &AppServices::stub());
+            let effects = reduce(&mut state, Action::TryConnect, now);
 
             assert!(state.session.connection_state().is_connecting());
             assert!(matches!(
@@ -2619,7 +2425,7 @@ mod tests {
             state.modal.set_mode(InputMode::Normal);
             let now = Instant::now();
 
-            let effects = reduce(&mut state, Action::TryConnect, now, &AppServices::stub());
+            let effects = reduce(&mut state, Action::TryConnect, now);
 
             assert!(state.session.connection_state().is_not_connected());
             assert!(effects.is_empty());
@@ -2635,7 +2441,7 @@ mod tests {
             state.modal.set_mode(InputMode::Normal);
             let now = Instant::now();
 
-            let effects = reduce(&mut state, Action::TryConnect, now, &AppServices::stub());
+            let effects = reduce(&mut state, Action::TryConnect, now);
 
             assert!(state.session.connection_state().is_connecting());
             assert!(effects.is_empty());
@@ -2651,7 +2457,7 @@ mod tests {
             state.modal.set_mode(InputMode::Normal);
             let now = Instant::now();
 
-            let effects = reduce(&mut state, Action::TryConnect, now, &AppServices::stub());
+            let effects = reduce(&mut state, Action::TryConnect, now);
 
             assert!(state.session.connection_state().is_connected());
             assert!(effects.is_empty());
@@ -2667,7 +2473,7 @@ mod tests {
             state.modal.set_mode(InputMode::ConnectionSetup);
             let now = Instant::now();
 
-            let effects = reduce(&mut state, Action::TryConnect, now, &AppServices::stub());
+            let effects = reduce(&mut state, Action::TryConnect, now);
 
             assert!(state.session.connection_state().is_not_connected());
             assert!(effects.is_empty());
@@ -2691,7 +2497,6 @@ mod tests {
                     outcome: Ok(Arc::new(metadata)),
                 },
                 now,
-                &AppServices::stub(),
             );
 
             assert!(state.session.connection_state().is_connected());
@@ -2727,7 +2532,6 @@ mod tests {
                     )),
                 },
                 now,
-                &AppServices::stub(),
             );
 
             // Connection state should remain Connected
@@ -2761,12 +2565,7 @@ mod tests {
             state.modal.set_mode(InputMode::ConnectionError);
             let now = Instant::now();
 
-            reduce(
-                &mut state,
-                Action::ReenterConnectionSetup,
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::ReenterConnectionSetup, now);
 
             assert!(state.session.connection_state().is_not_connected());
             assert!(matches!(
@@ -2972,7 +2771,6 @@ mod tests {
                     effective_user: Some("old_a_user".to_string()),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
             assert!(state.session.effective_user().is_none());
 
@@ -2983,7 +2781,6 @@ mod tests {
                     effective_user: Some("a_user".to_string()),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
             assert_eq!(state.session.effective_user(), Some("a_user"));
         }
@@ -3019,12 +2816,7 @@ mod tests {
                 .toggle_er_selected_table("public.users".to_string());
             let now = Instant::now();
 
-            let effects = reduce(
-                &mut state,
-                Action::OpenModal(ModalKind::ErTablePicker),
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::OpenModal(ModalKind::ErTablePicker), now);
 
             assert_eq!(state.input_mode(), InputMode::ErTablePicker);
             assert!(state.ui.er_picker().filter_input().content().is_empty());
@@ -3038,12 +2830,7 @@ mod tests {
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             let now = Instant::now();
 
-            let effects = reduce(
-                &mut state,
-                Action::OpenModal(ModalKind::ErTablePicker),
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::OpenModal(ModalKind::ErTablePicker), now);
 
             assert!(state.ui.pending_er_picker());
             assert!(state.messages.last_success.is_some());
@@ -3080,7 +2867,7 @@ mod tests {
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state);
 
-            let effects = reduce(&mut state, action, now, &AppServices::stub());
+            let effects = reduce(&mut state, action, now);
 
             assert!(!state.ui.pending_er_picker());
             assert_eq!(state.input_mode(), InputMode::ErTablePicker);
@@ -3098,7 +2885,7 @@ mod tests {
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state);
 
-            reduce(&mut state, action, now, &AppServices::stub());
+            reduce(&mut state, action, now);
 
             assert_eq!(state.input_mode(), InputMode::Normal);
         }
@@ -3111,7 +2898,7 @@ mod tests {
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state);
 
-            reduce(&mut state, action, now, &AppServices::stub());
+            reduce(&mut state, action, now);
 
             assert!(!state.ui.pending_er_picker());
             assert_eq!(state.input_mode(), InputMode::SqlModal);
@@ -3129,7 +2916,6 @@ mod tests {
                 &mut state,
                 Action::CloseModal(ModalKind::ErTablePicker),
                 now,
-                &AppServices::stub(),
             );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -3147,12 +2933,7 @@ mod tests {
                 .toggle_er_selected_table("public.users".to_string());
             let now = Instant::now();
 
-            let effects = reduce(
-                &mut state,
-                Action::ErConfirmSelection,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::ErConfirmSelection, now);
 
             assert_eq!(
                 state.er_preparation.target_tables(),
@@ -3170,12 +2951,7 @@ mod tests {
 
             let now = Instant::now();
 
-            let effects = reduce(
-                &mut state,
-                Action::ErConfirmSelection,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::ErConfirmSelection, now);
 
             assert_eq!(state.input_mode(), InputMode::ErTablePicker);
             assert!(state.messages.last_error.is_some());
@@ -3221,7 +2997,6 @@ mod tests {
                     }),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(
@@ -3256,7 +3031,6 @@ mod tests {
                     outcome: Ok(Box::new(crate_table_fixture::minimal("public", "users"))),
                 },
                 now,
-                &AppServices::stub(),
             );
 
             assert_eq!(state.er_preparation.status(), ErStatus::Rendering);
@@ -3297,7 +3071,6 @@ mod tests {
                     outcome: Ok(Box::new(crate_table_fixture::minimal("public", "users"))),
                 },
                 now,
-                &AppServices::stub(),
             );
 
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
@@ -3339,19 +3112,13 @@ mod tests {
                     outcome: Ok(Arc::new(metadata)),
                 },
                 now,
-                &AppServices::stub(),
             );
 
             // ConfirmSelection from Normal mode (explorer focused)
             state.modal.set_mode(InputMode::Normal);
             state.focus_pane(FocusedPane::Explorer);
             state.ui.set_explorer_selected_raw(0);
-            let effects = reduce(
-                &mut state,
-                Action::ConfirmSelection,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::ConfirmSelection, now);
 
             let Some(Effect::LoadTable {
                 detail_run_id,
@@ -3371,7 +3138,6 @@ mod tests {
                     generation,
                 },
                 now,
-                &AppServices::stub(),
             );
 
             // Simulate QueryCompleted with a full page of results
@@ -3393,7 +3159,6 @@ mod tests {
                     outcome: Ok(result),
                 },
                 now,
-                &AppServices::stub(),
             );
 
             (state, now)
@@ -3408,12 +3173,7 @@ mod tests {
             assert_eq!(state.query.pagination.current_page(), 0);
             assert!(!state.query.pagination.reached_end());
 
-            let effects = reduce(
-                &mut state,
-                Action::ResultNextPage,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::ResultNextPage, now);
 
             let preview_effect = effects
                 .iter()
@@ -3439,12 +3199,7 @@ mod tests {
             let (mut state, now) = state_after_confirm_and_complete();
             state.query.pagination.set_page_result(1, true);
 
-            let effects = reduce(
-                &mut state,
-                Action::ResultPrevPage,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::ResultPrevPage, now);
 
             let preview_effect = effects
                 .iter()
@@ -3537,12 +3292,7 @@ mod tests {
             state.ui.table_picker_mut().set_selection(entry_index);
             let now = Instant::now();
 
-            reduce(
-                &mut state,
-                Action::ConfirmSelection,
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::ConfirmSelection, now);
 
             assert_eq!(state.input_mode(), expected_mode);
         }
@@ -3556,7 +3306,6 @@ mod tests {
                         ch,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
             }
         }
@@ -3566,12 +3315,7 @@ mod tests {
             let mut state = state_in_palette_mode(KeymapPreset::Default);
             type_palette_filter(&mut state, "settings");
 
-            reduce(
-                &mut state,
-                Action::ConfirmSelection,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::ConfirmSelection, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::Settings);
         }
@@ -3581,12 +3325,7 @@ mod tests {
             let mut state = state_in_palette_mode(KeymapPreset::Default);
             type_palette_filter(&mut state, "zzzzqx");
 
-            reduce(
-                &mut state,
-                Action::ConfirmSelection,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::ConfirmSelection, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::CommandPalette);
             assert_eq!(state.ui.table_picker().filter_input().content(), "zzzzqx");
@@ -3599,12 +3338,7 @@ mod tests {
             type_palette_filter(&mut state, "settings");
             let now = Instant::now();
 
-            reduce(
-                &mut state,
-                Action::ConfirmSelection,
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::ConfirmSelection, now);
 
             assert_eq!(state.input_mode(), InputMode::Settings);
             assert_eq!(state.motion.modal_progress(now), None);
@@ -3622,7 +3356,6 @@ mod tests {
                     motion: ListMotion::Next,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.table_picker().selected(), 0);
@@ -3650,12 +3383,7 @@ mod tests {
 
             test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
 
-            let effects = reduce(
-                &mut state,
-                Action::ConfirmSelection,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::ConfirmSelection, now);
 
             assert!(matches!(
                 effects.as_slice(),
@@ -3676,12 +3404,7 @@ mod tests {
             let now = Instant::now();
             let _ = state.query.begin_running(now);
 
-            let effects = reduce(
-                &mut state,
-                Action::ConfirmSelection,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::ConfirmSelection, now);
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(effects.is_empty());
@@ -3697,12 +3420,7 @@ mod tests {
             state.ui.table_picker_mut().set_selection(entry_index);
             let now = Instant::now();
 
-            reduce(
-                &mut state,
-                Action::ConfirmSelection,
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::ConfirmSelection, now);
 
             assert_ne!(
                 state.input_mode(),
@@ -3731,12 +3449,7 @@ mod tests {
             state.ui.table_picker_mut().set_selection(selected);
 
             state.query.clear_current_result();
-            let effects = reduce(
-                &mut state,
-                Action::ConfirmSelection,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::ConfirmSelection, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(effects.is_empty());
@@ -3790,12 +3503,7 @@ mod tests {
             )));
             assert!(palette_action(export_id, &context).is_none());
             assert_eq!(state.ui.palette_commands, captured);
-            let effects = reduce(
-                &mut state,
-                Action::ConfirmSelection,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::ConfirmSelection, now);
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.messages.last_error().is_none());
@@ -3803,8 +3511,7 @@ mod tests {
                 reduce(
                     &mut state,
                     Action::OpenModal(ModalKind::QueryHistoryPicker),
-                    now,
-                    &AppServices::stub()
+                    now
                 )
                 .is_empty()
             );
@@ -3821,12 +3528,7 @@ mod tests {
             state.result_interaction.start_yank_operator();
             let now = Instant::now();
 
-            reduce(
-                &mut state,
-                Action::Select(SelectMotion::Next),
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::Select(SelectMotion::Next), now);
 
             assert!(!state.result_interaction.is_yank_operator_pending());
         }
@@ -3838,21 +3540,11 @@ mod tests {
             state.result_interaction.activate_cell(0, 0);
             let now = Instant::now();
 
-            reduce(
-                &mut state,
-                Action::ResultRowYankOperatorPending,
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::ResultRowYankOperatorPending, now);
             assert!(state.result_interaction.is_yank_operator_pending());
             assert!(!state.result_interaction.is_delete_operator_pending());
 
-            reduce(
-                &mut state,
-                Action::ResultDeleteOperatorPending,
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::ResultDeleteOperatorPending, now);
             assert!(!state.result_interaction.is_yank_operator_pending());
             assert!(state.result_interaction.is_delete_operator_pending());
         }
@@ -3864,21 +3556,11 @@ mod tests {
             state.result_interaction.activate_cell(0, 0);
             let now = Instant::now();
 
-            reduce(
-                &mut state,
-                Action::ResultDeleteOperatorPending,
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::ResultDeleteOperatorPending, now);
             assert!(state.result_interaction.is_delete_operator_pending());
             assert!(!state.result_interaction.is_yank_operator_pending());
 
-            reduce(
-                &mut state,
-                Action::ResultRowYankOperatorPending,
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, Action::ResultRowYankOperatorPending, now);
             assert!(!state.result_interaction.is_delete_operator_pending());
             assert!(state.result_interaction.is_yank_operator_pending());
         }

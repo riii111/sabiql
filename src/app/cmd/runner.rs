@@ -24,7 +24,6 @@ use crate::ports::outbound::{
     QueryExecutor, QueryHistoryStore, Renderer, SettingsStore, SqliteDiagnosticsProvider,
     SqlitePathValidator,
 };
-use crate::services::AppServices;
 use crate::update::action::{Action, QueryContext};
 
 #[derive(Clone)]
@@ -103,11 +102,9 @@ impl EffectRunner {
         effects: Vec<Effect>,
         tui: &mut T,
         state: &mut AppState,
-        services: &AppServices,
     ) -> Result<()> {
         for effect in effects {
-            self.execute_single_effect(effect, tui, state, services)
-                .await?;
+            self.execute_single_effect(effect, tui, state).await?;
         }
         Ok(())
     }
@@ -154,7 +151,6 @@ impl EffectRunner {
         effect: Effect,
         tui: &mut T,
         state: &mut AppState,
-        services: &AppServices,
     ) -> Result<()> {
         let metadata = || Arc::clone(&self.metadata_provider);
         let executor = || Arc::clone(&self.query.query_executor);
@@ -165,7 +161,7 @@ impl EffectRunner {
                     reason = "the effect runner is the runtime boundary that reads the clock for rendering"
                 )]
                 let now = Instant::now();
-                let output = tui.draw(state, services, now)?;
+                let output = tui.draw(state, now)?;
                 state.apply_render_output(output);
                 state.motion.note_frame(now);
             }
@@ -558,7 +554,6 @@ mod tests {
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
     use crate::ports::outbound::{MySqlConnectionProbeResult, RenderOutput, RenderResult};
-    use crate::services::AppServices;
     use crate::test_support::endpoint;
     use tokio::sync::mpsc;
 
@@ -575,12 +570,7 @@ mod tests {
         }
 
         impl Renderer for ExplorerWidthRenderer {
-            fn draw(
-                &mut self,
-                _state: &AppState,
-                _services: &AppServices,
-                _now: Instant,
-            ) -> RenderResult<RenderOutput> {
+            fn draw(&mut self, _state: &AppState, _now: Instant) -> RenderResult<RenderOutput> {
                 Ok(RenderOutput {
                     browse: BrowseLayout {
                         explorer: ExplorerLayout {
@@ -595,12 +585,7 @@ mod tests {
         }
 
         impl Renderer for JsonVisibleRowsRenderer {
-            fn draw(
-                &mut self,
-                _state: &AppState,
-                _services: &AppServices,
-                _now: Instant,
-            ) -> RenderResult<RenderOutput> {
+            fn draw(&mut self, _state: &AppState, _now: Instant) -> RenderResult<RenderOutput> {
                 Ok(RenderOutput {
                     details: DetailLayout {
                         json: Some(JsonDetailLayout {
@@ -640,12 +625,7 @@ mod tests {
             };
 
             runner
-                .execute_effects(
-                    vec![Effect::Render],
-                    &mut renderer,
-                    state,
-                    &AppServices::stub(),
-                )
+                .execute_effects(vec![Effect::Render], &mut renderer, state)
                 .await
                 .unwrap();
 
@@ -678,12 +658,7 @@ mod tests {
             let mut renderer = JsonVisibleRowsRenderer { visible_rows: 2 };
 
             runner
-                .execute_effects(
-                    vec![Effect::Render],
-                    &mut renderer,
-                    state,
-                    &AppServices::stub(),
-                )
+                .execute_effects(vec![Effect::Render], &mut renderer, state)
                 .await
                 .unwrap();
 
@@ -879,12 +854,10 @@ mod tests {
 
             let mut state = AppState::new("test".to_string());
             let mut renderer = test_fixtures::NoopRenderer;
-            let services = AppServices::stub();
             let mut cancellation = Box::pin(runner.execute_effects(
                 vec![Effect::CancelTrackedTasks],
                 &mut renderer,
                 &mut state,
-                &services,
             ));
             timeout(Duration::from_secs(1), async {
                 tokio::select! {
@@ -1093,7 +1066,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -1111,7 +1083,7 @@ mod tests {
                 },
             );
             runner
-                .execute_effects(effects, &mut renderer, &mut state, &AppServices::stub())
+                .execute_effects(effects, &mut renderer, &mut state)
                 .await
                 .unwrap();
 
@@ -1154,7 +1126,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -1163,20 +1134,10 @@ mod tests {
                 .expect("pending table detail should start")
                 .expect("started signal should be sent");
 
-            let shutdown_effects = reduce(
-                &mut state,
-                Action::Quit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let shutdown_effects = reduce(&mut state, Action::Quit, Instant::now());
             assert!(state.should_quit);
             runner
-                .execute_effects(
-                    shutdown_effects,
-                    &mut renderer,
-                    &mut state,
-                    &AppServices::stub(),
-                )
+                .execute_effects(shutdown_effects, &mut renderer, &mut state)
                 .await
                 .unwrap();
 
@@ -1237,7 +1198,6 @@ mod tests {
                     vec![save(ThemeId::Light), save(ThemeId::Default)],
                     &mut NoopRenderer,
                     &mut AppState::new("test".to_string()),
-                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -1354,7 +1314,6 @@ mod tests {
                     }],
                     &mut NoopRenderer,
                     &mut AppState::new("test".to_string()),
-                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -1395,7 +1354,6 @@ mod tests {
                     }],
                     &mut NoopRenderer,
                     &mut AppState::new("test".to_string()),
-                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -1556,7 +1514,6 @@ mod tests {
                 .session
                 .select_table("public", "users", &mut state.query);
             let run_id = state.session.begin_metadata_refresh();
-            let services = AppServices::stub();
             let effects = reduce(
                 &mut state,
                 Action::MetadataLoaded {
@@ -1564,11 +1521,10 @@ mod tests {
                     outcome: Ok(Arc::new(DatabaseMetadata::new("test".to_string()))),
                 },
                 Instant::now(),
-                &services,
             );
 
             runner
-                .execute_effects(effects, &mut NoopRenderer, &mut state, &services)
+                .execute_effects(effects, &mut NoopRenderer, &mut state)
                 .await
                 .unwrap();
             timeout(Duration::from_secs(1), started_rx)
@@ -1582,7 +1538,7 @@ mod tests {
                 .unwrap()
                 .unwrap();
             assert!(matches!(action, Action::EffectiveUserLoaded { .. }));
-            reduce(&mut state, action, Instant::now(), &services);
+            reduce(&mut state, action, Instant::now());
 
             assert_eq!(state.session.effective_user(), Some("refreshed_user"));
             assert!(state.session.selected_table_key().is_none());
@@ -1622,7 +1578,6 @@ mod tests {
                     ],
                     &mut renderer,
                     &mut state,
-                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -1630,19 +1585,9 @@ mod tests {
                 .await
                 .expect("effective user should start");
 
-            let shutdown_effects = reduce(
-                &mut state,
-                Action::Quit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let shutdown_effects = reduce(&mut state, Action::Quit, Instant::now());
             runner
-                .execute_effects(
-                    shutdown_effects,
-                    &mut renderer,
-                    &mut state,
-                    &AppServices::stub(),
-                )
+                .execute_effects(shutdown_effects, &mut renderer, &mut state)
                 .await
                 .unwrap();
 
@@ -1794,7 +1739,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -1811,7 +1755,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -1823,12 +1766,7 @@ mod tests {
             );
 
             runner
-                .execute_effects(
-                    vec![Effect::CancelTrackedTasks],
-                    &mut renderer,
-                    &mut state,
-                    &AppServices::stub(),
-                )
+                .execute_effects(vec![Effect::CancelTrackedTasks], &mut renderer, &mut state)
                 .await
                 .unwrap();
             assert_eq!(dropped.load(Ordering::SeqCst), 2);
@@ -1864,7 +1802,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -1881,7 +1818,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -1893,12 +1829,7 @@ mod tests {
             );
 
             runner
-                .execute_effects(
-                    vec![Effect::CancelTrackedTasks],
-                    &mut renderer,
-                    &mut state,
-                    &AppServices::stub(),
-                )
+                .execute_effects(vec![Effect::CancelTrackedTasks], &mut renderer, &mut state)
                 .await
                 .unwrap();
             assert_eq!(dropped.load(Ordering::SeqCst), 2);
@@ -1931,7 +1862,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -1940,20 +1870,10 @@ mod tests {
                 .expect("pending probe should start")
                 .expect("probe start signal should be sent");
 
-            let shutdown_effects = reduce(
-                &mut state,
-                Action::Quit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let shutdown_effects = reduce(&mut state, Action::Quit, Instant::now());
             assert!(state.should_quit);
             runner
-                .execute_effects(
-                    shutdown_effects,
-                    &mut renderer,
-                    &mut state,
-                    &AppServices::stub(),
-                )
+                .execute_effects(shutdown_effects, &mut renderer, &mut state)
                 .await
                 .unwrap();
 
@@ -1994,26 +1914,15 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
 
-            let shutdown_effects = reduce(
-                &mut state,
-                Action::Quit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let shutdown_effects = reduce(&mut state, Action::Quit, Instant::now());
             assert!(state.should_quit);
             tokio::task::yield_now().await;
             runner
-                .execute_effects(
-                    shutdown_effects,
-                    &mut renderer,
-                    &mut state,
-                    &AppServices::stub(),
-                )
+                .execute_effects(shutdown_effects, &mut renderer, &mut state)
                 .await
                 .unwrap();
 
@@ -2053,7 +1962,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -2067,7 +1975,6 @@ mod tests {
                     vec![Effect::CancelConnectionTask],
                     &mut renderer,
                     &mut state,
-                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -2173,7 +2080,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -2190,7 +2096,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -2220,7 +2125,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -2230,12 +2134,7 @@ mod tests {
             );
 
             runner
-                .execute_effects(
-                    vec![Effect::CancelMetadataTasks],
-                    &mut renderer,
-                    &mut state,
-                    &AppServices::stub(),
-                )
+                .execute_effects(vec![Effect::CancelMetadataTasks], &mut renderer, &mut state)
                 .await
                 .unwrap();
 
@@ -2260,7 +2159,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -2269,20 +2167,10 @@ mod tests {
                 Some(endpoint::postgres("postgres://localhost/current"))
             );
 
-            let shutdown_effects = reduce(
-                &mut state,
-                Action::Quit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let shutdown_effects = reduce(&mut state, Action::Quit, Instant::now());
             assert!(state.should_quit);
             runner
-                .execute_effects(
-                    shutdown_effects,
-                    &mut renderer,
-                    &mut state,
-                    &AppServices::stub(),
-                )
+                .execute_effects(shutdown_effects, &mut renderer, &mut state)
                 .await
                 .unwrap();
 

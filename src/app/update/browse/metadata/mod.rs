@@ -49,7 +49,6 @@ mod tests {
     use crate::model::shared::input_mode::InputMode;
     use crate::model::table_prefetch::FailedPrefetchEntry;
     use crate::ports::outbound::DbOperationError;
-    use crate::services::AppServices;
     use crate::update::action::Action;
     use crate::update::reducer::route;
     use std::sync::Arc;
@@ -131,7 +130,6 @@ mod tests {
                     outcome: Ok(metadata_with_users()),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(effects.is_empty());
@@ -154,7 +152,6 @@ mod tests {
                     generation: current_generation,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(state.session.table_detail().is_none());
@@ -177,7 +174,6 @@ mod tests {
                     generation,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(matches!(
@@ -206,7 +202,6 @@ mod tests {
                     outcome: Err(DbOperationError::PermissionDenied("denied".to_string())),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
             assert!(matches!(
                 state.session.table_detail_state(),
@@ -223,7 +218,6 @@ mod tests {
                     generation,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(matches!(
@@ -254,7 +248,6 @@ mod tests {
                     generation: stale_generation,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.session.selection_generation(), current_generation);
@@ -278,7 +271,6 @@ mod tests {
                 &mut state,
                 Action::ProcessPrefetchQueue { run_id: old_run_id },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(effects.is_empty());
@@ -302,12 +294,7 @@ mod tests {
                 .session
                 .set_connection_state(ConnectionState::Connected);
 
-            let effects = route(
-                &mut state,
-                Action::ReloadMetadata,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ReloadMetadata, Instant::now());
 
             assert!(
                 effects
@@ -405,7 +392,6 @@ mod tests {
                 &mut state,
                 Action::ProcessPrefetchQueue { run_id },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(
@@ -474,7 +460,6 @@ mod tests {
                     outcome: Ok(empty_table("public", "users")),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(effects.is_empty());
@@ -595,7 +580,6 @@ mod tests {
                 &mut state,
                 Action::ProcessPrefetchQueue { run_id },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(state.table_prefetch.is_table_prefetching(&remaining));
@@ -687,7 +671,6 @@ mod tests {
                 &mut state,
                 Action::ProcessPrefetchQueue { run_id },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(fetch_count(&effects), 0);
@@ -703,7 +686,6 @@ mod tests {
                 &mut state,
                 Action::ProcessPrefetchQueue { run_id },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(fetch_count(&effects), 2);
@@ -718,7 +700,6 @@ mod tests {
                 &mut state,
                 Action::ProcessPrefetchQueue { run_id },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(fetch_count(&effects), 4);
@@ -738,7 +719,6 @@ mod tests {
                 &mut state,
                 Action::ProcessPrefetchQueue { run_id },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(effects.is_empty());
@@ -760,7 +740,6 @@ mod tests {
                 &mut state,
                 Action::ProcessPrefetchQueue { run_id },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(effects.is_empty());
@@ -786,7 +765,6 @@ mod tests {
                 &mut state,
                 Action::ProcessPrefetchQueue { run_id },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(schedule_count(&effects), 0);
@@ -871,7 +849,6 @@ mod tests {
                     outcome: Err(DbOperationError::QueryFailed("new error".to_string())),
                 },
                 now,
-                &AppServices::stub(),
             );
 
             let entry = state.table_prefetch.failed_prefetch(&qualified).unwrap();
@@ -900,7 +877,6 @@ mod tests {
                     outcome: Err(DbOperationError::Timeout("timed out".to_string())),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(state.table_prefetch.is_prefetch_queued(&qualified));
@@ -944,7 +920,6 @@ mod tests {
                     outcome: Err(DbOperationError::Timeout("timed out".to_string())),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(
@@ -978,7 +953,6 @@ mod tests {
                     outcome: Err(DbOperationError::Timeout("timed out".to_string())),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
             let _ = state.table_prefetch.take_next_prefetch();
             state.table_prefetch.queue_table_prefetch(qualified);
@@ -993,7 +967,6 @@ mod tests {
                     outcome: Ok(empty_table("public", "users")),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(!state.table_prefetch.has_failures());
@@ -1060,7 +1033,7 @@ mod tests {
 
             let metadata = make_metadata(vec![("public", "orders")]);
             let action = metadata_loaded_action(&mut state, metadata);
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert!(matches!(
                 effects.as_slice(),
@@ -1095,7 +1068,6 @@ mod tests {
                     outcome: Ok(make_metadata(vec![("public", "orders")])),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(
@@ -1121,7 +1093,7 @@ mod tests {
             // "orders" comes before "users" alphabetically, so "users" → index 1
             let metadata = make_metadata(vec![("public", "orders"), ("public", "users")]);
             let action = metadata_loaded_action(&mut state, metadata);
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert_eq!(state.query.pagination.table(), "users");
             assert_eq!(state.ui.explorer_selected(), 1);
@@ -1138,7 +1110,7 @@ mod tests {
 
             let metadata = make_metadata(vec![("public", "orders"), ("public", "users")]);
             let action = metadata_loaded_action(&mut state, metadata);
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert!(matches!(
                 effects.as_slice(),
@@ -1198,7 +1170,6 @@ mod tests {
                 &mut state,
                 Action::ProcessPrefetchQueue { run_id },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(effects.len(), 2);
@@ -1218,7 +1189,6 @@ mod tests {
                 &mut state,
                 Action::ProcessPrefetchQueue { run_id },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(effects.is_empty());
@@ -1239,7 +1209,6 @@ mod tests {
                 &mut state,
                 Action::ProcessPrefetchQueue { run_id },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(effects.is_empty());
@@ -1365,7 +1334,6 @@ mod tests {
                     outcome: Ok(empty_table("public", "users")),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(state.table_detail_cache.contains("public.users"));

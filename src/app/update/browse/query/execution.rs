@@ -266,7 +266,6 @@ mod tests {
     use crate::model::er_state::ErStatus;
 
     use crate::ports::outbound::DbOperationError;
-    use crate::services::AppServices;
     use crate::test_support::endpoint;
     use crate::update::action::Action;
     use crate::update::action::SmartErRefreshSnapshot;
@@ -329,12 +328,7 @@ mod tests {
                 &endpoint::mysql("mysql://localhost/app", Some("app")),
             );
 
-            let effects = route(
-                &mut state,
-                Action::CommandLineSubmit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::CommandLineSubmit, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.should_quit);
@@ -352,12 +346,7 @@ mod tests {
                 .command_line_input
                 .set_content("unknown_cmd".to_string());
 
-            route(
-                &mut state,
-                Action::CommandLineSubmit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::CommandLineSubmit, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert!(!state.should_quit);
@@ -381,13 +370,12 @@ mod tests {
             state
                 .result_interaction
                 .replace_cell_edit_draft("Bob".to_string());
-            let services = AppServices::stub();
             for key in [Key::Char(':'), Key::Char('w')] {
                 let action = handle_event(InputEvent::Key(KeyCombo::plain(key)), &state);
-                reduce(&mut state, action, Instant::now(), &services);
+                reduce(&mut state, action, Instant::now());
             }
             let action = handle_event(InputEvent::Key(KeyCombo::plain(Key::Enter)), &state);
-            let effects = reduce(&mut state, action, Instant::now(), &services);
+            let effects = reduce(&mut state, action, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
@@ -401,12 +389,7 @@ mod tests {
             state.modal.push_mode(InputMode::CommandLine);
             state.command_line_input.set_content("erd".to_string());
 
-            let effects = route(
-                &mut state,
-                Action::CommandLineSubmit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::CommandLineSubmit, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -420,12 +403,7 @@ mod tests {
             state.modal.push_mode(InputMode::CommandLine);
             state.command_line_input.set_content("settings".to_string());
 
-            let effects = route(
-                &mut state,
-                Action::CommandLineSubmit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::CommandLineSubmit, Instant::now());
 
             assert!(state.command_line_input.content().is_empty());
             assert_eq!(state.input_mode(), InputMode::Settings);
@@ -443,12 +421,7 @@ mod tests {
             state.sql_modal.editor.set_content("SELECT 1".to_string());
             let now = Instant::now();
 
-            let effects = reduce(
-                &mut state,
-                Action::SqlModalSubmit,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::SqlModalSubmit, now);
 
             assert!(matches!(effects.as_slice(), [Effect::ExecuteAdhoc { .. }]));
             assert_eq!(
@@ -472,7 +445,7 @@ mod tests {
             let now = Instant::now();
             let action = query_completed_action(&mut state, result, 1, Some(2));
 
-            route(&mut state, action, now, &AppServices::stub());
+            route(&mut state, action, now);
 
             assert_eq!(state.query.pagination.current_page(), 2);
             assert!(state.query.pagination.reached_end());
@@ -484,7 +457,7 @@ mod tests {
             state.session.set_selection_generation(1);
             let action = query_completed_action(&mut state, preview_result(0), 1, Some(0));
 
-            route(&mut state, action, Instant::now(), &AppServices::stub());
+            route(&mut state, action, Instant::now());
 
             assert_eq!(state.query.pagination.current_page(), 0);
             assert!(state.query.pagination.reached_end());
@@ -497,20 +470,10 @@ mod tests {
             state.session.set_selection_generation(1);
             let first_page = preview_result(PREVIEW_PAGE_SIZE);
             let first_action = query_completed_action(&mut state, first_page, 1, Some(0));
-            route(
-                &mut state,
-                first_action,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, first_action, Instant::now());
 
             let next_action = query_completed_action(&mut state, preview_result(1), 1, Some(1));
-            route(
-                &mut state,
-                next_action,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, next_action, Instant::now());
 
             assert_eq!(state.query.pagination.current_page(), 1);
             assert!(state.query.pagination.reached_end());
@@ -531,7 +494,7 @@ mod tests {
                         1,
                         Some(page),
                     );
-                    route(&mut state, action, Instant::now(), &AppServices::stub());
+                    route(&mut state, action, Instant::now());
                     assert!(!state.query.pagination.reached_end());
                     assert!(state.query.pagination.can_next());
                 }
@@ -539,12 +502,7 @@ mod tests {
                 let last_page = Arc::clone(state.query.current_result().unwrap());
                 let empty_action =
                     query_completed_action(&mut state, preview_result(0), 1, Some(page_count));
-                route(
-                    &mut state,
-                    empty_action,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                route(&mut state, empty_action, Instant::now());
 
                 assert_eq!(state.query.pagination.current_page(), page_count - 1);
                 assert!(state.query.pagination.reached_end());
@@ -568,7 +526,7 @@ mod tests {
             let now = Instant::now();
             let action = query_completed_action(&mut state, result, 0, None);
 
-            route(&mut state, action, now, &AppServices::stub());
+            route(&mut state, action, now);
 
             assert_eq!(state.query.pagination.current_page(), 3);
         }
@@ -584,7 +542,7 @@ mod tests {
             let result = adhoc_result();
             let action = query_completed_action(&mut state, result, 0, None);
 
-            route(&mut state, action, Instant::now(), &AppServices::stub());
+            route(&mut state, action, Instant::now());
 
             assert!(state.query.current_result().is_some());
             assert_eq!(
@@ -607,7 +565,7 @@ mod tests {
             let result = adhoc_error_result();
             let action = query_completed_action(&mut state, result, 0, None);
 
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -648,7 +606,7 @@ mod tests {
             state.query.set_current_result(Arc::clone(&result));
             let action = query_completed_action(&mut state, result, 0, Some(0));
 
-            route(&mut state, action, Instant::now(), &AppServices::stub());
+            route(&mut state, action, Instant::now());
 
             assert_eq!(state.result_interaction.selection().row(), Some(1));
             assert_eq!(state.result_interaction.selection().cell(), Some(2));
@@ -665,7 +623,7 @@ mod tests {
             state.result_interaction.stage_row(0);
             let action = query_completed_action(&mut state, preview_result(1), 0, Some(0));
 
-            route(&mut state, action, Instant::now(), &AppServices::stub());
+            route(&mut state, action, Instant::now());
 
             assert_eq!(state.result_interaction.selection().row(), None);
             assert!(state.result_interaction.staged_delete_rows().is_empty());
@@ -685,7 +643,6 @@ mod tests {
                     outcome: Ok(adhoc_result()),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(state.query.current_result().is_none());
@@ -711,7 +668,7 @@ mod tests {
                 outcome: Ok(adhoc_result()),
             };
             assert!(!format!("{action:?}").contains("dsn:"));
-            route(&mut state, action, Instant::now(), &AppServices::stub());
+            route(&mut state, action, Instant::now());
 
             assert!(stale_run_id < current_run_id);
             assert!(state.query.current_result().is_none());
@@ -734,7 +691,6 @@ mod tests {
                     outcome: Ok(adhoc_result()),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(state.query.current_result().is_none());
@@ -761,7 +717,7 @@ mod tests {
                 QuerySource::Preview,
             );
 
-            route(&mut state, action, Instant::now(), &AppServices::stub());
+            route(&mut state, action, Instant::now());
 
             assert_eq!(
                 state.result_interaction.selection().mode(),
@@ -782,7 +738,7 @@ mod tests {
                 QuerySource::Preview,
             );
 
-            route(&mut state, action, Instant::now(), &AppServices::stub());
+            route(&mut state, action, Instant::now());
 
             let result = state.query.current_result().expect("result");
             assert!(result.is_error());
@@ -811,7 +767,7 @@ mod tests {
                 .select_table("public", "orders", &mut state.query);
             let current_run = begin_query_run(&mut state);
 
-            let effects = route(&mut state, failure, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, failure, Instant::now());
 
             assert!(effects.is_empty());
             assert!(state.messages.last_error().is_none());
@@ -831,7 +787,7 @@ mod tests {
                 QuerySource::Preview,
             );
 
-            route(&mut state, action, Instant::now(), &AppServices::stub());
+            route(&mut state, action, Instant::now());
 
             assert!(
                 state
@@ -862,7 +818,7 @@ mod tests {
                 QuerySource::Adhoc,
             );
 
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert!(effects.iter().any(|effect| matches!(
                 effect,
@@ -889,7 +845,7 @@ mod tests {
                 QuerySource::Adhoc,
             );
 
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert!(effects.iter().any(|effect| matches!(
                 effect,
@@ -912,7 +868,7 @@ mod tests {
                 QuerySource::Adhoc,
             );
 
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert!(matches!(effects[0], Effect::CancelMetadataTasks));
             assert!(
@@ -942,7 +898,7 @@ mod tests {
                 QuerySource::Preview,
             );
 
-            route(&mut state, action, Instant::now(), &AppServices::stub());
+            route(&mut state, action, Instant::now());
 
             assert!(matches!(
                 state.sql_modal.status(),
@@ -969,7 +925,7 @@ mod tests {
                 None,
             );
 
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert!(matches!(
                 effects.as_slice(),
@@ -994,7 +950,7 @@ mod tests {
                 None,
             );
 
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert!(effects.is_empty());
         }
@@ -1021,7 +977,7 @@ mod tests {
                     None,
                 );
 
-                let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+                let effects = route(&mut state, action, Instant::now());
 
                 assert!(!state.er_preparation.is_current_run(er_run_id));
                 assert!(effects.iter().any(|effect| matches!(
@@ -1049,7 +1005,7 @@ mod tests {
                 None,
             );
 
-            route(&mut state, action, Instant::now(), &AppServices::stub());
+            route(&mut state, action, Instant::now());
 
             assert!(state.table_prefetch.active_prefetch_run_id().is_none());
             assert!(!state.table_prefetch.has_pending_prefetch());
@@ -1069,7 +1025,7 @@ mod tests {
                 None,
             );
 
-            route(&mut state, action, Instant::now(), &AppServices::stub());
+            route(&mut state, action, Instant::now());
 
             let endpoint = active_endpoint(&state);
             let effects = route(
@@ -1086,7 +1042,6 @@ mod tests {
                     }),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(effects.is_empty());
@@ -1107,7 +1062,7 @@ mod tests {
                 let action =
                     query_completed_action(&mut state, adhoc_result_with_tag(tag), 0, None);
 
-                let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+                let effects = route(&mut state, action, Instant::now());
 
                 assert!(effects.is_empty());
             }
@@ -1123,7 +1078,7 @@ mod tests {
                 None,
             );
 
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert!(effects.is_empty());
         }
@@ -1140,7 +1095,7 @@ mod tests {
             ));
             let action = query_completed_action(&mut state, result, 0, None);
 
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert!(effects.is_empty());
         }
@@ -1174,7 +1129,7 @@ mod tests {
                 None,
             );
 
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert_eq!(effects.len(), 1);
             assert!(
@@ -1183,7 +1138,7 @@ mod tests {
 
             let new_preview = preview_result(5);
             let action = query_completed_action(&mut state, Arc::clone(&new_preview), 0, Some(0));
-            route(&mut state, action, Instant::now(), &AppServices::stub());
+            route(&mut state, action, Instant::now());
 
             let stored = state.query.current_result().unwrap();
             assert_eq!(stored.source, QuerySource::Preview);
@@ -1201,7 +1156,7 @@ mod tests {
             );
             update_test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
 
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert!(matches!(effects[0], Effect::CancelMetadataTasks));
             assert!(!state.table_detail_cache.contains("public.cached"));
@@ -1223,7 +1178,7 @@ mod tests {
                 run_id,
                 outcome: Ok(metadata),
             };
-            let meta_effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let meta_effects = route(&mut state, action, Instant::now());
 
             assert_eq!(state.ui.explorer_selected(), 1);
             assert_eq!(state.query.pagination.table(), "users");
@@ -1245,7 +1200,7 @@ mod tests {
                 None,
             );
 
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert!(
                 effects
@@ -1259,7 +1214,7 @@ mod tests {
                 run_id,
                 outcome: Ok(metadata),
             };
-            route(&mut state, action, Instant::now(), &AppServices::stub());
+            route(&mut state, action, Instant::now());
 
             assert!(state.query.pagination.table().is_empty());
             assert!(state.query.current_result().is_none());
@@ -1277,7 +1232,7 @@ mod tests {
                 None,
             );
 
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert!(
                 !effects
@@ -1300,7 +1255,7 @@ mod tests {
                 None,
             );
 
-            route(&mut state, action, Instant::now(), &AppServices::stub());
+            route(&mut state, action, Instant::now());
 
             let saved_tag = match state.sql_modal.status() {
                 SqlModalStatus::Success(snapshot) => snapshot.command_tag.clone(),
@@ -1309,7 +1264,7 @@ mod tests {
             assert!(matches!(saved_tag, Some(CommandTag::Alter(_))));
 
             let action = query_completed_action(&mut state, preview_result(5), 0, Some(0));
-            route(&mut state, action, Instant::now(), &AppServices::stub());
+            route(&mut state, action, Instant::now());
 
             let tag_after = match state.sql_modal.status() {
                 SqlModalStatus::Success(snapshot) => snapshot.command_tag.clone(),

@@ -108,7 +108,6 @@ mod tests {
     use std::time::Instant;
 
     use crate::domain::{QueryResult, QuerySource, QueryValue};
-    use crate::services::AppServices;
     use crate::update::action::{ModalKind, ScrollTarget};
     use crate::update::reducer::route;
 
@@ -133,7 +132,6 @@ mod tests {
             &mut state,
             Action::OpenModal(ModalKind::RowDetail),
             Instant::now(),
-            &AppServices::stub(),
         );
         state
     }
@@ -146,7 +144,6 @@ mod tests {
             &mut state,
             Action::OpenModal(ModalKind::RowDetail),
             Instant::now(),
-            &AppServices::stub(),
         );
 
         assert!(state.row_detail.is_active());
@@ -180,7 +177,6 @@ mod tests {
             &mut state,
             Action::OpenModal(ModalKind::RowDetail),
             Instant::now(),
-            &AppServices::stub(),
         );
 
         assert!(state.row_detail.content().contains("BLOB (2 bytes) AB CD"));
@@ -204,7 +200,6 @@ mod tests {
             &mut state,
             Action::OpenModal(ModalKind::RowDetail),
             Instant::now(),
-            &AppServices::stub(),
         );
 
         assert!(!state.row_detail.is_active());
@@ -218,7 +213,6 @@ mod tests {
             &mut state,
             Action::OpenModal(ModalKind::RowDetail),
             Instant::now(),
-            &AppServices::stub(),
         );
         assert!(state.row_detail.is_active());
 
@@ -226,7 +220,6 @@ mod tests {
             &mut state,
             Action::CloseModal(ModalKind::RowDetail),
             Instant::now(),
-            &AppServices::stub(),
         );
 
         assert!(!state.row_detail.is_active());
@@ -237,12 +230,7 @@ mod tests {
     fn yank_display_text_returns_clipboard_effect() {
         let mut state = state_with_row_detail();
 
-        let effects = route(
-            &mut state,
-            Action::RowDetailYank,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        let effects = route(&mut state, Action::RowDetailYank, Instant::now());
 
         assert_eq!(effects.len(), 1);
         assert!(matches!(
@@ -256,12 +244,7 @@ mod tests {
     fn yank_json_returns_clipboard_effect() {
         let mut state = state_with_row_detail();
 
-        let effects = route(
-            &mut state,
-            Action::RowDetailYankJson,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        let effects = route(&mut state, Action::RowDetailYankJson, Instant::now());
 
         assert_eq!(effects.len(), 1);
         assert!(matches!(
@@ -287,7 +270,6 @@ mod tests {
                 amount: ScrollAmount::Line,
             },
             Instant::now(),
-            &AppServices::stub(),
         );
 
         assert_eq!(
@@ -311,7 +293,6 @@ mod tests {
                 amount: ScrollAmount::ToEnd,
             },
             Instant::now(),
-            &AppServices::stub(),
         );
 
         assert_eq!(
@@ -337,7 +318,6 @@ mod tests {
             &mut state,
             Action::OpenModal(ModalKind::RowDetail),
             Instant::now(),
-            &AppServices::stub(),
         );
         state.ui.row_detail_content_visible_columns = 10;
 
@@ -350,7 +330,6 @@ mod tests {
                     amount: ScrollAmount::Line,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
         }
 
@@ -374,7 +353,6 @@ mod tests {
             &mut state,
             Action::OpenModal(ModalKind::RowDetail),
             Instant::now(),
-            &AppServices::stub(),
         );
 
         assert!(!state.row_detail.is_active());
@@ -398,7 +376,6 @@ mod tests {
             &mut state,
             Action::OpenModal(ModalKind::RowDetail),
             Instant::now(),
-            &AppServices::stub(),
         );
 
         assert!(!state.row_detail.is_active());
@@ -420,7 +397,6 @@ mod tests {
                 amount: ScrollAmount::FullPage,
             },
             Instant::now(),
-            &AppServices::stub(),
         );
 
         assert_eq!(
@@ -446,7 +422,6 @@ mod tests {
                 amount: ScrollAmount::FullPage,
             },
             Instant::now(),
-            &AppServices::stub(),
         );
 
         assert_eq!(state.row_detail.scroll_offset(), 0);
@@ -468,7 +443,6 @@ mod tests {
                 amount: ScrollAmount::HalfPage,
             },
             Instant::now(),
-            &AppServices::stub(),
         );
 
         assert_eq!(state.row_detail.scroll_offset(), max_scroll);
@@ -487,7 +461,6 @@ mod tests {
                 amount: ScrollAmount::HalfPage,
             },
             Instant::now(),
-            &AppServices::stub(),
         );
 
         assert_eq!(state.row_detail.scroll_offset(), 1);
@@ -509,7 +482,6 @@ mod tests {
                 amount: ScrollAmount::HalfPage,
             },
             Instant::now(),
-            &AppServices::stub(),
         );
 
         assert_eq!(state.row_detail.scroll_offset(), 0);

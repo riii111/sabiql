@@ -450,17 +450,8 @@ fn inspector_info_tab_for_mysql_shows_storage_attributes() {
 
 #[test]
 fn inspector_ddl_tab_uses_source_ddl() {
-    struct SourceDdlGenerator;
-    impl DdlGenerator for SourceDdlGenerator {
-        fn generate_ddl(&self, _database_type: DatabaseType, table: &Table) -> String {
-            table.source_ddl().unwrap_or_default().to_string()
-        }
-    }
-
     let mut state = harness::explorer_selected_state();
     let mut terminal = create_test_terminal();
-    let mut services = AppServices::stub();
-    services.ddl_generator = Arc::new(SourceDdlGenerator);
 
     let mut table = fixtures::sample_postgres_table_detail();
     table.source_ddl = Some(
@@ -468,14 +459,15 @@ fn inspector_ddl_tab_uses_source_ddl() {
             .to_string(),
     );
     let _ = state.session.set_table_detail(table, 0);
+    state.session.activate_connection(
+        &ConnectionId::from_string("mysql-test"),
+        "app",
+        &endpoint::mysql("mysql://user@localhost:3306/app?ssl-mode=PREFERRED", None),
+    );
     state.ui.inspector_tab = InspectorTab::Ddl;
     state.focus_pane(FocusedPane::Inspector);
 
-    let output = trim_line_endings(&harness::render_to_string_with_services(
-        &mut terminal,
-        &mut state,
-        &services,
-    ));
+    let output = trim_line_endings(&harness::render_to_string(&mut terminal, &mut state));
 
     insta::assert_snapshot!(output);
 }

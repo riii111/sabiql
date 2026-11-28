@@ -3,6 +3,7 @@
 pub mod column;
 pub mod command_tag;
 pub mod connection;
+pub mod ddl;
 pub mod diagnostic;
 pub mod dialect;
 pub mod er;

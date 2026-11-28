@@ -223,7 +223,6 @@ mod tests {
     use crate::model::shared::ui_state::ResultNavMode;
     use crate::model::sql_editor::modal::SqlModalStatus;
     use crate::ports::outbound::{ConnectionFailureKind, DbOperationError};
-    use crate::services::AppServices;
     use crate::test_support::connection::{
         assert_explain_state_cleared, assert_sqlite_diagnostics_cleared,
     };
@@ -233,12 +232,7 @@ mod tests {
     use crate::update::reducer::route;
 
     fn reduce(state: &mut AppState, action: &Action) -> Vec<Effect> {
-        route(
-            state,
-            action.clone(),
-            std::time::Instant::now(),
-            &AppServices::stub(),
-        )
+        route(state, action.clone(), std::time::Instant::now())
     }
 
     fn create_postgres_switch_target(id: &ConnectionId, name: &str) -> ConnectionTarget {
@@ -292,7 +286,6 @@ mod tests {
                 &mut state,
                 Action::ReloadMetadata,
                 std::time::Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(reload_effects.is_empty());
@@ -316,7 +309,6 @@ mod tests {
                     outcome: Ok(0),
                 },
                 std::time::Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.session.active_connection_id(), Some(&target.id));
@@ -330,7 +322,6 @@ mod tests {
                 &mut state,
                 Action::ReloadMetadata,
                 std::time::Instant::now(),
-                &AppServices::stub(),
             );
             assert!(reload_effects.iter().any(|effect| matches!(
                 effect,
@@ -363,7 +354,6 @@ mod tests {
                 &mut state,
                 Action::ReloadMetadata,
                 std::time::Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(reload_effects.is_empty());
@@ -388,7 +378,6 @@ mod tests {
                     outcome: Ok(0),
                 },
                 std::time::Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(state.session.pending_mysql_connection_probe().is_none());
@@ -401,7 +390,6 @@ mod tests {
                 &mut state,
                 Action::ReloadMetadata,
                 std::time::Instant::now(),
-                &AppServices::stub(),
             );
             assert!(reload_effects.iter().any(|effect| matches!(
                 effect,
@@ -426,7 +414,6 @@ mod tests {
                 &mut state,
                 Action::ReloadMetadata,
                 std::time::Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(reload_effects.is_empty());
@@ -438,7 +425,6 @@ mod tests {
                     outcome: Err(DbOperationError::Timeout("timed out".to_string())),
                 },
                 std::time::Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(failure_effects.is_empty());
@@ -500,7 +486,6 @@ mod tests {
                 &mut state,
                 Action::SqlModalSubmit,
                 std::time::Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(effects.is_empty());
@@ -1103,7 +1088,6 @@ mod tests {
                     outcome: Ok(refreshed_metadata),
                 },
                 std::time::Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(state.tables().iter().any(|table| table.name == "orders"));
@@ -1222,7 +1206,6 @@ mod tests {
                     outcome: Ok(Arc::new(DatabaseMetadata::new("stale".to_string()))),
                 },
                 std::time::Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.session.database_name(), Some("app"));
@@ -1372,7 +1355,6 @@ mod tests {
                 &mut state,
                 Action::ResultNextPage,
                 std::time::Instant::now(),
-                &AppServices::stub(),
             );
             assert!(next_effects.iter().any(|effect| matches!(
                 effect,
@@ -1391,7 +1373,6 @@ mod tests {
                 &mut state,
                 Action::ResultPrevPage,
                 std::time::Instant::now(),
-                &AppServices::stub(),
             );
             assert!(previous_effects.iter().any(|effect| matches!(
                 effect,
@@ -1581,7 +1562,6 @@ mod tests {
                     )),
                 },
                 std::time::Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(state.session.connection_state().is_failed());
@@ -2224,7 +2204,6 @@ mod tests {
                 &mut state,
                 Action::ReloadMetadata,
                 std::time::Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(reload_effects.is_empty());

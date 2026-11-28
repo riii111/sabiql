@@ -421,14 +421,13 @@ mod tests {
     #[test]
     fn help_origins_exclude_common_and_navigation_from_current() {
         use crate::ports::inbound::{InputEvent, Key, KeyCombo};
-        use crate::services::AppServices;
         use crate::update::input::handle_event;
         use crate::update::reducer::reduce;
         use std::time::Instant;
 
         fn press(state: &mut AppState, key: Key) {
             let action = handle_event(InputEvent::Key(KeyCombo::plain(key)), state);
-            reduce(state, action, Instant::now(), &AppServices::stub());
+            reduce(state, action, Instant::now());
         }
         fn has_row(document: &HelpDocument, section: &str, key: &str, description: &str) -> bool {
             document

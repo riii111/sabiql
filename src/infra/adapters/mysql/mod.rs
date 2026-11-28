@@ -16,7 +16,6 @@ mod integration_tests;
 mod test_support;
 
 pub use adapter::MySqlAdapter;
-pub(in crate::adapters) use dsn::build_mysql_dsn;
 
 #[cfg(test)]
 mod metadata_test_support {

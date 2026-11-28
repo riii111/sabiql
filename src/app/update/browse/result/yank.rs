@@ -1,9 +1,9 @@
 use crate::cmd::effect::Effect;
 use crate::domain::QueryValue;
+use crate::domain::ddl::generate_ddl;
 use crate::model::app_state::AppState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::inspector_tab::InspectorTab;
-use crate::services::AppServices;
 use crate::update::action::CopyTarget;
 
 pub(in crate::update) fn result_cell_yank(state: &mut AppState) -> Vec<Effect> {
@@ -37,13 +37,11 @@ pub(in crate::update) fn result_cell_yank(state: &mut AppState) -> Vec<Effect> {
     }
 }
 
-pub(in crate::update) fn ddl_yank(state: &AppState, services: &AppServices) -> Vec<Effect> {
+pub(in crate::update) fn ddl_yank(state: &AppState) -> Vec<Effect> {
     if state.ui.inspector_tab == InspectorTab::Ddl
         && let Some(table) = state.session.table_detail().as_ref()
     {
-        let ddl = services
-            .ddl_generator
-            .generate_ddl(state.session.active_database_type_or_default(), table);
+        let ddl = generate_ddl(state.session.active_database_type_or_default(), table);
         return vec![Effect::CopyToClipboard {
             content: ddl,
             target: CopyTarget::Panel(FlashId::Ddl),
@@ -94,10 +92,7 @@ pub(in crate::update) fn result_row_yank(state: &mut AppState) -> Vec<Effect> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{
-        Column, ColumnAttributes, DatabaseType, QueryResult, QuerySource, QueryValue, Table,
-    };
-    use crate::ports::outbound::ddl_generator::DdlGenerator;
+    use crate::domain::{Column, ColumnAttributes, QueryResult, QuerySource, QueryValue, Table};
     use crate::update::action::Action;
     use crate::update::reducer::route;
     use std::sync::Arc;
@@ -132,12 +127,7 @@ mod tests {
             let mut state = state_with_grid(3, 3);
             state.result_interaction.activate_cell(10, 0);
 
-            let effects = route(
-                &mut state,
-                Action::ResultCellYank,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultCellYank, Instant::now());
 
             assert!(effects.is_empty());
             assert!(state.messages.last_error.is_some());
@@ -148,12 +138,7 @@ mod tests {
             let mut state = state_with_grid(3, 3);
             state.result_interaction.activate_cell(0, 10);
 
-            let effects = route(
-                &mut state,
-                Action::ResultCellYank,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultCellYank, Instant::now());
 
             assert!(effects.is_empty());
             assert!(state.messages.last_error.is_some());
@@ -164,12 +149,7 @@ mod tests {
             let mut state = state_with_grid(3, 3);
             state.result_interaction.activate_cell(1, 2);
 
-            let effects = route(
-                &mut state,
-                Action::ResultCellYank,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultCellYank, Instant::now());
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -198,12 +178,7 @@ mod tests {
                 )));
             state.result_interaction.activate_cell(0, 0);
 
-            let effects = route(
-                &mut state,
-                Action::ResultCellYank,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultCellYank, Instant::now());
 
             assert!(matches!(
                 &effects[0],
@@ -220,7 +195,6 @@ mod tests {
                 &mut state,
                 Action::ResultRowYankOperatorPending,
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(effects.is_empty());
@@ -231,12 +205,7 @@ mod tests {
         fn no_cell_selection_is_noop() {
             let mut state = state_with_grid(3, 3);
 
-            let effects = route(
-                &mut state,
-                Action::ResultCellYank,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultCellYank, Instant::now());
 
             assert!(effects.is_empty());
             assert!(state.messages.last_error.is_none());
@@ -267,12 +236,7 @@ mod tests {
             let mut state = state_with_row(vec!["v0", "v1", "v2"]);
             state.result_interaction.activate_cell(0, 0);
 
-            let effects = route(
-                &mut state,
-                Action::ResultRowYank,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultRowYank, Instant::now());
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -304,12 +268,7 @@ mod tests {
                 )));
             state.result_interaction.activate_cell(0, 0);
 
-            let effects = route(
-                &mut state,
-                Action::ResultRowYank,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultRowYank, Instant::now());
 
             assert!(matches!(
                 &effects[0],
@@ -322,12 +281,7 @@ mod tests {
             let mut state = state_with_row(vec!["a\tb", "c\\\nd"]);
             state.result_interaction.activate_cell(0, 0);
 
-            let effects = route(
-                &mut state,
-                Action::ResultRowYank,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultRowYank, Instant::now());
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -343,12 +297,7 @@ mod tests {
             let mut state = state_with_row(vec!["val"]);
             state.result_interaction.activate_cell(99, 0);
 
-            let effects = route(
-                &mut state,
-                Action::ResultRowYank,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultRowYank, Instant::now());
 
             assert!(effects.is_empty());
             assert!(state.messages.last_error.is_some());
@@ -358,12 +307,7 @@ mod tests {
         fn no_row_selection_is_noop() {
             let mut state = state_with_row(vec!["val"]);
 
-            let effects = route(
-                &mut state,
-                Action::ResultRowYank,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultRowYank, Instant::now());
 
             assert!(effects.is_empty());
         }
@@ -373,19 +317,6 @@ mod tests {
         use crate::test_support;
 
         use super::*;
-
-        struct FakeDdlGenerator;
-        impl DdlGenerator for FakeDdlGenerator {
-            fn generate_ddl(&self, _database_type: DatabaseType, table: &Table) -> String {
-                format!("CREATE TABLE {}.{} ();", table.schema, table.name)
-            }
-        }
-
-        fn fake_services() -> AppServices {
-            let mut services = AppServices::stub();
-            services.ddl_generator = Arc::new(FakeDdlGenerator);
-            services
-        }
 
         fn state_with_ddl_tab() -> AppState {
             let mut state = AppState::new("test".to_string());
@@ -408,12 +339,7 @@ mod tests {
         fn with_table_detail_returns_copy_effect() {
             let mut state = state_with_ddl_tab();
 
-            let effects = route(
-                &mut state,
-                Action::DdlYank,
-                Instant::now(),
-                &fake_services(),
-            );
+            let effects = route(&mut state, Action::DdlYank, Instant::now());
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -432,12 +358,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.ui.inspector_tab = InspectorTab::Ddl;
 
-            let effects = route(
-                &mut state,
-                Action::DdlYank,
-                Instant::now(),
-                &fake_services(),
-            );
+            let effects = route(&mut state, Action::DdlYank, Instant::now());
 
             assert!(effects.is_empty());
         }
@@ -447,12 +368,7 @@ mod tests {
             let mut state = state_with_ddl_tab();
             state.ui.inspector_tab = InspectorTab::Info;
 
-            let effects = route(
-                &mut state,
-                Action::DdlYank,
-                Instant::now(),
-                &fake_services(),
-            );
+            let effects = route(&mut state, Action::DdlYank, Instant::now());
 
             assert!(effects.is_empty());
         }

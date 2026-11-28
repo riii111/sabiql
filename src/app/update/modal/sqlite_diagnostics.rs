@@ -82,15 +82,13 @@ mod tests {
 
     use super::*;
     use crate::domain::ConnectionId;
-
-    use crate::services::AppServices;
     use crate::test_support::endpoint;
     use crate::update::action::{Action, ModalKind, ScrollTarget};
     use crate::update::reducer::{reduce, route};
     use crate::update::test_fixtures;
 
     fn reduce_at_boundary(state: &mut AppState, action: Action) -> Vec<Effect> {
-        reduce(state, action, Instant::now(), &AppServices::stub())
+        reduce(state, action, Instant::now())
     }
 
     #[test]
@@ -225,7 +223,6 @@ mod tests {
                 quick_check: DiagnosticField::ok("ok"),
             },
             Instant::now(),
-            &AppServices::stub(),
         );
 
         assert!(stale_run_id < current_run_id);
@@ -257,7 +254,6 @@ mod tests {
                 snapshot: Box::new(SqliteDiagnosticsSnapshot::default()),
             },
             Instant::now(),
-            &AppServices::stub(),
         );
 
         assert!(stale_run_id < current_run_id);
@@ -281,7 +277,6 @@ mod tests {
                 amount: ScrollAmount::Line,
             },
             Instant::now(),
-            &AppServices::stub(),
         );
 
         assert_eq!(state.sqlite_diagnostics.scroll_offset(), 0);

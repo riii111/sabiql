@@ -1,5 +1,6 @@
 mod config;
 mod database_type;
+mod dsn;
 mod endpoint;
 mod id;
 mod name;
@@ -13,6 +14,7 @@ pub use config::{
     PostgresConnectionConfig, SqliteConnectionConfig, SqliteConnectionConfigError,
 };
 pub use database_type::DatabaseType;
+pub use dsn::{build_dsn, normalize_mysql_host, postgres_conninfo};
 pub use endpoint::{ConnectionEndpoint, PostgresEndpoint};
 pub use id::ConnectionId;
 pub use name::{ConnectionName, ConnectionNameError};

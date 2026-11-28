@@ -219,7 +219,6 @@ mod tests {
     use crate::ports::outbound::{
         ConnectionStoreError, DbOperationError, MySqlConnectionProbeResult,
     };
-    use crate::services::AppServices;
     use crate::update::action::{
         Action, ConnectionSaveError, ConnectionTarget, ConnectionsLoadedPayload,
     };
@@ -401,7 +400,6 @@ mod tests {
                     }],
                     &mut renderer,
                     &mut state,
-                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -449,7 +447,6 @@ mod tests {
                     }],
                     &mut NoopRenderer,
                     &mut AppState::new("test".to_string()),
-                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -695,7 +692,6 @@ mod tests {
                     ],
                     &mut renderer,
                     &mut state,
-                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
