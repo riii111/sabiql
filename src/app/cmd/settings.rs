@@ -50,16 +50,11 @@ mod tests {
                 theme_id: ThemeId::Light,
                 icon_mode: IconMode::default(),
                 keymap_preset: KeymapPreset::Ide,
-                er_browser: Some("Firefox".to_string()),
             },
             store.as_ref(),
         );
 
         assert_eq!(store.saved.lock().unwrap()[0].theme_id, ThemeId::Light);
-        assert_eq!(
-            store.saved.lock().unwrap()[0].er_browser.as_deref(),
-            Some("Firefox")
-        );
         assert_eq!(
             store.saved.lock().unwrap()[0].keymap_preset,
             KeymapPreset::Ide
@@ -69,7 +64,6 @@ mod tests {
             Action::SettingsSaved(Ok(settings))
                 if settings.theme_id == ThemeId::Light
                     && settings.keymap_preset == KeymapPreset::Ide
-                    && settings.er_browser.as_deref() == Some("Firefox")
         ));
     }
 
@@ -82,7 +76,6 @@ mod tests {
                 theme_id: ThemeId::Light,
                 icon_mode: IconMode::default(),
                 keymap_preset: KeymapPreset::default(),
-                er_browser: None,
             },
             &store,
         );

@@ -177,10 +177,6 @@ pub(in crate::update) fn route(state: &mut AppState, action: Action, now: Instan
         Action::ConnectionEditLoaded(outcome) => {
             connection::setup::connection_edit_loaded(state, outcome)
         }
-        Action::ErLogWriteFailed(error) => {
-            state.messages.set_error(error);
-            vec![]
-        }
         Action::CloseConnectionError => connection::error::close_connection_error(state),
         Action::ToggleConnectionErrorDetails => {
             state.connection_error.toggle_details();
@@ -226,14 +222,6 @@ pub(in crate::update) fn route(state: &mut AppState, action: Action, now: Instan
         }
         Action::SettingsPreviousSection => {
             state.settings.switch_previous_section();
-            vec![]
-        }
-        Action::SettingsStartCustomBrowserEdit => {
-            state.settings.start_custom_browser_edit();
-            vec![]
-        }
-        Action::SettingsStopCustomBrowserEdit => {
-            state.settings.stop_custom_browser_edit();
             vec![]
         }
         Action::SettingsApply => modal::settings::settings_apply(state),

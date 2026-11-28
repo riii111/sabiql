@@ -97,7 +97,15 @@ impl MetadataProvider for DbAdapterRegistry {
         &self,
         endpoint: &ConnectionEndpoint,
     ) -> Result<TableSignatureSnapshot, DbOperationError> {
-        delegate!(self.fetch_table_signatures(endpoint))
+        match endpoint {
+            ConnectionEndpoint::PostgreSQL(config) => {
+                self.postgres.fetch_table_signatures(config).await
+            }
+            ConnectionEndpoint::MySQL(config) => self.mysql.fetch_table_signatures(config).await,
+            ConnectionEndpoint::SQLite(_) => Err(DbOperationError::UnsupportedOperation(
+                "ER diagrams are not supported for SQLite".to_string(),
+            )),
+        }
     }
 }
 
@@ -288,13 +296,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sqlite_table_signatures_are_dispatched_to_sqlite_adapter() {
+    async fn sqlite_table_signatures_are_unsupported() {
         let (_dir, endpoint) = make_sqlite_endpoint("CREATE TABLE users(id INTEGER PRIMARY KEY);");
         let registry = DbAdapterRegistry::new();
-
-        let signatures = registry.fetch_table_signatures(&endpoint).await.unwrap();
-
-        assert_eq!(signatures.signatures[0].qualified_name(), "main.users");
+        assert!(matches!(
+            registry.fetch_table_signatures(&endpoint).await,
+            Err(DbOperationError::UnsupportedOperation(_))
+        ));
     }
 
     #[tokio::test]

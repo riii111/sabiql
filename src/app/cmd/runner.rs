@@ -19,10 +19,9 @@ use crate::cmd::sqlite_diagnostics;
 use crate::cmd::utility as cmd_utility;
 use crate::model::app_state::AppState;
 use crate::ports::outbound::{
-    CachedResultExporter, ClipboardWriter, ConfigWriter, ConnectionStore, ErDiagramExporter,
-    ErLogWriter, FolderOpener, MetadataProvider, MySqlConnectionProbe, PgServiceEntryReader,
-    QueryExecutor, QueryHistoryStore, Renderer, SettingsStore, SqliteDiagnosticsProvider,
-    SqlitePathValidator,
+    CachedResultExporter, ClipboardWriter, ConnectionStore, ErDiagramExporter, FolderOpener,
+    MetadataProvider, MySqlConnectionProbe, PgServiceEntryReader, QueryExecutor, QueryHistoryStore,
+    Renderer, SettingsStore, SqliteDiagnosticsProvider, SqlitePathValidator,
 };
 use crate::update::action::{Action, QueryContext};
 
@@ -43,8 +42,6 @@ pub struct QueryDeps {
 
 pub struct ErDeps {
     pub er_exporter: Arc<dyn ErDiagramExporter>,
-    pub config_writer: Arc<dyn ConfigWriter>,
-    pub er_log_writer: Arc<dyn ErLogWriter>,
 }
 
 pub struct UtilityDeps {
@@ -423,36 +420,16 @@ impl EffectRunner {
                 tables,
                 filename,
             } => {
-                let cache_dir = match self.er.config_writer.get_cache_dir(&project_name) {
-                    Ok(cache_dir) => cache_dir,
-                    Err(error) => {
-                        self.spawn_report(async move {
-                            Action::ErDiagramOpened {
-                                run_id,
-                                outcome: Err(error.to_string()),
-                            }
-                        });
-                        return Ok(());
-                    }
-                };
                 let request = ErDiagramRequest {
                     run_id,
                     total_tables,
                     tables,
-                    cache_dir,
+                    project_name,
                     filename,
-                    browser: state.settings.saved_er_browser().map(str::to_string),
                 };
                 self.spawn_report(cmd_er_task::generate_er_diagram(
                     Arc::clone(&self.er.er_exporter),
                     request,
-                ));
-            }
-            Effect::WriteErFailureLog { failed_tables } => {
-                self.spawn_report(cmd_er::write_failure_log(
-                    Arc::clone(&self.er.er_log_writer),
-                    self.er.config_writer.get_cache_dir(state.project_name()),
-                    failed_tables,
                 ));
             }
             Effect::SmartErRefresh { endpoint, run_id } => {
@@ -567,16 +544,21 @@ mod tests {
     mod generate_er_diagram {
         use super::*;
         use crate::domain::ConnectionId;
+        use crate::domain::ErTableInfo;
         use crate::model::er_state::ErStatus;
-        use crate::ports::outbound::ConfigWriterError;
+        use crate::ports::outbound::ErExportResult;
         use crate::update::reducer;
         use std::path::PathBuf;
         use std::time::Duration;
 
-        struct FailingConfigWriter;
-
-        impl ConfigWriter for FailingConfigWriter {
-            fn get_cache_dir(&self, _project_name: &str) -> Result<PathBuf, ConfigWriterError> {
+        struct FailingExporter;
+        impl ErDiagramExporter for FailingExporter {
+            fn generate_and_export(
+                &self,
+                _tables: &[ErTableInfo],
+                _filename: &str,
+                _project_name: &str,
+            ) -> ErExportResult<PathBuf> {
                 Err(
                     std::io::Error::new(std::io::ErrorKind::PermissionDenied, "cache denied")
                         .into(),
@@ -593,7 +575,7 @@ mod tests {
                 Arc::new(MockConnectionStore::new()),
                 tx,
             );
-            runner.er.config_writer = Arc::new(FailingConfigWriter);
+            runner.er.er_exporter = Arc::new(FailingExporter);
             let mut state = AppState::new("test".to_string());
             state.session.activate_connection(
                 &ConnectionId::new(),
