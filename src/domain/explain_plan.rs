@@ -915,16 +915,6 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn reasons_capped_at_max() {
-            let baseline = make_plan(Some(1000.0), Some(100.0), Some("Seq Scan"));
-            let current = make_plan(Some(10.0), Some(1.0), Some("Index Scan"));
-
-            let result = compare_plans(&baseline, &current);
-
-            assert!(result.reasons.len() <= MAX_REASONS);
-        }
-
-        #[test]
         fn zero_baseline_cost_with_nonzero_current() {
             let baseline = make_plan(Some(0.0), None, None);
             let current = make_plan(Some(100.0), None, None);

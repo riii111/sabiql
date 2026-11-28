@@ -198,7 +198,7 @@ mod tests {
         }
 
         #[test]
-        fn rejects_prefixed_explain_and_analyze() {
+        fn rejects_create_table() {
             assert_eq!(
                 build_sqlite_explain_query_plan_sql("CREATE TABLE users(id INTEGER)"),
                 None
