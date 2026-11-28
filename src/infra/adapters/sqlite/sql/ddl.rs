@@ -80,8 +80,8 @@ fn terminate_ddl_statement(ddl: &mut String) {
 
 #[cfg(test)]
 mod tests {
-    use crate::adapters::test_support;
     use crate::domain::{Column, ColumnAttributes, TriggerEvent, TriggerTiming};
+    use sabiql_domain::test_support::table;
 
     use super::*;
 
@@ -106,7 +106,7 @@ mod tests {
             name: "test_table".to_string(),
             columns,
             primary_key,
-            ..test_support::minimal_table("", "")
+            ..table::minimal("", "")
         }
     }
 

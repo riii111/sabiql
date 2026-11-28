@@ -20,37 +20,37 @@ pub(in crate::update) fn scroll(
     direction: ScrollDirection,
     amount: ScrollAmount,
     services: &AppServices,
-) -> Vec<Effect> {
+) {
     match target {
         ScrollTarget::Result => browse::result::scroll::scroll_result(state, direction, amount),
         ScrollTarget::Inspector => {
-            browse::navigation::inspector::scroll_inspector(state, direction, amount, services)
+            browse::navigation::inspector::scroll_inspector(state, direction, amount, services);
         }
         ScrollTarget::Help => modal::help::scroll_help(state, direction, amount),
         ScrollTarget::ConnectionError => {
-            connection::error::scroll_connection_error(state, direction, amount)
+            connection::error::scroll_connection_error(state, direction, amount);
         }
         ScrollTarget::ConfirmDialog => {
-            modal::confirm_dialog::scroll_confirm_dialog(state, direction, amount)
+            modal::confirm_dialog::scroll_confirm_dialog(state, direction, amount);
         }
         ScrollTarget::ExplainPlan => explain::scroll::scroll_explain_plan(state, direction, amount),
         ScrollTarget::ExplainCompare => {
-            explain::scroll::scroll_explain_compare(state, direction, amount)
+            explain::scroll::scroll_explain_compare(state, direction, amount);
         }
         ScrollTarget::ExplainConfirm => {
-            explain::scroll::scroll_explain_confirm(state, direction, amount)
+            explain::scroll::scroll_explain_confirm(state, direction, amount);
         }
         ScrollTarget::Explorer => {
-            browse::navigation::explorer::scroll_explorer(state, direction, amount)
+            browse::navigation::explorer::scroll_explorer(state, direction, amount);
         }
         ScrollTarget::CellDetail => {
-            browse::result::cell_detail::scroll_cell_detail(state, direction, amount)
+            browse::result::cell_detail::scroll_cell_detail(state, direction, amount);
         }
         ScrollTarget::SqliteDiagnostics => {
-            modal::sqlite_diagnostics::scroll_sqlite_diagnostics(state, direction, amount)
+            modal::sqlite_diagnostics::scroll_sqlite_diagnostics(state, direction, amount);
         }
         ScrollTarget::RowDetail => {
-            browse::result::row_detail::scroll_row_detail(state, direction, amount)
+            browse::result::row_detail::scroll_row_detail(state, direction, amount);
         }
     }
 }

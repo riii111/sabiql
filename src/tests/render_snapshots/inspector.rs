@@ -522,7 +522,7 @@ fn inspector_info_tab_for_sqlite_shows_view_kind() {
     table.owner = None;
     table.comment = None;
     table.row_count_estimate = Some(2);
-    table.kind_info = fixtures::view_kind_info();
+    table.kind_info = table::view_kind_info();
     let _ = state.session.set_table_detail(table, 0);
     state.session.activate_connection(
         &ConnectionId::from_string("sqlite-test"),

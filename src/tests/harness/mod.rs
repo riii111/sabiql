@@ -1,4 +1,3 @@
-pub mod endpoint;
 pub mod fixtures;
 pub mod mysql;
 pub mod postgres;
@@ -19,6 +18,7 @@ use sabiql_app::services::AppServices;
 use sabiql_app::update::action::{Action, ModalKind};
 use sabiql_app::update::reducer::reduce;
 use sabiql_domain::ConnectionId;
+use sabiql_domain::test_support::endpoint;
 use sabiql_ui::shell::layout::MainLayout;
 use sabiql_ui::theme::{ThemePalette, palette_for};
 

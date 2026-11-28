@@ -79,7 +79,7 @@ pub(in crate::update) fn scroll_result(
     state: &mut AppState,
     direction: ScrollDirection,
     amount: ScrollAmount,
-) -> Vec<Effect> {
+) {
     match (direction, amount) {
         (ScrollDirection::Up, ScrollAmount::Line) => {
             let new_row = state
@@ -177,7 +177,6 @@ pub(in crate::update) fn scroll_result(
         }
         _ => debug_assert!(false, "unsupported Result scroll: {direction:?} {amount:?}"),
     }
-    vec![]
 }
 
 // Scroll-to-cursor (zz/zt/zb): only meaningful with an active cell

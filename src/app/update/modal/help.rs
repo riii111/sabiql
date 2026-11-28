@@ -80,7 +80,7 @@ pub(in crate::update) fn scroll_help(
     state: &mut AppState,
     direction: ScrollDirection,
     amount: ScrollAmount,
-) -> Vec<Effect> {
+) {
     match amount {
         ScrollAmount::Line
             if matches!(direction, ScrollDirection::Left | ScrollDirection::Right) =>
@@ -131,5 +131,4 @@ pub(in crate::update) fn scroll_help(
         ScrollAmount::ViewportTop | ScrollAmount::ViewportMiddle | ScrollAmount::ViewportBottom => {
         }
     }
-    vec![]
 }

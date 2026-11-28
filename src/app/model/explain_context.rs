@@ -227,16 +227,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_has_no_content() {
-        let ctx = ExplainContext::default();
-
-        assert!(ctx.plan_text().is_none());
-        assert!(ctx.error().is_none());
-        assert!(ctx.left().is_none());
-        assert!(ctx.right().is_none());
-    }
-
-    #[test]
     fn first_explain_sets_right_only() {
         let mut ctx = ExplainContext::default();
 

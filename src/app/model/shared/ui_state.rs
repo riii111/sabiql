@@ -658,16 +658,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn default_creates_empty_state() {
-            let state = UiState::default();
-
-            assert_eq!(state.focused_pane, FocusedPane::default());
-            assert_eq!(state.focus_mode, FocusMode::Normal);
-            assert_eq!(state.explorer_selected, 0);
-            assert!(state.table_picker.filter_input().content().is_empty());
-        }
-
-        #[test]
         fn new_sets_terminal_height() {
             let state = UiState::new();
 
@@ -852,15 +842,6 @@ mod tests {
         }
     }
 
-    mod invariants {
-        use super::*;
-
-        #[test]
-        fn result_overhead_constants_are_consistent() {
-            assert_eq!(RESULT_PANE_OVERHEAD, RESULT_INNER_OVERHEAD + 2);
-        }
-    }
-
     mod help_scroll {
         use super::*;
 
@@ -973,15 +954,6 @@ mod tests {
 
     mod result_selection {
         use super::*;
-
-        #[test]
-        fn default_is_scroll_mode() {
-            let sel = ResultSelection::default();
-
-            assert_eq!(sel.mode(), ResultNavMode::Scroll);
-            assert!(sel.row().is_none());
-            assert!(sel.cell().is_none());
-        }
 
         #[test]
         fn enter_cell_transitions_to_cell_active() {

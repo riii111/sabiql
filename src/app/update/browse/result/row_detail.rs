@@ -60,7 +60,7 @@ pub(in crate::update) fn scroll_row_detail(
     state: &mut AppState,
     direction: ScrollDirection,
     amount: ScrollAmount,
-) -> Vec<Effect> {
+) {
     match (direction, amount) {
         (ScrollDirection::Up, ScrollAmount::Line) => {
             state.row_detail.scroll_up_by(1);
@@ -101,7 +101,6 @@ pub(in crate::update) fn scroll_row_detail(
             "unsupported RowDetail scroll: {direction:?} {amount:?}"
         ),
     }
-    vec![]
 }
 
 #[cfg(test)]

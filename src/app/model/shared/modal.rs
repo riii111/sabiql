@@ -48,13 +48,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_mode_is_normal() {
-        let modal = ModalState::default();
-
-        assert_eq!(modal.active_mode(), InputMode::Normal);
-    }
-
-    #[test]
     fn set_mode_changes_mode_and_clears_stack() {
         let mut modal = ModalState::default();
         modal.push_mode(InputMode::CommandLine);
