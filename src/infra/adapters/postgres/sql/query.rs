@@ -302,23 +302,10 @@ impl PostgresAdapter {
             FROM (
                 SELECT
                     tg.tgname AS name,
-                    CASE
-                        WHEN (tg.tgtype & 2) != 0 THEN 'BEFORE'
-                        WHEN (tg.tgtype & 2) = 0 AND (tg.tgtype & 64) != 0 THEN 'INSTEAD OF'
-                        ELSE 'AFTER'
-                    END AS timing,
-                    array_remove(ARRAY[
-                        CASE WHEN (tg.tgtype & 4) != 0 THEN 'INSERT' END,
-                        CASE WHEN (tg.tgtype & 8) != 0 THEN 'DELETE' END,
-                        CASE WHEN (tg.tgtype & 16) != 0 THEN 'UPDATE' END,
-                        CASE WHEN (tg.tgtype & 32) != 0 THEN 'TRUNCATE' END
-                    ], NULL) AS events,
-                    p.proname AS definition,
-                    CASE WHEN p.prosecdef THEN 'DEFINER' ELSE 'INVOKER' END AS security_context
+                    pg_get_triggerdef(tg.oid) AS definition
                 FROM pg_trigger tg
                 JOIN pg_class c ON c.oid = tg.tgrelid
                 JOIN pg_namespace n ON n.oid = c.relnamespace
-                JOIN pg_proc p ON p.oid = tg.tgfoid
                 WHERE NOT tg.tgisinternal
                   AND n.nspname = {}
                   AND c.relname = {}

@@ -71,10 +71,14 @@ BEFORE UPDATE ON mysql_cli_fixture
 FOR EACH ROW
 SET NEW.empty_text = NEW.empty_text;
 
+DELIMITER //
 CREATE DEFINER='sabiql'@'%' TRIGGER a_mysql_cli_fixture_audit
 BEFORE UPDATE ON mysql_cli_fixture
 FOR EACH ROW FOLLOWS mysql_cli_fixture_audit
-SET NEW.empty_text = NEW.empty_text;
+BEGIN
+    SET NEW.empty_text = NEW.empty_text;
+END//
+DELIMITER ;
 
 CREATE TABLE mysql_preview_composite (
     first_key INT NOT NULL,

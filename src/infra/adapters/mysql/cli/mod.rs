@@ -20,6 +20,7 @@ pub(super) fn sanitize_mysql_command_environment(command: &mut Command) {
         .env_remove("LIBMYSQL_ENABLE_CLEARTEXT_PLUGIN");
 }
 
+pub(super) use error::is_mysql_missing_trigger;
 pub(super) use export::export_mysql_csv_to_file;
 pub(super) use policy::{
     validate_mysql_export_query, validate_mysql_multi_query,
