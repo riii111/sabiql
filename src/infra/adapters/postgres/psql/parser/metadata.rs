@@ -111,7 +111,7 @@ struct RawTrigger {
 
 impl From<RawColumn> for Column {
     fn from(c: RawColumn) -> Self {
-        Column {
+        Self {
             name: c.name,
             data_type: c.data_type,
             default: c.default,
@@ -136,7 +136,7 @@ impl From<RawIndex> for Index {
             attributes = attributes | IndexAttributes::EXPRESSION;
         }
 
-        Index {
+        Self {
             name: i.name,
             columns: i.columns,
             attributes,
@@ -161,7 +161,7 @@ impl TryFrom<RawForeignKey> for ForeignKey {
             .on_update
             .parse::<FkAction>()
             .map_err(|error| MetadataParseError::ForeignKeyAction(error.to_string()))?;
-        Ok(ForeignKey {
+        Ok(Self {
             name: fk.name,
             from_schema: fk.from_schema,
             from_table: fk.from_table,
@@ -199,7 +199,7 @@ impl TryFrom<RawRls> for RlsInfo {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(RlsInfo {
+        Ok(Self {
             enabled: raw.enabled,
             force: raw.force,
             policies,

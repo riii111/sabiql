@@ -252,11 +252,13 @@ mod tests {
             r#"
             CREATE SCHEMA "{schema}";
             CREATE TABLE {} (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+            CREATE POLICY public_read ON {} FOR SELECT TO PUBLIC USING (true);
             CREATE TABLE {} (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
             CREATE TABLE {} ();
             CREATE TABLE {} (id INTEGER);
             CREATE TABLE {} (id INTEGER);
             "#,
+            qualified("existing_full"),
             qualified("existing_full"),
             qualified("existing_light"),
             qualified("zero_columns"),
@@ -277,6 +279,11 @@ mod tests {
                         .map_err(|error| format!("full existing fetch failed: {error}"))?;
                     if full.columns.len() != 2 || full.owner.is_none() || full.rls.is_none() {
                         return Err(format!("unexpected full existing table: {full:?}"));
+                    }
+
+                    let policies = &full.rls.as_ref().expect("RLS metadata").policies;
+                    if policies.len() != 1 || policies[0].name != "public_read" || !policies[0].roles.is_empty() {
+                        return Err(format!("unexpected PUBLIC policy: {policies:?}"));
                     }
 
                     let light = adapter
