@@ -541,7 +541,6 @@ mod tests {
         ConfirmPreviewLayout, InspectorLayout, RowDetailLayout,
     };
     use crate::model::shared::viewport::ViewportPlan;
-    use crate::model::table_prefetch::FailedPrefetchEntry;
     use crate::update::action::Action;
     use crate::update::reducer::reduce;
     use rstest::rstest;
@@ -1241,108 +1240,19 @@ mod tests {
         }
     }
 
-    mod table_prefetch_lifecycle {
-        use super::*;
-
-        #[test]
-        fn prefetch_queue_starts_empty() {
-            let state = make_state();
-
-            assert!(!state.table_prefetch.has_pending_prefetch());
-            assert!(state.table_prefetch.active_prefetch_run_id().is_none());
-        }
-
-        #[test]
-        fn prefetch_queue_is_fifo() {
-            let mut state = make_state();
-            state
-                .table_prefetch
-                .queue_table_prefetch("public.users".to_string());
-            state
-                .table_prefetch
-                .queue_table_prefetch("public.orders".to_string());
-
-            let first = state.table_prefetch.take_next_prefetch();
-            let second = state.table_prefetch.take_next_prefetch();
-
-            assert_eq!(first, Some("public.users".to_string()));
-            assert_eq!(second, Some("public.orders".to_string()));
-        }
-
-        #[test]
-        fn prefetching_tables_track_in_flight() {
-            let mut state = make_state();
-
-            state
-                .table_prefetch
-                .start_table_prefetch("public.users".to_string());
-
-            assert!(state.table_prefetch.is_table_prefetching("public.users"));
-            assert!(!state.table_prefetch.is_table_prefetching("public.orders"));
-        }
-
-        #[test]
-        fn failed_prefetch_tables_store_error_and_time() {
-            let mut state = make_state();
-            let now = Instant::now();
-
-            state.table_prefetch.fail_table_prefetch(
-                "public.users".to_string(),
-                FailedPrefetchEntry {
-                    failed_at: now,
-                    error: "connection timeout".to_string(),
-                    retry_count: 0,
-                },
-            );
-
-            let entry = state
-                .table_prefetch
-                .failed_prefetch("public.users")
-                .unwrap();
-            assert_eq!(entry.failed_at, now);
-            assert_eq!(entry.error, "connection timeout");
-        }
-    }
-
     mod reload_metadata_reset {
         use super::*;
 
         fn prepare_state_for_reload() -> AppState {
             let mut state = make_state();
             activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let _ = state.table_prefetch.begin_er_prefetch();
+            let _ = state
+                .table_prefetch
+                .begin(vec!["public.users".into(), "public.orders".into()], true);
             state
                 .table_prefetch
-                .queue_table_prefetch("public.users".to_string());
+                .fail("public.failed".into(), "timeout".into());
             state
-                .table_prefetch
-                .start_table_prefetch("public.orders".to_string());
-            state.table_prefetch.fail_table_prefetch(
-                "public.failed".to_string(),
-                FailedPrefetchEntry {
-                    failed_at: Instant::now(),
-                    error: "timeout".to_string(),
-                    retry_count: 0,
-                },
-            );
-            state
-        }
-
-        #[test]
-        fn resets_prefetch_state() {
-            let mut state = prepare_state_for_reload();
-
-            reduce(&mut state, Action::ReloadMetadata, Instant::now());
-
-            assert!(state.table_prefetch.active_prefetch_run_id().is_none());
-            assert!(!state.table_prefetch.has_pending_prefetch());
-            assert_eq!(state.table_prefetch.prefetch_in_flight_count(), 0);
-            assert!(
-                state
-                    .table_prefetch
-                    .failed_prefetch("public.failed")
-                    .is_none()
-            );
         }
 
         #[test]

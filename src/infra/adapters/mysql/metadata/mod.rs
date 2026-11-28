@@ -112,6 +112,19 @@ impl MySqlAdapter {
         table_detail::fetch_table_columns_and_fks(config, schema, table).await
     }
 
+    pub async fn fetch_table_columns_and_fks_batch(
+        &self,
+        config: &MySqlConnectionConfig,
+        tables: &[(String, String)],
+    ) -> Result<Vec<Table>, DbOperationError> {
+        let requested: std::collections::HashSet<_> = tables.iter().collect();
+        let details = signature::fetch_table_details(config).await?;
+        Ok(details
+            .into_iter()
+            .filter(|table| requested.contains(&(table.schema.clone(), table.name.clone())))
+            .collect())
+    }
+
     pub async fn fetch_table_signatures(
         &self,
         config: &MySqlConnectionConfig,

@@ -255,17 +255,12 @@ pub(in crate::update) fn route(state: &mut AppState, action: Action, now: Instan
         } => browse::metadata::table_detail::table_detail_loaded(
             state, endpoint, run_id, outcome, generation,
         ),
-        Action::TableDetailCached {
+        Action::TableDetailsCached {
             endpoint,
             run_id,
-            schema,
-            table,
             outcome,
-        } => browse::metadata::prefetch::table_detail_cached(
-            state, endpoint, run_id, schema, table, outcome, now,
-        ),
-        Action::ProcessPrefetchQueue { run_id } => {
-            browse::metadata::prefetch::process_prefetch_queue(state, run_id, now)
+        } => {
+            browse::metadata::prefetch::table_details_cached(state, endpoint, run_id, outcome, now)
         }
         Action::InspectorNextTab => {
             browse::navigation::inspector::cycle_inspector_tab(state, ListMotion::Next)
@@ -523,6 +518,7 @@ mod tests {
     use super::*;
     use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::browse::session::TableDetailState;
+    use crate::model::er_state::ErStatus;
     use crate::model::shared::key_sequence::Prefix;
     use crate::model::shared::ui_state::UiState;
     use crate::ports::outbound::DbOperationError;
@@ -530,7 +526,7 @@ mod tests {
     use crate::update::action::CopyTarget;
     use crate::update::action::ModalKind;
     use crate::update::action::QueryContext;
-    use crate::update::action::{ConnectionSaveError, ConnectionTarget, SmartErRefreshError};
+    use crate::update::action::{ConnectionSaveError, ConnectionTarget};
     use crate::update::action::{InputTarget, SelectMotion};
     use crate::update::test_fixtures;
     fn create_test_state() -> AppState {
@@ -713,7 +709,6 @@ mod tests {
     mod feature_policy_guard {
         use super::*;
         use crate::domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
-        use crate::model::er_state::ErStatus;
         use crate::model::shared::flash_timer::FlashId;
         use crate::update::action::ExplainPlan;
         use crate::update::action::{ErDiagramInfo, ScrollAmount, ScrollDirection, ScrollTarget};
@@ -1807,7 +1802,6 @@ mod tests {
     mod er_diagram {
         use super::*;
         use crate::domain::DatabaseMetadata;
-        use crate::model::er_state::ErStatus;
 
         #[test]
         fn er_open_while_rendering_returns_no_effects() {
@@ -1824,45 +1818,6 @@ mod tests {
             assert!(effects.is_empty());
             assert_eq!(state.er_preparation.status(), ErStatus::Rendering);
             assert!(state.messages.last_error.is_none());
-        }
-
-        #[test]
-        fn always_emits_smart_refresh_even_with_pending_tables() {
-            let mut state = create_test_state();
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            state
-                .session
-                .set_metadata(Some(Arc::new(DatabaseMetadata::new("test".to_string()))));
-            let _ = state.table_prefetch.begin_er_prefetch();
-            state
-                .table_prefetch
-                .queue_table_prefetch("public.users".to_string());
-            let now = Instant::now();
-
-            let effects = er::diagram::er_open_diagram(&mut state, now);
-
-            assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
-            assert!(state.table_prefetch.active_prefetch_run_id().is_none());
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
-        }
-
-        #[test]
-        fn active_prefetch_run_emits_smart_refresh() {
-            let mut state = create_test_state();
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            state
-                .session
-                .set_metadata(Some(Arc::new(DatabaseMetadata::new("test".to_string()))));
-            let _ = state.table_prefetch.begin_er_prefetch();
-            let now = Instant::now();
-
-            let effects = er::diagram::er_open_diagram(&mut state, now);
-
-            assert!(state.table_prefetch.active_prefetch_run_id().is_none());
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
-            assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
         }
 
         #[test]
@@ -1885,19 +1840,6 @@ mod tests {
         }
 
         #[test]
-        fn no_metadata_returns_error() {
-            let mut state = create_test_state();
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let _ = state.table_prefetch.begin_er_prefetch();
-            let now = Instant::now();
-
-            let effects = er::diagram::er_open_diagram(&mut state, now);
-
-            assert!(state.messages.last_error.is_some());
-            assert!(effects.is_empty());
-        }
-
-        #[test]
         fn metadata_failed_resets_er_waiting_to_idle() {
             let mut state = create_test_state();
             let _ = state.er_preparation.start_waiting_run();
@@ -1914,76 +1856,6 @@ mod tests {
             reduce(&mut state, action, now);
 
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
-        }
-    }
-
-    mod table_detail_cached {
-        use crate::test_support;
-
-        use super::*;
-        use crate::domain::Table;
-
-        fn make_test_table() -> Box<Table> {
-            Box::new(Table {
-                schema: "public".to_string(),
-                name: "users".to_string(),
-                ..test_support::table::minimal("", "")
-            })
-        }
-
-        #[test]
-        fn emits_cache_effect() {
-            let mut state = create_test_state();
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let run_id = state.table_prefetch.begin_er_prefetch();
-            state
-                .table_prefetch
-                .start_table_prefetch("public.users".to_string());
-            let now = Instant::now();
-
-            reduce(
-                &mut state,
-                Action::TableDetailCached {
-                    endpoint: endpoint::postgres("postgres://localhost/test"),
-                    run_id,
-                    schema: "public".to_string(),
-                    table: "users".to_string(),
-                    outcome: Ok(make_test_table()),
-                },
-                now,
-            );
-
-            assert!(state.table_detail_cache.contains("public.users"));
-            assert!(!state.table_prefetch.is_table_prefetching("public.users"));
-        }
-
-        #[test]
-        fn with_queue_returns_process_effect() {
-            let mut state = create_test_state();
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let run_id = state.table_prefetch.begin_er_prefetch();
-            state
-                .table_prefetch
-                .queue_table_prefetch("public.orders".to_string());
-            let now = Instant::now();
-
-            let effects = reduce(
-                &mut state,
-                Action::TableDetailCached {
-                    endpoint: endpoint::postgres("postgres://localhost/test"),
-                    run_id,
-                    schema: "public".to_string(),
-                    table: "users".to_string(),
-                    outcome: Ok(make_test_table()),
-                },
-                now,
-            );
-
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::SchedulePrefetchQueueProcessing { .. }))
-            );
         }
     }
 
@@ -2789,9 +2661,6 @@ mod tests {
     mod er_table_picker {
         use super::*;
         use crate::domain::DatabaseMetadata;
-        use crate::model::er_state::ErStatus;
-        use crate::model::table_prefetch::FailedPrefetchEntry;
-        use crate::test_support::table as crate_table_fixture;
 
         fn state_with_metadata() -> AppState {
             let mut state = create_test_state();
@@ -2956,130 +2825,6 @@ mod tests {
             assert_eq!(state.input_mode(), InputMode::ErTablePicker);
             assert!(state.messages.last_error.is_some());
             assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn target_tables_survive_er_open() {
-            let mut state = state_with_metadata();
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let _ = state.table_prefetch.begin_er_prefetch();
-            state
-                .er_preparation
-                .set_targets(vec!["public.users".to_string()]);
-            let now = Instant::now();
-
-            let effects = er::diagram::er_open_diagram(&mut state, now);
-
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
-            assert_eq!(
-                state.er_preparation.target_tables(),
-                vec!["public.users".to_string()]
-            );
-        }
-
-        #[test]
-        fn failed_refresh_prefetches_source_and_selected_tables() {
-            let mut state = state_with_metadata();
-            state
-                .er_preparation
-                .set_targets(vec!["public.users".to_string()]);
-            let run_id = state.er_preparation.start_waiting_run();
-
-            let effects = reduce(
-                &mut state,
-                Action::SmartErRefreshFetched {
-                    endpoint: endpoint::postgres("postgres://localhost/test"),
-                    run_id,
-                    outcome: Err(SmartErRefreshError {
-                        error: DbOperationError::Timeout("timed out".to_string()),
-                        new_metadata: None,
-                    }),
-                },
-                Instant::now(),
-            );
-
-            assert!(
-                effects
-                    .iter()
-                    .any(|effect| matches!(effect, Effect::SchedulePrefetchQueueProcessing { .. }))
-            );
-            assert!(state.table_prefetch.is_prefetch_queued("public.users"));
-            assert!(state.table_prefetch.is_prefetch_queued("public.posts"));
-            assert!(state.er_preparation.fk_expanded());
-        }
-
-        #[test]
-        fn prefetch_complete_generates_er_diagram() {
-            let mut state = state_with_metadata();
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let run_id = state.table_prefetch.begin_er_prefetch();
-            let _ = state.er_preparation.start_waiting_run();
-            state
-                .er_preparation
-                .begin_all_prefetch(["public.users".to_string()]);
-            state.er_preparation.mark_fk_expanded();
-            let now = Instant::now();
-
-            let effects = reduce(
-                &mut state,
-                Action::TableDetailCached {
-                    endpoint: endpoint::postgres("postgres://localhost/test"),
-                    run_id,
-                    schema: "public".to_string(),
-                    table: "users".to_string(),
-                    outcome: Ok(Box::new(crate_table_fixture::minimal("public", "users"))),
-                },
-                now,
-            );
-
-            assert_eq!(state.er_preparation.status(), ErStatus::Rendering);
-            assert!(state.table_detail_cache.contains("public.users"));
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::GenerateErDiagram { .. }))
-            );
-        }
-
-        #[test]
-        fn prefetch_complete_with_failures_does_not_auto_open() {
-            let mut state = state_with_metadata();
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let now = Instant::now();
-            let run_id = state.table_prefetch.begin_er_prefetch();
-            let _ = state.er_preparation.start_waiting_run();
-            state
-                .er_preparation
-                .begin_all_prefetch(["public.posts".to_string(), "public.users".to_string()]);
-            state.er_preparation.mark_fk_expanded();
-            state.table_prefetch.fail_table_prefetch(
-                "public.posts".to_string(),
-                FailedPrefetchEntry {
-                    failed_at: now,
-                    error: "timeout".to_string(),
-                    retry_count: 3,
-                },
-            );
-            let effects = reduce(
-                &mut state,
-                Action::TableDetailCached {
-                    endpoint: endpoint::postgres("postgres://localhost/test"),
-                    run_id,
-                    schema: "public".to_string(),
-                    table: "users".to_string(),
-                    outcome: Ok(Box::new(crate_table_fixture::minimal("public", "users"))),
-                },
-                now,
-            );
-
-            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
-            assert!(
-                !effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::GenerateErDiagram { .. }))
-            );
-            assert!(state.messages.last_error.is_some());
         }
     }
 

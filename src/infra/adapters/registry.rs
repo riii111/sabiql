@@ -85,6 +85,14 @@ impl MetadataProvider for DbAdapterRegistry {
         delegate!(self.fetch_table_columns_and_fks(endpoint, schema, table))
     }
 
+    async fn fetch_table_columns_and_fks_batch(
+        &self,
+        endpoint: &ConnectionEndpoint,
+        tables: &[(String, String)],
+    ) -> Result<Vec<Table>, DbOperationError> {
+        delegate!(self.fetch_table_columns_and_fks_batch(endpoint, tables))
+    }
+
     async fn fetch_table_signatures(
         &self,
         endpoint: &ConnectionEndpoint,

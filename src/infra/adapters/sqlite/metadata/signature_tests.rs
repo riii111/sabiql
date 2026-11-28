@@ -87,11 +87,13 @@ mod table_signatures {
         );
         let adapter = SqliteAdapter::new();
 
-        let snapshot = adapter.fetch_table_signatures(&dsn).await.unwrap();
+        let details = adapter
+            .fetch_table_columns_and_fks_batch(&dsn, &[("main".into(), "users".into())])
+            .await
+            .unwrap();
 
-        assert_eq!(snapshot.signatures.len(), 1);
-        assert_eq!(snapshot.prefetched_table_details.len(), 1);
-        let detail = &snapshot.prefetched_table_details[0];
+        assert_eq!(details.len(), 1);
+        let detail = &details[0];
         assert_eq!(detail.qualified_name(), "main.users");
         assert!(detail.row_count_estimate.is_none());
         assert_eq!(detail.indexes.len(), 2);
