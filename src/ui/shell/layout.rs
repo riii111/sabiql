@@ -245,28 +245,36 @@ impl MainLayout {
             );
         }
 
-        let [left_area, right_area] =
+        let [full_left, full_right] =
             Layout::horizontal([Constraint::Percentage(25), Constraint::Percentage(75)])
                 .areas(main_area);
-        let [inspector_area, _] =
+        let [full_inspector, full_result] =
             Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)])
-                .areas(right_area);
-        let explorer_width = collapsed_length(left_area.width, collapse);
-        let inspector_height = collapsed_length(inspector_area.height, collapse);
+                .areas(full_right);
+        let explorer_width = collapsed_length(full_left.width, collapse);
+        let inspector_height = collapsed_length(full_inspector.height, collapse);
 
         let (left_area, right_area) = split_columns(main_area, explorer_width);
         let (inspector_area, result_area) = split_rows(right_area, inspector_height);
 
-        let explorer = left_area.map(|area| ExplorerLayout {
-            pane_height: area.height,
-            content_width: Explorer::render(frame, area, state, now, theme),
-        });
-        let inspector = inspector_area.map(|area| InspectorLayout {
-            viewport_plan: Inspector::render(frame, area, state, services, now, theme),
-            pane_height: area.height,
-        });
+        let explorer_content_width =
+            left_area.map(|area| Explorer::render(frame, area, state, now, theme));
+        let inspector_plan =
+            inspector_area.map(|area| Inspector::render(frame, area, state, services, now, theme));
         let (result_plan, result_widths_cache) =
             ResultPane::render(frame, result_area, state, now, theme);
+        // Keys act on the layout being expanded to, so sizes come from the full panes and partial inspector plans are not stored.
+        let explorer = ExplorerLayout {
+            pane_height: full_left.height,
+            content_width: explorer_content_width
+                .unwrap_or_else(|| state.ui.explorer_content_width()),
+        };
+        let inspector = InspectorLayout {
+            viewport_plan: inspector_plan
+                .filter(|_| inspector_area == Some(full_inspector))
+                .unwrap_or_else(|| state.ui.inspector_viewport_plan().clone()),
+            pane_height: full_inspector.height,
+        };
 
         let drawn_panes = PaneAreas {
             explorer: left_area.map(pane_area),
@@ -274,12 +282,12 @@ impl MainLayout {
             result: Some(pane_area(result_area)),
         };
         let browse = BrowseLayout {
-            explorer: explorer.unwrap_or_default(),
-            inspector: inspector.unwrap_or_default(),
+            explorer,
+            inspector,
             result: ResultLayout {
                 viewport_plan: result_plan,
                 widths_cache: result_widths_cache,
-                pane_height: result_area.height,
+                pane_height: full_result.height,
             },
             // Panes collapsing into focus mode are on their way out, so the pointer cannot focus them.
             pane_areas: if state.ui.is_focus_mode() {

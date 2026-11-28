@@ -148,8 +148,8 @@ impl MotionState {
         if !self.enabled || from == to {
             return;
         }
-        // Repeated jumps retarget from what is on screen so held keys never snap back.
-        let from = self.scroll_offset(pane, from, now);
+        // Repeated jumps retarget from what was last drawn so held keys never snap back.
+        let from = self.scroll_offset(pane, from, self.last_frame.unwrap_or(now));
         self.scroll = Some(ScrollTween {
             pane,
             from,

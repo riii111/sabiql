@@ -10,7 +10,7 @@ use crate::update::action::{
 /// What was on screen before an action, so transitions start from it.
 pub(super) struct MotionProbe {
     focused_pane: FocusedPane,
-    animation_tick: bool,
+    animating_view: Option<(ScrolledPane, PaneView)>,
     focus_mode: bool,
     shows_overlay: bool,
     scroll_before: Option<(ScrolledPane, usize)>,
@@ -20,7 +20,10 @@ impl MotionProbe {
     pub(super) fn capture(state: &AppState, action: &Action) -> Self {
         Self {
             focused_pane: state.ui.focused_pane(),
-            animation_tick: matches!(action, Action::Render),
+            animating_view: state
+                .motion
+                .scrolling_pane()
+                .map(|pane| (pane, pane_view(state, pane))),
             focus_mode: state.ui.is_focus_mode(),
             shows_overlay: state.input_mode().shows_overlay(),
             scroll_before: animated_scroll_pane(action)
@@ -47,9 +50,15 @@ impl MotionProbe {
                 .motion
                 .begin_focus(self.focused_pane, state.ui.focused_pane(), now);
         }
-        // Other input during a scroll animation, such as a selection step, must show at once; a page jump on the same pane retargets instead.
-        let retargets = self.scroll_before.map(|(pane, _)| pane);
-        if !self.animation_tick && state.motion.scrolling_pane() != retargets {
+        // A change to the animating pane must show at once unless a new page jump retargets it; unrelated updates keep it running.
+        let retargets = self
+            .scroll_before
+            .filter(|&(pane, before)| scroll_offset(state, pane) != before)
+            .map(|(pane, _)| pane);
+        if let Some((pane, view)) = self.animating_view
+            && Some(pane) != retargets
+            && pane_view(state, pane) != view
+        {
             state.motion.cancel_scroll();
         }
         if let Some((pane, before)) = self.scroll_before {
@@ -87,6 +96,33 @@ fn animated_scroll_pane(action: &Action) -> Option<ScrolledPane> {
             Some(ScrolledPane::Explorer)
         }
         _ => None,
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct PaneView {
+    offset: usize,
+    selection: Option<(Option<usize>, Option<usize>)>,
+}
+
+fn pane_view(state: &AppState, pane: ScrolledPane) -> PaneView {
+    let selection = match pane {
+        ScrolledPane::Explorer => Some((Some(state.ui.explorer_selected()), None)),
+        ScrolledPane::Result => {
+            let selection = state.result_interaction.selection();
+            Some((selection.row(), selection.cell()))
+        }
+        ScrolledPane::Inspector
+        | ScrolledPane::Help
+        | ScrolledPane::ExplainPlan
+        | ScrolledPane::ExplainCompare
+        | ScrolledPane::SqliteDiagnostics
+        | ScrolledPane::CellDetail
+        | ScrolledPane::RowDetail => None,
+    };
+    PaneView {
+        offset: scroll_offset(state, pane),
+        selection,
     }
 }
 
@@ -279,6 +315,32 @@ mod tests {
     }
 
     #[test]
+    fn page_jump_retargets_from_last_drawn_offset() {
+        let mut state = motion_state();
+        let start = Instant::now();
+        let probe = MotionProbe::capture(&state, &page_down());
+        state.result_interaction.set_scroll_offset(20);
+        probe.record(&mut state, start);
+        let drawn_at = start + Duration::from_millis(30);
+        state.motion.note_frame(drawn_at);
+        let drawn = state
+            .motion
+            .scroll_offset(ScrolledPane::Result, 20, drawn_at);
+        let pressed_at = start + Duration::from_millis(90);
+
+        let probe = MotionProbe::capture(&state, &page_down());
+        state.result_interaction.set_scroll_offset(40);
+        probe.record(&mut state, pressed_at);
+
+        assert_eq!(
+            state
+                .motion
+                .scroll_offset(ScrolledPane::Result, 40, pressed_at),
+            drawn
+        );
+    }
+
+    #[test]
     fn line_scroll_after_page_jump_ends_the_animation() {
         let mut state = motion_state();
         let now = Instant::now();
@@ -313,12 +375,47 @@ mod tests {
         probe.record(&mut state, now);
 
         let probe = MotionProbe::capture(&state, &Action::Select(SelectMotion::Next));
+        state.ui.set_explorer_selection(Some(1));
+        state.ui.set_explorer_scroll_offset(20);
         probe.record(&mut state, now);
 
         assert_eq!(
             state.motion.scroll_offset(ScrolledPane::Explorer, 20, now),
             20
         );
+    }
+
+    #[test]
+    fn selection_jump_within_the_page_shows_at_once() {
+        let mut state = motion_state();
+        let now = Instant::now();
+        let probe = MotionProbe::capture(&state, &Action::Select(SelectMotion::FullPageDown));
+        state.ui.set_explorer_scroll_offset(20);
+        probe.record(&mut state, now);
+
+        let probe = MotionProbe::capture(&state, &Action::Select(SelectMotion::ViewportBottom));
+        state.ui.set_explorer_selection(Some(25));
+        state.ui.set_explorer_scroll_offset(20);
+        probe.record(&mut state, now);
+
+        assert_eq!(
+            state.motion.scroll_offset(ScrolledPane::Explorer, 20, now),
+            20
+        );
+    }
+
+    #[test]
+    fn background_update_keeps_the_scroll_animation() {
+        let mut state = motion_state();
+        let now = Instant::now();
+        let probe = MotionProbe::capture(&state, &page_down());
+        state.result_interaction.set_scroll_offset(20);
+        probe.record(&mut state, now);
+
+        let probe = MotionProbe::capture(&state, &Action::None);
+        probe.record(&mut state, now);
+
+        assert_eq!(state.motion.scroll_offset(ScrolledPane::Result, 20, now), 0);
     }
 
     #[test]
