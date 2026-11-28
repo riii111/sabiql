@@ -26,14 +26,14 @@ enum MetadataParseError {
 
 impl From<MetadataParseError> for DbOperationError {
     fn from(error: MetadataParseError) -> Self {
-        Self::MetadataParseFailed(error.to_string())
+        Self::QueryFailed(error.to_string())
     }
 }
 
 fn detail_json<'a>(raw: &'a str, operation: &str) -> Result<&'a str, DbOperationError> {
     let trimmed = raw.trim();
     if trimmed.is_empty() || trimmed == "null" {
-        return Err(DbOperationError::EmptyResponse(operation.to_string()));
+        return Err(DbOperationError::QueryFailed(operation.to_string()));
     }
     Ok(trimmed)
 }
@@ -374,14 +374,14 @@ mod tests {
         #[test]
         fn malformed_json_returns_invalid_json_error() {
             let result = PostgresAdapter::parse_table_signatures("{not valid}");
-            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
         }
 
         #[test]
         fn missing_field_returns_error() {
             let json = r#"[{"schema": "public", "name": "users"}]"#;
             let result = PostgresAdapter::parse_table_signatures(json);
-            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
         }
     }
 
@@ -402,21 +402,21 @@ mod tests {
         #[test]
         fn malformed_json_returns_invalid_json_error() {
             let result = PostgresAdapter::parse_schemas("{not valid json}");
-            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
         }
 
         #[test]
         fn missing_name_field_returns_error() {
             let json = r"[{}]";
             let result = PostgresAdapter::parse_schemas(json);
-            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
         }
 
         #[test]
         fn wrong_structure_returns_error() {
             let json = r#"["public", "auth"]"#;
             let result = PostgresAdapter::parse_schemas(json);
-            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
         }
 
         #[test]
@@ -531,10 +531,52 @@ mod tests {
         }
 
         #[test]
+        fn invalid_foreign_key_action_keeps_parse_details() {
+            let json = build_combined_json(
+                true,
+                "[]",
+                "[]",
+                r#"[{"name":"fk","from_schema":"public","from_table":"users","from_columns":["org_id"],"to_schema":"public","to_table":"orgs","to_columns":["id"],"on_delete":"x","on_update":"a"}]"#,
+                "null",
+                "[]",
+                "null",
+            );
+
+            let error = PostgresAdapter::parse_table_detail_combined(&json)
+                .err()
+                .expect("invalid foreign key action");
+            assert!(matches!(error, DbOperationError::QueryFailed(_)));
+            assert!(
+                error
+                    .masked_details()
+                    .contains("foreign key action parse failed")
+            );
+        }
+
+        #[test]
+        fn invalid_rls_command_keeps_parse_details() {
+            let json = build_combined_json(
+                true,
+                "[]",
+                "[]",
+                "[]",
+                r#"{"enabled":true,"force":false,"policies":[{"name":"p","permissive":true,"roles":[],"cmd":"x"}]}"#,
+                "[]",
+                "null",
+            );
+
+            let error = PostgresAdapter::parse_table_detail_combined(&json)
+                .err()
+                .expect("invalid RLS command");
+            assert!(matches!(error, DbOperationError::QueryFailed(_)));
+            assert!(error.masked_details().contains("RLS command parse failed"));
+        }
+
+        #[test]
         fn missing_key_returns_invalid_json_error() {
             let json = r#"{"exists": false, "columns": [], "indexes": [], "foreign_keys": [], "triggers": [], "table_info": null}"#;
             let result = PostgresAdapter::parse_table_detail_combined(json);
-            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
         }
 
         #[test]
@@ -542,19 +584,19 @@ mod tests {
             let json = build_combined_json(true, "[]", "[]", "[]", "null", "[]", "null")
                 .replace('}', r#","extra_key": null}"#);
             let result = PostgresAdapter::parse_table_detail_combined(&json);
-            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
         }
 
         #[test]
         fn empty_input_returns_error_for_combined_detail() {
             let result = PostgresAdapter::parse_table_detail_combined("");
-            assert!(matches!(result, Err(DbOperationError::EmptyResponse(_))));
+            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
         }
 
         #[test]
         fn null_input_returns_error_for_combined_detail() {
             let result = PostgresAdapter::parse_table_detail_combined("null");
-            assert!(matches!(result, Err(DbOperationError::EmptyResponse(_))));
+            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
         }
     }
 
@@ -614,26 +656,26 @@ mod tests {
         fn missing_key_returns_error() {
             let json = r#"{"exists": true, "columns": []}"#;
             let result = PostgresAdapter::parse_table_columns_and_fks(json);
-            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
         }
 
         #[test]
         fn unknown_key_returns_error() {
             let json = r#"{"exists": true, "columns": [], "foreign_keys": [], "extra": null}"#;
             let result = PostgresAdapter::parse_table_columns_and_fks(json);
-            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
         }
 
         #[test]
         fn empty_input_returns_error_for_columns_and_fks() {
             let result = PostgresAdapter::parse_table_columns_and_fks("");
-            assert!(matches!(result, Err(DbOperationError::EmptyResponse(_))));
+            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
         }
 
         #[test]
         fn null_input_returns_error_for_columns_and_fks() {
             let result = PostgresAdapter::parse_table_columns_and_fks("null");
-            assert!(matches!(result, Err(DbOperationError::EmptyResponse(_))));
+            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
         }
     }
 }

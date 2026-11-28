@@ -1,8 +1,4 @@
-use crate::domain::SqlitePathError;
-use crate::policy::password_masking::mask_password;
-use crate::ports::outbound::{
-    ConnectionFailureKind, DatabaseCli, DbOperationError, SqliteCompatibilityKind,
-};
+use crate::ports::outbound::DbOperationError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectionErrorInfo {
@@ -14,91 +10,13 @@ pub struct ConnectionErrorInfo {
 
 impl ConnectionErrorInfo {
     pub fn from_db_operation_error(error: &DbOperationError) -> Self {
-        let raw_details = error.raw_details().into_owned();
-        let (summary, hint, retryable) = match error {
-            DbOperationError::CommandNotFound {
-                command: DatabaseCli::Sqlite3,
-                ..
-            } => (
-                DatabaseCli::Sqlite3.not_found_summary(),
-                DatabaseCli::Sqlite3.not_found_hint(),
-                false,
-            ),
-            DbOperationError::CommandNotFound {
-                command: DatabaseCli::MySql,
-                ..
-            } => (
-                DatabaseCli::MySql.not_found_summary(),
-                DatabaseCli::MySql.not_found_hint(),
-                false,
-            ),
-            DbOperationError::CommandNotFound {
-                command: DatabaseCli::Psql,
-                ..
-            } => (
-                "Database CLI not found",
-                "Install the database CLI (e.g. psql) and add it to PATH",
-                false,
-            ),
-            DbOperationError::ConnectionLost(_) => (
-                "Connection lost during operation",
-                "Reconnect and retry the operation",
-                true,
-            ),
-            DbOperationError::Timeout(_) => {
-                ("Connection timed out", "Check network connectivity", true)
-            }
-            DbOperationError::PermissionDenied(_) => (
-                "Permission denied",
-                "Check the connected user's privileges",
-                false,
-            ),
-            DbOperationError::UnsupportedOperationWithKind { kind, .. } => {
-                let (summary, hint) = kind.presentation();
-                (summary, hint, false)
-            }
-            DbOperationError::UnsupportedOperationWithSqliteKind {
-                kind: SqliteCompatibilityKind::SafeMode,
-                ..
-            } => (
-                "SQLite 3.41.1 or later required",
-                "Upgrade sqlite3 to use SQLite safely",
-                false,
-            ),
-            DbOperationError::ConnectionFailedWithKind { kind, .. } => match kind {
-                ConnectionFailureKind::HostUnreachable => {
-                    ("Could not resolve host", "Check the hostname", true)
-                }
-                ConnectionFailureKind::Auth => (
-                    "Authentication failed",
-                    "Check username and password",
-                    false,
-                ),
-                ConnectionFailureKind::DatabaseNotFound => {
-                    ("Database does not exist", "Check database name", false)
-                }
-                ConnectionFailureKind::ConnectionRefused => (
-                    "Connection refused",
-                    "Check the host, port, and server availability",
-                    true,
-                ),
-                ConnectionFailureKind::TlsHandshake
-                | ConnectionFailureKind::TlsCaVerification
-                | ConnectionFailureKind::TlsHostnameVerification
-                | ConnectionFailureKind::TlsClientCertificateRejected
-                | ConnectionFailureKind::TlsCertificateVerification => {
-                    let (summary, hint) = kind.presentation();
-                    (summary, hint, false)
-                }
-            },
-            DbOperationError::SqlitePath(error) => sqlite_path_presentation(error),
-            _ => (
-                "Connection failed",
-                "See details for more information",
-                false,
-            ),
-        };
-        Self::from_presentation(summary, hint, retryable, raw_details)
+        let (summary, hint, retryable) = error.connection_presentation();
+        Self {
+            summary,
+            hint,
+            retryable,
+            masked_details: error.masked_details(),
+        }
     }
 
     pub fn summary(&self) -> &'static str {
@@ -116,63 +34,6 @@ impl ConnectionErrorInfo {
     pub const fn is_retryable(&self) -> bool {
         self.retryable
     }
-
-    fn from_presentation(
-        summary: &'static str,
-        hint: &'static str,
-        retryable: bool,
-        raw_stderr: impl Into<String>,
-    ) -> Self {
-        let raw_details = raw_stderr.into();
-        let masked_details = mask_password(&raw_details);
-
-        Self {
-            summary,
-            hint,
-            retryable,
-            masked_details,
-        }
-    }
-}
-
-fn sqlite_path_presentation(error: &SqlitePathError) -> (&'static str, &'static str, bool) {
-    match error {
-        SqlitePathError::FileNotFound(_) => (
-            "SQLite database file not found",
-            "Check the file path — sabiql does not create new database files",
-            false,
-        ),
-        SqlitePathError::IsDirectory(_) => (
-            "SQLite path is a directory",
-            "Enter a path to a database file, not a folder",
-            false,
-        ),
-        SqlitePathError::NotRegularFile(_) => (
-            "SQLite path is not a regular file",
-            "Enter a path to a regular database file, not a pipe or special file",
-            false,
-        ),
-        SqlitePathError::NotDatabaseFile(_) => (
-            "File is not a SQLite database",
-            "Choose a readable SQLite database file, or create one with sqlite3",
-            false,
-        ),
-        SqlitePathError::ReadAccessDenied(_) => (
-            "Cannot read SQLite database file",
-            "Check read permissions for the database file",
-            false,
-        ),
-        SqlitePathError::PathAccessDenied(_) => (
-            "Cannot access SQLite database file",
-            "Check file permissions for the database file",
-            false,
-        ),
-        SqlitePathError::Io(_) => (
-            "Cannot open SQLite database file",
-            "Check that the database file path is valid and accessible",
-            false,
-        ),
-    }
 }
 
 #[cfg(test)]
@@ -183,7 +44,10 @@ pub(crate) mod test_support;
 mod tests {
     use super::*;
     use crate::domain::SqlitePathError;
-    use crate::ports::outbound::UnsupportedOperationKind;
+    use crate::policy::password_masking::mask_password;
+    use crate::ports::outbound::{
+        ConnectionFailureKind, DatabaseCli, SqliteCompatibilityKind, UnsupportedOperationKind,
+    };
     use rstest::rstest;
 
     mod error_info {

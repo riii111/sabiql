@@ -129,7 +129,7 @@ fn table_details_from_metadata(
     for metadata in columns {
         let key = (metadata.schema.clone(), metadata.table.clone());
         if !known_tables.contains(&key) {
-            return Err(DbOperationError::MetadataParseFailed(format!(
+            return Err(DbOperationError::QueryFailed(format!(
                 "MySQL signature metadata references unknown table: {}.{}",
                 metadata.schema, metadata.table
             )));
@@ -148,7 +148,7 @@ fn table_details_from_metadata(
             foreign_key.from_table.clone(),
         );
         if !known_tables.contains(&key) {
-            return Err(DbOperationError::MetadataParseFailed(format!(
+            return Err(DbOperationError::QueryFailed(format!(
                 "MySQL signature metadata references unknown table: {}.{}",
                 foreign_key.from_schema, foreign_key.from_table
             )));
@@ -172,13 +172,13 @@ fn table_details_from_metadata(
     for table in tables {
         let key = (table.schema.clone(), table.name.clone());
         let mut columns = columns_by_table.remove(&key).ok_or_else(|| {
-            DbOperationError::MetadataParseFailed(format!(
+            DbOperationError::QueryFailed(format!(
                 "MySQL object has no column metadata: {}.{}",
                 table.schema, table.name
             ))
         })?;
         if columns.is_empty() {
-            return Err(DbOperationError::MetadataParseFailed(format!(
+            return Err(DbOperationError::QueryFailed(format!(
                 "MySQL object has no column metadata: {}.{}",
                 table.schema, table.name
             )));
@@ -282,7 +282,8 @@ mod tests {
         );
         assert!(matches!(
             parse_table_signatures(&malformed),
-            Err(DbOperationError::MetadataParseFailed(_))
+            Err(DbOperationError::QueryFailed(details))
+                if details.contains("unexpected MySQL metadata shape: table signature row")
         ));
     }
 
@@ -435,7 +436,7 @@ mod tests {
 
         assert!(matches!(
             error,
-            DbOperationError::MetadataParseFailed(message)
+            DbOperationError::QueryFailed(message)
                 if message.contains("no column metadata: app.users")
         ));
     }

@@ -21,7 +21,10 @@ pub(in crate::adapters::mysql) fn is_mysql_missing_trigger(error: &DbOperationEr
 }
 
 pub(super) fn is_mysql_connect_timeout_message(value: &str) -> bool {
-    let lowercase = value.to_ascii_lowercase();
+    is_mysql_connect_timeout(&value.to_ascii_lowercase())
+}
+
+fn is_mysql_connect_timeout(lowercase: &str) -> bool {
     lowercase.contains("can't connect to mysql server")
         && MYSQL_CONNECT_TIMEOUT_ERRNOS
             .iter()
@@ -97,82 +100,65 @@ pub(super) fn classify_mysql_query_failure_with_packet_limit(
     if error_code == Some(2020)
         && let Some(client_packet_limit_bytes) = client_packet_limit_bytes
     {
-        DbOperationError::QueryFailed(format!(
+        return DbOperationError::QueryFailed(format!(
             "MySQL protocol packet exceeds the {client_packet_limit_bytes}-byte client limit"
-        ))
-    } else if (error_code.is_none() || error_code == Some(2026))
+        ));
+    }
+    if matches!(error_code, None | Some(2026))
         && let Some(kind) = mysql_tls_failure_kind(&lower)
     {
-        DbOperationError::ConnectionFailedWithKind { kind, details }
-    } else if let Some(error_code) = error_code {
-        classify_mysql_server_error(error_code, &details, &lower)
-            .unwrap_or(DbOperationError::QueryFailed(details))
-    } else if is_mysql_connect_timeout_message(&details)
-        || lower.contains("connect timeout")
-        || lower.contains("connection timed out")
-    {
-        DbOperationError::Timeout(details)
-    } else if lower.contains("command denied") {
-        DbOperationError::PermissionDenied(details)
-    } else if lower.contains("unknown database") {
-        connection_failed_with_kind(ConnectionFailureKind::DatabaseNotFound, details)
-    } else if lower.contains("doesn't exist") || lower.contains("does not exist") {
-        DbOperationError::ObjectMissing(details)
-    } else if lower.contains("access denied") || lower.contains("authentication") {
-        connection_failed_with_kind(ConnectionFailureKind::Auth, details)
-    } else if lower.contains("lost connection") || lower.contains("server has gone away") {
-        DbOperationError::ConnectionLost(details)
-    } else if lower.contains("lock wait timeout") || lower.contains("deadlock found") {
-        DbOperationError::LockTimeout(details)
-    } else if lower.contains("foreign key constraint") {
-        DbOperationError::ForeignKeyViolation(details)
-    } else if lower.contains("duplicate entry") {
-        DbOperationError::UniqueViolation(details)
-    } else if lower.contains("query execution was interrupted")
-        || lower.contains("query was interrupted")
-    {
-        DbOperationError::Canceled(details)
-    } else {
-        DbOperationError::QueryFailed(details)
+        return connection_failed_with_kind(kind, details);
     }
-}
 
-fn classify_mysql_server_error(
-    error_code: u32,
-    details: &str,
-    lowercase_details: &str,
-) -> Option<DbOperationError> {
-    let error = |constructor: fn(String) -> DbOperationError| constructor(details.to_string());
-
-    Some(match error_code {
-        1022 | 1062 => error(DbOperationError::UniqueViolation),
-        1044 | 1142 | 1143 | 1227 => error(DbOperationError::PermissionDenied),
-        1045 => connection_failed_with_kind(ConnectionFailureKind::Auth, details.to_string()),
-        1049 => connection_failed_with_kind(
-            ConnectionFailureKind::DatabaseNotFound,
-            details.to_string(),
-        ),
-        1051 | 1054 | 1109 | 1146 => error(DbOperationError::ObjectMissing),
-        1205 | 1213 => error(DbOperationError::LockTimeout),
-        1215 | 1216 | 1217 | 1451 | 1452 => error(DbOperationError::ForeignKeyViolation),
-        1317 => error(DbOperationError::Canceled),
-        2006 | 2013 => error(DbOperationError::ConnectionLost),
-        2003 if is_mysql_connect_timeout_message(details)
-            || lowercase_details.contains("connect timeout")
-            || lowercase_details.contains("connection timed out") =>
+    let wording = |phrase| error_code.is_none() && lower.contains(phrase);
+    match error_code {
+        code if code == Some(3024)
+            || (matches!(code, None | Some(2003))
+                && (is_mysql_connect_timeout(&lower)
+                    || lower.contains("connect timeout")
+                    || lower.contains("connection timed out"))) =>
         {
-            DbOperationError::Timeout(details.to_string())
+            DbOperationError::Timeout(details)
         }
-        2003 => connection_failed_with_kind(
-            ConnectionFailureKind::ConnectionRefused,
-            details.to_string(),
-        ),
-        2005 => {
-            connection_failed_with_kind(ConnectionFailureKind::HostUnreachable, details.to_string())
+        code if matches!(code, Some(1044 | 1142 | 1143 | 1227)) || wording("command denied") => {
+            DbOperationError::PermissionDenied(details)
         }
-        3024 => error(DbOperationError::Timeout),
-        _ => return None,
-    })
+        code if code == Some(1049) || wording("unknown database") => {
+            connection_failed_with_kind(ConnectionFailureKind::DatabaseNotFound, details)
+        }
+        code if matches!(code, Some(1051 | 1054 | 1109 | 1146))
+            || wording("doesn't exist")
+            || wording("does not exist") =>
+        {
+            DbOperationError::ObjectMissing(details)
+        }
+        code if code == Some(1045) || wording("access denied") || wording("authentication") => {
+            connection_failed_with_kind(ConnectionFailureKind::Auth, details)
+        }
+        code if matches!(code, Some(2006 | 2013))
+            || wording("lost connection")
+            || wording("server has gone away") =>
+        {
+            DbOperationError::ConnectionLost(details)
+        }
+        code if matches!(code, Some(1205 | 1213))
+            || wording("lock wait timeout")
+            || wording("deadlock found") =>
+        {
+            DbOperationError::LockTimeout(details)
+        }
+        code if code == Some(1317)
+            || wording("query execution was interrupted")
+            || wording("query was interrupted") =>
+        {
+            DbOperationError::Canceled(details)
+        }
+        Some(2003) => {
+            connection_failed_with_kind(ConnectionFailureKind::ConnectionRefused, details)
+        }
+        Some(2005) => connection_failed_with_kind(ConnectionFailureKind::HostUnreachable, details),
+        _ => DbOperationError::QueryFailed(details),
+    }
 }
 
 fn connection_failed_with_kind(kind: ConnectionFailureKind, details: String) -> DbOperationError {
@@ -258,20 +244,6 @@ mod tests {
         assert!(matches!(
             classify_mysql_query_failure(b"ERROR 1213 (40001): generic failure"),
             DbOperationError::LockTimeout(_)
-        ));
-        assert!(matches!(
-            classify_mysql_query_failure(b"ERROR 1022 (23000): generic failure"),
-            DbOperationError::UniqueViolation(_)
-        ));
-        assert!(matches!(
-            classify_mysql_query_failure(b"ERROR 1062 (23000): generic failure"),
-            DbOperationError::UniqueViolation(_)
-        ));
-        assert!(matches!(
-            classify_mysql_query_failure(
-                b"ERROR 1452 (23000): Cannot add or update a child row: a foreign key constraint fails"
-            ),
-            DbOperationError::ForeignKeyViolation(_)
         ));
         let packet_error = classify_mysql_query_failure_with_packet_limit(
             b"ERROR 1153 (08S01): Got a packet bigger than 'max_allowed_packet' bytes",
@@ -378,8 +350,8 @@ mod tests {
     #[test]
     fn uses_wording_when_mysql_error_code_is_not_present() {
         assert!(matches!(
-            classify_mysql_query_failure(b"duplicate entry duplicate_value for key PRIMARY"),
-            DbOperationError::UniqueViolation(_)
+            classify_mysql_query_failure(b"mysql: [ERROR] Lost connection to MySQL server"),
+            DbOperationError::ConnectionLost(_)
         ));
     }
 

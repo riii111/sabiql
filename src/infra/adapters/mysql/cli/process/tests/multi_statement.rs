@@ -204,11 +204,11 @@ async fn first_change_statement_failure_refreshes_possible_scope() {
         ),
         (
             "ERROR 1062 (23000): Duplicate entry duplicate_value for key PRIMARY",
-            "Unique constraint violation",
+            "Query failed",
         ),
         (
             "ERROR 1452 (23000): Cannot add or update a child row: a foreign key constraint fails",
-            "Foreign key constraint violation",
+            "Query failed",
         ),
         (
             "ERROR 1205 (HY000): Lock wait timeout exceeded",
@@ -235,19 +235,8 @@ async fn first_change_statement_failure_refreshes_possible_scope() {
         };
 
         assert_eq!(error.summary(), summary);
-        assert!(matches!(
-            error,
-            DbOperationError::QueryFailedAfterChange {
-                source,
-                refresh_scope: RefreshScope::Data,
-            } if matches!(
-                &*source,
-                DbOperationError::PermissionDenied(_)
-                    | DbOperationError::UniqueViolation(_)
-                    | DbOperationError::ForeignKeyViolation(_)
-                    | DbOperationError::LockTimeout(_)
-            )
-        ));
+        assert_eq!(error.masked_details(), details);
+        assert_eq!(error.post_change_refresh_scope(), Some(RefreshScope::Data));
     }
 }
 

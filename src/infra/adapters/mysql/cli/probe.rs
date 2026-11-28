@@ -128,9 +128,7 @@ fn parse_mysql_probe_result(result: &MySqlResultSet) -> Result<(&str, &str, u8),
         })?
         .parse::<u8>()
         .map_err(|_| {
-            DbOperationError::MetadataParseFailed(
-                "invalid MySQL lower_case_table_names value".to_string(),
-            )
+            DbOperationError::QueryFailed("invalid MySQL lower_case_table_names value".to_string())
         })?;
     Ok((version, sql_mode, lower_case_table_names))
 }
@@ -139,7 +137,7 @@ pub(super) fn validate_lower_case_table_names(value: u8) -> Result<(), DbOperati
     if value <= 2 {
         Ok(())
     } else {
-        Err(DbOperationError::MetadataParseFailed(format!(
+        Err(DbOperationError::QueryFailed(format!(
             "invalid MySQL lower_case_table_names value: {value}"
         )))
     }
@@ -393,7 +391,7 @@ mod probe_tests {
         }
         assert!(matches!(
             validate_lower_case_table_names(3),
-            Err(DbOperationError::MetadataParseFailed(message))
+            Err(DbOperationError::QueryFailed(message))
                 if message == "invalid MySQL lower_case_table_names value: 3"
         ));
     }

@@ -361,7 +361,7 @@ fn parse_show_create_ddl(
     }
     let ddl = required_text(&row[expected_columns.len() - 1], ddl_column)?;
     if ddl.is_empty() {
-        return Err(DbOperationError::MetadataParseFailed(
+        return Err(DbOperationError::QueryFailed(
             "MySQL SHOW CREATE returned empty DDL".to_string(),
         ));
     }
@@ -398,7 +398,7 @@ fn parse_index_metadata_with_capabilities(
                 Some(value) if value.eq_ignore_ascii_case("A") => false,
                 Some(value) if value.eq_ignore_ascii_case("D") => true,
                 Some(_) => {
-                    return Err(DbOperationError::MetadataParseFailed(
+                    return Err(DbOperationError::QueryFailed(
                         "invalid MySQL metadata collation".to_string(),
                     ));
                 }
@@ -415,13 +415,13 @@ fn parse_index_metadata_with_capabilities(
                     (expression.clone(), Some(expression))
                 }
                 (None, None) => {
-                    return Err(DbOperationError::MetadataParseFailed(
+                    return Err(DbOperationError::QueryFailed(
                         "MySQL metadata key part has neither COLUMN_NAME nor EXPRESSION"
                             .to_string(),
                     ));
                 }
                 (Some(_), Some(_)) => {
-                    return Err(DbOperationError::MetadataParseFailed(
+                    return Err(DbOperationError::QueryFailed(
                         "MySQL metadata key part has both COLUMN_NAME and EXPRESSION".to_string(),
                     ));
                 }
@@ -907,7 +907,7 @@ done
         )
         .await
         .unwrap_err();
-        assert!(matches!(error, DbOperationError::MetadataParseFailed(_)));
+        assert!(matches!(error, DbOperationError::QueryFailed(_)));
         assert_process_stopped(&transcript);
         assert_option_file_removed(&transcript);
     }
@@ -1371,7 +1371,7 @@ mod tests {
         let error = parse_index_metadata(&result).unwrap_err();
         assert!(matches!(
             error,
-            DbOperationError::MetadataParseFailed(message)
+            DbOperationError::QueryFailed(message)
                 if message.contains("neither COLUMN_NAME nor EXPRESSION")
         ));
     }

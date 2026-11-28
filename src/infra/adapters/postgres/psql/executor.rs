@@ -389,7 +389,7 @@ impl PostgresAdapter {
 
         let affected_rows = Self::parse_affected_rows_with_source(&output).map_err(
             |error: ParseCommandTagError| DbOperationError::QueryFailedAfterChange {
-                source: Arc::new(DbOperationError::CommandTagParseFailed(error.to_string())),
+                source: Arc::new(DbOperationError::QueryFailed(error.to_string())),
                 refresh_scope: RefreshScope::Data,
             },
         )?;
@@ -698,7 +698,7 @@ mod tests {
             )
             .unwrap_err();
 
-            assert!(matches!(error, DbOperationError::CsvParse(_)));
+            assert!(matches!(error, DbOperationError::QueryFailed(_)));
         }
     }
 

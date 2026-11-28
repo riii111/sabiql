@@ -1,4 +1,5 @@
 use super::ConnectionErrorInfo;
+use crate::policy::password_masking::mask_password;
 
 pub fn from_parts(
     summary: &'static str,
@@ -6,5 +7,10 @@ pub fn from_parts(
     retryable: bool,
     raw_stderr: impl Into<String>,
 ) -> ConnectionErrorInfo {
-    ConnectionErrorInfo::from_presentation(summary, hint, retryable, raw_stderr)
+    ConnectionErrorInfo {
+        summary,
+        hint,
+        retryable,
+        masked_details: mask_password(&raw_stderr.into()),
+    }
 }

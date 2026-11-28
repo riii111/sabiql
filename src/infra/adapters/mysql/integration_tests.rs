@@ -3130,7 +3130,7 @@ mod query_execution {
                 if !matches!(
                     &duplicate,
                     Err(DbOperationError::QueryFailedAfterChange { source, .. })
-                        if matches!(&**source, DbOperationError::UniqueViolation(_))
+                        if matches!(&**source, DbOperationError::QueryFailed(details) if details.contains("Duplicate entry"))
                 ) {
                     return Err(format!("duplicate error was not classified: {duplicate:?}"));
                 }

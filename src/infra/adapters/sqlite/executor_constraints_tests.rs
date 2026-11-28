@@ -25,7 +25,8 @@ async fn foreign_key_restrict_rejects_parent_delete_with_child_row() {
 
     assert!(matches!(
         result,
-        Err(DbOperationError::ForeignKeyViolation(_))
+        Err(DbOperationError::QueryFailed(details))
+            if details.contains("FOREIGN KEY constraint failed")
     ));
     assert_eq!(
         test_support::display_row(&children, 0),
@@ -34,7 +35,7 @@ async fn foreign_key_restrict_rejects_parent_delete_with_child_row() {
 }
 
 #[tokio::test]
-async fn unique_constraint_violation_is_classified() {
+async fn unique_constraint_failure_keeps_sqlite_details() {
     let (_dir, dsn) = test_support::make_sqlite_db(
         "CREATE TABLE users(id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL);",
     );
@@ -57,7 +58,11 @@ async fn unique_constraint_violation_is_classified() {
         )
         .await;
 
-    assert!(matches!(result, Err(DbOperationError::UniqueViolation(_))));
+    assert!(matches!(
+        result,
+        Err(DbOperationError::QueryFailed(details))
+            if details.contains("UNIQUE constraint failed: users.email")
+    ));
 }
 
 #[tokio::test]

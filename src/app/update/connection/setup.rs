@@ -889,9 +889,7 @@ mod tests {
                     details: "password=secret connection refused".to_string(),
                 },
                 DbOperationError::PermissionDenied("password=secret permission denied".to_string()),
-                DbOperationError::MetadataParseFailed(
-                    "password=secret malformed output".to_string(),
-                ),
+                DbOperationError::QueryFailed("password=secret malformed output".to_string()),
             ] {
                 let mut state = AppState::new("test".to_string());
                 let run_id = state.session.begin_connection_save();

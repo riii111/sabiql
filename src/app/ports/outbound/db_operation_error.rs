@@ -12,24 +12,6 @@ pub enum DatabaseCli {
     MySql,
 }
 
-impl DatabaseCli {
-    pub const fn not_found_summary(self) -> &'static str {
-        match self {
-            Self::Psql => "Database CLI not found",
-            Self::Sqlite3 => "sqlite3 not found",
-            Self::MySql => "mysql not found",
-        }
-    }
-
-    pub const fn not_found_hint(self) -> &'static str {
-        match self {
-            Self::Psql => "Install the database client and add it to PATH",
-            Self::Sqlite3 => "Install sqlite3 and add it to PATH",
-            Self::MySql => "Install the Oracle MySQL 8.4 client and add it to PATH",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedOperationKind {
     ClientVersion,
@@ -104,72 +86,39 @@ impl ConnectionFailureKind {
     }
 }
 
-#[derive(Clone, thiserror::Error)]
-// Keep Display summary-only to avoid leaking raw command output.
+#[derive(Clone)]
 pub enum DbOperationError {
-    #[error("Connection failed")]
     ConnectionFailed(String),
-    #[error("Connection failed")]
-    SqlitePath(#[source] SqlitePathError),
-    #[error("Connection lost")]
+    SqlitePath(SqlitePathError),
     ConnectionLost(String),
-    #[error("Permission denied")]
     PermissionDenied(String),
-    #[error("Foreign key constraint violated")]
-    ForeignKeyViolation(String),
-    #[error("Unique constraint violated")]
-    UniqueViolation(String),
-    #[error("Operation blocked by lock or timeout")]
     LockTimeout(String),
-    #[error("Database object not found")]
     ObjectMissing(String),
-    #[error("Query failed")]
     QueryFailed(String),
-    #[error("CSV export failed")]
-    ExportIo(#[source] Arc<std::io::Error>),
-    #[error("Preview exceeded its byte budget")]
+    ExportIo(Arc<std::io::Error>),
     PreviewSizeExceeded(String),
-    #[error("Query failed after a change")]
     QueryFailedAfterChange {
-        #[source]
         source: Arc<Self>,
         refresh_scope: RefreshScope,
     },
-    #[error("Unsupported operation")]
     UnsupportedOperation(String),
-    #[error("Unsupported operation")]
     UnsupportedOperationWithKind {
         kind: UnsupportedOperationKind,
         details: String,
     },
-    #[error("Unsupported operation")]
     UnsupportedOperationWithSqliteKind {
         kind: SqliteCompatibilityKind,
         details: String,
     },
-    #[error("Connection failed")]
     ConnectionFailedWithKind {
         kind: ConnectionFailureKind,
         details: String,
     },
-    #[error("Metadata parse failed")]
-    MetadataParseFailed(String),
-    #[error("Invalid JSON")]
-    InvalidJson(#[source] Arc<serde_json::Error>),
-    #[error("Empty response")]
-    EmptyResponse(String),
-    #[error("CSV parse error")]
-    CsvParse(#[source] Arc<csv::Error>),
-    #[error("Command tag parse failed")]
-    CommandTagParseFailed(String),
-    #[error("Command not found")]
     CommandNotFound {
         command: DatabaseCli,
         details: String,
     },
-    #[error("Operation timed out")]
     Timeout(String),
-    #[error("Operation canceled")]
     Canceled(String),
 }
 
@@ -181,88 +130,141 @@ impl DbOperationError {
         }
     }
 
-    fn presentation(&self) -> (&'static str, &'static str) {
+    pub(crate) fn connection_presentation(&self) -> (&'static str, &'static str, bool) {
+        self.presentation(true)
+    }
+
+    fn presentation(&self, connecting: bool) -> (&'static str, &'static str, bool) {
         match self {
-            Self::ConnectionFailed(_) | Self::SqlitePath(_) => (
-                "Connection failed",
-                "Check the connection settings and database availability",
-            ),
+            Self::CommandNotFound { command, .. } => match command {
+                DatabaseCli::Psql if connecting => (
+                    "Database CLI not found",
+                    "Install the database CLI (e.g. psql) and add it to PATH",
+                    false,
+                ),
+                DatabaseCli::Psql => (
+                    "Database CLI not found",
+                    "Install the database client and add it to PATH",
+                    false,
+                ),
+                DatabaseCli::Sqlite3 => (
+                    "sqlite3 not found",
+                    "Install sqlite3 and add it to PATH",
+                    false,
+                ),
+                DatabaseCli::MySql => (
+                    "mysql not found",
+                    "Install the Oracle MySQL 8.4 client and add it to PATH",
+                    false,
+                ),
+            },
             Self::ConnectionLost(_) => (
                 "Connection lost during operation",
                 "Reconnect and retry the operation",
+                true,
             ),
-            Self::PermissionDenied(_) => {
-                ("Permission denied", "Check the connected user's privileges")
-            }
-            Self::ForeignKeyViolation(_) => (
-                "Foreign key constraint violation",
-                "Check referenced rows before retrying the write operation",
-            ),
-            Self::UniqueViolation(_) => (
-                "Unique constraint violation",
-                "Check for duplicate values before retrying",
-            ),
-            Self::LockTimeout(_) => (
-                "Operation blocked by lock or timeout",
-                "Retry; if it persists, check for blocking transactions or timeout settings",
-            ),
-            Self::ObjectMissing(_) => (
-                "Database object not found",
-                "Check the table, column, or connected database",
-            ),
-            Self::QueryFailed(_) => ("Query failed", "Review the database error details and SQL"),
-            Self::ExportIo(_) => (
-                "CSV export failed",
-                "Check the export folder and available disk space",
-            ),
-            Self::PreviewSizeExceeded(_) => (
-                "Preview exceeded its byte budget",
-                "Reduce the preview value size and retry",
-            ),
-            Self::QueryFailedAfterChange { source, .. } => source.presentation(),
-            Self::UnsupportedOperation(_) | Self::UnsupportedOperationWithSqliteKind { .. } => (
-                "Unsupported operation",
-                "Use a supported operation for this database",
-            ),
-            Self::UnsupportedOperationWithKind { kind, .. } => kind.presentation(),
-            Self::ConnectionFailedWithKind { kind, .. } => kind.presentation(),
-            Self::MetadataParseFailed(_) => (
-                "Failed to parse database metadata output",
-                "Check whether the metadata output format changed unexpectedly",
-            ),
-            Self::InvalidJson(_) => (
-                "Failed to parse database JSON output",
-                "Check whether the adapter query output shape changed",
-            ),
-            Self::EmptyResponse(_) => (
-                "Database returned an empty response",
-                "Retry the operation and inspect the command output",
-            ),
-            Self::CsvParse(_) => (
-                "Failed to parse database CSV output",
-                "Check whether the adapter returned malformed CSV",
-            ),
-            Self::CommandTagParseFailed(_) => (
-                "Failed to parse database command tag",
-                "Check whether the command output format changed",
-            ),
-            Self::CommandNotFound { command, .. } => {
-                (command.not_found_summary(), command.not_found_hint())
+            Self::Timeout(_) if connecting => {
+                ("Connection timed out", "Check network connectivity", true)
             }
             Self::Timeout(_) => (
                 "Operation timed out",
                 "Retry the operation or increase the timeout",
+                true,
             ),
-            Self::Canceled(_) => ("Operation canceled", "Retry the operation if needed"),
+            Self::PermissionDenied(_) => (
+                "Permission denied",
+                "Check the connected user's privileges",
+                false,
+            ),
+            Self::UnsupportedOperationWithKind { kind, .. } => {
+                let (summary, hint) = kind.presentation();
+                (summary, hint, false)
+            }
+            Self::UnsupportedOperationWithSqliteKind {
+                kind: SqliteCompatibilityKind::SafeMode,
+                ..
+            } if connecting => (
+                "SQLite 3.41.1 or later required",
+                "Upgrade sqlite3 to use SQLite safely",
+                false,
+            ),
+            Self::ConnectionFailedWithKind { kind, .. } => match kind {
+                ConnectionFailureKind::HostUnreachable if connecting => {
+                    ("Could not resolve host", "Check the hostname", true)
+                }
+                ConnectionFailureKind::Auth if connecting => (
+                    "Authentication failed",
+                    "Check username and password",
+                    false,
+                ),
+                ConnectionFailureKind::DatabaseNotFound if connecting => {
+                    ("Database does not exist", "Check database name", false)
+                }
+                ConnectionFailureKind::ConnectionRefused if connecting => (
+                    "Connection refused",
+                    "Check the host, port, and server availability",
+                    true,
+                ),
+                kind => {
+                    let (summary, hint) = kind.presentation();
+                    (summary, hint, false)
+                }
+            },
+            Self::SqlitePath(error) if connecting => sqlite_path_presentation(error),
+            _ if connecting => (
+                "Connection failed",
+                "See details for more information",
+                false,
+            ),
+            Self::ConnectionFailed(_) | Self::SqlitePath(_) => (
+                "Connection failed",
+                "Check the connection settings and database availability",
+                false,
+            ),
+            Self::LockTimeout(_) => (
+                "Operation blocked by lock or timeout",
+                "Retry; if it persists, check for blocking transactions or timeout settings",
+                true,
+            ),
+            Self::ObjectMissing(_) => (
+                "Database object not found",
+                "Check the table, column, or connected database",
+                false,
+            ),
+            Self::QueryFailed(_) => (
+                "Query failed",
+                "Review the database error details and SQL",
+                false,
+            ),
+            Self::ExportIo(_) => (
+                "CSV export failed",
+                "Check the export folder and available disk space",
+                false,
+            ),
+            Self::PreviewSizeExceeded(_) => (
+                "Preview exceeded its byte budget",
+                "Reduce the preview value size and retry",
+                false,
+            ),
+            Self::QueryFailedAfterChange { source, .. } => {
+                let (summary, hint, _) = source.presentation(false);
+                (summary, hint, false)
+            }
+            Self::UnsupportedOperation(_) | Self::UnsupportedOperationWithSqliteKind { .. } => (
+                "Unsupported operation",
+                "Use a supported operation for this database",
+                false,
+            ),
+            Self::Canceled(_) => ("Operation canceled", "Retry the operation if needed", false),
         }
     }
 
     pub fn summary(&self) -> &'static str {
-        self.presentation().0
+        self.presentation(false).0
     }
 
     pub fn hint(&self) -> &'static str {
-        self.presentation().1
+        self.presentation(false).1
     }
 
     pub fn masked_details(&self) -> String {
@@ -270,8 +272,7 @@ impl DbOperationError {
     }
 
     pub fn user_message(&self) -> String {
-        let summary = self.summary();
-        let hint = self.hint();
+        let (summary, hint, _) = self.presentation(false);
         let details = self.masked_details();
 
         let message = match (details.trim().is_empty(), hint.is_empty()) {
@@ -291,8 +292,7 @@ impl DbOperationError {
     }
 
     pub fn result_message(&self) -> String {
-        let summary = self.summary();
-        let hint = self.hint();
+        let (summary, hint, _) = self.presentation(false);
         let details = self.masked_details();
 
         let message = match (details.trim().is_empty(), hint.is_empty()) {
@@ -311,13 +311,11 @@ impl DbOperationError {
         }
     }
 
-    pub(crate) fn raw_details(&self) -> Cow<'_, str> {
+    fn raw_details(&self) -> Cow<'_, str> {
         match self {
             Self::ConnectionFailed(details)
             | Self::ConnectionLost(details)
             | Self::PermissionDenied(details)
-            | Self::ForeignKeyViolation(details)
-            | Self::UniqueViolation(details)
             | Self::LockTimeout(details)
             | Self::ObjectMissing(details)
             | Self::QueryFailed(details)
@@ -326,17 +324,73 @@ impl DbOperationError {
             | Self::UnsupportedOperationWithKind { details, .. }
             | Self::UnsupportedOperationWithSqliteKind { details, .. }
             | Self::ConnectionFailedWithKind { details, .. }
-            | Self::MetadataParseFailed(details)
-            | Self::EmptyResponse(details)
-            | Self::CommandTagParseFailed(details)
             | Self::Timeout(details)
             | Self::Canceled(details)
             | Self::CommandNotFound { details, .. } => Cow::Borrowed(details.as_str()),
             Self::SqlitePath(error) => Cow::Owned(error.to_string()),
             Self::ExportIo(error) => Cow::Owned(error.to_string()),
-            Self::InvalidJson(err) => Cow::Owned(err.to_string()),
-            Self::CsvParse(err) => Cow::Owned(err.to_string()),
             Self::QueryFailedAfterChange { source, .. } => source.raw_details(),
+        }
+    }
+}
+
+fn sqlite_path_presentation(error: &SqlitePathError) -> (&'static str, &'static str, bool) {
+    match error {
+        SqlitePathError::FileNotFound(_) => (
+            "SQLite database file not found",
+            "Check the file path — sabiql does not create new database files",
+            false,
+        ),
+        SqlitePathError::IsDirectory(_) => (
+            "SQLite path is a directory",
+            "Enter a path to a database file, not a folder",
+            false,
+        ),
+        SqlitePathError::NotRegularFile(_) => (
+            "SQLite path is not a regular file",
+            "Enter a path to a regular database file, not a pipe or special file",
+            false,
+        ),
+        SqlitePathError::NotDatabaseFile(_) => (
+            "File is not a SQLite database",
+            "Choose a readable SQLite database file, or create one with sqlite3",
+            false,
+        ),
+        SqlitePathError::ReadAccessDenied(_) => (
+            "Cannot read SQLite database file",
+            "Check read permissions for the database file",
+            false,
+        ),
+        SqlitePathError::PathAccessDenied(_) => (
+            "Cannot access SQLite database file",
+            "Check file permissions for the database file",
+            false,
+        ),
+        SqlitePathError::Io(_) => (
+            "Cannot open SQLite database file",
+            "Check that the database file path is valid and accessible",
+            false,
+        ),
+    }
+}
+
+// Keep Display summary-only to avoid leaking raw command output.
+impl fmt::Display for DbOperationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::QueryFailedAfterChange { .. } => f.write_str("Query failed after a change"),
+            _ => f.write_str(self.summary()),
+        }
+    }
+}
+
+impl std::error::Error for DbOperationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::SqlitePath(error) => Some(error),
+            Self::ExportIo(error) => Some(error),
+            Self::QueryFailedAfterChange { source, .. } => Some(source),
+            _ => None,
         }
     }
 }
@@ -357,13 +411,13 @@ impl fmt::Debug for DbOperationError {
 
 impl From<serde_json::Error> for DbOperationError {
     fn from(e: serde_json::Error) -> Self {
-        Self::InvalidJson(Arc::new(e))
+        Self::QueryFailed(e.to_string())
     }
 }
 
 impl From<csv::Error> for DbOperationError {
     fn from(e: csv::Error) -> Self {
-        Self::CsvParse(Arc::new(e))
+        Self::QueryFailed(e.to_string())
     }
 }
 
@@ -557,8 +611,6 @@ mod tests {
 
         #[rstest]
         #[case(DbOperationError::PermissionDenied("permission denied".to_string()))]
-        #[case(DbOperationError::UniqueViolation("duplicate entry".to_string()))]
-        #[case(DbOperationError::ForeignKeyViolation("foreign key failed".to_string()))]
         #[case(DbOperationError::LockTimeout("lock wait timeout".to_string()))]
         fn change_failure_preserves_classification(#[case] source: DbOperationError) {
             let expected_summary = source.summary();
@@ -592,15 +644,11 @@ mod tests {
 
         #[test]
         fn result_message_keeps_details_for_actionable_errors() {
-            let error = DbOperationError::UniqueViolation(
+            let error = DbOperationError::QueryFailed(
                 "ERROR: duplicate key value violates unique constraint".to_string(),
             );
 
-            assert!(
-                error
-                    .result_message()
-                    .contains("Unique constraint violation.")
-            );
+            assert!(error.result_message().contains("Query failed."));
             assert!(error.result_message().contains("Details:"));
             assert_eq!(
                 error
