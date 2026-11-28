@@ -24,7 +24,7 @@ use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::message::MessageState;
 use crate::model::shared::modal::ModalState;
-use crate::model::shared::motion::MotionState;
+use crate::model::shared::motion::{MotionState, ScrolledPane};
 use crate::model::shared::render_output::{
     BrowseLayout, DetailLayout, InputLayout, OverlayLayout, PickerLayouts, RenderOutput,
 };
@@ -213,8 +213,14 @@ impl AppState {
         let max_offset = scroll_max_offset(max_name_width, self.ui.explorer_content_width);
         self.ui.explorer_horizontal_offset = self.ui.explorer_horizontal_offset.min(max_offset);
         self.ui.inspector_pane_height = layout.inspector.pane_height;
+        let previous_visible_rows = self.result_visible_rows();
         self.ui.set_result_pane_height(layout.result.pane_height);
         if layout.pane_areas.result.is_some() {
+            if previous_visible_rows != self.result_visible_rows()
+                && matches!(self.motion.scroll_target(), Some((ScrolledPane::Result, _)))
+            {
+                self.motion.cancel_scroll();
+            }
             let total = self
                 .query
                 .visible_result()

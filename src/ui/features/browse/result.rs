@@ -78,6 +78,19 @@ impl ResultPane {
                 Self::render_empty(frame, area, block, theme);
                 default_result()
             } else {
+                let visible = block
+                    .inner(area)
+                    .height
+                    .saturating_sub(RESULT_INNER_OVERHEAD) as usize;
+                let actual_offset = state.result_interaction.scroll_offset();
+                let max_offset = max_scroll_offset(result.data_row_count(), visible);
+                let scroll_offset = if visible == state.result_visible_rows() {
+                    state
+                        .motion
+                        .scroll_offset(ScrolledPane::Result, actual_offset, now)
+                } else {
+                    actual_offset.min(max_offset)
+                };
                 let cell_edit = state.result_interaction.cell_edit();
                 let editing_cell = cell_edit.is_active().then(|| EditingCellView {
                     row: cell_edit.row().unwrap_or_default(),
@@ -92,11 +105,7 @@ impl ResultPane {
                     result,
                     block,
                     ResultTableParams {
-                        scroll_offset: state.motion.scroll_offset(
-                            ScrolledPane::Result,
-                            state.result_interaction.scroll_offset(),
-                            now,
-                        ),
+                        scroll_offset,
                         horizontal_offset: state.result_interaction.horizontal_offset(),
                         stored_plan: &state.ui.result_viewport_plan,
                         stored_cache: &state.ui.result_widths_cache,
@@ -636,15 +645,12 @@ mod tests {
     mod scrolling {
         use super::*;
         use std::sync::Arc;
+        use std::time::Duration;
 
-        use crate::app::model::shared::render_output::{
-            BrowseLayout, PaneArea, PaneAreas, RenderOutput, ResultLayout,
-        };
-        use crate::app::model::shared::theme_id::ThemeId;
+        use crate::app::model::shared::render_output::PaneArea;
         use crate::app::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
         use crate::app::update::reducer::reduce;
         use crate::shell::layout::MainLayout;
-        use crate::theme::palette_for;
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
 
@@ -661,53 +667,6 @@ mod tests {
                     QuerySource::Preview,
                 )));
             state
-        }
-
-        fn draw(state: &mut AppState, height: u16, now: Instant) -> Vec<String> {
-            let area = Rect::new(0, 0, 40, height);
-            let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
-            let mut result = None;
-            terminal
-                .draw(|frame| {
-                    result = Some(ResultPane::render(
-                        frame,
-                        area,
-                        state,
-                        now,
-                        palette_for(ThemeId::Default),
-                    ));
-                })
-                .unwrap();
-            let buffer = terminal.backend().buffer();
-            let lines = (0..height)
-                .map(|y| {
-                    (0..area.width)
-                        .map(|x| buffer.cell((x, y)).unwrap().symbol())
-                        .collect()
-                })
-                .collect();
-            let (viewport_plan, widths_cache) = result.unwrap();
-            state.apply_render_output(RenderOutput {
-                browse: BrowseLayout {
-                    result: ResultLayout {
-                        viewport_plan,
-                        widths_cache,
-                        pane_height: height,
-                    },
-                    pane_areas: PaneAreas {
-                        result: Some(PaneArea {
-                            x: 0,
-                            y: 0,
-                            width: area.width,
-                            height,
-                        }),
-                        ..PaneAreas::default()
-                    },
-                    ..BrowseLayout::default()
-                },
-                ..RenderOutput::default()
-            });
-            lines
         }
 
         fn scroll(
@@ -747,11 +706,18 @@ mod tests {
             (lines, area)
         }
 
-        #[test]
-        fn half_page_with_one_hidden_row_moves_rows_and_thumb_to_bottom() {
+        #[rstest]
+        #[case(12, 36, 11)]
+        #[case(3, 17, 2)]
+        fn half_page_with_one_hidden_row_moves_rows_and_thumb_to_bottom(
+            #[case] rows: usize,
+            #[case] height: u16,
+            #[case] visible: u16,
+        ) {
             let now = Instant::now();
-            let mut state = state_with_rows(12);
-            let top = draw(&mut state, 16, now);
+            let mut state = state_with_rows(rows);
+            let (top, area) = draw_layout(&mut state, height, now);
+            assert_eq!(area.height, visible + 5);
 
             scroll(
                 &mut state,
@@ -759,32 +725,23 @@ mod tests {
                 ScrollDirection::Down,
                 now,
             );
-            let bottom = draw(&mut state, 16, now);
+            let (bottom, _) = draw_layout(&mut state, height, now);
 
-            assert!(top[2].contains("row_01") && top[12].contains("row_11"));
-            assert!(bottom[2].contains("row_02") && bottom[12].contains("row_12"));
-            let thumb_row =
-                |lines: &[String]| lines.iter().position(|line| line.contains('┃')).unwrap();
+            assert!(top[usize::from(area.y + 2)].contains("row_01"));
+            assert!(top[usize::from(area.y + visible + 1)].contains(&format!("row_{visible:02}")));
+            assert!(bottom[usize::from(area.y + 2)].contains("row_02"));
+            assert!(bottom[usize::from(area.y + visible + 1)].contains(&format!("row_{rows:02}")));
+            let thumb_row = |lines: &[String]| {
+                (area.y..area.y + area.height)
+                    .position(|y| {
+                        lines[usize::from(y)]
+                            .chars()
+                            .nth(usize::from(area.x + area.width - 2))
+                            == Some('┃')
+                    })
+                    .unwrap()
+            };
             assert!(thumb_row(&top) < thumb_row(&bottom));
-        }
-
-        #[test]
-        fn enlarging_result_at_bottom_fills_viewport_and_updates_next_scroll() {
-            let now = Instant::now();
-            let mut state = state_with_rows(31);
-            draw(&mut state, 16, now);
-            scroll(&mut state, ScrollAmount::ToEnd, ScrollDirection::Down, now);
-            let bottom = draw(&mut state, 16, now);
-            assert!(bottom[2].contains("row_21") && bottom[12].contains("row_31"));
-
-            reduce(&mut state, Action::ToggleFocus, now);
-            let expanded = draw(&mut state, 33, now);
-            assert!(expanded[2].contains("row_04") && expanded[29].contains("row_31"));
-            assert_eq!(state.result_interaction.scroll_offset(), 3);
-
-            scroll(&mut state, ScrollAmount::Line, ScrollDirection::Up, now);
-            let scrolled = draw(&mut state, 33, now);
-            assert!(scrolled[2].contains("row_03") && scrolled[29].contains("row_30"));
         }
 
         #[test]
@@ -807,7 +764,70 @@ mod tests {
                 assert!(expanded[usize::from(area.y + 2)].contains("row_04"));
                 assert!(expanded[usize::from(area.y + 29)].contains("row_31"));
                 assert_eq!(state.result_interaction.scroll_offset(), 3);
+
+                scroll(&mut state, ScrollAmount::Line, ScrollDirection::Up, now);
+                let (scrolled, area) = draw_layout(&mut state, if focus { 36 } else { 70 }, now);
+                assert!(scrolled[usize::from(area.y + 2)].contains("row_03"));
+                assert!(scrolled[usize::from(area.y + 29)].contains("row_30"));
             }
+        }
+
+        #[test]
+        fn enlarging_during_scroll_animation_matches_next_scroll_origin() {
+            let now = Instant::now();
+            let mut state = state_with_rows(31);
+            state.motion.enable();
+            draw_layout(&mut state, 36, now);
+            scroll(&mut state, ScrollAmount::ToEnd, ScrollDirection::Down, now);
+            let expanded_at = now + Duration::from_millis(1);
+            reduce(&mut state, Action::ToggleFocus, expanded_at);
+
+            let (expanded, area) = draw_layout(&mut state, 36, expanded_at);
+            assert!(expanded[usize::from(area.y + 2)].contains("row_04"));
+            assert!(expanded[usize::from(area.y + 29)].contains("row_31"));
+            assert_eq!(state.result_interaction.scroll_offset(), 3);
+
+            scroll(
+                &mut state,
+                ScrollAmount::Line,
+                ScrollDirection::Up,
+                expanded_at,
+            );
+            let (scrolled, area) = draw_layout(&mut state, 36, expanded_at);
+            assert!(scrolled[usize::from(area.y + 2)].contains("row_03"));
+            assert!(scrolled[usize::from(area.y + 29)].contains("row_30"));
+        }
+
+        #[test]
+        fn enlarging_during_scroll_to_start_stops_at_its_target() {
+            let now = Instant::now();
+            let mut state = state_with_rows(31);
+            state.motion.enable();
+            draw_layout(&mut state, 36, now);
+            scroll(&mut state, ScrollAmount::ToEnd, ScrollDirection::Down, now);
+            let later = now + Duration::from_secs(1);
+            draw_layout(&mut state, 36, later);
+            scroll(
+                &mut state,
+                ScrollAmount::ToStart,
+                ScrollDirection::Up,
+                later,
+            );
+            let expanded_at = later + Duration::from_millis(1);
+            reduce(&mut state, Action::ToggleFocus, expanded_at);
+
+            let (expanded, area) = draw_layout(&mut state, 36, expanded_at);
+            assert!(expanded[usize::from(area.y + 2)].contains("row_01"));
+            let (next_frame, area) = draw_layout(&mut state, 36, expanded_at);
+            assert!(next_frame[usize::from(area.y + 2)].contains("row_01"));
+            scroll(
+                &mut state,
+                ScrollAmount::Line,
+                ScrollDirection::Down,
+                expanded_at,
+            );
+            let (scrolled, area) = draw_layout(&mut state, 36, expanded_at);
+            assert!(scrolled[usize::from(area.y + 2)].contains("row_02"));
         }
     }
 
