@@ -71,6 +71,42 @@ mod metadata_fetch {
         })
         .await;
     }
+
+    #[tokio::test]
+    #[ignore = "requires PostgreSQL, tracked: #133"]
+    async fn fetch_table_detail_returns_full_trigger_definition() {
+        with_postgres_test_db(|db| {
+            Box::pin(async move {
+                let schema = db.schema();
+                let table = db.table();
+                let sql = format!(
+                    "CREATE FUNCTION {schema}.audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END; $$;
+                     CREATE TRIGGER audit_changes BEFORE UPDATE OF name ON {schema}.{table}
+                     FOR EACH ROW WHEN (OLD.name IS DISTINCT FROM NEW.name)
+                     EXECUTE FUNCTION {schema}.audit();"
+                );
+                db.adapter()
+                    .execute_adhoc(db.dsn(), &sql, AccessMode::ReadWrite)
+                    .await
+                    .map_err(|err| err.to_string())?;
+                let detail = db.adapter()
+                    .fetch_table_detail(db.dsn(), schema, table)
+                    .await
+                    .map_err(|err| err.to_string())?;
+                let [trigger] = detail.triggers.as_slice() else {
+                    return Err(format!("expected one trigger, got {:?}", detail.triggers));
+                };
+                let expected = format!(
+                    "CREATE TRIGGER audit_changes BEFORE UPDATE OF name ON {schema}.{table} FOR EACH ROW WHEN ((old.name IS DISTINCT FROM new.name)) EXECUTE FUNCTION {schema}.audit()"
+                );
+                if trigger.name != "audit_changes" || trigger.definition != expected {
+                    return Err(format!("unexpected PostgreSQL trigger: {trigger:?}"));
+                }
+                Ok(())
+            })
+        })
+        .await;
+    }
 }
 
 mod query_execution {

@@ -269,8 +269,6 @@ mod table_signatures {
             .signature;
 
         assert_ne!(before_signature, after_signature.as_str());
-        assert!(
-            after_signature.contains("trg=users_audit:AFTER:INSERT:CREATE TRIGGER users_audit")
-        );
+        assert!(after_signature.contains("trg=users_audit:CREATE TRIGGER users_audit"));
     }
 }

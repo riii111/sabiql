@@ -50,6 +50,30 @@ pub(crate) fn take_within_width(s: &str, budget: usize) -> String {
     taken
 }
 
+pub(crate) fn truncate_with_offset(s: &str, offset: usize, max_width: usize) -> String {
+    use unicode_segmentation::UnicodeSegmentation;
+    use unicode_width::UnicodeWidthStr;
+
+    let mut position = 0;
+    let mut visible_width = 0;
+    let mut truncated = String::new();
+
+    for grapheme in s.graphemes(true) {
+        let width = grapheme.width();
+        if position < offset {
+            position += width;
+            continue;
+        }
+        if visible_width + width > max_width {
+            break;
+        }
+        truncated.push_str(grapheme);
+        visible_width += width;
+    }
+
+    truncated
+}
+
 pub(crate) fn wrapped_line_count(text: &str, width: u16) -> u16 {
     use unicode_width::UnicodeWidthStr;
 

@@ -46,7 +46,7 @@ pub use table::{
     Table, TableSignature, TableSignatureSnapshot, TableStorageAttributes, TableSummary,
 };
 pub use table_kind::{TableKind, TableKindInfo};
-pub use trigger::{Trigger, TriggerCreationContext, TriggerEvent, TriggerTiming};
+pub use trigger::Trigger;
 pub use write_result::WriteExecutionResult;
 
 pub use connection::{

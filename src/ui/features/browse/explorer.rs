@@ -2,7 +2,6 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{List, ListItem, ListState};
-use unicode_segmentation::UnicodeSegmentation;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::focused_pane::FocusedPane;
@@ -13,6 +12,7 @@ use crate::app::policy::table_kind::{explorer_table_label, max_explorer_table_la
 use crate::app::update::input::keymap::{BrowseShortcut, KeyContext, browse_shortcut};
 use crate::domain::MetadataState;
 use crate::primitives::atoms::Icon;
+use crate::primitives::utils::text_utils::truncate_with_offset;
 use crate::theme::ThemePalette;
 
 use crate::primitives::atoms::panel_block;
@@ -189,27 +189,6 @@ impl Explorer {
         }
         content_width
     }
-}
-
-fn truncate_with_offset(s: &str, offset: usize, max_width: usize) -> String {
-    let mut position = 0;
-    let mut visible_width = 0;
-    let mut truncated = String::new();
-
-    for grapheme in s.graphemes(true) {
-        let width = text_display_width(grapheme);
-        if position < offset {
-            position += width;
-            continue;
-        }
-        if visible_width + width > max_width {
-            break;
-        }
-        truncated.push_str(grapheme);
-        visible_width += width;
-    }
-
-    truncated
 }
 
 #[cfg(test)]

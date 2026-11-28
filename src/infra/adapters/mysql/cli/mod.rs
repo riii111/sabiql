@@ -19,6 +19,7 @@ pub(super) fn sanitize_mysql_command_environment(command: &mut Command) {
         .env_remove("LIBMYSQL_ENABLE_CLEARTEXT_PLUGIN");
 }
 
+pub(super) use error::is_mysql_missing_trigger;
 pub(super) use policy::{
     validate_mysql_multi_query, validate_mysql_multi_query_with_lower_case_table_names,
 };

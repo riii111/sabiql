@@ -4,7 +4,6 @@ mod kind_info;
 mod preview;
 mod signature;
 mod table_detail;
-mod trigger;
 
 use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{DatabaseMetadata, Table, TableSignatureSnapshot};

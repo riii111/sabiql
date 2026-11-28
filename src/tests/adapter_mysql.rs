@@ -276,7 +276,7 @@ mod metadata_fetch {
         MYSQL_FIXTURE_TABLE, mysql_integration_config, with_mysql_test_db,
     };
     use sabiql_app::ports::outbound::{AccessMode, MetadataProvider};
-    use sabiql_domain::{FkAction, IndexType, TableKind, TriggerEvent, TriggerTiming};
+    use sabiql_domain::{FkAction, IndexType, TableKind};
     use sabiql_infra::adapters::DbAdapterRegistry;
 
     const MYSQL_FK_PARENT: &str = "mysql_metadata_parent";
@@ -424,27 +424,10 @@ mod metadata_fetch {
                 let first_trigger = &detail.triggers[0];
                 let second_trigger = &detail.triggers[1];
                 if first_trigger.name != "mysql_cli_fixture_audit"
-                    || first_trigger.action_order != Some(1)
-                    || first_trigger.timing != TriggerTiming::Before
-                    || first_trigger.events != [TriggerEvent::Update]
-                    || first_trigger.definition != "SET NEW.empty_text = NEW.empty_text"
-                    || first_trigger.security_context.as_deref() != Some("sabiql@%")
-                    || first_trigger
-                        .creation_context
-                        .as_ref()
-                        .is_none_or(|context| {
-                            context.sql_mode.is_none()
-                                || context.character_set_client.is_none()
-                                || context.collation_connection.is_none()
-                                || context.database_collation.is_none()
-                                || context.created.is_none()
-                        })
+                    || first_trigger.definition
+                        != "CREATE DEFINER=`sabiql`@`%` TRIGGER `mysql_cli_fixture_audit` BEFORE UPDATE ON `mysql_cli_fixture` FOR EACH ROW SET NEW.empty_text = NEW.empty_text"
                     || second_trigger.name != "a_mysql_cli_fixture_audit"
-                    || second_trigger.action_order != Some(2)
-                    || second_trigger.timing != TriggerTiming::Before
-                    || second_trigger.events != [TriggerEvent::Update]
-                    || second_trigger.definition != "SET NEW.empty_text = NEW.empty_text"
-                    || second_trigger.security_context.as_deref() != Some("sabiql@%")
+                    || !second_trigger.definition.ends_with("FOR EACH ROW BEGIN\n    SET NEW.empty_text = NEW.empty_text;\nEND")
                 {
                     return Err(format!("unexpected MySQL triggers: {:?}", detail.triggers));
                 }

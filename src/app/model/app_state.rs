@@ -173,6 +173,10 @@ impl AppState {
 
     fn apply_browse_layout(&mut self, layout: BrowseLayout) {
         if !self.ui.is_focus_mode() {
+            self.ui.inspector_horizontal_offset = self
+                .ui
+                .inspector_horizontal_offset
+                .min(layout.inspector.viewport_plan.max_offset);
             self.ui.inspector_viewport_plan = layout.inspector.viewport_plan;
         }
         self.ui.result_viewport_plan = layout.result.viewport_plan;
@@ -1033,6 +1037,29 @@ mod tests {
                 state.row_detail.scroll_offset(),
                 state.row_detail.line_count().saturating_sub(3)
             );
+        }
+
+        #[test]
+        fn inspector_horizontal_scroll_offset_clamps_when_viewport_changes() {
+            let mut state = make_state();
+            state.ui.inspector_horizontal_offset = 500;
+            let output = RenderOutput {
+                browse: BrowseLayout {
+                    inspector: InspectorLayout {
+                        viewport_plan: ViewportPlan {
+                            max_offset: 10,
+                            ..ViewportPlan::default()
+                        },
+                        ..InspectorLayout::default()
+                    },
+                    ..BrowseLayout::default()
+                },
+                ..RenderOutput::default()
+            };
+
+            state.apply_render_output(output);
+
+            assert_eq!(state.ui.inspector_horizontal_offset, 10);
         }
 
         #[test]

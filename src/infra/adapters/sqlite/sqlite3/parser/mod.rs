@@ -7,9 +7,7 @@ pub(in crate::adapters::sqlite) use command_tag::{
     aggregate_sqlite_command_tag, command_tag_result, sqlite_statement_tags,
     statement_counts_as_select_tag,
 };
-pub(in crate::adapters::sqlite) use lexer::{
-    next_keyword_from, skip_bracket_quoted, skip_quoted, virtual_table_module_name,
-};
+pub(in crate::adapters::sqlite) use lexer::virtual_table_module_name;
 pub(in crate::adapters::sqlite) use output::{
     last_sqlite_result_set, parse_affected_rows, quoted_to_query_result, strip_sqlite_probes,
 };
