@@ -93,19 +93,19 @@ fn launch_linux_browser(
         .iter()
         .find_map(|dir| find_desktop_entry(&dir.join("applications"), desktop_id))
         .ok_or(ViewerError::DefaultBrowserUnavailable)?;
-    let result = Command::new(gio)
+    // Browser children can inherit these descriptors. Do not use output() pipes:
+    // they would keep the ER task waiting until the browser itself exits.
+    let status = Command::new(gio)
         .arg("launch")
         .arg(desktop)
         .arg(path)
-        .output()?;
-    if !result.status.success() {
-        let details = String::from_utf8_lossy(&result.stderr).trim().to_string();
-        let details = if details.is_empty() {
-            format!("exit status {}", result.status)
-        } else {
-            details
-        };
-        return Err(ViewerError::BrowserLaunchFailed(details));
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()?;
+    if !status.success() {
+        return Err(ViewerError::BrowserLaunchFailed(format!(
+            "exit status {status}"
+        )));
     }
     Ok(())
 }
@@ -513,7 +513,33 @@ mod tests {
             &[dir.path().into()],
         )
         .unwrap_err();
-        assert!(error.to_string().contains("launcher failed"));
+        assert!(error.to_string().contains("exit status"));
+    }
+
+    #[cfg(any(target_os = "freebsd", target_os = "linux"))]
+    #[test]
+    fn browser_child_does_not_hold_launch_open() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::time::{Duration, Instant};
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("applications")).unwrap();
+        std::fs::write(dir.path().join("applications/browser.desktop"), "browser").unwrap();
+        let settings = dir.path().join("settings");
+        let gio = dir.path().join("gio");
+        std::fs::write(&settings, "#!/bin/sh\nprintf 'browser.desktop\\n'\n").unwrap();
+        std::fs::write(&gio, "#!/bin/sh\nsleep 3 &\nexit 0\n").unwrap();
+        for program in [&settings, &gio] {
+            std::fs::set_permissions(program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let start = Instant::now();
+        launch_linux_browser(
+            Path::new("diagram.svg"),
+            settings.as_os_str(),
+            gio.as_os_str(),
+            &[dir.path().into()],
+        )
+        .unwrap();
+        assert!(start.elapsed() < Duration::from_secs(2));
     }
 
     mod generate_full_dot {
