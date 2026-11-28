@@ -126,7 +126,7 @@ fn sql_modal_completion_popup_with_scroll() {
         state.sql_modal.completion_next();
     }
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -145,7 +145,7 @@ fn sql_modal_unknown_risk_acknowledge() {
         .sql_modal
         .begin_confirming_risk(AcknowledgeReason::UnknownRisk, "DO".to_string());
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -164,7 +164,7 @@ fn sql_modal_high_risk_without_target_acknowledge() {
         .sql_modal
         .begin_confirming_risk(AcknowledgeReason::TargetNameUnavailable, "DROP".to_string());
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -184,7 +184,7 @@ fn sql_modal_non_atomic_transaction_acknowledge() {
         "SQLite transaction".to_string(),
     );
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -200,7 +200,7 @@ fn sql_modal_analyze_unknown_risk_acknowledge() {
         AcknowledgeReason::UnknownRisk,
     );
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -216,7 +216,7 @@ fn sql_modal_analyze_read_only_acknowledge() {
         AcknowledgeReason::AnalyzeExecution,
     );
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -234,7 +234,25 @@ fn sql_modal_ide_editing() {
     state.sql_modal.enter_editing();
     state.settings.load_keymap_preset(KeymapPreset::Ide);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn sql_modal_ide_normal() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.settings.load_keymap_preset(KeymapPreset::Ide);
+    state.modal.set_mode(InputMode::SqlModal);
+    state
+        .sql_modal
+        .editor_mut_for_input()
+        .set_content("SELECT 1".to_string());
+    state.sql_modal.enter_normal();
+
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -268,7 +286,7 @@ fn sql_modal_success_select() {
             QuerySource::Adhoc,
         )));
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -316,7 +334,7 @@ fn sql_modal_success_with_mysql_diagnostics() {
         }]),
     ));
 
-    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -350,7 +368,7 @@ fn sql_modal_success_dml_with_command_tag() {
         .with_command_tag(CommandTag::Delete(3)),
     ));
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -382,7 +400,7 @@ fn sql_modal_success_ddl_create_table() {
         .with_command_tag(CommandTag::Create("TABLE".to_string())),
     ));
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -402,7 +420,7 @@ fn sql_modal_error_with_message() {
             .to_string(),
     );
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -428,7 +446,7 @@ fn sql_modal_confirming_high_matched() {
     );
     *state.sql_modal.confirming_high_input_mut().unwrap() = input;
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -454,7 +472,7 @@ fn sql_modal_confirming_high_unmatched() {
     );
     *state.sql_modal.confirming_high_input_mut().unwrap() = input;
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -489,7 +507,7 @@ fn help_overlay_filtered_current_result() {
     state.ui.help_mut().enter_filter_editing();
     state.modal.set_mode(InputMode::Help);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -502,7 +520,7 @@ fn help_overlay_long_key_rows() {
     state.modal.set_mode(InputMode::Help);
     state.ui.help_mut().set_scroll_offset(58);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -518,7 +536,7 @@ fn help_overlay_narrow_horizontal_scroll() {
     state.ui.help_mut().set_scroll_offset(58);
     state.ui.help_mut().set_horizontal_offset(18);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -557,7 +575,7 @@ fn settings_overlay_keymap() {
     state.settings.switch_next_section();
     state.modal.set_mode(InputMode::Settings);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -572,7 +590,7 @@ fn settings_overlay_er_diagram() {
     state.settings.switch_next_section();
     state.modal.set_mode(InputMode::Settings);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -590,7 +608,7 @@ fn settings_overlay_er_diagram_custom_browser() {
     state.settings.switch_next_section();
     state.modal.set_mode(InputMode::Settings);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -609,40 +627,24 @@ fn table_picker_overlay() {
 }
 
 #[test]
-fn mysql_table_picker_shows_table_names_without_database() {
-    let mut state = create_test_state();
-    state.session.activate_connection(
-        &ConnectionId::from_string("mysql-test"),
-        "mysql",
-        &endpoint::mysql(
-            "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
-            Some("app"),
-        ),
-    );
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata()));
-    let mut terminal = create_test_terminal();
+fn mysql_and_sqlite_table_pickers_show_unqualified_table_names() {
+    insta::allow_duplicates! {
+        for endpoint in [
+            endpoint::mysql("localhost", Some("app")),
+            endpoint::sqlite("/tmp/app.db"),
+        ] {
+            let mut state = create_test_state();
+            state.session.activate_connection(&ConnectionId::new(), "local", &endpoint);
+            state.session.mark_connected(Arc::new(fixtures::sample_metadata()));
+            let mut terminal = create_test_terminal();
 
-    state.modal.set_mode(InputMode::TablePicker);
-    state.ui.table_picker_mut().insert_filter_str("user");
+            state.modal.set_mode(InputMode::TablePicker);
+            state.ui.table_picker_mut().insert_filter_str("user");
 
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
-fn sqlite_table_picker_shows_table_names_without_database() {
-    let mut state = sqlite_connected_state();
-    let mut terminal = create_test_terminal();
-
-    state.modal.set_mode(InputMode::TablePicker);
-    state.ui.table_picker_mut().insert_filter_str("user");
-
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
+            let output = render_modal_to_string(&mut terminal, &mut state);
+            insta::assert_snapshot!(output);
+        }
+    }
 }
 
 #[test]
@@ -703,7 +705,7 @@ fn query_history_picker_empty() {
 
     state.modal.set_mode(InputMode::QueryHistoryPicker);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -734,7 +736,7 @@ fn query_history_picker_filter_mode() {
     ]);
     state.query_history_picker.insert_filter_str("user");
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -747,7 +749,7 @@ fn sql_modal_plan_tab_placeholder() {
     state.modal.set_mode(InputMode::SqlModal);
     state.sql_modal.set_active_tab(SqlModalTab::Plan);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -767,7 +769,7 @@ fn sql_modal_plan_tab_with_plan_text() {
         POSTGRES_PLAN_QUERY,
     );
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -783,7 +785,7 @@ fn sql_modal_plan_tab_with_error() {
         .explain
         .set_error("ERROR: relation \"nonexistent\" does not exist".to_string());
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -796,7 +798,7 @@ fn sql_modal_compare_tab_empty() {
     state.modal.set_mode(InputMode::SqlModal);
     state.sql_modal.set_active_tab(SqlModalTab::Compare);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -818,7 +820,7 @@ fn sql_modal_compare_tab_right_only() {
     // Only right slot populated (first EXPLAIN), no left yet
     state.sql_modal.set_active_tab(SqlModalTab::Compare);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -847,7 +849,7 @@ fn sql_modal_compare_tab_with_verdict() {
     );
     state.sql_modal.set_active_tab(SqlModalTab::Compare);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -876,7 +878,7 @@ fn sql_modal_compare_tab_unavailable() {
     );
     state.sql_modal.set_active_tab(SqlModalTab::Compare);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -906,7 +908,7 @@ fn sql_modal_compare_tab_narrow_stacked() {
     );
     state.sql_modal.set_active_tab(SqlModalTab::Compare);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -944,7 +946,7 @@ fn sqlite_sql_modal_omits_compare_tab() {
 
     state.modal.set_mode(InputMode::SqlModal);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -964,7 +966,7 @@ fn sqlite_sql_modal_plan_tab_labels_query_plan() {
         "DELETE FROM users WHERE name = 'alice'",
     );
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -1041,7 +1043,7 @@ fn sqlite_diagnostics_overlay_loading() {
     state.sqlite_diagnostics.begin_core_fetch();
     state.modal.set_mode(InputMode::SqliteDiagnostics);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -1077,7 +1079,7 @@ fn sqlite_diagnostics_overlay_partial_failure() {
     state.sqlite_diagnostics.set_core_loaded(run_id, snapshot);
     state.modal.set_mode(InputMode::SqliteDiagnostics);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -1094,7 +1096,7 @@ fn sqlite_diagnostics_overlay_quick_check_pending() {
     state.sqlite_diagnostics.begin_quick_check();
     state.modal.set_mode(InputMode::SqliteDiagnostics);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -1110,7 +1112,7 @@ fn sqlite_diagnostics_overlay_quick_check_not_run() {
     state.sqlite_diagnostics.set_core_loaded(run_id, snapshot);
     state.modal.set_mode(InputMode::SqliteDiagnostics);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -1129,7 +1131,7 @@ fn sqlite_diagnostics_overlay_wrapped_scroll() {
     state.sqlite_diagnostics.set_scroll_offset(8);
     state.modal.set_mode(InputMode::SqliteDiagnostics);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }

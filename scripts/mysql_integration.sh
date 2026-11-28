@@ -298,8 +298,8 @@ run_tests() {
     export SABIQL_MYSQL_TEST_SSL_KEY="$tls_dir/client-key.pem"
     export SABIQL_MYSQL_TEST_SERVER_PUBLIC_KEY="$tls_dir/server-public-key.pem"
     export SABIQL_MYSQL_TRANSCRIPT=1
-    cargo nextest run -p sabiql --run-ignored ignored-only \
-        -E 'test(tests::adapter_mysql)' \
+    cargo nextest run -p sabiql-infra --run-ignored ignored-only \
+        -E 'test(adapters::mysql::integration_tests)' \
         --test-threads 1 \
         --no-fail-fast \
         --hide-progress-bar

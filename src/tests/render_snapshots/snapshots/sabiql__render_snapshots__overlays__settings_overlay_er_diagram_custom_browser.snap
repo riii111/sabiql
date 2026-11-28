@@ -2,53 +2,28 @@
 source: src/tests/render_snapshots/overlays.rs
 expression: output
 ---
-⌂ test_project ▸ Pg test_db ▸ -                                                                                                       connected | localhost:5432/test
-┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
-│> ▦ public.users                       │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│  ▦ public.posts                       ││(select a table)                                                                                                          │
-│  ▦ public.comments                    ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                ╭ Settings ───────────────────────────────────────────────────────────────────────────────────────╮                                │
-│                                │                  │                                                                              │                                │
-│                                │    Appearance    │ER Diagram                                                                    │                                │
-│                                │    Keymap        │                                                                              │                                │
-│                                │  > ER Diagram    │Browser                                                                       │                                │
-│                                │    Icons         │                                                                              │                                │
-│                                │                  │    System default                                                            │                                │
-│                                │                  │    Google Chrome                                                             │                                │
-│                                │                  │    Firefox                                                                   │                                │
-│                                │                  │    Safari                                                                    │                                │
-│                                │                  │    Microsoft Edge                                                            │                                │
-│                                │                  │    Brave                                                                     │────────────────────────────────┘
-│                                │                  │  > Other: [Brave Browser] saved                                              │────────────────────────────────┐
-│                                │                  │                                                                              │                                │
-│                                │                  │                                                                              │                                │
-│                                │                  │                                                                              │                                │
-│                                │                  │                                                                              │                                │
-│                                │                  │                                                                              │                                │
-│                                │                  │                                                                              │                                │
-│                                │                  │                                                                              │                                │
-│                                │                  │                                                                              │                                │
-│                                │                  │                                                                              │                                │
-│                                │                  │                                                                              │                                │
-│                                │                  │                                                                              │                                │
-│                                ╰ Enter: Apply │ i: Edit │ Tab/⇧Tab: Section │ Esc: Cancel ───────────────────────────────────────╯                                │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-└───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-j/k:Select
+╭ Settings ───────────────────────────────────────────────────────────────────────────────────────╮
+│                  │                                                                              │
+│    Appearance    │ER Diagram                                                                    │
+│    Keymap        │                                                                              │
+│  > ER Diagram    │Browser                                                                       │
+│    Icons         │                                                                              │
+│                  │    System default                                                            │
+│                  │    Google Chrome                                                             │
+│                  │    Firefox                                                                   │
+│                  │    Safari                                                                    │
+│                  │    Microsoft Edge                                                            │
+│                  │    Brave                                                                     │
+│                  │  > Other: [Brave Browser] saved                                              │
+│                  │                                                                              │
+│                  │                                                                              │
+│                  │                                                                              │
+│                  │                                                                              │
+│                  │                                                                              │
+│                  │                                                                              │
+│                  │                                                                              │
+│                  │                                                                              │
+│                  │                                                                              │
+│                  │                                                                              │
+│                  │                                                                              │
+╰ Enter: Apply │ i: Edit │ Tab/⇧Tab: Section │ Esc: Cancel ───────────────────────────────────────╯

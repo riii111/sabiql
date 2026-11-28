@@ -341,7 +341,7 @@ fn result_pane_first_cell_active_mode() {
     state.focus_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 0);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_footer_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -355,7 +355,7 @@ fn result_pane_cell_active_mode() {
     state.focus_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(1, 2);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_footer_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -374,7 +374,7 @@ fn result_pane_view_cell_active_hides_write_hints() {
     state.focus_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(1, 2);
 
-    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
+    let output = render_footer_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -416,7 +416,7 @@ fn result_pane_cell_active_pending_draft() {
         .result_interaction
         .replace_cell_edit_draft("new@example.com".to_string());
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_footer_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -431,7 +431,7 @@ fn result_pane_staged_delete_row() {
     state.result_interaction.activate_cell(0, 0);
     state.result_interaction.stage_row(1);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_footer_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -511,7 +511,7 @@ fn result_pane_sqlite_json_text_cell_detail_mode() {
     );
     assert_eq!(state.input_mode(), InputMode::CellDetail);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -556,7 +556,7 @@ fn result_pane_json_detail_shows_vertical_scrollbar() {
     );
     assert_eq!(state.input_mode(), InputMode::JsonDetail);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -594,7 +594,7 @@ fn result_pane_json_edit_mode() {
     reduce(&mut state, Action::JsonEnterEdit, now, &AppServices::stub());
     assert_eq!(state.input_mode(), InputMode::JsonEdit);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -626,7 +626,7 @@ fn result_pane_row_detail_shows_scrollbars() {
     );
     assert_eq!(state.input_mode(), InputMode::RowDetail);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }

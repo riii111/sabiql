@@ -44,7 +44,7 @@ pub(in crate::adapters::mysql) use adhoc::{
     run_mysql_adhoc, run_mysql_adhoc_with_server_capabilities,
 };
 mod single;
-#[cfg(feature = "test-support")]
+#[cfg(test)]
 pub(in crate::adapters::mysql) mod test_support;
 pub(in crate::adapters::mysql) use single::run_mysql_single_statement;
 pub(super) mod metadata;

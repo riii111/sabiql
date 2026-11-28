@@ -31,7 +31,7 @@ pub(super) use process::{
 
 pub(super) use xml::MySqlResultSet;
 
-#[cfg(all(unix, feature = "test-support"))]
+#[cfg(all(unix, test))]
 pub(super) mod test_support;
 
 #[cfg(test)]
