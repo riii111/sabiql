@@ -9,44 +9,34 @@ use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 pub(in crate::update) fn er_diagram_opened(
     state: &mut AppState,
-    info: ErDiagramInfo,
+    run_id: u64,
+    outcome: Result<ErDiagramInfo, String>,
     now: Instant,
 ) -> Vec<Effect> {
     if reject_pending_mysql_connection_probe(state) {
         return vec![];
     }
-    let ErDiagramInfo {
-        run_id,
-        path,
-        table_count,
-        total_tables,
-    } = info;
     if !state.er_preparation.is_current_run(run_id) {
         return vec![];
     }
     state.er_preparation.mark_idle();
+    let ErDiagramInfo {
+        path,
+        table_count,
+        total_tables,
+    } = match outcome {
+        Ok(info) => info,
+        Err(error) => {
+            state.messages.set_error(error);
+            return vec![];
+        }
+    };
     // Reset so next ErOpenDiagram re-evaluates target_tables from scratch.
     state.table_prefetch.invalidate_prefetch();
     state.messages.set_success_at(
         format!("✓ Opened {path} ({table_count}/{total_tables} tables) — Stale? Press r to reload"),
         now,
     );
-    vec![]
-}
-
-pub(in crate::update) fn er_diagram_failed(
-    state: &mut AppState,
-    run_id: u64,
-    error: String,
-) -> Vec<Effect> {
-    if reject_pending_mysql_connection_probe(state) {
-        return vec![];
-    }
-    if !state.er_preparation.is_current_run(run_id) {
-        return vec![];
-    }
-    state.er_preparation.mark_idle();
-    state.messages.set_error(error);
     vec![]
 }
 

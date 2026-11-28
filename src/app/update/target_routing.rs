@@ -3,6 +3,7 @@ use std::time::Instant;
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::picker::sanitize_filter_text;
+use crate::policy::FeaturePolicy;
 use crate::services::AppServices;
 use crate::update::action::{
     CursorPosition, DetailTarget, InputTarget, ListMotion, ListTarget, ModalKind, ScrollAmount,
@@ -108,6 +109,12 @@ pub(in crate::update) fn open_modal(
     kind: ModalKind,
     now: Instant,
 ) -> Vec<Effect> {
+    // Reducers also open modals directly, so the engine's feature gate is checked here rather than only for the action.
+    if !FeaturePolicy::new(&state.session.active_engine_feature_profile())
+        .is_enabled(kind.feature_requirement())
+    {
+        return vec![];
+    }
     match kind {
         ModalKind::TablePicker => modal::base::open_modal_table_picker(state),
         ModalKind::CommandPalette => modal::base::open_modal_command_palette(state),

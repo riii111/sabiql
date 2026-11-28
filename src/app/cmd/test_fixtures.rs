@@ -202,7 +202,7 @@ pub fn run_one_effect<'a>(
 ) -> Pin<Box<dyn Future<Output = Result<EffectRun>> + 'a>> {
     Box::pin(async move {
         let mut renderer = NoopRenderer;
-        let mut actions = runner
+        runner
             .execute_effects(
                 vec![effect],
                 &mut renderer,
@@ -211,6 +211,7 @@ pub fn run_one_effect<'a>(
             )
             .await?;
 
+        let mut actions = Vec::new();
         if let Some(timeout) = action_timeout {
             actions.push(recv_action_with_timeout(action_rx, timeout).await);
         }

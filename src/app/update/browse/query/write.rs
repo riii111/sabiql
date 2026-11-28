@@ -17,6 +17,7 @@ use crate::policy::write::write_guardrails::{
 };
 use crate::policy::write::write_update::escape_preview_value;
 use crate::ports::outbound::DbOperationError;
+use crate::update::action::WriteOutcome;
 use crate::update::browse::query::{
     execution::refresh_effects_for_scope, preview_effect_for_current_table,
 };
@@ -209,8 +210,10 @@ pub(in crate::update) fn submit_cell_edit_write(state: &mut AppState) -> Vec<Eff
 pub(in crate::update) fn execute_write_succeeded(
     state: &mut AppState,
     run_id: u64,
-    affected_rows: usize,
-    diagnostics: Vec<DatabaseDiagnostic>,
+    WriteOutcome {
+        affected_rows,
+        diagnostics,
+    }: WriteOutcome,
     now: Instant,
 ) -> Vec<Effect> {
     if !state.query.is_current_run(run_id) {
@@ -433,16 +436,21 @@ mod tests {
         diagnostics: Vec<DatabaseDiagnostic>,
     ) -> Action {
         let run_id = begin_query_run(state);
-        Action::ExecuteWriteSucceeded {
+        Action::WriteExecuted {
             run_id,
-            affected_rows,
-            diagnostics,
+            outcome: Ok(WriteOutcome {
+                affected_rows,
+                diagnostics,
+            }),
         }
     }
 
     fn write_failed_action(state: &mut AppState, error: DbOperationError) -> Action {
         let run_id = begin_query_run(state);
-        Action::ExecuteWriteFailed { run_id, error }
+        Action::WriteExecuted {
+            run_id,
+            outcome: Err(error),
+        }
     }
 
     mod write_flow {
@@ -1278,10 +1286,12 @@ mod tests {
 
             let effects = route(
                 &mut state,
-                Action::ExecuteWriteSucceeded {
+                Action::WriteExecuted {
                     run_id,
-                    affected_rows: 0,
-                    diagnostics: Vec::new(),
+                    outcome: Ok(WriteOutcome {
+                        affected_rows: 0,
+                        diagnostics: Vec::new(),
+                    }),
                 },
                 Instant::now(),
                 &AppServices::stub(),
@@ -1403,10 +1413,12 @@ mod tests {
 
             let effects = route(
                 &mut state,
-                Action::ExecuteWriteSucceeded {
+                Action::WriteExecuted {
                     run_id: old_run_id,
-                    affected_rows: 1,
-                    diagnostics: Vec::new(),
+                    outcome: Ok(WriteOutcome {
+                        affected_rows: 1,
+                        diagnostics: Vec::new(),
+                    }),
                 },
                 Instant::now(),
                 &AppServices::stub(),
@@ -1436,9 +1448,9 @@ mod tests {
 
             let effects = route(
                 &mut state,
-                Action::ExecuteWriteFailed {
+                Action::WriteExecuted {
                     run_id: stale_run_id,
-                    error: DbOperationError::QueryFailed("stale write".to_string()),
+                    outcome: Err(DbOperationError::QueryFailed("stale write".to_string())),
                 },
                 Instant::now(),
                 &AppServices::stub(),

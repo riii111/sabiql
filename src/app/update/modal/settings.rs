@@ -30,9 +30,18 @@ pub(in crate::update) fn settings_cancel(state: &mut AppState) -> Vec<Effect> {
 
 pub(in crate::update) fn settings_saved(
     state: &mut AppState,
-    settings: AppSettings,
+    outcome: Result<AppSettings, String>,
     now: Instant,
 ) -> Vec<Effect> {
+    let settings = match outcome {
+        Ok(settings) => settings,
+        Err(error) => {
+            state
+                .messages
+                .set_error(format!("Failed to save settings: {error}"));
+            return vec![];
+        }
+    };
     state.ui.theme_id = settings.theme_id;
     state.settings.commit_saved(
         settings.theme_id,

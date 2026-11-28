@@ -4,8 +4,9 @@ use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::ConnectionTarget;
 use crate::update::action::CopyTarget;
-use crate::update::action::{Action, ScrollAmount, ScrollDirection};
+use crate::update::action::{ScrollAmount, ScrollDirection};
 use crate::update::connection::helpers::cancel_connection_task_effects;
+use crate::update::helpers::{fetch_metadata_effects, probe_mysql_effects};
 
 pub(in crate::update) fn close_connection_error(state: &mut AppState) -> Vec<Effect> {
     if state.session.pending_mysql_connection_probe().is_some() {
@@ -46,8 +47,7 @@ pub(in crate::update) fn copy_connection_error(state: &AppState) -> Vec<Effect> 
     if let Some(content) = state.connection_error.masked_details() {
         vec![Effect::CopyToClipboard {
             content: content.to_string(),
-            on_success: Box::new(Action::CopySucceeded(CopyTarget::ConnectionError)),
-            on_failure: None,
+            target: CopyTarget::ConnectionError,
         }]
     } else {
         vec![]
@@ -88,7 +88,7 @@ pub(in crate::update) fn retry_connection(state: &mut AppState) -> Vec<Effect> {
             state.session.mark_connecting();
         }
         state.modal.set_mode(InputMode::Normal);
-        return vec![Effect::ProbeMySqlConnection { target, run_id }];
+        return probe_mysql_effects(target, run_id);
     }
     if state
         .session
@@ -124,12 +124,12 @@ pub(in crate::update) fn retry_connection(state: &mut AppState) -> Vec<Effect> {
             );
             state.session.mark_connecting();
             state.modal.set_mode(InputMode::Normal);
-            return vec![Effect::ProbeMySqlConnection { target, run_id }];
+            return probe_mysql_effects(target, run_id);
         }
         let run_id = state.session.begin_connecting();
         state.session.disable_read_only();
         state.modal.set_mode(InputMode::Normal);
-        vec![Effect::FetchMetadata { endpoint, run_id }]
+        fetch_metadata_effects(endpoint, run_id)
     } else {
         vec![]
     }
@@ -137,6 +137,7 @@ pub(in crate::update) fn retry_connection(state: &mut AppState) -> Vec<Effect> {
 
 #[cfg(test)]
 mod tests {
+    use crate::update::action::Action;
     use std::time::Instant;
 
     use super::*;

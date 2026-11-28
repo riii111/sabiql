@@ -1,7 +1,11 @@
+use std::sync::Arc;
+
 use crate::cmd::effect::Effect;
+use crate::domain::connection::ConnectionEndpoint;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
-use crate::update::action::{ConnectionsLoadedPayload, ListMotion};
+use crate::update::action::{ConnectionTarget, ConnectionsLoadedPayload, ListMotion};
+use crate::update::connection::lifecycle::switch_connection;
 
 pub(in crate::update) fn list_select_connection_list(
     state: &mut AppState,
@@ -72,22 +76,29 @@ pub(in crate::update) fn confirm_connection_selection(state: &mut AppState) -> V
     use crate::model::connection::list::ConnectionListItem;
     let selected_idx = state.ui.connection_list_selected();
 
-    let effect = match state.connection_list_items().get(selected_idx) {
+    let target = match state.connection_list_items().get(selected_idx) {
         Some(ConnectionListItem::Profile(i)) => state
             .connections()
             .get(*i)
             .filter(|c| state.session.active_connection_id() != Some(&c.id))
-            .map(|_| Effect::SwitchConnection {
-                connection_index: *i,
-            }),
-        Some(ConnectionListItem::Service(i)) => Some(Effect::SwitchToService { service_index: *i }),
+            .map(ConnectionTarget::from_profile),
+        Some(ConnectionListItem::Service(i)) => {
+            state
+                .service_entries()
+                .get(*i)
+                .map(|entry| ConnectionTarget {
+                    id: entry.connection_id(),
+                    name: entry.display_name().to_owned(),
+                    endpoint: Arc::new(ConnectionEndpoint::from(entry)),
+                })
+        }
         _ => None,
     };
 
     state.modal.set_mode(InputMode::Normal);
 
-    match effect {
-        Some(e) => vec![e],
+    match target {
+        Some(target) => switch_connection(state, target),
         None => vec![],
     }
 }
@@ -95,7 +106,9 @@ pub(in crate::update) fn confirm_connection_selection(state: &mut AppState) -> V
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::connection::{ConnectionId, ConnectionProfile, SslMode};
+    use crate::domain::connection::{
+        ConnectionId, ConnectionProfile, MySqlSslMode, PostgresEndpoint, ServiceEntry, SslMode,
+    };
     use crate::services::AppServices;
     use crate::test_support::endpoint;
     use crate::update::action::{Action, ListTarget};
@@ -319,7 +332,7 @@ mod tests {
 
             state.set_connections(vec![
                 create_test_profile_with_id("active", active_id.clone()),
-                create_test_profile_with_id("other", other_id),
+                create_test_profile_with_id("other", other_id.clone()),
             ]);
             state.session.activate_connection(
                 &active_id,
@@ -335,13 +348,79 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(effects.len(), 1);
+            assert_eq!(state.session.active_connection_id(), Some(&other_id));
             assert!(matches!(
-                &effects[0],
-                Effect::SwitchConnection {
-                    connection_index: 1
-                }
+                effects.as_slice(),
+                [Effect::CancelTrackedTasks, Effect::FetchMetadata { .. }]
             ));
+        }
+
+        #[test]
+        fn service_entry_switches_to_service_endpoint() {
+            let mut state = AppState::new("test".to_string());
+            state.set_service_entries(vec![ServiceEntry {
+                service_name: "analytics".to_string(),
+            }]);
+            let expected_id = state.service_entries()[0].connection_id();
+            state.ui.set_connection_list_selection(Some(0));
+
+            let effects = route(
+                &mut state,
+                Action::ConfirmConnectionSelection,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.session.active_connection_id(), Some(&expected_id));
+            assert_eq!(state.session.active_connection_name(), Some("analytics"));
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::CancelTrackedTasks, Effect::FetchMetadata { endpoint, .. }]
+                    if **endpoint
+                        == ConnectionEndpoint::PostgreSQL(PostgresEndpoint::Service(
+                            "analytics".to_string()
+                        ))
+            ));
+        }
+
+        #[test]
+        fn mysql_profile_without_database_keeps_current_tasks() {
+            let mut state = AppState::new("test".to_string());
+            let active_id = ConnectionId::new();
+            let mysql = ConnectionProfile::new_mysql(
+                "mysql",
+                "localhost",
+                3306,
+                None,
+                "user",
+                "password",
+                MySqlSslMode::Required,
+            )
+            .unwrap();
+            state.set_connections(vec![
+                create_test_profile_with_id("active", active_id.clone()),
+                mysql,
+            ]);
+            state.session.activate_connection(
+                &active_id,
+                "active",
+                &endpoint::postgres("postgres://localhost/test"),
+            );
+            state.ui.set_connection_list_selection(Some(1));
+
+            let effects = route(
+                &mut state,
+                Action::ConfirmConnectionSelection,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(effects.is_empty());
+            assert_eq!(state.session.active_connection_id(), Some(&active_id));
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("MySQL connection field `database` is required")
+            );
         }
 
         #[test]
@@ -410,9 +489,11 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(effects
-                .iter()
-                .any(|e| matches!(e, Effect::SwitchConnection { connection_index } if *connection_index == 1)));
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::FetchMetadata { .. }))
+            );
         }
 
         #[test]

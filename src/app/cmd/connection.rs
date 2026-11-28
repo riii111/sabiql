@@ -1,10 +1,6 @@
 use std::sync::Arc;
 
-use tokio::sync::mpsc;
-
-use crate::cmd::effect::Effect;
 use crate::cmd::runner::ConnectionDeps;
-use crate::cmd::single_task_owner::SingleTaskOwner;
 use crate::cmd::sqlite_path_validate::{
     canonicalize_sqlite_database_path, validate_sqlite_database_path,
 };
@@ -13,13 +9,13 @@ use crate::domain::connection::{
     ConnectionConfig, ConnectionEndpoint, ConnectionId, ConnectionProfile, ConnectionProfileError,
     DatabaseType, SqliteConnectionConfig,
 };
-use crate::model::app_state::AppState;
 use crate::model::browse::session::ConnectionSaveGuard;
 use crate::ports::outbound::{
-    ConnectionStoreError, MetadataProvider, ServiceFileError, SqlitePathValidator,
+    ConnectionStore, ConnectionStoreError, MetadataProvider, MySqlConnectionProbe,
+    PgServiceEntryReader, ServiceFileError, SqlitePathValidator,
 };
 use crate::update::action::{
-    Action, ConnectionSaveError, ConnectionTarget, ConnectionsLoadedPayload,
+    Action, ConnectionSaveError, ConnectionTarget, ConnectionsLoadedPayload, SavedConnection,
 };
 
 fn save_if_active<T>(
@@ -35,299 +31,142 @@ fn save_if_active<T>(
     Some(result)
 }
 
-pub(in crate::cmd) async fn run(
-    effect: Effect,
-    action_tx: &mpsc::Sender<Action>,
-    connection: &ConnectionDeps,
-    connection_task: &SingleTaskOwner,
-    metadata_provider: &Arc<dyn MetadataProvider>,
-    state: &AppState,
+pub(in crate::cmd) struct SaveAndConnectRequest {
+    pub(in crate::cmd) id: Option<ConnectionId>,
+    pub(in crate::cmd) name: String,
+    pub(in crate::cmd) config: ConnectionConfig,
+    pub(in crate::cmd) run_id: u64,
+    pub(in crate::cmd) run_guard: Arc<ConnectionSaveGuard>,
+}
+
+pub(in crate::cmd) async fn save_and_connect(
+    connection: ConnectionDeps,
+    metadata_provider: Arc<dyn MetadataProvider>,
+    request: SaveAndConnectRequest,
 ) -> Option<Action> {
-    match effect {
-        Effect::SaveAndConnect {
-            id,
-            name,
-            config,
-            run_id,
-            run_guard,
-        } => {
-            let id = id.unwrap_or_else(ConnectionId::new);
-            let profile = ConnectionProfile::with_id_and_config(id, name, config);
-            let profile = match profile {
-                Ok(p) => p,
-                Err(e) => {
-                    action_tx
-                        .send(Action::ConnectionSaveFailed {
-                            error: e.into(),
-                            run_id,
-                        })
-                        .await
-                        .ok();
-                    return None;
-                }
-            };
-            let store = Arc::clone(&connection.connection_store);
-            let tx = action_tx.clone();
-
-            match profile.database_type() {
-                DatabaseType::SQLite => {
-                    let profile =
-                        match normalize_sqlite_profile(profile, &connection.sqlite_path_validator)
-                            .await
-                        {
-                            Ok(profile) => profile,
-                            Err(error) => {
-                                action_tx
-                                    .send(Action::ConnectionSaveFailed {
-                                        error: error.into(),
-                                        run_id,
-                                    })
-                                    .await
-                                    .ok();
-                                return None;
-                            }
-                        };
-                    let target = ConnectionTarget::from_profile(&profile);
-
-                    connection_task
-                        .replace(async move {
-                            tokio::task::spawn_blocking(move || {
-                                match save_if_active(&run_guard, run_id, || store.save(&profile)) {
-                                    Some(Ok(())) => {
-                                        tx.blocking_send(Action::ConnectionSaveCompleted {
-                                            target,
-                                            run_id,
-                                            mysql_lower_case_table_names: None,
-                                            metadata: None,
-                                        })
-                                        .ok();
-                                    }
-                                    Some(Err(e)) => {
-                                        tx.blocking_send(Action::ConnectionSaveFailed {
-                                            error: ConnectionSaveError::Store(e.to_string()),
-                                            run_id,
-                                        })
-                                        .ok();
-                                    }
-                                    None => {}
-                                }
-                            })
-                            .await
-                            .expect("connection store save task panicked");
-                        })
-                        .await;
-                }
-                DatabaseType::MySQL => {
-                    let target = ConnectionTarget::from_profile(&profile);
-                    let probe = Arc::clone(&connection.mysql_connection_probe);
-                    connection_task
-                        .replace(async move {
-                            match probe.probe(&target.endpoint).await {
-                                Ok(probe_result) => {
-                                    let save_result = tokio::task::spawn_blocking(move || {
-                                        save_if_active(&run_guard, run_id, || store.save(&profile))
-                                    })
-                                    .await
-                                    .expect("connection store save task panicked");
-                                    match save_result {
-                                        Some(Ok(())) => {
-                                            tx.send(Action::ConnectionSaveCompleted {
-                                                target,
-                                                run_id,
-                                                mysql_lower_case_table_names: Some(
-                                                    probe_result.lower_case_table_names,
-                                                ),
-                                                metadata: None,
-                                            })
-                                            .await
-                                            .ok();
-                                        }
-                                        Some(Err(e)) => {
-                                            tx.send(Action::ConnectionSaveFailed {
-                                                error: ConnectionSaveError::Store(e.to_string()),
-                                                run_id,
-                                            })
-                                            .await
-                                            .ok();
-                                        }
-                                        None => {}
-                                    }
-                                }
-                                Err(e) => {
-                                    tx.send(Action::ConnectionSaveFailed {
-                                        error: ConnectionSaveError::Probe { error: e },
-                                        run_id,
-                                    })
-                                    .await
-                                    .ok();
-                                }
-                            }
-                        })
-                        .await;
-                }
-                DatabaseType::PostgreSQL => {
-                    let target = ConnectionTarget::from_profile(&profile);
-                    let provider = Arc::clone(metadata_provider);
-                    connection_task
-                        .replace(async move {
-                            match provider.fetch_metadata(&target.endpoint).await {
-                                Ok(metadata) => {
-                                    let save_result = tokio::task::spawn_blocking(move || {
-                                        save_if_active(&run_guard, run_id, || store.save(&profile))
-                                    })
-                                    .await
-                                    .expect("connection store save task panicked");
-                                    match save_result {
-                                        Some(Ok(())) => {
-                                            tx.send(Action::ConnectionSaveCompleted {
-                                                target,
-                                                run_id,
-                                                mysql_lower_case_table_names: None,
-                                                metadata: Some(Arc::new(metadata)),
-                                            })
-                                            .await
-                                            .ok();
-                                        }
-                                        Some(Err(e)) => {
-                                            tx.send(Action::ConnectionSaveFailed {
-                                                error: ConnectionSaveError::Store(e.to_string()),
-                                                run_id,
-                                            })
-                                            .await
-                                            .ok();
-                                        }
-                                        None => {}
-                                    }
-                                }
-                                Err(e) => {
-                                    tx.send(Action::ConnectionSaveFailed {
-                                        error: e.into(),
-                                        run_id,
-                                    })
-                                    .await
-                                    .ok();
-                                }
-                            }
-                        })
-                        .await;
-                }
+    let SaveAndConnectRequest {
+        id,
+        name,
+        config,
+        run_id,
+        run_guard,
+    } = request;
+    let outcome = async {
+        let id = id.unwrap_or_else(ConnectionId::new);
+        let mut profile = ConnectionProfile::with_id_and_config(id, name, config)?;
+        let mut mysql_lower_case_table_names = None;
+        let mut metadata = None;
+        match profile.database_type() {
+            DatabaseType::SQLite => {
+                profile =
+                    normalize_sqlite_profile(profile, &connection.sqlite_path_validator).await?;
             }
-            None
+            DatabaseType::MySQL => {
+                let endpoint = ConnectionEndpoint::from(&profile.config);
+                let probe = connection
+                    .mysql_connection_probe
+                    .probe(&endpoint)
+                    .await
+                    .map_err(|error| ConnectionSaveError::Probe { error })?;
+                mysql_lower_case_table_names = Some(probe.lower_case_table_names);
+            }
+            DatabaseType::PostgreSQL => {
+                let endpoint = ConnectionEndpoint::from(&profile.config);
+                metadata = Some(Arc::new(metadata_provider.fetch_metadata(&endpoint).await?));
+            }
         }
-
-        Effect::ProbeMySqlConnection { target, run_id } => {
-            let probe = Arc::clone(&connection.mysql_connection_probe);
-            let tx = action_tx.clone();
-            connection_task
-                .replace(async move {
-                    match probe.probe(&target.endpoint).await {
-                        Ok(probe_result) => tx
-                            .send(Action::MySqlConnectionProbeCompleted {
-                                target,
-                                run_id,
-                                lower_case_table_names: probe_result.lower_case_table_names,
-                            })
-                            .await
-                            .ok(),
-                        Err(error) => tx
-                            .send(Action::MySqlConnectionProbeFailed {
-                                target,
-                                run_id,
-                                error,
-                            })
-                            .await
-                            .ok(),
-                    };
-                })
-                .await;
-            None
+        let target = ConnectionTarget::from_profile(&profile);
+        let store = Arc::clone(&connection.connection_store);
+        let saved = tokio::task::spawn_blocking(move || {
+            save_if_active(&run_guard, run_id, || store.save(&profile))
+        })
+        .await
+        .expect("connection store save task panicked");
+        match saved {
+            None => Ok(None),
+            Some(Err(error)) => Err(ConnectionSaveError::Store(error.to_string())),
+            Some(Ok(())) => Ok(Some(SavedConnection {
+                target,
+                mysql_lower_case_table_names,
+                metadata,
+            })),
         }
-
-        Effect::LoadConnectionForEdit { id } => {
-            let store = Arc::clone(&connection.connection_store);
-            let tx = action_tx.clone();
-
-            tokio::task::spawn_blocking(move || match store.find_by_id(&id) {
-                Ok(Some(profile)) => {
-                    tx.blocking_send(Action::ConnectionEditLoaded(Box::new(profile)))
-                        .ok();
-                }
-                Ok(None) => {
-                    tx.blocking_send(Action::ConnectionEditLoadFailed(
-                        ConnectionStoreError::NotFound(id.to_string()).to_string(),
-                    ))
-                    .ok();
-                }
-                Err(e) => {
-                    tx.blocking_send(Action::ConnectionEditLoadFailed(e.to_string()))
-                        .ok();
-                }
-            });
-            None
-        }
-
-        Effect::LoadConnections => {
-            let store = Arc::clone(&connection.connection_store);
-            let reader = Arc::clone(&connection.pg_service_entry_reader);
-            let tx = action_tx.clone();
-
-            tokio::task::spawn_blocking(move || {
-                let (profiles, profile_load_warning) = match store.load_all() {
-                    Ok(p) => (p, None),
-                    Err(e) => (vec![], Some(e.to_string())),
-                };
-                let (services, service_file_path, service_load_warning) =
-                    match reader.read_services() {
-                        Ok((s, p)) => (s, Some(p), None),
-                        Err(ServiceFileError::NotFound(_)) => (vec![], None, None),
-                        Err(e) => (vec![], None, Some(e.to_string())),
-                    };
-
-                tx.blocking_send(Action::ConnectionsLoaded(ConnectionsLoadedPayload {
-                    profiles,
-                    services,
-                    service_file_path,
-                    profile_load_warning,
-                    service_load_warning,
-                }))
-                .ok();
-            });
-            None
-        }
-
-        Effect::DeleteConnection { id } => {
-            let store = Arc::clone(&connection.connection_store);
-            let tx = action_tx.clone();
-
-            tokio::task::spawn_blocking(move || match store.delete(&id) {
-                Ok(()) => {
-                    tx.blocking_send(Action::ConnectionDeleted(id)).ok();
-                }
-                Err(e) => {
-                    tx.blocking_send(Action::ConnectionDeleteFailed(e.to_string()))
-                        .ok();
-                }
-            });
-            None
-        }
-
-        Effect::SwitchConnection { connection_index } => state
-            .connections()
-            .get(connection_index)
-            .map(|profile| Action::SwitchConnection(ConnectionTarget::from_profile(profile))),
-
-        Effect::SwitchToService { service_index } => {
-            state.service_entries().get(service_index).map(|entry| {
-                Action::SwitchConnection(ConnectionTarget {
-                    id: entry.connection_id(),
-                    name: entry.display_name().to_owned(),
-                    endpoint: Arc::new(ConnectionEndpoint::from(entry)),
-                })
-            })
-        }
-
-        _ => unreachable!("connection::run called with non-connection effect"),
     }
+    .await;
+    outcome
+        .transpose()
+        .map(|outcome| Action::ConnectionSaved { run_id, outcome })
+}
+
+pub(in crate::cmd) async fn probe_mysql_connection(
+    probe: Arc<dyn MySqlConnectionProbe>,
+    target: ConnectionTarget,
+    run_id: u64,
+) -> Action {
+    let outcome = probe
+        .probe(&target.endpoint)
+        .await
+        .map(|probe| probe.lower_case_table_names);
+    Action::MySqlConnectionProbed {
+        target,
+        run_id,
+        outcome,
+    }
+}
+
+pub(in crate::cmd) async fn load_connection_for_edit(
+    store: Arc<dyn ConnectionStore>,
+    id: ConnectionId,
+) -> Action {
+    let outcome = run_blocking(move || match store.find_by_id(&id) {
+        Ok(Some(profile)) => Ok(Box::new(profile)),
+        Ok(None) => Err(ConnectionStoreError::NotFound(id.to_string()).to_string()),
+        Err(error) => Err(error.to_string()),
+    })
+    .await;
+    Action::ConnectionEditLoaded(outcome)
+}
+
+pub(in crate::cmd) async fn load_connections(
+    store: Arc<dyn ConnectionStore>,
+    reader: Arc<dyn PgServiceEntryReader>,
+) -> Action {
+    run_blocking(move || {
+        let (profiles, profile_load_warning) = match store.load_all() {
+            Ok(p) => (p, None),
+            Err(e) => (vec![], Some(e.to_string())),
+        };
+        let (services, service_file_path, service_load_warning) = match reader.read_services() {
+            Ok((s, p)) => (s, Some(p), None),
+            Err(ServiceFileError::NotFound(_)) => (vec![], None, None),
+            Err(e) => (vec![], None, Some(e.to_string())),
+        };
+
+        Action::ConnectionsLoaded(ConnectionsLoadedPayload {
+            profiles,
+            services,
+            service_file_path,
+            profile_load_warning,
+            service_load_warning,
+        })
+    })
+    .await
+}
+
+pub(in crate::cmd) async fn delete_connection(
+    store: Arc<dyn ConnectionStore>,
+    id: ConnectionId,
+) -> Action {
+    let outcome = run_blocking(move || store.delete(&id).map(|()| id))
+        .await
+        .map_err(|error| error.to_string());
+    Action::ConnectionDeleted(outcome)
+}
+
+async fn run_blocking<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> T {
+    tokio::task::spawn_blocking(work)
+        .await
+        .expect("connection store task panicked")
 }
 
 async fn normalize_sqlite_profile(
@@ -368,9 +207,8 @@ mod tests {
     use crate::cmd::test_fixtures::{self, NoopRenderer};
     use crate::domain::DatabaseMetadata;
     use crate::domain::connection::{
-        ConnectionConfig, ConnectionEndpoint, ConnectionId, ConnectionProfile,
-        ConnectionProfileError, DatabaseType, MySqlConnectionConfig, MySqlSslMode,
-        PostgresConnectionConfig, PostgresEndpoint, ServiceEntry, SqliteConnectionConfig,
+        ConnectionConfig, ConnectionEndpoint, ConnectionId, ConnectionProfileError, DatabaseType,
+        MySqlConnectionConfig, MySqlSslMode, PostgresConnectionConfig, SqliteConnectionConfig,
         SqlitePathError, SslMode,
     };
     use crate::model::app_state::AppState;
@@ -389,6 +227,7 @@ mod tests {
     mod save_connection {
         use super::super::save_if_active;
         use super::*;
+        use crate::update::action::SavedConnection;
         use mockall::predicate::eq;
         use std::fs;
         use tempfile::tempdir;
@@ -466,11 +305,7 @@ mod tests {
             let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(matches!(
                 action,
-                Action::ConnectionSaveCompleted {
-                    target: ConnectionTarget { endpoint, .. },
-                    run_id: 1,
-                    ..
-                } if endpoint.engine() == DatabaseType::MySQL
+                Action::ConnectionSaved { run_id: 1, outcome: Ok(SavedConnection { target: ConnectionTarget { endpoint, .. }, .. }), .. } if endpoint.engine() == DatabaseType::MySQL
                     && endpoint.selected_database() == Some("app")
             ));
         }
@@ -518,9 +353,9 @@ mod tests {
             let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(matches!(
                 action,
-                Action::ConnectionSaveFailed {
-                    error: ConnectionSaveError::Probe { .. },
+                Action::ConnectionSaved {
                     run_id: 1,
+                    outcome: Err(ConnectionSaveError::Probe { .. })
                 }
             ));
         }
@@ -664,11 +499,7 @@ mod tests {
 
             assert!(matches!(
                 run.actions.into_iter().next(),
-                Some(Action::ConnectionSaveCompleted {
-                    run_id: 1,
-                    metadata: Some(metadata),
-                    ..
-                }) if metadata.database_name == "app"
+                Some(Action::ConnectionSaved { run_id: 1, outcome: Ok(SavedConnection { metadata: Some(metadata), .. }), .. }) if metadata.database_name == "app"
             ));
         }
 
@@ -714,10 +545,7 @@ mod tests {
 
             assert!(matches!(
                 run.actions.into_iter().next(),
-                Some(Action::ConnectionSaveFailed {
-                    error: ConnectionSaveError::Store(error),
-                    run_id: 1,
-                }) if error == "IO error: save failed"
+                Some(Action::ConnectionSaved { run_id: 1, outcome: Err(ConnectionSaveError::Store(error)) }) if error == "IO error: save failed"
             ));
         }
 
@@ -824,11 +652,7 @@ mod tests {
             assert!(
                 matches!(
                     action,
-                    Action::ConnectionSaveCompleted {
-                        target: ConnectionTarget { ref endpoint, .. },
-                        run_id: 1,
-                        ..
-                    } if **endpoint == expected_endpoint
+                    Action::ConnectionSaved { run_id: 1, outcome: Ok(SavedConnection { target: ConnectionTarget { ref endpoint, .. }, .. }), .. } if **endpoint == expected_endpoint
                 ),
                 "expected sqlite ConnectionSaveCompleted, got {action:?}"
             );
@@ -922,11 +746,11 @@ mod tests {
             assert!(
                 matches!(
                     action,
-                    Action::ConnectionSaveFailed {
-                        error: ConnectionSaveError::Validation(ConnectionProfileError::SqlitePath(
-                            SqlitePathError::FileNotFound(_)
-                        ),),
+                    Action::ConnectionSaved {
                         run_id: 1,
+                        outcome: Err(ConnectionSaveError::Validation(
+                            ConnectionProfileError::SqlitePath(SqlitePathError::FileNotFound(_)),
+                        ))
                     }
                 ),
                 "expected sqlite path validation failure, got {action:?}"
@@ -963,7 +787,7 @@ mod tests {
 
             let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
-                matches!(action, Action::ConnectionDeleted(_)),
+                matches!(action, Action::ConnectionDeleted(Ok(_))),
                 "expected ConnectionDeleted, got {action:?}"
             );
         }
@@ -999,7 +823,7 @@ mod tests {
             assert!(
                 matches!(
                     action,
-                    Action::ConnectionDeleteFailed(ref error)
+                    Action::ConnectionDeleted(Err(ref error))
                         if error == "Connection not found: id"
                 ),
                 "expected ConnectionDeleteFailed, got {action:?}"
@@ -1040,7 +864,7 @@ mod tests {
 
             assert!(matches!(
                 run.actions.into_iter().next(),
-                Some(Action::ConnectionEditLoadFailed(error))
+                Some(Action::ConnectionEditLoaded(Err(error)))
                     if error == "Connection not found: id"
             ));
         }
@@ -1081,125 +905,6 @@ mod tests {
                 matches!(action, Action::ConnectionsLoaded(ConnectionsLoadedPayload { ref profiles, .. }) if profiles.is_empty()),
                 "expected ConnectionsLoaded with empty profiles, got {action:?}"
             );
-        }
-    }
-
-    mod switch_connection {
-        use super::*;
-        use crate::cmd::runner::EffectRunner;
-
-        fn make_switch_runner(action_tx: mpsc::Sender<Action>) -> EffectRunner {
-            test_fixtures::make_runner(
-                Arc::new(MockMetadataProvider::new()),
-                Arc::new(MockQueryExecutor::new()),
-                Arc::new(MockConnectionStore::new()),
-                action_tx,
-            )
-        }
-
-        #[tokio::test]
-        async fn dispatches_action_with_built_dsn() {
-            let (tx, mut rx) = mpsc::channel::<Action>(16);
-            let runner = make_switch_runner(tx);
-
-            let profile = ConnectionProfile::new_postgres(
-                "My DB",
-                "db.example.com",
-                5432,
-                "mydb",
-                "user",
-                "pass",
-                SslMode::Prefer,
-            )
-            .unwrap();
-
-            let mut state = AppState::new("test".to_string());
-            state.set_connections(vec![profile]);
-
-            let mut renderer = NoopRenderer;
-            let actions = runner
-                .execute_effects(
-                    vec![Effect::SwitchConnection {
-                        connection_index: 0,
-                    }],
-                    &mut renderer,
-                    &mut state,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            assert!(rx.try_recv().is_err());
-            let action = actions.into_iter().next().expect("action dispatched");
-            match action {
-                Action::SwitchConnection(ConnectionTarget { id, name, endpoint }) => {
-                    assert_eq!(
-                        *endpoint,
-                        ConnectionEndpoint::from(&state.connections()[0].config)
-                    );
-                    assert_eq!(name, "My DB");
-                    assert_eq!(id, state.connections()[0].id);
-                    assert_eq!(endpoint.engine(), DatabaseType::PostgreSQL);
-                }
-                other => panic!("expected SwitchConnection, got {other:?}"),
-            }
-        }
-
-        #[tokio::test]
-        async fn out_of_bounds_index_is_noop() {
-            let (tx, mut rx) = mpsc::channel::<Action>(16);
-            let runner = make_switch_runner(tx);
-
-            let mut state = AppState::new("test".to_string());
-            let mut renderer = NoopRenderer;
-            let actions = runner
-                .execute_effects(
-                    vec![Effect::SwitchConnection {
-                        connection_index: 99,
-                    }],
-                    &mut renderer,
-                    &mut state,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            assert!(actions.is_empty());
-            assert!(rx.try_recv().is_err());
-        }
-
-        #[tokio::test]
-        async fn dispatches_service_action_without_channel() {
-            let (tx, mut rx) = mpsc::channel::<Action>(16);
-            let runner = make_switch_runner(tx);
-
-            let mut state = AppState::new("test".to_string());
-            state.set_service_entries(vec![ServiceEntry {
-                service_name: "analytics".to_string(),
-            }]);
-            let expected_id = state.service_entries()[0].connection_id();
-            let mut renderer = NoopRenderer;
-            let actions = runner
-                .execute_effects(
-                    vec![Effect::SwitchToService { service_index: 0 }],
-                    &mut renderer,
-                    &mut state,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            assert!(rx.try_recv().is_err());
-            assert!(matches!(
-                actions.as_slice(),
-                [Action::SwitchConnection(ConnectionTarget { id, name, endpoint })]
-                    if *id == expected_id
-                        && **endpoint
-                            == ConnectionEndpoint::PostgreSQL(PostgresEndpoint::Service(
-                                "analytics".to_string()
-                            ))
-                        && name == "analytics"
-            ));
         }
     }
 }

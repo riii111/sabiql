@@ -1,25 +1,15 @@
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
-use crate::update::action::{Action, SmartErRefreshError};
-use crate::update::helpers::reject_pending_mysql_connection_probe;
+use crate::update::action::SmartErRefreshError;
+use crate::update::browse::metadata::prefetch::start_er_prefetch_all;
 
-pub(in crate::update) fn smart_er_refresh_failed(
+pub(super) fn smart_er_refresh_failed(
     state: &mut AppState,
-    failure: SmartErRefreshError,
-) -> Vec<Effect> {
-    if reject_pending_mysql_connection_probe(state) {
-        return vec![];
-    }
-    let SmartErRefreshError {
-        endpoint,
-        run_id,
+    SmartErRefreshError {
         error,
         new_metadata,
-    } = failure;
-    if !state.session.endpoint_matches(&endpoint) || !state.er_preparation.is_current_run(run_id) {
-        return vec![];
-    }
-
+    }: SmartErRefreshError,
+) -> Vec<Effect> {
     let mut effects = Vec::new();
 
     if let Some(md) = new_metadata {
@@ -41,6 +31,6 @@ pub(in crate::update) fn smart_er_refresh_failed(
         "Smart refresh failed ({error}), falling back to full refresh"
     ));
     state.table_detail_cache.clear();
-    effects.push(Effect::DispatchActions(vec![Action::StartErPrefetchAll]));
+    effects.extend(start_er_prefetch_all(state));
     effects
 }

@@ -1,15 +1,18 @@
+use crate::update::browse::metadata::prefetch::start_er_prefetch_scoped;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::connection::ConnectionEndpoint;
 use crate::domain::{DatabaseMetadata, TableSignature, TableSignatureSnapshot};
 use crate::model::app_state::AppState;
 use crate::model::table_detail_cache::TableDetailCache;
-use crate::update::action::{Action, SmartErRefreshFetched};
+use crate::update::action::{SmartErRefreshError, SmartErRefreshSnapshot};
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 use super::diagram::generate_from_cache;
+use super::smart_refresh_failed::smart_er_refresh_failed;
 
 pub(super) struct RefreshDiff {
     pub(super) stale_tables: Vec<String>,
@@ -20,21 +23,24 @@ pub(super) struct RefreshDiff {
 
 pub(in crate::update) fn smart_er_refresh_fetched(
     state: &mut AppState,
-    fetched: SmartErRefreshFetched,
+    endpoint: &ConnectionEndpoint,
+    run_id: u64,
+    outcome: Result<SmartErRefreshSnapshot, SmartErRefreshError>,
     now: Instant,
 ) -> Vec<Effect> {
     if reject_pending_mysql_connection_probe(state) {
         return vec![];
     }
-    let SmartErRefreshFetched {
-        endpoint,
-        run_id,
-        new_metadata,
-        signature_snapshot,
-    } = fetched;
-    if !state.session.endpoint_matches(&endpoint) || !state.er_preparation.is_current_run(run_id) {
+    if !state.session.endpoint_matches(endpoint) || !state.er_preparation.is_current_run(run_id) {
         return vec![];
     }
+    let SmartErRefreshSnapshot {
+        new_metadata,
+        signature_snapshot,
+    } = match outcome {
+        Ok(snapshot) => snapshot,
+        Err(failure) => return smart_er_refresh_failed(state, failure),
+    };
 
     let TableSignatureSnapshot {
         signatures,
@@ -94,9 +100,7 @@ pub(super) fn apply_refresh_diff(
         format!("Refreshing {} table(s) for ER diagram...", refetch.len()),
         now,
     );
-    vec![Effect::DispatchActions(vec![
-        Action::StartErPrefetchScoped { tables: refetch },
-    ])]
+    start_er_prefetch_scoped(state, refetch)
 }
 
 fn diff_signatures(

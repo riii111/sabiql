@@ -4,9 +4,7 @@ use crate::model::app_state::AppState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::services::AppServices;
-use crate::update::action::Action;
 use crate::update::action::CopyTarget;
-use crate::update::helpers::clipboard_unavailable;
 
 pub(in crate::update) fn result_cell_yank(state: &mut AppState) -> Vec<Effect> {
     if let (Some(row_idx), Some(col_idx)) = (
@@ -25,11 +23,10 @@ pub(in crate::update) fn result_cell_yank(state: &mut AppState) -> Vec<Effect> {
         if let Some(value) = content {
             vec![Effect::CopyToClipboard {
                 content: value,
-                on_success: Box::new(Action::CopySucceeded(CopyTarget::ResultCell {
+                target: CopyTarget::ResultCell {
                     row: row_idx,
                     col: col_idx,
-                })),
-                on_failure: Some(Box::new(clipboard_unavailable())),
+                },
             }]
         } else {
             state.messages.set_error("Cell index out of bounds".into());
@@ -49,8 +46,7 @@ pub(in crate::update) fn ddl_yank(state: &AppState, services: &AppServices) -> V
             .generate_ddl(state.session.active_database_type_or_default(), table);
         return vec![Effect::CopyToClipboard {
             content: ddl,
-            on_success: Box::new(Action::CopySucceeded(CopyTarget::Panel(FlashId::Ddl))),
-            on_failure: Some(Box::new(clipboard_unavailable())),
+            target: CopyTarget::Panel(FlashId::Ddl),
         }];
     }
     vec![]
@@ -84,10 +80,7 @@ pub(in crate::update) fn result_row_yank(state: &mut AppState) -> Vec<Effect> {
         if let Some(tsv) = content {
             vec![Effect::CopyToClipboard {
                 content: tsv,
-                on_success: Box::new(Action::CopySucceeded(CopyTarget::ResultRow {
-                    row: row_idx,
-                })),
-                on_failure: Some(Box::new(clipboard_unavailable())),
+                target: CopyTarget::ResultRow { row: row_idx },
             }]
         } else {
             state.messages.set_error("Row index out of bounds".into());
@@ -105,6 +98,7 @@ mod tests {
         Column, ColumnAttributes, DatabaseType, QueryResult, QuerySource, QueryValue, Table,
     };
     use crate::ports::outbound::ddl_generator::DdlGenerator;
+    use crate::update::action::Action;
     use crate::update::reducer::route;
     use std::sync::Arc;
     use std::time::Instant;
@@ -180,15 +174,10 @@ mod tests {
             assert_eq!(effects.len(), 1);
             match &effects[0] {
                 Effect::CopyToClipboard {
-                    content,
-                    on_success,
-                    ..
+                    content, target, ..
                 } => {
                     assert_eq!(content, "r1c2");
-                    assert!(matches!(
-                        on_success.as_ref(),
-                        Action::CopySucceeded(CopyTarget::ResultCell { row: 1, col: 2 })
-                    ));
+                    assert_eq!(*target, CopyTarget::ResultCell { row: 1, col: 2 });
                 }
                 other => panic!("expected CopyToClipboard, got {other:?}"),
             }
@@ -288,15 +277,10 @@ mod tests {
             assert_eq!(effects.len(), 1);
             match &effects[0] {
                 Effect::CopyToClipboard {
-                    content,
-                    on_success,
-                    ..
+                    content, target, ..
                 } => {
                     assert_eq!(content, "v0\tv1\tv2");
-                    assert!(matches!(
-                        on_success.as_ref(),
-                        Action::CopySucceeded(CopyTarget::ResultRow { row: 0 })
-                    ));
+                    assert_eq!(*target, CopyTarget::ResultRow { row: 0 });
                 }
                 other => panic!("expected CopyToClipboard, got {other:?}"),
             }
@@ -455,15 +439,10 @@ mod tests {
             assert_eq!(effects.len(), 1);
             match &effects[0] {
                 Effect::CopyToClipboard {
-                    content,
-                    on_success,
-                    ..
+                    content, target, ..
                 } => {
                     assert!(content.contains("CREATE TABLE"));
-                    assert!(matches!(
-                        on_success.as_ref(),
-                        Action::CopySucceeded(CopyTarget::Panel(FlashId::Ddl))
-                    ));
+                    assert_eq!(*target, CopyTarget::Panel(FlashId::Ddl));
                 }
                 other => panic!("expected CopyToClipboard, got {other:?}"),
             }

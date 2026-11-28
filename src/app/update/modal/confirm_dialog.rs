@@ -1,3 +1,4 @@
+use crate::update::connection::selector::delete_connection;
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
@@ -5,7 +6,7 @@ use crate::model::app_state::AppState;
 use crate::model::shared::confirm_dialog::ConfirmIntent;
 use crate::model::shared::input_mode::InputMode;
 use crate::ports::outbound::AccessMode;
-use crate::update::action::{Action, ScrollAmount, ScrollDirection};
+use crate::update::action::{ScrollAmount, ScrollDirection};
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 pub(in crate::update) fn scroll_confirm_dialog(
@@ -33,9 +34,7 @@ pub(in crate::update) fn confirm_dialog_confirm(state: &mut AppState, now: Insta
             state.should_quit = true;
             vec![Effect::CancelTrackedTasks]
         }
-        Some(ConfirmIntent::DeleteConnection(id)) => {
-            vec![Effect::DispatchActions(vec![Action::DeleteConnection(id)])]
-        }
+        Some(ConfirmIntent::DeleteConnection(id)) => delete_connection(state, id),
         Some(ConfirmIntent::ExecuteWrite { blocked: true, .. }) => {
             state.result_interaction.clear_write_preview();
             state.query.clear_delete_refresh_target();

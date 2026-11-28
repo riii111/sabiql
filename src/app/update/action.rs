@@ -207,28 +207,61 @@ pub enum ModalKind {
     SqliteDiagnostics,
 }
 
+impl ModalKind {
+    pub fn feature_requirement(self) -> FeatureRequirement {
+        match self {
+            Self::ErTablePicker => FeatureRequirement::ErDiagram,
+            Self::SqliteDiagnostics => FeatureRequirement::SqliteDiagnostics,
+            Self::JsonDetail => FeatureRequirement::JsonDocumentDetail,
+            _ => FeatureRequirement::None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
-pub struct SmartErRefreshFetched {
-    pub endpoint: Arc<ConnectionEndpoint>,
-    pub run_id: u64,
+pub struct SmartErRefreshSnapshot {
     pub new_metadata: Arc<DatabaseMetadata>,
     pub signature_snapshot: Arc<TableSignatureSnapshot>,
 }
 
 #[derive(Debug, Clone)]
 pub struct SmartErRefreshError {
-    pub endpoint: Arc<ConnectionEndpoint>,
-    pub run_id: u64,
     pub error: DbOperationError,
     pub new_metadata: Option<Arc<DatabaseMetadata>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ErDiagramInfo {
-    pub run_id: u64,
     pub path: String,
     pub table_count: usize,
     pub total_tables: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct SavedConnection {
+    pub target: ConnectionTarget,
+    pub mysql_lower_case_table_names: Option<u8>,
+    pub metadata: Option<Arc<DatabaseMetadata>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExplainPlan {
+    pub database_type: DatabaseType,
+    pub query: String,
+    pub plan_text: String,
+    pub execution_time_ms: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct WriteOutcome {
+    pub affected_rows: usize,
+    pub diagnostics: Vec<DatabaseDiagnostic>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CsvExport {
+    pub path: String,
+    pub row_count: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -238,13 +271,6 @@ pub struct ConnectionsLoadedPayload {
     pub service_file_path: Option<std::path::PathBuf>,
     pub profile_load_warning: Option<String>,
     pub service_load_warning: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct TableTarget {
-    pub schema: String,
-    pub table: String,
-    pub generation: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -273,15 +299,9 @@ impl ConnectionTarget {
 // Product groups follow the object in the action sentence, not UI/reducer names
 // (e.g., MetadataLoaded -> Database structure, QueryCompleted -> Query results).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum QueryCompletionContext {
+pub enum QueryContext {
     Adhoc,
     Preview { generation: u64, target_page: usize },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum QueryFailureContext {
-    Adhoc,
-    Preview { generation: u64 },
 }
 
 #[derive(Debug, Clone)]
@@ -354,7 +374,6 @@ pub enum Action {
 
     // Connections
     TryConnect,
-    SwitchConnection(ConnectionTarget),
     ConnectionsLoaded(ConnectionsLoadedPayload),
     ConfirmConnectionSelection,
     ConnectionSetupNextField,
@@ -366,37 +385,23 @@ pub enum Action {
     ConnectionSetupDropdownCancel,
     ConnectionSetupSave,
     ConnectionSetupCancel,
-    ConnectionSaveCompleted {
+    ConnectionSaved {
+        run_id: u64,
+        outcome: Result<SavedConnection, ConnectionSaveError>,
+    },
+    MySqlConnectionProbed {
         target: ConnectionTarget,
         run_id: u64,
-        mysql_lower_case_table_names: Option<u8>,
-        metadata: Option<Arc<DatabaseMetadata>>,
+        outcome: Result<u8, DbOperationError>,
     },
-    ConnectionSaveFailed {
-        error: ConnectionSaveError,
-        run_id: u64,
-    },
-    MySqlConnectionProbeCompleted {
-        target: ConnectionTarget,
-        run_id: u64,
-        lower_case_table_names: u8,
-    },
-    MySqlConnectionProbeFailed {
-        target: ConnectionTarget,
-        run_id: u64,
-        error: DbOperationError,
-    },
-    ConnectionEditLoaded(Box<ConnectionProfile>),
-    ConnectionEditLoadFailed(String),
+    ConnectionEditLoaded(Result<Box<ConnectionProfile>, String>),
     CloseConnectionError,
     ToggleConnectionErrorDetails,
     CopyConnectionError,
     ReenterConnectionSetup,
     RetryConnection,
     RequestDeleteSelectedConnection,
-    DeleteConnection(ConnectionId),
-    ConnectionDeleted(ConnectionId),
-    ConnectionDeleteFailed(String),
+    ConnectionDeleted(Result<ConnectionId, String>),
     RequestEditSelectedConnection,
 
     // SQLite diagnostics
@@ -419,18 +424,13 @@ pub enum Action {
     SettingsStopCustomBrowserEdit,
     SettingsApply,
     SettingsCancel,
-    SettingsSaved(AppSettings),
-    SettingsSaveFailed(String),
+    SettingsSaved(Result<AppSettings, String>),
 
     // Database structure
     ReloadMetadata,
     MetadataLoaded {
         run_id: u64,
-        metadata: Arc<DatabaseMetadata>,
-    },
-    MetadataFailed {
-        run_id: u64,
-        error: DbOperationError,
+        outcome: Result<Arc<DatabaseMetadata>, DbOperationError>,
     },
     EffectiveUserLoaded {
         run_id: u64,
@@ -442,31 +442,12 @@ pub enum Action {
         outcome: Result<Box<Table>, DbOperationError>,
         generation: u64,
     },
-    PrefetchTableDetail {
-        run_id: u64,
-        schema: String,
-        table: String,
-    },
     TableDetailCached {
         endpoint: Arc<ConnectionEndpoint>,
         run_id: u64,
         schema: String,
         table: String,
-        detail: Box<Table>,
-    },
-    TableDetailCacheFailed {
-        endpoint: Arc<ConnectionEndpoint>,
-        run_id: u64,
-        schema: String,
-        table: String,
-        error: DbOperationError,
-    },
-    StartErPrefetchAll,
-    StartErPrefetchScoped {
-        tables: Vec<String>,
-    },
-    StartCompletionPrefetch {
-        tables: Vec<String>,
+        outcome: Result<Box<Table>, DbOperationError>,
     },
     ProcessPrefetchQueue {
         run_id: u64,
@@ -499,45 +480,22 @@ pub enum Action {
     ExplainAnalyzeConfirm,
     ExplainAnalyzeCancel,
     ExplainCompleted {
-        database_type: DatabaseType,
         database_generation: u64,
         run_id: u64,
-        query: String,
-        plan_text: String,
         is_analyze: bool,
-        execution_time_ms: u64,
-    },
-    ExplainFailed {
-        database_generation: u64,
-        run_id: u64,
-        error: DbOperationError,
-        is_analyze: bool,
+        outcome: Result<ExplainPlan, DbOperationError>,
     },
     CompareEditQuery,
 
     // Query results
-    ExecutePreview(TableTarget),
     QueryCompleted {
         run_id: u64,
-        result: Arc<QueryResult>,
-        context: QueryCompletionContext,
+        context: QueryContext,
+        outcome: Result<Arc<QueryResult>, DbOperationError>,
     },
-    QueryFailed {
+    WriteExecuted {
         run_id: u64,
-        error: DbOperationError,
-        context: QueryFailureContext,
-    },
-    RevealPendingPreview {
-        generation: u64,
-    },
-    ExecuteWriteSucceeded {
-        run_id: u64,
-        affected_rows: usize,
-        diagnostics: Vec<DatabaseDiagnostic>,
-    },
-    ExecuteWriteFailed {
-        run_id: u64,
-        error: DbOperationError,
+        outcome: Result<WriteOutcome, DbOperationError>,
     },
     ResultNextPage,
     ResultPrevPage,
@@ -558,27 +516,23 @@ pub enum Action {
     ResultCancelCellEdit,
     ResultDiscardCellEdit,
     SubmitCellEditWrite,
-    CopySucceeded(CopyTarget),
-    CopyFailed(ClipboardError),
+    Copied {
+        target: CopyTarget,
+        outcome: Result<(), ClipboardError>,
+    },
     OpenFolderFailed(Arc<std::io::Error>),
     ToggleFocus,
     ToggleReadOnly,
 
     // Query history
-    QueryHistoryLoaded(QueryHistoryScope, Vec<QueryHistoryEntry>),
-    QueryHistoryLoadFailed(QueryHistoryScope, String),
+    QueryHistoryLoaded(QueryHistoryScope, Result<Vec<QueryHistoryEntry>, String>),
     QueryHistoryConfirmSelection,
 
     // CSV export
     RequestCsvExport,
-    CsvExportSucceeded {
+    CsvExported {
         run_id: u64,
-        path: String,
-        row_count: usize,
-    },
-    CsvExportFailed {
-        run_id: u64,
-        error: DbOperationError,
+        outcome: Result<CsvExport, DbOperationError>,
     },
 
     // JSON and cell detail
@@ -599,14 +553,14 @@ pub enum Action {
     ErToggleSelection,
     ErSelectAll,
     ErConfirmSelection,
-    ErOpenDiagram,
-    ErGenerateFromCache,
-    SmartErRefreshFetched(SmartErRefreshFetched),
-    SmartErRefreshFailed(SmartErRefreshError),
-    ErDiagramOpened(ErDiagramInfo),
-    ErDiagramFailed {
+    SmartErRefreshFetched {
+        endpoint: Arc<ConnectionEndpoint>,
         run_id: u64,
-        error: String,
+        outcome: Result<SmartErRefreshSnapshot, SmartErRefreshError>,
+    },
+    ErDiagramOpened {
+        run_id: u64,
+        outcome: Result<ErDiagramInfo, String>,
     },
     ErLogWriteFailed(String),
 }
@@ -647,32 +601,29 @@ impl Action {
         }
 
         match self {
-            Self::OpenModal(ModalKind::ErTablePicker)
-            | Self::ErToggleSelection
+            Self::OpenModal(kind) => kind.feature_requirement(),
+            Self::ErToggleSelection
             | Self::ErSelectAll
             | Self::ErConfirmSelection
-            | Self::ErOpenDiagram
-            | Self::ErGenerateFromCache
-            | Self::SmartErRefreshFetched(_)
-            | Self::SmartErRefreshFailed(_)
-            | Self::ErDiagramOpened(_)
-            | Self::ErDiagramFailed { .. }
+            | Self::SmartErRefreshFetched { .. }
+            | Self::ErDiagramOpened { .. }
             | Self::ErLogWriteFailed(_)
             | Self::ListSelect {
                 target: ListTarget::ErTablePicker,
                 ..
             } => ErDiagram,
-            Self::OpenModal(ModalKind::SqliteDiagnostics)
-            | Self::RunSqliteDiagnosticsQuickCheck
+            Self::RunSqliteDiagnosticsQuickCheck
             | Self::SqliteDiagnosticsCoreLoaded { .. }
             | Self::SqliteDiagnosticsQuickCheckLoaded { .. }
             | Self::Scroll {
                 target: ScrollTarget::SqliteDiagnostics,
                 ..
             } => SqliteDiagnostics,
-            Self::OpenModal(ModalKind::JsonDetail)
-            | Self::DetailYankAll(DetailTarget::JsonDetail)
-            | Self::CopySucceeded(CopyTarget::Panel(FlashId::JsonDetail))
+            Self::DetailYankAll(DetailTarget::JsonDetail)
+            | Self::Copied {
+                target: CopyTarget::Panel(FlashId::JsonDetail),
+                outcome: Ok(()),
+            }
             | Self::DetailSearch {
                 target: DetailTarget::JsonDetail,
                 ..
@@ -685,9 +636,6 @@ impl Action {
             }
             | Self::ExplainCompleted {
                 is_analyze: false, ..
-            }
-            | Self::ExplainFailed {
-                is_analyze: false, ..
             } => Explain,
             Self::ExplainAnalyzeRequest
             | Self::ExplainAnalyzeConfirm
@@ -697,9 +645,6 @@ impl Action {
                 ..
             }
             | Self::ExplainCompleted {
-                is_analyze: true, ..
-            }
-            | Self::ExplainFailed {
                 is_analyze: true, ..
             } => ExplainAnalyze,
             Self::CompareEditQuery
@@ -835,23 +780,25 @@ mod tests {
     fn completion_actions_keep_feature_requirements() {
         assert_eq!(
             Action::ExplainCompleted {
-                database_type: DatabaseType::PostgreSQL,
                 database_generation: 0,
                 run_id: 1,
-                query: "SELECT 1".to_string(),
-                plan_text: "plan".to_string(),
                 is_analyze: true,
-                execution_time_ms: 1,
+                outcome: Ok(ExplainPlan {
+                    database_type: DatabaseType::PostgreSQL,
+                    query: "SELECT 1".to_string(),
+                    plan_text: "plan".to_string(),
+                    execution_time_ms: 1
+                })
             }
             .feature_requirement(),
             FeatureRequirement::ExplainAnalyze
         );
         assert_eq!(
-            Action::ExplainFailed {
+            Action::ExplainCompleted {
                 database_generation: 0,
                 run_id: 1,
-                error: DbOperationError::QueryFailed("error".to_string()),
                 is_analyze: false,
+                outcome: Err(DbOperationError::QueryFailed("error".to_string()))
             }
             .feature_requirement(),
             FeatureRequirement::Explain
@@ -978,35 +925,59 @@ mod tests {
             vec![
                 (
                     "copied SqlModal",
-                    Action::CopySucceeded(CopyTarget::Panel(FlashId::SqlModal)),
+                    Action::Copied {
+                        target: CopyTarget::Panel(FlashId::SqlModal),
+                        outcome: Ok(()),
+                    },
                 ),
                 (
                     "copied Ddl",
-                    Action::CopySucceeded(CopyTarget::Panel(FlashId::Ddl)),
+                    Action::Copied {
+                        target: CopyTarget::Panel(FlashId::Ddl),
+                        outcome: Ok(()),
+                    },
                 ),
                 (
                     "copied JsonDetail",
-                    Action::CopySucceeded(CopyTarget::Panel(FlashId::JsonDetail)),
+                    Action::Copied {
+                        target: CopyTarget::Panel(FlashId::JsonDetail),
+                        outcome: Ok(()),
+                    },
                 ),
                 (
                     "copied CellDetail",
-                    Action::CopySucceeded(CopyTarget::Panel(FlashId::CellDetail)),
+                    Action::Copied {
+                        target: CopyTarget::Panel(FlashId::CellDetail),
+                        outcome: Ok(()),
+                    },
                 ),
                 (
                     "copied RowDetail",
-                    Action::CopySucceeded(CopyTarget::Panel(FlashId::RowDetail)),
+                    Action::Copied {
+                        target: CopyTarget::Panel(FlashId::RowDetail),
+                        outcome: Ok(()),
+                    },
                 ),
                 (
                     "copied ResultCell",
-                    Action::CopySucceeded(CopyTarget::ResultCell { row: 0, col: 0 }),
+                    Action::Copied {
+                        target: CopyTarget::ResultCell { row: 0, col: 0 },
+                        outcome: Ok(()),
+                    },
                 ),
                 (
                     "copied ResultRow",
-                    Action::CopySucceeded(CopyTarget::ResultRow { row: 0 }),
+                    Action::Copied {
+                        target: CopyTarget::ResultRow { row: 0 },
+                        outcome: Ok(()),
+                    },
                 ),
                 (
                     "copied ConnectionError",
-                    Action::CopySucceeded(CopyTarget::ConnectionError),
+                    Action::Copied {
+                        target: CopyTarget::ConnectionError,
+                        outcome: Ok(()),
+                    },
                 ),
                 (
                     "search JsonDetail Enter",

@@ -7,6 +7,7 @@ use crate::model::app_state::AppState;
 use crate::model::shared::confirm_dialog::ConfirmIntent;
 use crate::model::shared::input_mode::InputMode;
 use crate::ports::outbound::DbOperationError;
+use crate::update::action::CsvExport;
 use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 
@@ -71,11 +72,10 @@ pub(in crate::update) fn request_csv_export(state: &mut AppState, now: Instant) 
     }
 }
 
-pub(in crate::update) fn csv_export_succeeded(
+pub(in crate::update) fn csv_exported(
     state: &mut AppState,
     run_id: u64,
-    path: String,
-    row_count: usize,
+    outcome: Result<CsvExport, DbOperationError>,
     now: Instant,
 ) -> Vec<Effect> {
     if !state.query.is_current_run(run_id) {
@@ -83,6 +83,13 @@ pub(in crate::update) fn csv_export_succeeded(
     }
 
     state.query.mark_idle();
+    let CsvExport { path, row_count } = match outcome {
+        Ok(export) => export,
+        Err(error) => {
+            state.messages.set_error(error.user_message());
+            return vec![];
+        }
+    };
     state
         .messages
         .set_success_at(format!("Exported {row_count} rows → {path}"), now);
@@ -90,20 +97,6 @@ pub(in crate::update) fn csv_export_succeeded(
         .parent()
         .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
     vec![Effect::OpenFolder { path: folder }]
-}
-
-pub(in crate::update) fn csv_export_failed(
-    state: &mut AppState,
-    run_id: u64,
-    error: DbOperationError,
-) -> Vec<Effect> {
-    if !state.query.is_current_run(run_id) {
-        return vec![];
-    }
-
-    state.query.mark_idle();
-    state.messages.set_error(error.user_message());
-    vec![]
 }
 
 pub(in crate::update) fn result_next_page(state: &mut AppState, now: Instant) -> Vec<Effect> {
@@ -165,16 +158,21 @@ mod tests {
 
     fn csv_succeeded_action(state: &mut AppState, path: &str, row_count: usize) -> Action {
         let run_id = begin_query_run(state);
-        Action::CsvExportSucceeded {
+        Action::CsvExported {
             run_id,
-            path: path.to_string(),
-            row_count,
+            outcome: Ok(CsvExport {
+                path: path.to_string(),
+                row_count,
+            }),
         }
     }
 
     fn csv_failed_action(state: &mut AppState, error: DbOperationError) -> Action {
         let run_id = begin_query_run(state);
-        Action::CsvExportFailed { run_id, error }
+        Action::CsvExported {
+            run_id,
+            outcome: Err(error),
+        }
     }
 
     fn preview_result_with_two_columns(row_count: usize) -> Arc<QueryResult> {
@@ -736,10 +734,12 @@ mod tests {
 
             let effects = route(
                 &mut state,
-                Action::CsvExportSucceeded {
+                Action::CsvExported {
                     run_id: stale_run_id,
-                    path: "/tmp/stale-export.csv".to_string(),
-                    row_count: 1,
+                    outcome: Ok(CsvExport {
+                        path: "/tmp/stale-export.csv".to_string(),
+                        row_count: 1,
+                    }),
                 },
                 Instant::now(),
                 &AppServices::stub(),
@@ -779,9 +779,9 @@ mod tests {
 
             let effects = route(
                 &mut state,
-                Action::CsvExportFailed {
+                Action::CsvExported {
                     run_id: stale_run_id,
-                    error: DbOperationError::QueryFailed("stale export".to_string()),
+                    outcome: Err(DbOperationError::QueryFailed("stale export".to_string())),
                 },
                 Instant::now(),
                 &AppServices::stub(),

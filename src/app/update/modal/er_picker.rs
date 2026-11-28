@@ -1,10 +1,10 @@
+use crate::update::er::diagram::er_open_diagram;
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
 use crate::domain::TableSummary;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
-use crate::update::action::Action;
 
 pub(in crate::update) fn open_modal_er_table_picker(
     state: &mut AppState,
@@ -53,7 +53,7 @@ pub(in crate::update) fn er_select_all(state: &mut AppState) -> Vec<Effect> {
     vec![]
 }
 
-pub(in crate::update) fn er_confirm_selection(state: &mut AppState) -> Vec<Effect> {
+pub(in crate::update) fn er_confirm_selection(state: &mut AppState, now: Instant) -> Vec<Effect> {
     if state.ui.er_selected_tables().is_empty() {
         state.messages.set_error("No tables selected".to_string());
         return vec![];
@@ -64,5 +64,5 @@ pub(in crate::update) fn er_confirm_selection(state: &mut AppState) -> Vec<Effec
     state.modal.set_mode(InputMode::Normal);
     state.ui.er_picker_mut().clear_filter();
     state.ui.clear_er_selected_tables();
-    vec![Effect::DispatchActions(vec![Action::ErOpenDiagram])]
+    er_open_diagram(state, now)
 }

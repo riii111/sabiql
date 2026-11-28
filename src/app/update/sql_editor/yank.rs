@@ -5,9 +5,7 @@ use crate::domain::explain_plan::{ComparisonVerdict, compare_plans};
 use crate::model::app_state::AppState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::sql_editor::modal::SqlModalTab;
-use crate::update::action::Action;
 use crate::update::action::CopyTarget;
-use crate::update::helpers::clipboard_unavailable;
 
 pub(in crate::update) fn sql_modal_yank(state: &AppState) -> Vec<Effect> {
     let active_tab = state
@@ -62,8 +60,7 @@ pub(in crate::update) fn sql_modal_yank(state: &AppState) -> Vec<Effect> {
         Some(c) if !c.is_empty() => {
             vec![Effect::CopyToClipboard {
                 content: c,
-                on_success: Box::new(Action::CopySucceeded(CopyTarget::Panel(FlashId::SqlModal))),
-                on_failure: Some(Box::new(clipboard_unavailable())),
+                target: CopyTarget::Panel(FlashId::SqlModal),
             }]
         }
         _ => vec![],

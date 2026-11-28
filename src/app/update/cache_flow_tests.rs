@@ -14,8 +14,11 @@ use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
 use crate::services::AppServices;
 use crate::test_support::endpoint;
 use crate::test_support::table::minimal as minimal_table;
-use crate::update::action::{Action, ConnectionTarget, SmartErRefreshFetched};
+use crate::update::action::{Action, ConnectionTarget, SmartErRefreshSnapshot};
+use crate::update::browse::metadata::prefetch::{start_completion_prefetch, start_er_prefetch_all};
+use crate::update::er::diagram::er_open_diagram;
 use crate::update::reducer::reduce;
+use crate::update::test_fixtures::switch_connection;
 
 const MAX_STEPS: usize = 10_000;
 
@@ -56,6 +59,13 @@ impl CacheFlowDriver {
         self.run_until_idle();
     }
 
+    fn apply(&mut self, step: impl FnOnce(&mut AppState, Instant) -> Vec<Effect>) {
+        for effect in step(&mut self.state, self.now) {
+            self.handle(effect);
+        }
+        self.run_until_idle();
+    }
+
     fn complete_fetch(&mut self, qualified_name: &str, table: Table) {
         let index = self
             .pending_fetches
@@ -68,7 +78,7 @@ impl CacheFlowDriver {
             run_id: fetch.run_id,
             schema: fetch.schema,
             table: fetch.table,
-            detail: Box::new(table),
+            outcome: Ok(Box::new(table)),
         });
         self.run_until_idle();
     }
@@ -146,9 +156,9 @@ impl CacheFlowDriver {
             Effect::Render
             | Effect::CancelTrackedTasks
             | Effect::CancelMetadataTasks
+            | Effect::CancelTableDetail
             | Effect::CancelConnectionTask
             | Effect::CancelSqliteDiagnostics => {}
-            Effect::DispatchActions(actions) => self.queue.extend(actions),
             Effect::SchedulePrefetchQueueProcessing { run_id } => {
                 self.channel
                     .push_back(Action::ProcessPrefetchQueue { run_id });
@@ -260,16 +270,18 @@ fn signatures(names: &[&str]) -> Arc<TableSignatureSnapshot> {
 }
 
 fn open_er_diagram(driver: &mut CacheFlowDriver, tables: &[&str]) {
-    driver.dispatch(Action::ErOpenDiagram);
+    driver.apply(er_open_diagram);
     let (endpoint, run_id) = driver
         .smart_refresh_run()
         .expect("opening the ER diagram should start a smart refresh");
-    driver.dispatch(Action::SmartErRefreshFetched(SmartErRefreshFetched {
+    driver.dispatch(Action::SmartErRefreshFetched {
         endpoint,
         run_id,
-        new_metadata: metadata(tables),
-        signature_snapshot: signatures(tables),
-    }));
+        outcome: Ok(SmartErRefreshSnapshot {
+            new_metadata: metadata(tables),
+            signature_snapshot: signatures(tables),
+        }),
+    });
 }
 
 mod completion {
@@ -327,7 +339,7 @@ mod completion {
         driver.state.sql_modal.completion_next();
         let candidates_before = candidate_texts(&driver.state);
 
-        driver.dispatch(Action::StartErPrefetchAll);
+        driver.apply(|state, _| start_er_prefetch_all(state));
         driver.complete_fetch("public.users", table("users", &["id"], &[]));
 
         assert_eq!(driver.state.sql_modal.completion().selected_index, 1);
@@ -373,7 +385,7 @@ mod cache_lifetime {
             .expect("reload should fetch metadata");
         driver.dispatch(Action::MetadataLoaded {
             run_id,
-            metadata: metadata(&["users"]),
+            outcome: Ok(metadata(&["users"])),
         });
         driver.state.modal.set_mode(InputMode::SqlModal);
         driver.dispatch(Action::CompletionRequest);
@@ -387,26 +399,36 @@ mod cache_lifetime {
         let mut driver = driver_with_cached_users();
         let original = driver.state.session.active_connection_id().unwrap().clone();
 
-        driver.dispatch(Action::SwitchConnection(ConnectionTarget {
-            id: ConnectionId::new(),
-            name: "other".to_string(),
-            endpoint: endpoint::postgres("postgres://localhost/other"),
-        }));
+        driver.apply(|state, _| {
+            switch_connection(
+                state,
+                ConnectionTarget {
+                    id: ConnectionId::new(),
+                    name: "other".to_string(),
+                    endpoint: endpoint::postgres("postgres://localhost/other"),
+                },
+            )
+        });
 
         assert!(!driver.is_cached("public.users"));
         let run_id = driver.metadata_fetch_run().unwrap();
         driver.dispatch(Action::MetadataLoaded {
             run_id,
-            metadata: metadata(&["users"]),
+            outcome: Ok(metadata(&["users"])),
         });
 
         assert_completion_columns(&mut driver, "phone", "email");
 
-        driver.dispatch(Action::SwitchConnection(ConnectionTarget {
-            id: original,
-            name: "postgres".to_string(),
-            endpoint: endpoint::postgres(POSTGRES_DSN),
-        }));
+        driver.apply(|state, _| {
+            switch_connection(
+                state,
+                ConnectionTarget {
+                    id: original,
+                    name: "postgres".to_string(),
+                    endpoint: endpoint::postgres(POSTGRES_DSN),
+                },
+            )
+        });
         assert_completion_columns(&mut driver, "email", "phone");
     }
 
@@ -428,7 +450,7 @@ mod cache_lifetime {
                 run_id: stale_run_id,
                 schema: "public".to_string(),
                 table: "users".to_string(),
-                detail: Box::new(table("users", &["legacy_column"], &[])),
+                outcome: Ok(Box::new(table("users", &["legacy_column"], &[]))),
             });
         }
         driver.dispatch(Action::CompletionRequest);
@@ -448,9 +470,7 @@ mod cache_lifetime {
         );
         state.session.mark_connected(metadata(&["users"]));
         let mut driver = CacheFlowDriver::new(state);
-        driver.dispatch(Action::StartCompletionPrefetch {
-            tables: vec!["public.users".to_string()],
-        });
+        driver.apply(|state, _| start_completion_prefetch(state, vec!["public.users".to_string()]));
         let run_id = driver
             .state
             .table_prefetch
@@ -467,7 +487,7 @@ mod cache_lifetime {
             run_id,
             schema: "public".to_string(),
             table: "users".to_string(),
-            detail: Box::new(table("users", &["id"], &[])),
+            outcome: Ok(Box::new(table("users", &["id"], &[]))),
         });
 
         assert!(!driver.is_cached("public.users"));
@@ -507,12 +527,12 @@ mod er_prefetch {
         let names: Vec<String> = (0..10).map(|index| format!("t{index}")).collect();
         let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
         let mut driver = CacheFlowDriver::new(postgres_state(&name_refs));
-        driver.dispatch(Action::ErOpenDiagram);
+        driver.apply(er_open_diagram);
         for name in &name_refs[..9] {
             driver.seed_cache(table(name, &["id"], &[]));
         }
 
-        driver.dispatch(Action::StartErPrefetchAll);
+        driver.apply(|state, _| start_er_prefetch_all(state));
         let fetched = driver.fetched_tables().to_vec();
         driver.complete_fetch("public.t9", table("t9", &["id"], &[]));
 

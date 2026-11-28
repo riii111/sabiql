@@ -7,6 +7,7 @@ mod tests {
     use std::collections::HashMap;
     use std::time::Instant;
 
+    use super::diagram;
     use super::smart_refresh_fetched::{RefreshDiff, apply_refresh_diff};
     use crate::cmd::effect::Effect;
     use crate::domain::{
@@ -18,7 +19,7 @@ mod tests {
     use crate::test_support::endpoint;
     use crate::test_support::table::minimal as minimal_table;
     use crate::update::action::{
-        Action, ErDiagramInfo, SmartErRefreshError, SmartErRefreshFetched,
+        Action, ErDiagramInfo, SmartErRefreshError, SmartErRefreshSnapshot,
     };
     use crate::update::reducer::route;
     use crate::update::test_fixtures;
@@ -93,7 +94,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.session.set_metadata(Some(make_metadata(0)));
 
-            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now());
+            let effects = diagram::er_open_diagram(&mut state, Instant::now());
 
             assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
             assert_eq!(state.er_preparation.run_id(), 1);
@@ -110,7 +111,7 @@ mod tests {
             state.session.set_metadata(Some(make_metadata(5)));
             set_active_run_id(&mut state, 3);
 
-            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now());
+            let effects = diagram::er_open_diagram(&mut state, Instant::now());
 
             assert_eq!(state.er_preparation.run_id(), 4);
             assert!(matches!(
@@ -125,7 +126,7 @@ mod tests {
             let _ = state.table_prefetch.begin_er_prefetch();
             state.session.set_metadata(Some(make_metadata(0)));
 
-            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now());
+            let effects = diagram::er_open_diagram(&mut state, Instant::now());
 
             assert!(state.table_prefetch.active_prefetch_run_id().is_none());
             assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
@@ -139,7 +140,7 @@ mod tests {
             state.session.set_metadata(Some(make_metadata(1)));
             let prefetch_run_id = state.table_prefetch.begin_er_prefetch();
 
-            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now());
+            let effects = diagram::er_open_diagram(&mut state, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -166,38 +167,44 @@ mod tests {
             );
 
             let actions = vec![
-                Action::SmartErRefreshFetched(SmartErRefreshFetched {
+                Action::SmartErRefreshFetched {
                     endpoint: endpoint::mysql("mysql://localhost/current", Some("current")),
                     run_id,
-                    new_metadata: make_metadata(1),
-                    signature_snapshot: Arc::new(TableSignatureSnapshot {
-                        signatures: vec![],
-                        prefetched_table_details: vec![],
+                    outcome: Ok(SmartErRefreshSnapshot {
+                        new_metadata: make_metadata(1),
+                        signature_snapshot: Arc::new(TableSignatureSnapshot {
+                            signatures: vec![],
+                            prefetched_table_details: vec![],
+                        }),
                     }),
-                }),
-                Action::SmartErRefreshFailed(SmartErRefreshError {
+                },
+                Action::SmartErRefreshFetched {
                     endpoint: endpoint::mysql("mysql://localhost/current", Some("current")),
                     run_id,
-                    error: DbOperationError::Timeout("timed out".to_string()),
-                    new_metadata: None,
-                }),
-                Action::ErDiagramOpened(ErDiagramInfo {
-                    run_id,
-                    path: "diagram.svg".to_string(),
-                    table_count: 1,
-                    total_tables: 1,
-                }),
-                Action::ErDiagramFailed {
-                    run_id,
-                    error: "failed".to_string(),
+                    outcome: Err(SmartErRefreshError {
+                        error: DbOperationError::Timeout("timed out".to_string()),
+                        new_metadata: None,
+                    }),
                 },
-                Action::ErGenerateFromCache,
+                Action::ErDiagramOpened {
+                    run_id,
+                    outcome: Ok(ErDiagramInfo {
+                        path: "diagram.svg".to_string(),
+                        table_count: 1,
+                        total_tables: 1,
+                    }),
+                },
+                Action::ErDiagramOpened {
+                    run_id,
+                    outcome: Err("failed".to_string()),
+                },
             ];
 
             for action in actions {
                 let effects = reduce_er(&mut state, &action, Instant::now());
                 assert!(effects.is_empty());
             }
+            assert!(diagram::er_generate_from_cache(&mut state).is_empty());
 
             assert_eq!(
                 state.table_prefetch.active_prefetch_run_id(),
@@ -220,12 +227,14 @@ mod tests {
 
             let effects = reduce_er(
                 &mut state,
-                &Action::ErDiagramOpened(ErDiagramInfo {
+                &Action::ErDiagramOpened {
                     run_id,
-                    path: "diagram.svg".to_string(),
-                    table_count: 1,
-                    total_tables: 1,
-                }),
+                    outcome: Ok(ErDiagramInfo {
+                        path: "diagram.svg".to_string(),
+                        table_count: 1,
+                        total_tables: 1,
+                    }),
+                },
                 Instant::now(),
             );
             assert!(effects.is_empty());
@@ -238,14 +247,14 @@ mod tests {
                 .run_id;
             let effects = reducer::reduce(
                 &mut state,
-                Action::MySqlConnectionProbeFailed {
+                Action::MySqlConnectionProbed {
                     target: ConnectionTarget {
                         id: ConnectionId::from_string("mysql-target"),
                         name: "mysql-target".to_string(),
                         endpoint: endpoint::mysql("mysql://localhost/target", Some("target")),
                     },
                     run_id: probe_run_id,
-                    error: DbOperationError::Timeout("timed out".to_string()),
+                    outcome: Err(DbOperationError::Timeout("timed out".to_string())),
                 },
                 Instant::now(),
                 &AppServices::stub(),
@@ -265,12 +274,7 @@ mod tests {
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
             assert!(state.table_prefetch.active_prefetch_run_id().is_none());
 
-            let effects = reducer::reduce(
-                &mut state,
-                Action::ErOpenDiagram,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = diagram::er_open_diagram(&mut state, Instant::now());
             assert!(matches!(
                 effects.as_slice(),
                 [Effect::SmartErRefresh { run_id: reopened_run_id, .. }]
@@ -284,7 +288,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.session.set_metadata(Some(make_metadata(5)));
 
-            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now());
+            let effects = diagram::er_open_diagram(&mut state, Instant::now());
 
             assert!(effects.is_empty());
             assert!(state.messages.last_error.is_some());
@@ -295,7 +299,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             let _ = state.er_preparation.start_waiting_run();
 
-            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now());
+            let effects = diagram::er_open_diagram(&mut state, Instant::now());
 
             assert!(effects.is_empty());
         }
@@ -305,7 +309,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             let _ = state.table_prefetch.begin_er_prefetch();
 
-            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now());
+            let effects = diagram::er_open_diagram(&mut state, Instant::now());
 
             assert!(effects.is_empty());
             assert!(state.messages.last_error.is_some());
@@ -329,7 +333,7 @@ mod tests {
             test_fixtures::seed_table_detail_cache(&mut state, "public.users");
             test_fixtures::seed_table_detail_cache(&mut state, "public.orders");
 
-            let effects = reduce_er(&mut state, &Action::ErGenerateFromCache, Instant::now());
+            let effects = diagram::er_generate_from_cache(&mut state);
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(
@@ -346,7 +350,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.mark_rendering();
 
-            let effects = reduce_er(&mut state, &Action::ErGenerateFromCache, Instant::now());
+            let effects = diagram::er_generate_from_cache(&mut state);
 
             assert!(effects.is_empty());
         }
@@ -364,12 +368,14 @@ mod tests {
 
             let effects = reduce_er(
                 &mut state,
-                &Action::ErDiagramOpened(ErDiagramInfo {
+                &Action::ErDiagramOpened {
                     run_id,
-                    path: "stale.svg".to_string(),
-                    table_count: 1,
-                    total_tables: 1,
-                }),
+                    outcome: Ok(ErDiagramInfo {
+                        path: "stale.svg".to_string(),
+                        table_count: 1,
+                        total_tables: 1,
+                    }),
+                },
                 Instant::now(),
             );
 
@@ -424,11 +430,11 @@ mod tests {
             let effects = apply_refresh_diff(&mut state, new_metadata, diff, Instant::now());
 
             assert!(!state.table_detail_cache.contains("public.users"));
-            assert!(effects.iter().any(|e| matches!(
-                e,
-                Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::StartErPrefetchScoped { .. }))
-            )));
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::SchedulePrefetchQueueProcessing { .. }))
+            );
         }
 
         #[test]
@@ -467,17 +473,13 @@ mod tests {
 
             let effects = apply_refresh_diff(&mut state, new_metadata, diff, Instant::now());
 
-            let Some(Effect::DispatchActions(actions)) = effects.iter().find(|effect| {
-                matches!(effect, Effect::DispatchActions(actions) if actions.iter().any(
-                    |action| matches!(action, Action::StartErPrefetchScoped { .. })
-                ))
-            }) else {
-                panic!("expected scoped prefetch");
-            };
-            assert!(matches!(
-                actions.as_slice(),
-                [Action::StartErPrefetchScoped { tables }] if tables == &["public.uncached"]
-            ));
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::SchedulePrefetchQueueProcessing { .. }))
+            );
+            assert!(state.table_prefetch.is_prefetch_queued("public.uncached"));
+            assert_eq!(state.table_prefetch.pending_prefetch_count(), 1);
         }
 
         #[test]
@@ -496,17 +498,13 @@ mod tests {
 
             let effects = apply_refresh_diff(&mut state, new_metadata, diff, Instant::now());
 
-            let Some(Effect::DispatchActions(actions)) = effects.iter().find(|effect| {
-                matches!(effect, Effect::DispatchActions(actions) if actions.iter().any(
-                    |action| matches!(action, Action::StartErPrefetchScoped { .. })
-                ))
-            }) else {
-                panic!("expected scoped prefetch");
-            };
-            assert!(matches!(
-                actions.as_slice(),
-                [Action::StartErPrefetchScoped { tables }] if tables == &["public.uncached"]
-            ));
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::SchedulePrefetchQueueProcessing { .. }))
+            );
+            assert!(state.table_prefetch.is_prefetch_queued("public.uncached"));
+            assert_eq!(state.table_prefetch.pending_prefetch_count(), 1);
         }
 
         #[test]
@@ -546,37 +544,41 @@ mod tests {
         use super::*;
 
         fn action(dsn: &str, run_id: u64) -> Action {
-            Action::SmartErRefreshFetched(SmartErRefreshFetched {
+            Action::SmartErRefreshFetched {
                 endpoint: endpoint::postgres(dsn),
                 run_id,
-                new_metadata: make_metadata(1),
-                signature_snapshot: Arc::new(TableSignatureSnapshot {
-                    signatures: Vec::new(),
-                    prefetched_table_details: Vec::new(),
+                outcome: Ok(SmartErRefreshSnapshot {
+                    new_metadata: make_metadata(1),
+                    signature_snapshot: Arc::new(TableSignatureSnapshot {
+                        signatures: Vec::new(),
+                        prefetched_table_details: Vec::new(),
+                    }),
                 }),
-            })
+            }
         }
 
         fn fetched(names: &[&str], prefetched: &[&str]) -> Action {
-            Action::SmartErRefreshFetched(SmartErRefreshFetched {
+            Action::SmartErRefreshFetched {
                 endpoint: endpoint::postgres("postgres://localhost/test"),
                 run_id: 1,
-                new_metadata: make_metadata(names.len()),
-                signature_snapshot: Arc::new(TableSignatureSnapshot {
-                    signatures: names
-                        .iter()
-                        .map(|name| TableSignature {
-                            schema: "public".to_string(),
-                            name: (*name).to_string(),
-                            signature: "signature".to_string(),
-                        })
-                        .collect(),
-                    prefetched_table_details: prefetched
-                        .iter()
-                        .map(|name| minimal_table("public", *name))
-                        .collect(),
+                outcome: Ok(SmartErRefreshSnapshot {
+                    new_metadata: make_metadata(names.len()),
+                    signature_snapshot: Arc::new(TableSignatureSnapshot {
+                        signatures: names
+                            .iter()
+                            .map(|name| TableSignature {
+                                schema: "public".to_string(),
+                                name: (*name).to_string(),
+                                signature: "signature".to_string(),
+                            })
+                            .collect(),
+                        prefetched_table_details: prefetched
+                            .iter()
+                            .map(|name| minimal_table("public", *name))
+                            .collect(),
+                    }),
                 }),
-            })
+            }
         }
 
         #[test]
@@ -621,14 +623,12 @@ mod tests {
 
             let effects = reduce_er(&mut state, &fetched(&["new_table"], &[]), Instant::now());
 
-            assert!(effects.iter().any(|e| matches!(
-                e,
-                Effect::DispatchActions(actions)
-                    if matches!(
-                        actions.as_slice(),
-                        [Action::StartErPrefetchScoped { tables }] if tables == &["public.new_table"]
-                    )
-            )));
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::SchedulePrefetchQueueProcessing { .. }))
+            );
+            assert!(state.table_prefetch.is_prefetch_queued("public.new_table"));
         }
 
         #[test]
@@ -638,15 +638,17 @@ mod tests {
 
             reduce_er(
                 &mut state,
-                &Action::SmartErRefreshFetched(SmartErRefreshFetched {
+                &Action::SmartErRefreshFetched {
                     endpoint: endpoint::mysql("mysql://localhost/current", Some("current")),
                     run_id,
-                    new_metadata: make_metadata(1),
-                    signature_snapshot: Arc::new(TableSignatureSnapshot {
-                        signatures: vec![],
-                        prefetched_table_details: vec![minimal_table("public", "items")],
+                    outcome: Ok(SmartErRefreshSnapshot {
+                        new_metadata: make_metadata(1),
+                        signature_snapshot: Arc::new(TableSignatureSnapshot {
+                            signatures: vec![],
+                            prefetched_table_details: vec![minimal_table("public", "items")],
+                        }),
                     }),
-                }),
+                },
                 Instant::now(),
             );
 
@@ -696,12 +698,14 @@ mod tests {
 
             let effects = reduce_er(
                 &mut state,
-                &Action::SmartErRefreshFailed(SmartErRefreshError {
+                &Action::SmartErRefreshFetched {
                     endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id: 1,
-                    error: DbOperationError::Timeout("timed out".to_string()),
-                    new_metadata: None,
-                }),
+                    outcome: Err(SmartErRefreshError {
+                        error: DbOperationError::Timeout("timed out".to_string()),
+                        new_metadata: None,
+                    }),
+                },
                 Instant::now(),
             );
 
@@ -715,11 +719,11 @@ mod tests {
                     .is_some_and(|message| message.contains("falling back to full refresh"))
             );
             assert!(!state.table_detail_cache.contains("public.cached"));
-            assert!(effects.iter().any(|e| matches!(
-                e,
-                Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::StartErPrefetchAll))
-            )));
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::SchedulePrefetchQueueProcessing { .. }))
+            );
         }
 
         #[test]
@@ -730,12 +734,14 @@ mod tests {
 
             let effects = reduce_er(
                 &mut state,
-                &Action::SmartErRefreshFailed(SmartErRefreshError {
+                &Action::SmartErRefreshFetched {
                     endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id: 3,
-                    error: DbOperationError::Timeout("timed out".to_string()),
-                    new_metadata: None,
-                }),
+                    outcome: Err(SmartErRefreshError {
+                        error: DbOperationError::Timeout("timed out".to_string()),
+                        new_metadata: None,
+                    }),
+                },
                 Instant::now(),
             );
 
@@ -751,9 +757,9 @@ mod tests {
 
             let effects = reduce_er(
                 &mut state,
-                &Action::ErDiagramFailed {
+                &Action::ErDiagramOpened {
                     run_id,
-                    error: "stale failure".to_string(),
+                    outcome: Err("stale failure".to_string()),
                 },
                 Instant::now(),
             );
@@ -771,12 +777,14 @@ mod tests {
 
             let effects = reduce_er(
                 &mut state,
-                &Action::SmartErRefreshFailed(SmartErRefreshError {
+                &Action::SmartErRefreshFetched {
                     endpoint: endpoint::postgres("postgres://other/test"),
                     run_id: 1,
-                    error: DbOperationError::Timeout("timed out".to_string()),
-                    new_metadata: None,
-                }),
+                    outcome: Err(SmartErRefreshError {
+                        error: DbOperationError::Timeout("timed out".to_string()),
+                        new_metadata: None,
+                    }),
+                },
                 Instant::now(),
             );
 
@@ -793,12 +801,14 @@ mod tests {
 
             let effects = reduce_er(
                 &mut state,
-                &Action::SmartErRefreshFailed(SmartErRefreshError {
+                &Action::SmartErRefreshFetched {
                     endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id: 1,
-                    error: DbOperationError::Timeout("timed out".to_string()),
-                    new_metadata: None,
-                }),
+                    outcome: Err(SmartErRefreshError {
+                        error: DbOperationError::Timeout("timed out".to_string()),
+                        new_metadata: None,
+                    }),
+                },
                 Instant::now(),
             );
 
@@ -817,12 +827,14 @@ mod tests {
 
             let effects = reduce_er(
                 &mut state,
-                &Action::SmartErRefreshFailed(SmartErRefreshError {
+                &Action::SmartErRefreshFetched {
                     endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id: 1,
-                    error: DbOperationError::QueryFailed("sig fetch failed".to_string()),
-                    new_metadata: Some(make_metadata(20)),
-                }),
+                    outcome: Err(SmartErRefreshError {
+                        error: DbOperationError::QueryFailed("sig fetch failed".to_string()),
+                        new_metadata: Some(make_metadata(20)),
+                    }),
+                },
                 Instant::now(),
             );
 
@@ -837,11 +849,11 @@ mod tests {
                 20
             );
             assert!(!state.table_detail_cache.contains("public.cached"));
-            assert!(effects.iter().any(|e| matches!(
-                e,
-                Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::StartErPrefetchAll))
-            )));
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::SchedulePrefetchQueueProcessing { .. }))
+            );
         }
     }
 }

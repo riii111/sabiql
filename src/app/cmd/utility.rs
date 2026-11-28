@@ -1,54 +1,31 @@
+use std::path::Path;
 use std::sync::Arc;
 
-use tokio::sync::mpsc;
-
-use crate::cmd::effect::Effect;
 use crate::ports::outbound::{ClipboardWriter, FolderOpener};
-use crate::update::action::Action;
+use crate::update::action::{Action, CopyTarget};
 
-pub(in crate::cmd) async fn run(
-    effect: Effect,
-    action_tx: &mpsc::Sender<Action>,
-    clipboard: &Arc<dyn ClipboardWriter>,
-    folder_opener: &Arc<dyn FolderOpener>,
-) {
-    match effect {
-        Effect::CopyToClipboard {
-            content,
-            on_success,
-            on_failure,
-        } => {
-            let clipboard = Arc::clone(clipboard);
-            let tx = action_tx.clone();
-            tokio::task::spawn_blocking(move || match clipboard.copy_text(&content) {
-                Ok(()) => {
-                    tx.blocking_send(*on_success).ok();
-                }
-                Err(e) => {
-                    if let Some(action) = on_failure {
-                        tx.blocking_send(*action).ok();
-                    } else {
-                        tx.blocking_send(Action::CopyFailed(e)).ok();
-                    }
-                }
-            });
-        }
-        Effect::OpenFolder { path } => {
-            if let Err(e) = folder_opener.open(&path) {
-                action_tx
-                    .send(Action::OpenFolderFailed(Arc::new(e)))
-                    .await
-                    .ok();
-            }
-        }
-        _ => unreachable!("utility::run called with non-utility effect"),
-    }
+pub(in crate::cmd) async fn copy_to_clipboard(
+    clipboard: Arc<dyn ClipboardWriter>,
+    content: String,
+    target: CopyTarget,
+) -> Action {
+    let outcome = tokio::task::spawn_blocking(move || clipboard.copy_text(&content))
+        .await
+        .expect("clipboard task panicked");
+    Action::Copied { target, outcome }
+}
+
+pub(in crate::cmd) fn open_folder(folder_opener: &dyn FolderOpener, path: &Path) -> Option<Action> {
+    folder_opener
+        .open(path)
+        .err()
+        .map(|error| Action::OpenFolderFailed(Arc::new(error)))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
     use std::sync::Mutex;
 
     use crate::ports::outbound::clipboard::ClipboardError;
@@ -68,22 +45,6 @@ mod tests {
         result: Result<(), String>,
     }
 
-    impl MockFolderOpener {
-        fn new() -> Self {
-            Self {
-                opened: Mutex::new(vec![]),
-                result: Ok(()),
-            }
-        }
-
-        fn failing(error: &str) -> Self {
-            Self {
-                opened: Mutex::new(vec![]),
-                result: Err(error.to_owned()),
-            }
-        }
-    }
-
     impl FolderOpener for MockFolderOpener {
         fn open(&self, path: &Path) -> Result<(), std::io::Error> {
             self.opened.lock().unwrap().push(path.to_path_buf());
@@ -94,144 +55,64 @@ mod tests {
         }
     }
 
-    mod copy_to_clipboard {
-        use super::*;
+    #[tokio::test]
+    async fn copy_reports_clipboard_outcome_with_target() {
+        let failing = Arc::new(MockClipboard {
+            result: Err(ClipboardError::Unavailable("clipboard error".to_string())),
+        });
 
-        #[tokio::test]
-        async fn on_success_dispatched_when_copy_succeeds() {
-            let (tx, mut rx) = mpsc::channel(8);
-            let clipboard: Arc<dyn ClipboardWriter> = Arc::new(MockClipboard { result: Ok(()) });
-            let folder_opener: Arc<dyn FolderOpener> = Arc::new(MockFolderOpener::new());
+        let copied = copy_to_clipboard(
+            Arc::new(MockClipboard { result: Ok(()) }),
+            "hello".to_string(),
+            CopyTarget::ConnectionError,
+        )
+        .await;
+        let failed = copy_to_clipboard(
+            failing,
+            "hello".to_string(),
+            CopyTarget::ResultRow { row: 1 },
+        )
+        .await;
 
-            run(
-                Effect::CopyToClipboard {
-                    content: "hello".to_string(),
-                    on_success: Box::new(Action::Render),
-                    on_failure: None,
-                },
-                &tx,
-                &clipboard,
-                &folder_opener,
-            )
-            .await;
-
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
-            assert!(matches!(action, Action::Render));
-        }
-
-        #[tokio::test]
-        async fn on_failure_dispatched_when_copy_fails() {
-            let (tx, mut rx) = mpsc::channel(8);
-            let clipboard: Arc<dyn ClipboardWriter> = Arc::new(MockClipboard {
-                result: Err(ClipboardError::Unavailable("clipboard error".to_string())),
-            });
-            let folder_opener: Arc<dyn FolderOpener> = Arc::new(MockFolderOpener::new());
-
-            run(
-                Effect::CopyToClipboard {
-                    content: "hello".to_string(),
-                    on_success: Box::new(Action::None),
-                    on_failure: Some(Box::new(Action::Render)),
-                },
-                &tx,
-                &clipboard,
-                &folder_opener,
-            )
-            .await;
-
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
-            assert!(matches!(action, Action::Render));
-        }
-
-        #[tokio::test]
-        async fn copy_failed_dispatched_when_no_on_failure() {
-            let (tx, mut rx) = mpsc::channel(8);
-            let clipboard: Arc<dyn ClipboardWriter> = Arc::new(MockClipboard {
-                result: Err(ClipboardError::Unavailable("clipboard error".to_string())),
-            });
-            let folder_opener: Arc<dyn FolderOpener> = Arc::new(MockFolderOpener::new());
-
-            run(
-                Effect::CopyToClipboard {
-                    content: "hello".to_string(),
-                    on_success: Box::new(Action::Render),
-                    on_failure: None,
-                },
-                &tx,
-                &clipboard,
-                &folder_opener,
-            )
-            .await;
-
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
-            match action {
-                Action::CopyFailed(e) => assert_eq!(e.to_string(), "clipboard error"),
-                other => panic!("expected CopyFailed, got {other:?}"),
+        assert!(matches!(
+            copied,
+            Action::Copied {
+                target: CopyTarget::ConnectionError,
+                outcome: Ok(())
             }
+        ));
+        match failed {
+            Action::Copied {
+                target: CopyTarget::ResultRow { row: 1 },
+                outcome: Err(error),
+            } => assert_eq!(error.to_string(), "clipboard error"),
+            other => panic!("expected failed copy, got {other:?}"),
         }
     }
 
-    mod open_folder {
-        use super::*;
+    #[test]
+    fn open_folder_reports_only_failures() {
+        let opener = MockFolderOpener {
+            opened: Mutex::new(vec![]),
+            result: Ok(()),
+        };
+        let failing = MockFolderOpener {
+            opened: Mutex::new(vec![]),
+            result: Err("No such file or directory".to_owned()),
+        };
 
-        #[tokio::test]
-        async fn calls_folder_opener_port() {
-            let (tx, _rx) = mpsc::channel(8);
-            let clipboard: Arc<dyn ClipboardWriter> = Arc::new(MockClipboard { result: Ok(()) });
-            let opener = Arc::new(MockFolderOpener::new());
-            let folder_opener: Arc<dyn FolderOpener> = Arc::clone(&opener) as _;
+        assert!(open_folder(&opener, Path::new("/tmp/export")).is_none());
+        let failure = open_folder(&failing, Path::new("/nonexistent"));
 
-            run(
-                Effect::OpenFolder {
-                    path: PathBuf::from("/tmp/export"),
-                },
-                &tx,
-                &clipboard,
-                &folder_opener,
-            )
-            .await;
-
-            let opened = opener.opened.lock().unwrap();
-            assert_eq!(opened.len(), 1);
-            assert_eq!(opened[0], PathBuf::from("/tmp/export"));
-        }
-
-        #[tokio::test]
-        async fn failure_dispatches_open_folder_failed() {
-            let (tx, mut rx) = mpsc::channel(8);
-            let clipboard: Arc<dyn ClipboardWriter> = Arc::new(MockClipboard { result: Ok(()) });
-            let opener = Arc::new(MockFolderOpener::failing("No such file or directory"));
-            let folder_opener: Arc<dyn FolderOpener> = Arc::clone(&opener) as _;
-
-            run(
-                Effect::OpenFolder {
-                    path: PathBuf::from("/nonexistent"),
-                },
-                &tx,
-                &clipboard,
-                &folder_opener,
-            )
-            .await;
-
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
-            match action {
-                Action::OpenFolderFailed(e) => {
-                    assert_eq!(e.to_string(), "No such file or directory");
-                }
-                other => panic!("expected OpenFolderFailed, got {other:?}"),
+        assert_eq!(
+            *opener.opened.lock().unwrap(),
+            [PathBuf::from("/tmp/export")]
+        );
+        match failure {
+            Some(Action::OpenFolderFailed(e)) => {
+                assert_eq!(e.to_string(), "No such file or directory");
             }
+            other => panic!("expected OpenFolderFailed, got {other:?}"),
         }
     }
 }

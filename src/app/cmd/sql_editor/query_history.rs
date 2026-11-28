@@ -1,27 +1,19 @@
 use std::sync::Arc;
 
-use tokio::sync::mpsc;
-
 use crate::domain::query_history::QueryHistoryScope;
 use crate::ports::outbound::QueryHistoryStore;
 use crate::update::action::Action;
 
-pub(in crate::cmd) fn spawn_query_history_load(
+pub(in crate::cmd) async fn load_query_history(
+    store: Arc<dyn QueryHistoryStore>,
     project_name: String,
     scope: QueryHistoryScope,
-    action_tx: &mpsc::Sender<Action>,
-    query_history_store: &Arc<dyn QueryHistoryStore>,
-) {
-    let store = Arc::clone(query_history_store);
-    let tx = action_tx.clone();
-
-    tokio::spawn(async move {
-        let action = match store.load(&project_name, &scope).await {
-            Ok(entries) => Action::QueryHistoryLoaded(scope, entries),
-            Err(e) => Action::QueryHistoryLoadFailed(scope, e.to_string()),
-        };
-        tx.send(action).await.ok();
-    });
+) -> Action {
+    let outcome = store
+        .load(&project_name, &scope)
+        .await
+        .map_err(|error| error.to_string());
+    Action::QueryHistoryLoaded(scope, outcome)
 }
 
 #[cfg(test)]
@@ -70,62 +62,41 @@ mod tests {
         )
     }
 
-    async fn receive_one(mut rx: mpsc::Receiver<Action>) -> Action {
-        let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-            .await
-            .expect("action timeout")
-            .expect("channel closed");
-        assert!(
-            tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("channel close timeout")
-                .is_none()
-        );
-        action
-    }
-
     #[tokio::test]
-    async fn load_success_dispatches_one_loaded_action() {
-        let scope = scope();
+    async fn load_reports_store_outcome_for_scope() {
         let entries = vec![entry()];
-        let store: Arc<dyn QueryHistoryStore> = Arc::new(TestQueryHistoryStore {
-            result: Ok(entries.clone()),
-        });
-        let (tx, rx) = mpsc::channel(2);
+        let loaded = load_query_history(
+            Arc::new(TestQueryHistoryStore {
+                result: Ok(entries.clone()),
+            }),
+            "test".to_string(),
+            scope(),
+        )
+        .await;
+        let failed = load_query_history(
+            Arc::new(TestQueryHistoryStore {
+                result: Err(QueryHistoryError::Io(Arc::new(std::io::Error::other(
+                    "disk error",
+                )))),
+            }),
+            "test".to_string(),
+            scope(),
+        )
+        .await;
 
-        spawn_query_history_load("test".to_string(), scope.clone(), &tx, &store);
-        drop(tx);
-
-        let action = receive_one(rx).await;
-        match action {
-            Action::QueryHistoryLoaded(received_scope, received_entries) => {
-                assert_eq!(received_scope, scope);
+        match loaded {
+            Action::QueryHistoryLoaded(received_scope, Ok(received_entries)) => {
+                assert_eq!(received_scope, scope());
                 assert_eq!(received_entries, entries);
             }
-            other => panic!("expected QueryHistoryLoaded, got {other:?}"),
+            other => panic!("expected loaded history, got {other:?}"),
         }
-    }
-
-    #[tokio::test]
-    async fn load_failure_dispatches_one_display_error_action() {
-        let scope = scope();
-        let store: Arc<dyn QueryHistoryStore> = Arc::new(TestQueryHistoryStore {
-            result: Err(QueryHistoryError::Io(Arc::new(std::io::Error::other(
-                "disk error",
-            )))),
-        });
-        let (tx, rx) = mpsc::channel(2);
-
-        spawn_query_history_load("test".to_string(), scope.clone(), &tx, &store);
-        drop(tx);
-
-        let action = receive_one(rx).await;
-        match action {
-            Action::QueryHistoryLoadFailed(received_scope, error) => {
-                assert_eq!(received_scope, scope);
+        match failed {
+            Action::QueryHistoryLoaded(received_scope, Err(error)) => {
+                assert_eq!(received_scope, scope());
                 assert_eq!(error, "IO error: disk error");
             }
-            other => panic!("expected QueryHistoryLoadFailed, got {other:?}"),
+            other => panic!("expected failed history, got {other:?}"),
         }
     }
 }

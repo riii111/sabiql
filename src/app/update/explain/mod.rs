@@ -1064,6 +1064,7 @@ mod tests {
 
     mod explain_completed {
         use super::*;
+        use crate::update::action::ExplainPlan;
 
         #[test]
         fn sets_plan_and_switches_to_plan_tab() {
@@ -1076,13 +1077,15 @@ mod tests {
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {
-                    database_type: DatabaseType::PostgreSQL,
                     database_generation,
                     run_id: 1,
-                    query: "SELECT 1".to_string(),
-                    plan_text: "Seq Scan".to_string(),
                     is_analyze: false,
-                    execution_time_ms: 42,
+                    outcome: Ok(ExplainPlan {
+                        database_type: DatabaseType::PostgreSQL,
+                        query: "SELECT 1".to_string(),
+                        plan_text: "Seq Scan".to_string(),
+                        execution_time_ms: 42,
+                    }),
                 },
                 Instant::now(),
             );
@@ -1104,13 +1107,15 @@ mod tests {
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {
-                    database_type: DatabaseType::MySQL,
                     database_generation,
                     run_id: 1,
-                    query: "SELECT 1".to_string(),
-                    plan_text: "-> Table scan on users  (cost=1.25 rows=2.5)".to_string(),
                     is_analyze: false,
-                    execution_time_ms: 42,
+                    outcome: Ok(ExplainPlan {
+                        database_type: DatabaseType::MySQL,
+                        query: "SELECT 1".to_string(),
+                        plan_text: "-> Table scan on users  (cost=1.25 rows=2.5)".to_string(),
+                        execution_time_ms: 42,
+                    }),
                 },
                 Instant::now(),
             );
@@ -1143,13 +1148,15 @@ mod tests {
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {
-                    database_type: DatabaseType::PostgreSQL,
                     database_generation,
                     run_id: stale_run_id,
-                    query: "SELECT stale".to_string(),
-                    plan_text: "Stale".to_string(),
                     is_analyze: false,
-                    execution_time_ms: 42,
+                    outcome: Ok(ExplainPlan {
+                        database_type: DatabaseType::PostgreSQL,
+                        query: "SELECT stale".to_string(),
+                        plan_text: "Stale".to_string(),
+                        execution_time_ms: 42,
+                    }),
                 },
                 Instant::now(),
             );
@@ -1185,13 +1192,15 @@ mod tests {
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {
-                    database_type: DatabaseType::MySQL,
                     database_generation,
                     run_id,
-                    query: "SELECT stale".to_string(),
-                    plan_text: "stale".to_string(),
                     is_analyze: false,
-                    execution_time_ms: 42,
+                    outcome: Ok(ExplainPlan {
+                        database_type: DatabaseType::MySQL,
+                        query: "SELECT stale".to_string(),
+                        plan_text: "stale".to_string(),
+                        execution_time_ms: 42,
+                    }),
                 },
                 Instant::now(),
             );
@@ -1215,11 +1224,11 @@ mod tests {
 
             reduce_explain(
                 &mut state,
-                &Action::ExplainFailed {
+                &Action::ExplainCompleted {
                     database_generation,
                     run_id: 1,
-                    error: DbOperationError::QueryFailed("syntax error".to_string()),
                     is_analyze: false,
+                    outcome: Err(DbOperationError::QueryFailed("syntax error".to_string())),
                 },
                 Instant::now(),
             );
@@ -1251,11 +1260,11 @@ mod tests {
 
             reduce_explain(
                 &mut state,
-                &Action::ExplainFailed {
+                &Action::ExplainCompleted {
                     database_generation,
                     run_id: stale_run_id,
-                    error: DbOperationError::QueryFailed("syntax error".to_string()),
                     is_analyze: false,
+                    outcome: Err(DbOperationError::QueryFailed("syntax error".to_string())),
                 },
                 Instant::now(),
             );
@@ -1299,11 +1308,11 @@ mod tests {
 
             reduce_explain(
                 &mut state,
-                &Action::ExplainFailed {
+                &Action::ExplainCompleted {
                     database_generation,
                     run_id,
-                    error: DbOperationError::QueryFailed("stale error".to_string()),
                     is_analyze: false,
+                    outcome: Err(DbOperationError::QueryFailed("stale error".to_string())),
                 },
                 Instant::now(),
             );
@@ -1318,6 +1327,7 @@ mod tests {
 
     mod compare_workflow {
         use super::*;
+        use crate::update::action::ExplainPlan;
 
         #[test]
         fn sqlite_connection_rejects_compare_edit_query_with_error() {
@@ -1365,13 +1375,15 @@ mod tests {
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {
-                    database_type: DatabaseType::PostgreSQL,
                     database_generation,
                     run_id: 1,
-                    query: "SELECT 1".to_string(),
-                    plan_text: "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
                     is_analyze: false,
-                    execution_time_ms: 42,
+                    outcome: Ok(ExplainPlan {
+                        database_type: DatabaseType::PostgreSQL,
+                        query: "SELECT 1".to_string(),
+                        plan_text: "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
+                        execution_time_ms: 42,
+                    }),
                 },
                 now,
             );
@@ -1385,13 +1397,15 @@ mod tests {
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {
-                    database_type: DatabaseType::PostgreSQL,
                     database_generation,
                     run_id: 2,
-                    query: "SELECT 2".to_string(),
-                    plan_text: "Index Scan  (cost=0.00..5.00 rows=1 width=32)".to_string(),
                     is_analyze: false,
-                    execution_time_ms: 5,
+                    outcome: Ok(ExplainPlan {
+                        database_type: DatabaseType::PostgreSQL,
+                        query: "SELECT 2".to_string(),
+                        plan_text: "Index Scan  (cost=0.00..5.00 rows=1 width=32)".to_string(),
+                        execution_time_ms: 5,
+                    }),
                 },
                 now,
             );

@@ -6,7 +6,7 @@ pub(in crate::update) mod table_detail;
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::er_state::ErStatus;
-use crate::update::action::Action;
+use crate::update::er::diagram::er_generate_from_cache;
 
 pub(super) fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
     if state.er_preparation.status() != ErStatus::Waiting || !state.table_prefetch.is_complete() {
@@ -22,7 +22,7 @@ pub(super) fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
 
     if !state.table_prefetch.has_failures() {
         state.er_preparation.mark_idle();
-        return vec![Effect::DispatchActions(vec![Action::ErGenerateFromCache])];
+        return er_generate_from_cache(state);
     }
 
     state.er_preparation.mark_idle();
@@ -128,7 +128,7 @@ mod tests {
                 &mut state,
                 Action::MetadataLoaded {
                     run_id: stale_run_id,
-                    metadata: metadata_with_users(),
+                    outcome: Ok(metadata_with_users()),
                 },
                 Instant::now(),
                 &AppServices::stub(),
@@ -201,9 +201,9 @@ mod tests {
 
             route(
                 &mut state,
-                Action::MetadataFailed {
+                Action::MetadataLoaded {
                     run_id: metadata_run_id,
-                    error: DbOperationError::PermissionDenied("denied".to_string()),
+                    outcome: Err(DbOperationError::PermissionDenied("denied".to_string())),
                 },
                 Instant::now(),
                 &AppServices::stub(),
@@ -417,15 +417,12 @@ mod tests {
                 },
             );
 
-            let effects = route(
+            let effects = prefetch::prefetch_table_detail(
                 &mut state,
-                Action::PrefetchTableDetail {
-                    run_id,
-                    schema: "public".to_string(),
-                    table: "users".to_string(),
-                },
+                run_id,
+                "public",
+                "users",
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             // Should be re-queued at tail
@@ -456,16 +453,8 @@ mod tests {
                 },
             );
 
-            let effects = route(
-                &mut state,
-                Action::PrefetchTableDetail {
-                    run_id,
-                    schema: "public".to_string(),
-                    table: "users".to_string(),
-                },
-                now,
-                &AppServices::stub(),
-            );
+            let effects =
+                prefetch::prefetch_table_detail(&mut state, run_id, "public", "users", now);
 
             assert!(
                 effects.iter().any(|e| matches!(
@@ -515,15 +504,12 @@ mod tests {
             let qualified = "public.users".to_string();
             state.table_prefetch.queue_table_prefetch(qualified.clone());
 
-            let effects = route(
+            let effects = prefetch::prefetch_table_detail(
                 &mut state,
-                Action::PrefetchTableDetail {
-                    run_id,
-                    schema: "public".to_string(),
-                    table: "users".to_string(),
-                },
+                run_id,
+                "public",
+                "users",
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(effects.is_empty());
@@ -536,15 +522,12 @@ mod tests {
             let mut state = state_with_pending_mysql_probe();
             let run_id = state.table_prefetch.begin_completion_prefetch();
 
-            let effects = route(
+            let effects = prefetch::prefetch_table_detail(
                 &mut state,
-                Action::PrefetchTableDetail {
-                    run_id,
-                    schema: "public".to_string(),
-                    table: "users".to_string(),
-                },
+                run_id,
+                "public",
+                "users",
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(effects.is_empty());
@@ -566,7 +549,7 @@ mod tests {
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    detail: empty_table("public", "users"),
+                    outcome: Ok(empty_table("public", "users")),
                 },
                 Instant::now(),
                 &AppServices::stub(),
@@ -591,16 +574,7 @@ mod tests {
                 },
             );
 
-            route(
-                &mut state,
-                Action::PrefetchTableDetail {
-                    run_id,
-                    schema: "public".to_string(),
-                    table: "users".to_string(),
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            prefetch::prefetch_table_detail(&mut state, run_id, "public", "users", Instant::now());
 
             assert!(!state.table_prefetch.is_prefetch_queued(&qualified));
             assert!(state.table_prefetch.has_failures());
@@ -624,15 +598,12 @@ mod tests {
                 },
             );
 
-            let effects = route(
+            let effects = prefetch::prefetch_table_detail(
                 &mut state,
-                Action::PrefetchTableDetail {
-                    run_id,
-                    schema: "public".to_string(),
-                    table: "users".to_string(),
-                },
+                run_id,
+                "public",
+                "users",
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
@@ -663,15 +634,12 @@ mod tests {
                 },
             );
 
-            let effects = route(
+            let effects = prefetch::prefetch_table_detail(
                 &mut state,
-                Action::PrefetchTableDetail {
-                    run_id,
-                    schema: "public".to_string(),
-                    table: "users".to_string(),
-                },
+                run_id,
+                "public",
+                "users",
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(
@@ -715,11 +683,11 @@ mod tests {
                     .iter()
                     .any(|effect| matches!(effect, Effect::WriteErFailureLog { .. }))
             );
-            assert!(!effects.iter().any(|effect| matches!(
-                effect,
-                Effect::DispatchActions(actions)
-                    if actions.iter().any(|action| matches!(action, Action::ErGenerateFromCache))
-            )));
+            assert!(
+                !effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::GenerateErDiagram { .. }))
+            );
         }
 
         #[test]
@@ -737,15 +705,12 @@ mod tests {
                 },
             );
 
-            let effects = route(
+            let effects = prefetch::prefetch_table_detail(
                 &mut state,
-                Action::PrefetchTableDetail {
-                    run_id,
-                    schema: "public".to_string(),
-                    table: "users".to_string(),
-                },
+                run_id,
+                "public",
+                "users",
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             // Should proceed to fetching
@@ -919,15 +884,12 @@ mod tests {
                     .start_table_prefetch(format!("public.{name}"));
             }
 
-            let effects = route(
+            let effects = prefetch::prefetch_table_detail(
                 &mut state,
-                Action::PrefetchTableDetail {
-                    run_id,
-                    schema: "public".to_string(),
-                    table: "users".to_string(),
-                },
+                run_id,
+                "public",
+                "users",
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(fetch_count(&effects), 1);
@@ -937,28 +899,22 @@ mod tests {
         fn direct_request_completes_cached_table_without_fetching() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.modal.set_mode(InputMode::SqlModal);
+            state.sql_modal.apply_completion_update(&[], 0, true);
             let run_id = state.table_prefetch.begin_completion_prefetch();
             state
                 .table_detail_cache
                 .insert("public.users".to_string(), *empty_table("public", "users"));
 
-            let effects = route(
+            let effects = prefetch::prefetch_table_detail(
                 &mut state,
-                Action::PrefetchTableDetail {
-                    run_id,
-                    schema: "public".to_string(),
-                    table: "users".to_string(),
-                },
+                run_id,
+                "public",
+                "users",
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(fetch_count(&effects), 0);
-            assert!(effects.iter().any(|effect| matches!(
-                effect,
-                Effect::DispatchActions(actions)
-                    if matches!(actions.as_slice(), [Action::CompletionRequest])
-            )));
+            assert!(!state.sql_modal.completion().visible);
         }
     }
 
@@ -985,12 +941,12 @@ mod tests {
             let now = Instant::now();
             route(
                 &mut state,
-                Action::TableDetailCacheFailed {
+                Action::TableDetailCached {
                     endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    error: DbOperationError::QueryFailed("new error".to_string()),
+                    outcome: Err(DbOperationError::QueryFailed("new error".to_string())),
                 },
                 now,
                 &AppServices::stub(),
@@ -1015,12 +971,12 @@ mod tests {
             let now = Instant::now();
             route(
                 &mut state,
-                Action::TableDetailCacheFailed {
+                Action::TableDetailCached {
                     endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    error: DbOperationError::Timeout("timed out".to_string()),
+                    outcome: Err(DbOperationError::Timeout("timed out".to_string())),
                 },
                 now,
                 &AppServices::stub(),
@@ -1039,12 +995,12 @@ mod tests {
 
             let effects = route(
                 &mut state,
-                Action::TableDetailCacheFailed {
+                Action::TableDetailCached {
                     endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    error: DbOperationError::Timeout("timed out".to_string()),
+                    outcome: Err(DbOperationError::Timeout("timed out".to_string())),
                 },
                 Instant::now(),
                 &AppServices::stub(),
@@ -1076,12 +1032,12 @@ mod tests {
 
             let effects = route(
                 &mut state,
-                Action::TableDetailCacheFailed {
+                Action::TableDetailCached {
                     endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    error: DbOperationError::Timeout("timed out".to_string()),
+                    outcome: Err(DbOperationError::Timeout("timed out".to_string())),
                 },
                 Instant::now(),
                 &AppServices::stub(),
@@ -1110,12 +1066,12 @@ mod tests {
 
             route(
                 &mut state,
-                Action::TableDetailCacheFailed {
+                Action::TableDetailCached {
                     endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    error: DbOperationError::Timeout("timed out".to_string()),
+                    outcome: Err(DbOperationError::Timeout("timed out".to_string())),
                 },
                 Instant::now(),
                 &AppServices::stub(),
@@ -1130,7 +1086,7 @@ mod tests {
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    detail: empty_table("public", "users"),
+                    outcome: Ok(empty_table("public", "users")),
                 },
                 Instant::now(),
                 &AppServices::stub(),
@@ -1142,11 +1098,11 @@ mod tests {
                     .iter()
                     .all(|effect| !matches!(effect, Effect::WriteErFailureLog { .. }))
             );
-            assert!(effects.iter().any(|effect| matches!(
-                effect,
-                Effect::DispatchActions(actions)
-                    if actions.iter().any(|action| matches!(action, Action::ErGenerateFromCache))
-            )));
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::GenerateErDiagram { .. }))
+            );
         }
     }
 
@@ -1185,7 +1141,10 @@ mod tests {
 
         fn metadata_loaded_action(state: &mut AppState, metadata: Arc<DatabaseMetadata>) -> Action {
             let run_id = state.session.begin_metadata_refresh();
-            Action::MetadataLoaded { run_id, metadata }
+            Action::MetadataLoaded {
+                run_id,
+                outcome: Ok(metadata),
+            }
         }
 
         #[test]
@@ -1229,7 +1188,7 @@ mod tests {
                 &mut state,
                 Action::MetadataLoaded {
                     run_id: metadata_run_id,
-                    metadata: make_metadata(vec![("public", "orders")]),
+                    outcome: Ok(make_metadata(vec![("public", "orders")])),
                 },
                 Instant::now(),
                 &AppServices::stub(),
@@ -1264,8 +1223,8 @@ mod tests {
             assert_eq!(state.ui.explorer_selected(), 1);
             assert!(matches!(
                 effects.as_slice(),
-                [Effect::FetchEffectiveUser { .. }, Effect::ExecutePreview { table, .. }, Effect::FetchTableDetail { table: detail_table, .. }]
-                    if table == "users" && detail_table == "users"
+                [Effect::FetchEffectiveUser { .. }, Effect::LoadTable { table, .. }]
+                    if table == "users"
             ));
         }
 
@@ -1330,12 +1289,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.session.set_metadata(Some(make_metadata(530)));
 
-            route(
-                &mut state,
-                Action::StartErPrefetchAll,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            prefetch::start_er_prefetch_all(&mut state);
 
             assert!(cache_keeps_every_table(&mut state, 530));
         }
@@ -1345,12 +1299,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.session.set_metadata(Some(make_metadata(10)));
 
-            route(
-                &mut state,
-                Action::StartErPrefetchAll,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            prefetch::start_er_prefetch_all(&mut state);
 
             assert!(state.er_preparation.fk_expanded());
         }
@@ -1359,12 +1308,7 @@ mod tests {
         fn process_queue_starts_prefetch_effects_without_action_redispatch() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.session.set_metadata(Some(make_metadata(2)));
-            route(
-                &mut state,
-                Action::StartErPrefetchAll,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            prefetch::start_er_prefetch_all(&mut state);
             let run_id = state
                 .table_prefetch
                 .active_prefetch_run_id()
@@ -1382,11 +1326,6 @@ mod tests {
                 effects
                     .iter()
                     .all(|effect| matches!(effect, Effect::PrefetchTableColumnsAndFks { .. }))
-            );
-            assert!(
-                !effects
-                    .iter()
-                    .any(|effect| matches!(effect, Effect::DispatchActions(_)))
             );
         }
 
@@ -1433,12 +1372,7 @@ mod tests {
             let mut state = state_with_pending_mysql_probe();
             state.session.set_metadata(Some(make_metadata(2)));
 
-            let effects = route(
-                &mut state,
-                Action::StartErPrefetchAll,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = prefetch::start_er_prefetch_all(&mut state);
 
             assert!(effects.is_empty());
             assert!(state.table_prefetch.active_prefetch_run_id().is_none());
@@ -1469,14 +1403,8 @@ mod tests {
                 .table_prefetch
                 .queue_table_prefetch("public.users".to_string());
 
-            let effects = route(
-                &mut state,
-                Action::StartErPrefetchScoped {
-                    tables: vec!["public.posts".to_string()],
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects =
+                prefetch::start_er_prefetch_scoped(&mut state, vec!["public.posts".to_string()]);
 
             // In-progress prefetch must not be silently reset
             assert!(state.table_prefetch.is_prefetch_queued("public.users"));
@@ -1488,14 +1416,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             let tables = vec!["public.users".to_string(), "public.orders".to_string()];
 
-            let effects = route(
-                &mut state,
-                Action::StartErPrefetchScoped {
-                    tables: tables.clone(),
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = prefetch::start_er_prefetch_scoped(&mut state, tables.clone());
 
             assert!(state.table_prefetch.is_prefetch_queued("public.users"));
             assert!(state.table_prefetch.is_prefetch_queued("public.orders"));
@@ -1514,12 +1435,7 @@ mod tests {
             state.session.set_metadata(Some(make_metadata(560)));
             let tables: Vec<String> = (0..60).map(|i| format!("public.t{i}")).collect();
 
-            let effects = route(
-                &mut state,
-                Action::StartErPrefetchScoped { tables },
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = prefetch::start_er_prefetch_scoped(&mut state, tables);
 
             assert!(matches!(
                 effects.as_slice(),
@@ -1537,12 +1453,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             let tables = vec!["public.users".to_string(), "public.orders".to_string()];
 
-            let effects = route(
-                &mut state,
-                Action::StartCompletionPrefetch { tables },
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = prefetch::start_completion_prefetch(&mut state, tables);
 
             assert!(state.table_prefetch.active_prefetch_run_id().is_some());
             assert!(!state.table_prefetch.prefetch_tracks_er());
@@ -1558,30 +1469,27 @@ mod tests {
         fn fetched_table_retriggers_sql_completion_without_er_state() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.modal.set_mode(InputMode::SqlModal);
+            state.sql_modal.apply_completion_update(&[], 0, true);
             let run_id = state.table_prefetch.begin_completion_prefetch();
             state
                 .table_prefetch
                 .start_table_prefetch("public.users".to_string());
 
-            let effects = route(
+            let _effects = route(
                 &mut state,
                 Action::TableDetailCached {
                     endpoint: endpoint::postgres("postgres://localhost/test"),
                     run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    detail: empty_table("public", "users"),
+                    outcome: Ok(empty_table("public", "users")),
                 },
                 Instant::now(),
                 &AppServices::stub(),
             );
 
             assert!(state.table_detail_cache.contains("public.users"));
-            assert!(effects.iter().any(|effect| matches!(
-                effect,
-                Effect::DispatchActions(actions)
-                    if matches!(actions.as_slice(), [Action::CompletionRequest])
-            )));
+            assert!(!state.sql_modal.completion().visible);
         }
 
         #[test]
@@ -1592,14 +1500,8 @@ mod tests {
                 .table_prefetch
                 .start_table_prefetch("public.users".to_string());
 
-            let effects = route(
-                &mut state,
-                Action::StartErPrefetchScoped {
-                    tables: vec!["public.orders".to_string()],
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects =
+                prefetch::start_er_prefetch_scoped(&mut state, vec!["public.orders".to_string()]);
 
             let er_run_id = state
                 .table_prefetch
@@ -1621,19 +1523,22 @@ mod tests {
         use super::*;
 
         #[test]
-        fn complete_without_fk_neighbors_expands_and_dispatches_generate() {
+        fn complete_without_fk_neighbors_expands_and_generates() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let _ = state.table_prefetch.begin_er_prefetch();
             let _ = state.er_preparation.start_waiting_run();
+            state
+                .table_detail_cache
+                .insert("public.users".to_string(), *empty_table("public", "users"));
 
             let effects = check_er_completion(&mut state);
 
             assert!(state.er_preparation.fk_expanded());
-            assert!(effects.iter().any(|e| matches!(
-                e,
-                Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache))
-            )));
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::GenerateErDiagram { .. }))
+            );
         }
 
         #[test]
@@ -1674,18 +1579,21 @@ mod tests {
         }
 
         #[test]
-        fn complete_fk_expanded_dispatches_generate() {
+        fn complete_fk_expanded_generates() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let _ = state.er_preparation.start_waiting_run();
+            state
+                .table_detail_cache
+                .insert("public.users".to_string(), *empty_table("public", "users"));
             state.er_preparation.mark_fk_expanded();
 
             let effects = check_er_completion(&mut state);
 
-            assert!(effects.iter().any(|e| matches!(
-                e,
-                Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache))
-            )));
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::GenerateErDiagram { .. }))
+            );
         }
     }
 
@@ -1693,19 +1601,22 @@ mod tests {
         use super::*;
 
         #[test]
-        fn empty_neighbors_dispatches_generate() {
+        fn empty_neighbors_generates() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.table_prefetch.begin_er_prefetch();
             let _ = state.er_preparation.start_waiting_run();
+            state
+                .table_detail_cache
+                .insert("public.users".to_string(), *empty_table("public", "users"));
 
             let effects = er_neighbors::queue_fk_neighbors(&mut state, run_id, &[]);
 
             assert!(state.er_preparation.fk_expanded());
-            assert!(effects.iter().any(|e| matches!(
-                e,
-                Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache))
-            )));
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::GenerateErDiagram { .. }))
+            );
         }
 
         #[test]

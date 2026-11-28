@@ -4,13 +4,16 @@ use crate::model::app_state::AppState;
 use crate::model::shared::detail_view::{DetailDisplayMode, ReadOnlyDetailState};
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::preview_cell_text::{CellPresentationPolicy, format_for_cell_detail};
-use crate::update::action::{Action, ModalKind, ScrollAmount, ScrollDirection};
+use crate::update::action::{ModalKind, ScrollAmount, ScrollDirection};
+use crate::update::target_routing::open_modal;
+use std::time::Instant;
 
-pub(in crate::update) fn result_open_cell_detail(state: &mut AppState) -> Vec<Effect> {
+pub(in crate::update) fn result_open_cell_detail(
+    state: &mut AppState,
+    now: Instant,
+) -> Vec<Effect> {
     if selected_cell_uses_json_detail_modal(state) {
-        return vec![Effect::DispatchActions(vec![Action::OpenModal(
-            ModalKind::JsonDetail,
-        )])];
+        return open_modal(state, ModalKind::JsonDetail, now);
     }
 
     let Some((row_idx, col_idx, column_name, cell_value, data_type)) = selected_cell_value(state)
@@ -113,6 +116,7 @@ fn selected_column_data_type(state: &AppState, col_idx: usize) -> Option<&str> {
 mod tests {
     use crate::test_support;
     use crate::test_support::endpoint;
+    use crate::update::action::Action;
 
     use super::*;
     use crate::domain::Column;
@@ -125,7 +129,6 @@ mod tests {
     use crate::update::reducer::route;
     use crate::update::test_fixtures::edit_text;
     use std::sync::Arc;
-    use std::time::Instant;
 
     fn state_with_cell(data_type: &str, cell_value: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
@@ -408,7 +411,7 @@ mod tests {
     }
 
     #[test]
-    fn json_cell_dispatches_to_existing_json_modal() {
+    fn json_cell_opens_existing_json_modal() {
         let mut state = state_with_cell("jsonb", r#"{"a":1}"#);
 
         let result = route(
@@ -418,16 +421,13 @@ mod tests {
             &AppServices::stub(),
         );
 
-        assert!(matches!(
-            result.as_slice(),
-            [Effect::DispatchActions(actions)]
-                if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonDetail)])
-        ));
+        assert!(result.is_empty());
+        assert_eq!(state.input_mode(), InputMode::JsonDetail);
         assert!(!state.cell_detail.is_active());
     }
 
     #[test]
-    fn json_document_null_dispatches_to_existing_json_modal() {
+    fn json_document_null_opens_existing_json_modal() {
         let mut state = state_with_cell("jsonb", "null");
 
         let result = route(
@@ -437,11 +437,8 @@ mod tests {
             &AppServices::stub(),
         );
 
-        assert!(matches!(
-            result.as_slice(),
-            [Effect::DispatchActions(actions)]
-                if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonDetail)])
-        ));
+        assert!(result.is_empty());
+        assert_eq!(state.input_mode(), InputMode::JsonDetail);
         assert!(!state.cell_detail.is_active());
     }
 

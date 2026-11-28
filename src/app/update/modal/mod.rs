@@ -450,12 +450,12 @@ mod tests {
 
                 let effects = route(
                     &mut state,
-                    Action::SettingsSaved(AppSettings {
+                    Action::SettingsSaved(Ok(AppSettings {
                         theme_id: ThemeId::Light,
                         icon_mode: IconMode::Unicode,
                         keymap_preset: KeymapPreset::Ide,
                         er_browser: Some("Google Chrome".to_string()),
-                    }),
+                    })),
                     Instant::now(),
                     &AppServices::stub(),
                 );
@@ -482,7 +482,7 @@ mod tests {
 
             let effects = route(
                 &mut state,
-                Action::SettingsSaveFailed("I/O error: disk full".to_string()),
+                Action::SettingsSaved(Err("I/O error: disk full".to_string())),
                 Instant::now(),
                 &AppServices::stub(),
             );
@@ -606,7 +606,7 @@ mod tests {
             }
 
             #[test]
-            fn delete_connection_confirmation_dispatches_delete_action() {
+            fn delete_connection_confirmation_deletes_connection() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::ConnectionSelector);
                 let id = ConnectionId::new();
@@ -627,20 +627,6 @@ mod tests {
                 );
 
                 assert_eq!(state.input_mode(), InputMode::ConnectionSelector);
-                let [Effect::DispatchActions(actions)] = effects.as_slice() else {
-                    panic!("expected DeleteConnection action dispatch, got {effects:?}");
-                };
-                assert!(matches!(
-                    actions.as_slice(),
-                    [Action::DeleteConnection(action_id)] if action_id == &id
-                ));
-
-                let effects = reduce(
-                    &mut state,
-                    actions[0].clone(),
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
                 assert!(state.session.pending_mysql_connection_probe().is_none());
                 assert!(matches!(
                     effects.as_slice(),
@@ -1272,7 +1258,7 @@ mod tests {
 
                 let effects = route(
                     &mut state,
-                    Action::QueryHistoryLoaded(scope(&conn_id, None), entries),
+                    Action::QueryHistoryLoaded(scope(&conn_id, None), Ok(entries)),
                     Instant::now(),
                     &AppServices::stub(),
                 );
@@ -1290,7 +1276,7 @@ mod tests {
 
                 route(
                     &mut state,
-                    Action::QueryHistoryLoaded(scope(&stale_conn, None), entries),
+                    Action::QueryHistoryLoaded(scope(&stale_conn, None), Ok(entries)),
                     Instant::now(),
                     &AppServices::stub(),
                 );
@@ -1315,7 +1301,7 @@ mod tests {
 
                 route(
                     &mut state,
-                    Action::QueryHistoryLoaded(stale_scope, entries),
+                    Action::QueryHistoryLoaded(stale_scope, Ok(entries)),
                     Instant::now(),
                     &AppServices::stub(),
                 );
@@ -1331,7 +1317,7 @@ mod tests {
 
                 route(
                     &mut state,
-                    Action::QueryHistoryLoaded(scope(&conn_id, None), entries),
+                    Action::QueryHistoryLoaded(scope(&conn_id, None), Ok(entries)),
                     Instant::now(),
                     &AppServices::stub(),
                 );
@@ -1347,9 +1333,9 @@ mod tests {
 
                 route(
                     &mut state,
-                    Action::QueryHistoryLoadFailed(
+                    Action::QueryHistoryLoaded(
                         scope(&ConnectionId::from_string("test-conn"), None),
-                        "IO error: disk error".to_string(),
+                        Err("IO error: disk error".to_string()),
                     ),
                     now,
                     &AppServices::stub(),
@@ -1369,9 +1355,9 @@ mod tests {
 
                 route(
                     &mut state,
-                    Action::QueryHistoryLoadFailed(
+                    Action::QueryHistoryLoaded(
                         scope(&ConnectionId::from_string("test-conn"), None),
-                        "IO error: stale error".to_string(),
+                        Err("IO error: stale error".to_string()),
                     ),
                     now,
                     &AppServices::stub(),
@@ -1388,9 +1374,9 @@ mod tests {
 
                 route(
                     &mut state,
-                    Action::QueryHistoryLoadFailed(
+                    Action::QueryHistoryLoaded(
                         scope(&ConnectionId::from_string("old-conn"), None),
-                        "IO error: stale error".to_string(),
+                        Err("IO error: stale error".to_string()),
                     ),
                     now,
                     &AppServices::stub(),

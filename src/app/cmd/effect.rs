@@ -5,7 +5,7 @@ use crate::domain::query_history::QueryHistoryScope;
 use crate::domain::{ErTableInfo, QueryResult};
 use crate::model::browse::session::ConnectionSaveGuard;
 use crate::ports::outbound::{AccessMode, AppSettings};
-use crate::update::action::{Action, ConnectionTarget};
+use crate::update::action::{ConnectionTarget, CopyTarget};
 
 #[derive(Debug, Clone)]
 pub enum Effect {
@@ -71,6 +71,17 @@ pub enum Effect {
         offset: usize,
         target_page: usize,
     },
+    LoadTable {
+        endpoint: Arc<ConnectionEndpoint>,
+        schema: String,
+        table: String,
+        generation: u64,
+        detail_run_id: u64,
+        preview_run_id: u64,
+        limit: usize,
+        offset: usize,
+        target_page: usize,
+    },
     ExecuteAdhoc {
         endpoint: Arc<ConnectionEndpoint>,
         run_id: u64,
@@ -93,7 +104,9 @@ pub enum Effect {
         access_mode: AccessMode,
     },
     CancelConnectionTask,
+    // A smart ER refresh reads metadata through the same provider, so this also stops it.
     CancelMetadataTasks,
+    CancelTableDetail,
     CancelSqliteDiagnostics,
     CancelTrackedTasks,
     ExportCsvFromCache {
@@ -119,8 +132,7 @@ pub enum Effect {
 
     CopyToClipboard {
         content: String,
-        on_success: Box<Action>,
-        on_failure: Option<Box<Action>>,
+        target: CopyTarget,
     },
     OpenFolder {
         path: std::path::PathBuf,
@@ -143,13 +155,5 @@ pub enum Effect {
     FetchSqliteDiagnosticsQuickCheck {
         endpoint: Arc<ConnectionEndpoint>,
         run_id: u64,
-    },
-
-    DispatchActions(Vec<Action>),
-    SwitchConnection {
-        connection_index: usize,
-    },
-    SwitchToService {
-        service_index: usize,
     },
 }

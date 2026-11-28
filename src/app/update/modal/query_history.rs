@@ -32,7 +32,7 @@ pub(in crate::update) fn close_modal_query_history_picker(state: &mut AppState) 
 pub(in crate::update) fn query_history_loaded(
     state: &mut AppState,
     scope: QueryHistoryScope,
-    entries: Vec<QueryHistoryEntry>,
+    outcome: Result<Vec<QueryHistoryEntry>, String>,
 ) -> Vec<Effect> {
     if state.modal.active_mode() != InputMode::QueryHistoryPicker {
         return vec![];
@@ -40,22 +40,10 @@ pub(in crate::update) fn query_history_loaded(
     if state.session.query_history_scope().as_ref() != Some(&scope) {
         return vec![];
     }
-    state.query_history_picker.replace_entries(&entries);
-    vec![]
-}
-
-pub(in crate::update) fn query_history_load_failed(
-    state: &mut AppState,
-    scope: QueryHistoryScope,
-    error: String,
-) -> Vec<Effect> {
-    if state.modal.active_mode() != InputMode::QueryHistoryPicker {
-        return vec![];
+    match outcome {
+        Ok(entries) => state.query_history_picker.replace_entries(&entries),
+        Err(error) => state.messages.set_error(error),
     }
-    if state.session.query_history_scope().as_ref() != Some(&scope) {
-        return vec![];
-    }
-    state.messages.set_error(error);
     vec![]
 }
 

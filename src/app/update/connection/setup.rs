@@ -1,8 +1,8 @@
-use std::sync::Arc;
+use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::DatabaseType;
 use crate::domain::connection::{ConnectionProfile, ConnectionProfileError};
-use crate::domain::{DatabaseMetadata, DatabaseType};
 use crate::model::app_state::AppState;
 use crate::model::connection::error::ConnectionErrorInfo;
 use crate::model::connection::setup::{
@@ -12,7 +12,7 @@ use crate::model::connection::state::ConnectionState;
 use crate::model::shared::confirm_dialog::ConfirmIntent;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::text_input::TextEdit;
-use crate::update::action::{ConnectionSaveError, ConnectionTarget};
+use crate::update::action::{ConnectionSaveError, ConnectionTarget, SavedConnection};
 use crate::update::connection::helpers::{
     cancel_connection_task_effects, connection_save_fetch_effects,
     mysql_connection_completion_effects, reset_for_new_connection, save_current_connection_cache,
@@ -34,8 +34,15 @@ pub(in crate::update) fn open_modal_connection_setup(state: &mut AppState) -> Ve
 
 pub(in crate::update) fn connection_edit_loaded(
     state: &mut AppState,
-    profile: Box<ConnectionProfile>,
+    outcome: Result<Box<ConnectionProfile>, String>,
 ) -> Vec<Effect> {
+    let profile = match outcome {
+        Ok(profile) => profile,
+        Err(error) => {
+            state.messages.set_error(error);
+            return vec![];
+        }
+    };
     state.session.cancel_connection_save_and_disconnect();
     let cancel_effects = cancel_connection_task_effects(state);
     state.connection_setup = ConnectionSetupState::from(&*profile);
@@ -130,17 +137,32 @@ pub(in crate::update) fn connection_setup_cancel(state: &mut AppState) -> Vec<Ef
     }
 }
 
-pub(in crate::update) fn connection_save_completed(
+pub(in crate::update) fn connection_saved(
     state: &mut AppState,
-    target: ConnectionTarget,
     run_id: u64,
-    mysql_lower_case_table_names: Option<u8>,
-    metadata: Option<Arc<DatabaseMetadata>>,
+    outcome: Result<SavedConnection, ConnectionSaveError>,
+    now: Instant,
 ) -> Vec<Effect> {
     if !state.session.is_current_connection_save(run_id) {
         return vec![];
     }
     state.session.cancel_connection_save();
+    match outcome {
+        Ok(saved) => connection_save_completed(state, saved, now),
+        Err(error) => connection_save_failed(state, error),
+    }
+}
+
+fn connection_save_completed(
+    state: &mut AppState,
+    saved: SavedConnection,
+    now: Instant,
+) -> Vec<Effect> {
+    let SavedConnection {
+        target,
+        mysql_lower_case_table_names,
+        metadata,
+    } = saved;
     let ConnectionTarget { id, endpoint, .. } = &target;
     state.connection_setup.set_first_run(false);
     state.modal.set_mode(InputMode::Normal);
@@ -156,18 +178,10 @@ pub(in crate::update) fn connection_save_completed(
         return mysql_connection_completion_effects(state, endpoint);
     }
     let run_id = state.session.begin_connecting();
-    connection_save_fetch_effects(state, endpoint, run_id, metadata)
+    connection_save_fetch_effects(state, endpoint, run_id, metadata, now)
 }
 
-pub(in crate::update) fn connection_save_failed(
-    state: &mut AppState,
-    e: ConnectionSaveError,
-    run_id: u64,
-) -> Vec<Effect> {
-    if !state.session.is_current_connection_save(run_id) {
-        return vec![];
-    }
-    state.session.cancel_connection_save();
+fn connection_save_failed(state: &mut AppState, e: ConnectionSaveError) -> Vec<Effect> {
     if let ConnectionSaveError::Validation(ConnectionProfileError::SqlitePath(error)) = &e {
         state
             .connection_setup
@@ -306,6 +320,9 @@ fn insert_form_char(setup: &mut ConnectionSetupState, ch: char) {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use crate::domain::DatabaseMetadata;
     use std::time::Instant;
 
     use super::*;
@@ -677,9 +694,9 @@ mod tests {
 
             reduce(
                 &mut state,
-                &Action::ConnectionSaveFailed {
-                    error: ConnectionSaveError::Probe { error },
+                &Action::ConnectionSaved {
                     run_id,
+                    outcome: Err(ConnectionSaveError::Probe { error }),
                 },
                 Instant::now(),
             );
@@ -724,9 +741,9 @@ mod tests {
 
                 reduce(
                     &mut state,
-                    &Action::ConnectionSaveFailed {
-                        error: ConnectionSaveError::Probe { error },
+                    &Action::ConnectionSaved {
                         run_id,
+                        outcome: Err(ConnectionSaveError::Probe { error }),
                     },
                     Instant::now(),
                 );
@@ -769,10 +786,10 @@ mod tests {
             reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
             route(
                 &mut state,
-                Action::MySqlConnectionProbeCompleted {
+                Action::MySqlConnectionProbed {
                     target,
                     run_id: probe_run_id,
-                    lower_case_table_names: 0,
+                    outcome: Ok(0),
                 },
                 Instant::now(),
                 &AppServices::stub(),
@@ -800,15 +817,17 @@ mod tests {
 
             reduce(
                 &mut state,
-                &Action::ConnectionSaveCompleted {
-                    target: ConnectionTarget {
-                        id: ConnectionId::new(),
-                        name: "stale".to_string(),
-                        endpoint: endpoint::postgres("postgres://localhost/stale"),
-                    },
+                &Action::ConnectionSaved {
                     run_id,
-                    mysql_lower_case_table_names: None,
-                    metadata: None,
+                    outcome: Ok(SavedConnection {
+                        target: ConnectionTarget {
+                            id: ConnectionId::new(),
+                            name: "stale".to_string(),
+                            endpoint: endpoint::postgres("postgres://localhost/stale"),
+                        },
+                        mysql_lower_case_table_names: None,
+                        metadata: None,
+                    }),
                 },
                 Instant::now(),
             );
@@ -830,23 +849,20 @@ mod tests {
                 ),
             };
 
-            route(
-                &mut state,
-                Action::SwitchConnection(target.clone()),
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            crate::update::test_fixtures::switch_connection(&mut state, target.clone());
             reduce(
                 &mut state,
-                &Action::ConnectionSaveCompleted {
-                    target: ConnectionTarget {
-                        id: ConnectionId::new(),
-                        name: "stale".to_string(),
-                        endpoint: endpoint::postgres("postgres://localhost/stale"),
-                    },
+                &Action::ConnectionSaved {
                     run_id: save_run_id,
-                    mysql_lower_case_table_names: None,
-                    metadata: None,
+                    outcome: Ok(SavedConnection {
+                        target: ConnectionTarget {
+                            id: ConnectionId::new(),
+                            name: "stale".to_string(),
+                            endpoint: endpoint::postgres("postgres://localhost/stale"),
+                        },
+                        mysql_lower_case_table_names: None,
+                        metadata: None,
+                    }),
                 },
                 Instant::now(),
             );
@@ -876,11 +892,11 @@ mod tests {
 
             reduce(
                 &mut state,
-                &Action::ConnectionSaveFailed {
-                    error: ConnectionSaveError::Probe {
-                        error: DbOperationError::ConnectionFailed("connection refused".to_string()),
-                    },
+                &Action::ConnectionSaved {
                     run_id,
+                    outcome: Err(ConnectionSaveError::Probe {
+                        error: DbOperationError::ConnectionFailed("connection refused".to_string()),
+                    }),
                 },
                 Instant::now(),
             );
@@ -917,9 +933,9 @@ mod tests {
 
                 reduce(
                     &mut state,
-                    &Action::ConnectionSaveFailed {
-                        error: ConnectionSaveError::Metadata(error),
+                    &Action::ConnectionSaved {
                         run_id,
+                        outcome: Err(ConnectionSaveError::Metadata(error)),
                     },
                     Instant::now(),
                 );
@@ -1061,15 +1077,17 @@ mod tests {
             state.session.enable_read_only();
             let run_id = state.session.begin_connection_save();
 
-            let action = Action::ConnectionSaveCompleted {
-                target: ConnectionTarget {
-                    id: ConnectionId::new(),
-                    name: "new_db".to_string(),
-                    endpoint: endpoint::postgres("postgres://localhost/new_db"),
-                },
+            let action = Action::ConnectionSaved {
                 run_id,
-                mysql_lower_case_table_names: None,
-                metadata: None,
+                outcome: Ok(SavedConnection {
+                    target: ConnectionTarget {
+                        id: ConnectionId::new(),
+                        name: "new_db".to_string(),
+                        endpoint: endpoint::postgres("postgres://localhost/new_db"),
+                    },
+                    mysql_lower_case_table_names: None,
+                    metadata: None,
+                }),
             };
             reduce(&mut state, &action, Instant::now());
 
@@ -1104,15 +1122,17 @@ mod tests {
                 )));
 
             let run_id = state.session.begin_connection_save();
-            let action = Action::ConnectionSaveCompleted {
-                target: ConnectionTarget {
-                    id: ConnectionId::new(),
-                    name: "new.db".to_string(),
-                    endpoint: endpoint::sqlite("sqlite:///tmp/new.db"),
-                },
+            let action = Action::ConnectionSaved {
                 run_id,
-                mysql_lower_case_table_names: None,
-                metadata: None,
+                outcome: Ok(SavedConnection {
+                    target: ConnectionTarget {
+                        id: ConnectionId::new(),
+                        name: "new.db".to_string(),
+                        endpoint: endpoint::sqlite("sqlite:///tmp/new.db"),
+                    },
+                    mysql_lower_case_table_names: None,
+                    metadata: None,
+                }),
             };
             test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
             let effects = reduce(&mut state, &action, Instant::now());
@@ -1184,15 +1204,17 @@ mod tests {
             );
 
             let run_id = state.session.begin_connection_save();
-            let action = Action::ConnectionSaveCompleted {
-                target: ConnectionTarget {
-                    id: saved_id.clone(),
-                    name: "new.db".to_string(),
-                    endpoint: endpoint::sqlite("sqlite:///tmp/new.db"),
-                },
+            let action = Action::ConnectionSaved {
                 run_id,
-                mysql_lower_case_table_names: None,
-                metadata: None,
+                outcome: Ok(SavedConnection {
+                    target: ConnectionTarget {
+                        id: saved_id.clone(),
+                        name: "new.db".to_string(),
+                        endpoint: endpoint::sqlite("sqlite:///tmp/new.db"),
+                    },
+                    mysql_lower_case_table_names: None,
+                    metadata: None,
+                }),
             };
             reduce(&mut state, &action, Instant::now());
 
@@ -1209,15 +1231,17 @@ mod tests {
                 .queue_table_prefetch("public.users".to_string());
             let run_id = state.session.begin_connection_save();
 
-            let action = Action::ConnectionSaveCompleted {
-                target: ConnectionTarget {
-                    id: ConnectionId::new(),
-                    name: "app.db".to_string(),
-                    endpoint: endpoint::sqlite("sqlite:///tmp/app.db"),
-                },
+            let action = Action::ConnectionSaved {
                 run_id,
-                mysql_lower_case_table_names: None,
-                metadata: None,
+                outcome: Ok(SavedConnection {
+                    target: ConnectionTarget {
+                        id: ConnectionId::new(),
+                        name: "app.db".to_string(),
+                        endpoint: endpoint::sqlite("sqlite:///tmp/app.db"),
+                    },
+                    mysql_lower_case_table_names: None,
+                    metadata: None,
+                }),
             };
             reduce(&mut state, &action, Instant::now());
 
@@ -1230,15 +1254,17 @@ mod tests {
         fn mysql_save_completed_fetches_metadata_for_selected_database() {
             let mut state = AppState::new("test".to_string());
             let run_id = state.session.begin_connection_save();
-            let action = Action::ConnectionSaveCompleted {
-                target: ConnectionTarget {
-                    id: ConnectionId::new(),
-                    name: "mysql".to_string(),
-                    endpoint: endpoint::mysql("mysql://user@localhost:3306/app", Some("app")),
-                },
+            let action = Action::ConnectionSaved {
                 run_id,
-                mysql_lower_case_table_names: None,
-                metadata: None,
+                outcome: Ok(SavedConnection {
+                    target: ConnectionTarget {
+                        id: ConnectionId::new(),
+                        name: "mysql".to_string(),
+                        endpoint: endpoint::mysql("mysql://user@localhost:3306/app", Some("app")),
+                    },
+                    mysql_lower_case_table_names: None,
+                    metadata: None,
+                }),
             };
 
             let effects = reduce(&mut state, &action, Instant::now());
@@ -1363,7 +1389,7 @@ mod tests {
 
             let effects = reduce(
                 &mut state,
-                &Action::ConnectionEditLoaded(Box::new(create_profile("edited"))),
+                &Action::ConnectionEditLoaded(Ok(Box::new(create_profile("edited")))),
                 Instant::now(),
             );
 
@@ -1377,7 +1403,7 @@ mod tests {
 
             let effects = reduce(
                 &mut state,
-                &Action::ConnectionEditLoaded(Box::new(create_profile("edited"))),
+                &Action::ConnectionEditLoaded(Ok(Box::new(create_profile("edited")))),
                 Instant::now(),
             );
 
