@@ -91,15 +91,51 @@ fn launch_linux_browser(
     }
     let desktop = data_dirs
         .iter()
-        .map(|dir| dir.join("applications").join(desktop_id))
-        .find(|candidate| candidate.is_file())
+        .find_map(|dir| find_desktop_entry(&dir.join("applications"), desktop_id))
         .ok_or(ViewerError::DefaultBrowserUnavailable)?;
-    Command::new(gio)
+    let result = Command::new(gio)
         .arg("launch")
         .arg(desktop)
         .arg(path)
-        .spawn()?;
+        .output()?;
+    if !result.status.success() {
+        let details = String::from_utf8_lossy(&result.stderr).trim().to_string();
+        let details = if details.is_empty() {
+            format!("exit status {}", result.status)
+        } else {
+            details
+        };
+        return Err(ViewerError::BrowserLaunchFailed(details));
+    }
     Ok(())
+}
+
+// Desktop file IDs replace each directory separator below applications/ with '-'.
+#[cfg(any(target_os = "freebsd", target_os = "linux"))]
+fn find_desktop_entry(root: &Path, desktop_id: &str) -> Option<PathBuf> {
+    fn search(root: &Path, dir: &Path, desktop_id: &str) -> Option<PathBuf> {
+        for entry in std::fs::read_dir(dir).ok()?.flatten() {
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            let path = entry.path();
+            if kind.is_dir() {
+                if let Some(found) = search(root, &path, desktop_id) {
+                    return Some(found);
+                }
+            } else if kind.is_file() || kind.is_symlink() {
+                let Some(relative) = path.strip_prefix(root).ok().and_then(Path::to_str) else {
+                    continue;
+                };
+                let id = relative.replace('/', "-");
+                if id == desktop_id && path.is_file() {
+                    return Some(path);
+                }
+            }
+        }
+        None
+    }
+    search(root, root, desktop_id)
 }
 
 #[cfg(target_os = "windows")]
@@ -441,6 +477,43 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         panic!("gio was not invoked");
+    }
+
+    #[cfg(any(target_os = "freebsd", target_os = "linux"))]
+    #[test]
+    fn resolves_nested_desktop_entry_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let nested = dir.path().join("applications/vendor");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(nested.join("browser.desktop"), "browser").unwrap();
+        assert_eq!(
+            find_desktop_entry(&dir.path().join("applications"), "vendor-browser.desktop"),
+            Some(nested.join("browser.desktop"))
+        );
+    }
+
+    #[cfg(any(target_os = "freebsd", target_os = "linux"))]
+    #[test]
+    fn linux_browser_launch_failure_is_reported() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("applications")).unwrap();
+        std::fs::write(dir.path().join("applications/browser.desktop"), "browser").unwrap();
+        let settings = dir.path().join("settings");
+        let gio = dir.path().join("gio");
+        std::fs::write(&settings, "#!/bin/sh\nprintf 'browser.desktop\\n'\n").unwrap();
+        std::fs::write(&gio, "#!/bin/sh\nprintf 'launcher failed' >&2\nexit 1\n").unwrap();
+        for program in [&settings, &gio] {
+            std::fs::set_permissions(program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let error = launch_linux_browser(
+            Path::new("diagram.svg"),
+            settings.as_os_str(),
+            gio.as_os_str(),
+            &[dir.path().into()],
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("launcher failed"));
     }
 
     mod generate_full_dot {

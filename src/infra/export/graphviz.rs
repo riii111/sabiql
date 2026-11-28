@@ -20,6 +20,8 @@ pub enum ViewerError {
     UnsupportedPlatform { operation: String },
     #[error("Could not determine the system default browser")]
     DefaultBrowserUnavailable,
+    #[error("Failed to launch the system default browser: {0}")]
+    BrowserLaunchFailed(String),
 }
 
 impl From<GraphvizError> for ErExportError {
