@@ -176,6 +176,24 @@ mod tests {
         ))
     }
 
+    #[tokio::test]
+    #[ignore = "requires PostgreSQL, tracked: #133"]
+    async fn timeout_with_pg_sleep_returns_timeout_error() {
+        let adapter = PostgresAdapter { timeout_secs: 1 };
+        let result = adapter
+            .execute_adhoc(
+                &postgres_test_dsn(),
+                "SELECT pg_sleep(5)",
+                AccessMode::ReadWrite,
+            )
+            .await;
+
+        assert!(
+            matches!(result, Err(DbOperationError::Timeout(_))),
+            "Expected Timeout error, got: {result:?}"
+        );
+    }
+
     fn unique_schema_name() -> String {
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

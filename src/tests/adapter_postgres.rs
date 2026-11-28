@@ -8,7 +8,7 @@
 //! Default: `postgres://dev:dev@localhost:5433/testdb` (matches compose.yml)
 //! The database user must be able to create and drop schemas.
 
-use sabiql_app::ports::outbound::{AccessMode, DbOperationError};
+use sabiql_app::ports::outbound::AccessMode;
 use sabiql_infra::adapters::PostgresAdapter;
 
 use crate::tests::harness::postgres::{
@@ -320,21 +320,5 @@ mod error_paths {
         let result = adapter.fetch_metadata(&postgres_bad_dsn()).await;
 
         assert!(result.is_err(), "Expected error for bad DSN");
-    }
-
-    #[tokio::test]
-    #[ignore = "requires PostgreSQL, tracked: #133"]
-    async fn timeout_with_pg_sleep_returns_timeout_error() {
-        let adapter = PostgresAdapter::with_timeout(1);
-        let dsn = postgres_integration_dsn();
-
-        let result = adapter
-            .execute_adhoc(&dsn, "SELECT pg_sleep(5)", AccessMode::ReadWrite)
-            .await;
-
-        assert!(
-            matches!(result, Err(DbOperationError::Timeout(_))),
-            "Expected Timeout error, got: {result:?}"
-        );
     }
 }

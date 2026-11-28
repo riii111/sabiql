@@ -1,5 +1,4 @@
 pub mod fixtures;
-pub mod mysql;
 pub mod postgres;
 
 use std::sync::Arc;

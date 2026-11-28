@@ -11,7 +11,8 @@ mod shared {
 
 mod connection {
 
-    use crate::tests::harness::mysql::{
+    use crate::adapters::mysql::MySqlAdapter;
+    use crate::adapters::mysql::integration_harness::{
         MYSQL_FIXTURE_TABLE, mysql_cache_miss_config, mysql_integration_config, mysql_tls_config,
         with_mysql_test_db,
     };
@@ -21,7 +22,6 @@ mod connection {
     use sabiql_domain::connection::{
         ConnectionConfig, ConnectionId, ConnectionProfile, MySqlConnectionConfig, MySqlSslMode,
     };
-    use sabiql_infra::adapters::mysql::MySqlAdapter;
     #[cfg(unix)]
     use tempfile::NamedTempFile;
 
@@ -272,12 +272,12 @@ mod connection {
 mod metadata_fetch {
 
     use super::shared::{MYSQL_COMPOSITE_TABLE, MYSQL_VIEW};
-    use crate::tests::harness::mysql::{
+    use crate::adapters::DbAdapterRegistry;
+    use crate::adapters::mysql::integration_harness::{
         MYSQL_FIXTURE_TABLE, mysql_integration_config, with_mysql_test_db,
     };
     use sabiql_app::ports::outbound::{AccessMode, MetadataProvider};
     use sabiql_domain::{FkAction, IndexType, TableKind};
-    use sabiql_infra::adapters::DbAdapterRegistry;
 
     const MYSQL_FK_PARENT: &str = "mysql_metadata_parent";
     const MYSQL_FK_CHILD: &str = "mysql_metadata_child";
@@ -949,7 +949,7 @@ mod metadata_fetch {
 mod query_preview {
 
     use super::shared::{MYSQL_COMPOSITE_TABLE, MYSQL_EMPTY_TABLE, MYSQL_VIEW};
-    use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, with_mysql_test_db};
+    use crate::adapters::mysql::integration_harness::{MYSQL_FIXTURE_TABLE, with_mysql_test_db};
     use sabiql_app::ports::outbound::AccessMode;
     use sabiql_domain::{DatabaseType, QueryValue};
 
@@ -1232,7 +1232,7 @@ mod query_preview {
 
 mod write_operations {
 
-    use crate::tests::harness::mysql::with_mysql_test_db;
+    use crate::adapters::mysql::integration_harness::with_mysql_test_db;
     use sabiql_app::ports::outbound::{AccessMode, DbOperationError};
     use sabiql_domain::{CommandTag, DatabaseType, QueryValue};
 
@@ -2038,13 +2038,13 @@ mod write_operations {
 mod query_execution {
 
     use super::shared::MYSQL_EMPTY_TABLE;
-    use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, with_mysql_test_db};
-    use sabiql_app::ports::outbound::{AccessMode, DbOperationError, UnsupportedOperationKind};
-    use sabiql_domain::{QueryValue, RefreshScope};
-    use sabiql_infra::adapters::mysql::test_support::{
+    use crate::adapters::mysql::integration_harness::{MYSQL_FIXTURE_TABLE, with_mysql_test_db};
+    use crate::adapters::mysql::test_support::{
         execute_mysql_adhoc_with_read_only_session_for_test,
         execute_mysql_adhoc_with_timeout_for_test,
     };
+    use sabiql_app::ports::outbound::{AccessMode, DbOperationError, UnsupportedOperationKind};
+    use sabiql_domain::{QueryValue, RefreshScope};
     use std::time::Duration;
 
     #[tokio::test]

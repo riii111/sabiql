@@ -85,17 +85,13 @@ jobs:
       - id: test_all_features
         continue-on-error: true
         run: cargo nextest run --workspace --profile ci-all --all-features --show-progress=none --status-level=fail --final-status-level=fail
-      - id: test_no_default_features
-        continue-on-error: true
-        run: cargo nextest run -p sabiql --profile ci-no-default --no-default-features --show-progress=none --status-level=fail --final-status-level=fail
       - name: Summarize failed tests
-        if: steps.test_all_features.outcome == 'failure' || steps.test_no_default_features.outcome == 'failure'
+        if: steps.test_all_features.outcome == 'failure'
         run: |
           python3 scripts/ci_test_failure_summary.py \
-            target/nextest/ci-all/junit-all-features.xml \
-            target/nextest/ci-no-default/junit-no-default-features.xml >> "$GITHUB_STEP_SUMMARY"
+            target/nextest/ci-all/junit-all-features.xml >> "$GITHUB_STEP_SUMMARY"
       - name: Fail job if tests failed
-        if: steps.test_all_features.outcome == 'failure' || steps.test_no_default_features.outcome == 'failure'
+        if: steps.test_all_features.outcome == 'failure'
         run: exit 1
       - name: Reject unreferenced snapshots
         run: cargo insta test --unreferenced=reject -p sabiql
@@ -170,6 +166,10 @@ jobs:
         env:
           CARGO_TARGET_DIR: ${{ runner.temp }}/sabiql-integration-cargo-target
         run: cargo nextest run -p sabiql-infra --run-ignored ignored-only -E 'test(provider_classifies_full_and_light_missing_relations_without_losing_empty_tables)' --show-progress=none
+      - name: Run PostgreSQL timeout integration test
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/sabiql-integration-cargo-target
+        run: cargo nextest run -p sabiql-infra --run-ignored ignored-only -E 'test(timeout_with_pg_sleep_returns_timeout_error)' --show-progress=none
       - name: Run Oracle MySQL 8.4 integration tests (Tier 2)
         env:
           CARGO_TARGET_DIR: ${{ runner.temp }}/sabiql-integration-cargo-target
@@ -238,7 +238,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo build --workspace --release
-      - run: cargo build --workspace --release --no-default-features
 
   audit:
     name: Security Audit

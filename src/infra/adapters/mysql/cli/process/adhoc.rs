@@ -59,10 +59,7 @@ pub(in crate::adapters::mysql) async fn run_mysql_adhoc_with_server_capabilities
     .await
 }
 
-#[allow(
-    dead_code,
-    reason = "shared by MySQL process tests and the test-support feature"
-)]
+#[cfg(test)]
 pub(super) async fn run_mysql_adhoc_with_program_and_statements(
     program: &OsStr,
     option_file: &Path,
