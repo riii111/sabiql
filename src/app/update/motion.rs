@@ -8,7 +8,6 @@ use crate::update::action::{Action, ScrollAmount, ScrollTarget};
 /// What was on screen before an action, so transitions start from it.
 pub(super) struct MotionProbe {
     focused_pane: FocusedPane,
-    focus_mode: bool,
     shows_overlay: bool,
     scroll_before: Option<(ScrolledPane, usize)>,
 }
@@ -17,7 +16,6 @@ impl MotionProbe {
     pub(super) fn capture(state: &AppState, action: &Action) -> Self {
         Self {
             focused_pane: state.ui.focused_pane(),
-            focus_mode: state.ui.is_focus_mode(),
             shows_overlay: state.input_mode().shows_overlay(),
             scroll_before: animated_scroll_pane(state, action)
                 .map(|pane| (pane, scroll_offset(state, pane))),
@@ -32,10 +30,6 @@ impl MotionProbe {
         }
         if !shows_overlay && self.shows_overlay {
             state.motion.begin_modal_close(now);
-        }
-        let focus_mode = state.ui.is_focus_mode();
-        if focus_mode != self.focus_mode {
-            state.motion.begin_focus_mode(focus_mode, now);
         }
         // Pane borders are hidden under a modal, so a focus change there needs no transition.
         if !shows_overlay {
@@ -103,7 +97,6 @@ mod tests {
 
     use super::*;
     use crate::model::shared::input_mode::InputMode;
-    use crate::model::shared::ui_state::FocusMode;
     use crate::services::AppServices;
     use crate::update::action::ScrollDirection;
     use crate::update::reducer::reduce;
@@ -203,20 +196,6 @@ mod tests {
         probe.record(&mut state, now);
 
         assert_eq!(state.motion.modal_close_dim(now), Some(1.0));
-    }
-
-    #[test]
-    fn entering_focus_mode_starts_layout_transition() {
-        let mut state = motion_state();
-        let now = Instant::now();
-        let probe = MotionProbe::capture(&state, &Action::None);
-
-        state.ui.set_focus_mode(FocusMode::Focused {
-            previous_pane: FocusedPane::Explorer,
-        });
-        probe.record(&mut state, now);
-
-        assert_eq!(state.motion.focus_mode_collapse(now), Some(0.0));
     }
 
     #[test]

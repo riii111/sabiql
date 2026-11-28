@@ -6,7 +6,6 @@ const SCROLL_DURATION: Duration = Duration::from_millis(140);
 const FOCUS_DURATION: Duration = Duration::from_millis(160);
 const MODAL_DURATION: Duration = Duration::from_millis(140);
 const MODAL_CLOSE_DURATION: Duration = Duration::from_millis(100);
-const LAYOUT_DURATION: Duration = Duration::from_millis(200);
 
 // About 60 fps; terminals redraw only changed cells, so short tweens stay cheap.
 pub const FRAME_INTERVAL: Duration = Duration::from_millis(16);
@@ -45,19 +44,11 @@ impl Tween {
         now < self.ends_at()
     }
 
-    fn linear_progress(self, now: Instant) -> f32 {
-        let elapsed = now.saturating_duration_since(self.started_at);
-        (elapsed.as_secs_f32() / self.duration.as_secs_f32()).clamp(0.0, 1.0)
-    }
-
     fn eased_progress(self, now: Instant) -> f32 {
-        ease_out_cubic(self.linear_progress(now))
+        let elapsed = now.saturating_duration_since(self.started_at);
+        let linear = (elapsed.as_secs_f32() / self.duration.as_secs_f32()).clamp(0.0, 1.0);
+        ease_out_cubic(linear)
     }
-}
-
-// The whole screen moves when panes resize, so the layout eases in and out to keep every frame's step small.
-fn ease_in_out_sine(t: f32) -> f32 {
-    (1.0 - (std::f32::consts::PI * t).cos()) / 2.0
 }
 
 fn ease_out_cubic(t: f32) -> f32 {
@@ -95,13 +86,6 @@ pub struct FocusTransition {
     pub progress: f32,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct LayoutTween {
-    from: f32,
-    to: f32,
-    tween: Tween,
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct MotionState {
     enabled: bool,
@@ -110,7 +94,6 @@ pub struct MotionState {
     focus: Option<FocusTween>,
     modal: Option<Tween>,
     modal_close: Option<Tween>,
-    layout: Option<LayoutTween>,
 }
 
 impl MotionState {
@@ -205,37 +188,12 @@ impl MotionState {
             .map(|close| 1.0 - close.eased_progress(now))
     }
 
-    pub fn begin_focus_mode(&mut self, entering: bool, now: Instant) {
-        if !self.enabled {
-            return;
-        }
-        let to = if entering { 1.0 } else { 0.0 };
-        // Toggling again mid-transition turns back from the drawn layout instead of jumping to the far end.
-        let from = self.focus_mode_collapse(now).unwrap_or(1.0 - to);
-        self.layout = Some(LayoutTween {
-            from,
-            to,
-            tween: Tween::new(now, LAYOUT_DURATION),
-        });
-    }
-
-    /// 0.0 shows every pane and 1.0 shows only the result pane.
-    pub fn focus_mode_collapse(&self, now: Instant) -> Option<f32> {
-        self.layout
-            .filter(|layout| layout.tween.is_active(now))
-            .map(|layout| {
-                let progress = ease_in_out_sine(layout.tween.linear_progress(now));
-                (layout.to - layout.from).mul_add(progress, layout.from)
-            })
-    }
-
     pub fn next_frame(&self, now: Instant) -> Option<Instant> {
         [
             self.scroll.map(|scroll| scroll.tween),
             self.focus.map(|focus| focus.tween),
             self.modal,
             self.modal_close,
-            self.layout.map(|layout| layout.tween),
         ]
         .into_iter()
         .flatten()
@@ -421,44 +379,6 @@ mod tests {
         }
     }
 
-    mod layout {
-        use super::*;
-
-        #[test]
-        fn entering_focus_mode_collapses_from_zero() {
-            let mut motion = enabled();
-            let now = Instant::now();
-
-            motion.begin_focus_mode(true, now);
-
-            assert_eq!(motion.focus_mode_collapse(now), Some(0.0));
-            assert_eq!(motion.focus_mode_collapse(now + LAYOUT_DURATION), None);
-        }
-
-        #[test]
-        fn leaving_focus_mode_expands_from_full_collapse() {
-            let mut motion = enabled();
-            let now = Instant::now();
-
-            motion.begin_focus_mode(false, now);
-
-            assert_eq!(motion.focus_mode_collapse(now), Some(1.0));
-        }
-
-        #[test]
-        fn toggling_back_midway_starts_from_drawn_layout() {
-            let mut motion = enabled();
-            let now = Instant::now();
-            motion.begin_focus_mode(true, now);
-            let midway = now + LAYOUT_DURATION / 2;
-            let drawn = motion.focus_mode_collapse(midway).expect("collapse");
-
-            motion.begin_focus_mode(false, midway);
-
-            assert_eq!(motion.focus_mode_collapse(midway), Some(drawn));
-        }
-    }
-
     mod scheduling {
         use super::*;
 
@@ -483,11 +403,11 @@ mod tests {
         fn ended_tween_without_final_frame_requests_it() {
             let mut motion = enabled();
             let now = Instant::now();
-            motion.begin_focus_mode(true, now);
-            motion.note_frame(now + LAYOUT_DURATION / 2);
-            let late = now + LAYOUT_DURATION * 2;
+            motion.begin_modal(now);
+            motion.note_frame(now + MODAL_DURATION / 2);
+            let late = now + MODAL_DURATION * 2;
 
-            assert_eq!(motion.next_frame(late), Some(now + LAYOUT_DURATION));
+            assert_eq!(motion.next_frame(late), Some(now + MODAL_DURATION));
 
             motion.note_frame(late);
 
