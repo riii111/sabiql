@@ -145,6 +145,8 @@ mod tests {
         store.set_result(3, Some(2), now);
         store.set(FlashId::Ddl, now + Duration::from_millis(50));
         assert_eq!(store.earliest_deadline(), Some(now + FLASH_DURATION));
+        store.clear_expired(now + Duration::from_millis(50));
+        assert!(store.result().is_some());
         store.clear_expired(now + FLASH_DURATION);
         assert!(store.result().is_none());
         assert!(store.is_active(FlashId::Ddl, now + FLASH_DURATION));
