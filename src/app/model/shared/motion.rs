@@ -125,6 +125,12 @@ impl MotionState {
         self.scroll = None;
     }
 
+    pub fn drawn_scroll_offset(&self, pane: ScrolledPane, actual: usize) -> usize {
+        self.last_frame.map_or(actual, |drawn_at| {
+            self.scroll_offset(pane, actual, drawn_at)
+        })
+    }
+
     /// A tween applies only while the model still targets its end offset; any other change wins immediately.
     pub fn scroll_offset(&self, pane: ScrolledPane, actual: usize, now: Instant) -> usize {
         match self.scroll {

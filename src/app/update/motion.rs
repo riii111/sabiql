@@ -96,6 +96,9 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+    use std::sync::Arc;
+
+    use crate::domain::{QueryResult, QuerySource};
     use crate::model::shared::input_mode::InputMode;
     use crate::services::AppServices;
     use crate::update::action::ScrollDirection;
@@ -292,6 +295,46 @@ mod tests {
         assert_eq!(
             state.motion.scroll_offset(ScrolledPane::Result, 40, midway),
             20
+        );
+    }
+
+    #[test]
+    fn selecting_a_cell_mid_animation_starts_at_the_drawn_top_row() {
+        let mut state = motion_state();
+        let rows = (0..60).map(|i| vec![i.to_string()]).collect();
+        state
+            .query
+            .set_current_result(Arc::new(QueryResult::success(
+                "SELECT id".to_string(),
+                vec!["id".to_string()],
+                rows,
+                1,
+                QuerySource::Preview,
+            )));
+        let start = Instant::now();
+        let probe = MotionProbe::capture(&state, &page_down());
+        state.result_interaction.set_scroll_offset(20);
+        probe.record(&mut state, start);
+        let drawn_at = start + Duration::from_millis(30);
+        state.motion.note_frame(drawn_at);
+        let drawn = state
+            .motion
+            .scroll_offset(ScrolledPane::Result, 20, drawn_at);
+
+        reduce(
+            &mut state,
+            Action::ResultActivateCell,
+            drawn_at,
+            &AppServices::stub(),
+        );
+
+        assert!(drawn < 20, "drawn offset was {drawn}");
+        assert_eq!(state.result_interaction.selection().row(), Some(drawn));
+        assert_eq!(
+            state
+                .motion
+                .scroll_offset(ScrolledPane::Result, drawn, drawn_at),
+            drawn
         );
     }
 

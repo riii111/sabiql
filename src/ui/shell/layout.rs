@@ -235,8 +235,7 @@ impl MainLayout {
         BrowseLayout {
             explorer: ExplorerLayout {
                 pane_height: left_area.map_or(0, |area| area.height),
-                content_width: explorer_content_width
-                    .unwrap_or_else(|| state.ui.explorer_content_width),
+                content_width: explorer_content_width.unwrap_or(state.ui.explorer_content_width),
             },
             inspector: InspectorLayout {
                 viewport_plan: inspector_plan

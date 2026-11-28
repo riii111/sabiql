@@ -61,7 +61,10 @@ impl CommandPalette {
             })
             .collect();
 
-        let mut list_state = ListState::default().with_offset(picker.scroll_offset());
+        // The list widget scrolls to the selection, so a resize never leaves the command Enter runs off screen.
+        let mut list_state = ListState::default()
+            .with_offset(picker.scroll_offset())
+            .with_selected(Some(picker.selected()));
         frame.render_stateful_widget(List::new(items), list_area, &mut list_state);
 
         PickerLayout {
