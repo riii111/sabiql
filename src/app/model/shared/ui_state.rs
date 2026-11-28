@@ -7,6 +7,7 @@ use super::help::HelpState;
 use super::inspector_tab::InspectorTab;
 use super::key_sequence::KeySequenceState;
 use super::picker::PickerState;
+use super::render_output::PaneAreas;
 use super::theme_id::ThemeId;
 use super::viewport::{ColumnWidthsCache, ViewportPlan};
 use unicode_width::UnicodeWidthStr;
@@ -174,6 +175,7 @@ pub struct UiState {
     pub result_viewport_plan: ViewportPlan,
     pub result_widths_cache: ColumnWidthsCache,
     result_pane_height: u16,
+    pub(crate) pane_areas: PaneAreas,
     pub(crate) json_detail_editor_visible_rows: usize,
     pub row_detail_content_visible_rows: usize,
     pub row_detail_content_visible_columns: usize,

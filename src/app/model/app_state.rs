@@ -24,6 +24,7 @@ use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::message::MessageState;
 use crate::model::shared::modal::ModalState;
+use crate::model::shared::motion::MotionState;
 use crate::model::shared::render_output::{
     BrowseLayout, DetailLayout, InputLayout, OverlayLayout, PickerLayouts, RenderOutput,
 };
@@ -74,6 +75,7 @@ pub struct AppState {
     pub explain: ExplainContext,
     pub modal: ModalState,
     pub flash_timers: FlashTimerStore,
+    pub motion: MotionState,
     pub connection_caches: HashMap<ConnectionId, ConnectionCache>,
     connections: Vec<ConnectionProfile>,
     service_entries: Vec<ServiceEntry>,
@@ -111,6 +113,7 @@ impl AppState {
             explain: ExplainContext::default(),
             modal: ModalState::default(),
             flash_timers: FlashTimerStore::default(),
+            motion: MotionState::default(),
             connection_caches: HashMap::default(),
             connections: Vec::new(),
             service_entries: Vec::new(),
@@ -211,6 +214,7 @@ impl AppState {
         self.ui.explorer_horizontal_offset = self.ui.explorer_horizontal_offset.min(max_offset);
         self.ui.inspector_pane_height = layout.inspector.pane_height;
         self.ui.set_result_pane_height(layout.result.pane_height);
+        self.ui.pane_areas = layout.pane_areas;
     }
 
     fn apply_input_layout(&mut self, layout: InputLayout) {

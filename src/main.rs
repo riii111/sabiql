@@ -141,6 +141,7 @@ fn initialize_state(
     infrastructure: &Infrastructure,
 ) -> Result<AppState> {
     let mut state = AppState::new(project_name);
+    state.motion.enable();
     apply_app_settings(&mut state, app_settings);
 
     match infrastructure.connection_store.load_all() {

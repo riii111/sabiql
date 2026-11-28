@@ -15,6 +15,7 @@ use crate::app::model::shared::engine_feature_profile::InspectorInfoField;
 use crate::app::model::shared::flash_timer::{FlashId, FlashTimerStore};
 use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::inspector_tab::InspectorTab;
+use crate::app::model::shared::motion::ScrolledPane;
 use crate::app::model::shared::settings::IconMode;
 use crate::app::model::shared::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
@@ -161,9 +162,15 @@ impl Inspector {
             return ViewportPlan::default();
         }
 
+        let scroll_offset = state.motion.scroll_offset(
+            ScrolledPane::Inspector,
+            state.ui.inspector_scroll_offset,
+            now,
+        );
+
         match view_model.section() {
             Some(InspectorSection::Info { rows }) => {
-                Self::render_info(frame, inner, rows, state.ui.inspector_scroll_offset, theme);
+                Self::render_info(frame, inner, rows, scroll_offset, theme);
                 ViewportPlan::default()
             }
             Some(InspectorSection::Columns {
@@ -185,7 +192,7 @@ impl Inspector {
                     inner,
                     rows,
                     options,
-                    state.ui.inspector_scroll_offset,
+                    scroll_offset,
                     state.ui.inspector_horizontal_offset,
                     &state.ui.inspector_viewport_plan,
                     theme,
@@ -204,30 +211,24 @@ impl Inspector {
                     *show_type,
                     *show_partial,
                     *show_details,
-                    state.ui.inspector_scroll_offset,
+                    scroll_offset,
                     theme,
                 );
                 ViewportPlan::default()
             }
             Some(InspectorSection::ForeignKeys { rows }) => {
-                Self::render_foreign_keys(
-                    frame,
-                    inner,
-                    rows,
-                    state.ui.inspector_scroll_offset,
-                    theme,
-                );
+                Self::render_foreign_keys(frame, inner, rows, scroll_offset, theme);
                 ViewportPlan::default()
             }
             Some(InspectorSection::Rls { rows }) => {
-                Self::render_rls(frame, inner, rows, state.ui.inspector_scroll_offset, theme);
+                Self::render_rls(frame, inner, rows, scroll_offset, theme);
                 ViewportPlan::default()
             }
             Some(InspectorSection::Triggers { lines }) => Self::render_triggers(
                 frame,
                 inner,
                 lines,
-                state.ui.inspector_scroll_offset,
+                scroll_offset,
                 state.ui.inspector_horizontal_offset,
                 theme,
             ),
@@ -236,7 +237,7 @@ impl Inspector {
                     frame,
                     inner,
                     rows,
-                    state.ui.inspector_scroll_offset,
+                    scroll_offset,
                     &state.flash_timers,
                     now,
                     theme,

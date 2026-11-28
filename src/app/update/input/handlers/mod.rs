@@ -1,3 +1,5 @@
+mod mouse;
+
 use crate::model::app_state::AppState;
 use crate::ports::inbound::{InputEvent, KeyCombo};
 use crate::update::action::Action;
@@ -8,6 +10,7 @@ pub fn handle_event(event: InputEvent, state: &AppState) -> Action {
         InputEvent::Init => Action::Render,
         InputEvent::Resize(w, h) => Action::Resize(w, h),
         InputEvent::Key(combo) => handle_key_event(combo, state),
+        InputEvent::Mouse(input) => mouse::handle_mouse_event(input, state),
         InputEvent::Paste(text) => paste_target(&KeyContext::from_state(state))
             .map_or(Action::None, |target| Action::Paste { target, text }),
     }

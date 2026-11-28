@@ -22,10 +22,23 @@ use crate::policy::FeaturePolicy;
 use crate::services::AppServices;
 use crate::update::action::{Action, ListMotion, TableTarget};
 use crate::update::helpers::reject_pending_mysql_connection_probe;
-use crate::update::input::keymap::{KeyContext, palette_action};
+use crate::update::input::keymap::{KeyContext, listed_palette_entries, palette_action};
+use crate::update::motion::MotionProbe;
 use crate::update::query_context::termination_effects;
 
 pub fn reduce(
+    state: &mut AppState,
+    action: Action,
+    now: Instant,
+    services: &AppServices,
+) -> Vec<Effect> {
+    let motion_probe = MotionProbe::capture(state, &action);
+    let effects = reduce_without_motion(state, action, now, services);
+    motion_probe.record(state, now);
+    effects
+}
+
+fn reduce_without_motion(
     state: &mut AppState,
     action: Action,
     now: Instant,
@@ -54,7 +67,10 @@ fn dispatch_enabled_action(
     now: Instant,
     services: &AppServices,
 ) -> Vec<Effect> {
-    state.result_interaction.clear_operator_pending();
+    // Animation frames arrive between keystrokes, so only real actions end a pending `yy` or `dd`.
+    if !matches!(action, Action::Render) {
+        state.result_interaction.clear_operator_pending();
+    }
     route(state, action, now, services)
 }
 
@@ -570,14 +586,18 @@ fn confirm_selection(state: &mut AppState, now: Instant, services: &AppServices)
             return select_table(state, &table);
         }
     } else if state.modal.active_mode() == InputMode::CommandPalette {
-        let cmd_action = state
-            .ui
-            .palette_commands
+        let Some(entry_id) = listed_palette_entries(state)
             .get(state.ui.table_picker().selected())
-            .and_then(|&id| palette_action(id, &KeyContext::for_browse_state(state)))
-            .unwrap_or(Action::None);
+            .map(|entry| entry.id)
+        else {
+            // With no match the palette stays open, so a typo in the filter can be fixed in place.
+            return vec![];
+        };
+        let cmd_action =
+            palette_action(entry_id, &KeyContext::for_browse_state(state)).unwrap_or(Action::None);
         state.modal.set_mode(InputMode::Normal);
-        return reduce(state, cmd_action, now, services);
+        // The outer reduce already compares the screen before the palette with the result, so a modal opened from it keeps the scrim settled.
+        return reduce_without_motion(state, cmd_action, now, services);
     }
 
     vec![]
@@ -658,6 +678,21 @@ mod tests {
 
             assert!(state.should_quit);
             assert!(matches!(effects.as_slice(), [Effect::CancelTrackedTasks]));
+        }
+
+        #[test]
+        fn render_keeps_pending_yank_operator() {
+            let mut state = create_test_state();
+            state.result_interaction.start_yank_operator();
+
+            reduce(
+                &mut state,
+                Action::Render,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(state.result_interaction.is_yank_operator_pending());
         }
 
         #[test]
@@ -3676,6 +3711,7 @@ mod tests {
         use super::*;
         use crate::domain::{QueryResult, QuerySource};
         use crate::model::shared::settings::KeymapPreset;
+        use crate::update::action::ListTarget;
         use crate::update::input::keymap::palette_entry;
         use crate::update::modal::base::open_modal_command_palette;
         use rstest::rstest;
@@ -3749,6 +3785,97 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), expected_mode);
+        }
+
+        fn type_palette_filter(state: &mut AppState, text: &str) {
+            for ch in text.chars() {
+                reduce(
+                    state,
+                    Action::TextInput {
+                        target: InputTarget::Filter,
+                        ch,
+                    },
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
+            }
+        }
+
+        #[test]
+        fn typed_filter_runs_best_matching_command() {
+            let mut state = state_in_palette_mode(KeymapPreset::Default);
+            type_palette_filter(&mut state, "settings");
+
+            reduce(
+                &mut state,
+                Action::ConfirmSelection,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.input_mode(), InputMode::Settings);
+        }
+
+        #[test]
+        fn enter_without_a_match_keeps_the_typed_filter() {
+            let mut state = state_in_palette_mode(KeymapPreset::Default);
+            type_palette_filter(&mut state, "zzzzqx");
+
+            reduce(
+                &mut state,
+                Action::ConfirmSelection,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.input_mode(), InputMode::CommandPalette);
+            assert_eq!(state.ui.table_picker().filter_input().content(), "zzzzqx");
+        }
+
+        #[test]
+        fn modal_opened_from_palette_keeps_scrim_settled() {
+            let mut state = state_in_palette_mode(KeymapPreset::Default);
+            state.motion.enable();
+            type_palette_filter(&mut state, "settings");
+            let now = Instant::now();
+
+            reduce(
+                &mut state,
+                Action::ConfirmSelection,
+                now,
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.input_mode(), InputMode::Settings);
+            assert_eq!(state.motion.modal_progress(now), None);
+        }
+
+        #[test]
+        fn navigation_stays_within_filtered_commands() {
+            let mut state = state_in_palette_mode(KeymapPreset::Default);
+            type_palette_filter(&mut state, "settings");
+
+            reduce(
+                &mut state,
+                Action::ListSelect {
+                    target: ListTarget::CommandPalette,
+                    motion: ListMotion::Next,
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.ui.table_picker().selected(), 0);
+        }
+
+        #[test]
+        fn reopening_palette_clears_previous_filter() {
+            let mut state = state_in_palette_mode(KeymapPreset::Default);
+            type_palette_filter(&mut state, "settings");
+
+            open_modal_command_palette(&mut state);
+
+            assert_eq!(state.ui.table_picker().filter_input().content(), "");
         }
 
         #[test]

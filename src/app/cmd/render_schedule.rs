@@ -38,6 +38,8 @@ pub fn next_animation_deadline(state: &AppState, now: Instant) -> Option<Instant
 
     earliest = min_instant(earliest, state.flash_timers.earliest_deadline());
 
+    earliest = min_instant(earliest, state.motion.next_frame(now));
+
     // Cursor blink is the slowest; skip if faster timers are active
     if has_blinking_cursor(state) && earliest.is_none() {
         earliest = Some(now + CURSOR_BLINK_INTERVAL);

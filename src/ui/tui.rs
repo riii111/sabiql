@@ -144,6 +144,12 @@ impl TuiRunner {
                     {
                         InputEvent::Key(super::event::key_translator::translate(key))
                     }
+                    CrosstermEvent::Mouse(mouse) => {
+                        match super::event::mouse_translator::translate(mouse) {
+                            Some(input) => InputEvent::Mouse(input),
+                            None => continue,
+                        }
+                    }
                     CrosstermEvent::Resize(x, y) => InputEvent::Resize(x, y),
                     CrosstermEvent::Paste(text) => InputEvent::Paste(text),
                     _ => continue,

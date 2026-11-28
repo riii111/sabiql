@@ -15,18 +15,12 @@ pub(in crate::update) fn select_explorer(
     match motion {
         SelectMotion::Next => {
             if state.ui.focused_pane() == FocusedPane::Explorer {
-                let len = state.tables().len();
-                if len > 0 && state.ui.explorer_selected() < len - 1 {
-                    state
-                        .ui
-                        .set_explorer_selection(Some(state.ui.explorer_selected() + 1));
-                }
+                step_explorer_selection(state, ScrollDirection::Down);
             }
         }
         SelectMotion::Previous => {
-            if state.ui.focused_pane() == FocusedPane::Explorer && !state.tables().is_empty() {
-                let new_idx = state.ui.explorer_selected().saturating_sub(1);
-                state.ui.set_explorer_selection(Some(new_idx));
+            if state.ui.focused_pane() == FocusedPane::Explorer {
+                step_explorer_selection(state, ScrollDirection::Up);
             }
         }
         SelectMotion::First => {
@@ -139,12 +133,33 @@ pub(in crate::update) fn scroll_to_cursor_explorer(
     vec![]
 }
 
+fn step_explorer_selection(state: &mut AppState, direction: ScrollDirection) {
+    let len = state.tables().len();
+    let selected = state.ui.explorer_selected();
+    match direction {
+        ScrollDirection::Down if selected + 1 < len => {
+            state.ui.set_explorer_selection(Some(selected + 1));
+        }
+        ScrollDirection::Up if len > 0 => {
+            state
+                .ui
+                .set_explorer_selection(Some(selected.saturating_sub(1)));
+        }
+        _ => {}
+    }
+}
+
 pub(in crate::update) fn scroll_explorer(
     state: &mut AppState,
     direction: ScrollDirection,
     amount: ScrollAmount,
 ) {
     match (direction, amount) {
+        (ScrollDirection::Up | ScrollDirection::Down, ScrollAmount::Line) => {
+            // Scrolling acts on the pane it is aimed at, so unlike `Select` it does not require focus.
+            // The list keeps its selection in view, so stepping the selection is how this pane scrolls.
+            step_explorer_selection(state, direction);
+        }
         (ScrollDirection::Left, ScrollAmount::Line) => {
             state.ui.explorer_horizontal_offset =
                 state.ui.explorer_horizontal_offset.saturating_sub(1);

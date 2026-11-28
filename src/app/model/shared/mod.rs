@@ -11,6 +11,7 @@ pub mod inspector_tab;
 pub mod key_sequence;
 pub mod message;
 pub mod modal;
+pub mod motion;
 pub mod multi_line_input;
 pub mod picker;
 pub mod render_output;

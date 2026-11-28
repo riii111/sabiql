@@ -7,7 +7,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::render_output::{
     BrowseLayout, ConfirmPreviewLayout, DetailLayout, ExplorerLayout, InputLayout, InspectorLayout,
-    OverlayLayout, PickerLayouts, ResultLayout,
+    OverlayLayout, PaneArea, PaneAreas, PickerLayouts, ResultLayout,
 };
 use crate::app::ports::outbound::{CellDetailViewport, RenderOutput};
 use crate::app::services::AppServices;
@@ -32,6 +32,7 @@ use crate::features::sql_modal::SqlModal;
 use crate::shell::command_line::CommandLine;
 use crate::shell::footer::Footer;
 use crate::shell::header::Header;
+use crate::shell::motion_fx::{apply_focus_transition, apply_modal_fade, apply_modal_fade_out};
 use crate::theme::{ThemePalette, palette_for};
 
 pub struct MainLayout;
@@ -74,9 +75,21 @@ impl MainLayout {
 
         Header::render(frame, header_area, state, theme);
         let browse = Self::render_browse_mode(frame, main_area, state, services, now, theme);
+        if let Some(transition) = state.motion.focus_transition(now) {
+            apply_focus_transition(frame.buffer_mut(), &browse.pane_areas, transition, theme);
+        }
 
         Footer::render(frame, footer_area, state, time_ms, theme);
         let command_line_visible_width = CommandLine::render(frame, cmdline_area, state, theme);
+
+        let shows_overlay = state.input_mode().shows_overlay();
+        if !shows_overlay && let Some(dim) = state.motion.modal_close_dim(now) {
+            apply_modal_fade_out(frame.buffer_mut(), dim, theme);
+        }
+        let modal_fade = shows_overlay
+            .then(|| state.motion.modal_progress(now))
+            .flatten()
+            .map(|progress| (progress, frame.buffer_mut().clone()));
         let connection_list_pane_height = match state.input_mode() {
             InputMode::ConnectionSelector => Some(ConnectionSelector::render(frame, state, theme)),
             _ => None,
@@ -84,6 +97,8 @@ impl MainLayout {
 
         let table_picker = match state.input_mode() {
             InputMode::TablePicker => Some(TablePicker::render(frame, state, theme)),
+            // The palette shares the table picker's selection and filter state, so it reports into the same layout slot.
+            InputMode::CommandPalette => Some(CommandPalette::render(frame, state, theme)),
             _ => None,
         };
 
@@ -146,12 +161,15 @@ impl MainLayout {
             };
 
         match state.input_mode() {
-            InputMode::CommandPalette => CommandPalette::render(frame, state, theme),
             InputMode::Settings => SettingsOverlay::render(frame, state, theme),
-            InputMode::Help => HelpOverlay::render(frame, state, theme),
+            InputMode::Help => HelpOverlay::render(frame, state, now, theme),
             InputMode::ConnectionSetup => ConnectionSetup::render(frame, state, services, theme),
             InputMode::ConnectionError => ConnectionError::render(frame, state, now, theme),
             _ => {}
+        }
+
+        if let Some((progress, background)) = modal_fade {
+            apply_modal_fade(frame.buffer_mut(), &background, progress, theme);
         }
 
         RenderOutput {
@@ -188,49 +206,83 @@ impl MainLayout {
         theme: &ThemePalette,
     ) -> BrowseLayout {
         if state.ui.is_focus_mode() {
-            let (result_plan, result_widths_cache) =
+            let (viewport_plan, widths_cache) =
                 ResultPane::render(frame, main_area, state, now, theme);
-            BrowseLayout {
-                explorer: ExplorerLayout::default(),
-                inspector: InspectorLayout::default(),
+            return BrowseLayout {
                 result: ResultLayout {
-                    viewport_plan: result_plan,
-                    widths_cache: result_widths_cache,
+                    viewport_plan,
+                    widths_cache,
                     pane_height: main_area.height,
                 },
-            }
-        } else {
-            let [left_area, right_area] =
-                Layout::horizontal([Constraint::Percentage(25), Constraint::Percentage(75)])
-                    .areas(main_area);
-
-            let content_width = Explorer::render(frame, left_area, state, theme);
-
-            let [inspector_area, result_area] =
-                Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)])
-                    .areas(right_area);
-
-            let inspector_plan =
-                Inspector::render(frame, inspector_area, state, services, now, theme);
-            let (result_plan, result_widths_cache) =
-                ResultPane::render(frame, result_area, state, now, theme);
-
-            BrowseLayout {
-                explorer: ExplorerLayout {
-                    pane_height: left_area.height,
-                    content_width,
+                pane_areas: PaneAreas {
+                    result: Some(pane_area(main_area)),
+                    ..PaneAreas::default()
                 },
-                inspector: InspectorLayout {
-                    viewport_plan: inspector_plan,
-                    pane_height: inspector_area.height,
-                },
-                result: ResultLayout {
-                    viewport_plan: result_plan,
-                    widths_cache: result_widths_cache,
-                    pane_height: result_area.height,
-                },
-            }
+                ..BrowseLayout::default()
+            };
         }
+
+        let (left_area, right_area) = split_columns(main_area);
+        let (inspector_area, result_area) = split_rows(right_area);
+
+        let explorer_content_width =
+            left_area.map(|area| Explorer::render(frame, area, state, theme));
+        let inspector_plan =
+            inspector_area.map(|area| Inspector::render(frame, area, state, services, now, theme));
+        let (result_plan, result_widths_cache) =
+            ResultPane::render(frame, result_area, state, now, theme);
+
+        BrowseLayout {
+            explorer: ExplorerLayout {
+                pane_height: left_area.map_or(0, |area| area.height),
+                content_width: explorer_content_width.unwrap_or(state.ui.explorer_content_width),
+            },
+            inspector: InspectorLayout {
+                viewport_plan: inspector_plan
+                    .unwrap_or_else(|| state.ui.inspector_viewport_plan.clone()),
+                pane_height: inspector_area.map_or(0, |area| area.height),
+            },
+            result: ResultLayout {
+                viewport_plan: result_plan,
+                widths_cache: result_widths_cache,
+                pane_height: result_area.height,
+            },
+            pane_areas: PaneAreas {
+                explorer: left_area.map(pane_area),
+                inspector: inspector_area.map(pane_area),
+                result: Some(pane_area(result_area)),
+            },
+        }
+    }
+}
+
+// A pane narrower than this cannot draw its border and one cell of content, so it is dropped.
+const MIN_PANE_EXTENT: u16 = 3;
+
+fn split_columns(area: Rect) -> (Option<Rect>, Rect) {
+    let [left, right] =
+        Layout::horizontal([Constraint::Percentage(25), Constraint::Percentage(75)]).areas(area);
+    if left.width < MIN_PANE_EXTENT {
+        return (None, area);
+    }
+    (Some(left), right)
+}
+
+fn split_rows(area: Rect) -> (Option<Rect>, Rect) {
+    let [top, bottom] =
+        Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)]).areas(area);
+    if top.height < MIN_PANE_EXTENT {
+        return (None, area);
+    }
+    (Some(top), bottom)
+}
+
+fn pane_area(rect: Rect) -> PaneArea {
+    PaneArea {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
     }
 }
 
@@ -250,5 +302,38 @@ pub mod test_support {
         ) -> RenderOutput {
             Self::render_impl(frame, state, time_ms, services, now, theme)
         }
+    }
+}
+
+#[cfg(test)]
+mod split_tests {
+    use super::*;
+
+    const AREA: Rect = Rect::new(0, 0, 100, 40);
+
+    #[test]
+    fn column_split_gives_the_rest_to_the_right() {
+        let (left, right) = split_columns(AREA);
+
+        assert_eq!(left, Some(Rect::new(0, 0, 25, 40)));
+        assert_eq!(right, Rect::new(25, 0, 75, 40));
+    }
+
+    #[test]
+    fn too_narrow_column_is_dropped() {
+        let area = Rect::new(0, 0, 8, 40);
+        let (left, right) = split_columns(area);
+
+        assert_eq!(left, None);
+        assert_eq!(right, area);
+    }
+
+    #[test]
+    fn too_short_row_is_dropped() {
+        let area = Rect::new(0, 0, 100, 4);
+        let (top, bottom) = split_rows(area);
+
+        assert_eq!(top, None);
+        assert_eq!(bottom, area);
     }
 }
