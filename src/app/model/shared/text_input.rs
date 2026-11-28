@@ -1,5 +1,6 @@
 use crate::model::shared::cursor::CursorMove;
-use unicode_width::UnicodeWidthChar;
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 /// Keep a character-indexed cursor visible in a terminal-cell viewport.
 /// A block cursor needs a cell at the end of the input; an insert cursor may
@@ -11,28 +12,33 @@ pub fn input_viewport_offset(
     width: usize,
     block_cursor: bool,
 ) -> usize {
-    let chars: Vec<char> = content.chars().collect();
-    let cursor = cursor.min(chars.len());
+    let mut char_count = 0usize;
+    let graphemes: Vec<_> = content
+        .graphemes(true)
+        .map(|grapheme| {
+            let start = char_count;
+            char_count += grapheme.chars().count();
+            (start, char_count, UnicodeWidthStr::width(grapheme))
+        })
+        .collect();
+    let cursor = cursor.min(char_count);
+    let cursor_index = graphemes.partition_point(|&(_, end, _)| end <= cursor);
+    let mut start = graphemes.partition_point(|&(_, end, _)| end <= offset.min(cursor));
+    start = start.min(cursor_index);
     if width == 0 {
-        return cursor;
+        return graphemes.get(cursor_index).map_or(char_count, |g| g.0);
     }
-    let mut start = offset.min(cursor);
     let cursor_width = if block_cursor {
-        chars
-            .get(cursor)
-            .map_or(1, |ch| UnicodeWidthChar::width(*ch).unwrap_or(0).max(1))
+        graphemes.get(cursor_index).map_or(1, |g| g.2.max(1))
     } else {
         0
     };
-    let mut used: usize = chars[start..cursor]
-        .iter()
-        .map(|ch| UnicodeWidthChar::width(*ch).unwrap_or(0))
-        .sum();
-    while start < cursor && used.saturating_add(cursor_width) > width {
-        used = used.saturating_sub(UnicodeWidthChar::width(chars[start]).unwrap_or(0));
+    let mut used: usize = graphemes[start..cursor_index].iter().map(|g| g.2).sum();
+    while start < cursor_index && used.saturating_add(cursor_width) > width {
+        used = used.saturating_sub(graphemes[start].2);
         start += 1;
     }
-    start
+    graphemes.get(start).map_or(char_count, |g| g.0)
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -819,6 +825,15 @@ mod tests {
             input.move_cursor(CursorMove::Left);
             input.update_viewport(4);
             assert_eq!(input.viewport_offset(), 2);
+        }
+
+        #[test]
+        fn joined_emoji_stays_intact_when_scrolling_and_resizing() {
+            let text = "a👩‍💻b";
+            assert_eq!(input_viewport_offset(text, 4, 0, 3, true), 1);
+            assert_eq!(input_viewport_offset(text, 4, 2, 3, true), 1);
+            assert_eq!(input_viewport_offset(text, 1, 1, 3, true), 1);
+            assert_eq!(input_viewport_offset("👩‍💻", 3, 0, 3, true), 0);
         }
 
         #[test]

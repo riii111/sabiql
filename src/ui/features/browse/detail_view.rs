@@ -1,9 +1,11 @@
+use crate::app::model::shared::text_input::input_viewport_offset;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 use crate::app::model::shared::detail_view::DetailSearchState;
 use crate::primitives::atoms::{CursorKind, set_terminal_cursor, text_cursor_spans_with_kind};
@@ -55,13 +57,7 @@ pub(super) fn render_detail_search(
 }
 
 fn search_viewport_offset(input: &str, cursor: usize, visible_width: usize) -> usize {
-    crate::app::model::shared::text_input::input_viewport_offset(
-        input,
-        cursor,
-        0,
-        visible_width,
-        false,
-    )
+    input_viewport_offset(input, cursor, 0, visible_width, false)
 }
 
 fn slice_chars_fitting_width(input: &str, start: usize, visible_width: usize) -> String {
@@ -69,23 +65,22 @@ fn slice_chars_fitting_width(input: &str, start: usize, visible_width: usize) ->
         return String::new();
     }
 
-    let mut width = 0;
+    let mut width = 0usize;
+    let mut char_index = 0usize;
     let mut visible = String::new();
-
-    for ch in input.chars().skip(start) {
-        let ch_width = char_width(ch);
-        if width + ch_width > visible_width {
+    for grapheme in input.graphemes(true) {
+        char_index += grapheme.chars().count();
+        if char_index <= start {
+            continue;
+        }
+        let next = width.saturating_add(UnicodeWidthStr::width(grapheme));
+        if next > visible_width {
             break;
         }
-        width += ch_width;
-        visible.push(ch);
+        width = next;
+        visible.push_str(grapheme);
     }
-
     visible
-}
-
-fn char_width(ch: char) -> usize {
-    UnicodeWidthChar::width(ch).unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -100,6 +95,12 @@ mod tests {
     #[test]
     fn slice_chars_fitting_width_omits_first_wide_char_when_viewport_is_too_narrow() {
         assert_eq!(slice_chars_fitting_width("界a", 0, 1), "");
+    }
+
+    #[test]
+    fn search_keeps_joined_emoji_intact() {
+        assert_eq!(slice_chars_fitting_width("👩‍💻x", 0, 2), "👩‍💻");
+        assert_eq!(search_viewport_offset("👩‍💻x", 3, 2), 0);
     }
 
     #[test]

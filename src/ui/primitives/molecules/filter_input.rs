@@ -1,3 +1,4 @@
+use crate::app::model::shared::text_input::input_viewport_offset;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -34,7 +35,7 @@ pub(crate) fn render_filter_input_line(
             spans.extend(text_cursor_spans(
                 input.content(),
                 input.cursor(),
-                crate::app::model::shared::text_input::input_viewport_offset(
+                input_viewport_offset(
                     input.content(),
                     input.cursor(),
                     input.viewport_offset(),

@@ -1,3 +1,4 @@
+use crate::app::model::shared::text_input::input_viewport_offset;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use unicode_width::UnicodeWidthStr;
@@ -276,10 +277,10 @@ impl ConnectionSetup {
         let input_line = if is_focused {
             let input = state.focused_input().unwrap();
             let cursor = input.cursor();
-            let viewport = crate::app::model::shared::text_input::input_viewport_offset(
+            let viewport = input_viewport_offset(
                 &display_value,
                 cursor,
-                input.viewport_offset(),
+                if mask { 0 } else { input.viewport_offset() },
                 content_width,
                 true,
             );
@@ -589,6 +590,36 @@ mod tests {
         while state.focused_field() != field {
             state.focus_next_field();
         }
+    }
+
+    #[test]
+    fn masked_wide_password_displays_every_fitting_character() {
+        use crate::theme::DEFAULT_THEME;
+        use ratatui::{Terminal, backend::TestBackend};
+        let mut state = ConnectionSetupState::default();
+        focus_field(&mut state, ConnectionField::Password);
+        let input = state.input_mut(ConnectionField::Password).unwrap();
+        input.set_content("界".repeat(13));
+        input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
+        assert_eq!(input.viewport_offset(), 1);
+        let mut terminal = Terminal::new(TestBackend::new(80, 1)).unwrap();
+        terminal
+            .draw(|frame| {
+                ConnectionSetup::render_text_field(
+                    frame,
+                    frame.area(),
+                    &state,
+                    ConnectionField::Password,
+                    true,
+                    &DEFAULT_THEME,
+                );
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        let stars = (0..80)
+            .filter(|&x| buffer.cell((x, 0)).unwrap().symbol() == "*")
+            .count();
+        assert_eq!(stars, 13);
     }
 
     #[test]

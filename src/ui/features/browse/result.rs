@@ -1,3 +1,4 @@
+use crate::app::model::shared::text_input::input_viewport_offset;
 use std::collections::BTreeSet;
 use std::time::Instant;
 
@@ -607,9 +608,7 @@ fn cell_edit_line_with_cursor(
     max_width: usize,
     theme: &ThemePalette,
 ) -> Line<'static> {
-    let start = crate::app::model::shared::text_input::input_viewport_offset(
-        text, cursor, 0, max_width, true,
-    );
+    let start = input_viewport_offset(text, cursor, 0, max_width, true);
     Line::from(text_cursor_spans(text, cursor, start, max_width, theme))
 }
 

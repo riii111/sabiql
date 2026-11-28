@@ -1,3 +1,4 @@
+use crate::app::model::shared::text_input::input_viewport_offset;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -27,7 +28,7 @@ impl CommandLine {
             let cursor_spans = text_cursor_spans(
                 input.content(),
                 input.cursor(),
-                crate::app::model::shared::text_input::input_viewport_offset(
+                input_viewport_offset(
                     input.content(),
                     input.cursor(),
                     input.viewport_offset(),
