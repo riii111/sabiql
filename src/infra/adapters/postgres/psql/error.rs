@@ -425,7 +425,7 @@ mod tests {
         #[case("ERROR: permission denied for table users", "PermissionDenied")]
         #[case("ERROR: duplicate key value violates unique constraint", "QueryFailed")]
         #[case(
-            "ERROR: duplicate key value violates unique constraint no such table",
+            "ERROR: duplicate key value violates unique constraint relation does not exist",
             "QueryFailed"
         )]
         #[case("ERROR: relation \"users\" does not exist", "ObjectMissing")]
