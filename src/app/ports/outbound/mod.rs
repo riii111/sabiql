@@ -9,8 +9,6 @@ pub mod clipboard;
 pub mod config_writer;
 pub mod connection_store;
 pub mod db_operation_error;
-pub mod ddl_generator;
-pub mod dsn_builder;
 pub mod er_exporter;
 pub mod er_log_writer;
 pub mod folder_opener;
@@ -33,8 +31,6 @@ pub use db_operation_error::{
     ConnectionFailureKind, DatabaseCli, DbOperationError, SqliteCompatibilityKind,
     UnsupportedOperationKind,
 };
-pub use ddl_generator::DdlGenerator;
-pub use dsn_builder::DsnBuilder;
 pub use er_exporter::{ErDiagramExporter, ErExportError, ErExportResult};
 pub use er_log_writer::ErLogWriter;
 pub use folder_opener::FolderOpener;

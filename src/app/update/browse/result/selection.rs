@@ -79,7 +79,6 @@ mod tests {
     use super::*;
     use crate::domain::Column;
     use crate::domain::{QueryResult, QuerySource, Table};
-    use crate::services::AppServices;
     use crate::update::action::Action;
     use crate::update::reducer::route;
     use std::sync::Arc;
@@ -132,12 +131,7 @@ mod tests {
             let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
             state.result_interaction.activate_cell(0, 0);
 
-            route(
-                &mut state,
-                Action::StageRowForDelete,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::StageRowForDelete, Instant::now());
 
             assert!(state.result_interaction.staged_delete_rows().contains(&0));
         }
@@ -148,12 +142,7 @@ mod tests {
             state.result_interaction.activate_cell(0, 0);
             state.result_interaction.stage_row(0);
 
-            route(
-                &mut state,
-                Action::StageRowForDelete,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::StageRowForDelete, Instant::now());
 
             assert_eq!(state.result_interaction.staged_delete_rows().len(), 1);
         }
@@ -162,12 +151,7 @@ mod tests {
         fn staging_requires_active_cell() {
             let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
 
-            route(
-                &mut state,
-                Action::StageRowForDelete,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::StageRowForDelete, Instant::now());
 
             assert!(state.result_interaction.staged_delete_rows().is_empty());
         }
@@ -182,12 +166,7 @@ mod tests {
             state.result_interaction.stage_row(0);
             state.result_interaction.stage_row(1);
 
-            route(
-                &mut state,
-                Action::UnstageLastStagedRow,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::UnstageLastStagedRow, Instant::now());
 
             assert_eq!(state.result_interaction.staged_delete_rows().len(), 1);
             assert!(state.result_interaction.staged_delete_rows().contains(&0));
@@ -203,12 +182,7 @@ mod tests {
             state.result_interaction.stage_row(0);
             state.result_interaction.stage_row(1);
 
-            route(
-                &mut state,
-                Action::ClearStagedDeletes,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::ClearStagedDeletes, Instant::now());
 
             assert!(state.result_interaction.staged_delete_rows().is_empty());
         }
@@ -219,12 +193,7 @@ mod tests {
             state.result_interaction.activate_cell(0, 0);
             state.result_interaction.stage_row(0);
 
-            route(
-                &mut state,
-                Action::ResultExitToScroll,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::ResultExitToScroll, Instant::now());
 
             assert_eq!(state.result_interaction.selection().row(), None);
             assert!(state.result_interaction.staged_delete_rows().contains(&0));
@@ -240,12 +209,7 @@ mod tests {
             state.result_interaction.stage_row(0);
             state.result_interaction.stage_row(1);
 
-            route(
-                &mut state,
-                Action::ClearStagedDeletes,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::ClearStagedDeletes, Instant::now());
 
             assert!(state.result_interaction.staged_delete_rows().is_empty());
         }
@@ -262,12 +226,7 @@ mod tests {
             state.result_interaction.activate_cell(0, 0);
             state.session.enable_read_only();
 
-            let effects = route(
-                &mut state,
-                Action::StageRowForDelete,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::StageRowForDelete, Instant::now());
 
             assert!(effects.is_empty());
             assert!(state.result_interaction.staged_delete_rows().is_empty());
@@ -282,12 +241,7 @@ mod tests {
             state.session.set_table_detail_raw(Some(table));
             state.result_interaction.activate_cell(0, 0);
 
-            let effects = route(
-                &mut state,
-                Action::StageRowForDelete,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::StageRowForDelete, Instant::now());
 
             assert!(effects.is_empty());
             assert!(state.result_interaction.staged_delete_rows().is_empty());

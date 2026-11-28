@@ -105,7 +105,6 @@ mod tests {
     use crate::domain::{DatabaseMetadata, TableSummary};
     use crate::model::shared::render_output::{PaneArea, PaneAreas};
     use crate::model::sql_editor::modal::SqlModalTab;
-    use crate::services::AppServices;
     use crate::update::action::ListMotion;
     use crate::update::action::ListTarget;
     use crate::update::reducer::reduce;
@@ -223,7 +222,7 @@ mod tests {
         state.focus_pane(FocusedPane::Result);
 
         let action = handle_mouse_event(mouse(kind, EXPLORER_CELL), &state);
-        reduce(&mut state, action, Instant::now(), &AppServices::stub());
+        reduce(&mut state, action, Instant::now());
 
         assert_eq!(state.ui.explorer_selected(), expected);
         assert_eq!(state.ui.focused_pane(), FocusedPane::Result);

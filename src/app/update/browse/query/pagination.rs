@@ -154,7 +154,6 @@ mod tests {
     use super::*;
     use crate::domain::{QueryResult, QuerySource};
     use crate::ports::outbound::DbOperationError;
-    use crate::services::AppServices;
     use crate::update::action::Action;
     use crate::update::test_fixtures;
     use std::sync::Arc;
@@ -202,12 +201,7 @@ mod tests {
             state.query.pagination.reset_for_table("public", "users");
             let now = Instant::now();
 
-            let effects = route(
-                &mut state,
-                Action::ResultNextPage,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultNextPage, now);
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -229,12 +223,7 @@ mod tests {
             state.query.set_current_result(adhoc_result());
             let now = Instant::now();
 
-            let effects = route(
-                &mut state,
-                Action::ResultNextPage,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultNextPage, now);
 
             assert!(effects.is_empty());
         }
@@ -248,12 +237,7 @@ mod tests {
             let _ = state.query.begin_running(Instant::now());
             let now = Instant::now();
 
-            let effects = route(
-                &mut state,
-                Action::ResultNextPage,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultNextPage, now);
 
             assert!(effects.is_empty());
         }
@@ -268,12 +252,7 @@ mod tests {
             state.result_interaction.activate_cell(2, 1);
             state.result_interaction.stage_row(2);
 
-            let effects = route(
-                &mut state,
-                Action::ResultNextPage,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultNextPage, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(state.result_interaction.selection().row(), Some(2));
@@ -291,12 +270,7 @@ mod tests {
             state.result_interaction.activate_cell(3, 1);
             state.result_interaction.stage_row(3);
 
-            route(
-                &mut state,
-                Action::ResultNextPage,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::ResultNextPage, Instant::now());
 
             assert!(state.result_interaction.selection().row().is_none());
             assert!(state.result_interaction.selection().cell().is_none());
@@ -311,12 +285,7 @@ mod tests {
                 .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
             state.query.pagination.reset_for_table("public", "users");
 
-            let next_effects = route(
-                &mut state,
-                Action::ResultNextPage,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let next_effects = route(&mut state, Action::ResultNextPage, Instant::now());
             assert!(matches!(
                 next_effects.first(),
                 Some(Effect::ExecutePreview { target_page: 1, .. })
@@ -324,30 +293,15 @@ mod tests {
 
             let next_result =
                 query_completed_action(&mut state, preview_result(PREVIEW_PAGE_SIZE), 0, Some(1));
-            route(
-                &mut state,
-                next_result,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, next_result, Instant::now());
 
             let empty_next_result =
                 query_completed_action(&mut state, preview_result(0), 0, Some(2));
-            route(
-                &mut state,
-                empty_next_result,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, empty_next_result, Instant::now());
             assert_eq!(state.query.pagination.current_page(), 1);
             assert!(state.query.pagination.reached_end());
 
-            let prev_effects = route(
-                &mut state,
-                Action::ResultPrevPage,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let prev_effects = route(&mut state, Action::ResultPrevPage, Instant::now());
             assert!(matches!(
                 prev_effects.first(),
                 Some(Effect::ExecutePreview { target_page: 0, .. })
@@ -356,19 +310,9 @@ mod tests {
 
             let prev_result =
                 query_completed_action(&mut state, preview_result(PREVIEW_PAGE_SIZE), 0, Some(0));
-            route(
-                &mut state,
-                prev_result,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, prev_result, Instant::now());
 
-            let next_effects = route(
-                &mut state,
-                Action::ResultNextPage,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let next_effects = route(&mut state, Action::ResultNextPage, Instant::now());
             assert!(matches!(
                 next_effects.first(),
                 Some(Effect::ExecutePreview { target_page: 1, .. })
@@ -389,12 +333,7 @@ mod tests {
             state.query.pagination.set_page_result(2, false);
             let now = Instant::now();
 
-            let effects = route(
-                &mut state,
-                Action::ResultPrevPage,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultPrevPage, now);
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -420,12 +359,7 @@ mod tests {
             state.result_interaction.activate_cell(1, 1);
             state.result_interaction.stage_row(1);
 
-            let effects = route(
-                &mut state,
-                Action::ResultPrevPage,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::ResultPrevPage, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(state.result_interaction.selection().row(), Some(1));
@@ -452,12 +386,7 @@ mod tests {
         }
 
         fn request_csv_export(state: &mut AppState) -> Vec<Effect> {
-            route(
-                state,
-                Action::RequestCsvExport,
-                Instant::now(),
-                &AppServices::stub(),
-            )
+            route(state, Action::RequestCsvExport, Instant::now())
         }
 
         fn typed_result(source: QuerySource, values: Vec<Vec<QueryValue>>) -> Arc<QueryResult> {
@@ -491,12 +420,7 @@ mod tests {
             state.query.pagination.reset_for_table("public", "users");
 
             let now = Instant::now();
-            let effects = reduce(
-                &mut state,
-                Action::RequestCsvExport,
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, Action::RequestCsvExport, now);
 
             assert!(matches!(
                 effects.as_slice(),
@@ -715,7 +639,7 @@ mod tests {
             let mut state = create_test_state();
             let action = csv_succeeded_action(&mut state, "/tmp/export.csv", 42);
 
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::OpenFolder { .. }));
@@ -742,7 +666,6 @@ mod tests {
                     row_count: 1,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(stale_run_id < current_run_id);
@@ -759,7 +682,7 @@ mod tests {
                 DbOperationError::QueryFailed("psql error".to_string()),
             );
 
-            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+            let effects = route(&mut state, action, Instant::now());
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -784,7 +707,6 @@ mod tests {
                     error: DbOperationError::QueryFailed("stale export".to_string()),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(stale_run_id < current_run_id);

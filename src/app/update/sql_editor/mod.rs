@@ -17,7 +17,6 @@ mod tests {
     use crate::policy::write::sql_risk::AcknowledgeReason;
     use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel};
     use crate::ports::inbound::InputEvent;
-    use crate::services::AppServices;
     use crate::test_support::endpoint;
     use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
     use crate::update::input::handle_event;
@@ -28,7 +27,7 @@ mod tests {
     use std::time::Instant;
 
     fn reduce_sql_modal(state: &mut AppState, action: &Action, now: Instant) -> Vec<Effect> {
-        route(state, action.clone(), now, &AppServices::stub())
+        route(state, action.clone(), now)
     }
 
     fn paste_event(state: &mut AppState, text: &str) {

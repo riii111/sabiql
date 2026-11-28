@@ -2,7 +2,6 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::browse::inspector_view_model::InspectorViewModel;
 use crate::model::shared::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
-use crate::services::AppServices;
 use crate::update::action::{ListMotion, ScrollAmount, ScrollDirection};
 
 use super::inspector_max_scroll;
@@ -32,11 +31,10 @@ pub(in crate::update) fn scroll_inspector(
     state: &mut AppState,
     direction: ScrollDirection,
     amount: ScrollAmount,
-    services: &AppServices,
 ) {
     match (direction, amount) {
         (ScrollDirection::Up | ScrollDirection::Down, ScrollAmount::Line) => {
-            let max = inspector_max_scroll(state, services);
+            let max = inspector_max_scroll(state);
             state.ui.inspector_scroll_offset =
                 direction.clamp_vertical_offset(state.ui.inspector_scroll_offset, max, 1);
         }
@@ -44,10 +42,10 @@ pub(in crate::update) fn scroll_inspector(
             state.ui.inspector_scroll_offset = 0;
         }
         (ScrollDirection::Down, ScrollAmount::ToEnd) => {
-            state.ui.inspector_scroll_offset = inspector_max_scroll(state, services);
+            state.ui.inspector_scroll_offset = inspector_max_scroll(state);
         }
         (_, ScrollAmount::HalfPage | ScrollAmount::FullPage) => {
-            let view_model = state.inspector_view_model(services.ddl_generator.as_ref());
+            let view_model = state.inspector_view_model();
             if let Some(delta) =
                 inspector_page_scroll_delta(&view_model, state.ui.inspector_pane_height, amount)
             {
@@ -99,7 +97,7 @@ mod tests {
             activate_sqlite_connection(&mut state, "sqlite://test.db");
             state.ui.inspector_tab = InspectorTab::Info;
 
-            route(&mut state, action, Instant::now(), &AppServices::stub());
+            route(&mut state, action, Instant::now());
 
             assert_eq!(state.ui.inspector_tab, expected);
         }
@@ -152,7 +150,6 @@ mod tests {
                     amount: ScrollAmount::ToStart,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.inspector_scroll_offset, 0);
@@ -162,9 +159,8 @@ mod tests {
         fn inspector_scroll_bottom_goes_to_max() {
             let mut state = state_with_table_detail(20);
             state.ui.inspector_scroll_offset = 0;
-            let services = AppServices::stub();
             let expected_max = state
-                .inspector_view_model(services.ddl_generator.as_ref())
+                .inspector_view_model()
                 .max_scroll(state.ui.inspector_pane_height);
 
             route(
@@ -175,7 +171,6 @@ mod tests {
                     amount: ScrollAmount::ToEnd,
                 },
                 Instant::now(),
-                &services,
             );
 
             assert_eq!(state.ui.inspector_scroll_offset, expected_max);
@@ -194,7 +189,6 @@ mod tests {
                     amount: ScrollAmount::ToEnd,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.inspector_scroll_offset, 0);
@@ -213,7 +207,6 @@ mod tests {
                     amount: ScrollAmount::HalfPage,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.inspector_scroll_offset, 3);
@@ -232,7 +225,6 @@ mod tests {
                     amount: ScrollAmount::FullPage,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.inspector_scroll_offset, 15);
@@ -250,7 +242,6 @@ mod tests {
                     amount: ScrollAmount::FullPage,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.inspector_scroll_offset, 0);
@@ -272,9 +263,8 @@ mod tests {
                 let mut state = state_with_table_detail(0);
                 state.ui.inspector_pane_height = 8;
                 state.ui.inspector_tab = InspectorTab::Info;
-                let services = AppServices::stub();
                 let expected_max = state
-                    .inspector_view_model(services.ddl_generator.as_ref())
+                    .inspector_view_model()
                     .max_scroll(state.ui.inspector_pane_height);
 
                 route(
@@ -285,7 +275,6 @@ mod tests {
                         amount: ScrollAmount::ToEnd,
                     },
                     Instant::now(),
-                    &services,
                 );
 
                 assert_eq!(state.ui.inspector_scroll_offset, expected_max);
@@ -297,9 +286,8 @@ mod tests {
                 use_sqlite_tabs(&mut state);
                 state.ui.inspector_pane_height = 7;
                 state.ui.inspector_tab = InspectorTab::Info;
-                let services = AppServices::stub();
                 let expected_max = state
-                    .inspector_view_model(services.ddl_generator.as_ref())
+                    .inspector_view_model()
                     .max_scroll(state.ui.inspector_pane_height);
 
                 route(
@@ -310,7 +298,6 @@ mod tests {
                         amount: ScrollAmount::ToEnd,
                     },
                     Instant::now(),
-                    &services,
                 );
 
                 assert_eq!(state.ui.inspector_scroll_offset, expected_max);
@@ -333,10 +320,9 @@ mod tests {
                     amount: ScrollAmount::HalfPage,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.inspector_scroll_offset, 0);
+            assert_eq!(state.ui.inspector_scroll_offset, 3);
         }
 
         #[test]
@@ -355,10 +341,9 @@ mod tests {
                     amount: ScrollAmount::FullPage,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.inspector_scroll_offset, 0);
+            assert_eq!(state.ui.inspector_scroll_offset, 5);
         }
 
         #[rstest::rstest]
@@ -379,7 +364,6 @@ mod tests {
                     amount,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.inspector_scroll_offset, 0);

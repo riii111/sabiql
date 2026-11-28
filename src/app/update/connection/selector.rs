@@ -117,7 +117,6 @@ mod tests {
     use crate::domain::connection::{ConnectionId, ConnectionProfile, DatabaseType, SslMode};
     use crate::model::connection::list::build_connection_list;
     use crate::model::shared::ui_state::ResultNavMode;
-    use crate::services::AppServices;
     use crate::test_support::endpoint;
     use crate::update::action::{Action, ModalKind};
     use crate::update::reducer::route;
@@ -150,7 +149,6 @@ mod tests {
                 &mut state,
                 Action::OpenModal(ModalKind::ConnectionSelector),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.input_mode(), InputMode::ConnectionSelector);
@@ -166,7 +164,6 @@ mod tests {
                 &mut state,
                 Action::OpenModal(ModalKind::ConnectionSelector),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.connection_list_selected(), 0);
@@ -187,7 +184,6 @@ mod tests {
                 &mut state,
                 Action::RequestDeleteSelectedConnection,
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
@@ -218,7 +214,6 @@ mod tests {
                 &mut state,
                 Action::RequestDeleteSelectedConnection,
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(
@@ -246,7 +241,6 @@ mod tests {
                 &mut state,
                 Action::RequestDeleteSelectedConnection,
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(
@@ -267,7 +261,6 @@ mod tests {
                 &mut state,
                 Action::RequestDeleteSelectedConnection,
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -286,7 +279,6 @@ mod tests {
                 &mut state,
                 Action::RequestDeleteSelectedConnection,
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(
@@ -321,7 +313,6 @@ mod tests {
                 &mut state,
                 Action::ConnectionDeleted(id_to_delete),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.connections().len(), 1);
@@ -358,7 +349,6 @@ mod tests {
                 &mut state,
                 Action::ConnectionDeleted(deleted_id),
                 Instant::now(),
-                &AppServices::stub(),
             );
             route(
                 &mut state,
@@ -368,7 +358,6 @@ mod tests {
                     lower_case_table_names: 0,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.session.active_connection_id(), Some(&current_id));
@@ -405,7 +394,6 @@ mod tests {
                 &mut state,
                 Action::DeleteConnection(deleted_id.clone()),
                 Instant::now(),
-                &AppServices::stub(),
             );
             route(
                 &mut state,
@@ -415,13 +403,11 @@ mod tests {
                     error: DbOperationError::ConnectionFailed("refused".to_string()),
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
             route(
                 &mut state,
                 Action::ConnectionDeleted(deleted_id),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.modal.active_mode(), InputMode::Normal);
@@ -448,7 +434,6 @@ mod tests {
                 &mut state,
                 Action::ConnectionDeleted(profile_id),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(state.session.active_connection_id().is_none());
@@ -506,7 +491,6 @@ mod tests {
                 &mut state,
                 Action::ConnectionDeleted(profile_id),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.query.pagination.current_page(), 0);
@@ -566,7 +550,6 @@ mod tests {
                 &mut state,
                 Action::ConnectionDeleted(profile_id),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.inspector_tab, InspectorTab::Info);
@@ -590,7 +573,6 @@ mod tests {
                 &mut state,
                 Action::ConnectionDeleted(id_to_delete),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.connection_list_selected(), 0);
@@ -607,7 +589,6 @@ mod tests {
                 &mut state,
                 Action::ConnectionDeleted(profile_id),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(state.connections().is_empty());
@@ -626,7 +607,6 @@ mod tests {
                 &mut state,
                 Action::ConnectionDeleted(id_to_delete),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.connection_list_items(), build_connection_list(1, 0));
@@ -651,7 +631,6 @@ mod tests {
                 &mut state,
                 Action::ConnectionDeleted(profile_id),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(state.connections().is_empty());

@@ -13,7 +13,11 @@ expression: output
 │  Password:   [ empty = psql default       ]                │
 │  SSL Mode:   [ prefer                   ▼ ]                │
 │                                                            │
-│  → stub-dsn                                                │
+│  → host='analytics-primary-read-replica.cluster.internal.  │
+│    example.company.service' port='5432' dbname='warehouse  │
+│    _reporting_environment_for_customer_success_dashboards  │
+│    ' user='customer_success_preview_validation_operator_w  │
+│    ith_extended_scope' sslmode='prefer'                    │
 │  Note: Connection info is stored locally in plain text     │
 │                                                            │
 ╰ Tab/⇧Tab: Field │ Enter: Toggle │ ^S: Connect │ Esc: Cancel╯

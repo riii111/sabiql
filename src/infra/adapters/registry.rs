@@ -1,10 +1,9 @@
 use crate::app::ports::outbound::{
-    AccessMode, DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, MySqlConnectionProbe,
+    AccessMode, DbOperationError, MetadataProvider, MySqlConnectionProbe,
     MySqlConnectionProbeResult, QueryExecutor, SqliteDiagnosticsProvider,
 };
 use crate::domain::connection::{
-    ConnectionEndpoint, DatabaseType, MySqlConnectionConfig, PostgresEndpoint,
-    SqliteConnectionConfig,
+    ConnectionEndpoint, MySqlConnectionConfig, PostgresEndpoint, SqliteConnectionConfig,
 };
 use crate::domain::{
     DatabaseMetadata, DiagnosticField, QueryResult, SqliteDiagnosticsSnapshot, Table,
@@ -12,8 +11,8 @@ use crate::domain::{
 };
 use async_trait::async_trait;
 
-use super::mysql::{MySqlAdapter, build_mysql_dsn};
-use super::postgres::{PostgresAdapter, postgres_conninfo};
+use super::mysql::MySqlAdapter;
+use super::postgres::PostgresAdapter;
 use super::sqlite::SqliteAdapter;
 
 pub struct DbAdapterRegistry {
@@ -32,16 +31,6 @@ impl DbAdapterRegistry {
             postgres: PostgresAdapter::new(),
             sqlite: SqliteAdapter::new(),
             mysql: MySqlAdapter::new(),
-        }
-    }
-}
-
-impl DsnBuilder for DbAdapterRegistry {
-    fn build_dsn(&self, endpoint: &ConnectionEndpoint) -> String {
-        match self.route(endpoint) {
-            AdapterRoute::PostgreSQL(_, endpoint) => postgres_conninfo(endpoint),
-            AdapterRoute::SQLite(_, config) => sqlite_dsn(config),
-            AdapterRoute::MySQL(_, config) => build_mysql_dsn(config),
         }
     }
 }
@@ -239,16 +228,6 @@ impl SqliteDiagnosticsProvider for DbAdapterRegistry {
     }
 }
 
-impl DdlGenerator for DbAdapterRegistry {
-    fn generate_ddl(&self, database_type: DatabaseType, table: &Table) -> String {
-        match database_type {
-            DatabaseType::PostgreSQL => self.postgres.generate_ddl(table),
-            DatabaseType::SQLite => self.sqlite.generate_ddl(table),
-            DatabaseType::MySQL => self.mysql.generate_ddl(table),
-        }
-    }
-}
-
 enum AdapterRoute<'a> {
     PostgreSQL(&'a PostgresAdapter, &'a PostgresEndpoint),
     SQLite(&'a SqliteAdapter, &'a SqliteConnectionConfig),
@@ -272,43 +251,15 @@ impl DbAdapterRegistry {
     }
 }
 
-fn sqlite_dsn(config: &SqliteConnectionConfig) -> String {
-    format!("sqlite://{}", config.path())
-}
-
 #[cfg(test)]
 mod tests {
     use crate::adapters::test_support;
-    use sabiql_domain::test_support::table;
 
     use rstest::rstest;
 
     use super::*;
-    use crate::domain::connection::{
-        ConnectionProfile, MySqlSslMode, PostgresConnectionConfig, SslMode,
-    };
-    use crate::domain::{Column, ColumnAttributes, SqlitePathError};
-
-    fn make_table() -> Table {
-        Table {
-            schema: "main".to_string(),
-            name: "users".to_string(),
-            columns: vec![Column {
-                name: "id".to_string(),
-                data_type: "INTEGER".to_string(),
-                default: None,
-                attributes: ColumnAttributes::from_parts(false, true, false),
-                comment: None,
-                ordinal_position: 1,
-                character_set_name: None,
-                collation_name: None,
-                generation_expression: None,
-                generation_kind: None,
-            }],
-            primary_key: Some(vec!["id".to_string()]),
-            ..table::minimal("", "")
-        }
-    }
+    use crate::domain::SqlitePathError;
+    use crate::domain::connection::{MySqlSslMode, PostgresConnectionConfig, SslMode};
 
     fn sqlite_endpoint(path: &str) -> ConnectionEndpoint {
         ConnectionEndpoint::SQLite(SqliteConnectionConfig::new(path).unwrap())
@@ -343,38 +294,6 @@ mod tests {
             password,
             MySqlSslMode::Preferred,
         ))
-    }
-
-    #[test]
-    fn builds_postgres_dsn_from_postgres_profile() {
-        let registry = DbAdapterRegistry::new();
-        let profile = ConnectionProfile::new_postgres(
-            "Test",
-            "localhost",
-            5432,
-            "db",
-            "user",
-            "pass",
-            SslMode::Prefer,
-        )
-        .unwrap();
-
-        let dsn = registry.build_dsn(&ConnectionEndpoint::from(&profile.config));
-
-        assert!(dsn.starts_with("host='localhost'"));
-    }
-
-    #[test]
-    fn mysql_registry_preserves_source_ddl() {
-        let registry = DbAdapterRegistry::new();
-        let source_ddl = "CREATE TABLE `users` (`id` INT)".to_string();
-        let mut table = make_table();
-        table.source_ddl = Some(source_ddl.clone());
-
-        assert_eq!(
-            registry.generate_ddl(DatabaseType::MySQL, &table),
-            source_ddl
-        );
     }
 
     #[tokio::test]

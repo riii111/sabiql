@@ -7,7 +7,6 @@ use crate::model::shared::input_mode::InputMode;
 use crate::policy::write::write_guardrails::{
     GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
 };
-use crate::services::AppServices;
 use crate::test_support::endpoint;
 use crate::test_support::table::minimal as minimal_table;
 use crate::update::action::{Action, QueryCompletionContext, TableTarget};
@@ -64,12 +63,7 @@ pub fn state_after_delete_success() -> AppState {
     );
 
     let now = Instant::now();
-    let effects = reduce(
-        &mut state,
-        Action::ConfirmDialogConfirm,
-        now,
-        &AppServices::stub(),
-    );
+    let effects = reduce(&mut state, Action::ConfirmDialogConfirm, now);
     let run_id = match effects.as_slice() {
         [Effect::ExecuteWrite { run_id, .. }] => *run_id,
         other => panic!("expected ExecuteWrite, got {other:?}"),
@@ -82,7 +76,6 @@ pub fn state_after_delete_success() -> AppState {
             diagnostics: Vec::new(),
         },
         now,
-        &AppServices::stub(),
     );
 
     assert!(matches!(
@@ -106,7 +99,6 @@ pub fn complete_table_preview(state: &mut AppState, now: Instant) {
             generation,
         }),
         now,
-        &AppServices::stub(),
     );
     let run_id = match effects.as_slice() {
         [Effect::ExecutePreview { run_id, .. }] => *run_id,
@@ -129,7 +121,6 @@ pub fn complete_table_preview(state: &mut AppState, now: Instant) {
             },
         },
         now,
-        &AppServices::stub(),
     );
 }
 
@@ -165,5 +156,5 @@ pub fn seed_table_detail_cache(state: &mut AppState, qualified_name: &str) {
 }
 
 pub fn edit_text(state: &mut AppState, action: &Action, now: Instant) -> Vec<Effect> {
-    route(state, action.clone(), now, &AppServices::stub())
+    route(state, action.clone(), now)
 }

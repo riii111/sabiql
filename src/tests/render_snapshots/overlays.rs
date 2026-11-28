@@ -28,7 +28,7 @@ fn empty_sql_editor_does_not_advertise_insert_during_key_sequence() {
     state.modal.set_mode(InputMode::SqlModal);
     let g = handle_event(InputEvent::Key(KeyCombo::plain(Key::Char('g'))), &state);
     assert!(matches!(g, Action::BeginKeySequence(_)));
-    reduce(&mut state, g, test_instant(), &AppServices::stub());
+    reduce(&mut state, g, test_instant());
     let mut terminal = create_test_terminal();
     let output = render_to_string(&mut terminal, &mut state);
     assert!(!output.contains("Press i"));

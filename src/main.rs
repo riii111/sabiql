@@ -17,7 +17,6 @@ use sabiql_app::model::shared::input_mode::InputMode;
 use sabiql_app::ports::outbound::{
     AppSettings, ConnectionStore, ConnectionStoreError, PgServiceEntryReader, ServiceFileError,
 };
-use sabiql_app::services::AppServices;
 use sabiql_app::update::action::Action;
 use sabiql_app::update::input::handle_event;
 use sabiql_app::update::reducer::reduce;
@@ -299,7 +298,6 @@ struct Runtime {
     tui: TuiRunner,
     action_rx: mpsc::Receiver<Action>,
     effect_runner: EffectRunner,
-    services: AppServices,
 }
 
 #[expect(
@@ -336,17 +334,12 @@ impl Runtime {
             Arc::clone(&infrastructure.settings_store) as _,
             action_tx,
         );
-        let services = AppServices {
-            ddl_generator: Arc::clone(&adapter_registry) as _,
-            dsn_builder: Arc::clone(&adapter_registry) as _,
-        };
 
         Ok(Self {
             state,
             tui: TuiRunner::new()?,
             action_rx,
             effect_runner,
-            services,
         })
     }
 
@@ -411,7 +404,7 @@ impl Runtime {
 
         self.state.messages.clear_error();
         let now = Instant::now();
-        let mut effects = reduce(&mut self.state, first_action, now, &self.services);
+        let mut effects = reduce(&mut self.state, first_action, now);
         if !effects.is_empty() {
             self.append_render_if_dirty(&mut effects, now);
             return self.flush_effects(effects).await;
@@ -433,7 +426,7 @@ impl Runtime {
             if action.is_scroll() {
                 self.state.messages.clear_error();
                 let now = Instant::now();
-                let mut effects = reduce(&mut self.state, action, now, &self.services);
+                let mut effects = reduce(&mut self.state, action, now);
                 if !effects.is_empty() {
                     self.append_render_if_dirty(&mut effects, now);
                     self.flush_effects(effects).await?;
@@ -466,7 +459,7 @@ impl Runtime {
         if is_animation_tick {
             self.state.clear_expired_timers(now);
         }
-        let mut effects = reduce(&mut self.state, action, now, &self.services);
+        let mut effects = reduce(&mut self.state, action, now);
         if is_animation_tick {
             if self.state.render_dirty {
                 effects.push(Effect::Render);
@@ -486,7 +479,7 @@ impl Runtime {
             let mut next = Vec::new();
             for action in pending {
                 let now = Instant::now();
-                let mut effects = reduce(&mut self.state, action, now, &self.services);
+                let mut effects = reduce(&mut self.state, action, now);
                 self.append_render_if_dirty(&mut effects, now);
                 next.extend(self.run_effects(effects).await?);
             }
@@ -505,7 +498,7 @@ impl Runtime {
         let mut tui_adapter = TuiAdapter::new(&mut self.tui);
         let pending = self
             .effect_runner
-            .execute_effects(effects, &mut tui_adapter, &mut self.state, &self.services)
+            .execute_effects(effects, &mut tui_adapter, &mut self.state)
             .await?;
         self.state.clear_dirty();
         Ok(pending)

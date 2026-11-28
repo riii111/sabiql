@@ -3,7 +3,7 @@ use crate::domain::connection::PostgresEndpoint;
 use crate::domain::{QueryResult, QuerySource, WriteExecutionResult};
 
 use super::PostgresAdapter;
-use super::dsn::postgres_conninfo;
+use crate::domain::connection::postgres_conninfo;
 
 impl PostgresAdapter {
     pub async fn execute_preview(

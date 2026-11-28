@@ -5,7 +5,8 @@ use crate::domain::{
 };
 
 use super::PostgresAdapter;
-use super::dsn::{database_name, postgres_conninfo};
+use super::dsn::database_name;
+use crate::domain::connection::postgres_conninfo;
 
 fn extract_primary_key(columns: &[Column]) -> Option<Vec<String>> {
     let pk_cols: Vec<String> = columns

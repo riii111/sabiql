@@ -1,3 +1,4 @@
+use crate::domain::ddl::generate_ddl;
 use crate::domain::{
     ColumnGenerationKind, DatabaseType, ForeignKey, Index, IndexType, RlsInfo, Table,
 };
@@ -6,7 +7,6 @@ use crate::model::shared::engine_feature_profile::{EngineFeatureProfile, Inspect
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::policy::column::column_read_only_reason;
 use crate::policy::table_kind::{inspector_flags_label, inspector_kind_label};
-use crate::ports::outbound::DdlGenerator;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InspectorViewModel {
@@ -133,7 +133,6 @@ impl InspectorViewModel {
         selected_tab: InspectorTab,
         table_detail_state: &TableDetailState,
         database_type: DatabaseType,
-        ddl_generator: &dyn DdlGenerator,
     ) -> Self {
         let active_tab = profile.normalize_inspector_tab(selected_tab);
         let (load_state, table) = match table_detail_state {
@@ -295,8 +294,7 @@ impl InspectorViewModel {
             }
             InspectorTab::Ddl => (
                 InspectorSection::Ddl {
-                    rows: ddl_generator
-                        .generate_ddl(database_type, table)
+                    rows: generate_ddl(database_type, table)
                         .lines()
                         .map(str::to_string)
                         .collect(),
@@ -510,14 +508,6 @@ mod tests {
         TableStorageAttributes, Trigger,
     };
 
-    struct TestDdlGenerator;
-
-    impl DdlGenerator for TestDdlGenerator {
-        fn generate_ddl(&self, _database_type: DatabaseType, _table: &Table) -> String {
-            "CREATE TABLE users (\n  id integer\n);".to_string()
-        }
-    }
-
     fn table() -> Table {
         Table {
             schema: "public".to_string(),
@@ -579,19 +569,23 @@ mod tests {
         }
     }
 
+    fn ddl_line_count(table: &Table) -> usize {
+        generate_ddl(DatabaseType::PostgreSQL, table)
+            .lines()
+            .count()
+    }
+
     fn build_loaded(
         profile: &EngineFeatureProfile,
         selected_tab: InspectorTab,
         table: &Table,
         database_type: DatabaseType,
-        ddl_generator: &dyn DdlGenerator,
     ) -> InspectorViewModel {
         InspectorViewModel::build_with_detail_state(
             profile,
             selected_tab,
             &TableDetailState::Loaded(Box::new(table.clone())),
             database_type,
-            ddl_generator,
         )
     }
 
@@ -602,7 +596,6 @@ mod tests {
             InspectorTab::Info,
             &TableDetailState::NotSelected,
             DatabaseType::PostgreSQL,
-            &TestDdlGenerator,
         );
 
         assert_eq!(model.row_count(), 0);
@@ -618,7 +611,6 @@ mod tests {
             InspectorTab::Info,
             &TableDetailState::Loading,
             DatabaseType::MySQL,
-            &TestDdlGenerator,
         );
 
         assert_eq!(model.load_state(), &InspectorLoadState::Loading);
@@ -633,7 +625,6 @@ mod tests {
             InspectorTab::Info,
             &TableDetailState::Error("permission denied".to_string()),
             DatabaseType::MySQL,
-            &TestDdlGenerator,
         );
 
         assert_eq!(
@@ -650,7 +641,6 @@ mod tests {
             InspectorTab::Info,
             &table(),
             DatabaseType::MySQL,
-            &TestDdlGenerator,
         );
 
         assert_eq!(model.row_count(), 3);
@@ -691,7 +681,6 @@ mod tests {
             InspectorTab::Info,
             &table,
             DatabaseType::MySQL,
-            &TestDdlGenerator,
         );
 
         match model.section() {
@@ -727,7 +716,6 @@ mod tests {
             InspectorTab::Columns,
             &table,
             DatabaseType::MySQL,
-            &TestDdlGenerator,
         );
 
         match model.section() {
@@ -756,7 +744,6 @@ mod tests {
             InspectorTab::ForeignKeys,
             &table(),
             DatabaseType::MySQL,
-            &TestDdlGenerator,
         );
 
         match model.section() {
@@ -792,14 +779,12 @@ mod tests {
             InspectorTab::Info,
             &table,
             DatabaseType::MySQL,
-            &TestDdlGenerator,
         );
         let indexes = build_loaded(
             &EngineFeatureProfile::mysql_like(),
             InspectorTab::Indexes,
             &table,
             DatabaseType::MySQL,
-            &TestDdlGenerator,
         );
 
         match info.section() {
@@ -833,7 +818,6 @@ mod tests {
             InspectorTab::Indexes,
             &table(),
             database_type,
-            &TestDdlGenerator,
         );
 
         match model.section() {
@@ -862,7 +846,6 @@ mod tests {
             InspectorTab::Triggers,
             &table,
             database_type,
-            &TestDdlGenerator,
         );
 
         let Some(InspectorSection::Triggers { lines }) = model.section() else {
@@ -897,7 +880,7 @@ mod tests {
             (InspectorTab::ForeignKeys, 1),
             (InspectorTab::Rls, 5),
             (InspectorTab::Triggers, 3),
-            (InspectorTab::Ddl, 3),
+            (InspectorTab::Ddl, ddl_line_count(&table)),
         ];
 
         for (tab, expected_rows) in cases {
@@ -906,7 +889,6 @@ mod tests {
                 tab,
                 &table,
                 DatabaseType::PostgreSQL,
-                &TestDdlGenerator,
             );
 
             assert_eq!(model.active_tab(), tab);
@@ -929,7 +911,6 @@ mod tests {
             InspectorTab::Columns,
             &table,
             DatabaseType::PostgreSQL,
-            &TestDdlGenerator,
         );
         assert_eq!(empty.row_count(), 0);
         assert_eq!(empty.empty_state(), Some(InspectorEmptyState::NoColumns));
@@ -939,7 +920,6 @@ mod tests {
             InspectorTab::Rls,
             &table,
             DatabaseType::PostgreSQL,
-            &TestDdlGenerator,
         );
         assert_eq!(unavailable.row_count(), 0);
         assert_eq!(
@@ -954,7 +934,7 @@ mod tests {
         let cases = [
             (InspectorTab::Info, 5_usize),
             (InspectorTab::Rls, 5_usize),
-            (InspectorTab::Ddl, 3_usize),
+            (InspectorTab::Ddl, ddl_line_count(&table)),
         ];
 
         for (tab, expected_rows) in cases {
@@ -963,7 +943,6 @@ mod tests {
                 tab,
                 &table,
                 DatabaseType::PostgreSQL,
-                &TestDdlGenerator,
             );
 
             assert_eq!(model.visible_rows(8), 5, "tab={tab:?}");
@@ -985,7 +964,6 @@ mod tests {
             InspectorTab::Columns,
             &table,
             DatabaseType::PostgreSQL,
-            &TestDdlGenerator,
         );
 
         assert_eq!(model.visible_rows(8), 3);
@@ -1019,7 +997,6 @@ mod tests {
             InspectorTab::Indexes,
             &table,
             DatabaseType::PostgreSQL,
-            &TestDdlGenerator,
         );
 
         match model.section() {
@@ -1059,7 +1036,6 @@ mod tests {
             InspectorTab::Indexes,
             &table,
             DatabaseType::MySQL,
-            &TestDdlGenerator,
         );
 
         match model.section() {

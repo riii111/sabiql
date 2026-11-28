@@ -1,9 +1,9 @@
 use std::{fmt, sync::Arc};
 
-use url::Url;
-
 use crate::app::ports::outbound::{ConnectionFailureKind, DbOperationError};
-use crate::domain::connection::{MySqlConnectionConfig, MySqlSslMode, MySqlTransport};
+use crate::domain::connection::{
+    MySqlConnectionConfig, MySqlSslMode, MySqlTransport, normalize_mysql_host,
+};
 
 pub(super) struct NormalizedMySqlConfig {
     pub(super) transport: MySqlTransport,
@@ -77,60 +77,6 @@ impl fmt::Debug for NormalizedMySqlConfig {
             .field("enable_cleartext_plugin", &self.enable_cleartext_plugin)
             .finish()
     }
-}
-
-pub(in crate::adapters) fn build_mysql_dsn(config: &MySqlConnectionConfig) -> String {
-    let mut url = Url::parse("mysql://localhost").expect("static MySQL URL is valid");
-    url.set_username(&config.username.replace('%', "%25"))
-        .expect("MySQL username is valid URL data");
-    url.set_password(Some(&config.password.replace('%', "%25")))
-        .expect("MySQL password is valid URL data");
-    if config.transport == MySqlTransport::Tcp {
-        let host = normalize_mysql_host(&config.host);
-        let host = if host.contains(':') && !host.starts_with('[') {
-            format!("[{host}]")
-        } else {
-            host
-        };
-        url.set_host(Some(&host))
-            .expect("validated MySQL host is valid URL data");
-        url.set_port(Some(config.port))
-            .expect("MySQL port is valid URL data");
-    }
-    if let Some(database) = config.database.as_deref() {
-        url.path_segments_mut()
-            .expect("MySQL URL supports path segments")
-            .push(database);
-    }
-    url.query_pairs_mut()
-        .append_pair("ssl-mode", &config.ssl_mode.to_string());
-    if config.ssl_mode.uses_ca()
-        && let Some(path) = config.ssl_ca.as_deref()
-    {
-        url.query_pairs_mut().append_pair("ssl-ca", path);
-    }
-    if let Some(path) = config.ssl_cert.as_deref() {
-        url.query_pairs_mut().append_pair("ssl-cert", path);
-    }
-    if let Some(path) = config.ssl_key.as_deref() {
-        url.query_pairs_mut().append_pair("ssl-key", path);
-    }
-    if let Some(path) = config.server_public_key_path.as_deref() {
-        url.query_pairs_mut()
-            .append_pair("server-public-key-path", path);
-    }
-    if config.enable_cleartext_plugin {
-        url.query_pairs_mut()
-            .append_pair("enable-cleartext-plugin", "true");
-    }
-    if config.transport != MySqlTransport::Tcp {
-        url.query_pairs_mut()
-            .append_pair("transport", config.transport.as_str());
-        if let Some(path) = config.transport_path.as_deref() {
-            url.query_pairs_mut().append_pair("transport-path", path);
-        }
-    }
-    url.to_string()
 }
 
 pub(super) fn map_mysql_tls_failure(
@@ -255,18 +201,11 @@ pub(super) fn validate_mysql_tls_config(
     Ok(())
 }
 
-fn normalize_mysql_host(host: &str) -> String {
-    host.strip_prefix('[')
-        .and_then(|host| host.strip_suffix(']'))
-        .unwrap_or(host)
-        .to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::domain::RefreshScope;
-    use crate::domain::connection::ConnectionProfile;
+    use crate::domain::connection::{ConnectionEndpoint, build_dsn};
 
     #[test]
     fn mysql_dsn_round_trip_preserves_connection_identity() {
@@ -404,38 +343,6 @@ mod tests {
     }
 
     #[test]
-    fn mysql_preview_includes_server_public_key_path() {
-        let config = MySqlConnectionConfig::new(
-            "db.example",
-            3306,
-            Some("app".to_string()),
-            "user",
-            "password",
-            MySqlSslMode::Disabled,
-        )
-        .with_server_public_key_path(Some(r"C:\keys\server-public.pem".to_string()));
-
-        let dsn = build_mysql_dsn(&config);
-        assert!(dsn.contains("server-public-key-path="));
-    }
-
-    #[test]
-    fn mysql_preview_includes_cleartext_auth_plugin() {
-        let config = MySqlConnectionConfig::new(
-            "db.example",
-            3306,
-            Some("app".to_string()),
-            "user",
-            "password",
-            MySqlSslMode::Required,
-        )
-        .with_cleartext_auth_plugin(true);
-
-        let dsn = build_mysql_dsn(&config);
-        assert!(dsn.contains("enable-cleartext-plugin=true"));
-    }
-
-    #[test]
     fn rejects_cleartext_auth_plugin_without_required_tls() {
         let config = MySqlConnectionConfig::new(
             "localhost",
@@ -470,7 +377,7 @@ mod tests {
 
         assert_eq!(parsed.ssl_mode, MySqlSslMode::Required);
         assert_eq!(parsed.ssl_ca, None);
-        assert!(!build_mysql_dsn(&config).contains("ssl-ca"));
+        assert!(!build_dsn(&ConnectionEndpoint::MySQL(config)).contains("ssl-ca"));
     }
 
     #[test]
@@ -588,25 +495,6 @@ mod tests {
                 server_public_key_path: None,
                 enable_cleartext_plugin: false,
             }
-        }
-
-        #[test]
-        fn preview_url_encodes_percent_signs_in_credentials() {
-            let profile = ConnectionProfile::new_mysql(
-                "Preview",
-                "db.example",
-                3307,
-                Some("app".to_string()),
-                "us er%41",
-                "sec%2Fret",
-                MySqlSslMode::Preferred,
-            )
-            .unwrap();
-
-            assert_eq!(
-                build_mysql_dsn(profile.config.as_mysql().unwrap()),
-                "mysql://us%20er%2541:sec%252Fret@db.example:3307/app?ssl-mode=PREFERRED"
-            );
         }
 
         mod credentials {

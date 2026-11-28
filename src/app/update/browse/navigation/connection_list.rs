@@ -96,7 +96,6 @@ pub(in crate::update) fn confirm_connection_selection(state: &mut AppState) -> V
 mod tests {
     use super::*;
     use crate::domain::connection::{ConnectionId, ConnectionProfile, SslMode};
-    use crate::services::AppServices;
     use crate::test_support::endpoint;
     use crate::update::action::{Action, ListTarget};
     use crate::update::reducer::route;
@@ -137,7 +136,6 @@ mod tests {
                     motion: ListMotion::Next,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.connection_list_selected(), 1);
@@ -156,7 +154,6 @@ mod tests {
                     motion: ListMotion::Next,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.connection_list_selected(), 1);
@@ -175,7 +172,6 @@ mod tests {
                     motion: ListMotion::Previous,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.connection_list_selected(), 0);
@@ -194,7 +190,6 @@ mod tests {
                     motion: ListMotion::Previous,
                 },
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.connection_list_selected(), 0);
@@ -223,7 +218,6 @@ mod tests {
                     service_load_warning: None,
                 }),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.connections()[0].display_name(), "alpha");
@@ -246,7 +240,6 @@ mod tests {
                     service_load_warning: None,
                 }),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.connection_list_selected(), 0);
@@ -267,7 +260,6 @@ mod tests {
                     service_load_warning: None,
                 }),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.service_file_path(), Some(path.as_path()));
@@ -287,7 +279,6 @@ mod tests {
                     service_load_warning: Some("parse error at line 5".to_string()),
                 }),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(state.messages.last_error().is_some());
@@ -332,7 +323,6 @@ mod tests {
                 &mut state,
                 Action::ConfirmConnectionSelection,
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(effects.len(), 1);
@@ -364,7 +354,6 @@ mod tests {
                 &mut state,
                 Action::ConfirmConnectionSelection,
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(effects.is_empty());
@@ -378,7 +367,6 @@ mod tests {
                 &mut state,
                 Action::ConfirmConnectionSelection,
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(effects.is_empty());
@@ -406,7 +394,6 @@ mod tests {
                 &mut state,
                 Action::ConfirmConnectionSelection,
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -436,7 +423,6 @@ mod tests {
                 &mut state,
                 Action::ConfirmConnectionSelection,
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.input_mode(), InputMode::Normal);

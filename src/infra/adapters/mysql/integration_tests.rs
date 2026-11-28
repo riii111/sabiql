@@ -277,7 +277,8 @@ mod metadata_fetch {
         MYSQL_FIXTURE_TABLE, mysql_integration_config, with_mysql_test_db,
     };
     use sabiql_app::ports::outbound::{AccessMode, MetadataProvider};
-    use sabiql_domain::{FkAction, IndexType, TableKind};
+    use sabiql_domain::ddl::generate_ddl;
+    use sabiql_domain::{DatabaseType, FkAction, IndexType, TableKind};
 
     const MYSQL_FK_PARENT: &str = "mysql_metadata_parent";
     const MYSQL_FK_CHILD: &str = "mysql_metadata_child";
@@ -411,7 +412,7 @@ mod metadata_fetch {
                     ));
                 }
                 if detail.source_ddl().is_none()
-                    || db.adapter().generate_ddl(&detail) != detail.source_ddl().unwrap()
+                    || generate_ddl(DatabaseType::MySQL, &detail) != detail.source_ddl().unwrap()
                 {
                     return Err(format!(
                         "unexpected MySQL table DDL: {:?}",
@@ -568,7 +569,8 @@ mod metadata_fetch {
                     || !view_detail
                         .source_ddl()
                         .is_some_and(|ddl| ddl.contains("CREATE") && ddl.contains(MYSQL_VIEW))
-                    || db.adapter().generate_ddl(&view_detail) != view_detail.source_ddl().unwrap()
+                    || generate_ddl(DatabaseType::MySQL, &view_detail)
+                        != view_detail.source_ddl().unwrap()
                 {
                     return Err(format!(
                         "unexpected MySQL view DDL: {:?}",

@@ -161,7 +161,6 @@ mod tests {
     use super::*;
     use crate::domain::{ConnectionId, DatabaseType, QueryResult, QuerySource};
     use crate::model::browse::session::TableDetailState;
-    use crate::services::AppServices;
     use crate::test_support::endpoint;
     use crate::test_support::table;
     use crate::update::reducer::route;
@@ -204,12 +203,7 @@ mod tests {
         let mut state = connected_state(DatabaseType::PostgreSQL);
         let (generation, run_id) = loading_detail_and_metadata_run(&mut state);
 
-        let effects = route(
-            &mut state,
-            metadata_failed(run_id),
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        let effects = route(&mut state, metadata_failed(run_id), Instant::now());
 
         assert!(matches!(
             state.session.table_detail_state(),
@@ -234,12 +228,7 @@ mod tests {
         )));
         let result_generation = state.query.result_generation();
 
-        route(
-            &mut state,
-            metadata_failed(run_id),
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        route(&mut state, metadata_failed(run_id), Instant::now());
 
         assert!(state.query.current_result().is_none());
         assert_eq!(state.query.result_generation(), result_generation + 1);
@@ -267,12 +256,7 @@ mod tests {
             TableDetailState::Loading
         ));
         let run_id = state.session.begin_metadata_refresh();
-        let effects = route(
-            &mut state,
-            metadata_failed(run_id),
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        let effects = route(&mut state, metadata_failed(run_id), Instant::now());
 
         assert!(matches!(
             state.session.table_detail_state(),
@@ -298,12 +282,7 @@ mod tests {
             false,
         );
 
-        let effects = route(
-            &mut state,
-            metadata_failed(run_id),
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        let effects = route(&mut state, metadata_failed(run_id), Instant::now());
 
         assert!(matches!(
             effects.as_slice(),
@@ -319,7 +298,6 @@ mod tests {
             &mut state,
             Action::RevealPendingPreview { generation },
             Instant::now(),
-            &AppServices::stub(),
         );
         assert!(state.query.current_result().is_some());
         assert!(!state.query.has_pending_preview(generation));
@@ -341,20 +319,10 @@ mod tests {
             false,
         );
 
-        route(
-            &mut state,
-            Action::ReloadMetadata,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        route(&mut state, Action::ReloadMetadata, Instant::now());
         let run_id = state.session.metadata_generation();
 
-        let effects = route(
-            &mut state,
-            metadata_failed(run_id),
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        let effects = route(&mut state, metadata_failed(run_id), Instant::now());
 
         assert!(matches!(
             state.session.table_detail_state(),
@@ -380,19 +348,9 @@ mod tests {
         let detail = table::minimal("public", "users");
         assert!(state.session.set_table_detail(detail, generation));
 
-        route(
-            &mut state,
-            Action::ReloadMetadata,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        route(&mut state, Action::ReloadMetadata, Instant::now());
         let run_id = state.session.metadata_generation();
-        let effects = route(
-            &mut state,
-            metadata_failed(run_id),
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        let effects = route(&mut state, metadata_failed(run_id), Instant::now());
 
         assert!(effects.is_empty());
         assert!(matches!(
@@ -417,12 +375,7 @@ mod tests {
             .session
             .select_table("public", "orders", &mut state.query);
 
-        let effects = route(
-            &mut state,
-            metadata_failed(stale_run_id),
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        let effects = route(&mut state, metadata_failed(stale_run_id), Instant::now());
 
         assert!(effects.is_empty());
         assert!(matches!(
@@ -445,12 +398,7 @@ mod tests {
         let detail = table::minimal("main", "orders");
         assert!(state.session.set_table_detail(detail, generation));
 
-        let effects = route(
-            &mut state,
-            metadata_failed(stale_run_id),
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        let effects = route(&mut state, metadata_failed(stale_run_id), Instant::now());
 
         assert!(effects.is_empty());
         assert!(matches!(
@@ -477,20 +425,10 @@ mod tests {
             false,
         );
 
-        route(
-            &mut state,
-            Action::ReloadMetadata,
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        route(&mut state, Action::ReloadMetadata, Instant::now());
         let metadata_run_id = state.session.metadata_generation();
 
-        let effects = route(
-            &mut state,
-            metadata_failed(metadata_run_id),
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        let effects = route(&mut state, metadata_failed(metadata_run_id), Instant::now());
 
         assert!(effects.is_empty());
         assert!(matches!(
@@ -507,12 +445,7 @@ mod tests {
         let (generation, stale_run_id) = loading_detail_and_metadata_run(&mut state);
         let current_run_id = state.session.begin_metadata_refresh();
 
-        let effects = route(
-            &mut state,
-            metadata_failed(stale_run_id),
-            Instant::now(),
-            &AppServices::stub(),
-        );
+        let effects = route(&mut state, metadata_failed(stale_run_id), Instant::now());
 
         assert!(effects.is_empty());
         assert!(matches!(

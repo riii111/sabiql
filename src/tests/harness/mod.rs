@@ -14,7 +14,6 @@ use ratatui::style::Modifier;
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::connection::setup::ConnectionField;
 use sabiql_app::model::shared::text_input::TextInputState;
-use sabiql_app::services::AppServices;
 use sabiql_app::update::action::{Action, ModalKind};
 use sabiql_app::update::reducer::reduce;
 use sabiql_domain::ConnectionId;
@@ -34,7 +33,6 @@ pub fn open_command_palette(state: &mut AppState) {
         state,
         Action::OpenModal(ModalKind::CommandPalette),
         test_instant(),
-        &AppServices::stub(),
     );
 }
 
@@ -109,32 +107,10 @@ pub fn render_and_get_buffer_at_with_theme(
     now: Instant,
     theme: &ThemePalette,
 ) -> Buffer {
-    render_and_get_buffer_at_with_theme_and_services(
-        terminal,
-        state,
-        now,
-        theme,
-        &AppServices::stub(),
-    )
-}
-
-fn render_and_get_buffer_at_with_theme_and_services(
-    terminal: &mut Terminal<TestBackend>,
-    state: &mut AppState,
-    now: Instant,
-    theme: &ThemePalette,
-    services: &AppServices,
-) -> Buffer {
     terminal
         .draw(|frame| {
-            let output = MainLayout::render_with_theme(
-                frame,
-                state,
-                Some(FIXED_TIME_MS),
-                services,
-                now,
-                theme,
-            );
+            let output =
+                MainLayout::render_with_theme(frame, state, Some(FIXED_TIME_MS), now, theme);
             state.apply_render_output(output);
         })
         .unwrap();
@@ -145,29 +121,6 @@ fn render_and_get_buffer_at_with_theme_and_services(
 pub fn render_to_string(terminal: &mut Terminal<TestBackend>, state: &mut AppState) -> String {
     let buffer = render_and_get_buffer(terminal, state);
     area_to_string(&buffer, buffer.area)
-}
-
-pub fn render_to_string_with_services(
-    terminal: &mut Terminal<TestBackend>,
-    state: &mut AppState,
-    services: &AppServices,
-) -> String {
-    let buffer = render_and_get_buffer_with_services(terminal, state, services);
-    area_to_string(&buffer, buffer.area)
-}
-
-pub fn render_and_get_buffer_with_services(
-    terminal: &mut Terminal<TestBackend>,
-    state: &mut AppState,
-    services: &AppServices,
-) -> Buffer {
-    render_and_get_buffer_at_with_theme_and_services(
-        terminal,
-        state,
-        test_instant(),
-        palette_for(state.ui.theme_id),
-        services,
-    )
 }
 
 pub fn render_and_get_cursor_position(

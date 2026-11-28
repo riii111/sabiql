@@ -10,7 +10,6 @@ use crate::app::model::shared::render_output::{
     OverlayLayout, PaneArea, PaneAreas, PickerLayouts, ResultLayout,
 };
 use crate::app::ports::outbound::{CellDetailViewport, RenderOutput};
-use crate::app::services::AppServices;
 use crate::features::browse::cell_detail::{CellDetail, CellDetailRenderMetrics};
 use crate::features::browse::explorer::Explorer;
 use crate::features::browse::inspector::Inspector;
@@ -42,24 +41,15 @@ impl MainLayout {
         frame: &mut Frame,
         state: &AppState,
         time_ms: Option<u128>,
-        services: &AppServices,
         now: Instant,
     ) -> RenderOutput {
-        Self::render_impl(
-            frame,
-            state,
-            time_ms,
-            services,
-            now,
-            palette_for(state.ui.theme_id),
-        )
+        Self::render_impl(frame, state, time_ms, now, palette_for(state.ui.theme_id))
     }
 
     fn render_impl(
         frame: &mut Frame,
         state: &AppState,
         time_ms: Option<u128>,
-        services: &AppServices,
         now: Instant,
         theme: &ThemePalette,
     ) -> RenderOutput {
@@ -74,7 +64,7 @@ impl MainLayout {
         .areas(area);
 
         Header::render(frame, header_area, state, theme);
-        let browse = Self::render_browse_mode(frame, main_area, state, services, now, theme);
+        let browse = Self::render_browse_mode(frame, main_area, state, now, theme);
         if let Some(transition) = state.motion.focus_transition(now) {
             apply_focus_transition(frame.buffer_mut(), &browse.pane_areas, transition, theme);
         }
@@ -163,7 +153,7 @@ impl MainLayout {
         match state.input_mode() {
             InputMode::Settings => SettingsOverlay::render(frame, state, theme),
             InputMode::Help => HelpOverlay::render(frame, state, now, theme),
-            InputMode::ConnectionSetup => ConnectionSetup::render(frame, state, services, theme),
+            InputMode::ConnectionSetup => ConnectionSetup::render(frame, state, theme),
             InputMode::ConnectionError => ConnectionError::render(frame, state, now, theme),
             _ => {}
         }
@@ -201,7 +191,6 @@ impl MainLayout {
         frame: &mut Frame,
         main_area: Rect,
         state: &AppState,
-        services: &AppServices,
         now: Instant,
         theme: &ThemePalette,
     ) -> BrowseLayout {
@@ -228,7 +217,7 @@ impl MainLayout {
         let explorer_content_width =
             left_area.map(|area| Explorer::render(frame, area, state, theme));
         let inspector_plan =
-            inspector_area.map(|area| Inspector::render(frame, area, state, services, now, theme));
+            inspector_area.map(|area| Inspector::render(frame, area, state, now, theme));
         let (result_plan, result_widths_cache) =
             ResultPane::render(frame, result_area, state, now, theme);
 
@@ -288,7 +277,7 @@ fn pane_area(rect: Rect) -> PaneArea {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support {
-    use super::{AppServices, AppState, Frame, Instant, MainLayout, RenderOutput, ThemePalette};
+    use super::{AppState, Frame, Instant, MainLayout, RenderOutput, ThemePalette};
 
     impl MainLayout {
         #[doc(hidden)]
@@ -296,11 +285,10 @@ pub mod test_support {
             frame: &mut Frame,
             state: &AppState,
             time_ms: Option<u128>,
-            services: &AppServices,
             now: Instant,
             theme: &ThemePalette,
         ) -> RenderOutput {
-            Self::render_impl(frame, state, time_ms, services, now, theme)
+            Self::render_impl(frame, state, time_ms, now, theme)
         }
     }
 }

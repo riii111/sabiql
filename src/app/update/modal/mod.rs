@@ -17,7 +17,6 @@ mod tests {
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::settings::{IconMode, KeymapPreset};
     use crate::ports::outbound::AppSettings;
-    use crate::services::AppServices;
     use crate::test_support::endpoint;
     use crate::update::action::{
         Action, CursorMove, InputTarget, ListMotion, ListTarget, ModalKind, ScrollAmount,
@@ -41,12 +40,7 @@ mod tests {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConnectionSelector);
 
-            let effects = route(
-                &mut state,
-                Action::Escape,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = route(&mut state, Action::Escape, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(effects.is_empty());
@@ -57,12 +51,7 @@ mod tests {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::SqlModal);
 
-            route(
-                &mut state,
-                Action::Escape,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::Escape, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::SqlModal);
         }
@@ -77,14 +66,8 @@ mod tests {
                 state,
                 Action::OpenModal(ModalKind::CommandPalette),
                 Instant::now(),
-                &AppServices::stub(),
             );
-            route(
-                state,
-                Action::ToggleHelp,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(state, Action::ToggleHelp, Instant::now());
             assert_eq!(state.input_mode(), InputMode::Help);
         }
 
@@ -101,7 +84,6 @@ mod tests {
                 &mut state,
                 Action::CloseModal(ModalKind::Help),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert_eq!(state.input_mode(), InputMode::CommandPalette);
@@ -140,12 +122,7 @@ mod tests {
             let mut state = create_test_state();
             open_help(&mut state);
 
-            route(
-                &mut state,
-                Action::EnterHelpFilter,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::EnterHelpFilter, Instant::now());
             edit_text(
                 &mut state,
                 &Action::TextInput {
@@ -187,19 +164,9 @@ mod tests {
         fn exiting_help_filter_keeps_the_help_modal_open() {
             let mut state = create_test_state();
             open_help(&mut state);
-            route(
-                &mut state,
-                Action::EnterHelpFilter,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::EnterHelpFilter, Instant::now());
 
-            route(
-                &mut state,
-                Action::ExitHelpFilter,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            route(&mut state, Action::ExitHelpFilter, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::Help);
             assert_eq!(state.ui.help().mode(), HelpMode::Viewing);
@@ -223,7 +190,6 @@ mod tests {
                     &mut state,
                     Action::OpenModal(ModalKind::Settings),
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.input_mode(), InputMode::Settings);
@@ -239,15 +205,9 @@ mod tests {
                     &mut state,
                     Action::OpenModal(ModalKind::Settings),
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
-                route(
-                    &mut state,
-                    Action::SettingsSelectNext,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                route(&mut state, Action::SettingsSelectNext, Instant::now());
 
                 assert_eq!(state.settings.selected_theme(), ThemeId::Light);
                 assert_eq!(state.ui.theme_id, ThemeId::Default);
@@ -262,16 +222,10 @@ mod tests {
                     &mut state,
                     Action::OpenModal(ModalKind::Settings),
                     Instant::now(),
-                    &AppServices::stub(),
                 );
-                route(
-                    &mut state,
-                    Action::SettingsSelectNext,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                route(&mut state, Action::SettingsSelectNext, Instant::now());
 
-                let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+                let effects = route(&mut state, action, Instant::now());
 
                 assert_eq!(state.input_mode(), InputMode::Normal);
                 assert_eq!(state.settings.selected_theme(), ThemeId::Default);
@@ -286,34 +240,13 @@ mod tests {
                     &mut state,
                     Action::OpenModal(ModalKind::Settings),
                     Instant::now(),
-                    &AppServices::stub(),
                 );
-                route(
-                    &mut state,
-                    Action::SettingsSelectNext,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                route(&mut state, Action::SettingsSelectNext, Instant::now());
 
-                route(
-                    &mut state,
-                    Action::SettingsPreviousSection,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
-                route(
-                    &mut state,
-                    Action::SettingsSelectNext,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                route(&mut state, Action::SettingsPreviousSection, Instant::now());
+                route(&mut state, Action::SettingsSelectNext, Instant::now());
 
-                let effects = route(
-                    &mut state,
-                    Action::SettingsApply,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                let effects = route(&mut state, Action::SettingsApply, Instant::now());
 
                 assert_eq!(state.input_mode(), InputMode::Settings);
                 assert_eq!(state.ui.theme_id, ThemeId::Default);
@@ -332,33 +265,12 @@ mod tests {
                     &mut state,
                     Action::OpenModal(ModalKind::Settings),
                     Instant::now(),
-                    &AppServices::stub(),
                 );
-                route(
-                    &mut state,
-                    Action::SettingsNextSection,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
-                route(
-                    &mut state,
-                    Action::SettingsNextSection,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
-                route(
-                    &mut state,
-                    Action::SettingsSelectNext,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                route(&mut state, Action::SettingsNextSection, Instant::now());
+                route(&mut state, Action::SettingsNextSection, Instant::now());
+                route(&mut state, Action::SettingsSelectNext, Instant::now());
 
-                let effects = route(
-                    &mut state,
-                    Action::SettingsApply,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                let effects = route(&mut state, Action::SettingsApply, Instant::now());
 
                 assert_eq!(state.input_mode(), InputMode::Settings);
                 assert_eq!(state.settings.saved_er_browser(), None);
@@ -376,25 +288,13 @@ mod tests {
                     &mut state,
                     Action::OpenModal(ModalKind::Settings),
                     Instant::now(),
-                    &AppServices::stub(),
                 );
-                route(
-                    &mut state,
-                    Action::SettingsNextSection,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
-                route(
-                    &mut state,
-                    Action::SettingsNextSection,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                route(&mut state, Action::SettingsNextSection, Instant::now());
+                route(&mut state, Action::SettingsNextSection, Instant::now());
                 route(
                     &mut state,
                     Action::SettingsStartCustomBrowserEdit,
                     Instant::now(),
-                    &AppServices::stub(),
                 );
                 edit_text(
                     &mut state,
@@ -405,12 +305,7 @@ mod tests {
                     Instant::now(),
                 );
 
-                let effects = route(
-                    &mut state,
-                    Action::SettingsApply,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                let effects = route(&mut state, Action::SettingsApply, Instant::now());
 
                 assert_eq!(state.input_mode(), InputMode::Settings);
                 assert!(matches!(
@@ -427,26 +322,10 @@ mod tests {
                     &mut state,
                     Action::OpenModal(ModalKind::Settings),
                     Instant::now(),
-                    &AppServices::stub(),
                 );
-                route(
-                    &mut state,
-                    Action::SettingsSelectNext,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
-                route(
-                    &mut state,
-                    Action::SettingsNextSection,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
-                route(
-                    &mut state,
-                    Action::SettingsSelectNext,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                route(&mut state, Action::SettingsSelectNext, Instant::now());
+                route(&mut state, Action::SettingsNextSection, Instant::now());
+                route(&mut state, Action::SettingsSelectNext, Instant::now());
 
                 let effects = route(
                     &mut state,
@@ -457,7 +336,6 @@ mod tests {
                         er_browser: Some("Google Chrome".to_string()),
                     }),
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.ui.theme_id, ThemeId::Light);
@@ -484,7 +362,6 @@ mod tests {
                 &mut state,
                 Action::SettingsSaveFailed("I/O error: disk full".to_string()),
                 Instant::now(),
-                &AppServices::stub(),
             );
 
             assert!(state.messages.last_error.as_deref().is_some_and(|message| {
@@ -543,21 +420,11 @@ mod tests {
         }
 
         fn confirm_effects(state: &mut AppState) -> Vec<Effect> {
-            route(
-                state,
-                Action::ConfirmDialogConfirm,
-                Instant::now(),
-                &AppServices::stub(),
-            )
+            route(state, Action::ConfirmDialogConfirm, Instant::now())
         }
 
         fn cancel_effects(state: &mut AppState) -> Vec<Effect> {
-            route(
-                state,
-                Action::ConfirmDialogCancel,
-                Instant::now(),
-                &AppServices::stub(),
-            )
+            route(state, Action::ConfirmDialogCancel, Instant::now())
         }
 
         fn assert_cached_export_effect(effect: &Effect, run_id: u64) {
@@ -593,12 +460,7 @@ mod tests {
                     .confirm_dialog
                     .open("", "", ConfirmIntent::QuitNoConnection);
 
-                let effects = route(
-                    &mut state,
-                    Action::ConfirmDialogConfirm,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                let effects = route(&mut state, Action::ConfirmDialogConfirm, Instant::now());
 
                 assert!(state.should_quit);
                 assert!(state.confirm_dialog.intent().is_none());
@@ -619,12 +481,7 @@ mod tests {
                     .confirm_dialog
                     .open("", "", ConfirmIntent::DeleteConnection(id.clone()));
 
-                let effects = route(
-                    &mut state,
-                    Action::ConfirmDialogConfirm,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                let effects = route(&mut state, Action::ConfirmDialogConfirm, Instant::now());
 
                 assert_eq!(state.input_mode(), InputMode::ConnectionSelector);
                 let [Effect::DispatchActions(actions)] = effects.as_slice() else {
@@ -635,12 +492,7 @@ mod tests {
                     [Action::DeleteConnection(action_id)] if action_id == &id
                 ));
 
-                let effects = reduce(
-                    &mut state,
-                    actions[0].clone(),
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                let effects = reduce(&mut state, actions[0].clone(), Instant::now());
                 assert!(state.session.pending_mysql_connection_probe().is_none());
                 assert!(matches!(
                     effects.as_slice(),
@@ -662,12 +514,7 @@ mod tests {
                 );
 
                 let now = Instant::now();
-                let effects = reduce(
-                    &mut state,
-                    Action::ConfirmDialogConfirm,
-                    now,
-                    &AppServices::stub(),
-                );
+                let effects = reduce(&mut state, Action::ConfirmDialogConfirm, now);
 
                 assert_eq!(state.input_mode(), InputMode::CellEdit);
                 assert!(state.query.is_running());
@@ -697,12 +544,7 @@ mod tests {
                     },
                 );
 
-                let effects = route(
-                    &mut state,
-                    Action::ConfirmDialogConfirm,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                let effects = route(&mut state, Action::ConfirmDialogConfirm, Instant::now());
 
                 assert!(effects.is_empty());
                 assert_eq!(
@@ -724,12 +566,7 @@ mod tests {
                     },
                 );
 
-                let effects = route(
-                    &mut state,
-                    Action::ConfirmDialogConfirm,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                let effects = route(&mut state, Action::ConfirmDialogConfirm, Instant::now());
 
                 assert_eq!(state.input_mode(), InputMode::Normal);
                 assert!(effects.is_empty());
@@ -765,12 +602,7 @@ mod tests {
                     },
                 );
 
-                route(
-                    &mut state,
-                    Action::ConfirmDialogConfirm,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                route(&mut state, Action::ConfirmDialogConfirm, Instant::now());
 
                 assert!(state.result_interaction.pending_write_preview().is_none());
                 assert!(state.query.pending_delete_refresh_target().is_none());
@@ -807,12 +639,7 @@ mod tests {
                     },
                 );
 
-                let effects = route(
-                    &mut state,
-                    Action::ConfirmDialogConfirm,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                let effects = route(&mut state, Action::ConfirmDialogConfirm, Instant::now());
 
                 assert!(effects.is_empty());
             }
@@ -835,12 +662,7 @@ mod tests {
                     .confirm_dialog
                     .open("", "", ConfirmIntent::DisableReadOnly);
 
-                let effects = route(
-                    &mut state,
-                    Action::ConfirmDialogConfirm,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                let effects = route(&mut state, Action::ConfirmDialogConfirm, Instant::now());
 
                 assert!(!state.session.is_read_only());
                 assert_eq!(state.input_mode(), InputMode::Normal);
@@ -852,12 +674,7 @@ mod tests {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
 
-                let effects = route(
-                    &mut state,
-                    Action::ConfirmDialogConfirm,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                let effects = route(&mut state, Action::ConfirmDialogConfirm, Instant::now());
 
                 assert!(effects.is_empty());
             }
@@ -894,7 +711,6 @@ mod tests {
                         amount: ScrollAmount::Line,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.confirm_dialog.preview_scroll, 1);
@@ -913,7 +729,6 @@ mod tests {
                         amount: ScrollAmount::Line,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.confirm_dialog.preview_scroll, 4);
@@ -932,7 +747,6 @@ mod tests {
                         amount: ScrollAmount::Line,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.confirm_dialog.preview_scroll, 0);
@@ -951,7 +765,6 @@ mod tests {
                         amount: ScrollAmount::Line,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.confirm_dialog.preview_scroll, 15);
@@ -991,12 +804,7 @@ mod tests {
                     .confirm_dialog
                     .open("", "", ConfirmIntent::QuitNoConnection);
 
-                let effects = route(
-                    &mut state,
-                    Action::ConfirmDialogCancel,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                let effects = route(&mut state, Action::ConfirmDialogCancel, Instant::now());
 
                 assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
                 assert!(effects.is_empty());
@@ -1015,12 +823,7 @@ mod tests {
                     },
                 );
 
-                let effects = route(
-                    &mut state,
-                    Action::ConfirmDialogCancel,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                let effects = route(&mut state, Action::ConfirmDialogCancel, Instant::now());
 
                 assert_eq!(state.input_mode(), InputMode::CellEdit);
                 assert!(effects.is_empty());
@@ -1092,12 +895,7 @@ mod tests {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
 
-                let effects = route(
-                    &mut state,
-                    Action::ConfirmDialogCancel,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
+                let effects = route(&mut state, Action::ConfirmDialogCancel, Instant::now());
 
                 assert!(effects.is_empty());
             }
@@ -1163,7 +961,6 @@ mod tests {
                     &mut state,
                     Action::OpenModal(ModalKind::QueryHistoryPicker),
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.input_mode(), InputMode::Normal);
@@ -1179,7 +976,6 @@ mod tests {
                     &mut state,
                     Action::OpenModal(ModalKind::QueryHistoryPicker),
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.input_mode(), InputMode::Normal);
@@ -1198,7 +994,6 @@ mod tests {
                     &mut state,
                     Action::OpenModal(ModalKind::QueryHistoryPicker),
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.input_mode(), InputMode::QueryHistoryPicker);
@@ -1216,7 +1011,6 @@ mod tests {
                     &mut state,
                     Action::OpenModal(ModalKind::QueryHistoryPicker),
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.input_mode(), InputMode::QueryHistoryPicker);
@@ -1232,7 +1026,6 @@ mod tests {
                     &mut state,
                     Action::OpenModal(ModalKind::QueryHistoryPicker),
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert!(matches!(
@@ -1252,7 +1045,6 @@ mod tests {
                     &mut state,
                     Action::CloseModal(ModalKind::QueryHistoryPicker),
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.input_mode(), InputMode::SqlModal);
@@ -1274,7 +1066,6 @@ mod tests {
                     &mut state,
                     Action::QueryHistoryLoaded(scope(&conn_id, None), entries),
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.query_history_picker.entries().len(), 1);
@@ -1292,7 +1083,6 @@ mod tests {
                     &mut state,
                     Action::QueryHistoryLoaded(scope(&stale_conn, None), entries),
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert!(state.query_history_picker.entries().is_empty());
@@ -1317,7 +1107,6 @@ mod tests {
                     &mut state,
                     Action::QueryHistoryLoaded(stale_scope, entries),
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert!(state.query_history_picker.entries().is_empty());
@@ -1333,7 +1122,6 @@ mod tests {
                     &mut state,
                     Action::QueryHistoryLoaded(scope(&conn_id, None), entries),
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert!(state.query_history_picker.entries().is_empty());
@@ -1352,7 +1140,6 @@ mod tests {
                         "IO error: disk error".to_string(),
                     ),
                     now,
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(
@@ -1374,7 +1161,6 @@ mod tests {
                         "IO error: stale error".to_string(),
                     ),
                     now,
-                    &AppServices::stub(),
                 );
 
                 assert!(state.messages.last_error.is_none());
@@ -1393,7 +1179,6 @@ mod tests {
                         "IO error: stale error".to_string(),
                     ),
                     now,
-                    &AppServices::stub(),
                 );
 
                 assert!(state.messages.last_error.is_none());
@@ -1451,7 +1236,6 @@ mod tests {
                         motion,
                     },
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.query_history_picker.selected(), expected_selection);
@@ -1480,7 +1264,6 @@ mod tests {
                     &mut state,
                     Action::QueryHistoryConfirmSelection,
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.sql_modal.editor.cursor(), expected_chars);
@@ -1499,7 +1282,6 @@ mod tests {
                     &mut state,
                     Action::QueryHistoryConfirmSelection,
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.input_mode(), InputMode::SqlModal);
@@ -1540,7 +1322,6 @@ mod tests {
                     &mut state,
                     Action::QueryHistoryConfirmSelection,
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.input_mode(), InputMode::SqlModal);
@@ -1560,7 +1341,6 @@ mod tests {
                     &mut state,
                     Action::QueryHistoryConfirmSelection,
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.input_mode(), InputMode::Normal);
@@ -1585,7 +1365,6 @@ mod tests {
                     &mut state,
                     Action::QueryHistoryConfirmSelection,
                     Instant::now(),
-                    &AppServices::stub(),
                 );
 
                 assert_eq!(state.input_mode(), InputMode::QueryHistoryPicker);

@@ -13,7 +13,7 @@ expression: output
 │  Password:   [ empty = psql default       ]                │
 │  SSL Mode:   [ prefer                   ▼ ]                │
 │                                                            │
-│  → stub-dsn                                                │
+│  → port='5432' dbname='mydb' sslmode='prefer'              │
 │  Note: Connection info is stored locally in plain text     │
 │                                                            │
 ╰ Tab/⇧Tab: Field │ ^S: Connect │ Esc: Cancel ───────────────╯
