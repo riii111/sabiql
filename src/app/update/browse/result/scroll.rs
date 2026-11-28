@@ -2,7 +2,9 @@ use crate::cmd::effect::Effect;
 use crate::domain::QueryResult;
 use crate::model::app_state::AppState;
 use crate::model::shared::key_sequence::KeySequenceState;
-use crate::model::shared::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
+use crate::model::shared::viewport::{
+    calculate_next_column_offset, calculate_prev_column_offset, max_scroll_offset,
+};
 use crate::update::action::{CursorPosition, ScrollAmount, ScrollDirection};
 
 pub(super) fn result_row_count(state: &AppState) -> usize {
@@ -18,7 +20,7 @@ pub(super) fn result_col_count(state: &AppState) -> usize {
 
 pub(super) fn result_max_scroll(state: &AppState) -> usize {
     let visible = state.result_visible_rows();
-    result_row_count(state).saturating_sub(visible)
+    max_scroll_offset(result_row_count(state), visible)
 }
 
 fn ensure_row_visible(state: &mut AppState) {

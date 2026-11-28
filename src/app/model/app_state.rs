@@ -6,7 +6,7 @@ use super::explain_context::ExplainContext;
 use crate::domain::connection::{
     ConnectionEndpoint, ConnectionId, ConnectionProfile, ServiceEntry,
 };
-use crate::domain::{Column, DatabaseType, TableSummary};
+use crate::domain::{Column, DatabaseType, QueryResult, TableSummary};
 use crate::model::browse::inspector_view_model::InspectorViewModel;
 use crate::model::browse::json_detail::JsonDetailState;
 use crate::model::browse::query_execution::{QueryExecution, VisibleResultKind};
@@ -31,6 +31,7 @@ use crate::model::shared::render_output::{
 use crate::model::shared::settings::SettingsState;
 use crate::model::shared::text_input::TextInputState;
 use crate::model::shared::ui_state::{UiState, scroll_max_offset};
+use crate::model::shared::viewport::max_scroll_offset;
 use crate::model::sql_editor::modal::SqlModalContext;
 use crate::model::sql_editor::query_history::QueryHistoryPickerState;
 use crate::model::sqlite::diagnostics::SqliteDiagnosticsState;
@@ -213,6 +214,15 @@ impl AppState {
         self.ui.explorer_horizontal_offset = self.ui.explorer_horizontal_offset.min(max_offset);
         self.ui.inspector_pane_height = layout.inspector.pane_height;
         self.ui.set_result_pane_height(layout.result.pane_height);
+        if layout.pane_areas.result.is_some() {
+            let total = self
+                .query
+                .visible_result()
+                .map_or(0, QueryResult::data_row_count);
+            let max_offset = max_scroll_offset(total, self.result_visible_rows());
+            self.result_interaction
+                .set_scroll_offset(self.result_interaction.scroll_offset().min(max_offset));
+        }
         self.ui.pane_areas = layout.pane_areas;
     }
 
