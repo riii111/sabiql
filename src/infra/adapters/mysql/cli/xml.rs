@@ -430,7 +430,11 @@ pub(super) fn parse_mysql_field(
         let attribute = attribute.map_err(|error| {
             DbOperationError::QueryFailed(format!("invalid MySQL XML field: {error}"))
         })?;
-        let value = attribute.unescape_value().map_err(|error| {
+        // Preserve whitespace in column names when decoding XML entities.
+        let decoded = std::str::from_utf8(&attribute.value).map_err(|error| {
+            DbOperationError::QueryFailed(format!("invalid MySQL XML field: {error}"))
+        })?;
+        let value = unescape(decoded).map_err(|error| {
             DbOperationError::QueryFailed(format!("invalid MySQL XML field: {error}"))
         })?;
         match attribute.key.as_ref() {
@@ -472,7 +476,7 @@ mod tests {
   <field name="null" xsi:nil="true"/>
   <field name="empty"></field>
   <field name="text-null">NULL</field>
-  <field name="special">tab&#9;line&#10;slash\unicode 日本語</field>
+  <field name="special &amp; tab	name">tab&#9;line&#10;slash\unicode 日本語</field>
   <field name="json">{"a":[1,true]}</field>
   <field name="binary-looking">0x41</field>
 </row>
@@ -486,7 +490,7 @@ mod tests {
                 "null",
                 "empty",
                 "text-null",
-                "special",
+                "special & tab\tname",
                 "json",
                 "binary-looking"
             ]
